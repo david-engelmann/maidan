@@ -13,14 +13,13 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, subscribe_resume, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
 };
 
 async fn spawn_server(max_connections: usize) -> (std::net::SocketAddr, tempfile::TempDir) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -105,7 +104,7 @@ async fn subscriber_connections_are_capped_and_a_slot_frees_on_close() {
             let problem: serde_json::Value =
                 serde_json::from_slice(resp.body().as_deref().expect("a problem body"))
                     .expect("problem json");
-            assert_eq!(problem["type"], "https://maidan.dev/problems/overloaded");
+            assert_eq!(problem["type"], "https://maidan.world/problems/overloaded");
         }
         other => panic!("a connection past the ceiling must get 503, got {other:?}"),
     }

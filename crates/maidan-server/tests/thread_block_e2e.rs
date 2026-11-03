@@ -21,11 +21,10 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

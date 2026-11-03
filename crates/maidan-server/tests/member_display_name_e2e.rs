@@ -17,7 +17,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct World {
     base: String,
@@ -48,7 +47,7 @@ async fn mint(store: &Arc<dyn Store>, ws: WorkspaceId, member: MemberId, caps: &
 }
 
 async fn world() -> World {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

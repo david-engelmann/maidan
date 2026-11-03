@@ -32,12 +32,21 @@ jobs:
   # `if` (GitHub reports a job skipped by `if` as successful, so a required
   # check still passes), and integration runs only the tests that read the
   # docs. Pushes to main, manual runs and any code change run everything.
+  # Report-only jobs (the a2a TCK, loom, tla, the MCP conformance, Inspector
+  # and SDK-client runs, SDK interop, OSV, sqlite-vec, coverage, helm on kind,
+  # the PITR and SQLite backup drills, replica routing) run on the push to
+  # `dev` after a merge, not on pull requests. A code PR started about 30
+  # jobs against GitHub's 20 concurrent runners, so with two or three PRs open
+  # the required jobs sat queued behind them and a merge took an hour. They
+  # still run on every `dev` commit, and a red one there is a break to fix
+  # before the next promotion.
   changes:
     name: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      heavy: ${{ steps.filter.outputs.heavy }}
       openwork: ${{ steps.filter.outputs.openwork }}
     steps:
       - uses: actions/checkout@v4
@@ -47,9 +56,12 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: |
           if [ "$EVENT" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "heavy=true" >> "$GITHUB_OUTPUT"
             echo "openwork=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -66,9 +78,22 @@ jobs:
           fi
           if printf '%s\n' "$changed" | grep -Ev '^(docs/|book/)|\.md$' | grep -q .; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            code=true
           else
             echo "docs-only change: heavy jobs skip"
             echo "code=false" >> "$GITHUB_OUTPUT"
+            code=false
+          fi
+          # A feature PR lands through an integration batch (a batch/* branch),
+          # never alone, so it runs the fast jobs (lint, unit, Playwright, the
+          # contracts) and the batch runs the heavy ones (integration and the
+          # smokes) once for every PR it carries. Our own merge queue: GitHub's
+          # needs an organization-owned repository. The full-ci label opts a
+          # feature PR in.
+          if [ "$code" = true ] && { [[ "$HEAD_REF" == batch/* ]] || [ "$FULL_LABEL" = true ]; }; then
+            echo "heavy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "heavy=false" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -150,8 +175,12 @@ jobs:
         run: python3 scripts/check-agent-skills.py
       - name: HOL Guard contributions match the tool tiers
         run: python3 scripts/gen-hol-guard.py --check
+      - name: listing example prompts name real tools
+        run: python3 scripts/listing-prompts.py --check
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
+      - name: links name only domains Maidan owns
+        run: ./scripts/check-our-domains.sh
 
   # Installs helm/maidan, then helm/maidan-stack with its own Postgres and
   # MinIO, on the server and maidan-postgres images it builds, and waits for
@@ -159,7 +188,7 @@ jobs:
   helm-kind:
     name: helm install (kind)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -239,7 +268,7 @@ jobs:
   a2a-tck:
     name: a2a tck
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs the official A2A TCK (pinned in scripts/a2a-tck.sh) against a
@@ -270,7 +299,7 @@ jobs:
   loom:
     name: loom
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Model-checks every interleaving of the sharded bus and the presence hub
@@ -299,7 +328,7 @@ jobs:
   mcp-inspector:
     name: mcp inspector (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Boots a source-built server with auth enabled and runs the official MCP
@@ -333,7 +362,7 @@ jobs:
   mcp-conformance:
     name: mcp conformance (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The official MCP conformance suite, run per revision against its frozen
@@ -375,7 +404,7 @@ jobs:
   tla:
     name: tla
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Model-checks the TLA+ specs in specs/tla with TLC (pinned in
@@ -393,7 +422,7 @@ jobs:
   osv-scan:
     name: osv scan (lockfiles outside cargo-deny)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # osv-scanner (pinned in scripts/osv-scan.sh) over every lockfile that
@@ -449,7 +478,7 @@ jobs:
   sdk-interop:
     name: sdk interop (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Boots a source-built server (SQLite, auth disabled) and runs each client
@@ -496,7 +525,7 @@ jobs:
   mcp-sdk-clients:
     name: mcp sdk clients (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The official third-party MCP SDKs, TypeScript (@modelcontextprotocol/sdk)
@@ -564,6 +593,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # Saved only from main and dev, like every other cargo cache here,
+          # so PR entries do not evict the ones PRs restore from.
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
@@ -627,7 +660,7 @@ jobs:
       # A full disk shows up only as a storage error deep in one test, so
       # name it here, before the containers start writing.
       - name: disk left for the test containers
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.heavy == 'true'
         run: |
           df -h /
           avail_kib=$(df --output=avail -k / | tail -1)
@@ -636,15 +669,22 @@ jobs:
             echo "::error::under ${floor_gib}G free after unpacking the tests; MinIO and Postgres need room to write"
             exit 1
           fi
+      # ubuntu-26.04 mounts /tmp as a tmpfs sized to half the RAM. nextest
+      # unpacks the archive into the temp dir, and the test binaries outgrew it
+      # ("Disk quota exceeded", 2026-11-02), so the temp dir goes on the disk.
       - name: integration tests
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.heavy == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci --partition hash:${{ matrix.shard }}/3
       - name: doc contract tests (docs-only change)
         # The tests that read docs/, book/ or Markdown; nothing else can be
         # affected by a docs-only change. Shard 1 runs them all.
-        if: needs.changes.outputs.code != 'true' && matrix.shard == 1
+        if: needs.changes.outputs.heavy != 'true' && matrix.shard == 1
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci -E
@@ -677,7 +717,7 @@ jobs:
   sqlite-vec:
     name: sqlite-vec (optional feature)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     # A job past its timeout ends "cancelled" and never saves its cache, so a
     # tight one starts every later run cold and fails again. At 15 minutes the
@@ -727,7 +767,7 @@ jobs:
   bootstrap-strip:
     name: bootstrap compile-time strip
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     # A release build: 10–11 min on an idle runner, over 15 on a busy one,
     # where it was killed mid-compile on three PRs in a day.
@@ -762,10 +802,49 @@ jobs:
           test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "ci"
           test "$(docker run --rm maidan-cli:ci --version)" = "maidan ci"
 
+  # The release's aarch64 Linux build runs under `cross`, whose container has
+  # no node; v420.0.0 never published because build.rs needed npm there and no
+  # CI job built that way before a tag. Same steps as release.yml, as a debug
+  # build, on every batch and dev push.
+  release-cross:
+    name: release build (aarch64 cross)
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - name: install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: build the web assets for the cross container
+        run: |
+          for app in landing console; do
+            (cd "web/$app" && npm ci && npm run build)
+          done
+      - name: cross build
+        run: |
+          export MAIDAN_SKIP_LANDING_BUILD=1
+          cross build --bin maidan-server --bin maidan --target aarch64-unknown-linux-gnu
+
   coverage:
     name: coverage (llvm-cov)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # Each promotion to main and on demand: at 75 minutes it held runners
+    # through every dev push.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Coverage gates on the WHOLE test suite (unit + integration), so the
@@ -818,6 +897,8 @@ jobs:
           tool: cargo-nextest,cargo-llvm-cov
       - name: test the floor check
         run: python3 scripts/test-coverage-floors.py
+      - name: test the P6 record checks
+        run: python3 scripts/test-oauth-p6-record.py
       - name: drop instrumented binaries from the restored cache
         # The report reads every test binary under the target dir. One
         # restored from an older commit's cache adds that commit's lines again,
@@ -851,7 +932,7 @@ jobs:
   e2e:
     name: docker compose smoke
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     # A cold image build of the server took 14 m 12 s on a loaded runner on
     # 2026-10-09, and two runs hit the old 15-minute limit mid-build.
@@ -939,7 +1020,7 @@ jobs:
     # NOTE: also add "scale-out smoke" to branch-protection required checks.
     name: scale-out smoke
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -964,7 +1045,7 @@ jobs:
     # docs/Production.md works. Not (yet) a required check.
     name: pitr drill
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1040,7 +1121,7 @@ jobs:
     # Evidence for the SQLite procedure in docs/Production.md. Not required.
     name: sqlite backup drill
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1097,7 +1178,7 @@ jobs:
     # Required check as (v124.0.0).
     name: otlp smoke
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     # Builds the same server image; its last pass on 2026-10-09 took about
     # 15 minutes, at the old limit.
@@ -1144,7 +1225,7 @@ jobs:
     # gap. Not a required check yet.
     name: replica routing (LSN)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -1189,7 +1270,7 @@ jobs:
   ui-gallery:
     name: ui gallery
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The review gallery (ui-tests/README.md, "Review gallery"): the landing

@@ -27,9 +27,18 @@ import {
   type RowState,
 } from "../core/needs.ts";
 import { convHash } from "../core/threads.ts";
-import { say } from "../core/notices.ts";
+import { say, sayError } from "../core/notices.ts";
 import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { Icon } from "../shell/icons.tsx";
+import { ReviewContext } from "./ReviewContext.tsx";
+
+/** Keys typed into a field, or with a modifier, are not shortcuts. */
+function notShortcut(e: KeyboardEvent): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || document.querySelector("[aria-modal='true']")) return true;
+  const t = e.target as HTMLElement | null;
+  return Boolean(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)));
+}
 
 const SWIPE = 96;
 
@@ -73,6 +82,41 @@ export function NeedsYou() {
     return [...data.items, ...[...held.values()].filter((it) => !keys.has(needKey(it)))];
   }, [data.items, held]);
   const { groups, headings } = useMemo(() => groupNeeds(shown), [shown]);
+  // The row under review: the wide layout shows it in the right pane, and
+  // a and r act on it. When it leaves, the row that took its place is next.
+  const order = useMemo(() => groups.flatMap((g) => g.items.map(needKey)), [groups]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [lastIdx, setLastIdx] = useState(0);
+  const selected = sel !== null && order.includes(sel) ? sel : (order[Math.min(lastIdx, order.length - 1)] ?? null);
+  const selIdx = selected ? order.indexOf(selected) : -1;
+  if (selIdx >= 0 && selIdx !== lastIdx) setLastIdx(selIdx);
+  const pick = useCallback((key: string) => {
+    setSel(key);
+    const li = document.querySelector<HTMLElement>(`[data-need-key="${CSS.escape(key)}"]`);
+    li?.querySelector<HTMLElement>(".need-pick")?.focus({ preventScroll: true });
+    li?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+  // After an answer, move on to the next item, or the one above at the end.
+  const advance = useCallback(
+    (key: string) => {
+      const i = order.indexOf(key);
+      const next = order[i + 1] ?? order[i - 1];
+      if (next && next !== key) pick(next);
+    },
+    [order, pick],
+  );
+  // j and k walk the queue; the review pane follows.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== "j" && e.key !== "k") || notShortcut(e) || !order.length) return;
+      const i = selected ? order.indexOf(selected) : -1;
+      const n = order[Math.max(0, Math.min(order.length - 1, i + (e.key === "j" ? 1 : -1)))];
+      e.preventDefault();
+      if (n) pick(n);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [order, selected, pick]);
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
@@ -83,7 +127,7 @@ export function NeedsYou() {
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
       {data.staleSince !== null && (
         <p className="needs-stale" role="status">
-          {data.error ?? `Stale since ${clock(data.staleSince)}. Reconnecting…`}
+          {data.error ?? `Could not reach the server. Showing what was loaded at ${clock(data.staleSince)}. Reconnecting…`}
         </p>
       )}
       {data.status === "loading" && <p className="muted">Loading what needs you…</p>}
@@ -94,8 +138,9 @@ export function NeedsYou() {
         </div>
       )}
       {data.status === "ready" && !shown.length && (
-        <div className="card needs-empty">
-          <p className="mono">All clear</p>
+        <div className="needs-empty caught-up" role="status">
+          <span className="caught-mark"><Icon name="check" /></span>
+          <p className="caught-title">All caught up</p>
           <p>No reviews, approvals, blocks or questions are waiting on you.</p>
         </div>
       )}
@@ -109,6 +154,9 @@ export function NeedsYou() {
                   key={needKey(it)}
                   item={it}
                   primary={it === shown[0]}
+                  selected={needKey(it) === selected}
+                  onSelect={() => setSel(needKey(it))}
+                  onAdvance={() => advance(needKey(it))}
                   gate={it.gate_id ? data.gates.get(it.gate_id) : undefined}
                   me={session.memberId}
                   api={api}
@@ -127,6 +175,9 @@ export function NeedsYou() {
 type RowProps = {
   item: Need;
   primary: boolean;
+  selected: boolean;
+  onSelect: () => void;
+  onAdvance: () => void;
   gate: GateView | undefined;
   me: string | null;
   api: NeedsApi;
@@ -171,7 +222,7 @@ const CONFIRM: Partial<Record<Ask, string>> = {
   close: "Close this task?",
 };
 
-function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
+function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, hold, onSettled }: RowProps) {
   const reduce = Boolean(useReducedMotion());
   const [state, setState] = useState<RowState>({ phase: "idle" });
   const [note, setNote] = useState("");
@@ -219,7 +270,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
 
   // A finished row leaves on its own; one that can still close the task waits.
   useEffect(() => {
-    if (state.phase !== "done" || state.closable) return;
+    if (state.phase !== "done" || state.closable || state.pending) return;
     const t = setTimeout(() => {
       hold(item, false);
       void onSettled();
@@ -227,39 +278,53 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
     return () => clearTimeout(t);
   }, [state, hold, item, onSettled]);
 
+  // Once answered, the pane moves on to the next item.
+  const answered = state.phase === "done" && !state.closable && !state.pending;
+  useEffect(() => {
+    if (answered && selected) onAdvance();
+  }, [answered]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const busy = state.phase === "sending" || state.phase === "done";
   const ownerOnly = item.kind === "unassigned_review" && owner.owns;
 
   const run = useCallback(
     async (ask: Ask, words: string) => {
       hold(item, true);
-      setState({ phase: "sending", ask });
+      // An approval shows as done at once and is put back if the server says no.
+      const optimistic = ask === "approve" || ask === "approve_note";
+      setState(optimistic ? { phase: "done", text: "Approved ✓", tone: "ok", closable: false, pending: true } : { phase: "sending", ask });
       try {
         if (ask === "approve" || ask === "approve_note") {
           if (!tid) throw new Error("This review has no task");
           await api.review(tid, "approve", words, root);
           const rs = await api.reviewStatus(tid);
           setState({ phase: "done", text: approvedLine(rs), tone: "ok", closable: Boolean(rs?.approvals_met) });
+          say("Approved");
         } else if (ask === "request_changes") {
           if (!tid) throw new Error("This review has no task");
           await api.review(tid, "request_changes", words, null);
           setState({ phase: "done", text: "Sent back ✓", tone: "no", closable: false });
+          say("Sent back");
         } else if (ask === "accept" || ask === "decline") {
           if (!gate) throw new Error("This approval is no longer pending");
           await api.answerGate(gate, ask, words);
           setState({ phase: "done", text: ask === "accept" ? "Approved ✓" : "Declined", tone: ask === "accept" ? "ok" : "no", closable: false });
+          say(ask === "accept" ? "Approved" : "Declined");
         } else if (ask === "unblock") {
           if (!tid) throw new Error("This block has no task");
           await api.unblock(tid);
           setState({ phase: "done", text: "Unblocked ✓", tone: "ok", closable: false });
+          say("Unblocked");
         } else if (ask === "close") {
           if (!tid) throw new Error("This review has no task");
           await api.close(tid);
           setState({ phase: "done", text: "Closed ✓", tone: "ok", closable: false });
+          say("Task closed");
         }
         setNote("");
       } catch (e) {
         setState({ phase: "error", message: e instanceof Error ? e.message : "That did not go through" });
+        sayError(e, "That did not go through");
       }
     },
     [api, gate, hold, item, root, tid],
@@ -293,19 +358,43 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
 
   const { title, lines } = rowText(item, gate);
   const label = kindLabel(item.kind);
+  // a approves and r sends back the selected row, as its buttons would.
+  const keyYes: Ask | null = state.phase !== "idle" ? null : isReview && !ownerOnly ? (root && items ? "approve" : null) : item.kind === "open_gate" && gate ? "accept" : null;
+  const keyNo: Ask | null = state.phase !== "idle" ? null : isReview ? "request_changes" : item.kind === "open_gate" && gate ? "decline" : null;
+  useEffect(() => {
+    if (!selected || (!keyYes && !keyNo)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (notShortcut(e)) return;
+      // Focus inside another row means that row is being worked, not this one.
+      const row = e.target instanceof Element ? e.target.closest(".need") : null;
+      if (row && !row.classList.contains("selected")) return;
+      const ask = e.key === "a" ? keyYes : e.key === "r" ? keyNo : null;
+      if (!ask) return;
+      e.preventDefault();
+      start(ask);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, keyYes, keyNo, start]);
   const canSwipe = !reduce && state.phase === "idle" && Boolean(yes || no);
 
   return (
     <motion.li
       ref={rowRef}
       layout={!reduce}
-      className={`need ${primary ? "primary" : ""} need-${item.kind} phase-${state.phase}`}
+      className={`need ${primary ? "primary" : ""} ${selected ? "selected" : ""} need-${item.kind} phase-${state.phase}`}
       data-kind={item.kind}
       data-thread-id={tid ?? undefined}
+      data-need-key={needKey(item)}
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}
     >
+      <button type="button" className="need-pick" aria-current={selected ? "true" : undefined} onClick={onSelect} onFocus={onSelect}>
+        <span className="need-pick-title">{title}</span>
+        <span className={`need-pick-age ${item.overdue ? "overdue" : ""}`}>{waitingFor(item.age_secs)}</span>
+        <span className={`need-pick-kind kind-${item.kind}`}>{label}</span>
+      </button>
       {canSwipe && (
         <div className="need-under" aria-hidden="true">
           <span className="yes">{yes ? (yes === "unblock" ? "Unblock" : "Approve") : ""}</span>
@@ -314,6 +403,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
       )}
       <motion.div
         className="need-card"
+        tabIndex={-1}
         drag={canSwipe ? "x" : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.5}
@@ -328,7 +418,9 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
         {lines.map((l) => (
           <p key={l} className="need-line">{l}</p>
         ))}
-        {isReview && tid && <EvidenceBlock read={packet} items={items} retry={() => void loadEvidence()} taskHref={convHash({ kind: "task", id: tid })} />}
+        {isReview && tid && <EvidenceBlock read={packet} items={items} retry={() => void loadEvidence()} />}
+        {isReview && tid && selected && <ReviewContext tid={tid} shas={packet?.state === "ready" ? (packet.packet.manifest?.artifacts ?? []) : []} />}
+        {isReview && tid && <a className="ev-open" href={convHash({ kind: "task", id: tid })}>Open full thread</a>}
         {ownerOnly && owner.required !== 0 && <p className="need-line warn">Your approval does not count on your own task: name a reviewer.</p>}
 
         <div className="need-state" aria-live="polite">
@@ -386,22 +478,22 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
           <div className="need-actions">
             {isReview && !ownerOnly && (
               <>
-                <button type="button" className="btn" onClick={() => start("request_changes")}>Send back</button>
-                <button type="button" className="btn" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
-                <button type="button" className="btn go" disabled={!root || !items} onClick={() => start("approve")}>Approve</button>
+                <button type="button" className="btn text" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
+                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" disabled={!root || !items} onClick={() => start("approve")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
               </>
             )}
             {ownerOnly && (
               <>
-                <button type="button" className="btn" onClick={() => start("request_changes")}>Send back</button>
+                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
                 {owner.required === 0 && <button type="button" className="btn go" onClick={() => start("close")}>Close without review</button>}
               </>
             )}
             {item.kind === "open_gate" &&
               (gate ? (
                 <>
-                  <button type="button" className="btn stop" onClick={() => start("decline")}>Decline</button>
-                  <button type="button" className="btn go" onClick={() => start("accept")}>Approve</button>
+                  <button type="button" className="btn stop" aria-keyshortcuts="r" title="Decline (R)" onClick={() => start("decline")}>Decline<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                  <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" onClick={() => start("accept")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
                 </>
               ) : tid ? (
                 <a className="btn" href={convHash({ kind: "task", id: tid })}>Open the thread</a>
@@ -463,7 +555,7 @@ function ConfirmPanel({ api, link, workspaceId, onDone }: { api: NeedsApi; link:
  * server's self-reported-only warning, each item with its tier, and a way to
  * the result and the transcript.
  */
-function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | null; items: EvidenceItem[] | null; retry: () => void; taskHref: string }) {
+function EvidenceBlock({ read, items, retry }: { read: PacketRead | null; items: EvidenceItem[] | null; retry: () => void }) {
   if (!read || (read.state === "ready" && !items))
     return (
       <div className="need-evidence" aria-busy="true">
@@ -490,15 +582,16 @@ function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | nu
         Evidence <code className="ev-root" title={p.evidence_root} data-root={p.evidence_root}>{shortHash(p.evidence_root)}</code>
       </p>
       {p.self_reported_only && (
-        <p className="ev-warn" role="note">
-          Self-reported only: all of this evidence comes from the task's own workers. Nothing was attached by anyone else or verified by a land gate.
-        </p>
+        <details className="ev-warn" role="note">
+          <summary><Icon name="caution" /><span>Self-reported only</span></summary>
+          <p>All of this evidence comes from the task's own workers. Nobody else attached anything, and no automated check has verified it.</p>
+        </details>
       )}
       {items && items.length ? (
         <ul className="ev-list">
           {items.map((e, i) => (
             <li key={`${e.kind}-${e.sha ?? i}`} className="ev-item" data-ev={e.kind}>
-              <span className="ev-kind">{e.kind === "artifact" ? "file" : e.label}</span>
+              <span className="ev-kind">{e.kind === "artifact" ? "File" : sentence(e.label)}</span>
               {e.kind === "artifact" && <span className="ev-name">{e.label}</span>}
               {e.sha && <code className="ev-hash" title={e.sha}>{shortHash(e.sha)}</code>}
               {e.tier && <span className={`ev-tier tier-${e.tier.wire}`} data-tier={e.tier.wire} title={e.tier.title}>{e.tier.word}</span>}
@@ -509,7 +602,11 @@ function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | nu
       ) : (
         <p className="need-line warn">No evidence was handed over: no result and no linked artifacts.</p>
       )}
-      <a className="ev-open" href={taskHref}>Read the result and transcript</a>
     </section>
   );
+}
+
+/** "automated check" reads "Automated check" as a label. */
+function sentence(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
 }

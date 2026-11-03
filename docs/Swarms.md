@@ -308,6 +308,43 @@ that closed or was archived some other way answers `409`. A cancel publishes
 no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
 cancelled dependency as finished, as it does any closed one.
 
+## Closing a task that will not land
+
+A task that nobody will finish, that duplicates another, or that a later task
+replaces is closed as abandoned rather than cancelled, so the reason stays
+typed:
+
+| | REST | MCP |
+|---|---|---|
+| Close, as `duplicate`, `superseded` or `abandoned` | `POST /threads/{id}/close-abandoned` with `{"reason": "duplicate", "duplicate_of": "<id>"}` | `close_abandoned_thread` |
+
+The thread must be open or in review. The call needs `thread:transition`
+and access to the thread; with it the thread's producer, its claim holder or a
+maintainer (`token:admin`) may close it. Anyone else gets `403`. The close is
+audited as `thread.close_abandoned`, with the reason.
+A thread that has a result keeps every landing gate; one with no result skips
+the review gates, since there is nothing to review. `duplicate_of` must be a live
+thread you can read in the same workspace. A `duplicate` must name it and
+records a `duplicates` reference to it; a `superseded` close may name it and
+records `duplicate_of supersedes` the thread; an `abandoned` close refuses it.
+
+Nothing landed, so a dependency on the closed thread is not met. What happens
+to its dependents depends on the reason:
+
+- **`duplicate` or `superseded` with `duplicate_of`:** each open dependent now
+  depends on `duplicate_of` instead, in the same transaction, and becomes
+  ready when that thread lands. It gets a notice
+  (`{"notice": "dependency_repointed"}`). The replacement's own dependency on
+  the closed thread is dropped. When the move would make a cycle (the
+  replacement already waits on that dependent), the dependent keeps its
+  dependency and gets `{"notice": "dependency_repoint_refused"}` instead. The
+  audit row lists `repointed_dependents` and `kept_dependents`.
+- **`abandoned`, or `superseded` with no `duplicate_of`:** dependents keep
+  waiting; re-plan the work or remove the dependency.
+
+When the closed thread is a plan child, any dependent still waiting on it
+after that is blocked with a notice, and the plan is told once.
+
 ## Task attributes
 
 A thread can carry attributes that say what kind of work it is, who or what
@@ -407,6 +444,20 @@ keeps it, and one that names another is refused with a 409, so nobody who
 may set attributes, the change's author included, can lift or move it. A
 member that has reported no usage in the workspace has no known family and
 is not refused.
+
+What the rule does not cover (#1703):
+
+- **A seat's family comes only from its past usage.** It is read when the
+  thread is handed out. A seat with no usage yet, or whose first usage under
+  the author's family arrives after it claims, passes the check, and nothing
+  re-checks the holder afterwards. Give review seats a usage history (or a
+  dedicated member per family) before they take reviews.
+- **Workspace import does not apply it.** An admin importing a bundle can
+  restore a review already held by a member of the author's family; import
+  checks only that the holder belongs to the imported workspace.
+
+Releasing a review at usage-report time, when the reporter's family matches
+the review's `author_family`, is the proposed fix and is not built yet.
 
 ### Claim and release comments on Linear
 

@@ -21,7 +21,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[derive(Debug, serde::Deserialize)]
 struct MapEntry {
@@ -66,7 +65,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -178,6 +177,12 @@ fn http_deny_caps(required: &str) -> Vec<String> {
         ],
         capability::SECRET_READ => vec![capability::WORKSPACE_READ.into()],
         capability::SECRET_ADMIN => vec![capability::WORKSPACE_READ.into()],
+        // Hold read and write, so the refusal is for the admin capability
+        // itself and not for the role ceiling.
+        capability::WORKSPACE_ADMIN => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         other => panic!("unsupported capability in http map: {other}"),
     }
 }
@@ -378,6 +383,13 @@ fn apply_route_defaults(
             "title": "cap matrix",
         }));
     }
+    if path.ends_with("/evidence-records") && method == "POST" {
+        return b.json(&json!({
+            "kind": "note",
+            "source": "cap matrix",
+            "note": "cap matrix",
+        }));
+    }
     if path.ends_with("/group-dms/{id}/messages") && method == "POST" {
         return b.json(&json!({
             "body": "cap matrix",
@@ -457,6 +469,12 @@ fn apply_route_defaults(
     }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
+    }
+    if path == "/workspaces/{wid}/intake" && method == "POST" {
+        return b.json(&json!({ "title": "cap matrix" }));
+    }
+    if path.ends_with("/intake/{id}/triage") && method == "POST" {
+        return b.json(&json!({ "decision": "reject", "reason": "cap matrix" }));
     }
     if path.ends_with("/seed") && method == "POST" {
         return b.json(&json!({ "title": "cap matrix" }));
@@ -704,6 +722,11 @@ fn apply_route_defaults(
     }
     if path == "/workspaces/{wid}/secret-egress-hosts" && method == "POST" {
         return b.json(&json!({ "host": "hooks.example.com" }));
+    }
+    if path == "/workspaces/{wid}/invites" && method == "POST" {
+        // A viewer invite: the probe token holds `workspace:admin` alone,
+        // which caps what it may grant at viewer.
+        return b.json(&json!({ "email": "cap-matrix@example.com", "role": "viewer" }));
     }
     if path == "/workspaces/{wid}/share-tickets" && method == "POST" {
         return b.json(&json!({

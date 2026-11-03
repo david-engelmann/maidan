@@ -73,7 +73,7 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).expect("utf8");
         assert!(!text.contains("secret internal detail"), "{text}");
         let problem: serde_json::Value = serde_json::from_str(&text).expect("json");
-        assert_eq!(problem["type"], "https://maidan.dev/problems/internal");
+        assert_eq!(problem["type"], "https://maidan.world/problems/internal");
         assert_eq!(problem["detail"], PANIC_DETAIL);
     }
 }

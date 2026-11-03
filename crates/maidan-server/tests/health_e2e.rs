@@ -138,9 +138,8 @@ async fn health_reports_postgres_bus_ok_after_notify() {
 async fn health_reports_indexer_embedding_errors() {
     use maidan_search::SqliteSearch;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use sqlx::sqlite::SqlitePoolOptions;
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -277,9 +276,8 @@ async fn spawn_server_with_postgres_bus() -> Option<(
 async fn a_draining_server_is_not_ready_but_still_serves() {
     use maidan_search::SqliteSearch;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use sqlx::sqlite::SqlitePoolOptions;
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

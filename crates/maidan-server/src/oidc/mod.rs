@@ -2,6 +2,7 @@
 
 mod config;
 mod handlers;
+mod invite;
 mod member;
 
 pub use config::{OidcInitError, OidcRuntime, OidcSettings};

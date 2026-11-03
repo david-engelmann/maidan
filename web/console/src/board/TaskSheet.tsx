@@ -2,10 +2,15 @@
 // on the right on a wide screen. It traps focus, closes on Escape or the
 // scrim, and gives focus back to the card that opened it.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
-import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, type TransitionAction, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
+import { NeedsApi } from "../core/needs.ts";
+import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { useToolsApi } from "../hooks/useTools.ts";
+import { ReviewContext } from "../needs/ReviewContext.tsx";
+import { convHash, membersPending } from "../core/threads.ts";
 
 type Props = {
   thread: Thread | null;
@@ -19,7 +24,11 @@ type Props = {
 
 export function TaskSheet(props: Props) {
   const reduce = Boolean(useReducedMotion());
-  return (
+  const wide = typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches;
+  const off = reduce ? { opacity: 0 } : wide ? { x: 32, opacity: 0 } : { y: 40, opacity: 0 };
+  // On the body, so no transformed ancestor turns the fixed panel into part
+  // of the page (which made focusing it scroll the board).
+  return createPortal(
     <AnimatePresence>
       {props.thread && (
         <motion.div
@@ -34,11 +43,11 @@ export function TaskSheet(props: Props) {
           <motion.div
             className="sheet"
             role="dialog"
-            aria-modal="true"
+            aria-modal={!wide}
             aria-labelledby="sheet-title"
-            initial={reduce ? { opacity: 0 } : { y: 40, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={reduce ? { opacity: 0 } : { y: 40, opacity: 0 }}
+            initial={off}
+            animate={{ x: 0, y: 0, opacity: 1 }}
+            exit={off}
             transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 38 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -46,7 +55,8 @@ export function TaskSheet(props: Props) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 
@@ -56,15 +66,21 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   const [busy, setBusy] = useState<"claim" | "close" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [facts, setFacts] = useState<CloseFacts | null>(null);
+  // Bumped by an in-sheet action, so the result and evidence read again.
+  const [rev, setRev] = useState(0);
+  const changed = () => {
+    setRev((r) => r + 1);
+    onChanged();
+  };
   const chrome = chromeFor(th, gate);
-  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? id.slice(0, 8)) : "");
+  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? (membersPending(members) ? "…" : id.slice(0, 8))) : "");
   const terminal = th.state === "closed" || th.state === "archived";
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 
   // Focus moves in, Tab stays in, Escape closes, focus goes back on close.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    box.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    box.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -87,7 +103,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      opener?.focus();
+      opener?.focus({ preventScroll: true });
     };
   }, [onClose]);
 
@@ -105,6 +121,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   }, [api, th, terminal]);
 
   const act = async (kind: "claim" | "close") => {
+    if (busy) return;
     setBusy(kind);
     setNote(null);
     try {
@@ -120,11 +137,12 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   };
 
   const claimWhy = can.claim === false ? null : can.claim ?? bearerRefusal(session.credentials);
+  const holder = th.assignee_id ? members.get(th.assignee_id) : undefined;
+  const tone = th.closed_without_review ? "unreviewed" : chrome.lane;
   return (
     <div ref={box} className="sheet-body">
       <div className="grabber" aria-hidden="true" />
       <header className="sheet-head">
-        <p className="mono">{chrome.hint}</p>
         <h2 id="sheet-title">{th.title || th.id.slice(0, 8)}</h2>
         <button className="icon-btn sheet-x" aria-label="Close the task sheet" onClick={onClose} data-autofocus>
           <svg viewBox="0 0 24 24" className="icon" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -132,8 +150,25 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       </header>
 
       <dl className="facts">
-        <div><dt>State</dt><dd><span className={`state state-${chrome.lane}`}>{stateLabel(th, chrome)}</span></dd></div>
-        {th.assignee_id && !terminal && <div><dt>Held by</dt><dd>{name(th.assignee_id)}{th.assignment_expires_at ? ` · ${leaseLeft(th.assignment_expires_at, now)}` : ""}</dd></div>}
+        <div>
+          <dt>State</dt>
+          <dd>
+            <span className={`state state-${tone}`} title={chrome.hint}>
+              <span className="state-dot" aria-hidden="true" />
+              <span className="state-text">{stateLabel(th, chrome)}</span>
+            </span>
+          </dd>
+        </div>
+        {th.assignee_id && !terminal && (
+          <div>
+            <dt>Held by</dt>
+            <dd className="who">
+              <span className={`avatar xs ${holder?.kind === "human" ? "human" : ""}`} aria-hidden="true">{initials(name(th.assignee_id))}</span>
+              {name(th.assignee_id)}
+              {th.assignment_expires_at ? <span className="muted"> · {leaseLeft(th.assignment_expires_at, now)}</span> : null}
+            </dd>
+          </div>
+        )}
         {facts && (
           <div>
             <dt>{facts.verb === "completed by" ? "Completed by" : "Closed by"}</dt>
@@ -159,90 +194,202 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
-      <div className="sheet-actions">
-        {can.claim !== false && (
-          <button className="button steel" disabled={busy !== null || claimWhy !== null} aria-describedby={claimWhy ? "claim-why" : undefined} onClick={() => void act("claim")}>
-            {busy === "claim" ? "Claiming…" : "Claim"}
-          </button>
-        )}
-        {can.close && (
-          <button className="button ink" disabled={busy !== null} onClick={() => void act("close")}>
-            {busy === "close" ? "Closing…" : "Close task"}
-          </button>
-        )}
-      </div>
-      {claimWhy && <p id="claim-why" className="muted small">{claimWhy}</p>}
-      <MoreActions th={th} api={api} onChanged={onChanged} setNote={setNote} />
+      <SheetContext key={rev} tid={th.id} />
+      <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
+
+      <SheetActions th={th} api={api} can={can} claimWhy={claimWhy} busy={busy} act={act} onChanged={changed} setNote={setNote} />
       <p className="sheet-note" role="status" aria-live="polite">{note}</p>
     </div>
   );
 }
 
-function MoreActions({ th, api, onChanged, setNote }: { th: Thread; api: BoardApi; onChanged: () => void; setNote: (s: string | null) => void }) {
-  const { session } = useSession();
-  const moves = transitionsFor(th);
-  const [move, setMove] = useState<TransitionAction | "">("");
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+type ActionProps = {
+  th: Thread;
+  api: BoardApi;
+  can: { claim: string | null | false; close: boolean };
+  claimWhy: string | null;
+  busy: "claim" | "close" | null;
+  act: (kind: "claim" | "close") => Promise<void>;
+  onChanged: () => void;
+  setNote: (s: string | null) => void;
+};
+
+/**
+ * The moves that fit the state up front (Claim when open, Send to review while
+ * held, Approve or Send back in review), and the rare or destructive ones
+ * (Close, Archive, Record result) behind a menu.
+ */
+function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }: ActionProps) {
+  const { session, store } = useSession();
+  const needs = useMemo(
+    () => new NeedsApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),
+    [store],
+  );
+  const [working, setWorking] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false);
   const [armed, setArmed] = useState(false);
+  const [panel, setPanel] = useState<"send-back" | "result" | null>(null);
+  const [words, setWords] = useState("");
   const [result, setResult] = useState("");
   const [lease, setLease] = useState("");
-  const [busy, setBusy] = useState(false);
+  const menuBtn = useRef<HTMLButtonElement>(null);
+  const menuBox = useRef<HTMLDivElement>(null);
   const tokenWhy = bearerRefusal(session.credentials);
-  const go = async (fn: () => Promise<unknown>, done: string) => {
-    setBusy(true);
+  const terminal = th.state === "closed" || th.state === "archived";
+  const review = th.state === "in_review";
+  const moves = transitionsFor(th);
+  const disabled = busy !== null || working !== null;
+
+  useEffect(() => {
+    if (menu) menuBox.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+  }, [menu]);
+
+  const go = async (key: string, fn: () => Promise<unknown>, done: string) => {
+    if (disabled) return;
+    setWorking(key);
     setNote(null);
     try {
       await fn();
       setNote(done);
+      setPanel(null);
       onChanged();
     } catch (e) {
       setNote(e instanceof Error ? e.message : "That did not go through");
     } finally {
-      setBusy(false);
+      setWorking(null);
       setArmed(false);
     }
   };
-  const apply = () => {
-    if (!move) return;
-    if (move === "archive" && !armed) return setArmed(true);
-    void go(() => api.transition(th.id, move), `${TRANSITION_WORDS[move]}: done.`);
+  const approve = () =>
+    go("approve", async () => {
+      // An approval signs the evidence it was handed; without a packet there
+      // is nothing to sign, so say why instead of sending a null root.
+      const p = await needs.reviewPacket(th.id);
+      if (p.state === "error") throw new Error(p.why);
+      if (p.state !== "ready") throw new Error("Nothing was handed to review yet, so there is no evidence to approve.");
+      await needs.review(th.id, "approve", "", p.packet.evidence_root);
+    }, "Approved.");
+  const sendBack = () => {
+    if (!words.trim()) return setNote("Say what should change: the agent reads this.");
+    void go("send-back", () => needs.review(th.id, "request_changes", words, null), "Sent back with your note.");
   };
   const record = () => {
     const parsed = parseResult(result);
     if (!parsed.ok) return setNote(parsed.why);
     if (!lease.trim()) return setNote("Paste the claim's lease id: only the claim holder records a result.");
-    void go(() => api.setResult(th.id, parsed.value, lease), "Result recorded.");
+    void go("result", () => api.setResult(th.id, parsed.value, lease), "Result recorded.");
   };
+  const closeMenu = (focus = true) => {
+    setMenu(false);
+    setArmed(false);
+    if (focus) menuBtn.current?.focus();
+  };
+  const onMenuKey = (e: ReactKeyboardEvent) => {
+    const items = Array.from(menuBox.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    }
+  };
+
+  const extra: { key: string; label: string; danger?: boolean; run: () => void }[] = [];
+  if (!terminal) extra.push({ key: "result", label: "Record a result…", run: () => { closeMenu(false); setPanel("result"); } });
+  if (can.close) extra.push({ key: "close", label: "Close task", danger: true, run: () => { closeMenu(); void act("close"); } });
+  if (moves.includes("archive"))
+    extra.push({
+      key: "archive",
+      label: armed ? "Archive? Choose again" : "Archive",
+      danger: true,
+      run: () => (armed ? (closeMenu(), void go("archive", () => api.transition(th.id, "archive"), "Archived.")) : setArmed(true)),
+    });
+
   return (
-    <details className="sheet-more">
-      <summary>More actions</summary>
-      {moves.length > 0 && (
-        <div className="row-form">
-          <label className="field grow">
-            Move to
-            <select className="select" value={move} onChange={(e) => { setMove(e.target.value as TransitionAction | ""); setArmed(false); }}>
-              <option value="">Pick a state…</option>
-              {moves.map((m) => <option key={m} value={m}>{TRANSITION_WORDS[m]}</option>)}
-            </select>
-          </label>
-          <button type="button" className={armed ? "button danger" : "button steel"} disabled={!move || busy} onClick={apply}>
-            {armed ? "Archive? Tap again" : "Apply"}
+    <>
+      <div className="sheet-actions">
+        {can.claim !== false && (
+          <button className="button ink" disabled={disabled || claimWhy !== null} aria-describedby={claimWhy ? "claim-why" : undefined} onClick={() => void act("claim")}>
+            {busy === "claim" ? "Claiming…" : "Claim"}
           </button>
+        )}
+        {review && (
+          <>
+            <button className="button ink" disabled={disabled} onClick={() => void approve()}>{working === "approve" ? "Approving…" : "Approve"}</button>
+            <button className="button steel" disabled={disabled} aria-expanded={panel === "send-back"} onClick={() => setPanel(panel === "send-back" ? null : "send-back")}>Send back</button>
+          </>
+        )}
+        {!review && !terminal && th.assignee_id && moves.includes("start_review") && (
+          <button className="button ink" disabled={disabled} onClick={() => void go("review", () => api.transition(th.id, "start_review"), `${TRANSITION_WORDS.start_review}: done.`)}>
+            {working === "review" ? "Sending…" : TRANSITION_WORDS.start_review}
+          </button>
+        )}
+        {extra.length > 0 && (
+          <div className="sheet-menu" onBlur={(e) => { if (menu && !e.currentTarget.contains(e.relatedTarget as Node | null)) closeMenu(false); }}>
+            <button ref={menuBtn} type="button" className="icon-btn sheet-menu-btn" aria-label="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => (menu ? closeMenu() : setMenu(true))}>
+              <svg viewBox="0 0 24 24" className="icon" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg>
+            </button>
+            {menu && (
+              <div ref={menuBox} className="menu" role="menu" aria-label="More actions" onKeyDown={onMenuKey}>
+                {extra.map((x) => (
+                  <button key={x.key} type="button" role="menuitem" className={`menu-item ${x.danger ? "danger" : ""}`} disabled={disabled} onClick={x.run}>
+                    {busy === "close" && x.key === "close" ? "Closing…" : x.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {claimWhy && <p id="claim-why" className="muted small">{claimWhy}</p>}
+      {panel === "send-back" && (
+        <div className="result-form">
+          <label className="field">
+            What should change?
+            <textarea rows={3} value={words} onChange={(e) => setWords(e.target.value)} placeholder="The agent reads this." />
+          </label>
+          <button type="button" className="button steel" disabled={disabled} onClick={sendBack}>{working === "send-back" ? "Sending…" : "Send back"}</button>
         </div>
       )}
-      {th.state !== "closed" && th.state !== "archived" && (
+      {panel === "result" && (
         <div className="result-form">
           <label className="field">
             Result
-            <textarea rows={3} value={result} onChange={(e) => setResult(e.target.value)} placeholder='JSON, or a plain summary' />
+            <textarea rows={3} value={result} onChange={(e) => setResult(e.target.value)} placeholder="JSON, or a plain summary" />
           </label>
           <label className="field">
             Claim lease id
             <input value={lease} onChange={(e) => setLease(e.target.value)} spellCheck={false} autoCapitalize="off" className="mono" />
           </label>
-          <button type="button" className="button steel" disabled={busy || tokenWhy !== null} onClick={record}>Record result</button>
+          <button type="button" className="button steel" disabled={disabled || tokenWhy !== null} onClick={record}>Record result</button>
           {tokenWhy && <p className="muted small">{tokenWhy}</p>}
         </div>
       )}
-    </details>
+    </>
   );
+}
+
+/** The task's evidence and latest messages, as the review pane shows them. */
+function SheetContext({ tid }: { tid: string }) {
+  const tools = useToolsApi();
+  const [shas, setShas] = useState<{ tid: string; list: string[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    tools.linked(tid).then(
+      (list) => live && setShas({ tid, list }),
+      () => live && setShas({ tid, list: [] }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [tools, tid]);
+  return <div className="sheet-context"><ReviewContext tid={tid} shas={shas?.tid === tid ? shas.list : []} /></div>;
 }

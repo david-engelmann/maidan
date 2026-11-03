@@ -9,7 +9,15 @@
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
-import { edgeRedirect, isSitePage, SITE_CSP, withSecurityHeaders } from "./edge.js";
+import {
+  edgeRedirect,
+  isPageNavigation,
+  isSitePage,
+  NOT_FOUND_PAGE,
+  SITE_CSP,
+  withSecurityHeaders,
+} from "./edge.js";
+import { isStatusRequest, statusResponse } from "./status.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
@@ -75,6 +83,13 @@ export default {
         "content-security-policy": SITE_CSP,
       });
     }
+    // The public status page, drawn here from the container's `/health` so it
+    // can say plainly when the container does not answer.
+    if (isStatusRequest(request)) {
+      return withSecurityHeaders(
+        await statusResponse(request, () => getContainer(env.MAIDAN).fetch("http://maidan/health")),
+      );
+    }
     // A probe would wake a sleeping container only to be told 404.
     if (isScannerProbe(new URL(request.url).pathname)) {
       return withSecurityHeaders(new Response("not found\n", { status: 404 }));
@@ -84,13 +99,23 @@ export default {
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
-    return withSecurityHeaders(
-      await getContainer(env.MAIDAN).fetch(new Request(request, { headers })),
-    );
+    const response = await getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
+    // The server's 404 is a problem+json body, which a person who followed a
+    // bad link should not be shown.
+    if (hasSite && response.status === 404 && isPageNavigation(request)) {
+      const page = await env.ASSETS.fetch(new Request(new URL(NOT_FOUND_PAGE, request.url)));
+      if (page.ok) {
+        return withSecurityHeaders(new Response(page.body, { status: 404, headers: page.headers }), {
+          "content-security-policy": SITE_CSP,
+        });
+      }
+    }
+    return withSecurityHeaders(response);
   },
 
   // Schedules, retries and sweeps run only while the container is awake. The
-  // cron wakes it so they are at most an hour late on an idle instance.
+  // daily cron wakes it so they are at most a day late on an idle instance;
+  // an hourly one kept an idle instance awake a quarter of the day.
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(getContainer(env.MAIDAN).fetch("http://maidan/health"));
   },

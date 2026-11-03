@@ -13,12 +13,11 @@ use std::sync::Arc;
 use maidan_server::oidc::{resolve_member_for_login, LoginMember};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewMember, NewWorkspace, WorkspaceId};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const ISSUER: &str = "https://idp.example";
 
 async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -322,7 +321,7 @@ async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(
 
 #[tokio::test]
 async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -376,7 +375,7 @@ async fn link_once(
 
 #[tokio::test]
 async fn a_link_by_email_stays_in_its_tenant_skips_a_removed_member_and_needs_a_named_issuer() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -543,7 +542,7 @@ async fn an_identity_once_bound_never_moves_to_another_member_postgres() {
 
 #[tokio::test]
 async fn a_handle_taken_at_insert_time_falls_back_to_the_subject_handle_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

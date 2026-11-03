@@ -946,6 +946,45 @@ pub trait ApprovalGateStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait IntakeStore: Send + Sync {
+    /// Record an incoming work proposal and its `IntakeProposed` event in
+    /// one transaction.
+    async fn create_intake_item(
+        &self,
+        new: maidan_types::NewIntakeItem,
+    ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError>;
+    async fn get_intake_item(
+        &self,
+        workspace_id: WorkspaceId,
+        id: uuid::Uuid,
+    ) -> Result<Option<maidan_types::IntakeItem>, StoreError>;
+    /// A workspace's intake items, newest first, optionally in one state.
+    /// `cursor` is the prior page's last id (exclusive).
+    async fn list_intake_items(
+        &self,
+        workspace_id: WorkspaceId,
+        state: Option<maidan_types::IntakeState>,
+        cursor: Option<uuid::Uuid>,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::IntakeItem>, StoreError>;
+    /// Accept or reject a proposed item once. The state change, `event`'s
+    /// audit row and the `IntakeAccepted` / `IntakeRejected` event commit
+    /// together. `NotFound` when the item is not in the workspace;
+    /// `Conflict` when it was already triaged. An `AcceptNewThread` decision
+    /// creates its thread in the same transaction, so a losing concurrent
+    /// accept leaves no thread behind; its `ThreadCreated` event comes first
+    /// in the returned events.
+    async fn triage_intake_item_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: uuid::Uuid,
+        triaged_by: MemberId,
+        decision: maidan_types::IntakeDecision,
+        event: NewAuditEvent,
+    ) -> Result<(maidan_types::IntakeItem, Vec<StoredEvent>), StoreError>;
+}
+
+#[async_trait]
 pub trait GlossaryStore: Send + Sync {
     /// A workspace's shared glossary: `set` upserts a canonical `term ->
     /// definition` (+ aliases) keyed on `(workspace_id, term)`, `get` fetches
@@ -2029,6 +2068,21 @@ pub trait ThreadStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadArtifact>, StoreError>;
+    /// Attach an evidence record to a thread and append `evidence_added` in
+    /// the same transaction. The caller normalizes `record`
+    /// ([`NewEvidenceRecord::normalized`]). `NotFound` for no such thread.
+    /// Records are append-only and do not move the thread version.
+    async fn add_evidence_record_with_event(
+        &self,
+        thread_id: ThreadId,
+        record: &NewEvidenceRecord,
+        recorded_by: MemberId,
+    ) -> Result<(EvidenceRecord, StoredEvent), StoreError>;
+    /// A thread's evidence records, oldest first.
+    async fn list_evidence_records(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<EvidenceRecord>, StoreError>;
     /// The thread's latest review packet: what its current review was handed,
     /// recorded by `start_review`. `None` before any.
     async fn latest_review_packet(
@@ -4417,6 +4471,55 @@ pub trait ShareTicketStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait WorkspaceInviteStore: Send + Sync {
+    /// Mint an invite with its audit row in the same transaction. The
+    /// plaintext secret never crosses this interface.
+    async fn create_workspace_invite_audited(
+        &self,
+        new: NewWorkspaceInvite,
+        audit: crate::AuditFor<WorkspaceInvite>,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Every invite in the workspace, newest first, whatever its state.
+    async fn list_workspace_invites(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WorkspaceInvite>, StoreError>;
+    async fn get_workspace_invite(
+        &self,
+        id: WorkspaceInviteId,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Resolve only a live invite. Unknown, used, revoked and expired hashes
+    /// all return `NotFound`.
+    async fn find_live_workspace_invite(
+        &self,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Revoke an unused invite in its workspace with its audit row. Returns
+    /// whether this call changed state; nothing is recorded when it did not.
+    async fn revoke_workspace_invite_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: WorkspaceInviteId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Consume the invite and create the member, identity and session in one
+    /// commit. A used, revoked, expired or mismatched invite is a `Conflict`.
+    async fn accept_workspace_invite(
+        &self,
+        accept: AcceptWorkspaceInvite,
+        invite_audit: crate::AuditFor<WorkspaceInviteAcceptance>,
+        session_audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<WorkspaceInviteAcceptance, StoreError>;
+    /// The role an accepted invite gave this member; `None` for a member
+    /// that did not join by invite.
+    async fn member_invite_role(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<WorkspaceInviteRole>, StoreError>;
+}
+
+#[async_trait]
 pub trait DelegationGrantStore: Send + Sync {
     /// Persist a reviewable grant after validating its members, capability
     /// subset, purpose, and expiry. This storage foundation does not itself
@@ -5088,6 +5191,7 @@ pub trait Store:
     + UsageLedgerStore
     + ApprovalGateStore
     + GlossaryStore
+    + IntakeStore
     + NotificationStore
     + FollowStore
     + MailStore
@@ -5123,6 +5227,7 @@ pub trait Store:
     + ReindexStore
     + TokenStore
     + ShareTicketStore
+    + WorkspaceInviteStore
     + DelegationGrantStore
     + PeerStore
     + DeliveryCursorStore
@@ -5149,6 +5254,7 @@ impl<
             + UsageLedgerStore
             + ApprovalGateStore
             + GlossaryStore
+            + IntakeStore
             + NotificationStore
             + FollowStore
             + MailStore
@@ -5184,6 +5290,7 @@ impl<
             + ReindexStore
             + TokenStore
             + ShareTicketStore
+            + WorkspaceInviteStore
             + DelegationGrantStore
             + PeerStore
             + DeliveryCursorStore

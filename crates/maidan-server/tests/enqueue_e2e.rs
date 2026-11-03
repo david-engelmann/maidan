@@ -34,7 +34,6 @@ use maidan_types::{
     NewAppInstallation, NewChannel, NewEgressTarget, NewMember, NewThread, NewWorkspace,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const REPO: &str = "example-org/example-repo";
 const DELIVERED: &str = "1111111111111111111111111111111111111111";
@@ -154,7 +153,7 @@ async fn token(
 /// A workspace whose change flow delivered `DELIVERED` to pull request 7, and
 /// a merge-queue label for `REPO` only.
 async fn spawn(pull: FakePull) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

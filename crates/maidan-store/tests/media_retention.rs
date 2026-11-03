@@ -13,7 +13,6 @@ use maidan_types::{
     NewMember, NewMessage, NewThread, NewWorkspace, RetentionDays, ThreadId, WorkspaceId,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The instance's media TTL in these suites, in days.
 const INSTANCE_DAYS: i64 = 5;
@@ -390,7 +389,7 @@ async fn run_usage_suite(store: &dyn Store) {
 }
 
 async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

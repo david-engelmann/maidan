@@ -35,6 +35,10 @@ release owns the re-run.
 
 ## Example prompts through the platform's own model
 
+The prompts per listing are in `listings/prompts.json`. Run them with
+`scripts/listing-prompts.py --listing <id> --run '<command> {prompt}'`, which
+prints this table.
+
 | Prompt | Tools expected | Tools picked | Pass |
 |---|---|---|---|
 | <prompt from the listing materials> | <tools> | <tools> | <yes/no> |

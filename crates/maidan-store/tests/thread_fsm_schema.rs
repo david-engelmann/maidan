@@ -3,7 +3,6 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadState};
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 async fn seed_thread(store: &dyn Store) -> (maidan_types::ThreadId, maidan_types::MemberId) {
@@ -46,7 +45,7 @@ async fn seed_thread(store: &dyn Store) -> (maidan_types::ThreadId, maidan_types
 
 #[tokio::test]
 async fn sqlite_migration_0004_records_thread_transitions() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

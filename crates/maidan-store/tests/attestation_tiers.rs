@@ -13,7 +13,7 @@ use maidan_store::attribution::with_attribution;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -527,7 +527,7 @@ async fn legacy_check(store: &dyn Store, thread: ThreadId, worker: MemberId) {
 
 #[tokio::test]
 async fn evidence_is_tiered_once_at_the_hand_off_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

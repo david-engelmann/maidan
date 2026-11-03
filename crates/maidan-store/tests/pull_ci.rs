@@ -11,7 +11,6 @@ use maidan_store::pull_watch::{watch_pull, WatchRequest};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -288,7 +287,7 @@ async fn a_held_block_is_said_once_across_a_restart(before: Arc<dyn Store>, afte
 
 #[tokio::test]
 async fn a_held_block_is_said_once_across_a_restart_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -832,7 +831,7 @@ macro_rules! on_both_backends {
 }
 
 async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -931,6 +930,43 @@ async fn a_verdict_naming_a_moved_head_is_refused(store: Arc<dyn Store>) {
     );
 }
 
+/// A named head is refused when nothing tracks the change's head, and
+/// recording nothing: before a pull request is registered, and after one is
+/// registered but not yet read. Omitting the head still works (#1744).
+async fn a_named_head_without_a_tracked_pull_is_refused(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "untracked").await;
+    let thread = task(s, &room).await;
+    let r1 = agent(s, room.ws, "r1").await;
+    let head = "c".repeat(40);
+    let refused = s
+        .submit_review_at_head(thread, r1, ReviewDecision::Approve, None, None, Some(&head))
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::Conflict(_))),
+        "an unverifiable head is a conflict: {refused:?}"
+    );
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let refused = s
+        .submit_review_at_head(thread, r1, ReviewDecision::Approve, None, None, Some(&head))
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::Conflict(_))),
+        "a registered pull with no read head can't verify it: {refused:?}"
+    );
+    assert!(
+        s.list_reviews(thread).await.unwrap().is_empty(),
+        "nothing recorded"
+    );
+    let plain = s
+        .submit_review_at_head(thread, r1, ReviewDecision::Approve, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(plain.review.head_sha, None);
+}
+
 /// A push racing an approval never leaves an approval of the old head
 /// standing: the verdict either sees the pushed head or is dismissed by the
 /// push (#1574).
@@ -970,6 +1006,7 @@ async fn a_push_during_an_approval_never_leaves_the_old_head_approved(store: Arc
 on_both_backends!(
     a_push_during_an_approval_never_leaves_the_old_head_approved,
     a_verdict_naming_a_moved_head_is_refused,
+    a_named_head_without_a_tracked_pull_is_refused,
     a_ci_read_says_each_notice_once_per_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     two_workspaces_track_the_same_pull_request_apart,

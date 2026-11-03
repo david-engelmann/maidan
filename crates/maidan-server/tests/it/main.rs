@@ -203,6 +203,9 @@ mod digest_deliveries_cutoff_e2e;
 #[path = "../digest_sweeper_e2e.rs"]
 mod digest_sweeper_e2e;
 
+#[path = "../digest_watermark_e2e.rs"]
+mod digest_watermark_e2e;
+
 #[path = "../dm_e2e.rs"]
 mod dm_e2e;
 
@@ -322,6 +325,9 @@ mod inbox_e2e;
 
 #[path = "../indexer_e2e.rs"]
 mod indexer_e2e;
+
+#[path = "../intake_rest_e2e.rs"]
+mod intake_rest_e2e;
 
 #[path = "../keycloak_recipe_contract.rs"]
 mod keycloak_recipe_contract;
@@ -466,6 +472,9 @@ mod oidc_loopback_e2e;
 
 #[path = "../oidc_signup_e2e.rs"]
 mod oidc_signup_e2e;
+
+#[path = "../oidc_workspace_invite_e2e.rs"]
+mod oidc_workspace_invite_e2e;
 
 #[path = "../openapi_e2e.rs"]
 mod openapi_e2e;
@@ -947,7 +956,11 @@ fn it_declares_every_test_file() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
     let main = include_str!("main.rs");
     let mut missing = Vec::new();
-    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(err) => panic!("cannot read {}: {err}", dir.display()),
+    };
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "rs") {
             let name = entry.file_name().to_string_lossy().into_owned();

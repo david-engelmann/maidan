@@ -46,6 +46,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
+bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
@@ -67,8 +68,8 @@ change.
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **Branches:** `main` is prod and `dev` is the default branch (the
   maintainer, 2026-10-27). Every PR targets `dev`. Only maidan-ca moves
-  `main`: it fast-forwards `main` to a `dev` commit that is green and has run
-  on the swarm stack for a day, then tags it and deploys it to maidan.world.
+  `main`: it fast-forwards `main` to the newest green `dev` commit (no soak
+  wait, the maintainer, 2026-10-30), then tags it and deploys it to maidan.world.
   dev.maidan.world and the swarm stack run `dev`.
 - **CI:** GitHub Actions. Eight checks are required on `main` and `dev`:
   `lint (fmt + clippy + deny)`, `secrets scan`, `unit tests`,
@@ -78,17 +79,29 @@ change.
   (coverage, `mdbook`, the A2A TCK, the MCP Inspector, SDK interop, the PITR
   drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan, `cargo vet`,
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
-  not required.
+  not required, and the report-only ones run on the push to `dev` after a
+  merge rather than on PRs, so required jobs never queue behind them.
+  A feature PR runs only the fast jobs (lint, unit tests, Playwright, the
+  contracts) and lands through an integration batch, a `batch/*` branch whose
+  PR runs integration and the smokes once for every PR it carries: our own
+  merge queue, since GitHub's needs an organization-owned repository. The
+  `full-ci` label gives a feature PR the full run. A code PR that is not a
+  batch must not be merged on its own: its required heavy checks were
+  skipped, not passed.
 
-## Current state (2026-10-27)
+## Current state (2026-11-03)
 
-- **Releases:** latest **`v419.0.0`** (2026-10-27), removed members lose
-  access and the cutoff covers every metered surface. Tags are cut whenever the swarm stack needs
+- **Releases:** latest **`v421.0.0`** (2026-11-03), the React console at `/ui`
+  and the hosted launch surfaces. A release is cut from the newest `dev`
+  commit whose push CI is green, with no soak wait (the maintainer,
+  2026-10-30). Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
   v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
-  published (a Trivy scan failure); `v419.0.0` carries its contents.
+  published (a Trivy scan failure); `v419.0.0` carried its contents. `v420.0.0`
+  is tagged on `05549018` but was never published (the aarch64 `cross` build
+  had no npm for `build.rs`); `v421.0.0` carries its contents.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
   41): finding and closing threads by attribute (MaidanFadin), and the M13
   alert proof. Then the launch path (Next 23,
@@ -101,7 +114,7 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v419.0.0`** in the PR that follows its tag.
+- **Deploy pins move to `v421.0.0`** in the PR that follows its tag.
   `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`

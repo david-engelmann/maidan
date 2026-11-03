@@ -69,12 +69,12 @@ test("429 honours Retry-After; 5xx backs off; the retry budget is bounded", asyn
 });
 
 test("409 in flight for the key is retried; a plain 409 is not", async () => {
-  const inFlight = { type: "https://maidan.dev/problems/idempotency-key-in-flight" };
+  const inFlight = { type: "https://maidan.world/problems/idempotency-key-in-flight" };
   const { c, calls } = client([[409, inFlight], [201, { id: "c" }]]);
   assert.equal((await c.channels.create("w", "n")).id, "c");
   assert.equal(calls.length, 2);
 
-  const plain = client([[409, { type: "https://maidan.dev/problems/conflict" }]]);
+  const plain = client([[409, { type: "https://maidan.world/problems/conflict" }]]);
   await assert.rejects(() => plain.c.channels.create("w", "n"), (e) => e.status === 409);
   assert.equal(plain.calls.length, 1);
 });

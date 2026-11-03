@@ -9,13 +9,12 @@ use maidan_types::{
     result_kind_from_payload, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const REVIEW: &str = "example.review.result/1";
 const PLAN: &str = "example.plan.result/1";
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

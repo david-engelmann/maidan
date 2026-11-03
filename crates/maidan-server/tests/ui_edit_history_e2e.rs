@@ -9,7 +9,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (
     std::net::SocketAddr,
@@ -17,7 +16,7 @@ async fn spawn() -> (
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

@@ -12,7 +12,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace, ROOM_LSN_HEADER};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -25,7 +24,7 @@ async fn spawn() -> (
     tempfile::TempDir,
     Arc<dyn Store>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -1,7 +1,7 @@
 // The board's model, a port of the classic board.js without the DOM: which
 // lane a task sits in, what its card says, who closed it, and the reads and
 // writes behind the lanes. Fetch and the clock are passed in, so it is tested.
-import { apiPath, bearerRefusal, headers, uiPath, writeInit, humanError, type Credentials, type CredentialMode } from "./api.ts";
+import { guarded, apiPath, bearerRefusal, headers, uiPath, writeInit, failure, ApiError, type Credentials, type CredentialMode } from "./api.ts";
 
 export { bearerRefusal } from "./api.ts";
 
@@ -32,7 +32,7 @@ export type Thread = {
 
 export type Gate = { hasSchema: boolean };
 export type Channel = { id: string; name: string };
-export type Member = { id: string; name: string; kind?: string };
+export type Member = { id: string; name: string; kind?: string; handle?: string };
 export type Transition = { actor_id?: string | null; to_state?: string; from_state?: string; at?: string; created_at?: string };
 
 export type Chrome = { label: string; hint: string; lane: LaneKey };
@@ -87,13 +87,6 @@ export function leaseLeft(ts: string | null | undefined, now: number): string {
   const secs = Math.round((at - now) / 1000);
   if (secs <= 0) return "lease lapsed";
   return secs < 120 ? `lease ${secs}s` : `lease ${Math.round(secs / 60)}m`;
-}
-
-/** The card's time: the lease while it is being worked, else its last change. */
-export function cardWhen(card: Card, now: number): string {
-  return card.chrome.lane === "working" && card.thread.assignment_expires_at
-    ? leaseLeft(card.thread.assignment_expires_at, now)
-    : ago(card.thread.updated_at, now);
 }
 
 const WAIT_WORDS: Record<string, string> = {
@@ -215,21 +208,10 @@ export function movesBoard(kind: string | undefined): boolean {
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-export class BoardError extends Error {}
+export class BoardError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = body.message ?? body.detail ?? body.error ?? null;
-  } catch {
-    detail = null;
-  }
-  // A refused move is the one place the server's own sentence is shown, as
-  // the classic board keeps it: the agent got the same words.
-  if (res.status === 409 && detail) throw new BoardError(`Refused: ${detail}`);
-  throw new BoardError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, BoardError, (status, detail) => (status === 409 && detail ? `Refused: ${detail}` : null));
 
 /** The reads and writes behind the board. Reads use /ui/api with a session. */
 export class BoardApi {
@@ -238,7 +220,7 @@ export class BoardApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, BoardError);
     this.creds = creds;
     this.mode = mode;
   }
@@ -257,7 +239,7 @@ export class BoardApi {
 
   async members(workspaceId: string): Promise<Member[]> {
     const rows = await this.get<Array<{ id: string; display_name?: string | null; handle?: string; kind?: string }>>(`/workspaces/${workspaceId}/members`);
-    return rows.map((m) => ({ id: m.id, name: m.display_name || m.handle || m.id.slice(0, 8), kind: m.kind }));
+    return rows.map((m) => ({ id: m.id, name: m.display_name || m.handle || m.id.slice(0, 8), kind: m.kind, handle: m.handle }));
   }
 
   /** Every task in the channel: pages until a short page or a stuck cursor. */

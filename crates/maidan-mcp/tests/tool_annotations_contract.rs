@@ -17,7 +17,6 @@ use maidan_mcp::{JsonRpcRequest, McpServer, Profile};
 use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const HINTS: [&str; 4] = [
     "readOnlyHint",
@@ -307,7 +306,7 @@ fn the_mixed_tools_are_documented_writes() {
 }
 
 async fn mk_server() -> McpServer {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -26,7 +26,6 @@ use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::Method;
 use serde_json::{json, Value};
 use sha2::Digest;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The waiter connects to `{base}/mcp` (its client's `connect_http`),
 /// not to `/mcp/streamable`.
@@ -54,7 +53,7 @@ struct Maidan {
 /// through the store. The admin token is for setup and the final read only;
 /// everything the waiter does is done with its own worker token.
 async fn spawn() -> Maidan {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

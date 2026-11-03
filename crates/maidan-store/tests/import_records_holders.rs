@@ -5,7 +5,6 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn member(ws: WorkspaceId, handle: &str) -> Member {
     let now = Utc::now();
@@ -154,7 +153,7 @@ async fn suite(store: &dyn Store) {
 }
 
 async fn sqlite_store() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -251,7 +250,7 @@ async fn an_import_naming_another_workspaces_member_as_holder_is_refused() {
 
 #[tokio::test]
 async fn an_imported_threads_holder_is_recorded_as_having_worked_it_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

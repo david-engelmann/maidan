@@ -197,13 +197,10 @@ pub async fn report_usage(
     let work_started_at = ctx.get::<Option<DateTime<Utc>>, _>("work_started_at");
     let channel_id = ChannelId(ctx.get::<Uuid, _>("channel_id"));
     let workspace_id = WorkspaceId(ctx.get::<Uuid, _>("workspace_id"));
-    // The working clock and this instant are both the database clock, so a
-    // container whose clock differs from the host still charges what it measured.
-    let clock = sqlx::query("SELECT NOW() AS ended_at")
-        .fetch_one(&mut *tx)
-        .await?;
-    let wall = work_started_at
-        .map(|started| (clock.get::<DateTime<Utc>, _>("ended_at") - started).num_seconds());
+    // The working clock and this instant are both the app clock, as are the
+    // claim deadlines, so worked time never mixes two clocks (#1728).
+    let ended = crate::clock::db_now();
+    let wall = work_started_at.map(|started| (ended - started).num_seconds());
 
     let stop = match (budget.exceeded(wall), assignee) {
         (Some(reason), Some(member)) => Some((reason, member)),
@@ -293,12 +290,10 @@ pub async fn report_accounted_usage(
     }
 
     let budget = add_accounted_usage_in_tx(&mut tx, new).await?;
-    let clock = sqlx::query("SELECT NOW() AS ended_at")
-        .fetch_one(&mut *tx)
-        .await?;
+    let ended = crate::clock::db_now();
     let wall = ctx
         .get::<Option<DateTime<Utc>>, _>("work_started_at")
-        .map(|started| (clock.get::<DateTime<Utc>, _>("ended_at") - started).num_seconds());
+        .map(|started| (ended - started).num_seconds());
     let stopping = budget.exceeded(wall);
     let budget = if stopping.is_some() {
         keep_stopped_wall(&mut tx, new.thread_id, budget, wall).await?

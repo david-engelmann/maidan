@@ -151,6 +151,16 @@ th {
 .legal { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
 .foot a { color: var(--ink); text-decoration: none; }
 .foot a:hover { text-decoration: underline; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+/* A long inline value breaks anywhere in prose; a problem type in its table
+   cell breaks only at its hyphens. */
+p code { overflow-wrap: anywhere; }
+/* A problem type's link lands on its row. */
+tr[id] { scroll-margin-top: 1.5rem; }
+tr:target td { background: rgba(232, 80, 28, 0.1); }
 @media (max-width: 40rem) {
   table, thead, tbody, tr, th, td { display: block; }
   thead { display: none; }
@@ -164,4 +174,6 @@ th {
   }
   td { border: 0; padding: 0.18rem 0; }
   td:first-child { font-weight: 650; }
+  tr:target { background: rgba(232, 80, 28, 0.1); }
+  tr:target td { background: transparent; }
 }

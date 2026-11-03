@@ -5,11 +5,10 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::Row;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -209,7 +208,7 @@ async fn run_suite(store: &dyn Store) {
 /// a workspace-only index made the lookup a scan.
 #[tokio::test]
 async fn slack_link_thread_index_exists_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

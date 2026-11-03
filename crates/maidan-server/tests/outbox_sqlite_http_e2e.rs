@@ -9,7 +9,6 @@ use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations, sqlite::outbox, OutboxBackend};
 use maidan_types::EventFilter;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn_sqlite_outbox() -> Option<(
     SocketAddr,
@@ -17,7 +16,7 @@ async fn spawn_sqlite_outbox() -> Option<(
     Arc<InMemoryBus>,
     tokio::task::JoinHandle<()>,
 )> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -17,7 +17,6 @@ use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
     ROOM_LSN_HEADER,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();
@@ -42,7 +41,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 /// Two tenants, very different volumes. Each must see only its own head.
 #[tokio::test]
 async fn the_header_reports_the_callers_room_not_the_instance() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -162,7 +161,7 @@ async fn the_header_reports_the_callers_room_not_the_instance() {
 /// An unauthenticated response carries no room, so it carries no header.
 #[tokio::test]
 async fn an_unauthenticated_response_carries_no_room_head() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -208,7 +207,7 @@ async fn an_unauthenticated_response_carries_no_room_head() {
 /// bypass watching every workspace) gets none.
 #[tokio::test]
 async fn outbound_stamps_and_acks_report_the_room_not_the_instance() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

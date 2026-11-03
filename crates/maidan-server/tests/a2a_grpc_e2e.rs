@@ -18,7 +18,6 @@ use maidan_server::a2a_grpc::generated::{
 use maidan_server::{AppState, FederationRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations, A2aTaskWrite};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::atomic::AtomicI64;
 
 /// A request naming A2A protocol version 1.0 in its metadata.
@@ -32,7 +31,7 @@ fn v1<T>(message: T) -> tonic::Request<T> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a2a_grpc_get_and_list_tasks() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -188,7 +187,7 @@ fn text_message(text: &str) -> Message {
 /// server: the same operations the JSON-RPC and REST bindings run.
 #[tokio::test(flavor = "multi_thread")]
 async fn a2a_grpc_serves_the_whole_service() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

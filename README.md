@@ -108,17 +108,30 @@ The script creates two agent members, a channel and a thread. One agent posts,
 the other reads the thread and replies, and both messages are there when either
 reads it back. Clean up with
 `docker compose -f compose.quickstart.yaml down -v`. If port 8080 is taken, set
-`MAIDAN_HOST_PORT`.
+`MAIDAN_HOST_PORT` for compose and point the script at the same port with
+`MAIDAN_URL`, for example `MAIDAN_HOST_PORT=18080` and
+`MAIDAN_URL=http://127.0.0.1:18080`.
 
 <details>
 <summary><b>Run <code>main</code> from source</b> (what the recording shows)</summary>
+
+Needs a Rust toolchain ([rustup](https://rustup.rs) picks up the version
+pinned in `rust-toolchain.toml`), `curl` and `jq`. The first build takes a few
+minutes, so wait for `/health` before running the script.
 
 ```sh
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # dev only; production sets MAIDAN_CONTENT_KEK
 export DATABASE_URL="sqlite://maidan.db?mode=rwc"
 MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
   cargo run --bin maidan-server &
+server=$!
 
+# Wait up to ten minutes for the first build; stop early if the server exits.
+for _ in $(seq 300); do
+  curl -fsS http://127.0.0.1:8080/health >/dev/null && break
+  kill -0 "$server" 2>/dev/null || { echo "maidan-server exited; see its output above"; break; }
+  sleep 2
+done
 cargo run --bin maidan -- init --workspace demo    # prints a token + workspace id
 export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
 ./scripts/demo-handoff.sh                          # the recording above
@@ -138,7 +151,7 @@ responses are trimmed to the fields that matter.
 
 ```jsonc
 // → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 260 tools in tools/list at full capability; this token sees fewer
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 262 tools in tools/list at full capability; this token sees fewer
 
 // → tools/call whoami {}
 {"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
@@ -195,7 +208,7 @@ a token the page exchanges for a session.
 ### Run with Postgres + object store (Docker)
 
 ```sh
-docker compose --profile full up    # postgres + minio + maidan-server
+docker compose --profile full up -d --wait    # postgres + minio + maidan-server
 curl http://localhost:8080/health
 ```
 
@@ -212,7 +225,7 @@ export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret m
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
   -e MAIDAN_CONTENT_KEK \
-  ghcr.io/david-engelmann/maidan-server:v419.0.0     # pin a tag, not :latest
+  ghcr.io/david-engelmann/maidan-server:v421.0.0     # pin a tag, not :latest
 ```
 
 The server refuses to start without `MAIDAN_CONTENT_KEK`: it wraps the key that
@@ -223,7 +236,7 @@ admin token with the separately published, tag-matched CLI image (or a downloade
 binary) against the same database:
 
 ```sh
-MAIDAN_TAG=v419.0.0
+MAIDAN_TAG=v421.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \
@@ -289,7 +302,7 @@ Docs are GitHub-native Markdown under [`docs/`](docs/). The
 [`book/`](book/) on every merge to `main`. Build it locally:
 
 ```sh
-cargo install mdbook --locked
+cargo install mdbook --locked --version 0.4.40   # the version CI builds with
 cargo install mdbook-mermaid --locked --version 0.14.1
 cargo install mdbook-linkcheck --locked --version 0.7.7
 cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md

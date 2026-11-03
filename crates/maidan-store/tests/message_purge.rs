@@ -2,11 +2,10 @@
 
 use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn purge_removes_only_tombstoned_messages() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

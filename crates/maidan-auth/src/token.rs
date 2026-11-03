@@ -35,6 +35,27 @@ impl ShareTicketSecret {
     }
 }
 
+/// Plaintext workspace-invite secret shown once at minting. The `maid_inv_`
+/// prefix keeps it from being taken for a bearer token, and the OIDC
+/// sign-up route uses it to tell an invite from a sign-up code.
+#[derive(Debug, Clone)]
+pub struct WorkspaceInviteSecret(String);
+
+impl WorkspaceInviteSecret {
+    pub fn generate() -> Self {
+        let a = uuid::Uuid::new_v4().simple().to_string();
+        let b = uuid::Uuid::new_v4().simple().to_string();
+        Self(format!(
+            "{}{a}{b}",
+            maidan_types::WORKSPACE_INVITE_SECRET_PREFIX
+        ))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// SHA-256 hex digest of the bearer secret (64 lowercase hex chars).
 pub fn hash_secret(secret: &str) -> String {
     let digest = Sha256::digest(secret.as_bytes());

@@ -12,7 +12,9 @@ import { Shell } from "./shell/Shell.tsx";
 export default function App() {
   const [store] = useState(createSessionStore);
   useEffect(() => {
+    const unwatch = store.watchAuth();
     void store.start();
+    return unwatch;
   }, [store]);
   return (
     <SessionContext.Provider value={store}>

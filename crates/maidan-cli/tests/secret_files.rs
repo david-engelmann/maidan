@@ -8,7 +8,10 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn maidan(dir: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_maidan"));
+    let mut cmd = Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan")
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into()),
+    );
     for (name, _) in std::env::vars() {
         if name.starts_with("MAIDAN_") || name.starts_with("DATABASE_URL") {
             cmd.env_remove(name);

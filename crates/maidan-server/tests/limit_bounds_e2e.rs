@@ -20,13 +20,12 @@ use maidan_types::{
     MemberKind, NewApiToken, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// 501 messages, then ask for every row in the universe. A bounded endpoint
 /// returns the cap; an unbounded one returns everything it has.
 #[tokio::test]
 async fn an_absurd_limit_is_clamped_not_honoured() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

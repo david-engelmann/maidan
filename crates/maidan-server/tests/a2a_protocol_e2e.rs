@@ -25,7 +25,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const ALL_CAPS: &[&str] = &[
     capability::WORKSPACE_READ,
@@ -44,7 +43,7 @@ struct H {
 }
 
 async fn spawn() -> H {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

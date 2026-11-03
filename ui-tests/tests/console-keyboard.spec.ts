@@ -22,9 +22,12 @@ async function walk(page: Page, steps: number): Promise<string[]> {
   return stops;
 }
 
-/** Body stops that are not the walk wrapping past the last control to the first. */
+/** Body stops that are not the walk wrapping past the last control to the
+ * first. The click that starts the walk can land past the skip link, so a wrap
+ * may come back to the skip link rather than to the walk's first stop. */
 function holes(stops: string[]): number[] {
-  return stops.flatMap((s, i) => (s === "NONE" || (s === "BODY" && stops[i + 1] !== stops[0] && i + 1 < stops.length) ? [i] : []));
+  const wraps = (next: string | undefined) => next === undefined || next === stops[0] || /class="skip-link"/.test(next);
+  return stops.flatMap((s, i) => (s === "NONE" || (s === "BODY" && !wraps(stops[i + 1])) ? [i] : []));
 }
 
 for (const hash of SCREENS) {
@@ -47,7 +50,7 @@ for (const hash of SCREENS) {
 test("a live refresh keeps focus on the card it was on", async ({ page, request }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/board");
-  const card = page.locator(".task").first();
+  const card = page.locator("button.task").first();
   await expect(card).toBeVisible();
   const name = await card.getAttribute("aria-label");
   await card.focus();

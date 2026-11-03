@@ -6,7 +6,6 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 
 async fn spawn() -> (
@@ -14,7 +13,7 @@ async fn spawn() -> (
     reqwest::Client,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

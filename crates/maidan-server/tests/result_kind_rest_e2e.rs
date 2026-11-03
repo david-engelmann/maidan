@@ -17,7 +17,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const REVIEW: &str = "example.review.result/1";
 const PLAN: &str = "example.plan.result/1";
@@ -41,7 +40,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 
 #[tokio::test]
 async fn list_workspace_results_filters_by_namespaced_kind() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

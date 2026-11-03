@@ -3,7 +3,9 @@
 //! release, an unassign, a reassignment, a freeze, a SCIM deactivation, a
 //! budget stop and a close charge from the acknowledgement to that ending.
 //! An unacknowledged claim still charges nothing. `claim_next` does not hand
-//! out a thread that is already over any budget.
+//! out a thread that is already over any budget. Worked time is measured on
+//! the app clock end to end, so a database whose clock drifts does not skew
+//! it (#1728).
 
 use std::sync::Arc;
 
@@ -13,7 +15,6 @@ use maidan_types::{
     AuditScope, BudgetLimits, BudgetPatch, ChannelId, EventKind, MemberId, MemberKind,
     NewAuditEvent, NewMember, NewThread, NewWorkspace, ThreadId, UsageDelta, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Room {
     channel: ChannelId,
@@ -377,6 +378,34 @@ async fn claim_next_refuses_a_thread_already_over_budget(store: &dyn Store) {
     assert_eq!(taken.id, id);
 }
 
+/// Acknowledge and release on the app clock. On Postgres the store runs with
+/// `now()` shadowed a day ahead, so any database-clock reading would show up
+/// as a day of work, or a start a day in the future.
+async fn worked_time_ignores_the_database_clock(store: &dyn Store) {
+    let r = room(store, "drift").await;
+    let id = task(store, r.channel, "drift").await;
+    let before = chrono::Utc::now() - chrono::Duration::seconds(5);
+    let (held, lease) = work(store, r.channel, r.holder).await;
+    assert_eq!(held, id);
+    let after = chrono::Utc::now() + chrono::Duration::seconds(5);
+    let started = store
+        .get_thread(id)
+        .await
+        .unwrap()
+        .work_started_at
+        .expect("acknowledged");
+    assert!(
+        started >= before && started <= after,
+        "work_started_at {started} is the app clock, not the database clock"
+    );
+    store.release_claim(id, r.holder, lease).await.unwrap();
+    let charged = wall(store, id).await;
+    assert!(
+        (0..60).contains(&charged),
+        "released after seconds, charged {charged}s"
+    );
+}
+
 async fn run_suite(store: Arc<dyn Store>) {
     claim_next_refuses_a_thread_already_over_budget(store.as_ref()).await;
     every_ending_charges_the_time_the_claim_worked(store.as_ref()).await;
@@ -384,7 +413,7 @@ async fn run_suite(store: Arc<dyn Store>) {
 
 #[tokio::test]
 async fn claim_wall_every_end_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -394,7 +423,9 @@ async fn claim_wall_every_end_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    run_suite(Arc::new(SqliteStore::for_tests(pool))).await;
+    let store = Arc::new(SqliteStore::for_tests(pool));
+    worked_time_ignores_the_database_clock(store.as_ref()).await;
+    run_suite(store).await;
 }
 
 #[tokio::test]
@@ -425,5 +456,26 @@ async fn claim_wall_every_end_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
+    sqlx::query(
+        "CREATE FUNCTION public.now() RETURNS timestamptz LANGUAGE sql STABLE AS
+         $$ SELECT pg_catalog.now() + interval '1 day' $$",
+    )
+    .execute(&pool)
+    .await
+    .expect("drifted clock");
+    let drifted = PgPoolOptions::new()
+        .max_connections(4)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("SET search_path = public, pg_catalog")
+                    .execute(conn)
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .connect(&url)
+        .await
+        .expect("connect drifted");
+    worked_time_ignores_the_database_clock(&PostgresStore::for_tests(drifted)).await;
     run_suite(Arc::new(PostgresStore::for_tests(pool))).await;
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -18,8 +19,10 @@ type usageFixture struct {
 	Recorded string          `json:"recorded"`
 	Response json.RawMessage `json:"response"`
 	Options  struct {
-		Model    string `json:"model"`
-		Provider string `json:"provider"`
+		Model         string         `json:"model"`
+		Provider      string         `json:"provider"`
+		Batch         bool           `json:"batch"`
+		StandardPrice *PriceSnapshot `json:"standard_price"`
 	} `json:"options"`
 	PriceSnapshot PriceSnapshot `json:"price_snapshot"`
 	Expected      struct {
@@ -53,7 +56,12 @@ func loadUsageFixtures(t *testing.T, dir string) []usageFixture {
 }
 
 func normalizeFixture(f usageFixture) (NormalizedUsage, error) {
-	return NormalizeUsage(f.Provider, f.Response, UsageOptions{Model: f.Options.Model, Provider: f.Options.Provider})
+	return NormalizeUsage(f.Provider, f.Response, UsageOptions{
+		Model:         f.Options.Model,
+		Provider:      f.Options.Provider,
+		Batch:         f.Options.Batch,
+		StandardPrice: f.Options.StandardPrice,
+	})
 }
 
 func TestNormalizeUsageReadsEveryProviderFixture(t *testing.T) {
@@ -75,7 +83,7 @@ func TestNormalizeUsageReadsEveryProviderFixture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got != f.Expected.NormalizedUsage {
+			if !reflect.DeepEqual(got, f.Expected.NormalizedUsage) {
 				t.Fatalf("got %+v\nwant %+v", got, f.Expected.NormalizedUsage)
 			}
 			if f.Expected.USDMicros != nil {

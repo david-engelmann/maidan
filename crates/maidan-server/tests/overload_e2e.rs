@@ -29,10 +29,9 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::NewWorkspace;
 use reqwest::StatusCode;
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn state() -> (AppState, tempfile::TempDir) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -92,7 +91,7 @@ async fn a_request_past_the_in_flight_ceiling_is_shed_with_a_503_problem() {
     assert_eq!(shed.headers()["content-type"], "application/problem+json");
     assert!(shed.headers().contains_key("x-request-id"));
     let problem: Value = shed.json().await.unwrap();
-    assert_eq!(problem["type"], "https://maidan.dev/problems/overloaded");
+    assert_eq!(problem["type"], "https://maidan.world/problems/overloaded");
     assert_eq!(problem["status"], 503);
 
     // Probes and the scrape are never shed.
@@ -186,7 +185,7 @@ async fn a_panicking_handler_answers_a_500_problem_and_the_server_keeps_serving(
         "the panic message must not reach the client: {text}"
     );
     let problem: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(problem["type"], "https://maidan.dev/problems/internal");
+    assert_eq!(problem["type"], "https://maidan.world/problems/internal");
     assert_eq!(problem["detail"], maidan_server::panic_guard::PANIC_DETAIL);
 
     // The panicking request released its permit and the server still serves.

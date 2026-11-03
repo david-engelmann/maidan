@@ -4,11 +4,10 @@
 use chrono::{DateTime, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 async fn spawn() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

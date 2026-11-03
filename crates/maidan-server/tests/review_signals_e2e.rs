@@ -22,7 +22,6 @@ use maidan_types::{
 };
 use reqwest::{Method, StatusCode};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();
@@ -45,7 +44,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 }
 
 async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>, AppState) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

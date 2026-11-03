@@ -4,7 +4,6 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn sample() -> WorkspaceImport {
     let now = Utc::now();
@@ -227,7 +226,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn workspace_import_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

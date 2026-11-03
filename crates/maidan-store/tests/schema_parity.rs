@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use maidan_store::{run_postgres_migrations, run_sqlite_migrations};
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions, PgPool, Row, SqlitePool};
+use sqlx::{postgres::PgPoolOptions, PgPool, Row, SqlitePool};
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -317,7 +317,7 @@ async fn postgres_and_sqlite_migrations_build_the_same_schema() {
         .await
         .expect("connect pg");
     run_postgres_migrations(&pg).await.expect("migrate pg");
-    let sqlite = SqlitePoolOptions::new()
+    let sqlite = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect sqlite");

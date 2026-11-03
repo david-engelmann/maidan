@@ -12,7 +12,6 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     addr: SocketAddr,
@@ -34,7 +33,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -142,7 +141,7 @@ async fn verify_ok_then_tamper_is_409() {
     let problem: serde_json::Value = broken.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/event-log-broken"
+        "https://maidan.world/problems/event-log-broken"
     );
     assert!(problem["detail"]
         .as_str()
