@@ -2,5 +2,7 @@
 # environment by default. The release pipeline sets MAIDAN_VERSION to the tag so
 # the built binary reports it from `/health` (see version() in maidan-server);
 # forward it into the cross build so the aarch64 tarball is not stuck at 0.0.0.
+# The container has no node, so the release builds the web assets on the host
+# and sets MAIDAN_SKIP_LANDING_BUILD, which build.rs reads.
 [build.env]
-passthrough = ["MAIDAN_VERSION"]
+passthrough = ["MAIDAN_VERSION", "MAIDAN_SKIP_LANDING_BUILD"]
