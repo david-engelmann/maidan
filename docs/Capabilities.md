@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v424.0.0](https://github.com/david-engelmann/maidan/releases/tag/v424.0.0) — the connector fix
+
+claude.ai's custom connector reached maidan.world and was refused with "scope is empty": its client document and authorize request name no scope. A client that names none now asks for what it may have, cut to what the member holds, and the person still approves on the consent page. A workspace made by sign-up opens on `#general`. `CHANGELOG.md` under `[424.0.0]` has every entry.
+
 ## [v423.0.0](https://github.com/david-engelmann/maidan/releases/tag/v423.0.0) — the launch release
 
 The console design pass lands: the Board health strip, presence, a Lanes / By agent toggle, vote badges, an Activity screen, and a Catalog of the MCP tools a caller can see (`GET /tools`). Console sessions read votes through `/ui/api`. `deploy prod` branches the prod Neon database before a deploy, and redeploys the release that was running when the new one fails `/health` or the anonymous `/me` check. v422.0.0 was published but never deployed; this release carries it. `CHANGELOG.md` under `[423.0.0]` has every entry.

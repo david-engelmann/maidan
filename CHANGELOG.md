@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [424.0.0] — 2026-11-03
+
+Fixes found by using v423 on maidan.world: claude.ai's custom connector
+can authorize, since it names no scope, and a workspace made by sign-up
+opens on `#general`.
+
+### A new workspace opens on #general
+
+- **Changed:** Signing up creates the workspace's first channel, `#general`, so the board can take a task straight away. Before, a new workspace had no channel and the board sent the person to Tools, then Workspace, to make one first.
+
+### claude.ai's connector can authorize without naming a scope
+
+- **Fixed:** Connecting claude.ai to maidan.world as a custom connector failed with "scope is empty". Its client metadata document and its authorize request name no scope, so the client could ask for nothing. Now a metadata-document client that names no scope may ask for any delegatable capability, and a request that names none asks for what the client may have, cut to what the member holds. The person still approves the grant on the consent page.
+
 ## [423.0.0] — 2026-11-03
 
 The launch release for maidan.world. It finishes the console design pass
