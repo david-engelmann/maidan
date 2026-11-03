@@ -130,7 +130,13 @@ export function NeedsYou() {
           {data.error ?? `Could not reach the server. Showing what was loaded at ${clock(data.staleSince)}. Reconnecting…`}
         </p>
       )}
-      {data.status === "loading" && <p className="muted">Loading what needs you…</p>}
+      {data.status === "loading" && (
+        <div className="needs-loading" role="status" aria-label="Loading what needs you">
+          <span className="skeleton row-sk" />
+          <span className="skeleton row-sk" />
+          <span className="skeleton row-sk" />
+        </div>
+      )}
       {data.status === "error" && (
         <div className="card" role="alert">
           <p>{data.error}</p>
