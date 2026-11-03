@@ -1,6 +1,6 @@
 import type { RouteId } from "./router.ts";
 
-const PATHS: Record<RouteId | "search" | "chevron" | "caution" | "check", string> = {
+const PATHS: Record<RouteId | "search" | "chevron" | "caution" | "check" | "more", string> = {
   board: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v6h-4z",
   needs: "M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zM10 19a2 2 0 0 0 4 0",
   threads: "M4 5h16v10H9l-5 4z",
@@ -11,10 +11,11 @@ const PATHS: Record<RouteId | "search" | "chevron" | "caution" | "check", string
   chevron: "M7 10l5 5 5-5",
   caution: "M12 4l9 16H3zM12 10v4M12 17v.5",
   check: "M5 12.5l4.5 4.5L19 7",
+  more: "M5 12h.5M12 12h.5M19 12h.5",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
 };
 
-export function Icon({ name }: { name: RouteId | "search" | "chevron" | "caution" | "check" }) {
+export function Icon({ name }: { name: RouteId | "search" | "chevron" | "caution" | "check" | "more" }) {
   return (
     <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d={PATHS[name]} />

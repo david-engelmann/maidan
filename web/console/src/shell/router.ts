@@ -15,6 +15,13 @@ export const ROUTES = [
 
 export type RouteId = (typeof ROUTES)[number]["id"];
 
+/** The phone tab bar holds five places; the rest sit behind More. */
+export const PHONE_TABS: readonly RouteId[] = ["board", "needs", "threads", "people", "activity"];
+
+export function phoneTabs(): { tabs: (typeof ROUTES)[number][]; more: (typeof ROUTES)[number][] } {
+  return { tabs: ROUTES.filter((r) => PHONE_TABS.includes(r.id)), more: ROUTES.filter((r) => !PHONE_TABS.includes(r.id)) };
+}
+
 export function parseRoute(hash: string): RouteId {
   if (/^#\/?confirm-approval=/.test(hash)) return "needs";
   const id = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
