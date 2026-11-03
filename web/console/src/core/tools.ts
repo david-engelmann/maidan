@@ -114,11 +114,19 @@ export function capsExceeding(asked: string[], held: string[] | null): string[] 
   return asked.filter((c) => !have.has(c));
 }
 
+/** A file size for people: B, KB or MB. Empty for a missing or nonsense size. */
 export function formatBytes(n: number | undefined | null): string {
-  if (n == null || !Number.isFinite(n)) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
+  if (n < 1024) return `${Math.round(n)} B`;
+  // Step up a unit when rounding would print 1024.0, so 1048575 bytes reads 1.0 MB.
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (i < units.length - 1 && Number(v.toFixed(1)) >= 1024) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(1)} ${units[i]}`;
 }
 
 export function mediaEssence(type: string | null | undefined): string {
