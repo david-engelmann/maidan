@@ -108,6 +108,11 @@ pub fn is_delegatable(capability: &str) -> bool {
     DELEGATABLE.contains(&capability)
 }
 
+/// Every capability a delegation grant can carry. See [`DELEGATABLE`].
+pub fn delegatable() -> Vec<String> {
+    DELEGATABLE.iter().map(|c| (*c).to_string()).collect()
+}
+
 /// Every known capability — the superuser set for a bootstrap/root token
 /// (`maidan init`). Scoped tokens are minted from it thereafter.
 pub fn all() -> Vec<String> {

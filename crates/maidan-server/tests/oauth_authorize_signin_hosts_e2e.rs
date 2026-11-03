@@ -49,6 +49,8 @@ const ISSUER: &str = "https://mock.idp.local";
 const LISTED: &str = "https://docs.client.example/oauth/client.json";
 /// A document on the listed host that answers with a redirect.
 const REDIRECTING: &str = "https://docs.client.example/oauth/moved.json";
+/// A listed document with no `scope`, as claude.ai's connector publishes.
+const UNSCOPED: &str = "https://docs.client.example/oauth/unscoped.json";
 /// A host the instance does not list.
 const UNLISTED: &str = "https://other.example/oauth/client.json";
 /// A client the operator registered, for the sign-in round trip.
@@ -80,6 +82,19 @@ async fn document_server(fetches: Arc<AtomicUsize>) -> String {
                         "scope": "workspace:read",
                     }))
                 }
+            }),
+        )
+        // Shaped like claude.ai's connector document: no `scope`.
+        .route(
+            "/oauth/unscoped.json",
+            get(|| async {
+                axum::Json(serde_json::json!({
+                    "client_name": "Claude",
+                    "redirect_uris": [REDIRECT],
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "token_endpoint_auth_method": "none",
+                }))
             }),
         )
         .route(
@@ -467,4 +482,27 @@ async fn a_return_to_that_could_leave_the_origin_lands_on_the_console() {
         assert!(callback.status().is_redirection(), "{evil}");
         assert_eq!(location(&callback), "/ui/", "{evil}");
     }
+}
+
+#[tokio::test]
+async fn a_client_whose_document_and_request_name_no_scope_reaches_consent() {
+    let h = spawn().await;
+    let t = tenant(&h, "gamma").await;
+    // claude.ai's connector names no scope in its document or its request;
+    // that asks for what the member can lend, not for nothing.
+    let path = authorize_path(UNSCOPED).replace("&scope=workspace%3Aread", "");
+    let resp = h
+        .client
+        .get(format!("{}{path}", h.base))
+        .bearer_auth(&t.bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::TEMPORARY_REDIRECT,
+        "{:?}",
+        resp.text().await
+    );
+    assert!(location(&resp).starts_with("/ui/oauth/consent?request="));
 }

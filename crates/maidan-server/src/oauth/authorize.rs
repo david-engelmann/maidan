@@ -114,13 +114,26 @@ pub async fn authorize(
         return Err(ApiError::BadRequest("state is required".into()));
     }
 
-    let mut scope: Vec<String> = match query.scope {
-        Some(s) => s
-            .split(' ')
-            .filter(|c| !c.is_empty())
-            .map(str::to_string)
-            .collect(),
-        None => client.allowed_scopes.clone(),
+    let requested: Vec<String> = query
+        .scope
+        .as_deref()
+        .unwrap_or("")
+        .split(' ')
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+        .collect();
+    // A request that names no scope (claude.ai's connector sends none) asks
+    // for what the client may have, cut to what the member can lend. A scope
+    // named outright is still refused below when the member lacks it.
+    let mut scope: Vec<String> = if requested.is_empty() {
+        client
+            .allowed_scopes
+            .iter()
+            .filter(|c| capability::is_delegatable(c) && auth.has_capability(c))
+            .cloned()
+            .collect()
+    } else {
+        requested
     };
     if scope.is_empty() {
         return Err(ApiError::BadRequest("scope is empty".into()));
