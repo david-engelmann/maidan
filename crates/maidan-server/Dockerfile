@@ -7,7 +7,7 @@
 #      builder stage can cache deps independently of source.
 #   2. `cacher` builds all the dependencies. Cached across source edits.
 #   3. `builder` compiles maidan-server in release mode.
-#   4. `runtime` is a distroless image holding only the binary.
+#   4. `runtime` is a minimal glibc image (Chainguard glibc-dynamic) holding only the binary.
 #
 # Bootstrap seed routes (`POST /workspaces`) are omitted unless
 # `MAIDAN_ENABLE_BOOTSTRAP=1` (CI smoke / local seed). Production deploys
@@ -82,7 +82,11 @@ RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
       cargo build --release --bin maidan-server --no-default-features --features otel; \
     fi
 
-FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+# Chainguard's glibc-dynamic: glibc, libgcc, CA certificates and a nonroot
+# user, no shell and no OpenSSL. Distroless's cc-debian12 carried a libssl3 the
+# release scan refused (CVE-2026-84782) for weeks after Debian's fix, though no
+# Maidan binary links OpenSSL. Pinned by digest; bump it to take patches.
+FROM cgr.dev/chainguard/glibc-dynamic@sha256:671a621016fb33812136dea6182b1db957996d3c8c618187aaf86abd9b14af53 AS runtime
 # The official MCP registry accepts an OCI package only when the image names
 # the server it belongs to; it must match listings/registry/server.json.
 LABEL io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan" \
