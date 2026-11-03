@@ -102,8 +102,11 @@ test("Tab reaches a Needs you row's actions", async ({ page }) => {
   const first = page.locator(".need-actions button:not([disabled]):visible").first();
   test.skip((await first.count()) === 0, "nothing waiting in this seed");
   await first.focus();
-  await expect(first).toBeFocused();
-  await expect(first).toHaveCSS("outline-style", "solid");
+  // Rows keep loading after the count shows (Add a note enables once the
+  // evidence arrives), so check the button that took focus, not the locator.
+  const focused = page.locator(".need-actions button:focus");
+  await expect(focused).toHaveCount(1);
+  await expect(focused).toHaveCSS("outline-style", "solid");
 });
 
 test("the palette opens on the keyboard and goes where Enter says", async ({ page }) => {
