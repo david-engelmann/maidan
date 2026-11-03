@@ -688,8 +688,7 @@ jobs:
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci -E
-          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed)::/) |
-          binary(mcp_reference_current)'
+          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
