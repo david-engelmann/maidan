@@ -44,6 +44,7 @@ import { SecretOnce } from "../tools/SecretOnce.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { LoadError } from "../shell/LoadError";
 
 type Tab = "people" | "swarm";
 
@@ -80,7 +81,7 @@ export function People() {
     return { people: new PeopleApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
   const { tab, member } = useSub();
-  const { data: people } = usePeople(session, deps.people);
+  const { data: people, reload: reloadPeople } = usePeople(session, deps.people);
   const { data: board } = useBoard(session, deps.board);
   const presence = usePresence();
   const me = session.status === "signed-in" ? session.memberId : null;
@@ -95,7 +96,7 @@ export function People() {
         <a role="tab" aria-selected={tab === "swarm"} href="#/people/swarm">Swarm</a>
       </div>
       {tab === "people" ? (
-        <Roster loaded={people} rows={rows} open={member} api={deps.people} board={board} />
+        <Roster loaded={people} onRetry={() => void reloadPeople()} rows={rows} open={member} api={deps.people} board={board} />
       ) : (
         <Swarm rows={rows} people={people.value ?? []} api={deps.people} workspace={session.status === "signed-in" ? session.workspaceId : null} presence={presence} />
       )}
@@ -156,7 +157,7 @@ function Avatar({ person, presence, large }: { person: Person; presence?: Presen
   );
 }
 
-function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
+function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Person[]>; onRetry: () => void; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
   const [query, setQuery] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const shown = filterRoster(rows, query);
@@ -181,7 +182,7 @@ function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; 
           {loaded.status === "ready" ? `${rows.length} members · ${live} live` : loaded.status === "loading" ? "Loading members" : ""}
           {note ? <span className="note"> · {note}</span> : null}
         </p>
-        {loaded.error ? <p className={loaded.value ? "stale" : "err"} role="alert">{loaded.error}</p> : null}
+        {loaded.error && loaded.value ? <p className="stale" role="alert">{loaded.error}</p> : loaded.error ? <LoadError message={loaded.error} onRetry={onRetry} /> : null}
         {loaded.status === "ready" && !shown.length ? <p className="muted">{query ? `No member matches “${query}”.` : "No members yet."}</p> : null}
         <ul className="roster-list">
           {shown.map((r) => (

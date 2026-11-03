@@ -57,6 +57,7 @@ import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
+import { LoadError } from "../shell/LoadError";
 
 type Tab = "tasks" | "direct";
 
@@ -124,7 +125,7 @@ export function Threads() {
     const f = (url: string, init?: RequestInit) => fetch(url, init);
     return { threads: new ThreadsApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
-  const { data: board, selectChannel } = useBoard(session, deps.board);
+  const { data: board, selectChannel, refresh: refreshBoard } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
   const [composing, setComposing] = useState(takeCompose);
@@ -223,7 +224,7 @@ export function Threads() {
             }}
           />
         )}
-        {listError && <p className="conv-error" role="alert">{listError}</p>}
+        {listError && !list.length ? <LoadError message={listError} onRetry={() => void (tab === "tasks" ? refreshBoard() : refreshDirect())} /> : listError ? <p className="conv-error" role="alert">{listError}</p> : null}
         {listLoading && !list.length ? (
           <div role="status" aria-label="Loading">
             <span className="skeleton row-sk" />
@@ -520,7 +521,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
         {data.status === "loading" || data.status === "idle" ? (
           <p className="muted pad">Loading messages…</p>
         ) : data.status === "error" ? (
-          <p className="conv-error pad" role="alert">{data.error}</p>
+          <LoadError className="pad" message={data.error ?? "Could not load the messages."} onRetry={() => void refresh()} />
         ) : !messages.length ? (
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (
