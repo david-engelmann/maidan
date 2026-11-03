@@ -43,7 +43,7 @@ test("no files says how they arrive, and a failed read offers a retry", async ({
   await signInWithCookie(page, fx);
   await page.route(/\/threads\/[^/]+\/artifacts$/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
   await openOnChannel(page, fx.board_channel_id, "#/artifacts");
-  await expect(page.getByText("No files yet.")).toBeVisible();
+  await expect(page.getByText("No files yet", { exact: true })).toBeVisible();
   await page.unroute(/\/threads\/[^/]+\/artifacts$/);
   await page.route(/\/workspaces\/[^/]+\/channels$/, (r) => r.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
   await page.reload();
