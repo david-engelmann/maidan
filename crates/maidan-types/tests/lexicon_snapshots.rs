@@ -362,6 +362,8 @@ fn sample_event(kind: EventKind) -> Event {
             reasons: Vec::new(),
             environment: None,
             deploy_url: None,
+            reviewer: None,
+            review_state: None,
         },
         EventKind::ThreadHandoff => Event::ThreadHandoff {
             occurred_at,

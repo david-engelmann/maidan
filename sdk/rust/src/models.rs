@@ -350,6 +350,42 @@ model! {
         result: Value,
         produced_by: String,
         produced_at: String,
+        /// On `get_result`: one word for every `deliver_to` target together
+        /// (`failed`, `pending`, `delivered`, `skipped` or `not_routable`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delivery_state: Option<String>,
+        /// On `get_result`: each target's delivery row.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deliveries: Option<Vec<ResultDelivery>>,
+    }
+}
+
+model! {
+    /// One `deliver_to` target's delivery of a result.
+    ResultDelivery {
+        id: String,
+        thread_id: String,
+        surface: String,
+        selector: String,
+        status: String,
+        armed_revision: String,
+        #[serde(default)]
+        delivered_revision: Option<String>,
+        attempts: i64,
+        #[serde(default)]
+        last_error: Option<String>,
+        #[serde(default)]
+        external_ref: Option<String>,
+        #[serde(default)]
+        head_sha: Option<String>,
+        #[serde(default)]
+        pr_number: Option<i64>,
+        #[serde(default)]
+        pr_url: Option<String>,
+        #[serde(default)]
+        template_warnings: Option<Vec<Value>>,
+        created_at: String,
+        updated_at: String,
     }
 }
 

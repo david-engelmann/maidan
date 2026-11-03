@@ -284,12 +284,39 @@ class ClaimedThread(Thread):
 
 
 @dataclass(kw_only=True)
+class ResultDelivery(Model):
+    """One ``deliver_to`` target's delivery of a result."""
+
+    id: str
+    thread_id: str
+    surface: str
+    selector: str
+    status: str
+    armed_revision: str
+    attempts: int
+    created_at: str
+    updated_at: str
+    delivered_revision: Optional[str] = None
+    last_error: Optional[str] = None
+    external_ref: Optional[str] = None
+    head_sha: Optional[str] = None
+    pr_number: Optional[int] = None
+    pr_url: Optional[str] = None
+    template_warnings: Optional[List[Any]] = None
+
+
+@dataclass(kw_only=True)
 class ThreadResult(Model):
     thread_id: str
     #: The producer's JSON, as it was set.
     result: Any
     produced_by: str
     produced_at: str
+    #: On ``get_result``: one word for every ``deliver_to`` target together
+    #: (``failed``, ``pending``, ``delivered``, ``skipped`` or ``not_routable``).
+    delivery_state: Optional[str] = None
+    #: On ``get_result``: each target's delivery row.
+    deliveries: Optional[List[ResultDelivery]] = None
 
 
 @dataclass(kw_only=True)
