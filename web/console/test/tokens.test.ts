@@ -82,3 +82,8 @@ test("dark mode sets its tokens in one :root block, not two that disagree", () =
   assert.equal(blocks.length, 1);
   assert.match(blocks[0][1], /--elev-1:/);
 });
+
+test("Activity's Pause and Resume use the shared button style", () => {
+  const act = readFileSync(new URL("../src/activity/Activity.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(act, /<button onClick=/);
+});

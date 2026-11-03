@@ -71,9 +71,9 @@ export function Activity() {
           ))}
         </div>
         {paused ? (
-          <button onClick={resume}>Resume{held.length ? ` (${held.length} new)` : ""}</button>
+          <button type="button" className="button ghost" onClick={resume}>Resume{held.length ? ` (${held.length} new)` : ""}</button>
         ) : (
-          <button onClick={() => setPaused(true)}>Pause</button>
+          <button type="button" className="button ghost" onClick={() => setPaused(true)}>Pause</button>
         )}
       </header>
       {error && <p className="muted" role="alert">{error}</p>}
