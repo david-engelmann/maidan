@@ -421,7 +421,7 @@ function Composer({ channelId, onDone }: { channelId: string; onDone: (made: Thr
     }
   };
   return (
-    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape" && !busy) { e.preventDefault(); onDone(null); } }} aria-label="New task">
+    <form className="task-composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape" && !busy) { e.preventDefault(); onDone(null); } }} aria-label="New task">
       <label className="composer-field">
         <span className="visually-hidden">Task title</span>
         <input ref={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={200} disabled={busy} />
