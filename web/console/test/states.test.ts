@@ -23,3 +23,7 @@ test("the board names a load failure once, in the card, not also in its summary"
 test("People loads behind skeleton rows, like Board and Threads, not a bare word", () => {
   assert.match(src("people/People.tsx"), /loaded\.status === "loading" \? \(\s*<div className="roster-sk" role="status"[^>]*>\s*<span className="skeleton row-sk"/);
 });
+
+test("a Threads list that failed to load shows the retry card, not an empty state under it", () => {
+  assert.match(src("threads/Threads.tsx"), /!list\.length \? \(\s*listError \? null :/);
+});

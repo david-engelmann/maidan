@@ -233,7 +233,7 @@ export function Threads() {
             <span className="skeleton row-sk" />
           </div>
         ) : !list.length ? (
-          tab === "tasks" ? (
+          listError ? null : tab === "tasks" ? (
             <EmptyState title="No task threads" body={emptyChannelText(board.channels.length)} action={<a className="button ghost" href={NEW_WORK_HREF}>Start a task</a>} />
           ) : (
             <EmptyState title="No conversations yet" body="Start one with New message." />
