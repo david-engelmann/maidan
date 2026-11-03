@@ -68,3 +68,11 @@ test("the palette's search field has no clipped outline of its own", () => {
   // The global input ring ran past the palette's top edge; the open dialog and caret already show focus.
   assert.match(css, /\.palette-input:focus-visible \{ outline: none; \}/);
 });
+
+test("one button style: .button and .btn share the height and the pill shape", () => {
+  const rule = (sel: string) => css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+  for (const sel of [".button", ".btn"]) {
+    assert.match(rule(sel), /min-height: var\(--btn-h\)/, sel);
+    assert.match(rule(sel), /border-radius: var\(--r-pill\)/, sel);
+  }
+});
