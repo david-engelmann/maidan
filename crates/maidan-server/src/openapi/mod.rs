@@ -689,6 +689,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ui_list_audit,
         paths::ui_list_peers,
         paths::ui_list_message_edits,
+        paths::ui_list_votes,
+        paths::ui_list_thread_votes,
     ),
     components(
     responses(

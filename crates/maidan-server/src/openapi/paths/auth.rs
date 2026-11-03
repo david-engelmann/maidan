@@ -8,13 +8,13 @@ use crate::dto::{
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm, OidcSignupQuery,
     PeerResponse, RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
-    SetMemberDisplayName, ThreadTransitionsQuery,
+    SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
     ApprovalGate, AuditEvent, Channel, Member, Message, MessageEdit, StoredEvent, Thread,
-    ThreadArtifact, ThreadReview, ThreadTransition, Workspace,
+    ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace,
 };
 
 /// Start an OIDC login
@@ -664,3 +664,39 @@ pub fn ui_list_peers() {}
     )
 )]
 pub fn ui_list_message_edits() {}
+
+/// List a message's votes (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/messages/{mid}/votes",
+    tag = "auth",
+    params(("mid" = Uuid, Path, description = "Message id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<Vote>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_votes() {}
+
+/// Votes on a thread's messages in one read (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/votes",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = ThreadVotes),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_thread_votes() {}

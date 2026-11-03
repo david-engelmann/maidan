@@ -31896,6 +31896,71 @@
         ]
       }
     },
+    "/ui/api/messages/{mid}/votes": {
+      "get": {
+        "operationId": "ui_list_votes",
+        "parameters": [
+          {
+            "description": "Message id",
+            "in": "path",
+            "name": "mid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Vote"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a message's votes (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/ui/api/threads/{tid}/artifacts": {
       "get": {
         "description": "The bearer tree's `GET /threads/{id}/artifacts` for the console: who linked\neach artifact to the thread and when, so the approval card can say so and\nflag an artifact the packet pinned that the thread no longer links.",
@@ -32266,6 +32331,68 @@
           }
         ],
         "summary": "List a thread's state transitions (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/threads/{tid}/votes": {
+      "get": {
+        "operationId": "ui_list_thread_votes",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadVotes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Votes on a thread's messages in one read (console)",
         "tags": [
           "auth"
         ]
