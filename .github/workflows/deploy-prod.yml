@@ -4,7 +4,8 @@ name: deploy prod
 # wrangler.prod.jsonc; docs/Production.md "Hosted on Cloudflare"). Publishing a
 # GitHub Release deploys it; a dispatch deploys a named tag, to roll back or
 # forward. The image is the release's own, cosign-verified, never a build of
-# main.
+# main. Before a deploy the prod database is snapshotted to a Neon branch; a
+# release that fails its checks is replaced by the one that was running.
 
 on:
   release:
@@ -35,6 +36,8 @@ jobs:
       IMAGE: ghcr.io/david-engelmann/maidan-server
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      NEON_API_KEY: ${{ secrets.NEONDB_ADMIN_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID_PROD }}
     defaults:
       run:
         working-directory: deploy/cloudflare
@@ -58,50 +61,53 @@ jobs:
           git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main \
             || { echo "$TAG is not on main; promote it from dev first" >&2; exit 1; }
       - uses: sigstore/cosign-installer@v3
-      # The release workflow signs each image keylessly; refuse an image it
-      # did not sign, so a re-pointed tag cannot reach production.
-      - name: verify the release image
-        run: |
-          cosign verify "$IMAGE:$TAG" \
-            --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: deploy/cloudflare/package-lock.json
       - run: npm ci
-      - name: push the release image to the account registry
+      # What to go back to if this release fails its checks. Only a release
+      # tag counts: an instance that answers nothing has nothing to restore.
+      - name: the release running now
         run: |
-          # Pull the linux/amd64 manifest by digest: a multi-platform pull
-          # keeps the index, whose platform wrangler cannot read.
-          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --raw \
-            | jq -r '.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest')
-          docker pull "$IMAGE@$digest"
-          docker tag "$IMAGE@$digest" "maidan-server:$TAG"
-          # The push reads a Wrangler config, and the dev one names a
-          # Dockerfile build; read the prod one.
-          npx wrangler containers push -c wrangler.prod.jsonc "maidan-server:$TAG"
+          prev=$(curl -fsS https://maidan.world/health | jq -r .version || true)
+          if [[ "$prev" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$prev" != "$TAG" ]]; then
+            echo "PREV=$prev" >> "$GITHUB_ENV"
+            echo "maidan.world runs $prev"
+          else
+            echo "maidan.world answers ${prev:-nothing}; no earlier release to restore"
+          fi
+      # A copy-on-write branch of the prod database, named for the release,
+      # so data a migration damages can be read back. The three newest are
+      # kept; older pre-deploy branches are removed so the project stays
+      # under its branch limit. Without the Neon secrets the deploy goes on
+      # with a warning.
+      - name: snapshot the prod database
+        run: |
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
+            echo "::warning::no Neon credential in the prod environment; deploying $TAG without a database snapshot"
+            exit 0
+          fi
+          api="https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches"
+          auth="Authorization: Bearer $NEON_API_KEY"
+          name="pre-deploy-$TAG-$(date -u +%Y%m%d%H%M)"
+          curl -fsS -X POST "$api" -H "$auth" -H 'Content-Type: application/json' \
+            -d "{\"branch\":{\"name\":\"$name\"}}" > /dev/null
+          echo "snapshot: Neon branch $name"
+          # A failed cleanup leaves an extra branch, not a reason to stop.
+          { curl -fsS "$api" -H "$auth" \
+              | jq -r '[.branches[] | select(.name | startswith("pre-deploy-"))] | sort_by(.created_at) | reverse | .[3:][] | .id' \
+              | while read -r id; do curl -fsS -X DELETE "$api/$id" -H "$auth" > /dev/null; done; } \
+            || echo "::warning::could not remove older pre-deploy branches"
+      # Verify, push, deploy and check /health and an anonymous /me
+      # (deploy-release.sh). DEPLOYING tells the rollback that prod changed.
       - name: deploy
         run: |
-          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$TAG"
-          sed -i "s#\"image\": \"registry.cloudflare.com/ACCOUNT/maidan-server:RELEASE\"#\"image\": \"$image\"#" wrangler.prod.jsonc
-          grep -q "\"image\": \"$image\"" wrangler.prod.jsonc
-          # The first deploy can look for the Durable Object namespace before
-          # it is visible (DURABLE_OBJECT_NOT_FOUND); the second finds it.
-          npx wrangler deploy -c wrangler.prod.jsonc || { sleep 15; npx wrangler deploy -c wrangler.prod.jsonc; }
-      - name: maidan.world runs this release
+          echo "DEPLOYING=1" >> "$GITHUB_ENV"
+          ./deploy-release.sh "$TAG"
+      - name: roll back to the release that was running
+        if: failure() && env.DEPLOYING == '1' && env.PREV != ''
         run: |
-          for _ in $(seq 1 36); do
-            got=$(curl -fsS https://maidan.world/health | jq -r .version || true)
-            if [ "$got" = "$TAG" ]; then echo "maidan.world runs $TAG"; exit 0; fi
-            sleep 10
-          done
-          echo "maidan.world answers ${got:-nothing}, not $TAG" >&2
-          exit 1
-      # An anonymous caller reads nothing: a production instance with auth
-      # off must never pass this step.
-      - name: anonymous access is refused
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' https://maidan.world/me)
-          [ "$code" = 401 ] || { echo "GET /me without a token answered $code, not 401" >&2; exit 1; }
+          ./deploy-release.sh "$PREV"
+          echo "::error::$TAG failed its checks; maidan.world is back on $PREV"
