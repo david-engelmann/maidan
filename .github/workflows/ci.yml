@@ -688,8 +688,7 @@ jobs:
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci -E
-          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed)::/) |
-          binary(mcp_reference_current)'
+          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -1262,7 +1261,7 @@ jobs:
         run: |
           cargo test -p maidan-store  --test it replication::    -- --ignored --nocapture
           cargo test -p maidan-store  --test it read_routing::    -- --ignored --nocapture
-          cargo test -p maidan-search --test replica_routing -- --ignored --nocapture
+          cargo test -p maidan-search --test it replica_routing:: -- --ignored --nocapture
       - name: tear down the harness
         if: always()
         run: scripts/replica-harness.sh down
