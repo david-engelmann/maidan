@@ -1239,13 +1239,23 @@ which clients reconnect.
 ### maidan.world
 
 Publishing a GitHub Release runs `deploy prod`
-(`.github/workflows/deploy-prod.yml`). It refuses an image the release
-workflow did not sign (`cosign verify`), pushes the release's own
+(`.github/workflows/deploy-prod.yml`). It first records the release
+maidan.world runs and snapshots the prod database to a Neon branch named
+`pre-deploy-<tag>-<time>` (the three newest are kept). Then
+`deploy/cloudflare/deploy-release.sh` refuses an image the release workflow did
+not sign (`cosign verify`), pushes the release's own
 `ghcr.io/david-engelmann/maidan-server:<tag>` to the account registry, deploys
 `wrangler.prod.jsonc`, waits until `/health` reports the tag, and checks that
-`GET /me` without a token answers 401. A dispatch with a tag deploys that
-release, to roll back or forward. The job reads its Cloudflare token from the
-`prod` environment.
+`GET /me` without a token answers 401. If any of that fails, the job deploys
+the recorded release again the same way and fails, so maidan.world goes back
+to the release that was running and the failed tag shows red. The rollback
+restores code, not data: migrations only add, so the earlier release runs on
+the newer schema, and the Neon branch is where data a migration damaged can
+be read back. A dispatch with a tag deploys that release, to roll back or
+forward by hand. The job reads its Cloudflare token and the Neon admin key
+and prod project id (`NEONDB_ADMIN_API_KEY`, `NEON_PROJECT_ID_PROD`) from the
+`prod` environment; without the Neon pair it deploys with a warning and no
+snapshot.
 
 People sign in through a Cloudflare Access for SaaS OIDC app (`maidan.world`
 in Zero Trust), whose only login method is a one-time code mailed to the
