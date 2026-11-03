@@ -9,3 +9,4 @@
 - **Fixed:** In a narrow board lane a card's state, flag, avatar and time wrap onto a second line instead of being clipped at the card edge.
 - **Fixed:** Keyboard focus on a fold-out row, such as **Result and evidence** in a thread, draws a rounded ring that matches the rest of the console instead of a square box.
 - **Fixed:** An open task thread's header shows its state in the same words and casing as the list beside it, such as "Claimed" or "In review", instead of the raw lowercase state, which could disagree with the list.
+- **Fixed:** The command palette's search field no longer draws a thick orange ring that ran off the top of the palette; the open palette and the caret show where you are typing.

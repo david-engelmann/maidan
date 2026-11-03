@@ -63,3 +63,8 @@ test("card meta wraps instead of clipping in a narrow lane", () => {
 test("disclosure summaries get a rounded focus ring", () => {
   assert.match(css, /summary:focus-visible \{ border-radius: var\(--r-xs\); \}/);
 });
+
+test("the palette's search field has no clipped outline of its own", () => {
+  // The global input ring ran past the palette's top edge; the open dialog and caret already show focus.
+  assert.match(css, /\.palette-input:focus-visible \{ outline: none; \}/);
+});
