@@ -129,9 +129,13 @@ export function humanError(status: number, detail: string | null, mode: Credenti
   if (status === 413) return "That is too large for the server to accept";
   if (status === 429) return "Too many requests. Wait a moment, then try again";
   if (status === 0) return OFFLINE;
+  if (status === 502 || status === 503 || status === 504) return UNAVAILABLE;
   if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
   return "The request was not accepted";
 }
+
+/** 502, 503 and 504: the server is up behind a proxy but not answering yet, often mid-deploy. */
+export const UNAVAILABLE = "The server is busy or restarting. Try again in a moment";
 
 function refusal(cap: string | null, mode: CredentialMode | null): string {
   const who = mode === "session" ? "Your session" : mode === "delegated" ? "This delegated token" : "Your token";
@@ -239,7 +243,7 @@ export async function failure(
   const retry = res.status === 429 || res.status === 503 ? retryAfterSeconds(res.headers.get("Retry-After")) : null;
   const mine = own(res.status, typeof detail === "string" ? detail : null);
   let text = mine ?? humanError(res.status, detail, mode);
-  if (retry !== null && retry > 0) text = res.status === 429 ? `Too many requests. Try again in ${waitWords(retry)}` : `${text}. Try again in ${waitWords(retry)}`;
+  if (retry !== null && retry > 0) text = res.status === 429 ? `Too many requests. Try again in ${waitWords(retry)}` : mine === null && res.status === 503 ? `The server is busy or restarting. Try again in ${waitWords(retry)}` : `${text}. Try again in ${waitWords(retry)}`;
   throw new Err(text, res.status, retry);
 }
 
