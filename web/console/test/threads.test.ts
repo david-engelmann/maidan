@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
+import { stateWord, type Thread } from "../src/core/board.ts";
 import {
   BODY_REQUIRED,
   CHOOSE_WHO,
@@ -28,6 +29,7 @@ import {
   isUnread,
   markOpened,
   toggleReaction,
+  taskConversation,
   touchesThread,
   visibleMessages,
   type Message,
@@ -243,4 +245,13 @@ test("unread compares instants, whatever fractional digits each side carries", (
   // As strings "…00Z" sorts after "…00.000Z" ("Z" > "."), though they are the same instant.
   assert.equal(isUnread(c, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.000Z" } }), false);
   assert.equal(isUnread({ ...c, updatedAt: "2026-11-02T10:00:01Z" }, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.900Z" } }), true);
+});
+
+test("a task thread's header state uses the list's words and casing", () => {
+  const t = (o: Partial<Thread>) => ({ id: "t", title: "T", state: "open", ...o }) as Thread;
+  assert.equal(taskConversation(t({})).detail, "Open");
+  assert.equal(taskConversation(t({ state: "in_review" })).detail, "In review");
+  assert.equal(taskConversation(t({ assignee_id: "m", work_started_at: "2026-11-02T00:00:00Z" })).detail, "Running");
+  assert.equal(taskConversation(t({ state: "closed", closed_without_review: true })).detail, "Unreviewed");
+  assert.equal(stateWord(t({ assignee_id: "m" })), "Claimed");
 });

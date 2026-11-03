@@ -55,6 +55,12 @@ export function stateLabel(th: Thread, chrome: Chrome): string {
   return th.closed_without_review ? "closed without review" : chrome.label;
 }
 
+/** A task's state in the board's words, sentence-cased, for every place that prints it as text. */
+export function stateWord(th: Thread, gate?: Gate | null): string {
+  const word = th.closed_without_review ? "Unreviewed" : stateLabel(th, chromeFor(th, gate));
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 export type Card = { thread: Thread; chrome: Chrome; title: string; label: string };
 
 /** Every task in its lane, newest change first, lanes in board order. */

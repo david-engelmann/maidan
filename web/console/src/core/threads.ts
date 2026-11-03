@@ -3,6 +3,7 @@
 // Fetch is passed in, so it is tested.
 import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Member, Thread } from "./board.ts";
+import { stateWord } from "./board.ts";
 
 export type Message = {
   id: string;
@@ -79,7 +80,7 @@ export function groupConversation(g: GroupDm, me: string, members: Map<string, M
 }
 
 export function taskConversation(t: Thread): Conversation {
-  return { ref: { kind: "task", id: t.id }, threadId: t.id, label: t.title || "(untitled task)", detail: t.state.replace(/_/g, " "), updatedAt: t.updated_at ?? null };
+  return { ref: { kind: "task", id: t.id }, threadId: t.id, label: t.title || "(untitled task)", detail: stateWord(t), updatedAt: t.updated_at ?? null };
 }
 
 /** Most recently active first. */
