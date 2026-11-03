@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v421.0.0](https://github.com/david-engelmann/maidan/releases/tag/v421.0.0) — v420, published
+
+`v420.0.0` was tagged but never published: the aarch64 release build had no npm inside `cross`. v421.0.0 carries all of v420.0.0 (the record below) and the fix: the release builds the web assets on the host and passes `MAIDAN_SKIP_LANDING_BUILD` into the container. `CHANGELOG.md` under `[421.0.0]` and `[420.0.0]` has every entry.
+
 ## [v420.0.0](https://github.com/david-engelmann/maidan/releases/tag/v420.0.0) — the React console, and the hosted launch surfaces
 
 The first release cut from `dev` since `main` became prod. It carries every PR merged to `dev` through #1928: intake, evidence records and workspace invites ride along with the console. `CHANGELOG.md` under `[420.0.0]` has every entry.
