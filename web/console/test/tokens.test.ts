@@ -87,3 +87,10 @@ test("Activity's Pause and Resume use the shared button style", () => {
   const act = readFileSync(new URL("../src/activity/Activity.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(act, /<button onClick=/);
 });
+
+test("the Board health strip sizes its text from the type scale", () => {
+  for (const sel of [".health-chip", ".stale-banner"]) {
+    const rule = css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+    assert.match(rule, /font-size: var\(--text-base\)/, sel);
+  }
+});

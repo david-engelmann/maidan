@@ -1166,13 +1166,13 @@ h1, h2, h3, strong, b { font-weight: 600; }
 
 /* Board health strip: live tasks that may need a look, each a filter. */
 .health { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
-.health-chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.health-chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: var(--text-base); cursor: pointer; }
 .health-chip[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
 .health-stalled, .health-blocked, .health-ending { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 .health-clear { color: var(--muted); }
 
 /* Stale-data banner: the board stopped following live changes. */
-.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: 14px; }
+.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: var(--text-base); }
 .stale-banner .chip-btn { min-height: 44px; }
 
 /* Board view toggle and the by-agent view. */
