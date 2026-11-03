@@ -244,6 +244,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
@@ -290,6 +292,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: set up python
         uses: actions/setup-python@v5
         with:
@@ -321,6 +325,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: loom
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: bus models
         run: cargo test -p maidan-bus --features loom --release --lib loom
       - name: presence models
@@ -353,6 +358,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           # The Inspector requires Node >= 22.19.
@@ -387,6 +394,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -501,6 +510,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -542,6 +553,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -689,8 +702,7 @@ jobs:
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci -E
-          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed)::/) |
-          binary(mcp_reference_current)'
+          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -749,6 +761,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       # Reading the dependency graph is enough to prove the default build
       # leaves sqlite-vec out. The unit and lint jobs already compile the
       # default build; compiling it here too took ten of the old fifteen minutes.
@@ -786,6 +800,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: release build and e2e without bootstrap feature
         run: |
           cargo build -p maidan-server --release --no-default-features
@@ -892,6 +908,8 @@ jobs:
           components: llvm-tools-preview
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest + cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
@@ -966,13 +984,24 @@ jobs:
           python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py examples/openrouter/claimant.py examples/seat-runner/seat_runner.py scripts/eval-land-gate-advisor.py
           python3 -m unittest discover -s examples/seat-runner/tests
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); tomllib.load(open('examples/seat-runner/seats.example.toml','rb')); print('mcp configs valid')"
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-1
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
       - name: build images
-        run: |
-          docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
-            -t maidan-server:dev \
-            -f crates/maidan-server/Dockerfile .
-          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       # `--wait` blocks on the services' own health checks, so this step is
       # also what proves those health checks work.
       - name: compose up
@@ -1036,7 +1065,25 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-1
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
       - name: two-replica scale-out smoke
+        env:
+          MAIDAN_SMOKE_PREBUILT: "1"
         run: bash scripts/scale-out-smoke.sh
 
   pitr-drill:
@@ -1196,16 +1243,26 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The production build args (no bootstrap), so the smoke proves the
+      # image that ships exports OTLP; it only needs /health and /metrics.
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=0
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-0
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
       - name: build images
-        run: |
-          # The production build args (no bootstrap), so the smoke proves
-          # the image that ships exports OTLP; it only needs /health and
-          # /metrics, not the seed routes.
-          docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=0 \
-            -t maidan-server:dev \
-            -f crates/maidan-server/Dockerfile .
-          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       - name: otlp end-to-end smoke
         run: bash scripts/otlp-smoke.sh
       - name: collector logs on failure
@@ -1252,6 +1309,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: bring up a primary + streaming standby
         run: |
           eval "$(scripts/replica-harness.sh up)"
@@ -1263,7 +1322,7 @@ jobs:
         run: |
           cargo test -p maidan-store  --test it replication::    -- --ignored --nocapture
           cargo test -p maidan-store  --test it read_routing::    -- --ignored --nocapture
-          cargo test -p maidan-search --test replica_routing -- --ignored --nocapture
+          cargo test -p maidan-search --test it replica_routing:: -- --ignored --nocapture
       - name: tear down the harness
         if: always()
         run: scripts/replica-harness.sh down
@@ -1289,6 +1348,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: build the capture harness
         run: cargo build --example capture_server -p maidan-server
       - name: install node deps
@@ -1331,6 +1392,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

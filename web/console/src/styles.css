@@ -1275,7 +1275,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .work-list li { display: grid; gap: 2px; }
 .work-list a { color: var(--ink); text-underline-offset: 2px; }
-.ghost-line { height: 14px; border-radius: var(--r-sm); background: var(--line); }
+.ghost-line { height: 14px; border-radius: var(--r-xs); background: var(--line); }
 
 /* ---- Phone tab bar: five places and More ---------------------------------- */
 .tabbar-row { display: grid; grid-template-columns: 5fr 1fr; align-items: stretch; }

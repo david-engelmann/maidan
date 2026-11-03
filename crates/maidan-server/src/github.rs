@@ -605,6 +605,9 @@ pub struct GithubGate {
     /// Why it last left the merge queue (`MERGE_CONFLICT`,
     /// `FAILED_CHECKS`, ...), when the last queue event was a removal.
     pub dequeued: Option<String>,
+    /// The newest submitted reviews, bots' included: approved, changes
+    /// requested or commented. Drafts and dismissed reviews are left out.
+    pub reviews: Vec<maidan_types::SubmittedReview>,
 }
 
 /// What flipping a pull request to ready did.
@@ -2312,6 +2315,7 @@ mergedAt closedAt mergeCommit { oid } labels(first: 50) { nodes { name } } \
 ahead: commits { totalCount } \
 mergeStateStatus \
 reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { url author { login } } } } } \
+reviews(last: 20) { nodes { id state author { login } commit { oid } } } \
 baseRef { branchProtectionRule { requiredStatusCheckContexts } } \
 mergeQueueEntry { state } \
 timelineItems(last: 1, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT, REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes { \
@@ -2469,6 +2473,13 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
                     .unwrap_or("UNKNOWN")
                     .to_string()
             }),
+        reviews: pull
+            .pointer("/reviews/nodes")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(review_from)
+            .collect(),
     };
     Ok(GithubPullSnapshot {
         brief,
@@ -2480,6 +2491,18 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             .pointer("/ahead/totalCount")
             .and_then(serde_json::Value::as_i64)
             .map(|commits| commits > 0),
+    })
+}
+
+/// One `reviews` node as a submitted review; `None` for a draft, a dismissed
+/// review, or one missing its id or commit.
+fn review_from(node: &serde_json::Value) -> Option<maidan_types::SubmittedReview> {
+    let text = |pointer: &str| node.pointer(pointer).and_then(serde_json::Value::as_str);
+    Some(maidan_types::SubmittedReview {
+        id: text("/id")?.to_string(),
+        reviewer: text("/author/login").map(str::to_string),
+        state: maidan_types::ReviewState::from_github(text("/state")?)?,
+        head_sha: text("/commit/oid")?.to_ascii_lowercase(),
     })
 }
 
@@ -2827,6 +2850,12 @@ mod tests {
                 {"isResolved": true, "comments": {"nodes": [
                     {"url": "https://github.com/o/r/pull/7#discussion_r2", "author": {"login": "someone"}}]}},
             ]},
+            "reviews": {"nodes": [
+                {"id": "PRR_1", "state": "CHANGES_REQUESTED", "author": {"login": "review-bot[bot]"}, "commit": {"oid": "OLD"}},
+                {"id": "PRR_2", "state": "PENDING", "author": {"login": "drafter"}, "commit": {"oid": "ABC"}},
+                {"id": "PRR_3", "state": "DISMISSED", "author": {"login": "gone"}, "commit": {"oid": "ABC"}},
+                {"id": "PRR_4", "state": "APPROVED", "author": null, "commit": {"oid": "ABC"}},
+            ]},
             "baseRef": {"branchProtectionRule": {"requiredStatusCheckContexts": ["lint", "e2e"]}},
             "mergeQueueEntry": null,
             "timelineItems": {"nodes": [{"__typename": "RemovedFromMergeQueueEvent", "reason": "MERGE_CONFLICT"}]},
@@ -2868,6 +2897,24 @@ mod tests {
                 url: "https://github.com/o/r/pull/7#discussion_r1".into(),
                 author: Some("review-bot[bot]".into()),
             }]
+        );
+        assert_eq!(
+            gate.reviews,
+            vec![
+                maidan_types::SubmittedReview {
+                    id: "PRR_1".into(),
+                    reviewer: Some("review-bot[bot]".into()),
+                    state: maidan_types::ReviewState::ChangesRequested,
+                    head_sha: "old".into(),
+                },
+                maidan_types::SubmittedReview {
+                    id: "PRR_4".into(),
+                    reviewer: None,
+                    state: maidan_types::ReviewState::Approved,
+                    head_sha: "abc".into(),
+                },
+            ],
+            "drafts and dismissed reviews are no submitted review"
         );
         let checks = snapshot.checks.unwrap();
         let read: Vec<(&str, GithubCheckState, Option<i64>)> = checks
