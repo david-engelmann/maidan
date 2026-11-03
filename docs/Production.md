@@ -253,7 +253,7 @@ shell-less server image. Put it on a network that can reach the database and
 pin it to the server's exact tag:
 
 ```sh
-MAIDAN_TAG=v422.0.0
+MAIDAN_TAG=v423.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
