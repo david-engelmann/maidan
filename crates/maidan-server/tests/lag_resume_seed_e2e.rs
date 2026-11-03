@@ -18,7 +18,6 @@ use maidan_server::{event_stream::attach_watermark, AppState, FederationRuntime}
 use maidan_store::{prelude::*, resume_from_log, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Fixture {
     state: AppState,
@@ -28,7 +27,7 @@ struct Fixture {
 }
 
 async fn state_with_history(events: usize) -> Fixture {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

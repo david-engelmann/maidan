@@ -5,8 +5,8 @@ import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
-import { BoardApi, chromeFor, stateLabel, type Member, type Thread } from "../core/board.ts";
-import {
+import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { membersPending,
   QUICK_REACTIONS,
   REACTION_NAMES,
   ThreadsApi,
@@ -40,12 +40,20 @@ import {
   type Edit,
   type TaskFacts,
   evidenceLine,
+  evidenceRefusal,
+  safeHref,
+  withRecords,
+  EVIDENCE_KINDS,
+  EVIDENCE_KIND_WORD,
+  type EvidenceDraft,
+  type EvidenceKind,
   type Message,
   type Reaction,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 
 type Tab = "tasks" | "direct";
@@ -99,9 +107,10 @@ function saveSeen(key: string | null, v: SeenState): void {
 }
 
 /** The list tile for a task: the board's state dot, in the board's words. */
-function taskTone(th: Thread | undefined): { tone: string; word: string } | null {
+/** The list's state for a task, the same lane and word the board shows. */
+function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
   if (!th) return null;
-  const chrome = chromeFor(th);
+  const chrome = chromeFor(th, gate);
   return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
 }
 
@@ -220,13 +229,17 @@ export function Threads() {
             <span className="skeleton row-sk" />
           </div>
         ) : !list.length ? (
-          <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
+          <p className="muted conv-empty">
+            {tab === "tasks" ? (
+              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
+            ) : "No conversations yet. Start one with New message."}
+          </p>
         ) : (
           <ul className="convs">
             {list.map((c) => {
               const on = sameRef(c.ref, open);
               const unread = !on && isUnread(c, reads.value);
-              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id)) : null;
+              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id), board.gates[c.ref.id]) : null;
               const th = c.ref.kind === "task" ? threadById.get(c.ref.id) : undefined;
               const who = th?.assignee_id ? board.members.get(th.assignee_id) : undefined;
               return (
@@ -489,7 +502,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b className={members.size ? undefined : "name-pending"}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={membersPending(members) ? "name-pending" : undefined}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -811,9 +824,10 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     };
   }, [api, threadId, open, facts?.thread]);
   const f = facts?.thread === threadId ? facts.value : null;
-  const name = (id: string | undefined) => (id ? members.get(id)?.name || (members.size ? id : "…") : "someone");
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || (membersPending(members) ? "…" : id.slice(0, 8)) : "someone");
   const deps = f?.deps?.dependencies ?? [];
-  const entries = f?.evidence?.entries ?? [];
+  const entries = withRecords(f?.evidence?.entries ?? [], f?.records ?? null);
+  const reload = () => setFacts(null);
   return (
     <details className="pins facts-panel" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Result and evidence</summary>
@@ -828,11 +842,75 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
           {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}
           {entries.length ? (
             <ol className="ev-timeline" aria-label="Evidence">
-              {entries.map((e, i) => <li key={i}><span>{evidenceLine(e, name)}</span><time dateTime={e.at}>{clockTime(e.at)}</time></li>)}
+              {entries.map((e, i) => {
+                const href = e.kind === "evidence_recorded" ? safeHref(e.record?.url) : null;
+                return (
+                  <li key={e.record?.id ?? i}>
+                    <span>
+                      {evidenceLine(e, name)}
+                      {href ? <> · <a href={href} target="_blank" rel="noopener noreferrer">open</a></> : null}
+                    </span>
+                    <time dateTime={e.at}>{clockTime(e.at)}</time>
+                  </li>
+                );
+              })}
             </ol>
           ) : <p className="muted">No evidence recorded yet.</p>}
+          <AddEvidence api={api} threadId={threadId} onAdded={reload} />
         </div>
       )}
+    </details>
+  );
+}
+
+const EMPTY_DRAFT: EvidenceDraft = { kind: "test_run", source: "", url: "", sha256: "", note: "" };
+
+/** Attach a test run, CI run, diff, outside review, screenshot or note to the task. */
+function AddEvidence({ api, threadId, onAdded }: { api: ThreadsApi; threadId: string; onAdded: () => void }) {
+  const [draft, setDraft] = useState<EvidenceDraft>(EMPTY_DRAFT);
+  const [busy, setBusy] = useState(false);
+  const why = evidenceRefusal(draft);
+  const set = (k: keyof EvidenceDraft) => (e: { currentTarget: { value: string } }) => {
+    const value = e.currentTarget.value;
+    setDraft((d) => ({ ...d, [k]: value }));
+  };
+  const submit = async () => {
+    if (why || busy) return;
+    setBusy(true);
+    try {
+      await api.addEvidence(threadId, draft);
+      say("Evidence recorded");
+      setDraft(EMPTY_DRAFT);
+      onAdded();
+    } catch (err) {
+      sayError(err, "Could not record the evidence");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <details className="add-evidence">
+      <summary>Add evidence</summary>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <label>
+          Kind{" "}
+          <select value={draft.kind} onChange={(e) => setDraft((d) => ({ ...d, kind: e.currentTarget.value as EvidenceKind }))}>
+            {EVIDENCE_KINDS.map((k) => <option key={k} value={k}>{EVIDENCE_KIND_WORD[k]}</option>)}
+          </select>
+        </label>
+        <label>Source <input value={draft.source} onChange={set("source")} placeholder="cargo test, github-actions" maxLength={200} /></label>
+        <label>URL <input type="url" value={draft.url} onChange={set("url")} placeholder="https://" /></label>
+        <label>sha256 <input value={draft.sha256} onChange={set("sha256")} spellCheck={false} /></label>
+        <label>Note <textarea value={draft.note} onChange={set("note")} rows={2} maxLength={4000} /></label>
+        {why && (draft.source || draft.url || draft.sha256 || draft.note) ? <p className="muted">{why}</p> : null}
+        <button type="submit" className="btn" disabled={busy || Boolean(why)}>{busy ? "Recording" : "Record"}</button>
+        <p className="muted">Records are kept as written; they cannot be edited or removed. Adding one needs a bearer token.</p>
+      </form>
     </details>
   );
 }

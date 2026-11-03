@@ -5,7 +5,7 @@ use std::fmt;
 use serde_json::Value;
 
 /// The URI prefix of every problem type the server emits.
-pub const PROBLEM_BASE: &str = "https://maidan.dev/problems/";
+pub const PROBLEM_BASE: &str = "https://maidan.world/problems/";
 
 /// The problem a failed response carried.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +70,16 @@ pub enum MaidanError {
     CursorTooOld(Box<Problem>),
     /// 409 `event-log-broken`: the hash chain failed verification.
     EventLogBroken(Box<Problem>),
+    /// 422 `unprocessable-entity`: the request parsed but a value is invalid.
+    UnprocessableEntity(Box<Problem>),
+    /// 409 `media-quota-exceeded`: the upload would pass the workspace's media quota.
+    MediaQuotaExceeded(Box<Problem>),
+    /// 409 `footprint-conflict`: the claim's footprint overlaps live claims.
+    FootprintConflict(Box<Problem>),
+    /// 409 `plan-conflict`: the plan already has children.
+    PlanConflict(Box<Problem>),
+    /// 409 `claim-lost`: the lease is no longer the thread's live claim.
+    ClaimLost(Box<Problem>),
     /// A problem type this crate does not know, or a body that is not a problem.
     Unknown(Box<Problem>),
     /// No HTTP answer: connect, TLS, socket or WebSocket failure.
@@ -97,6 +107,11 @@ pub const PROBLEM_TYPES: [&str; 17] = [
     "idempotency-key-in-flight",
     "cursor-too-old",
     "event-log-broken",
+    "unprocessable-entity",
+    "media-quota-exceeded",
+    "footprint-conflict",
+    "plan-conflict",
+    "claim-lost",
 ];
 
 impl MaidanError {
@@ -150,6 +165,11 @@ impl MaidanError {
             Some("idempotency-key-in-flight") => Self::IdempotencyKeyInFlight(problem),
             Some("cursor-too-old") => Self::CursorTooOld(problem),
             Some("event-log-broken") => Self::EventLogBroken(problem),
+            Some("unprocessable-entity") => Self::UnprocessableEntity(problem),
+            Some("media-quota-exceeded") => Self::MediaQuotaExceeded(problem),
+            Some("footprint-conflict") => Self::FootprintConflict(problem),
+            Some("plan-conflict") => Self::PlanConflict(problem),
+            Some("claim-lost") => Self::ClaimLost(problem),
             _ => Self::Unknown(problem),
         }
     }
@@ -174,6 +194,11 @@ impl MaidanError {
             | Self::IdempotencyKeyInFlight(p)
             | Self::CursorTooOld(p)
             | Self::EventLogBroken(p)
+            | Self::UnprocessableEntity(p)
+            | Self::MediaQuotaExceeded(p)
+            | Self::FootprintConflict(p)
+            | Self::PlanConflict(p)
+            | Self::ClaimLost(p)
             | Self::Unknown(p) => Some(p),
             Self::Transport(_) | Self::Decode(_) => None,
         }

@@ -6,6 +6,7 @@ import { BoardApi, LANES, ago, cardAriaLabel, chips, leaseLeft, toLanes, type Ca
 import { Icon } from "../shell/icons.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
 import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery } from "../core/boardQuery.ts";
 import { isTyping } from "../shell/commands.ts";
@@ -75,7 +76,14 @@ export function Board() {
   const [lane, setLane] = useState<LaneKey>("open");
   const [query, setQuery] = useQuery();
   const openId = query.task;
-  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task });
+  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task, channel: task ? data.channelId : null });
+  // A task link from another channel switches to that channel once, if the
+  // reader can see it, so the drawer can open.
+  const linkedChannel = query.task ? query.channel : null;
+  useEffect(() => {
+    if (!linkedChannel || data.status !== "ready" || data.channelId === linkedChannel) return;
+    if (data.channels.some((c) => c.id === linkedChannel)) selectChannel(linkedChannel);
+  }, [linkedChannel, data.status, data.channelId, data.channels, selectChannel]);
   const [composing, setComposing] = useState(false);
   const all = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
   const lanes = useMemo(() => {
@@ -83,22 +91,28 @@ export function Board() {
     for (const l of LANES) out[l.key] = all[l.key].filter((c) => matches(c, { ...query, state: null }));
     return out;
   }, [all, query]);
-  const opened = data.threads.find((t) => t.id === openId) ?? null;
+  // A task just created opens from the create's answer until the board's own
+  // read has it, so a failed refresh does not leave the drawer shut.
+  const [created, setCreated] = useState<Thread | null>(null);
+  const opened = data.threads.find((t) => t.id === openId) ?? (created?.id === openId ? created : null);
   // The board narrows beside the drawer; keep the chosen card in view.
+  const scrolledFor = useRef<string | null>(null);
+  const cardLoaded = Boolean(openId && data.threads.some((t) => t.id === openId));
   useEffect(() => {
-    if (!openId) return;
+    if (!openId || !cardLoaded || scrolledFor.current === openId) return;
     // Only the lanes scroll sideways; the page itself never moves.
     const t = window.setTimeout(() => {
       const card = document.querySelector<HTMLElement>(".task.selected");
       const lanes = card?.closest<HTMLElement>(".lanes");
       if (!card || !lanes) return;
+      scrolledFor.current = openId;
       const c = card.getBoundingClientRect();
       const l = lanes.getBoundingClientRect();
       if (c.right > l.right) lanes.scrollLeft += c.right - l.right + 12;
       else if (c.left < l.left) lanes.scrollLeft -= l.left - c.left + 12;
     }, 220);
     return () => window.clearTimeout(t);
-  }, [openId]);
+  }, [openId, cardLoaded]);
   const agents = useMemo(() => {
     const held = new Set(data.threads.map((t) => t.assignee_id).filter(Boolean));
     return [...data.members.values()].filter((m) => held.has(m.id) || (m.kind && m.kind !== "human")).sort((a, b) => a.name.localeCompare(b.name));
@@ -128,7 +142,11 @@ export function Board() {
         <label className="channel-pick">
           <span className="visually-hidden">Channel</span>
           <span className="channel-hash" aria-hidden="true">#</span>
-          <select value={data.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!data.channels.length}>
+          <select value={data.channelId ?? ""} onChange={(e) => {
+              // Choosing a channel closes a linked task, so the link stops pulling the board back.
+              setQuery({ ...readQuery(window.location.hash), task: null, channel: null });
+              selectChannel(e.target.value);
+            }} disabled={!data.channels.length}>
             {data.channels.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -136,7 +154,7 @@ export function Board() {
           <Icon name="chevron" />
         </label>
         <p className="board-summary" role="status" aria-live="polite">
-          {data.status === "loading" ? "Loading…" : data.error ?? summary(all)}
+          {data.status === "loading" ? "Loading…" : data.error ?? summary(all, data.channels.length)}
         </p>
         <button type="button" className="btn go new-task" onClick={() => setComposing(true)} disabled={!data.channelId} aria-keyshortcuts="c">
           <span>New task</span>
@@ -147,11 +165,12 @@ export function Board() {
       {composing && data.channelId && (
         <Composer
           channelId={data.channelId}
-          onDone={(id) => {
+          onDone={(made) => {
             setComposing(false);
-            if (id) {
+            if (made?.id) {
+              setCreated(made);
               void refresh();
-              setOpenId(id);
+              setOpenId(made.id);
             }
           }}
         />
@@ -294,11 +313,11 @@ function TaskCard({ card, now, member, fresh, refusal, selected, onOpen }: { car
 /** The one flag worth a card's space: a refusal, a block, a stall, or a wait. */
 function cardFlag(th: Thread, lane: LaneKey, refusal?: string): { kind: string; text: string; title?: string } | null {
   if (refusal !== undefined) return { kind: "refused", text: "Close refused", title: refusal || "The server refused this close" };
-  const order = ["blocked", "stalled", "wait-overdue", "wait-waiting", "wait-returned_to_queue"];
+  const order = ["blocked", "status-blocked", "stalled", "wait-overdue", "wait-waiting", "wait-returned_to_queue"];
   const all = chips(th, lane);
   for (const k of order) {
     const c = all.find((x) => x.kind === k);
-    if (c) return { kind: k.startsWith("wait") ? "wait" : k, text: c.text, title: c.title ?? c.text };
+    if (c) return { kind: k.startsWith("wait") ? "wait" : k === "status-blocked" ? "blocked" : k, text: c.text, title: c.title ?? c.text };
   }
   return null;
 }
@@ -319,14 +338,14 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
-function summary(l: Record<LaneKey, Card[]>): string {
+function summary(l: Record<LaneKey, Card[]>, channels: number): string {
   const n = l.open.length + l.working.length + l.review.length + l.done.length;
-  if (!n) return "No tasks in this channel yet.";
+  if (!n) return emptyChannelText(channels);
   return `${n} task${n === 1 ? "" : "s"} · ${l.working.length} in progress · ${l.review.length} need review`;
 }
 
 const EMPTY: Record<LaneKey, { head: string; body: string; action?: { href: string; text: string } }> = {
-  open: { head: "All clear", body: "No task is waiting to be claimed. Start one in a thread and an agent can pick it up.", action: { href: "#/threads", text: "Start a task" } },
+  open: { head: "All clear", body: "No task is waiting to be claimed. Start one and an agent can pick it up.", action: { href: NEW_WORK_HREF, text: "Start a task" } },
   working: { head: "Nobody is mid-task", body: "Claimed tasks show here while an agent works on them.", action: { href: "#/tools/connect", text: "Connect an agent" } },
   review: { head: "Nothing to review", body: "Results that need your eyes land here. You are caught up." },
   done: { head: "Nothing closed yet", body: "Finished tasks collect here once they are closed." },
@@ -358,6 +377,8 @@ function FilterBar({ query, agents, onChange, total, visible }: { query: BoardQu
         <select value={query.agent ?? ""} onChange={(e) => onChange({ ...query, agent: e.target.value || null })}>
           <option value="">Anyone</option>
           {agents.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          {/* A link can name an agent no longer listed; the select still says which filter is on. */}
+          {query.agent && !agents.some((m) => m.id === query.agent) ? <option value={query.agent}>{query.agent.slice(0, 8)}</option> : null}
         </select>
         <Icon name="chevron" />
       </label>
@@ -379,7 +400,7 @@ function FilterBar({ query, agents, onChange, total, visible }: { query: BoardQu
   );
 }
 
-function Composer({ channelId, onDone }: { channelId: string; onDone: (id: string | null) => void }) {
+function Composer({ channelId, onDone }: { channelId: string; onDone: (made: Thread | null) => void }) {
   const tools = useToolsApi();
   const input = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -393,14 +414,14 @@ function Composer({ channelId, onDone }: { channelId: string; onDone: (id: strin
     setError(null);
     try {
       const made = await tools.createThread(channelId, title);
-      onDone(made?.id ?? null);
+      onDone(made);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the task");
       setBusy(false);
     }
   };
   return (
-    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onDone(null); } }} aria-label="New task">
+    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape" && !busy) { e.preventDefault(); onDone(null); } }} aria-label="New task">
       <label className="composer-field">
         <span className="visually-hidden">Task title</span>
         <input ref={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={200} disabled={busy} />

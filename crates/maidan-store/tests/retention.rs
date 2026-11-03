@@ -5,7 +5,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     Event, EventKind, MemberKind, NewAuditEvent, NewMember, NewNotification, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use std::future::Future;
 
 async fn workspace_with_member(store: &dyn Store, name: &str) -> maidan_types::Member {
@@ -288,7 +287,7 @@ where
 
 #[tokio::test]
 async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -327,7 +326,7 @@ async fn sqlite_cursor_later_the_same_day_still_holds_the_retention_floor() {
     // RFC3339 (`YYYY-MM-DDTHH:MM:SS+00:00`). On the cutoff's calendar day a
     // later cursor sorts first as text, because ` ` < `T`, so it looks idle
     // and the floor disappears.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

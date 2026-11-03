@@ -12,7 +12,6 @@ use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::*;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn body(value: &Value) -> Value {
     serde_json::from_str(value["content"][0]["text"].as_str().unwrap()).unwrap()
@@ -29,7 +28,7 @@ fn ids_of(value: &Value) -> Vec<String> {
 
 #[tokio::test]
 async fn find_threads_matches_attributes_and_stays_in_the_callers_workspace() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

@@ -8,7 +8,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewDelegationGrant, NewMember, NewWorkspace, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Tenant {
     workspace: WorkspaceId,
@@ -165,7 +164,7 @@ async fn check(store: &dyn Store, a: &Tenant, b: &Tenant, cross: &str) {
 
 #[tokio::test]
 async fn a_tombstoned_members_tokens_stop_resolving_and_the_other_tenants_do_not_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -186,7 +185,7 @@ async fn a_tombstoned_members_tokens_stop_resolving_and_the_other_tenants_do_not
 }
 
 async fn sqlite_store() -> (sqlx::SqlitePool, SqliteStore) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

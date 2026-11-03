@@ -127,7 +127,7 @@ export function NeedsYou() {
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
       {data.staleSince !== null && (
         <p className="needs-stale" role="status">
-          {data.error ?? `Stale since ${clock(data.staleSince)}. Reconnecting…`}
+          {data.error ?? `Could not reach the server. Showing what was loaded at ${clock(data.staleSince)}. Reconnecting…`}
         </p>
       )}
       {data.status === "loading" && <p className="muted">Loading what needs you…</p>}
@@ -365,6 +365,9 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
     if (!selected || (!keyYes && !keyNo)) return;
     const onKey = (e: KeyboardEvent) => {
       if (notShortcut(e)) return;
+      // Focus inside another row means that row is being worked, not this one.
+      const row = e.target instanceof Element ? e.target.closest(".need") : null;
+      if (row && !row.classList.contains("selected")) return;
       const ask = e.key === "a" ? keyYes : e.key === "r" ? keyNo : null;
       if (!ask) return;
       e.preventDefault();

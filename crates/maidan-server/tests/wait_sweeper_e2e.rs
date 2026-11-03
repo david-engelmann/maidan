@@ -12,11 +12,10 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EscalationPolicy, Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn wait_sweeper_fires_due_waits_parks_and_notifies() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

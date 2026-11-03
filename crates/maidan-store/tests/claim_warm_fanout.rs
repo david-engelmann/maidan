@@ -2,8 +2,9 @@
 //! C5). `claim_next` hands out one sibling first and holds the rest back until
 //! that claim reports usage, which means the provider has written the shared
 //! prefix, so the rest read it instead of each writing it cold. Siblings share
-//! a prefix when they are one recipe run's children or carry the same task
-//! fingerprint; other children of a parent, and unrelated work, are never held.
+//! a prefix when they are one recipe run's children (the run id stamped on
+//! the children it created) or carry the same task fingerprint; other children
+//! of a parent, sub-threads added by hand, and unrelated work are never held.
 //! The hold lasts at most 120s, ends when the first claim is released or its
 //! lease lapses, and a sibling usage report within 5 minutes skips it. Every
 //! case runs on both backends and both claim paths.
@@ -13,7 +14,6 @@ use maidan_types::{
     ChannelId, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewUsageLedgerEntry,
     NewWorkspace, PriceSnapshot, Thread, ThreadId, TokenUsage, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 /// Raw access to the store's database, to backdate rows and add the recipe
@@ -58,7 +58,7 @@ impl Db {
 }
 
 async fn sqlite() -> (SqliteStore, Db) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -146,6 +146,7 @@ async fn world(store: &dyn Store, db: &Db, group: Group, with_event: bool) -> Wo
     match group {
         Group::Recipe => {
             let recipe = Uuid::new_v4();
+            let run = Uuid::new_v4();
             db.exec(
                 &format!(
                     "INSERT INTO maidan_recipes (id, workspace_id, channel_id, name, spec, created_by, created_at, updated_at)
@@ -159,9 +160,17 @@ async fn world(store: &dyn Store, db: &Db, group: Group, with_event: bool) -> Wo
                     "INSERT INTO maidan_recipe_runs (id, recipe_id, workspace_id, root_thread_id, params, spec_snapshot, created_by, created_at)
                      VALUES ($1, $2, $3, $4, '{{}}', '{{}}', $5, {now})"
                 ),
-                &[Uuid::new_v4(), recipe, ws.id.0, parent.id.0, members[0].0],
+                &[run, recipe, ws.id.0, parent.id.0, members[0].0],
             )
             .await;
+            // Firing a recipe stamps its run id on the children it creates.
+            for child in &children {
+                db.exec(
+                    "INSERT INTO maidan_recipe_run_children (run_id, thread_id) VALUES ($1, $2)",
+                    &[run, child.id.0],
+                )
+                .await;
+            }
         }
         Group::Fingerprint => {
             // Creating a thread stores its fingerprint; give the children one.
@@ -297,6 +306,47 @@ async fn run_suite(store: &dyn Store, db: &Db) {
         assert_eq!(
             w.claim(store, 3).await.expect("not held").id,
             w.children[2].id
+        );
+
+        // #1729: a sub-thread added by hand to a recipe run's parent carries no
+        // run id, so it is never held, while the run's own children still are.
+        // Two tenants, each with a run: one tenant's first usage report
+        // releases only its own run's children.
+        let a = world(store, db, Group::Recipe, with_event).await;
+        let b = world(store, db, Group::Recipe, with_event).await;
+        assert_ne!(a.ws, b.ws);
+        let manual = store
+            .create_thread(NewThread {
+                channel_id: a.channel,
+                parent_thread_id: Some(a.parent.id),
+                title: Some("added by hand".into()),
+                description: None,
+                created_by: None,
+            })
+            .await
+            .expect("manual sub-thread");
+        let a_first = a.claim_first_child(store).await;
+        let b_first = b.claim_first_child(store).await;
+        assert_eq!(
+            a.claim(store, 2).await.expect("manual not held").id,
+            manual.id,
+            "a hand-added sub-thread is never held"
+        );
+        assert!(a.claim(store, 3).await.is_none(), "run children held");
+        assert!(b.claim(store, 2).await.is_none(), "other tenant's run held");
+        a.report_usage(store, &a_first, 1).await;
+        assert_eq!(
+            a.claim(store, 3).await.expect("fan out").id,
+            a.children[1].id
+        );
+        assert!(
+            b.claim(store, 2).await.is_none(),
+            "another tenant's usage report does not release this run"
+        );
+        b.report_usage(store, &b_first, 1).await;
+        assert_eq!(
+            b.claim(store, 2).await.expect("fan out").id,
+            b.children[1].id
         );
 
         // The hold is capped at 120s: a silent first claim stops holding.

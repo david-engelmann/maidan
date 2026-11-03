@@ -22,7 +22,6 @@ use maidan_types::{
 };
 use reqwest::{Method, StatusCode};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SECRET: &str = "SECRET-WORDS-7d1f";
 const SECRET_META: &str = "SECRET-META-7d1f";
@@ -88,7 +87,7 @@ impl Ctx {
 }
 
 async fn spawn(kek: u8) -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(8)
         .connect("sqlite::memory:")
         .await

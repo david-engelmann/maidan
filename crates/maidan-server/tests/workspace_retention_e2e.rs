@@ -27,7 +27,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The instance keeps events 30 days and messages 14 days; a workspace may
 /// keep either for less time, not more.
@@ -43,7 +42,7 @@ fn artifacts() -> Arc<dyn maidan_artifacts::ArtifactStore> {
 }
 
 async fn sqlite_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

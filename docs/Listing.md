@@ -138,20 +138,20 @@ capture.
 ## The demo instance
 
 Directory reviewers connect to `try.maidan.world`, a seeded workspace that
-resets on its own. It's built up to the deploy, which is the maintainer's. No
-workflow deploys it.
+resets on its own. Each release deploys it (`deploy-demo.yml`, once
+`vars.DEMO_DOMAIN` is `true`); the runbook is [Deploy](Deploy.md#trymaidanworld).
 
 | Piece | Where |
 | --- | --- |
 | Worker and route | `deploy/cloudflare/wrangler.demo.jsonc`, `deploy/cloudflare/src/demo.js` |
-| Image | `deploy/cloudflare/demo/Dockerfile`: the server and the `maidan` CLI with the bootstrap routes, plus bash, curl and jq |
+| Image | `deploy/cloudflare/demo/Dockerfile`: the release's signed `maidan-server:<tag>-demo` (with the bootstrap routes) and `maidan-cli:<tag>`, plus bash, curl and jq |
 | Seed | `deploy/cloudflare/demo/entrypoint.sh` runs `scripts/demo-board.sh` against a fresh SQLite file on every boot |
-| Reset | The cron (`0 */6 * * *`) destroys the container; the next request boots a fresh one and reseeds |
+| Reset | Once a day the cron (`0 4 * * *`) destroys a running container and never starts one; the next request boots a fresh one and reseeds |
 | Settings | `deploy/cloudflare/src/demo-config.js`, checked by `deploy/cloudflare/test/demo.test.js` |
 
 What keeps it safe to leave open:
 
-- **Tokens expire.** Every token the seed mints has an `expires_at` seven hours
+- **Tokens expire.** Every token the seed mints has an `expires_at` 30 hours
   out (`DEMO_TOKEN_TTL_SECS`), so a missed reset still leaves no older token.
 - **No outbound egress.** The container runs with `enableInternet = false`.
   Webhooks and delivery to GitHub, Slack or Linear fail closed.
@@ -168,9 +168,9 @@ What keeps it safe to leave open:
 
 ### Deploying it
 
-1. Point `try.maidan.world` at the account (a custom domain on the Worker).
-2. From `deploy/cloudflare`, run `npm ci`, then `npx wrangler deploy -c
-   wrangler.demo.jsonc`.
+1. Point `try.maidan.world` at the account (a custom domain on the Worker),
+   and set the repository variable `DEMO_DOMAIN` to `true`.
+2. Publish a release, or dispatch `deploy demo` with its tag.
 3. Open `https://try.maidan.world/health`. The first request after a deploy or
    a reset waits for the seed, which takes a few seconds.
 4. For each directory, mint a reviewer token with an `expires_at` no later than

@@ -9,7 +9,7 @@ resources:
 namePrefix: dev-
 
 commonAnnotations:
-  maidan.dev/environment: "dev"
+  maidan.world/environment: "dev"
 
 # Override images for the dev overlay. Build them via:
 #   docker build -t maidan-server:dev -f crates/maidan-server/Dockerfile .

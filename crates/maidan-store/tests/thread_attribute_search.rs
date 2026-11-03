@@ -9,7 +9,6 @@ use maidan_store::store::{ThreadAttributeFilter, WorkspaceThreadSearch};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -437,7 +436,7 @@ async fn assert_attribute_search(store: &dyn Store) {
 
 #[tokio::test]
 async fn attribute_search_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

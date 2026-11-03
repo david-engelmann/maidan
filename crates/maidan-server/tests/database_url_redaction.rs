@@ -10,7 +10,11 @@ const TOKEN: &str = "tok_S3cr3t";
 
 fn boot_with(database_url: &str) -> Output {
     let dir = tempfile::tempdir().unwrap();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_maidan-server"));
+    let mut cmd = Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan-server")
+            .or_else(|| std::env::var_os("NEXTEST_BIN_EXE_maidan_server"))
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan-server").into()),
+    );
     for (name, _) in std::env::vars() {
         if name.starts_with("MAIDAN_") || name.starts_with("DATABASE_URL") {
             cmd.env_remove(name);

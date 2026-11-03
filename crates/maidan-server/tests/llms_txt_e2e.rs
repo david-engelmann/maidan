@@ -8,11 +8,10 @@ use maidan_search::SqliteSearch;
 use maidan_server::{router, AppState};
 use maidan_store::{run_sqlite_migrations, SqliteStore};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

@@ -20,7 +20,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -35,7 +34,7 @@ struct Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

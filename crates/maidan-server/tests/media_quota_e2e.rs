@@ -21,7 +21,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Ctx {
     base: String,
@@ -33,7 +32,7 @@ struct Ctx {
 }
 
 async fn spawn() -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(8)
         .connect("sqlite::memory:")
         .await
@@ -154,7 +153,7 @@ async fn refused(response: reqwest::Response) -> (i64, i64, i64) {
     );
     let problem: Value = response.json().await.unwrap();
     assert_eq!(
-        problem["type"], "https://maidan.dev/problems/media-quota-exceeded",
+        problem["type"], "https://maidan.world/problems/media-quota-exceeded",
         "{problem}"
     );
     assert_eq!(problem["status"], 409);

@@ -149,8 +149,8 @@ pub async fn insert_pending(pool: &SqlitePool, new: NewOidcPendingAuth) -> Resul
     let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_oidc_pending
-            (state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&new.state)
     .bind(new.target.kind())
@@ -159,6 +159,7 @@ pub async fn insert_pending(pool: &SqlitePool, new: NewOidcPendingAuth) -> Resul
     .bind(&new.pkce_verifier)
     .bind(new.return_to.as_deref())
     .bind(new.invite_entry_id.map(|id| id.0))
+    .bind(new.workspace_invite_id.map(|id| id.0))
     .bind(now)
     .bind(new.expires_at)
     .execute(pool)
@@ -171,7 +172,7 @@ pub async fn take_pending(pool: &SqlitePool, state: &str) -> Result<OidcPendingA
     let row = sqlx::query(
         "DELETE FROM maidan_oidc_pending
          WHERE state = ? AND expires_at > ?
-         RETURNING state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, expires_at",
+         RETURNING state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, expires_at",
     )
     .bind(state)
     .bind(now)
@@ -188,6 +189,9 @@ pub async fn take_pending(pool: &SqlitePool, state: &str) -> Result<OidcPendingA
         invite_entry_id: row
             .get::<Option<Uuid>, _>("invite_entry_id")
             .map(WaitlistEntryId),
+        workspace_invite_id: row
+            .get::<Option<Uuid>, _>("workspace_invite_id")
+            .map(maidan_types::WorkspaceInviteId),
     })
 }
 
@@ -207,7 +211,7 @@ fn pending_target(
     }
 }
 
-fn row_to_identity(row: &sqlx::sqlite::SqliteRow) -> Result<OidcIdentity, StoreError> {
+pub(crate) fn row_to_identity(row: &sqlx::sqlite::SqliteRow) -> Result<OidcIdentity, StoreError> {
     Ok(OidcIdentity {
         id: OidcIdentityId(row.get::<Uuid, _>("id")),
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),

@@ -24,7 +24,6 @@ use maidan_search::{Indexer, LoggingHandler};
 use maidan_server::{router, webhook_worker::WebhookWorker, AppState, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Mutex;
 
 fn webhook_test_key() -> Option<Arc<[u8; 32]>> {
@@ -91,7 +90,7 @@ async fn spawn() -> Harness {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

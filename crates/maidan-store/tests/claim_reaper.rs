@@ -16,7 +16,6 @@ use maidan_types::{
     ChannelId, Event, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewThread,
     NewWorkspace, Thread,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn setup(store: &dyn Store, threads: usize) -> (ChannelId, MemberId, MemberId) {
     let ws = store
@@ -312,7 +311,7 @@ async fn run_suite(store: Arc<dyn Store>) {
 
 #[tokio::test]
 async fn reap_expired_claims_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

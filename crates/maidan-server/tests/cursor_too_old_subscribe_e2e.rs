@@ -11,7 +11,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -24,7 +23,7 @@ async fn spawn() -> (
     tempfile::TempDir,
     Arc<dyn Store>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -122,7 +121,7 @@ async fn list_events_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body["type"].as_str(),
-        Some("https://maidan.dev/problems/cursor-too-old")
+        Some("https://maidan.world/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
     assert_eq!(
@@ -339,7 +338,7 @@ async fn mcp_stream_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body["type"].as_str(),
-        Some("https://maidan.dev/problems/cursor-too-old")
+        Some("https://maidan.world/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
     assert_eq!(

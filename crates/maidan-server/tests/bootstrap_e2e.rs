@@ -16,7 +16,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     addr: SocketAddr,
@@ -36,7 +35,7 @@ impl Harness {
 }
 
 async fn spawn(bootstrap_enabled: bool) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -159,7 +158,7 @@ async fn demo_board_script_hits_the_server() {
     // One connection, and a busy timeout, matching the server: two agents
     // claim at the same moment, and a multi-connection SQLite pool turns
     // that into "database is locked" instead of waiting.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .after_connect(|conn, _| {
             Box::pin(async move {
@@ -265,7 +264,7 @@ async fn demo_board_script_hits_the_server() {
 /// post, and transition. A token without `thread:transition` cannot claim.
 #[tokio::test]
 async fn worker_preset_can_claim_post_and_transition() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

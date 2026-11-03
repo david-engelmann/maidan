@@ -96,7 +96,10 @@ test("Tab reaches a Needs you row's actions", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/needs");
   await expect(page.locator(".needs-count")).toBeVisible();
-  const first = page.locator(".need-actions button:not([disabled])").first();
+  // Only the open row's actions are on screen; the first match in DOM order
+  // can be a closed row's, which cannot take focus, and rows waiting the same
+  // time have no fixed order.
+  const first = page.locator(".need-actions button:not([disabled]):visible").first();
   test.skip((await first.count()) === 0, "nothing waiting in this seed");
   await first.focus();
   await expect(first).toBeFocused();

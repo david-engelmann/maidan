@@ -50,10 +50,22 @@ export function dmOther(dm: Dm, me: string): string {
   return dm.member_low_id === me ? dm.member_high_id : dm.member_low_id;
 }
 
+const settled = new WeakSet<Map<string, Member>>();
+/** Marks a member map as the answer of a finished read, even an empty one
+ * from a failed read, so names fall back to an id prefix instead of waiting. */
+export function settleMembers<T extends Map<string, Member>>(members: T): T {
+  settled.add(members);
+  return members;
+}
+/** Whether the member read behind this map is still out. */
+export function membersPending(members: Map<string, Member>): boolean {
+  return members.size === 0 && !settled.has(members);
+}
+
 /** A member's name. Until the member list has loaded this is "", so screens
  * show a placeholder rather than flashing a raw id. */
 export function nameOf(members: Map<string, Member>, id: string): string {
-  return members.get(id)?.name ?? (members.size === 0 ? "" : id.slice(0, 8));
+  return members.get(id)?.name ?? (membersPending(members) ? "" : id.slice(0, 8));
 }
 
 export function dmConversation(dm: Dm, me: string, members: Map<string, Member>): Conversation {
@@ -97,7 +109,10 @@ export function dayKey(ts: string): string {
 export function dayLabel(ts: string, now: number): string {
   const key = dayKey(ts);
   if (key === dayKey(new Date(now).toISOString())) return "Today";
-  if (key === dayKey(new Date(now - 864e5).toISOString())) return "Yesterday";
+  // The calendar day before, not 24 hours before: a DST day is 23 or 25 hours.
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (key === dayKey(yesterday.toISOString())) return "Yesterday";
   const d = new Date(ts);
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
@@ -110,7 +125,12 @@ export type SeenState = { baseline: string; opened: Record<string, string> };
 export function isUnread(c: Conversation, seen: SeenState): boolean {
   if (!c.updatedAt) return false;
   const mark = seen.opened[c.threadId] ?? seen.baseline;
-  return c.updatedAt > mark;
+  // As instants: the server's fractional digits differ from the browser's,
+  // so string order is not time order within a second.
+  const at = Date.parse(c.updatedAt);
+  const seenAt = Date.parse(mark);
+  if (Number.isNaN(at) || Number.isNaN(seenAt)) return c.updatedAt > mark;
+  return at > seenAt;
 }
 
 export function markOpened(seen: SeenState, threadId: string, at: string): SeenState {
@@ -252,9 +272,103 @@ export function editRefusal(before: string, after: string): string | null {
 
 export type TaskResult = { result: unknown; produced_by?: string | null };
 export type Dependencies = { dependencies?: Array<{ depends_on_thread_id: string }>; ready?: boolean };
+/** What an evidence record is evidence of; the server's `EvidenceRecordKind`. */
+export const EVIDENCE_KINDS = ["test_run", "ci_run", "diff", "review_verdict", "screenshot", "note"] as const;
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+
+export const EVIDENCE_KIND_WORD: Record<EvidenceKind, string> = {
+  test_run: "Test run",
+  ci_run: "CI run",
+  diff: "Diff",
+  review_verdict: "Outside review",
+  screenshot: "Screenshot",
+  note: "Note",
+};
+
+/** One record from `GET /threads/{id}/evidence-records`. Records are never edited. */
+export type EvidenceRecord = {
+  id: string;
+  thread_id: string;
+  kind: string;
+  source: string;
+  url?: string | null;
+  sha256?: string | null;
+  note?: string | null;
+  recorded_by: string;
+  recorded_at: string;
+};
+
+/** A record to add, as typed in the form. Blank fields count as absent. */
+export type EvidenceDraft = { kind: EvidenceKind; source: string; url: string; sha256: string; note: string };
+
+export const EVIDENCE_SOURCE_MAX = 200;
+export const EVIDENCE_URL_MAX = 2048;
+export const EVIDENCE_NOTE_MAX = 4000;
+
+/** Why the server would refuse a draft, or null. Mirrors `NewEvidenceRecord::normalized`. */
+export function evidenceRefusal(d: EvidenceDraft): string | null {
+  const source = d.source.trim();
+  const url = d.url.trim();
+  const sha = d.sha256.trim();
+  const note = d.note.trim();
+  if (!source || [...source].length > EVIDENCE_SOURCE_MAX) return `Say where it came from, 1 to ${EVIDENCE_SOURCE_MAX} characters`;
+  if (url) {
+    if (new TextEncoder().encode(url).length > EVIDENCE_URL_MAX) return `The URL must be at most ${EVIDENCE_URL_MAX} bytes`;
+    if (!safeHref(url)) return "The URL must be an http or https URL";
+  }
+  if (sha && !/^[0-9a-fA-F]{64}$/.test(sha)) return "The sha256 must be 64 hex characters";
+  if ([...note].length > EVIDENCE_NOTE_MAX) return `The note must be at most ${EVIDENCE_NOTE_MAX} characters`;
+  if (d.kind === "screenshot" && !url) return "A screenshot needs a URL";
+  if (d.kind === "note" && !note) return "A note needs words";
+  if (!url && !sha && !note) return "Give a URL, a sha256 or a note";
+  return null;
+}
+
+/** The request body for a draft: trimmed, blanks left out, the digest lowercase. */
+export function evidenceBody(d: EvidenceDraft): Record<string, string> {
+  const body: Record<string, string> = { kind: d.kind, source: d.source.trim() };
+  if (d.url.trim()) body.url = d.url.trim();
+  if (d.sha256.trim()) body.sha256 = d.sha256.trim().toLowerCase();
+  if (d.note.trim()) body.note = d.note.trim();
+  return body;
+}
+
+/** A URL the page may link to: only http and https, so a record cannot carry a `javascript:` link. */
+export function safeHref(url: string | null | undefined): string | null {
+  if (!url || /\s/.test(url)) return null;
+  try {
+    const u = new URL(url);
+    return (u.protocol === "https:" || u.protocol === "http:") && u.host ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One record in words, with the recorder named by `name`. */
+export function recordLine(r: EvidenceRecord, name: (id: string | undefined) => string): string {
+  const word = EVIDENCE_KIND_WORD[r.kind as EvidenceKind] ?? r.kind;
+  const parts = [`${word} from ${r.source}`, `recorded by ${name(r.recorded_by)}`];
+  if (r.sha256) parts.push(`sha256 ${short(r.sha256)}`);
+  return parts.join(", ") + (r.note ? `: ${r.note}` : "");
+}
+
+/**
+ * The timeline with the thread's records in it. The timeline already merges
+ * them as `evidence_recorded`; records it lacks (read from the records list)
+ * are added at their time, so the list is the record of truth for records.
+ */
+export function withRecords(entries: EvidenceEntry[], records: EvidenceRecord[] | null): EvidenceEntry[] {
+  if (!records) return entries;
+  const seen = new Set(entries.flatMap((e) => (e.kind === "evidence_recorded" && e.record ? [e.record.id] : [])));
+  const extra = records.filter((r) => !seen.has(r.id)).map((r): EvidenceEntry => ({ kind: "evidence_recorded", at: r.recorded_at, record: r }));
+  if (!extra.length) return entries;
+  return [...entries, ...extra].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
 export type EvidenceEntry = {
   kind: string;
   at: string;
+  record?: EvidenceRecord;
   artifact?: { sha256?: string; linked_by?: string };
   sha256?: string;
   produced_by?: string;
@@ -262,7 +376,7 @@ export type EvidenceEntry = {
   packet?: { requested_by?: string; thread_version?: number; evidence_root?: string; self_reported_only?: boolean };
 };
 export type Evidence = { entries?: EvidenceEntry[]; evidence_changed_since_review?: boolean };
-export type TaskFacts = { result: TaskResult | null; deps: Dependencies | null; evidence: Evidence | null };
+export type TaskFacts = { result: TaskResult | null; deps: Dependencies | null; evidence: Evidence | null; records: EvidenceRecord[] | null };
 
 const short = (h: string | undefined) => (h ? `${h.slice(0, 12)}…` : "");
 
@@ -271,6 +385,8 @@ export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) =>
   switch (e.kind) {
     case "artifact_linked":
       return `Artifact ${short(e.artifact?.sha256)} linked by ${name(e.artifact?.linked_by)}`;
+    case "evidence_recorded":
+      return e.record ? recordLine(e.record, name) : "Evidence recorded";
     case "result_recorded":
       return `Result ${short(e.sha256)} recorded by ${name(e.produced_by)}`.replace("Result  ", "Result ");
     case "land_gate_verdict":
@@ -341,14 +457,43 @@ export class ThreadsApi {
     }
   }
 
+  /** A task's result for a reviewer: none recorded (a 404) is not the same as
+   * a read that failed, which says why. */
+  async resultRead(threadId: string): Promise<{ result: TaskResult | null; error: string | null }> {
+    try {
+      return { result: await this.get<TaskResult>(`/threads/${threadId}/result`), error: null };
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return { result: null, error: null };
+      return { result: null, error: e instanceof Error ? e.message : "Could not load the result" };
+    }
+  }
+
   /** Result, dependencies and evidence for a task; each part is optional. */
   async facts(threadId: string): Promise<TaskFacts> {
-    const [result, deps, evidence] = await Promise.all([
+    const [result, deps, evidence, records] = await Promise.all([
       this.soft<TaskResult>(`/threads/${threadId}/result`),
       this.soft<Dependencies>(`/threads/${threadId}/dependencies`),
       this.soft<Evidence>(`/threads/${threadId}/evidence`),
+      this.records(threadId),
     ]);
-    return { result, deps, evidence };
+    return { result, deps, evidence, records };
+  }
+
+  /**
+   * The thread's evidence records, oldest first, or null when they cannot be
+   * read. The records list is a bearer route; a signed-in session reads the
+   * same records from the timeline instead.
+   */
+  async records(threadId: string): Promise<EvidenceRecord[] | null> {
+    if (bearerRefusal(this.creds())) return null;
+    return this.soft<EvidenceRecord[]>(`/threads/${threadId}/evidence-records`);
+  }
+
+  /** Adds a record. Bearer only, like the route; refused drafts never go out. */
+  async addEvidence(threadId: string, draft: EvidenceDraft): Promise<EvidenceRecord | null> {
+    const why = bearerRefusal(this.creds()) ?? evidenceRefusal(draft);
+    if (why) throw new ThreadsError(why);
+    return this.send<EvidenceRecord>("POST", `/threads/${threadId}/evidence-records`, evidenceBody(draft));
   }
 
   private async send<T>(method: string, path: string, body: unknown): Promise<T | null> {

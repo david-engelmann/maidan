@@ -8,7 +8,6 @@ use maidan_types::{
     Attribution, Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     StoredEvent, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn logged(store: &dyn Store, workspace_id: WorkspaceId, kind: EventKind) -> Vec<StoredEvent> {
     store
@@ -21,7 +20,7 @@ async fn logged(store: &dyn Store, workspace_id: WorkspaceId, kind: EventKind) -
 }
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

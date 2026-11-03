@@ -21,7 +21,6 @@ use maidan_server::{
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::NewWorkspace;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Mutex;
 
 fn test_key() -> Option<Arc<[u8; 32]>> {
@@ -68,7 +67,7 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_AUTOMATION_POLL_INTERVAL_MS", "10") };
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

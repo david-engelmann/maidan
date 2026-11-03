@@ -10,7 +10,7 @@ import { hasToken } from "../core/api.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { ReviewContext } from "../needs/ReviewContext.tsx";
-import { convHash } from "../core/threads.ts";
+import { convHash, membersPending } from "../core/threads.ts";
 
 type Props = {
   thread: Thread | null;
@@ -66,8 +66,14 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   const [busy, setBusy] = useState<"claim" | "close" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [facts, setFacts] = useState<CloseFacts | null>(null);
+  // Bumped by an in-sheet action, so the result and evidence read again.
+  const [rev, setRev] = useState(0);
+  const changed = () => {
+    setRev((r) => r + 1);
+    onChanged();
+  };
   const chrome = chromeFor(th, gate);
-  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? (members.size ? id.slice(0, 8) : "…")) : "");
+  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? (membersPending(members) ? "…" : id.slice(0, 8))) : "");
   const terminal = th.state === "closed" || th.state === "archived";
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 
@@ -188,10 +194,10 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
-      <SheetContext tid={th.id} />
+      <SheetContext key={rev} tid={th.id} />
       <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
 
-      <SheetActions th={th} api={api} can={can} claimWhy={claimWhy} busy={busy} act={act} onChanged={onChanged} setNote={setNote} />
+      <SheetActions th={th} api={api} can={can} claimWhy={claimWhy} busy={busy} act={act} onChanged={changed} setNote={setNote} />
       <p className="sheet-note" role="status" aria-live="polite">{note}</p>
     </div>
   );
@@ -261,8 +267,12 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
   };
   const approve = () =>
     go("approve", async () => {
+      // An approval signs the evidence it was handed; without a packet there
+      // is nothing to sign, so say why instead of sending a null root.
       const p = await needs.reviewPacket(th.id);
-      await needs.review(th.id, "approve", "", p.state === "ready" ? p.packet.evidence_root : null);
+      if (p.state === "error") throw new Error(p.why);
+      if (p.state !== "ready") throw new Error("Nothing was handed to review yet, so there is no evidence to approve.");
+      await needs.review(th.id, "approve", "", p.packet.evidence_root);
     }, "Approved.");
   const sendBack = () => {
     if (!words.trim()) return setNote("Say what should change: the agent reads this.");

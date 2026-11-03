@@ -397,7 +397,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn workspace_and_explorer_filter_by_thread_access_in_query_sqlite() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

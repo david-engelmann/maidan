@@ -33,10 +33,10 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::SqlitePool;
 
 async fn spawn() -> (SocketAddr, Arc<dyn Store>, SqlitePool, tempfile::TempDir) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .after_connect(|conn, _| {
             Box::pin(async move {

@@ -11,7 +11,6 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{mail_worker, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::NewMailOutbox;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct CountingMailer {
     attempts: AtomicUsize,
@@ -39,7 +38,7 @@ impl maidan_server::mail::MailTransport for CountingMailer {
 }
 
 async fn state_with(mailer: Arc<CountingMailer>) -> (AppState, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

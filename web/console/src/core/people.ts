@@ -1,7 +1,7 @@
 // People and Swarm: the roster with presence, a member's details, the
 // workspace's footprint lists, and the swarm builder's role circuit.
 // Everything here is plain data in, plain data out, so it can be tested.
-import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { apiPath, bearerRefusal, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Thread } from "./board.ts";
 import type { ControlFrame } from "./live.ts";
 
@@ -32,6 +32,28 @@ export const REASON_LABELS: Record<string, string> = {
 
 export const WORKER_PRESET = "maidan.agent.worker";
 export const CAPS_REQUIRED = "Name at least one capability, or use the worker preset.";
+
+export type InviteRole = "viewer" | "member";
+export type Invite = { id: string; email: string; role: InviteRole | string; createdAt: string; expiresAt: string; revokedAt: string | null; acceptedAt: string | null };
+export const EMAIL_REQUIRED = "Enter the email address the person signs in with.";
+
+/** Why an email cannot be invited, or null when it can. The server checks again. */
+export function emailRefusal(email: string): string | null {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? null : EMAIL_REQUIRED;
+}
+
+/** An invite's standing in words. */
+export function inviteState(i: Invite, now: number): "accepted" | "revoked" | "expired" | "pending" {
+  if (i.acceptedAt) return "accepted";
+  if (i.revokedAt) return "revoked";
+  if (Date.parse(i.expiresAt) <= now) return "expired";
+  return "pending";
+}
+
+/** The full link to send: the server returns a path, so join it to the API origin. */
+export function inviteLink(base: string, acceptPath: string): string {
+  return `${trimBase(base)}${acceptPath}`;
+}
 
 export const REPO_REQUIRED = "Name the repository to pause, as owner/name.";
 
@@ -200,6 +222,7 @@ export function nextWell(role: Role, key: string): Role {
 export class PeopleError extends Error {}
 
 async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
+  noteAuthLost(res);
   let detail: string | null = null;
   try {
     const body = (await res.json()) as { error?: string; message?: string; detail?: string };
@@ -301,6 +324,28 @@ export class PeopleApi {
 
   async revoke(id: string): Promise<void> {
     await this.write("DELETE", `/tokens/${encodeURIComponent(id)}`, undefined);
+  }
+
+  async invites(workspace: string): Promise<Invite[]> {
+    const rows = await this.bearer<Array<{ id: string; email: string; role: string; created_at: string; expires_at: string; revoked_at?: string | null; accepted_at?: string | null }>>(`/workspaces/${workspace}/invites`);
+    return rows.map((i) => ({ id: i.id, email: i.email, role: i.role, createdAt: i.created_at, expiresAt: i.expires_at, revokedAt: i.revoked_at ?? null, acceptedAt: i.accepted_at ?? null }));
+  }
+
+  /**
+   * Invites a person. The link comes back once; the caller shows it and
+   * drops it, and nothing here keeps or logs it. Needs a bearer token.
+   */
+  async invite(workspace: string, req: { email: string; role: InviteRole }): Promise<{ id: string; link: string }> {
+    const why = emailRefusal(req.email);
+    if (why) throw new PeopleError(why);
+    const res = await this.raw("POST", `/workspaces/${workspace}/invites`, { email: req.email.trim(), role: req.role });
+    const out = (await res.json()) as { invite?: { id?: string }; accept_path?: string };
+    if (typeof out.invite?.id !== "string" || typeof out.accept_path !== "string") throw new PeopleError("The server did not send the invite link back.");
+    return { id: out.invite.id, link: inviteLink(this.creds().base, out.accept_path) };
+  }
+
+  async revokeInvite(workspace: string, id: string): Promise<void> {
+    await this.write("DELETE", `/workspaces/${workspace}/invites/${encodeURIComponent(id)}`, undefined);
   }
 
   private async secretWrite(method: string, path: string, body: unknown): Promise<{ id: string; secret: string }> {

@@ -2,7 +2,7 @@
 // kept on its Tools tabs, minus the gates Needs you already covers. Plus the
 // artifact store. Everything here is plain data in, plain data out.
 import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
-import type { Fetch } from "./board.ts";
+import type { Fetch, Thread } from "./board.ts";
 
 export type Notification = { id: string; kind: string; thread_id?: string | null; read_at?: string | null; created_at?: string };
 export type DeliveryMode = "immediate" | "digest" | string;
@@ -249,7 +249,8 @@ export class ToolsApi {
     await this.send("PUT", `/members/${member}/delivery-mode`, { mode });
   }
   async email(member: string): Promise<string | null> {
-    return (await this.maybe<{ email: string }>(`/members/${member}/email`))?.email ?? null;
+    // 200 with null when no address is set; an older server answers 404.
+    return (await this.maybe<{ email: string } | null>(`/members/${member}/email`))?.email ?? null;
   }
   async setEmail(member: string, email: string): Promise<void> {
     const why = emailRefusal(email);
@@ -354,7 +355,7 @@ export class ToolsApi {
   createChannel(workspace: string, name: string): Promise<{ id: string; name: string } | null> {
     return this.send("POST", `/workspaces/${workspace}/channels`, { name: name.trim(), private: false });
   }
-  createThread(channel: string, title: string): Promise<{ id: string } | null> {
+  createThread(channel: string, title: string): Promise<Thread | null> {
     return this.send("POST", `/channels/${channel}/threads`, { title: title.trim() });
   }
   createAgent(workspace: string, handle: string, display: string): Promise<{ id?: string; member_id?: string } | null> {

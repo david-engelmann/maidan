@@ -236,13 +236,17 @@ export class SessionStore {
   async logout(): Promise<void> {
     const s = this.state;
     const c = s.credentials;
+    const epoch = this.epoch;
     try {
       if (signOutPostsLogout(s.discovery.sessions, c.sessionMemberId)) {
-        await this.fetchFn(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include" }));
+        // Bounded: a request that never settles must not keep the tab signed in.
+        await this.fetchFn(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include", signal: AbortSignal.timeout(5000) }));
       }
     } catch {
       /* the tab forgets its credential either way */
     }
+    // A sign-in that finished while the logout was out is not undone by it.
+    if (epoch !== this.epoch) return;
     this.signOut();
   }
 

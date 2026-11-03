@@ -113,6 +113,7 @@ mod web_push_outbox;
 mod webhooks;
 mod wip;
 mod workspace_handles;
+mod workspace_invites;
 mod workspaces;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -485,6 +486,7 @@ store_delegations!(PostgresStore, OAuthAsStore);
 store_delegations!(PostgresStore, ReindexStore);
 store_delegations!(PostgresStore, TokenStore);
 store_delegations!(PostgresStore, ShareTicketStore);
+store_delegations!(PostgresStore, WorkspaceInviteStore);
 store_delegations!(PostgresStore, DelegationGrantStore);
 store_delegations!(PostgresStore, PeerStore);
 store_delegations!(PostgresStore, DeliveryCursorStore);

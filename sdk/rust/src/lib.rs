@@ -86,7 +86,7 @@ pub fn event_type(kind: &str) -> String {
 /// A convenient result alias.
 pub type Result<T> = std::result::Result<T, MaidanError>;
 
-const IN_FLIGHT_TYPE: &str = "https://maidan.dev/problems/idempotency-key-in-flight";
+const IN_FLIGHT_TYPE: &str = "https://maidan.world/problems/idempotency-key-in-flight";
 
 /// The most rows the server returns for one page: it clamps a larger `limit`
 /// to this. The paging helpers ask for no more, because they stop at the first
@@ -802,7 +802,7 @@ mod tests {
         let too_old = err(
             409,
             json!({
-                "type": "https://maidan.dev/problems/cursor-too-old",
+                "type": "https://maidan.world/problems/cursor-too-old",
                 "must_refetch": true,
                 "snapshot": "/workspaces/w/snapshot"
             }),
@@ -816,13 +816,13 @@ mod tests {
 
         let by_type_only = err(
             409,
-            json!({ "type": "https://maidan.dev/problems/cursor-too-old" }),
+            json!({ "type": "https://maidan.world/problems/cursor-too-old" }),
         );
         assert!(by_type_only.is_cursor_too_old());
 
         let plain = err(
             409,
-            json!({ "type": "https://maidan.dev/problems/conflict" }),
+            json!({ "type": "https://maidan.world/problems/conflict" }),
         );
         assert!(plain.is_conflict());
         assert!(!plain.is_cursor_too_old());

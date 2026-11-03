@@ -261,7 +261,7 @@ verifies; rewrite-detection is for a peer that already has a prefix.
 
 `GET /workspaces/:wid/events/verify` (`workspace:read`) walks the
 retained suffix. Intact → 200 `ChainVerifyReport`. Break → **409**
-`https://maidan.dev/problems/event-log-broken`. After retention prune,
+`https://maidan.world/problems/event-log-broken`. After retention prune,
 the oldest remaining row is the floor (it need not chain from genesis).
 Snapshot catch-up of a pruned prefix is described below.
 
@@ -1077,7 +1077,7 @@ Three rules for using them safely:
 
 - **`503` with `Retry-After` means retry.** Past its in-flight ceiling the
   server refuses a request without running it (problem type
-  `https://maidan.dev/problems/overloaded`), so a retry after the delay is safe
+  `https://maidan.world/problems/overloaded`), so a retry after the delay is safe
   even for a write. `/ws/subscribe` answers the same way at its connection
   ceiling. `/health*` and `/metrics` are never refused.
 - **A member id you send must name a member of the workspace.** Every route
@@ -1099,7 +1099,9 @@ Three rules for using them safely:
 
 Every REST failure is an RFC 9457 `application/problem+json` body with
 `type`, `title`, `status` and `detail`. Branch on `type`, not on `detail`,
-which is prose. Each type is `https://maidan.dev/problems/` plus:
+which is prose. Each type is `https://maidan.world/problems/` plus one of
+the names below, and on the hosted instance that URI opens the type's row
+on [maidan.world/problems](https://maidan.world/problems):
 
 | `type` | Status | Meaning |
 |---|---|---|
@@ -1113,6 +1115,9 @@ which is prose. Each type is `https://maidan.dev/problems/` plus:
 | `idempotency-key-in-flight` | 409 | The first request with this `Idempotency-Key` is still running; retry shortly |
 | `cursor-too-old` | 409 | The cursor is behind the retained log: `must_refetch` is true and `snapshot` names what to fetch. Never clamp |
 | `event-log-broken` | 409 | The hash-chained event log failed verification; the server fails closed |
+| `footprint-conflict` | 409 | The claim's footprint overlaps live claims; `conflicts` lists them with their holders and leases, and nothing was stored. Release and requeue, or narrow the footprint |
+| `plan-conflict` | 409 | The plan already has children, from another claim or with other keys; `children` lists them, and nothing was created |
+| `claim-lost` | 409 | The lease is no longer the thread's live claim (it lapsed and was taken over, or was released); nothing was stored |
 | `media-quota-exceeded` | 409 | A media upload (attachment, screenshot, recording) would take the workspace past its media quota. `used_bytes`, `quota_bytes` and `upload_bytes` say by how much. Erase media, or ask for a higher quota |
 | `payload-too-large` | 413 | The body is over the limit |
 | `unsupported-media-type` | 415 | The body's content type is not accepted |
@@ -1123,11 +1128,11 @@ which is prose. Each type is `https://maidan.dev/problems/` plus:
 | `bad-gateway` | 502 | An upstream the request depends on failed |
 | `overloaded` | 503 | Refused without running; wait `Retry-After` |
 
-The SDKs under `sdk/` raise one error per row (for example `NotFoundError`
-in TypeScript and Python, `*maidan.NotFoundError` in Go,
+The SDKs under `sdk/` raise a dedicated error for each row (for example
+`NotFoundError` in TypeScript and Python, `*maidan.NotFoundError` in Go,
 `MaidanError::NotFound` in Rust), each carrying the status, `type`,
 `title`, `detail` and the body as sent. A type added after the SDK was
-published arrives as its unknown-problem error. The SDKs return typed
+published arrives as its unknown-problem error, with its `type`. The SDKs return typed
 models for every response they wrap; see
 [Client Contract](Client%20Contract.md) §2 and §4. The per-problem
 errors and the typed models are on `main` and not yet published: the

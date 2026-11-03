@@ -11,7 +11,6 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{EventKind, MemberKind, NewMember, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct RecordingMailer {
     sent: std::sync::Mutex<Vec<String>>,
@@ -38,7 +37,7 @@ async fn presence_window_skips_email_for_recently_seen_member() {
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300") };
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

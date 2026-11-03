@@ -52,7 +52,7 @@ export interface Problem {
 }
 
 /** URI prefix of every problem `type` the server emits. */
-export declare const PROBLEM_BASE: "https://maidan.dev/problems/";
+export declare const PROBLEM_BASE: "https://maidan.world/problems/";
 
 /** The most rows the server returns for one page; the paging helpers ask for no more. */
 export declare const MAX_PAGE_SIZE: 500;
@@ -115,6 +115,16 @@ export declare class CursorTooOldError extends MaidanError {
 }
 /** 409 `event-log-broken`: the hash chain failed verification. */
 export declare class EventLogBrokenError extends MaidanError {}
+/** 422 `unprocessable-entity`: the request parsed but a value is invalid. */
+export declare class UnprocessableEntityError extends MaidanError {}
+/** 409 `media-quota-exceeded`: the upload would pass the workspace's media quota. */
+export declare class MediaQuotaExceededError extends MaidanError {}
+/** 409 `footprint-conflict`: the claim's footprint overlaps live claims. */
+export declare class FootprintConflictError extends MaidanError {}
+/** 409 `plan-conflict`: the plan already has children. */
+export declare class PlanConflictError extends MaidanError {}
+/** 409 `claim-lost`: the lease is no longer the thread's live claim. */
+export declare class ClaimLostError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export declare class UnknownProblemError extends MaidanError {}
 

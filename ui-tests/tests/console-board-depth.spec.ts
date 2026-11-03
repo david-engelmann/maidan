@@ -22,7 +22,8 @@ test("a card opens a drawer that is a deep link, and Escape closes it", async ({
   await expect(sheet.getByText("State", { exact: true })).toBeVisible();
   await expect(sheet.locator(".rc-head", { hasText: "Recent messages" })).toBeVisible();
   await expect(sheet.getByRole("link", { name: "Open full thread" })).toBeVisible();
-  await expect(page).toHaveURL(/#\/board\?task=[0-9a-f-]{36}$/);
+  // The link names its channel, so it opens on a board set to another one.
+  await expect(page).toHaveURL(/#\/board\?channel=[0-9a-f-]{36}&task=[0-9a-f-]{36}$/);
   const link = page.url();
 
   await page.keyboard.press("Escape");

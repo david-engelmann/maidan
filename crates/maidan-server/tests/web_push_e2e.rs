@@ -33,7 +33,7 @@ impl WebPushSender for RecordingSender {
 }
 
 async fn setup() -> (Arc<dyn Store>, AppState) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -51,8 +51,6 @@ async fn setup() -> (Arc<dyn Store>, AppState) {
     let state = AppState::for_tests(store.clone(), artifacts, bus, search);
     (store, state)
 }
-
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn web_push_delivers_when_offline_skips_when_present_and_prunes_gone() {

@@ -11,7 +11,6 @@ use maidan_store::pull_watch::{watch_pull, WatchRequest};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -288,7 +287,7 @@ async fn a_held_block_is_said_once_across_a_restart(before: Arc<dyn Store>, afte
 
 #[tokio::test]
 async fn a_held_block_is_said_once_across_a_restart_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -832,7 +831,7 @@ macro_rules! on_both_backends {
 }
 
 async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

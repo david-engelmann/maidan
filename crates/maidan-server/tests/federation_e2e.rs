@@ -23,7 +23,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     addr: SocketAddr,
@@ -44,7 +43,7 @@ impl Harness {
 }
 
 async fn spawn_with_auth_disabled() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -88,7 +87,7 @@ async fn spawn_with_auth_disabled() -> Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -468,7 +467,7 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
     };
 
     let key = Arc::new([0x42; 32]);
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -641,7 +640,7 @@ async fn federation_ingest_rejects_payload_rewrite() {
     let problem: serde_json::Value = ingest.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/event-log-broken"
+        "https://maidan.world/problems/event-log-broken"
     );
     h.shutdown().await;
 }
@@ -889,7 +888,7 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
     };
 
     let key = Arc::new([0x42; 32]);
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
