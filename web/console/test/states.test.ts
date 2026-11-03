@@ -19,3 +19,7 @@ test("a bare error line is not a screen's only way to say it could not load", ()
 test("the board names a load failure once, in the card, not also in its summary", () => {
   assert.match(src("board/Board.tsx"), /data\.status === "error" && !data\.threads\.length \? "" : data\.error/);
 });
+
+test("People loads behind skeleton rows, like Board and Threads, not a bare word", () => {
+  assert.match(src("people/People.tsx"), /loaded\.status === "loading" \? \(\s*<div className="roster-sk" role="status"[^>]*>\s*<span className="skeleton row-sk"/);
+});

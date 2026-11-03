@@ -185,6 +185,14 @@ function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Pe
         </p>
         {loaded.error && loaded.value ? <p className="stale" role="alert">{loaded.error}</p> : loaded.error ? <LoadError message={loaded.error} onRetry={onRetry} /> : null}
         {loaded.status === "ready" && !shown.length ? (query ? <EmptyState title={`No member matches “${query}”`} body="Try a name, an email or an agent's handle." /> : <EmptyState title="No members yet" body="Invite a person from Swarm, or start an agent; they show here once they join." action={<a className="button ghost" href="#/people/swarm">Open Swarm</a>} />) : null}
+        {loaded.status === "loading" ? (
+          <div className="roster-sk" role="status" aria-label="Loading members">
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+          </div>
+        ) : null}
         <ul className="roster-list">
           {shown.map((r) => (
             <li key={r.person.id}>
