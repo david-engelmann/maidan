@@ -898,6 +898,19 @@ Evidence record ids are UUIDv7, and `POST /threads/{id}/evidence-records` checks
 - **Changed:** Thread detail has a quieter message rhythm, a single-surface composer, and a result-and-evidence panel with a timeline.
 - **Fixed:** Buttons and pills are flat, and review labels pass contrast checks in light and dark mode.
 
+### Console follow-ups: task links carry their channel, and a failed read is not an empty one
+
+- **Fixed:** a task link names its channel, so it opens the drawer in a reader whose board is on another channel. Choosing a channel by hand drops the link.
+- **Fixed:** a task you just created opens from the create's answer even if the board's refresh fails. A deep-linked card scrolls into view once the threads arrive.
+- **Fixed:** after an action in the task sheet, the sheet reloads its result and evidence.
+- **Fixed:** names fall back to an id prefix once the member read has finished, even when it failed. Before, they stayed blank.
+- **Fixed:** the review pane says when the result or the messages could not be read, and offers Try again, instead of showing "No result recorded yet". "Refresh this screen" also reloads Tools and Files.
+- **Fixed:** `a` and `r` on Needs you act only when focus is in the selected row. A bare URL keeps a closing parenthesis that balances one inside it.
+
+### Every problem type has its own SDK error
+
+- **Added:** the four SDKs raise a dedicated error for `unprocessable-entity`, `media-quota-exceeded`, `footprint-conflict`, `plan-conflict` and `claim-lost` (for example `ClaimLostError` in TypeScript and Python, `*maidan.ClaimLostError` in Go, `MaidanError::ClaimLost` in Rust), where they arrived as the unknown-problem error before. Each SDK's test now holds its map to all 22 types the server sends.
+
 ## [419.0.0] — 2026-10-27
 
 The first published release since 417.0.0. `v418.0.0` was tagged but never

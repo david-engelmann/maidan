@@ -76,7 +76,14 @@ export function Board() {
   const [lane, setLane] = useState<LaneKey>("open");
   const [query, setQuery] = useQuery();
   const openId = query.task;
-  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task });
+  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task, channel: task ? data.channelId : null });
+  // A task link from another channel switches to that channel once, if the
+  // reader can see it, so the drawer can open.
+  const linkedChannel = query.task ? query.channel : null;
+  useEffect(() => {
+    if (!linkedChannel || data.status !== "ready" || data.channelId === linkedChannel) return;
+    if (data.channels.some((c) => c.id === linkedChannel)) selectChannel(linkedChannel);
+  }, [linkedChannel, data.status, data.channelId, data.channels, selectChannel]);
   const [composing, setComposing] = useState(false);
   const all = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
   const lanes = useMemo(() => {
@@ -84,22 +91,28 @@ export function Board() {
     for (const l of LANES) out[l.key] = all[l.key].filter((c) => matches(c, { ...query, state: null }));
     return out;
   }, [all, query]);
-  const opened = data.threads.find((t) => t.id === openId) ?? null;
+  // A task just created opens from the create's answer until the board's own
+  // read has it, so a failed refresh does not leave the drawer shut.
+  const [created, setCreated] = useState<Thread | null>(null);
+  const opened = data.threads.find((t) => t.id === openId) ?? (created?.id === openId ? created : null);
   // The board narrows beside the drawer; keep the chosen card in view.
+  const scrolledFor = useRef<string | null>(null);
+  const cardLoaded = Boolean(openId && data.threads.some((t) => t.id === openId));
   useEffect(() => {
-    if (!openId) return;
+    if (!openId || !cardLoaded || scrolledFor.current === openId) return;
     // Only the lanes scroll sideways; the page itself never moves.
     const t = window.setTimeout(() => {
       const card = document.querySelector<HTMLElement>(".task.selected");
       const lanes = card?.closest<HTMLElement>(".lanes");
       if (!card || !lanes) return;
+      scrolledFor.current = openId;
       const c = card.getBoundingClientRect();
       const l = lanes.getBoundingClientRect();
       if (c.right > l.right) lanes.scrollLeft += c.right - l.right + 12;
       else if (c.left < l.left) lanes.scrollLeft -= l.left - c.left + 12;
     }, 220);
     return () => window.clearTimeout(t);
-  }, [openId]);
+  }, [openId, cardLoaded]);
   const agents = useMemo(() => {
     const held = new Set(data.threads.map((t) => t.assignee_id).filter(Boolean));
     return [...data.members.values()].filter((m) => held.has(m.id) || (m.kind && m.kind !== "human")).sort((a, b) => a.name.localeCompare(b.name));
@@ -129,7 +142,11 @@ export function Board() {
         <label className="channel-pick">
           <span className="visually-hidden">Channel</span>
           <span className="channel-hash" aria-hidden="true">#</span>
-          <select value={data.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!data.channels.length}>
+          <select value={data.channelId ?? ""} onChange={(e) => {
+              // Choosing a channel closes a linked task, so the link stops pulling the board back.
+              setQuery({ ...readQuery(window.location.hash), task: null, channel: null });
+              selectChannel(e.target.value);
+            }} disabled={!data.channels.length}>
             {data.channels.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -148,11 +165,12 @@ export function Board() {
       {composing && data.channelId && (
         <Composer
           channelId={data.channelId}
-          onDone={(id) => {
+          onDone={(made) => {
             setComposing(false);
-            if (id) {
+            if (made?.id) {
+              setCreated(made);
               void refresh();
-              setOpenId(id);
+              setOpenId(made.id);
             }
           }}
         />
@@ -382,7 +400,7 @@ function FilterBar({ query, agents, onChange, total, visible }: { query: BoardQu
   );
 }
 
-function Composer({ channelId, onDone }: { channelId: string; onDone: (id: string | null) => void }) {
+function Composer({ channelId, onDone }: { channelId: string; onDone: (made: Thread | null) => void }) {
   const tools = useToolsApi();
   const input = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -396,7 +414,7 @@ function Composer({ channelId, onDone }: { channelId: string; onDone: (id: strin
     setError(null);
     try {
       const made = await tools.createThread(channelId, title);
-      onDone(made?.id ?? null);
+      onDone(made);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the task");
       setBusy(false);

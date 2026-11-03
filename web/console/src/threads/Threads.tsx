@@ -6,7 +6,7 @@ import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
 import { BoardApi, chromeFor, stateWord, type Gate, type Member, type Thread } from "../core/board.ts";
-import {
+import { membersPending,
   QUICK_REACTIONS,
   REACTION_NAMES,
   ThreadsApi,
@@ -506,7 +506,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b className={members.size ? undefined : "name-pending"}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={membersPending(members) ? "name-pending" : undefined}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -828,7 +828,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     };
   }, [api, threadId, open, facts?.thread]);
   const f = facts?.thread === threadId ? facts.value : null;
-  const name = (id: string | undefined) => (id ? members.get(id)?.name || (members.size ? id : "…") : "someone");
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || (membersPending(members) ? "…" : id.slice(0, 8)) : "someone");
   const deps = f?.deps?.dependencies ?? [];
   const entries = withRecords(f?.evidence?.entries ?? [], f?.records ?? null);
   const reload = () => setFacts(null);

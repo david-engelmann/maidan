@@ -43,6 +43,11 @@ const SESSION_SECRET: &[u8] = b"capture-session-secret-at-least-32-bytes";
 /// The moment every screenshot is taken at: Tuesday 2026-10-06, 2:40 PM in
 /// New York. The browser's clock is set to the same instant.
 const CAPTURE_NOW: &str = "2026-10-06T18:40:00Z";
+/// The test log linked to the waiting review. Its bytes go into the capture's
+/// artifact store too: a metadata row alone left Needs you showing "could not
+/// be loaded" where the reviewer reads the evidence.
+const EVIDENCE_LOG: &[u8] =
+    b"ws_deactivated_member_e2e: 3 passed\nbreak-check (no recheck): 3 failed\n";
 
 /// Tables whose timestamps stay on the wall clock: a session or token that
 /// expired by the fixed clock would refuse the browser, and the event log and
@@ -472,7 +477,7 @@ async fn seed_board(
     // The test log is evidence on the card David decides; the board with
     // work in flight never opens it.
     if variant == Variant::Waiting {
-        let log = b"ws_deactivated_member_e2e: 3 passed\nbreak-check (no recheck): 3 failed\n";
+        let log = EVIDENCE_LOG;
         let artifact = store
             .upsert_artifact_with_event(
                 NewArtifact {
@@ -852,9 +857,13 @@ async fn main() {
 
     let art_dir = std::env::temp_dir().join(format!("maidan-capture-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
+    let blobs = LocalFsStore::new(&art_dir);
+    maidan_artifacts::store::ArtifactStore::put(&blobs, bytes::Bytes::from_static(EVIDENCE_LOG))
+        .await
+        .expect("evidence log bytes");
     let mut state = AppState::new(
         store,
-        Arc::new(LocalFsStore::new(&art_dir)),
+        Arc::new(blobs),
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),

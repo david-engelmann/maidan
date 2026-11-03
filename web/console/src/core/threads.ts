@@ -51,10 +51,22 @@ export function dmOther(dm: Dm, me: string): string {
   return dm.member_low_id === me ? dm.member_high_id : dm.member_low_id;
 }
 
+const settled = new WeakSet<Map<string, Member>>();
+/** Marks a member map as the answer of a finished read, even an empty one
+ * from a failed read, so names fall back to an id prefix instead of waiting. */
+export function settleMembers<T extends Map<string, Member>>(members: T): T {
+  settled.add(members);
+  return members;
+}
+/** Whether the member read behind this map is still out. */
+export function membersPending(members: Map<string, Member>): boolean {
+  return members.size === 0 && !settled.has(members);
+}
+
 /** A member's name. Until the member list has loaded this is "", so screens
  * show a placeholder rather than flashing a raw id. */
 export function nameOf(members: Map<string, Member>, id: string): string {
-  return members.get(id)?.name ?? (members.size === 0 ? "" : id.slice(0, 8));
+  return members.get(id)?.name ?? (membersPending(members) ? "" : id.slice(0, 8));
 }
 
 export function dmConversation(dm: Dm, me: string, members: Map<string, Member>): Conversation {
@@ -443,6 +455,17 @@ export class ThreadsApi {
       return await this.get<T>(path);
     } catch {
       return null;
+    }
+  }
+
+  /** A task's result for a reviewer: none recorded (a 404) is not the same as
+   * a read that failed, which says why. */
+  async resultRead(threadId: string): Promise<{ result: TaskResult | null; error: string | null }> {
+    try {
+      return { result: await this.get<TaskResult>(`/threads/${threadId}/result`), error: null };
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return { result: null, error: null };
+      return { result: null, error: e instanceof Error ? e.message : "Could not load the result" };
     }
   }
 

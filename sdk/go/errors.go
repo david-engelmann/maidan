@@ -116,6 +116,21 @@ func (e *CursorTooOldError) Snapshot() string {
 // EventLogBrokenError is a 409 event-log-broken: the hash chain failed verification.
 type EventLogBrokenError struct{ *APIError }
 
+// UnprocessableEntityError is a 422 unprocessable-entity: the request parsed but a value is invalid.
+type UnprocessableEntityError struct{ *APIError }
+
+// MediaQuotaExceededError is a 409 media-quota-exceeded: the upload would pass the workspace's media quota.
+type MediaQuotaExceededError struct{ *APIError }
+
+// FootprintConflictError is a 409 footprint-conflict: the claim's footprint overlaps live claims.
+type FootprintConflictError struct{ *APIError }
+
+// PlanConflictError is a 409 plan-conflict: the plan already has children.
+type PlanConflictError struct{ *APIError }
+
+// ClaimLostError is a 409 claim-lost: the lease is no longer the thread's live claim.
+type ClaimLostError struct{ *APIError }
+
 // UnknownProblemError is a problem type this client does not know, or a body
 // that is not a problem.
 type UnknownProblemError struct{ *APIError }
@@ -137,6 +152,11 @@ func (e *IdempotencyKeyReusedError) Unwrap() error   { return e.APIError }
 func (e *IdempotencyKeyInFlightError) Unwrap() error { return e.APIError }
 func (e *CursorTooOldError) Unwrap() error           { return e.APIError }
 func (e *EventLogBrokenError) Unwrap() error         { return e.APIError }
+func (e *UnprocessableEntityError) Unwrap() error    { return e.APIError }
+func (e *MediaQuotaExceededError) Unwrap() error     { return e.APIError }
+func (e *FootprintConflictError) Unwrap() error      { return e.APIError }
+func (e *PlanConflictError) Unwrap() error           { return e.APIError }
+func (e *ClaimLostError) Unwrap() error              { return e.APIError }
 func (e *UnknownProblemError) Unwrap() error         { return e.APIError }
 
 // ProblemTypes maps each problem type the server documents to the error the
@@ -159,6 +179,11 @@ var ProblemTypes = map[string]func(*APIError) error{
 	ProblemBase + "idempotency-key-in-flight": func(e *APIError) error { return &IdempotencyKeyInFlightError{e} },
 	ProblemBase + "cursor-too-old":            func(e *APIError) error { return &CursorTooOldError{e} },
 	ProblemBase + "event-log-broken":          func(e *APIError) error { return &EventLogBrokenError{e} },
+	ProblemBase + "unprocessable-entity":      func(e *APIError) error { return &UnprocessableEntityError{e} },
+	ProblemBase + "media-quota-exceeded":      func(e *APIError) error { return &MediaQuotaExceededError{e} },
+	ProblemBase + "footprint-conflict":        func(e *APIError) error { return &FootprintConflictError{e} },
+	ProblemBase + "plan-conflict":             func(e *APIError) error { return &PlanConflictError{e} },
+	ProblemBase + "claim-lost":                func(e *APIError) error { return &ClaimLostError{e} },
 }
 
 // NewProblemError builds the error for a failed response from its status and

@@ -52,24 +52,23 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
     const mode = () => store.getSnapshot().mode;
     return { threads: new ThreadsApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
-  const [result, setResult] = useState<{ tid: string; text: string | null } | null>(null);
-  const [recent, setRecent] = useState<{ tid: string; rows: Message[] } | null>(null);
+  const [result, setResult] = useState<{ tid: string; text: string | null; error: string | null } | null>(null);
+  const [recent, setRecent] = useState<{ tid: string; rows: Message[]; error: string | null } | null>(null);
+  // Bumped by Try again, so a failed read is never shown as an empty one.
+  const [attempt, setAttempt] = useState(0);
   const [members, setMembers] = useState<Map<string, Member>>(new Map());
 
   useEffect(() => {
     let live = true;
-    void apis.threads.facts(tid).then(
-      (f) => live && setResult({ tid, text: resultText(f.result?.result) }),
-      () => live && setResult({ tid, text: null }),
-    );
+    void apis.threads.resultRead(tid).then((r) => live && setResult({ tid, text: resultText(r.result?.result), error: r.error }));
     void apis.threads.messages(tid).then(
-      (ms) => live && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT) }),
-      () => live && setRecent({ tid, rows: [] }),
+      (ms) => live && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT), error: null }),
+      (e) => live && setRecent({ tid, rows: [], error: e instanceof Error ? e.message : "Could not load the messages" }),
     );
     return () => {
       live = false;
     };
-  }, [apis, tid]);
+  }, [apis, tid, attempt]);
 
   useEffect(() => {
     if (!session.workspaceId) return;
@@ -91,6 +90,10 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
         <h4 className="rc-head">Result</h4>
         {!res ? (
           <p className="muted small">Loading the result…</p>
+        ) : res.error ? (
+          <p className="small err" role="alert">
+            {res.error.replace(/\.$/, "")}. <button type="button" className="link-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+          </p>
         ) : res.text ? (
           <div className="rc-body msg-body">
             <MessageBody body={res.text} />
@@ -113,6 +116,10 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
         <h4 className="rc-head">Recent messages</h4>
         {!msgs ? (
           <p className="muted small">Loading…</p>
+        ) : recent?.error ? (
+          <p className="small err" role="alert">
+            {recent.error.replace(/\.$/, "")}. <button type="button" className="link-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+          </p>
         ) : msgs.length ? (
           <ol className="rc-msgs">
             {msgs.map((m) => (
