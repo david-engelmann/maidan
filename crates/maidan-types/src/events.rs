@@ -813,6 +813,12 @@ pub enum Event {
         /// The deploy's own page, as the hook sent it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         deploy_url: Option<String>,
+        /// The login of who submitted a review (`review_submitted`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reviewer: Option<String>,
+        /// How the review came out (`review_submitted`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_state: Option<crate::pull_ci::ReviewState>,
     },
     /// A Pi task that stopped converging was handed to a session: its claim
     /// ended and its engine became `session`, so a Pi claim never takes it

@@ -586,6 +586,13 @@ queue is said as **`merge_queued`**, and leaving it without merging as
 **`merge_dequeued`** with the reason in `reasons`. A landing is the change
 sweep's usual one: the thread closes with `ThreadLanded`.
 
+Each review submitted on the pull request, a bot's included, is said once as
+**`review_submitted`**, naming the `reviewer`, the `review_state`
+(`approved`, `changes_requested` or `commented`) and the `head_sha` the
+review was on, which can be an earlier head than the current one. It comes
+from the same read, the newest 20 reviews; a draft or a dismissed review
+says nothing.
+
 A pull request closed without merging counts as landed only when its head
 had commits its base lacked while it was open and is on the base branch now,
 as when a stack tool lands the commits itself and closes the pull request.

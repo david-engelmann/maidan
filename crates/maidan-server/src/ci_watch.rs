@@ -220,6 +220,9 @@ pub async fn record_checks(
         gate_reasons: held.map(|held| held.reasons),
         merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
         head_ahead: snapshot.ahead.unwrap_or(false),
+        reviews: read_gate
+            .map(|read| read.reviews.clone())
+            .unwrap_or_default(),
     };
     post_read(state, read).await
 }
@@ -249,6 +252,9 @@ fn unreadable_read(
         gate_reasons: None,
         merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
         head_ahead: snapshot.ahead.unwrap_or(false),
+        reviews: read_gate
+            .map(|read| read.reviews.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -333,6 +339,7 @@ mod tests {
             required_checks: Some(required.iter().map(|r| r.to_string()).collect()),
             queued: false,
             dequeued: None,
+            reviews: Vec::new(),
         }
     }
 
