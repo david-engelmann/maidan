@@ -132,6 +132,26 @@ class EventLogBrokenError(MaidanError):
     """409 ``event-log-broken``: the hash chain failed verification."""
 
 
+class UnprocessableEntityError(MaidanError):
+    """422 ``unprocessable-entity``: the request parsed but a value is invalid."""
+
+
+class MediaQuotaExceededError(MaidanError):
+    """409 ``media-quota-exceeded``: the upload would pass the workspace's media quota."""
+
+
+class FootprintConflictError(MaidanError):
+    """409 ``footprint-conflict``: the claim's footprint overlaps live claims."""
+
+
+class PlanConflictError(MaidanError):
+    """409 ``plan-conflict``: the plan already has children."""
+
+
+class ClaimLostError(MaidanError):
+    """409 ``claim-lost``: the lease is no longer the thread's live claim."""
+
+
 class UnknownProblemError(MaidanError):
     """A problem ``type`` this client does not know, or a body that is not a problem."""
 
@@ -154,6 +174,11 @@ PROBLEM_TYPES: Dict[str, Type[MaidanError]] = {
     f"{PROBLEM_BASE}idempotency-key-in-flight": IdempotencyKeyInFlightError,
     f"{PROBLEM_BASE}cursor-too-old": CursorTooOldError,
     f"{PROBLEM_BASE}event-log-broken": EventLogBrokenError,
+    f"{PROBLEM_BASE}unprocessable-entity": UnprocessableEntityError,
+    f"{PROBLEM_BASE}media-quota-exceeded": MediaQuotaExceededError,
+    f"{PROBLEM_BASE}footprint-conflict": FootprintConflictError,
+    f"{PROBLEM_BASE}plan-conflict": PlanConflictError,
+    f"{PROBLEM_BASE}claim-lost": ClaimLostError,
 }
 
 

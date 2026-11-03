@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardApi, movesBoard, type Channel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { settleMembers } from "../core/threads.ts";
 import { liveBus } from "../core/bus.ts";
 import type { SessionState } from "../core/session.ts";
 
@@ -52,7 +53,7 @@ export function useBoard(session: SessionState, api: BoardApi) {
           next.set(th.id, s);
         }
         seen.current = next;
-        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh });
+        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: settleMembers(new Map(members.map((m) => [m.id, m]))), refusals, fresh });
       } catch (e) {
         if (mine !== gen.current) return;
         const message = e instanceof Error ? e.message : "Could not load the board";
