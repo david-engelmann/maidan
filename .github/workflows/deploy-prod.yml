@@ -39,7 +39,11 @@ jobs:
       run:
         working-directory: deploy/cloudflare
     steps:
+      # Before the checkout, deploy/cloudflare does not exist yet, so this
+      # step runs at the workspace root (the default directory below is
+      # for the later steps).
       - name: the tag is a release tag
+        working-directory: .
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
       - uses: actions/checkout@v4
@@ -48,6 +52,7 @@ jobs:
       # main is prod: a release tag deploys only when its commit is on main,
       # which only a promotion from dev moves.
       - name: the tag is on main
+        working-directory: .
         run: |
           git fetch -q origin main
           git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main \
