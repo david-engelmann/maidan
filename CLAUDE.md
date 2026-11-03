@@ -89,9 +89,9 @@ change.
   batch must not be merged on its own: its required heavy checks were
   skipped, not passed.
 
-## Current state (2026-11-02)
+## Current state (2026-11-03)
 
-- **Releases:** latest **`v420.0.0`** (2026-11-02), the React console at `/ui`
+- **Releases:** latest **`v421.0.0`** (2026-11-03), the React console at `/ui`
   and the hosted launch surfaces. A release is cut from the newest `dev`
   commit whose push CI is green, with no soak wait (the maintainer,
   2026-10-30). Tags are cut whenever the swarm stack needs
@@ -99,7 +99,9 @@ change.
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
   v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
-  published (a Trivy scan failure); `v419.0.0` carried its contents.
+  published (a Trivy scan failure); `v419.0.0` carried its contents. `v420.0.0`
+  is tagged on `05549018` but was never published (the aarch64 `cross` build
+  had no npm for `build.rs`); `v421.0.0` carries its contents.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
   41): finding and closing threads by attribute (MaidanFadin), and the M13
   alert proof. Then the launch path (Next 23,
@@ -112,7 +114,7 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v420.0.0`** in the PR that follows its tag.
+- **Deploy pins move to `v421.0.0`** in the PR that follows its tag.
   `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`
