@@ -830,6 +830,9 @@ mod ui_tokens_e2e;
 #[path = "../ui_v2_e2e.rs"]
 mod ui_v2_e2e;
 
+#[path = "../ui_vote_reads_e2e.rs"]
+mod ui_vote_reads_e2e;
+
 #[path = "../ui_ws_tail_e2e.rs"]
 mod ui_ws_tail_e2e;
 

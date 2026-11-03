@@ -1588,6 +1588,11 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/messages/{mid}/reactions",
             get(routes::list_reactions),
         )
+        .route("/ui/api/messages/{mid}/votes", get(routes::list_votes))
+        .route(
+            "/ui/api/threads/{tid}/votes",
+            get(routes::list_thread_votes),
+        )
         .route("/ui/api/threads/{tid}/pins", get(routes::list_pins))
         .route(
             "/ui/api/workspaces/{wid}/group-dms",

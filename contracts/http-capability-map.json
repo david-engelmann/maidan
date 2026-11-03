@@ -1165,6 +1165,18 @@
   },
   {
     "method": "GET",
+    "path": "/ui/api/messages/{mid}/votes",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/threads/{tid}/votes",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/ui/api/threads/{tid}/messages",
     "capability": "workspace:read",
     "surface": "http"
