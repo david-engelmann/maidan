@@ -17,6 +17,7 @@ import {
   SEARCH_MODES,
   handleRefusal,
   peerRefusal,
+  PEERS_NEED,
   searchQuery,
   switchHref,
   NOTIFICATION_KINDS,
@@ -442,7 +443,7 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
       </Panel>
       <Panel title="Peers">
         <State loaded={peers}>
-          {(rows) => (rows.length ? <ul className="tool-list">{rows.map((p) => <li key={p.id} tabIndex={-1} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
+          {(read) => (!read.allowed ? <p className="muted small">{PEERS_NEED}</p> : read.value.length ? <ul className="tool-list">{read.value.map((p) => <li key={p.id} tabIndex={-1} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
         </State>
       </Panel>
     </div>
@@ -640,10 +641,12 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
       </Panel>
       <Panel title="Peers">
         <State loaded={peers}>
-          {(rows) =>
-            rows.length ? (
+          {(read) =>
+            !read.allowed ? (
+              <p className="muted small">{PEERS_NEED}</p>
+            ) : read.value.length ? (
               <ul className="tool-list">
-                {rows.map((p) => (
+                {read.value.map((p) => (
                   <li key={p.id} tabIndex={-1} className="tool-row">
                     <div className="grow"><b>{p.name || p.id}</b><p className="muted small">{p.base_url}</p></div>
                     {dropping === p.id ? (

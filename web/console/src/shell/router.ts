@@ -23,10 +23,22 @@ export function phoneTabs(): { tabs: (typeof ROUTES)[number][]; more: (typeof RO
   return { tabs: ROUTES.filter((r) => PHONE_TABS.includes(r.id)), more: ROUTES.filter((r) => !PHONE_TABS.includes(r.id)) };
 }
 
-export function parseRoute(hash: string): RouteId {
+/** A place, or a hash that names none. */
+export type Route = RouteId | "not-found";
+
+/** The first segment of a hash route: the place it asks for. */
+export function placeOf(hash: string): string {
+  return hash.replace(/^#\/?/, "").split(/[/?]/)[0];
+}
+
+// An empty hash is the board. A name that matches no place is not-found,
+// not the board: a mistyped or stale link (#/files) that quietly opened the
+// board looked like the link had worked.
+export function parseRoute(hash: string): Route {
   if (/^#\/?confirm-approval=/.test(hash)) return "needs";
-  const id = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
-  return ROUTES.find((r) => r.id === id)?.id ?? "board";
+  const id = placeOf(hash);
+  if (!id) return "board";
+  return ROUTES.find((r) => r.id === id)?.id ?? "not-found";
 }
 
 export function navigate(id: RouteId): void {
@@ -38,6 +50,11 @@ function subscribe(fn: () => void): () => void {
   return () => window.removeEventListener("hashchange", fn);
 }
 
-export function useRoute(): RouteId {
+/** The place the hash asks for, current as the hash changes. */
+export function usePlace(): string {
+  return useSyncExternalStore(subscribe, () => placeOf(window.location.hash));
+}
+
+export function useRoute(): Route {
   return useSyncExternalStore(subscribe, () => parseRoute(window.location.hash));
 }

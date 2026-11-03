@@ -148,6 +148,12 @@ export function isSha(s: string): boolean {
 
 export class ToolsError extends ApiError {}
 
+/** A read the credential may not be allowed to make. */
+export type Allowed<T> = { allowed: true; value: T } | { allowed: false };
+
+/** Said in the Peers cards when the credential cannot read peers. */
+export const PEERS_NEED = "Needs a pasted token with federation:admin.";
+
 const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
   failure(res, mode, ToolsError, (status, detail) => ((status === 400 || status === 409 || status === 422) && detail ? detail : null));
 
@@ -176,6 +182,19 @@ export class ToolsApi {
     if (res.status === 404) return null;
     if (!res.ok) return fail(res, this.mode());
     return (await res.json()) as T;
+  }
+
+  /**
+   * A read that answers 403 when the credential lacks its capability. That is
+   * a standing fact about the credential, so the card says it quietly; an
+   * alert with Try again would ask for a retry that can never succeed.
+   */
+  private async ifAllowed<T>(path: string): Promise<Allowed<T>> {
+    const c = this.creds();
+    const res = await this.fetchFn(apiPath(c, path), { headers: headers(c), credentials: "include" });
+    if (res.status === 403) return { allowed: false };
+    if (!res.ok) return fail(res, this.mode());
+    return { allowed: true, value: (await res.json()) as T };
   }
 
   private async bearerGet<T>(path: string): Promise<T> {
@@ -363,8 +382,9 @@ export class ToolsApi {
     const rows = await this.get<WorkEvent[]>(`/workspaces/${workspace}/events?limit=200`);
     return rows.filter((e) => !kind || e.kind === kind).slice(-50).reverse();
   }
-  peers(workspace: string): Promise<Peer[]> {
-    return this.get(`/workspaces/${workspace}/peers`);
+  /** Not allowed when the credential lacks federation:admin, which a browser session always does. */
+  peers(workspace: string): Promise<Allowed<Peer[]>> {
+    return this.ifAllowed(`/workspaces/${workspace}/peers`);
   }
   addPeer(workspace: string, name: string, baseUrl: string): Promise<Peer | null> {
     return this.send("POST", `/workspaces/${workspace}/peers`, { name: name.trim(), base_url: baseUrl.trim() }, true);

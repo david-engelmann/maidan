@@ -2,7 +2,7 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
-import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
+import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
 import { useCardVotes } from "../hooks/useCardVotes.ts";
 import { liveStatus } from "../core/bus.ts";
 import { Icon } from "../shell/icons.tsx";
@@ -240,10 +240,10 @@ export function Board() {
         <div className="presence-strip" role="group" aria-label="Who is here">
           <ul>
             {here.slice(0, PRESENCE_SHOWN).map((p) => (
-              <li key={p.id} className={`here here-${p.status}`} title={`${p.name}: ${p.status}${p.holding ? `, holding ${p.holding} task${p.holding === 1 ? "" : "s"}` : ", free"}`}>
+              <li key={p.id} className={`here here-${p.status}`} title={`${p.name}: ${presenceWords(p)}`}>
                 <span className="dot" aria-hidden="true" />
-                <span>{p.name}</span>
-                <span className="sr-only">{`, ${p.status}${p.holding ? `, holding ${p.holding}` : ", free"}`}</span>
+                {/* The status rides inside the name's span: as a flex item of its own it got the chip's gap, a space before the comma. */}
+                <span>{p.name}<span className="visually-hidden">{`, ${presenceWords(p)}`}</span></span>
                 {p.holding > 0 && <span className="count" aria-hidden="true">{p.holding}</span>}
               </li>
             ))}

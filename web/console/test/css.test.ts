@@ -61,3 +61,33 @@ test("every class and id in the console's CSS is used", () => {
   const dead = [...new Set(named.filter((n) => !used(n.slice(1), src)))].sort();
   assert.deepEqual(dead, [], "styles name classes or ids nothing in web/console uses; delete the rules or fix the names");
 });
+
+/** The value the last rule for exactly `selector` gives `prop`, across the console's sheets. */
+function lastValue(selector: string, prop: string): string | null {
+  const css = walk(join(root, "src"), (p) => p.endsWith(".css")).map((p) => readFileSync(p, "utf8")).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
+  let out: string | null = null;
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!m[1].split(",").some((s) => s.trim() === selector)) continue;
+    for (const d of m[2].split(";")) {
+      const [k, ...v] = d.split(":");
+      if (k.trim() === prop) out = v.join(":").trim();
+    }
+  }
+  return out;
+}
+
+test("the sign-in card's buttons span the card like its token field", () => {
+  // .edit-actions packs to the end elsewhere; on the sign-in grid that put
+  // "Sign in" and "Create a workspace" in a narrow column on the right.
+  assert.equal(lastValue(".edit-actions", "justify-content"), "flex-end");
+  assert.equal(lastValue(".sign-in .edit-actions", "display"), "grid");
+  assert.equal(lastValue(".sign-in .edit-actions", "justify-content"), "stretch");
+});
+
+test("text hidden for screen readers uses the class the stylesheet defines", () => {
+  // An undefined hiding class shows its text: the presence chip printed
+  // ", online, free" beside the name.
+  assert.equal(lastValue(".visually-hidden", "position"), "absolute");
+  const offenders = walk(join(root, "src"), (p) => p.endsWith(".tsx")).filter((p) => /\bsr-only\b/.test(readFileSync(p, "utf8")));
+  assert.deepEqual(offenders, []);
+});
