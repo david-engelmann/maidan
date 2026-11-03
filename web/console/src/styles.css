@@ -1098,12 +1098,12 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .filter-clear { min-height: 40px; padding: 0 10px; font-size: var(--text-sm); }
 .lane-none { margin: 6px 4px; }
 .lanes.wide.one { grid-template-columns: minmax(0, 560px); }
-.composer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper-2); animation: pane-in .16s ease-out; }
+.task-composer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper-2); animation: pane-in .16s ease-out; }
 .composer-field { flex: 1 1 240px; display: flex; }
 .composer-field input { width: 100%; min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--text-md); }
 .composer-field input:focus-visible { outline: none; }
-.composer:focus-within { border-color: var(--focus); }
-.composer .btn { min-height: 44px; }
+.task-composer:focus-within { border-color: var(--focus); }
+.task-composer .btn { min-height: 44px; }
 .composer-error { flex-basis: 100%; margin: 0 4px; color: var(--danger); font-size: var(--text-sm); }
 .sheet-context { margin-top: 12px; border-top: 1px solid var(--line); }
 .sheet .ev-open { display: inline-block; margin-top: 10px; }
