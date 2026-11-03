@@ -31417,6 +31417,45 @@
         ]
       }
     },
+    "/tools": {
+      "get": {
+        "operationId": "list_tool_catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "`{ tools: [...] }`: the caller's tools/list catalog, each tool's name, title, description, inputSchema (JSON Schema) and annotations"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List the tools the caller's MCP tools/list returns",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/ui/api/channels/{cid}/threads": {
       "get": {
         "operationId": "ui_list_threads",
@@ -32227,6 +32266,48 @@
           }
         ],
         "summary": "List a thread's state transitions (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/tools": {
+      "get": {
+        "operationId": "ui_list_tool_catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "`{ tools: [...] }`: the caller's tools/list catalog, each tool's name, title, description, inputSchema (JSON Schema) and annotations"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the tools the caller's MCP tools/list returns (console)",
         "tags": [
           "auth"
         ]

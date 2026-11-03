@@ -9,8 +9,11 @@
 //! from the endpoint it describes. The shared source is the contract; this
 //! module keeps no second copy.
 
-use axum::Json;
+use axum::{Extension, Json};
+use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use serde_json::{json, Value};
+
+use crate::routes::{cap, ApiResult};
 
 /// The card document, built fresh per request from the live catalog. Pure,
 /// so the shape is unit-testable without a server.
@@ -35,6 +38,19 @@ pub fn server_card() -> Value {
 /// `GET /.well-known/mcp/server-card.json`.
 pub async fn server_card_json() -> Json<Value> {
     Json(server_card())
+}
+
+/// `GET /tools` — the tool catalog the caller's `tools/list` returns, over
+/// REST, for the console. It is [`maidan_mcp::tools::catalog_for`], the same
+/// call the MCP server lists from, so a capability-scoped token sees the same
+/// smaller set here as there. Each entry is the registry's own tool object:
+/// `name`, `title`, `description`, `inputSchema`, `annotations` and, where a
+/// tool has one, its MCP Apps `_meta`. `workspace:read`.
+pub async fn tool_catalog(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<Value>> {
+    cap(&auth, WORKSPACE_READ)?;
+    Ok(Json(
+        json!({ "tools": maidan_mcp::tools::catalog_for(&auth) }),
+    ))
 }
 
 #[cfg(test)]
