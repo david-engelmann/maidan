@@ -82,6 +82,16 @@ export class CursorTooOldError extends MaidanError {
 }
 /** The hash-chained event log failed verification; the server fails closed. */
 export class EventLogBrokenError extends MaidanError {}
+/** 422 `unprocessable-entity`: the request parsed but a value is invalid. */
+export class UnprocessableEntityError extends MaidanError {}
+/** 409 `media-quota-exceeded`: the upload would pass the workspace's media quota. */
+export class MediaQuotaExceededError extends MaidanError {}
+/** 409 `footprint-conflict`: the claim's footprint overlaps live claims. */
+export class FootprintConflictError extends MaidanError {}
+/** 409 `plan-conflict`: the plan already has children. */
+export class PlanConflictError extends MaidanError {}
+/** 409 `claim-lost`: the lease is no longer the thread's live claim. */
+export class ClaimLostError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export class UnknownProblemError extends MaidanError {}
 
@@ -104,6 +114,11 @@ export const PROBLEM_TYPES = Object.freeze({
   [`${PROBLEM_BASE}idempotency-key-in-flight`]: IdempotencyKeyInFlightError,
   [`${PROBLEM_BASE}cursor-too-old`]: CursorTooOldError,
   [`${PROBLEM_BASE}event-log-broken`]: EventLogBrokenError,
+  [`${PROBLEM_BASE}unprocessable-entity`]: UnprocessableEntityError,
+  [`${PROBLEM_BASE}media-quota-exceeded`]: MediaQuotaExceededError,
+  [`${PROBLEM_BASE}footprint-conflict`]: FootprintConflictError,
+  [`${PROBLEM_BASE}plan-conflict`]: PlanConflictError,
+  [`${PROBLEM_BASE}claim-lost`]: ClaimLostError,
 });
 
 /** The error for a failed response: the subclass its problem `type` names. */

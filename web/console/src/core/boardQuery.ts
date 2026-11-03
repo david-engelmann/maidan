@@ -1,10 +1,12 @@
 // The board's view in the hash, so a filtered board or an open task is a link:
-// #/board?task=<id>&agent=<member id>&state=<lane>&q=<text>.
+// #/board?channel=<id>&task=<id>&agent=<member id>&state=<lane>&q=<text>.
+// A task link names its channel, so it opens in whichever channel the
+// recipient last chose.
 import { LANES, type Card, type LaneKey } from "./board.ts";
 
-export type BoardQuery = { task: string | null; agent: string | null; state: LaneKey | null; q: string };
+export type BoardQuery = { task: string | null; channel: string | null; agent: string | null; state: LaneKey | null; q: string };
 
-export const EMPTY_QUERY: BoardQuery = { task: null, agent: null, state: null, q: "" };
+export const EMPTY_QUERY: BoardQuery = { task: null, channel: null, agent: null, state: null, q: "" };
 
 export function readQuery(hash: string): BoardQuery {
   const i = hash.indexOf("?");
@@ -13,6 +15,7 @@ export function readQuery(hash: string): BoardQuery {
   const s = p.get("state");
   return {
     task: p.get("task") || null,
+    channel: p.get("channel") || null,
     agent: p.get("agent") || null,
     state: LANES.some((l) => l.key === s) ? (s as LaneKey) : null,
     q: p.get("q") ?? "",
@@ -24,6 +27,7 @@ export function writeQuery(q: BoardQuery): string {
   if (q.agent) p.set("agent", q.agent);
   if (q.state) p.set("state", q.state);
   if (q.q.trim()) p.set("q", q.q);
+  if (q.task && q.channel) p.set("channel", q.channel);
   if (q.task) p.set("task", q.task);
   const s = p.toString();
   return s ? `#/board?${s}` : "#/board";
