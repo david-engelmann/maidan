@@ -48,3 +48,10 @@ test("the empty Threads and People detail panes share one titled empty state", (
   assert.match(css, /\.pane-empty \{/);
   assert.ok(!/member-detail[^{]*\{[^}]*dashed/.test(css));
 });
+
+test("four board lanes fit a 1024px window", () => {
+  const m = css.match(/\.lanes\.wide \{ grid-template-columns: repeat\(4, minmax\((\d+)px, 1fr\)\)/);
+  assert.ok(m, "wide lanes rule");
+  // 1024 window - 240 sidebar - 36 padding = 748; four lanes and three 12px gaps must fit.
+  assert.ok(Number(m![1]) * 4 + 36 <= 748, `lane min ${m![1]}px is too wide`);
+});
