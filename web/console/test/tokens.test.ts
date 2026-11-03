@@ -87,3 +87,11 @@ test("Activity's Pause and Resume use the shared button style", () => {
   const act = readFileSync(new URL("../src/activity/Activity.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(act, /<button onClick=/);
 });
+
+test("Board controls share one height: filters match the lane and view pills", () => {
+  const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  assert.match(css, /--control-h: 44px;/);
+  for (const sel of [".filter-q input", ".filter-pick select", ".filter-clear", ".lane-pick button", ".view-pick .chip-btn"]) {
+    assert.match(rule(sel), /min-height: var\(--control-h\)/, sel);
+  }
+});
