@@ -287,7 +287,11 @@ export function Threads() {
         )
       ) : (
         <section className="conv-open conv-none" aria-hidden="true">
-          <p className="muted">Pick a conversation.</p>
+          <div className="pane-empty">
+            <span className="pane-empty-mark" />
+            <strong>No conversation open</strong>
+            <p className="muted">Pick a task or a direct message from the list.</p>
+          </div>
         </section>
       )}
     </div>

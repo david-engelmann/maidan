@@ -39,3 +39,12 @@ test("the board's new-task form and the thread composer do not share a class", (
   const board = readFileSync(new URL("../src/board/Board.tsx", import.meta.url), "utf8");
   assert.ok(!/className="composer"/.test(board));
 });
+
+test("the empty Threads and People detail panes share one titled empty state", () => {
+  for (const f of ["threads/Threads.tsx", "people/People.tsx"]) {
+    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
+    assert.match(src, /className="pane-empty">\s*<span className="pane-empty-mark" \/>\s*<strong>/, f);
+  }
+  assert.match(css, /\.pane-empty \{/);
+  assert.ok(!/member-detail[^{]*\{[^}]*dashed/.test(css));
+});
