@@ -25,3 +25,10 @@ test("the review colour is a token with a dark twin, not a fallback literal", ()
   const dark = css.slice(css.indexOf("prefers-color-scheme: dark"));
   assert.match(dark, /--review:\s*#/);
 });
+
+test("in dark mode a board card sits a step above its lane, and the lane above the page", () => {
+  const dark = css.slice(css.lastIndexOf("@media (prefers-color-scheme: dark)"));
+  const bg = (sel: string) => dark.match(new RegExp(`${sel.replace(/[.]/g, "\\.")} \\{[^}]*background: var\\((--[\\w-]+)\\)`))?.[1];
+  assert.equal(bg(".lanes.wide .lane"), "--elev-1");
+  assert.equal(bg(".task"), "--elev-2");
+});

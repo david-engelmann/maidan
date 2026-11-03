@@ -943,6 +943,12 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
   .toast:not(.error) { color: var(--ink); }
   .palette { background: var(--elev-3); border-color: var(--hairline); }
   .rail { border-color: var(--hairline); }
+  /* The board in steps: page, then lane, then card, each a shade up with a
+     top edge that catches the light, so cards stand off their lane. */
+  :root .lanes.wide .lane { background: var(--elev-1); box-shadow: inset 0 0 0 1px var(--hairline); }
+  :root .task { background: var(--elev-2); border-color: var(--line); box-shadow: inset 0 1px 0 var(--hi), 0 1px 2px rgba(0, 0, 0, 0.35); }
+  :root .task:hover { border-color: var(--line-strong); background: var(--elev-3); }
+  :root :is(.filter-q input, .filter-pick select, .search) { background: var(--elev-1); border-color: var(--line-strong); }
 }
 
 /* Names wait for the member list instead of flashing an id. */
