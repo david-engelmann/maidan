@@ -11,7 +11,6 @@ use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -195,7 +194,7 @@ async fn assert_thread_page_filters(store: &dyn Store) {
 
 #[tokio::test]
 async fn thread_page_filters_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

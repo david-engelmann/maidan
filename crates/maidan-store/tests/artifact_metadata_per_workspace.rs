@@ -7,7 +7,6 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{ArtifactKind, MemberKind, NewArtifact, NewMember, NewWorkspace, WorkspaceId};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn tenant(store: &dyn Store, name: &str) -> (WorkspaceId, maidan_types::MemberId) {
     let ws = store
@@ -150,7 +149,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn artifact_metadata_is_per_workspace_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

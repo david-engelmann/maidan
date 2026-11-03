@@ -21,7 +21,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();
@@ -45,7 +44,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 
 #[tokio::test]
 async fn set_get_result_over_http_and_event() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -200,7 +199,7 @@ async fn serve(store: Arc<dyn Store>, pool: sqlx::SqlitePool) -> String {
 }
 
 async fn fresh() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -311,7 +310,7 @@ async fn a_seat_whose_claim_lapsed_and_was_taken_over_gets_claim_lost_and_the_ne
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{problem}");
     assert_eq!(
-        problem["type"], "https://maidan.dev/problems/claim-lost",
+        problem["type"], "https://maidan.world/problems/claim-lost",
         "{problem}"
     );
     assert!(store.get_thread_result(thread).await.unwrap().is_none());

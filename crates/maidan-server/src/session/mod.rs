@@ -33,6 +33,9 @@ pub struct SessionContext {
     /// The authority of the token this session was made from, resolved again
     /// for this request. `None` for an OIDC session.
     pub token: Option<AuthContext>,
+    /// The role a workspace invite gave this member, when it joined by one.
+    /// A viewer's OIDC session keeps only the read capabilities.
+    pub invite_role: Option<maidan_types::WorkspaceInviteRole>,
 }
 
 impl SessionContext {
@@ -41,11 +44,18 @@ impl SessionContext {
     pub fn auth_context(&self, oidc_capabilities: &[&str]) -> AuthContext {
         match &self.token {
             Some(ctx) => ctx.clone(),
-            None => AuthContext::from_session(
-                self.member_id,
-                self.workspace_id,
-                oidc_capabilities.iter().map(|c| (*c).to_string()).collect(),
-            ),
+            None => {
+                let viewer = self.invite_role == Some(maidan_types::WorkspaceInviteRole::Viewer);
+                AuthContext::from_session(
+                    self.member_id,
+                    self.workspace_id,
+                    oidc_capabilities
+                        .iter()
+                        .filter(|c| !viewer || crate::auth::OIDC_READ_CAPABILITIES.contains(*c))
+                        .map(|c| (*c).to_string())
+                        .collect(),
+                )
+            }
         }
     }
 }

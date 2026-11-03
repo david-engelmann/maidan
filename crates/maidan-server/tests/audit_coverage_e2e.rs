@@ -13,7 +13,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewChannel, NewMember, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (
     SocketAddr,
@@ -21,7 +20,7 @@ async fn spawn() -> (
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

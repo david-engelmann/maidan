@@ -28,7 +28,7 @@ import {
 } from "../core/tools.ts";
 import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
-import { MODE_LINE, signOutPostsLogout, writeInit } from "../core/api.ts";
+import { MODE_LINE } from "../core/api.ts";
 import { grantCard } from "../core/session.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
@@ -771,15 +771,7 @@ function SessionCard() {
   const signOut = async () => {
     if (leaving) return;
     setLeaving(true);
-    const c = session.credentials;
-    try {
-      if (signOutPostsLogout(session.discovery.sessions, c.sessionMemberId)) {
-        await fetch(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include" }));
-      }
-    } catch {
-      /* the tab forgets its credential either way */
-    }
-    store.signOut();
+    await store.logout();
     setLeaving(false);
   };
   const card = session.grant ? grantCard(session.grant) : null;

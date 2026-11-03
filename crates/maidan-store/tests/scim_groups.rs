@@ -10,7 +10,6 @@ use maidan_types::{
     AuditScope, Member, MemberId, MemberKind, NewAuditEvent, NewMember, NewScimGroup, NewWorkspace,
     ScimGroupChange, ScimGroupId, ScimMembersOp, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 // These tests are about where a group and its members may live, not about
@@ -387,7 +386,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
 
 #[tokio::test]
 async fn scim_groups_and_renames_stay_in_their_workspace_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

@@ -9,7 +9,6 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn member(ws: WorkspaceId, handle: &str) -> Member {
     let now = Utc::now();
@@ -318,7 +317,7 @@ async fn forced(store: &dyn Store) {
 
 #[tokio::test]
 async fn a_restore_reaching_into_another_tenant_is_refused_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

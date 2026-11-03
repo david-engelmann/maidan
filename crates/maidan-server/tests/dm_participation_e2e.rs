@@ -15,7 +15,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Ctx {
     addr: SocketAddr,
@@ -31,7 +30,7 @@ impl Ctx {
 }
 
 async fn spawn() -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(8)
         .connect("sqlite::memory:")
         .await

@@ -1,9 +1,12 @@
 // Threads and DMs, iPhone first: a list of conversations, and one open
 // conversation that fills the screen with its composer above the keyboard.
 // On a wide screen the list and the conversation sit side by side.
+import { MessageBody } from "./MessageBody.tsx";
+import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { BoardApi, type Member } from "../core/board.ts";
-import {
+import { Icon } from "../shell/icons.tsx";
+import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { membersPending,
   QUICK_REACTIONS,
   REACTION_NAMES,
   ThreadsApi,
@@ -21,9 +24,15 @@ import {
   pinnedMessages,
   onNewMessages,
   parseConv,
+  pastedFiles,
   sameRef,
   slashResult,
   startsGroup,
+  dayKey,
+  dayLabel,
+  isUnread,
+  markOpened,
+  type SeenState,
   taskConversation,
   visibleMessages,
   type ConvRef,
@@ -31,12 +40,20 @@ import {
   type Edit,
   type TaskFacts,
   evidenceLine,
+  evidenceRefusal,
+  safeHref,
+  withRecords,
+  EVIDENCE_KINDS,
+  EVIDENCE_KIND_WORD,
+  type EvidenceDraft,
+  type EvidenceKind,
   type Message,
   type Reaction,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 
 type Tab = "tasks" | "direct";
@@ -60,6 +77,43 @@ function initials(name: string): string {
     .join("");
 }
 
+const SEEN_PREFIX = "maidan:seen:";
+
+function loadSeen(key: string | null): SeenState {
+  const fresh = { baseline: new Date().toISOString(), opened: {} };
+  if (!key) return fresh;
+  try {
+    const raw = window.localStorage.getItem(SEEN_PREFIX + key);
+    const v = raw ? (JSON.parse(raw) as Partial<SeenState>) : null;
+    if (v && typeof v.baseline === "string" && v.opened && typeof v.opened === "object") return { baseline: v.baseline, opened: v.opened };
+  } catch {
+    // A private window or a full disk: unread marks last for this visit only.
+  }
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(fresh));
+  } catch {
+    // As above.
+  }
+  return fresh;
+}
+
+function saveSeen(key: string | null, v: SeenState): void {
+  if (!key) return;
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(v));
+  } catch {
+    // As above.
+  }
+}
+
+/** The list tile for a task: the board's state dot, in the board's words. */
+/** The list's state for a task, the same lane and word the board shows. */
+function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
+  if (!th) return null;
+  const chrome = chromeFor(th, gate);
+  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
+}
+
 export function Threads() {
   const { session, store } = useSession();
   const deps = useMemo(() => {
@@ -71,8 +125,18 @@ export function Threads() {
   const { data: board, selectChannel } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
-  const [tab, setTab] = useState<Tab>(() => (open && open.kind !== "task" ? "direct" : "tasks"));
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(takeCompose);
+  const [tab, setTab] = useState<Tab>(() => (composing || (open && open.kind !== "task") ? "direct" : "tasks"));
+  // The palette's "New message" opens the composer.
+  useEffect(() => {
+    const open = () => {
+      if (!takeCompose()) return;
+      setTab("direct");
+      setComposing(true);
+    };
+    window.addEventListener("maidan:compose", open);
+    return () => window.removeEventListener("maidan:compose", open);
+  }, []);
   // Opening a DM from a link shows it under Direct, a task under Tasks.
   const [seen, setSeen] = useState<ConvRef | null>(open);
   if (open !== seen && !sameRef(open, seen)) {
@@ -81,6 +145,10 @@ export function Threads() {
   }
   const me = session.status === "signed-in" ? session.memberId : null;
   useVisualViewport(keyboardInset);
+  const readsKey = session.status === "signed-in" ? `${session.workspaceId}:${session.memberId}` : null;
+  const [reads, setReads] = useState<{ key: string | null; value: SeenState }>(() => ({ key: readsKey, value: loadSeen(readsKey) }));
+  if (reads.key !== readsKey) setReads({ key: readsKey, value: loadSeen(readsKey) });
+  const threadById = useMemo(() => new Map(board.threads.map((t) => [t.id, t])), [board.threads]);
 
   const tasks = useMemo(() => board.threads.map(taskConversation).sort(byRecent), [board.threads]);
   const dms = useMemo(() => {
@@ -96,6 +164,19 @@ export function Threads() {
     if (open.kind === "task") return { ref: open, threadId: open.id, label: "Task", detail: "", updatedAt: null };
     return null;
   }, [open, tasks, dms]);
+
+  // Opening a conversation reads it, and so does staying in it as it moves.
+  const openedId = current?.threadId ?? null;
+  const openedAt = current?.updatedAt ?? null;
+  const markKey = openedId ? `${openedId}@${openedAt ?? ""}` : null;
+  const [marked, setMarked] = useState<string | null>(null);
+  if (openedId && markKey !== marked) {
+    setMarked(markKey);
+    const now = new Date().toISOString();
+    const value = markOpened(reads.value, openedId, openedAt && openedAt > now ? openedAt : now);
+    saveSeen(reads.key, value);
+    setReads({ ...reads, value });
+  }
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
@@ -115,11 +196,13 @@ export function Threads() {
           {tab === "tasks" ? (
             <label className="channel-pick">
               <span className="visually-hidden">Channel</span>
+              <span className="channel-hash" aria-hidden="true">#</span>
               <select value={board.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!board.channels.length}>
                 {board.channels.map((c) => (
-                  <option key={c.id} value={c.id}>#{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              <Icon name="chevron" />
             </label>
           ) : (
             <button className="btn small-btn" onClick={() => setComposing((v) => !v)} aria-expanded={composing}>{composing ? "Cancel" : "New message"}</button>
@@ -140,23 +223,52 @@ export function Threads() {
         )}
         {listError && <p className="conv-error" role="alert">{listError}</p>}
         {listLoading && !list.length ? (
-          <p className="muted">Loading…</p>
+          <div role="status" aria-label="Loading">
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+          </div>
         ) : !list.length ? (
-          <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
+          <p className="muted conv-empty">
+            {tab === "tasks" ? (
+              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
+            ) : "No conversations yet. Start one with New message."}
+          </p>
         ) : (
           <ul className="convs">
-            {list.map((c) => (
-              <li key={`${c.ref.kind}:${c.ref.id}`}>
-                <a className={sameRef(c.ref, open) ? "conv on" : "conv"} href={convHash(c.ref)} aria-current={sameRef(c.ref, open) ? "page" : undefined}>
-                  <span className={`avatar kind-${c.ref.kind}`} aria-hidden="true">{c.ref.kind === "task" ? "#" : initials(c.label)}</span>
-                  <span className="conv-text">
-                    <span className="conv-label">{c.label}</span>
-                    <span className="conv-detail">{c.detail}</span>
-                  </span>
-                  {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
-                </a>
-              </li>
-            ))}
+            {list.map((c) => {
+              const on = sameRef(c.ref, open);
+              const unread = !on && isUnread(c, reads.value);
+              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id), board.gates[c.ref.id]) : null;
+              const th = c.ref.kind === "task" ? threadById.get(c.ref.id) : undefined;
+              const who = th?.assignee_id ? board.members.get(th.assignee_id) : undefined;
+              return (
+                <li key={`${c.ref.kind}:${c.ref.id}`}>
+                  <a className={`conv${on ? " on" : ""}${unread ? " unread" : ""}`} href={convHash(c.ref)} aria-current={on ? "page" : undefined}>
+                    {c.ref.kind === "task" ? (
+                      <span className={`conv-state state state-${tone?.tone ?? "open"}`} aria-hidden="true"><span className="state-dot" /></span>
+                    ) : (
+                      <span className={`avatar kind-${c.ref.kind}${c.ref.kind === "dm" && c.detail !== "Agent" ? " human" : ""}`} aria-hidden="true">{initials(c.label)}</span>
+                    )}
+                    <span className="conv-text">
+                      <span className={c.label ? "conv-label" : "conv-label name-pending"}>{c.label}{unread && <span className="visually-hidden">, unread</span>}</span>
+                      {tone ? (
+                        <span className={`conv-detail state state-${tone.tone}`}>
+                          <span className="state-text">{tone.word}</span>
+                          {who && <span className="conv-who">· {who.name}</span>}
+                        </span>
+                      ) : (
+                        <span className="conv-detail">{c.detail}</span>
+                      )}
+                    </span>
+                    <span className="conv-end">
+                      {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
+                      {unread && <span className="unread-dot" aria-hidden="true" />}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -188,7 +300,8 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const others = [...members.values()].filter((m) => m.id !== me && m.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const q = filter.trim().replace(/^@/, "").toLowerCase();
+  const others = [...members.values()].filter((m) => m.id !== me && (m.name.toLowerCase().includes(q) || (m.handle ?? "").toLowerCase().includes(q)));
   const group = picked.length > 1;
 
   const start = async () => {
@@ -221,7 +334,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
     >
       <label className="field">
         <span>To</span>
-        <input type="search" placeholder="Find a person or agent" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input type="search" placeholder="Find a person or agent" aria-label="Find a person or agent by name or handle" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </label>
       <ul className="pick-list" aria-label="People">
         {others.map((m) => (
@@ -233,7 +346,8 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
                 onChange={(e) => setPicked((p) => (e.target.checked ? [...p, m.id] : p.filter((x) => x !== m.id)))}
               />
               <span>{m.name}</span>
-              {m.kind === "agent" && <span className="tag">Agent</span>}
+              {m.handle && m.handle !== m.name ? <span className="muted small">@{m.handle}</span> : null}
+              <span className="tag">{m.kind === "agent" ? "Agent" : "Person"}</span>
             </label>
           </li>
         ))}
@@ -388,7 +502,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={membersPending(members) ? "name-pending" : undefined}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -405,7 +519,9 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (
           <ol className="msg-list">
-            {messages.map((m, i) => (
+            {messages.flatMap((m, i) => {
+              const newDay = !messages[i - 1] || dayKey(messages[i - 1].posted_at) !== dayKey(m.posted_at);
+              const row = (
               <MessageRow
                 key={m.id}
                 m={m}
@@ -420,7 +536,11 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 onRemove={removeMessage}
                 api={api}
               />
-            ))}
+              );
+              return newDay
+                ? [<li key={`day-${dayKey(m.posted_at)}`} className="day-sep"><span>{dayLabel(m.posted_at, Date.now())}</span></li>, row]
+                : [row];
+            })}
           </ol>
         )}
       </div>
@@ -431,6 +551,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
       )}
       <Composer
         label={label}
+        onAttach={(file) => api.attach(conv.threadId, file)}
         onSend={async (body) => {
           sent.current = true;
           await send(conv.ref, body);
@@ -478,11 +599,11 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
   };
   return (
     <li className={`msg${head ? " head" : ""}${mine ? " mine" : ""}${pinned ? " pinned" : ""}`} data-mid={m.id}>
-      {head ? <span className="avatar" aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
+      {head ? <span className={`avatar${members.get(m.author_id)?.kind === "human" ? " human" : ""}`} aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
       <div className="msg-main">
         {head && (
           <p className="msg-meta">
-            <strong>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
+            <strong className={who ? undefined : "name-pending"}>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
             {m.edited_at && <span className="edited"> edited</span>}
             {pinned && <span className="edited"> pinned</span>}
           </p>
@@ -490,15 +611,15 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
         {editing ? (
           <EditBox m={m} onCancel={() => setEditing(false)} onSave={async (body) => { await onEdit(m, body); setEditing(false); }} />
         ) : (
-        <p
+        <div
           className="msg-body"
           onClick={() => {
             // A phone has no hover, so a tap on the message offers reactions.
             if (window.matchMedia("(hover: none)").matches && !window.getSelection()?.toString()) setPicking((v) => !v);
           }}
         >
-          {m.body}
-        </p>
+          <MessageBody body={m.body} />
+        </div>
         )}
         {!head && (m.edited_at || pinned) && !editing && (
           <p className="msg-meta">{m.edited_at && <span className="edited">edited </span>}{pinned && <span className="edited">pinned</span>}</p>
@@ -601,11 +722,35 @@ function EditBox({ m, onSave, onCancel }: { m: Message; onSave: (body: string) =
   );
 }
 
-function Composer({ label, onSend }: { label: string; onSend: (body: string) => Promise<void> }) {
+type ComposerProps = {
+  label: string;
+  onSend: (body: string) => Promise<void>;
+  onAttach: (file: File) => Promise<{ filename: string }>;
+};
+
+function Composer({ label, onSend, onAttach }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attached, setAttached] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+
+  // A pasted file (a screenshot, usually) is stored and linked to this
+  // conversation's thread; pasted text is left alone.
+  const paste = async (files: File[]) => {
+    setError(null);
+    setAttached(null);
+    const names: string[] = [];
+    for (const f of files) {
+      try {
+        names.push((await onAttach(f)).filename);
+      } catch (e) {
+        setError(e instanceof ThreadsError ? e.message : "Could not attach that file.");
+        break;
+      }
+    }
+    if (names.length) setAttached(`Attached ${names.join(", ")}`);
+  };
 
   const submit = async () => {
     if (busy) return;
@@ -632,6 +777,7 @@ function Composer({ label, onSend }: { label: string; onSend: (body: string) => 
       }}
     >
       {error && <p className="conv-error" role="alert">{error}</p>}
+      <p className="composer-note" role="status">{attached ?? ""}</p>
       <div className="composer-row">
         <label className="visually-hidden" htmlFor="compose">Message {label}</label>
         <textarea
@@ -642,6 +788,12 @@ function Composer({ label, onSend }: { label: string; onSend: (body: string) => 
           placeholder="Message"
           enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={(e) => {
+            const files = pastedFiles(e.clipboardData);
+            if (!files.length) return;
+            e.preventDefault();
+            void paste(files);
+          }}
           onKeyDown={(e) => {
             // A keyboard with a pointer sends on Enter; a phone keeps Enter for a new line.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) {
@@ -672,26 +824,93 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     };
   }, [api, threadId, open, facts?.thread]);
   const f = facts?.thread === threadId ? facts.value : null;
-  const name = (id: string | undefined) => (id ? members.get(id)?.name || id : "someone");
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || (membersPending(members) ? "…" : id.slice(0, 8)) : "someone");
   const deps = f?.deps?.dependencies ?? [];
-  const entries = f?.evidence?.entries ?? [];
+  const entries = withRecords(f?.evidence?.entries ?? [], f?.records ?? null);
+  const reload = () => setFacts(null);
   return (
     <details className="pins facts-panel" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Result and evidence</summary>
       {!f ? (
         <p className="muted small">Loading…</p>
       ) : (
-        <div className="small">
-          <p><b>Result</b>: {f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : "none recorded yet"}</p>
-          <p><b>Depends on</b>: {deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : "nothing"}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</p>
-          {f.evidence?.evidence_changed_since_review ? <p className="err">Evidence changed since the last review.</p> : null}
+        <div className="facts-body small">
+          <dl className="fact-rows">
+            <div><dt>Result</dt><dd>{f.result ? <><pre className="fact-code fact-json" tabIndex={0}>{JSON.stringify(f.result.result, null, 2)}</pre> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
+            <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
+          </dl>
+          {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}
           {entries.length ? (
-            <ol className="edit-history">
-              {entries.map((e, i) => <li key={i}><time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}</li>)}
+            <ol className="ev-timeline" aria-label="Evidence">
+              {entries.map((e, i) => {
+                const href = e.kind === "evidence_recorded" ? safeHref(e.record?.url) : null;
+                return (
+                  <li key={e.record?.id ?? i}>
+                    <span>
+                      {evidenceLine(e, name)}
+                      {href ? <> · <a href={href} target="_blank" rel="noopener noreferrer">open</a></> : null}
+                    </span>
+                    <time dateTime={e.at}>{clockTime(e.at)}</time>
+                  </li>
+                );
+              })}
             </ol>
           ) : <p className="muted">No evidence recorded yet.</p>}
+          <AddEvidence api={api} threadId={threadId} onAdded={reload} />
         </div>
       )}
+    </details>
+  );
+}
+
+const EMPTY_DRAFT: EvidenceDraft = { kind: "test_run", source: "", url: "", sha256: "", note: "" };
+
+/** Attach a test run, CI run, diff, outside review, screenshot or note to the task. */
+function AddEvidence({ api, threadId, onAdded }: { api: ThreadsApi; threadId: string; onAdded: () => void }) {
+  const [draft, setDraft] = useState<EvidenceDraft>(EMPTY_DRAFT);
+  const [busy, setBusy] = useState(false);
+  const why = evidenceRefusal(draft);
+  const set = (k: keyof EvidenceDraft) => (e: { currentTarget: { value: string } }) => {
+    const value = e.currentTarget.value;
+    setDraft((d) => ({ ...d, [k]: value }));
+  };
+  const submit = async () => {
+    if (why || busy) return;
+    setBusy(true);
+    try {
+      await api.addEvidence(threadId, draft);
+      say("Evidence recorded");
+      setDraft(EMPTY_DRAFT);
+      onAdded();
+    } catch (err) {
+      sayError(err, "Could not record the evidence");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <details className="add-evidence">
+      <summary>Add evidence</summary>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <label>
+          Kind{" "}
+          <select value={draft.kind} onChange={(e) => setDraft((d) => ({ ...d, kind: e.currentTarget.value as EvidenceKind }))}>
+            {EVIDENCE_KINDS.map((k) => <option key={k} value={k}>{EVIDENCE_KIND_WORD[k]}</option>)}
+          </select>
+        </label>
+        <label>Source <input value={draft.source} onChange={set("source")} placeholder="cargo test, github-actions" maxLength={200} /></label>
+        <label>URL <input type="url" value={draft.url} onChange={set("url")} placeholder="https://" /></label>
+        <label>sha256 <input value={draft.sha256} onChange={set("sha256")} spellCheck={false} /></label>
+        <label>Note <textarea value={draft.note} onChange={set("note")} rows={2} maxLength={4000} /></label>
+        {why && (draft.source || draft.url || draft.sha256 || draft.note) ? <p className="muted">{why}</p> : null}
+        <button type="submit" className="btn" disabled={busy || Boolean(why)}>{busy ? "Recording" : "Record"}</button>
+        <p className="muted">Records are kept as written; they cannot be edited or removed. Adding one needs a bearer token.</p>
+      </form>
     </details>
   );
 }

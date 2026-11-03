@@ -20,12 +20,11 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const REPO: &str = "example/app";
 
 async fn spawn() -> (String, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -295,7 +294,10 @@ async fn the_issue_plan_fans_out_dispatches_in_order_and_lands() {
     fewer["children"] = json!([child("a", "schema", &[])]);
     let (status, problem) = plan(&base, &room.planner_token, &parent, &fewer).await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(problem["type"], "https://maidan.dev/problems/plan-conflict");
+    assert_eq!(
+        problem["type"],
+        "https://maidan.world/problems/plan-conflict"
+    );
     assert_eq!(problem["children"], made["children"]);
 
     let (_, read) = get_thread(&base, &room.planner_token, &parent).await;

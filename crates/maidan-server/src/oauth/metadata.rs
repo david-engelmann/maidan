@@ -158,6 +158,9 @@ pub struct AuthorizationServerMetadata {
     /// a client such as claude.ai assumes it must register dynamically,
     /// which this server never offers, and stops.
     client_id_metadata_document_supported: bool,
+    /// Responses carry the RFC 9207 `iss` parameter (`issuer_param`), and a
+    /// client that does not see this flag may ignore it.
+    authorization_response_iss_parameter_supported: bool,
 }
 
 fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
@@ -173,6 +176,7 @@ fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
         revocation_endpoint_auth_methods_supported: CLIENT_AUTH_METHODS.map(String::from).to_vec(),
         code_challenge_methods_supported: vec!["S256".into()],
         client_id_metadata_document_supported: true,
+        authorization_response_iss_parameter_supported: true,
     }
 }
 
@@ -306,6 +310,10 @@ mod tests {
         assert_eq!(
             json["client_id_metadata_document_supported"], true,
             "a metadata-document client must learn it may use one"
+        );
+        assert_eq!(
+            json["authorization_response_iss_parameter_supported"], true,
+            "a client must learn that authorization responses carry iss"
         );
         assert!(
             json.get("registration_endpoint").is_none(),

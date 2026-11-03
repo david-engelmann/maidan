@@ -14,7 +14,6 @@ use maidan_types::{
     LandGateStatus, Member, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     ReviewDecision, Thread, ThreadId, WorkspaceId, LAND_GATE_SKILL,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 
@@ -78,7 +77,7 @@ impl Pool {
 }
 
 async fn sqlite() -> (Pool, SqliteStore) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

@@ -9,11 +9,10 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn occupancy_splits_claimed_from_working_over_http() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -17,7 +17,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     let secret = TokenSecret::generate();
@@ -48,7 +47,7 @@ fn new_msg(thread_id: maidan_types::ThreadId, author: MemberId, body: &str) -> N
 
 #[tokio::test]
 async fn explorer_rest_lists_tombstones_backlinks_and_census() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

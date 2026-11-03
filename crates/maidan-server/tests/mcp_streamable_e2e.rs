@@ -12,7 +12,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The one revision with protocol-level sessions. Every later revision is
 /// stateless, so these tests declare it rather than inheriting it as a default.
@@ -29,7 +28,7 @@ async fn spawn_with_mcp() -> (
     tokio::task::JoinHandle<()>,
     Arc<maidan_mcp::McpServer>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

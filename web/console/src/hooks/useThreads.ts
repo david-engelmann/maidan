@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
-import { ThreadsApi, ThreadsError, movesList, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction } from "../core/threads.ts";
+import { ThreadsApi, ThreadsError, movesList, toggleReaction, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction } from "../core/threads.ts";
 import type { SessionState } from "../core/session.ts";
 import { backoff } from "./useNeeds.ts";
+import { sayError } from "../core/notices.ts";
 
 export type DirectData = { status: "idle" | "loading" | "ready" | "error"; dms: Dm[]; groups: GroupDm[]; error: string | null };
 
@@ -133,19 +134,18 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
 
   const react = useCallback(
     async (messageId: string, emoji: string, on: boolean) => {
-      // Shown at once; the reload puts the server's count back.
+      // Shown at once. A refusal puts the row back as it was and says so;
+      // either way the reload brings the server's count.
+      let before: Reaction[] | undefined;
       setData((d) => {
-        const cur = d.reactions[messageId] ?? [];
-        const found = cur.find((r) => r.emoji === emoji);
-        const next = found
-          ? cur.map((r) => (r.emoji === emoji ? { ...r, count: r.count + (on ? 1 : -1), mine: on } : r)).filter((r) => r.count > 0)
-          : on
-            ? [...cur, { emoji, count: 1, mine: true }]
-            : cur;
-        return { ...d, reactions: { ...d.reactions, [messageId]: next } };
+        before = d.reactions[messageId];
+        return { ...d, reactions: { ...d.reactions, [messageId]: toggleReaction(d.reactions[messageId] ?? [], emoji, on) } };
       });
       try {
         await api.react(messageId, emoji, on);
+      } catch (e) {
+        setData((d) => ({ ...d, reactions: { ...d.reactions, [messageId]: before ?? [] } }));
+        sayError(e, on ? "Could not add that reaction" : "Could not remove that reaction");
       } finally {
         await load();
       }

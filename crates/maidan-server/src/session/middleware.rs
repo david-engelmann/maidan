@@ -100,11 +100,18 @@ pub async fn load_session(
             Err(_) => return Err(ApiError::Unauthorized),
         },
     };
+    // A failed lookup cannot show the member may write: refuse, as above.
+    let invite_role = state
+        .store
+        .member_invite_role(session.member_id)
+        .await
+        .map_err(|_| ApiError::Unauthorized)?;
     Ok(SessionContext {
         session_id: session.id,
         member_id: session.member_id,
         workspace_id: session.workspace_id,
         token,
+        invite_role,
     })
 }
 

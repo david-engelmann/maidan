@@ -31,6 +31,8 @@ def _call(fixture):
         fixture["response"],
         model=options.get("model"),
         evidence_provider=options.get("provider"),
+        batch=options.get("batch", False),
+        standard_price=options.get("standard_price"),
     )
 
 

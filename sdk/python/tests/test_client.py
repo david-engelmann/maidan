@@ -308,6 +308,6 @@ def test_the_servers_problem_types_arrive_as_their_error_classes(call, cls, stat
     err = ei.value
     assert isinstance(err, MaidanError)
     assert err.status == status
-    assert err.type == f"https://maidan.dev/problems/{type_}"
+    assert err.type == f"https://maidan.world/problems/{type_}"
     assert err.problem["type"] == err.type, "the raw problem is kept"
     assert isinstance(err.title, str) and isinstance(err.detail, str)

@@ -11,11 +11,10 @@ use std::sync::{atomic::AtomicI64, Arc};
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 async fn spawn() -> String {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -177,7 +176,7 @@ async fn a_credential_response_is_no_store_and_never_compressed() {
     use maidan_auth::{capability, hash_secret, TokenSecret};
     use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

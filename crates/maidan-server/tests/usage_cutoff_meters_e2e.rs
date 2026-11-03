@@ -16,7 +16,6 @@ use maidan_server::{egress_worker, mail_worker, notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const METERED: [UsageMeter; 4] = [
     UsageMeter::Deliveries,
@@ -26,7 +25,7 @@ const METERED: [UsageMeter; 4] = [
 ];
 
 async fn setup() -> (AppState, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

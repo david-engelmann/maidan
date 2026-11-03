@@ -25,6 +25,7 @@ mod freeze;
 mod github_enqueue;
 mod github_ops;
 mod glossary;
+mod intake;
 mod land_gate;
 mod mail_ops;
 mod member;
@@ -54,6 +55,7 @@ pub use token::mint_vocabulary;
 mod usage;
 mod waitlist;
 mod workspace;
+mod workspace_invite;
 
 pub use approval_gate::*;
 pub use artifact::*;
@@ -65,6 +67,7 @@ pub use freeze::*;
 pub use github_enqueue::*;
 pub use github_ops::*;
 pub use glossary::*;
+pub use intake::*;
 pub use land_gate::*;
 pub use mail_ops::*;
 pub use member::*;
@@ -93,6 +96,7 @@ pub use usage::*;
 pub use usage_meters::*;
 pub use waitlist::*;
 pub use workspace::*;
+pub use workspace_invite::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 

@@ -13,9 +13,8 @@ use maidan_types::{
     ChannelId, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     TaskAttributes, TaskEngine, Thread, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

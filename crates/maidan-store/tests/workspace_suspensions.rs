@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -107,7 +107,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn a_workspace_is_suspended_and_lifted_with_an_audit_row_each_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

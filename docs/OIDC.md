@@ -202,6 +202,26 @@ Existing bearer routes are unchanged. Session middleware is used on the session
 routes and the `/ui/api` routes (and the UI WebSocket path); MCP and A2A remain
 bearer-token surfaces.
 
+## Workspace invites
+
+A holder of `workspace:admin` invites a person with `POST /workspaces/{wid}/invites`
+and a body of `{"email", "role", "expires_at"?}`. `role` is `viewer` or `member`, and
+an invite never grants a role above the inviter's own. The invite expires after 7 days
+by default and after 30 days at most. The response holds the link once, as
+`accept_path` (`/auth/oidc/login?invite=…`). The server keeps only a hash of it.
+`GET` lists the workspace's invites and `DELETE /workspaces/{wid}/invites/{iid}`
+revokes one.
+
+The person opens the link and signs in or signs up through the identity provider.
+The provider must report the email as verified, and the email must match the invite.
+The person then joins the workspace as a human member with the invite's role. Each
+invite works once. An invite that is expired, revoked, used or from another workspace
+returns "the invite is no longer valid". A viewer's session keeps only the read
+capabilities, and a person who joined by invite cannot mint the first admin token.
+Minting and accepting are rate limited, and each is audited as `workspace_invite.create`,
+`workspace_invite.revoke` or `workspace_invite.accept`. The audit row never holds the
+email.
+
 ## Configuration
 
 OIDC is disabled unless `MAIDAN_OIDC_ENABLED=1`. When enabled, boot requires

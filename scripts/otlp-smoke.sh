@@ -63,6 +63,16 @@ assert "ResourceSpans" "a traces batch"
 assert "ResourceMetrics" "a metrics batch"
 assert "http_request" "the per-request 'http_request' span"
 
+# No span or metric attribute may carry prompt, diff, rendered result or body
+# text (Later O): the debug exporter prints each attribute as "-> key: ...".
+leaked="$(grep -E -- '-> (prompt|diff|rendered|body|content)(\.[a-z_]+)?: ' <<<"${logs}" | head -5 || true)"
+if [[ -n "${leaked}" ]]; then
+  echo "::error::telemetry carries a text attribute it must not: ${leaked}"
+  fail=1
+else
+  echo "ok: no prompt, diff, rendered or body attribute in the exported telemetry"
+fi
+
 if [[ "${fail}" -ne 0 ]]; then
   echo "=== otel-collector logs (tail) ==="
   tail -n 100 <<<"${logs}"

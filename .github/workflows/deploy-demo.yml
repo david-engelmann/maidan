@@ -1,0 +1,111 @@
+name: deploy demo
+
+# try.maidan.world, the public demo (deploy/cloudflare/wrangler.demo.jsonc;
+# docs/Deploy.md "try.maidan.world"). Publishing a GitHub Release deploys it;
+# a dispatch deploys a named tag. Off until vars.DEMO_DOMAIN is 'true'.
+#
+# No compile: demo/Dockerfile layers the release's own cosign-verified
+# maidan-server:<tag>-demo (the one build with the bootstrap routes the seed
+# needs) and maidan-cli:<tag> images with bash, curl and jq.
+#
+# Cost: one basic instance that sleeps after 15 idle minutes, and a
+# once-a-day cron that only destroys a running container
+# (deploy/cloudflare/test/cost.test.js).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy (vN.N.N)"
+        required: true
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: vars.DEMO_DOMAIN == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: demo
+      url: https://try.maidan.world
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      SERVER: ghcr.io/david-engelmann/maidan-server
+      CLI: ghcr.io/david-engelmann/maidan-cli
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - name: the tag is a release tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
+      # Build from the tag's own Dockerfile, entrypoint and seed script.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0
+      - name: the tag is on main
+        run: |
+          git fetch -q origin main
+          git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main \
+            || { echo "$TAG is not on main; promote it from dev first" >&2; exit 1; }
+      - uses: sigstore/cosign-installer@v3
+      # The release workflow signs both images keylessly; refuse either if it
+      # did not.
+      - name: verify the release images
+        run: |
+          for ref in "$SERVER:$TAG-demo" "$CLI:$TAG"; do
+            cosign verify "$ref" \
+              --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - name: build the demo image on the verified images
+        run: |
+          # Pin each base to its linux/amd64 manifest digest, so the build uses
+          # exactly what was verified.
+          amd64() {
+            docker buildx imagetools inspect "$1" --raw \
+              | jq -r '.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest'
+          }
+          server="$SERVER@$(amd64 "$SERVER:$TAG-demo")"
+          cli="$CLI@$(amd64 "$CLI:$TAG")"
+          docker build --platform linux/amd64 \
+            --build-arg SERVER_IMAGE="$server" --build-arg CLI_IMAGE="$cli" \
+            -f demo/Dockerfile -t "maidan-demo:$TAG" ../..
+      - name: push the demo image to the account registry
+        run: npx wrangler containers push -c wrangler.demo.jsonc "maidan-demo:$TAG"
+      - name: deploy
+        run: |
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-demo:$TAG"
+          sed -i "s#\"image\": \"registry.cloudflare.com/ACCOUNT/maidan-demo:RELEASE\"#\"image\": \"$image\"#" wrangler.demo.jsonc
+          grep -q "\"image\": \"$image\"" wrangler.demo.jsonc
+          # The first deploy can look for the Durable Object namespace before
+          # it is visible (DURABLE_OBJECT_NOT_FOUND); the second finds it.
+          npx wrangler deploy -c wrangler.demo.jsonc || { sleep 15; npx wrangler deploy -c wrangler.demo.jsonc; }
+      # One request: it boots the new container once, which then sleeps after
+      # 15 idle minutes.
+      - name: try.maidan.world runs this release
+        run: |
+          for _ in $(seq 1 36); do
+            got=$(curl -fsS https://try.maidan.world/health | jq -r .version || true)
+            if [ "$got" = "$TAG" ]; then echo "try.maidan.world runs $TAG"; exit 0; fi
+            sleep 10
+          done
+          echo "try.maidan.world answers ${got:-nothing}, not $TAG" >&2
+          exit 1

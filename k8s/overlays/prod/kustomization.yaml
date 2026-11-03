@@ -7,7 +7,7 @@ resources:
   - ../../base
 
 commonAnnotations:
-  maidan.dev/environment: "prod"
+  maidan.world/environment: "prod"
 
 # The release every prod deploy path pins (scripts/check-deploy-pins.sh fails
 # when they differ from the newest tagged CHANGELOG section). Both images are

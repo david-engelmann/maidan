@@ -56,6 +56,13 @@ pub const OPERATOR_GLOBAL: &str = "operator:global";
 /// worker's request.
 pub const APPROVAL_GRANT: &str = "approval:grant";
 
+/// Invite people into the workspace: mint, list and revoke
+/// `/workspaces/:wid/invites`. In [`crate::capability_set::HUMAN_ADMIN`],
+/// never in `AGENT_WORKER`, and not delegatable: deciding who belongs to a
+/// workspace is authority, not work. The invite's role is still capped at the
+/// inviter's own, so holding this never lets anyone grant more than they have.
+pub const WORKSPACE_ADMIN: &str = "workspace:admin";
+
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
@@ -73,6 +80,7 @@ const KNOWN: &[&str] = &[
     SECRET_READ,
     SECRET_ADMIN,
     APPROVAL_GRANT,
+    WORKSPACE_ADMIN,
 ];
 
 /// Capabilities that describe *doing work* — reading, writing, posting, moving a
@@ -192,6 +200,7 @@ mod tests {
         AUDIT_READ_GLOBAL,
         OPERATOR_GLOBAL,
         APPROVAL_GRANT,
+        WORKSPACE_ADMIN,
     ];
 
     #[test]
@@ -226,7 +235,7 @@ mod proofs {
     use super::{
         first_not_held, is_delegatable, APPROVAL_GRANT, AUDIT_READ_GLOBAL, CHANNEL_ADMIN,
         FEDERATION_ADMIN, FEDERATION_INGEST, KNOWN, OPERATOR_GLOBAL, SECRET_ADMIN, SECRET_READ,
-        TOKEN_ADMIN, WORKSPACE_READ,
+        TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ,
     };
 
     /// The same split the unit test lists, checked for every known
@@ -241,6 +250,7 @@ mod proofs {
         AUDIT_READ_GLOBAL,
         OPERATOR_GLOBAL,
         APPROVAL_GRANT,
+        WORKSPACE_ADMIN,
     ];
 
     #[kani::proof]

@@ -11,7 +11,6 @@ use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -388,7 +387,7 @@ async fn a_plain_post_bumps_only_its_own_threads_activity(store: Arc<dyn Store>)
 }
 
 async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

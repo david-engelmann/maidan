@@ -5,32 +5,14 @@
 //! scope, then INSERT/UPDATE, in one deferred transaction) and counts lock
 //! failures.
 
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::Row;
 use std::sync::Arc;
-
-fn wal_pool_options(busy_timeout_ms: u64) -> SqlitePoolOptions {
-    SqlitePoolOptions::new().after_connect(move |conn, _| {
-        Box::pin(async move {
-            sqlx::query("PRAGMA foreign_keys = ON")
-                .execute(&mut *conn)
-                .await?;
-            sqlx::query("PRAGMA journal_mode = WAL")
-                .execute(&mut *conn)
-                .await?;
-            sqlx::query(&format!("PRAGMA busy_timeout = {busy_timeout_ms}"))
-                .execute(&mut *conn)
-                .await?;
-            Ok(())
-        })
-    })
-}
 
 async fn run_contention(max_connections: u32) -> usize {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("contention.db");
     let url = format!("sqlite://{}?mode=rwc", db.display());
-    let pool = wal_pool_options(5000)
+    let pool = maidan_search::sqlite_pool_options_with(5000)
         .max_connections(max_connections)
         .connect(&url)
         .await

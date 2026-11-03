@@ -20,7 +20,6 @@ use maidan_types::{
     NewWorkspace, ThreadId, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     store: Arc<dyn Store>,
@@ -32,7 +31,7 @@ struct Harness {
 }
 
 async fn harness(name: &str) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

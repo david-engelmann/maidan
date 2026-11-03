@@ -30,7 +30,6 @@ use maidan_types::{
 };
 use reqwest::{header, redirect::Policy, StatusCode};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -206,7 +205,7 @@ enum Sessions {
 }
 
 async fn world(sessions: Sessions) -> World {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

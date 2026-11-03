@@ -12,7 +12,7 @@ use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -63,7 +63,7 @@ async fn spawn_postgres() -> Option<Harness> {
 }
 
 async fn spawn_sqlite() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -7,6 +7,910 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [420.0.0] — 2026-11-02
+
+### A closed task names who closed it
+
+- **Fixed:** A close clears the claim, so a finished task's header named nobody. The header now reads the transition history and says who closed the task and when, and who handed it into review when that was someone else.
+
+### The console keeps hidden things hidden, and fits a phone's review row
+
+- **Fixed:** An element marked `hidden` now stays hidden whatever display a class gives it. The sign-up check's empty Turnstile block ("One quick check before you sign up") was showing to every signed-out visitor.
+- **Fixed:** On a phone, a review's three buttons sit in three equal columns and a label wraps inside its button, so the row stays on one line in any system font.
+- **Changed:** The Connect sheet's close button says Close instead of Esc, and the empty board's Connect an agent is plain text.
+
+### The landing works by keyboard and screen reader
+
+- **Fixed:** Placing or removing a puck in the swarm builder by keyboard keeps focus on that puck instead of dropping it to the page. The quickstart tabs follow the tab pattern with arrow, Home and End keys, and the copy button sits outside the tablist. The lease countdown announces only its start and expiry instead of every tick. The skip link lands on the quickstart, the pre-hydration hero matches the app, and the section numerals meet WCAG AA contrast.
+
+### The landing explains itself
+
+- **Changed:** The landing now opens by saying what Maidan is (coordination for agent swarms) and what problem it solves. Each scene defines its term in plain words: a claim, a lease, a review, and why a person approves. The Run section says what the quickstart starts.
+- **Fixed:** The scale scene no longer shows a made-up "400 agents" figure. Its wall is now labelled as an illustration, and its counter says "double claims" in place of "collisions". The page title and descriptions match the new opening.
+
+### The landing page's waitlist form, code and command read right everywhere
+
+- **Fixed:** The waitlist form was drawn on a near-black panel with dark labels, because the page's code panel and the form both used the class `card`, and the hero caption shared the form's `status`. Both are renamed (`run-card`, `circuit-status`).
+- **Fixed:** The command under the code was `docker compose ... up` alone, which fails in an empty directory; it now clones the repository first, wraps at spaces instead of hiding behind Copy, and the code samples keep every line within 44 characters so nothing scrolls out of sight on a phone.
+- **Changed:** The tile wall fades at its edges instead of cutting tiles off, a status line balances instead of leaving one word alone, the plate's four words sit evenly apart, the footer lines up, and on phones a section is as tall as what it holds.
+
+### Landing headlines balance and every animation respects reduced motion
+
+- **Changed:** Landing headlines balance across lines and ledes avoid orphans. Every motion animation, including the padlock shackle and the envelope flap, follows the system reduced-motion setting. The Invite button and the footer Sign in link have 44px hit areas, and the engraved tile label meets WCAG AA contrast over the steel gradient.
+
+### Launch gate end-to-end test
+
+- **Added:** One Postgres test walks the whole hosted path a new team takes: waitlist, invite and sign-up, connecting an MCP client from a listed metadata host through consent and PKCE, an agent claiming and finishing a change, a person reviewing and closing it, and the day's usage meters, with a second workspace that sees and counts none of it.
+
+### The listing files carry the prepared copy and icons
+
+- **Changed:** The registry, Docker and ToolHive listing files now use the short description from the listing pack. The registry entry also gains a title, its repository and the 48px and 400px icons. Nothing has been submitted.
+
+### Privacy, terms and support share the landing's paper
+
+- **Changed:** The policy pages were dark glass with mint links while the landing became warm paper and ink. They now use the landing's palette, its Geist type (the site CSP allows `font-src 'self'`) and its ink sign-in button, so the public site reads as one product.
+
+### The phone thread sheet dims the board and closes on Escape
+
+- **Changed:** On a phone, the open task's sheet dims the board behind it, and Escape puts it away as Back to the board does, returning focus to the card. An inline panel on a wide screen ignores Escape.
+
+### A reviewed task says who completed it
+
+- **Changed:** A closed task's header says "completed by" when the close went through review and "closed by" when it skipped review. The time is a machine-readable `<time>` with the full date on hover.
+
+### A review gallery for every UI change
+
+- **Added:** `npm run gallery` in `ui-tests/` captures the landing and the console's first screens at desktop and phone widths, and fails on a screen that scrolls sideways or a page that throws. The `ui gallery` CI job runs it on every pull request that changes code and uploads the pictures as the `ui-gallery` artifact.
+
+### Text fields show a real focus ring
+
+- **Fixed:** A focused text field, select or textarea drew only a faint 12% glow, because a later rule removed the shared focus outline. Keyboard focus on a field now shows the same 3px accent ring as buttons and links.
+
+### The live row lines up, and says Reconnect
+
+- **Fixed:** On a touch screen the Live menu's label sat about 13px above the connection status and its button. All three now share a centre line.
+- **Changed:** The live button reads "Reconnect" instead of "Connect WS", and the hints that pointed to it say the same.
+
+### The phone header takes two rows, not four
+
+- **Changed:** At 390px the console header was four rows (174px, or 202px with touch targets). On phones the brand, a search icon, Connect and Sign out now share one row, and your name and workspace sit on one line below it. The full button names stay for screen readers. Desktop is unchanged.
+
+### Review buttons and teammate status fit a phone
+
+- **Fixed:** At 390px "Approve with note" dropped to its own line under Approve and Request changes. The three now share one line.
+- **Fixed:** A teammate's status, such as "in review · Review: result waiting on a reviewer", was cut off mid-word on a phone. It now wraps to two lines.
+
+### On a phone the open thread is a sheet over the board
+
+- **Changed:** At 720px and below, an open thread slides over the board as a bottom sheet instead of rendering below every lane, with a "Back to the board" button that closes it and returns focus to the card. Wider screens are unchanged.
+
+- **Fixed:** The page now opts into `viewport-fit=cover`, so the sheet clears the iPhone home indicator and landscape content clears the notch.
+
+### A withheld duplicate leaves a notice and shows on MCP
+
+- **Added:** A task withheld from claims as a live duplicate gets a notice message on its thread at creation, and the MCP `maidan://threads/{id}` read carries the same `withheld` reason as `GET /threads/{id}`.
+
+### A push that dismisses approvals says so
+
+- **Fixed:** A CI read that finds a tracked change's head moved now appends and publishes one `approval_dismissed` event per approval it dismisses, naming the reviewer, the approved head and the new head, so waiters see the gate reopen (#1572).
+
+### A quiet server's event listener recovers its health
+
+- **Fixed:** the Postgres `LISTEN` listener marked itself healthy again only when a notification arrived. After a failed reconnect (a hosted database briefly unreachable), a server with no traffic stayed `degraded`, and `/health` answered 503 indefinitely, which is what took dev.maidan.world's health down on 2026-10-27. While degraded, the listener now sends itself a probe NOTIFY every 5 seconds, so it reads healthy as soon as the path works again.
+
+### A fine-grained GitHub token gets CI notices through the Actions API
+
+- **Fixed:** When GitHub refuses Maidan's token a pull request's check runs, the change sweep now reads the head's CI from the Actions and commit-status APIs instead. GitHub cannot give a fine-grained token check runs at all, so with one the check rollup came back `FORBIDDEN`, the sweep read that as "nothing has reported yet", and no `ci_failed` or `checks_done` notice ever fired (#1623). A fine-grained token now needs **Actions: read** and **Commit statuses: read**. Every workflow run is read down to its jobs, so the notice names the failing job and carries its log tail, and a required check that hasn't reported still holds the gate. A run that failed before any job did, or hasn't created its jobs yet, counts under its workflow's name. Lists longer than five pages of 100 read as pending. Check runs from apps other than Actions aren't visible this way. When the token can't read either API, the sweep logs a warning and raises an ops alert naming the permissions it needs.
+
+### A re-claim of an assigned duplicate gets the usual answer
+
+- **Fixed:** Claiming a thread that is already assigned now returns `claimed: false` even when the thread is also a live duplicate, instead of the duplicate refusal. The holder re-claiming gets the usual answer; an unassigned duplicate is still refused (#1580).
+
+### Claim ordering and same-issue hold follow-ups
+
+- **Fixed:** Tests now prove warm affinity in `claim_next` is only a tiebreak: a higher-priority thread or one that has waited more whole hours beats the claimer's warm thread, and an agent with no history gets the oldest thread (#1584).
+- **Fixed:** A second change thread for a Linear issue is withheld from claiming while another change thread for that issue is in review. Clearing its duplicate link lifts the hold for good; a thread with no title or description has no link to clear, so its hold lifts only when the review ends or it closes (#1609).
+
+### A claim's two timestamps are one microsecond
+
+- **Fixed:** Claim, assign, and claim-next stamp `claimed_at` and `updated_at` from one `Utc::now()` truncated to microseconds on both backends. Postgres stores microseconds, so a nanosecond reading (or a second reading taken for the other column) made the unacknowledged-claim event's `claimed_at` disagree with the claim row.
+
+### Clearing a duplicate link needs sight of the original
+
+- **Fixed:** `DELETE /threads/{id}/fingerprint/duplicate-of` now answers `404` when the caller can't see the original the thread is linked to, or can't see the thread itself (another workspace, a private channel). That is the same answer a missing thread gets, so nothing about another tenant's threads leaks. Each clear writes a `thread.duplicate_cleared` audit event in the thread's workspace, in the same transaction (#1580).
+
+### Close a thread that will not land
+
+- **Added:** `POST /threads/{id}/close-abandoned` and its MCP twin `close_abandoned_thread` close an open or in-review thread as a `duplicate`, `abandoned`, or `superseded`. The thread's producer, its claim holder, or a maintainer may do it, and each close is audited as `thread.close_abandoned` with its reason. `duplicate_of` names the thread that covers this one: a duplicate records a `duplicates` reference to it, and a superseded thread records that `duplicate_of` supersedes it. It must be a live thread you can read in the same workspace; any other id gets the same 400. A thread with a result keeps every landing gate (separation of duties, required reviewers, the land gate); a thread with no result skips the review gates, since there is nothing to review. Nothing lands, so the thread's dependents stay waiting instead of becoming ready.
+
+### Dead egress allowlist entries are marked
+
+- **Added:** `GET /workspaces/{id}/egress-targets` marks an entry that no current rule would bless (a non-ASCII branch base or a ref spelling stored before the rules tightened, or a surface this build cannot deliver to) with a `dead` reason, and logs a warning, so the operator can see it and revoke it. Live entries are unchanged on the wire.
+- **Added:** A test checks that a stored non-ASCII branch destination in the egress outbox dead-letters as unroutable without a post.
+
+### DeepSeek is a review family
+
+- **Added:** `deepseek` joins the provider families second-family review routing reads, so a seat whose usage names DeepSeek (`provider: "deepseek"`, models `deepseek-chat` and `deepseek-reasoner`) counts as its own family: it can review work any other family wrote, and never a change DeepSeek wrote.
+
+### Every deploy path pins v419.0.0
+
+- **Changed:** every deploy pin and install command moves from `v417.0.0` to `v419.0.0` (`v418.0.0` was never published), with the quickstart Dockerfile's tarball SHA-256s, and the stack's bundled chart is repackaged.
+
+### Prod deploys only what main carries
+
+- **Fixed:** the `deploy prod` workflow refuses a release tag whose commit is not on `main`, and its image push reads `wrangler.prod.jsonc`. It read the dev Wrangler config, whose Dockerfile build is not in the checkout, so the push failed. The `prod` GitHub environment allows only `main` and `v*` tags.
+
+### Work lands on `dev`; `main` is prod
+
+- **Changed:** `dev` is the default branch. Every pull request targets it, with the same eight required checks, and CI and the docs build run on pushes to both `main` and `dev`. dev.maidan.world deploys `dev` (images are tagged `dev-<sha>`). `main` moves only when a tested `dev` commit is fast-forwarded into it, and is then tagged and deployed to maidan.world.
+- **Security:** the OpenHands example's `litellm` floor moves to 1.100.4, the fixed release for GHSA-7hp6-4w63-5g45 (a proxy-admin privilege escalation). litellm pins `filelock<4.0`, and its three advisories (fixed only in 4.2.1) are accepted for that example in `.config/osv-scanner.toml`, with the reason.
+
+### OSV and the listener-health mutation run go green on dev
+
+- **Changed:** the `osv scan` job accepts `filelock` in the OpenHands example with one dated override (until 2026-12-31) instead of one exception per advisory. litellm pins `filelock<4.0`, every advisory is fixed only in 4.x, and eight more arrived this week. The example runs single-user in its own container.
+- **Fixed:** a test pins `ListenerHealth::is_degraded`: false at the start, true after an error, false after a success. The mutation run found that replacing it with `true` survived every test.
+
+### Cut-off workspaces no longer starve other tenants' digests
+
+- **Fixed:** The digest sweeper leaves members of workspaces past their deliveries allowance out of its due page, so a cut-off workspace with more due members than one page can no longer keep every other workspace from getting its digest.
+
+### The email digest honors the deliveries cutoff and is metered
+
+- **Fixed:** the digest sweeper sends no digest to a member whose workspace is past its deliveries allowance, leaving the watermark so the digest goes out once the cutoff lifts, and counts one delivery per digest sent (#1644).
+
+### The egress delivery metric's labels are a fixed set
+
+- **Fixed:** `maidan_egress_deliveries_total` recorded `surface` from the stored string, so an unknown value became a new series. It now reads through the same closed list as `maidan_result_deliveries_total` (`github`, `github_branch`, `slack`, `linear`, anything else `other`), and `outcome` is a typed `EgressOutcome` (`sent`, `retry`, `dead`, `disabled`, `unroutable`, `refused`, `over_allowance`) (#1772).
+
+### A refused same-family claim no longer holds the thread
+
+- **Fixed:** on Postgres, a claim or assign that second-family routing refused had already taken the thread's row lock, and kept it until sqlx rolled the dropped transaction back on the connection's next use. A claim-next running in that window skipped the thread (`SKIP LOCKED`) and found nothing, so a seat of another family could miss a review it was allowed to take. The refusal is now checked before the lock; the lock and a second read still serialize a claim against a racing family label.
+
+### Find threads by attribute
+
+- **Added:** `GET /workspaces/{id}/threads` and the MCP `find_threads` tool find a workspace's threads by task attribute: `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`, `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family` equality filters, plus `ref.<relation>=<thread id>` (`ref.twin_of`, `ref.duplicates`, `ref.supersedes`, ...) for the threads holding that reference to a thread, combined with AND, with `engine`, `tier` and `lane` also accepted bare. Scoped to the caller's own workspace and to the threads the caller may read; a thread with no stored attributes matches the defaults it reads with (`kind` change, `threat_model` false) and the other fields match only a stored value. A relation is checked for its syntax only, so an unused one is an empty page; a cursor that is not a live thread the caller can read in the workspace is a 400, the same for a foreign, unreadable, deleted or made-up id. Keyset-paginated like the channel thread list, and returned threads carry their attributes.
+
+### The release image exports OTLP
+
+- **Fixed:** the server image is built without default features, to leave out the bootstrap routes, and that dropped the `otel` feature as well. Every published image since then logged that `OTLP_ENDPOINT` was set but ignored, and exported no traces or OTLP metrics. The image now builds with `--features otel`, `check-deploy-contract.sh` fails if a no-default-features build line leaves it out, and the server SBOM is generated with the same features. The `otlp smoke` job never caught this because it built with `MAIDAN_ENABLE_BOOTSTRAP=1`, which keeps the default features; it now builds with the production args, so a dropped `otel` reds a required check.
+
+### The server image names its MCP registry entry
+
+- **Added:** the server image carries `io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan"`, which the official MCP registry requires before it accepts an OCI package, plus the OCI `source` and `licenses` labels. `check-deploy-contract.sh` fails when the label and `listings/registry/server.json` name different servers.
+
+### The integration job has room for the whole suite
+
+- **Fixed:** the required `integration (testcontainers)` job's limit moves from 40 to 60 minutes. With 3,353 tests, a run on a slow runner hit 40 minutes and was cancelled with nothing failed, which held every `dev` commit at the swarm's deploy gate.
+
+### The landing page's steel tile, a hands-on swarm builder
+
+- **Changed:** Drop a Planner, Coder, Reviewer and Human into the tile and machined channels light up as task tokens flow; pull the Reviewer and the flow jams. Then a hundred-tile pull-back, a lease dial that returns a lapsed claim to the queue, a two-key lock where a worker cannot approve its own task, a review packet that pins the result and its artifacts, and a closing card with a real `agent.py` (built from the roles you placed, Python SDK calls) and the `compose.quickstart.yaml` quickstart. The nav glass turns dark over the dark section. The server stops serving the removed `story.js` and `aurora.js` chunks.
+
+### The public page is a glass board in a light field
+
+- **Changed:** The waitlist page opens in a dark square of light. The headline sits on that field as "Work in / the open." A glass board floats in it: claim a thread, pass review, and leave the evidence. Scrolling moves through one holder, a review handoff, proof, the same claim in MCP and Python, self-hosting, and an invitation to join or star the source. The invite form is a glass sheet and still posts to `/waitlist`. Reduced motion keeps a still gradient. Style attributes are allowed for the animation runtime; scripts, the typeface, and the share image stay in files from this origin.
+
+### The lint job starts warm and has headroom
+
+- **Fixed:** the `lint (fmt + clippy + deny)` job restores one shared cache saved from `main` and `dev`, so a pull request no longer compiles all 716 crates from scratch, and its timeout moves from 15 to 25 minutes for a cold run on a slow runner (#1680). PRs had been timing out and reporting the required check as cancelled.
+
+### maidan-mcp's tests build on dev again
+
+- **Fixed:** a test added by #1718 built its SQLite pool with `SqlitePoolOptions`, which #1726 had just routed through `maidan_search::sqlite_pool_options`, removing the import. Each PR passed on its own; merged together, `maidan-mcp`'s unit tests stopped compiling. The test now uses the shared helper.
+
+### The mention webhook no longer reveals another workspace's subscription ids
+
+- **Fixed:** `PUT /workspaces/{wid}/mention-webhook` now answers a missing subscription id with the same 400 it gives another workspace's id or a revoked one, so a caller can no longer test whether an id exists in some other workspace (#1672).
+
+### The redrawn-row focus test waits for focus to settle
+
+- **Fixed:** `needs-you-focus.spec.ts` "a redrawn row never hands focus to a disabled control" read the focused element once, right after the redraw, and failed whenever focus moved a moment later. It now polls until focus settles, the fix Open Work recorded for this flake on 2026-10-23.
+
+### OAuth discovery says client metadata documents work
+
+- **Fixed:** the authorization-server metadata now carries `client_id_metadata_document_supported: true`. Maidan already resolved a client named by the HTTPS URL of its metadata document (through the workspace's egress allowlist), but without the flag a client such as claude.ai assumed it had to register dynamically, which Maidan never offers, and refused to connect ("Automatic client registration isn't supported"). Found in Next 23's P6 run with a real claude.ai connector.
+
+### OAuth client metadata hosts are an instance setting, and signed-out browsers sign in from authorize
+
+- **Changed:** The hosts an OAuth client metadata document may be fetched from are now set for the instance with `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` (comma-separated exact host names, empty by default) instead of being read from each workspace's egress targets. A workspace fresh from sign-up can now connect an MCP client that identifies itself by a metadata document. Operators who relied on egress rows for this must list those hosts in the new setting.
+- **Changed:** A signed-out browser at `GET /oauth/authorize` is redirected to sign in and brought back to the same request, instead of getting a JSON 401. A request with a bad bearer still gets a 401.
+- **Fixed:** A sign-in `return_to` with a backslash or control character now falls back to the console, like `//host` and absolute URLs already did.
+
+### You can set your own name in the console
+
+- **Fixed:** A member's display name could be set only when the member was created, or by a direct `PATCH` a person had to know about. The session panel now shows your name and saves it, and a blank name clears it.
+
+### PayerStamp usage reports work over gRPC A2A
+
+- **Fixed:** a PayerStamp report sent over the gRPC A2A binding, whose metadata numbers all arrive as doubles, is no longer refused: whole doubles in the exact range are read as integers, while fractional or out-of-range numbers are still refused (#1661).
+
+### Per-seat cost from the usage ledger
+
+- **Added:** `GET /workspaces/{id}/usage-seats` sums a workspace's completed usage reports by the member that reported them, most expensive first: reports, distinct threads, spend in micro-USD, and first and last report times per seat. Optional `since` (inclusive) and `until` (exclusive) bound the window, `limit` is 1 to 1000 seats (default 100), and `truncated` says more seats spent than were listed. `workspace:read`, the caller's workspace only. Seats stay off metric labels; a per-seat dashboard view reads this table or joins the `maidan.thread` spans' `member_id` in a trace backend (#1771).
+
+### Postgres claim writes use the server clock
+
+- **Fixed:** On Postgres, claim, assign, release, renew, reap, footprint liveness, outbox, inbox and delivery-cursor claims now stamp and compare against the server's clock instead of the database's `NOW()`, as SQLite already did, so a drifting database clock cannot shorten or extend a lease (#1605).
+
+### A phone-width audit waits for the button's box
+
+- **Fixed:** The phone-width UI test read `boundingBox()` once, as soon as the Approve button was visible. A needs-you redraw, or the phone-width reflow, can report the button visible before it has a box, so the read was null. The test now waits until the button has a laid-out box and that box sits on the 390 px screen.
+
+### A task result that could never be delivered is refused instead of stored
+
+- **Fixed:** `PUT /threads/{id}/result` (400) and the `set_thread_result` MCP tool (invalid params) refuse a `maidan.waiter.result/1` envelope with no string `result_kind` or `status`, naming the missing field. Result routing drops such an envelope, so it used to be stored and silently never delivered (#1649).
+
+### A refused checks read still moves the head
+
+- **Fixed:** when GitHub refuses a pull request's checks and its Actions runs and commit statuses too, the change sweep now records the read with the new head and the checks `unreadable` (a new `CiStatus`), instead of `pending` (or nothing at all when GitHub lists no head commit). A push therefore dismisses approvals given to the old head, and no checks_done is said for a result nobody could read (#1748).
+
+### A removed member's approval no longer counts toward required reviewers
+
+- **Fixed:** A thread's required-reviewer count now ignores an approval whose reviewer, or whose submitter, has been removed from the workspace or belongs to another one, on SQLite and Postgres (#1684). Each case has its own test, and each asserts the close is refused as a conflict (#1688).
+
+### A review can name the family that wrote its change
+
+- **Added:** A thread's task attributes take `author_family` (`anthropic`, `openai`, `google` or `xai`), set at intake on REST and MCP `create_thread` or by `PUT /threads/{id}/attributes` and `set_thread_attributes`. No path hands such a thread to a member whose usage names that family: `claim_next` skips it, and a direct claim or assign is refused with a 409 naming the family (before, only `claim_next` checked, even for the review children Maidan spawns). Before, only the review children Maidan spawns carried it, so a producer filing a review of an outside or Codex-written change had to route it by hand. One family is stored per change: a later set that omits it keeps it and one that names another is refused with a 409, so the change's author cannot lift or move it.
+
+### Review child routing is published live
+
+- **Fixed:** A change entering review now publishes its spawned review child's `thread_created` event and a new `thread_attributes_set` event carrying the child's kind, review family and author family, so live subscribers see the routing (#1572).
+
+### A verdict can name the head it reviewed
+
+- **Fixed:** `submit_review` (REST and MCP) takes an optional `head_sha`, the full commit SHA the reviewer read. A head the change has since moved past is refused with 409 instead of stamping the verdict with a head the reviewer never saw (#1574).
+
+### A review names who requested it
+
+- **Fixed:** The approval card showed a result's producer, or that no result was posted, and never who moved the task into review. That person is the actor on the transition into review. The card now reads it and says who requested the review.
+
+### Every SQLite pool loads sqlite-vec
+
+- **Fixed:** The CLI (`maidan` store, MCP stdio and shred-residue paths) and the in-crate test pools of maidan-mcp and maidan-server now open SQLite through `maidan_search::sqlite_pool_options`, so every connection has sqlite-vec and the per-connection PRAGMAs. A CI check (`scripts/check-sqlite-pools.sh`) refuses a bare `SqlitePoolOptions::new()` in `crates/*/src` outside maidan-search.
+
+### Rust SDK docs
+
+- **Fixed:** The README and crate-level example no longer pass `unwrap_or_default()` for the claim lease, which sent an empty `claim_lease_id` and got a 400. They now renew and write the result only when the claim returned a lease (#1763).
+
+### SDK interop suites claim their own seeded task again
+
+- **Fixed:** The TypeScript, Python, Go and Rust SDK black-box suites seeded every queue with a task titled "kickoff", so since task fingerprints each seed after the first was linked as a duplicate of an earlier open one and withheld from claim-next, and the claim tests got nothing. Each seed now gives its task a unique title.
+
+### SDK set-result under the claim
+
+- **Fixed:** `setResult` / `SetResult` / `set_result` in the TypeScript, Go, Python and Rust SDKs now take the claim's `claim_lease_id` and send it. The server has required it since results became writable only under the writer's live claim (#1530), so before this every SDK call to set a result got a 400.
+
+### SDK ThreadBrief attributes
+
+- **Fixed:** `ThreadBrief` in the TypeScript, Go, Python and Rust SDKs now declares the optional `attributes` (task attributes) that OpenAPI declares and the server sends, so the typed models match the contract.
+- **Fixed:** `Thread` in all four SDKs now declares `ci` (a list of the new `PullCi`, with `MergeQueue` and `ReviewThreadLink`) and `withheld` (the new `ThreadWithheld`), and `TaskAttributes` declares `author_family`, matching OpenAPI, so sdk interop sees no undeclared members.
+
+### Find-by-attribute reads the author family
+
+- **Fixed:** the find-by-attribute row reader (#1751) and the batch that added `author_family` (#1752) merged separately, and `dev` stopped compiling: the reader built `TaskAttributes` without the new field. It now reads `author_family`, and both backends' search queries select it.
+
+### Postgres sign-in no longer deadlocks against a SCIM delete or deactivation
+
+- **Fixed:** On Postgres, a sign-in that overlaps a SCIM delete or deactivation no longer deadlocks against it. The session write now locks the SCIM row before the member row, the same order the SCIM writes use, so the sign-in waits and is refused. The SCIM row is locked whether or not it is active, so a deactivation in flight is also waited for (#1670).
+
+### A share ticket test does not expire before it is minted
+
+- **Fixed:** The share-ticket test minted a ticket 50 ms after an instant taken before the insert. Create judges the deadline against its own later clock, so a slow runner minted a ticket that was already expired and the insert was refused. The test now uses a deadline a stalled runner cannot reach, and still checks that the ticket resolves until that exact instant.
+
+### Sign-up start keeps the Turnstile token out of the URL
+
+- **Fixed:** The console's sign-up check now POSTs its Turnstile token to `/auth/oidc/signup` in a form body instead of putting it in the query string, so the token no longer reaches proxy or access logs or the browser history. `GET /auth/oidc/signup` no longer reads a `turnstile` query parameter (#1632).
+
+### Privacy, terms and support use the dark public language
+
+- **Changed:** The hosted privacy, terms and support pages use the landing's near-black ground, a mint, cyan and violet light field, glass tables and a blurred header. The words of each policy are unchanged. Docs titles use a serif; the book keeps its own themes.
+
+### Skills for every Maidan flow, and a HOL Guard policy
+
+- **Added:** nine Agent Skills beside `maidan-claimant` in `examples/claude-code/`: `maidan-reviewer`, `maidan-approver`, `maidan-dispatcher`, `maidan-planner`, `maidan-recipes`, `maidan-memory`, `maidan-inbox`, `maidan-operator` and `maidan-admin`. Together they cover all 260 MCP tools, and `scripts/check-agent-skills.py` (in the `lint` job) fails when a skill names a tool the catalog lacks or a tool has no skill.
+- **Added:** `listings/hol-guard/`: a risk tier for every MCP tool (`policy.json`) and the HOL Guard contributions generated from it by `scripts/gen-hol-guard.py`, for the hosted full endpoint, each profile endpoint and `maidan mcp-stdio`. Gates, removals, outside delivery and authority changes need the person's review; `resolve_secret` is blocked. `--check` (in the `lint` job) fails on drift, and `--local` prints the same policy as Guard custom-extension choices for a Maidan on this machine.
+- **Fixed:** the claimant runbook named a `get_thread` tool that does not exist; it reads `get_thread_context`.
+- **Fixed:** the osv scan's `filelock` override used osv-scanner v1's package-level `ignore`, which v2.6 does not apply to a resolved requirements file, so the scan stayed red; it now says `vulnerability.ignore`.
+
+### Check runs are not attempted with a GitHub token
+
+- **Fixed:** With `MAIDAN_GITHUB_TOKEN` (no GitHub App), result delivery no longer tries to create a check run, which GitHub always refuses with 403. It records `skipped` and says so once at boot instead of a warning per result; the summary comment still carries the verdict.
+
+### Swarm dashboard
+
+- **Added:** `deploy/observability/maidan-swarm-dashboard.json`, a Grafana dashboard for swarm throughput, verdict mix, cost, claim latency and delivery failures on `job="maidan-server"`.
+
+### Swarm observability: thread traces and claim latency
+
+- **Added:** Each thread's stages (claim, acknowledge, result, review verdict, delivery, landed) record a `maidan.thread` span on one trace per thread; the trace id is the thread's id, so a seat's harness can join with `traceparent: 00-<thread id hex>-<span>-01`. Span attributes come from a fixed allowlist of names and closed values; event text never reaches a span.
+- **Added:** `maidan_thread_claim_duration_seconds{harness,kind}`, the time from a claim's acknowledgement to its stored result.
+- **Added:** `maidan_result_deliveries_total` carries a closed `surface` label (github, github_branch, slack, linear, other) and now counts delivered, failed and skipped outcomes per surface.
+
+### A file attached to a task is linked as evidence
+
+- **Fixed:** Uploading a file onto the open task posted a message that cited the hash and did not link the artifact to the task. Review and the evidence timeline only read those links, so the file never became evidence. The console now links it with `PUT /ui/api/threads/{id}/artifacts/{sha}` before posting, lists the task's linked files, and can unlink one.
+
+### Thread results by harness, kind, status and verdict
+
+- **Added:** `maidan_thread_results_total{harness, kind, status, verdict}` counts every stored thread result, so a swarm's verdict mix (pass or fix, per Codex, Claude or Grok red-team) and outcomes can be charted without reading results. Every label is a closed set read from the result's `result_kind`, `status` and the report's `VERDICT` line; anything else reads as `other`, so no free text, id or model name becomes a series (ENG-6218).
+
+### Request spans name their route and thread
+
+- **Added:** every request's `inbound` span carries `http.route` (the route template, never the path), `http.request.method`, and `maidan.thread_id` when the route or an MCP tool call's `thread_id` argument names a thread. A caller that sends `traceparent` on its calls for a thread (the swarm's pi harness uses the thread id as its trace id) gets one trace across both services, and Tempo can find every request made for a thread (ENG-6218).
+
+### Usage ledger clock
+
+- **Fixed:** On Postgres, a usage report's `accepted_at` now comes from the app clock instead of the database's `now()`. Claim-next's warm-prefix window compares it against an app-computed cutoff, so a drifting database clock no longer shifts that window (#1586).
+
+### Usage cost by provider family
+
+- **Added:** `maidan_usage_tokens_total` and `maidan_usage_usd_micros_total` carry a `family` label (`anthropic`, `openai`, `google`, `xai` or `other`), taken from the same provider-family table that review routing uses, so a dashboard can split spend and tokens by model family. The model id itself still never becomes a label (ENG-6218).
+
+### Usage rollup no longer overflows on large validated rows
+
+- **Fixed:** The usage rollup computes each row's uncached and standard-lane charge without forming 64-bit tokens × rate products, so a validated report near the limit no longer fails the rollup with `bigint out of range` on Postgres or loses precision on SQLite (#1595).
+
+### A validation record for v419, and the Glama manifest
+
+- **Added:** `listings/validation/v419.md`, the Next 14 validation record: the official MCP Inspector against the signed v419 release binaries (cosign-verified, no source build) passed all 50 checks, with what remains open before a listing ships. `glama.json` names the maintainer for the Glama MCP catalog.
+
+### web_push on p256 0.14; corrected RUSTSEC-2026-0387 ignore
+
+- **Fixed:** Web Push (VAPID signing and payload encryption) now uses p256 0.14, which pulls the fixed crypto-bigint 0.7.x, so the long-lived VAPID key no longer runs on crypto-bigint 0.5.5. The RUSTSEC-2026-0387 ignore now names the right fix version (0.7.6) and covers only openidconnect's public-key verification (#1596).
+
+### A withheld duplicate task says so
+
+- **Fixed:** A task withheld from claims as a live duplicate now says why: `POST /channels/{id}/threads` and `GET /threads/{id}` carry `withheld: {reason: "duplicate_of", thread}` (the original named only when the caller may read it). Queue depth already counted it under `unclaimable`.
+
+### A POST whose body is optional takes no body
+
+- **Changed:** Claiming or unassigning a thread, claiming the next thread, freezing a member and starting an embeddings reindex accept a POST with no body and no `Content-Type`, read as `{}`. They answered 415 before. A body that is sent is still read as JSON.
+
+### Board cards and Needs-you rows are real buttons
+
+- **Changed:** A board card opens through a real button on its title, and a Needs-you row that opens its task leads with one, in place of DIVs and ARTICLEs with `role="button"` and hand-rolled Enter and Space handlers. When a board refresh rebuilds the focused card, focus moves to the new card instead of dropping to the page body.
+
+### The landing page's build tools no longer pull a vulnerable minimatch
+
+- **Security:** `web/landing` pins `minimatch` to 11.0.3 through an npm `overrides` entry, clearing GHSA-g3hv-75wg-m249 (denial of service through glob-part amplification) from the dev dependencies that eslint and typescript-eslint pulled in at 3.1.5 and 9.0.9. No release line below 11.0.1 has a fix. Only dev tooling changes; the built landing page is byte-for-byte the same.
+
+### A clean-machine install check against the release
+
+- **Added:** `scripts/clean-machine-install.sh`, the Next 14 clean-machine install: with only docker, curl and jq, it downloads a release's quickstart files (no clone, no Rust), starts them under their own compose project on a free loopback port, seeds the admin with `maidan init`, runs the two-agent demo, checks `/health` reports the pinned release, prints the published GHCR server image digest for the validation record, and tears everything down. It warns, or fails under `STRICT=1`, when a tag's quickstart pins an older binary than the tag itself, as v419.0.0's does (it pins v417.0.0).
+
+### A reviewer-token expiry check
+
+- **Added:** `scripts/check-reviewer-token-expiry.sh`, the Next 14 reviewer-token check: given a directory reviewer's bearer token and a `token:admin` token, it names the token through `GET /me`, reads its record, and fails unless the token is live and expires no sooner than the longest review wait (`MAIDAN_REVIEW_WAIT_DAYS`, default 28: one assumed rejection and resubmit at up to two weeks each, per Next 16). A token with no expiry passes with a note. Neither token is printed.
+
+### Catch-up verified flat as the event log grows
+
+- **Added:** `crates/maidan-store/tests/catch_up_scale.rs` (UI deep dive P2, thread 18): catch-up pages through a 1,200-event workspace beside another workspace's events in clamped, ascending keyset pages with no event twice, and every query catch-up runs seeks an index rather than scanning the event table.
+
+### Stalled claims are pushed before they lapse
+
+- **Added:** The claim reaper emits `ClaimStalled` for a live claim that looks stuck, once per claim per reason, and leaves the claim alone. `no_progress`: the holder acknowledged but has shown no progress for `MAIDAN_STALL_SECS` (the policy that already marks a board card `stalled`). `lease_lapsing`: the lease lapses within the new `MAIDAN_CLAIM_LAPSE_WARN_SECS` (default 60 s, `0` off). The notification router sends it as stuck work to the owner and the holder's followers, the manager digest counts it in `stuck`, and `maidan_claims_stalled_total{reason}` counts it. It is a local signal and is not federated. Migrations 0214 (Postgres) and 0213 (SQLite) add the per-reason fencing-token columns that keep it to one report per claim.
+
+### The React console starts at /console, beside the board
+
+- **Added:** `web/console`, a React 19 + Vite + Motion app in the landing's steel look, built into the binary like the landing and served at `/console` under its own CSP (`CONSOLE_CSP`: external scripts and stylesheets only, plus `style-src-attr 'unsafe-inline'` for motion). The board at `/ui` is unchanged and still served.
+- **Added:** the console build fails when the built `index.html` has an inline script, a `<style>` element, an inline handler or a `javascript:` URL (`web/console/scripts/check-csp.mjs`, with tests). CI runs the console typecheck, lint, tests and build.
+
+- **Changed:** The built page preloads every chunk `app.js` imports (`<link rel="modulepreload">`, no polyfill), and the CSP-checked build fails if one is missing.
+
+### The console's typed core: session and live hooks
+
+- **Added:** the console's `useSession` and `useLive` hooks over a typed core ported from the board (`web/console/src/core`): the bearer and `/ui/api` path split, idempotent writes, the token-for-session exchange (a token never stays in the page when the server can hold a session), credential modes and refusal wording, and the live socket with its stored resume token, backoff from 1.5 s to 30 s, polling while down, and a stop on a policy close. The board's helper tests that cover these are ported, with new ones for the socket rules (`npm test` in `web/console`).
+
+### The console's app shell, phone first
+
+- **Added:** the console's shell at `/console`: a glass top bar under the status bar with the live state, a tab bar over the home indicator (Board, Needs you, Threads, People) that becomes a side rail on a wide screen, safe-area insets throughout, hash routes so every place is a deep link, and a command palette on ⌘K or Ctrl+K and the search button. Each place points to the classic board at `/ui` until its screen lands.
+
+### The console's Board screen
+
+- **Added:** the Board screen at `/console/#/board`. It has lanes for Open, In progress, Needs review and Done, using the same chrome rules as the classic board (needs input or approval, in review, running, claimed, open). On a phone, a lane picker shows one lane at a time; on a wide screen all four lanes sit side by side. A card opens a task sheet: a bottom sheet clear of the safe areas on a phone, a side panel on a wide screen. The sheet traps focus, closes on Escape and gives focus back to the card. It shows who holds the task and its lease, and for closed tasks the "completed by" or "closed by" wording, plus "handed off by" when someone else put it into review. It can close a task, and it can claim one when the browser holds a token. Without a token it says why claiming is held back. A refused close shows the server's sentence. The board refreshes from the shell's single live connection. Motion is cut when reduced motion is requested.
+
+### Console: Needs you
+
+- **Added:** The console's Needs you screen lists the reviews, approval gates, blocks and agent questions waiting on you. It is grouped by decision, action and question, and stays current over the live connection.
+- **Added:** You can approve, send back, decline with a reason, or unblock right on the row. Each row shows inline confirm, sending, done and error states. A decline reason goes in the gate answer's `content.note`.
+- **Added:** It is built for the phone, with large buttons at the bottom of each card. Swipe right to start an approve and swipe left to start a decline or send-back. A swipe stops at a confirm or a note, and every swipe has a matching button.
+
+- **Fixed:** The open-gate kind label on Needs you uses a darker shade of the signal colour, so the 11px label passes WCAG AA contrast (it was 3.5:1 on the paper background).
+- **Fixed:** Needs you shows the evidence before Approve: the evidence root, the self-reported-only warning, each result, file and land-gate pass with its tier, files no longer linked, and a way to the result and transcript. Approve stays off until that packet is on screen, and signs its root.
+
+### Console threads and DMs
+
+- **Added:** Threads view in the new console: task threads, DMs and group DMs with message list, composer, reactions, error and empty states, and live updates. The thread holds its scroll position when messages arrive, and the composer stays above the iPhone keyboard. The Needs you "Answer" action now opens the question's thread here.
+
+### Console: People and Swarm
+
+- **Added:** A People screen in the console with the roster sorted by who is live, a search box, kind badges, each member's held task, and buttons to set your own presence.
+- **Added:** A member detail pane, shown as a sheet on a phone, with the member's id, join date, held task and tokens (capabilities, state and expiry).
+- **Added:** A Swarm tab with usage this month, live claims, held-back threads, build slots, paused repositories, and a form to pause or resume a repository.
+- **Added:** A swarm builder on the landing's steel tile that seats members as Planner, Coder, Reviewer and Human. Drag a member with a finger or mouse, or pick one and use the arrow keys, Enter and Delete. The plan stays in this browser and grants no one anything.
+
+### Console tools, files and tokens
+
+- **Added:** A Tools screen in the console with inbox, preferences, deliveries, slash commands, explore and operator panels, matching the classic tools page.
+- **Added:** A Files screen to look up, upload, preview, download and link task evidence.
+- **Added:** Toast feedback for every console write, with a recent list on Tools. Token-shaped text is hidden before it is kept.
+- **Added:** Mint, rotate and revoke tokens from a member's panel in People. A new secret is shown once, masked, with copy, and is never logged.
+
+### Console parity with the classic board
+
+- **Added:** Thread pins: pin or unpin a message from its actions, and a Pinned strip that jumps to it.
+- **Added:** Edit your own messages, and read a message's edit history.
+- **Added:** Approval confirmation links (`#confirm-approval=…`) open Needs you, confirm on the browser session only, and drop the token from the address bar.
+- **Added:** Tools → Search for workspace messages, and Tools → Workspace to rename the workspace, switch workspaces, create channels and tasks, add agents, add or remove peers, list app installations and read the workspace audit.
+- **Added:** Minting refuses capabilities your own token does not hold, and People marks the token this page signed in with.
+- **Fixed:** On touch screens, message actions stay reachable on messages with no reactions yet.
+- **Added:** A read-only "Result and evidence" panel on task conversations: recorded result, dependencies and readiness, and the evidence timeline.
+
+### Console as an installable app
+
+- **Added:** A web app manifest and an install button under Tools → This device, so the console can be added to a home screen or dock.
+- **Added:** A service worker at `/console/sw.js` that keeps only the static console shell for offline starts. API, sign-in, socket, query-string and token-bearing requests always go to the network and are never cached.
+- **Added:** Web Push from the console: turn notifications on or off for this device, using the server's existing VAPID key and push subscription endpoints. Clicking a notification opens Needs you.
+
+### Console: finish pass
+
+- **Added:** Tools → Connect, with copy-ready MCP snippets (placeholder token only), an Add to Cursor link and a first-admin-token mint shown once.
+- **Added:** Message delete and purge, artifact erase, a state-transition picker and a Record result form, each destructive step behind a second tap.
+- **Added:** 192px and 512px install icons drawn from the existing mark.
+- **Changed:** Notifications buttons are full size, explain themselves, and stay off when the server has no push key or the browser blocked them.
+- **Changed:** Board lane segments fit on one line with count badges; the channel select matches the console; empty lanes say what to do next.
+- **Changed:** Tools tabs fade at the edge, snap, and keep the open tab in view.
+- **Fixed:** The reaction "+" is gone on touch and quieter with a mouse; a toast no longer follows you to another page.
+- **Fixed:** The rail shows the Maidan mark, board empty states are left-aligned, the channel select is capped at 320px, Turn off only appears when this device is subscribed, and Connect snippets scroll sideways with a fade.
+- **Fixed:** The channel picker on a phone takes its own row, so the channel name shows in full instead of a bare `#`.
+
+### The console replaces the old board at /ui
+
+- **Changed:** `/ui` now serves the console built from `web/console`; `/console` and `/console/` answer 308 to `/ui/`. Its assets are served at `/ui/{name}`, and the service worker at `/ui/sw.js` takes over the old board's registration.
+- **Added:** the console has its own sign-in when signed out: **Sign in** through the instance's sign-in page (`/auth/oidc/login?return_to=/ui/`), or paste a token, which is traded for a session and never stored.
+- **Removed:** the old board (`static/index.html`, `static/ui`), `scripts/gen-ui-client.mjs`, the Rust tests that pinned its JavaScript and CSS, and the CI steps that fetched TypeScript for them. The OAuth consent pages keep their CSP, now named `OAUTH_PAGE_CSP`.
+- **Changed:** `ui-tests` drives the console: a new `console.spec.ts` (CSP, the redirect, sign-in, the board, needs you) and the kept `oauth-consent.spec.ts`; the old board's specs are deleted. `npm run capture` shoots the console, and the old board's connect, error, refused-close and thread screenshots are removed.
+
+- **Added:** Browser tests for what the classic specs promised: a hostile attachment name renders as text, a pasted token is never stored, put in a URL or echoed, a token for another workspace cannot open this one's board, the board works from the keyboard with a visible focus ring, Needs you and the board pass axe (WCAG A/AA, serious and critical), and phone targets are at least 44px. `console_fetch_openapi_contract` holds every console API path to the OpenAPI document, and a CSS test fails on styles nothing uses (the dead `.splash` rules are gone).
+- **Fixed:** The signed-out token field uses the console field style and is 44px tall.
+- **Added:** A Session card in Tools with what the credential can and cannot do, and Sign out. A badge in the header names the credential: bearer token, delegated token, or browser session. There is a workspace chooser at the front door and a workspace switcher in Tools. A task whose close was refused shows a Close refused chip, and rotating a token adopts the new secret in this tab. Browser tests cover tokens (minting once, revoking, rotating, a stale rotation), attenuation, approvals, truth, sign-in and the apps card against `ui://`, plus a keyboard walk of every screen. The review gallery adds an in-review task and the identity-provider sign-in, and every shot uses a fixed clock.
+- **Fixed:** A browser session reads `/ui/api/me`, so a person's sign-in gets its badge and Session card. A refused live socket (for example a revoked token) makes every screen re-read and show the refusal. The token field's focus ring is 3px. minimatch is pinned to 11 (GHSA-g3hv-75wg-m249).
+
+### The console keeps the classic board's phone polish
+
+- **Changed:** fields in the console show a 3px focus ring, and a Needs you row's buttons share one line on a phone, their labels wrapping inside each button.
+- **Changed:** the review gallery (`npm run gallery`) shoots the console: signed out, the board, Needs you, a task sheet, the Connect tab and an empty channel, at desktop and phone widths. The classic board's phone specs are replaced by `console-phone.spec.ts`.
+
+### A coordinator MCP profile
+
+- **Added:** `POST /mcp/coordinator` serves a fixed, sorted `tools/list` of 36 tools for filing, finding, tracking, steering and cancelling tasks, reading results and deliveries, catching up and replying, reviews, and gate decisions, the same bytes for every caller like `/mcp/worker` and `/mcp/reviewer`. A client that coordinates no longer has to load the full catalog. `listings/hol-guard/mcp.maidan-coordinator.json` is generated for it.
+
+### A Cursor plugin package
+
+- **Added:** `.cursor-plugin/plugin.json`, a worker-only Cursor Plugin manifest that connects to `${MAIDAN_URL}/mcp/worker` with a scoped, expiring token an admin mints, declared as install-time variables; `docs/Listing.md` states its auth, token prefix and trust model (Open Work Next 16).
+
+### Unaudited authority changes are unreachable from non-test code
+
+- **Changed:** The 36 store methods that change authority without writing an audit row (D-A) now compile only under maidan-store's `test-support` feature, which only dev-dependencies enable. Request handlers, MCP tools and the CLI can't call them, so a regression fails `cargo build --workspace --lib --bins` instead of depending on a source scan. `maidan init` now mints its bootstrap admin token through the audited form and records a `token.mint` audit row.
+
+### A resetting demo instance for try.maidan.world, built up to the deploy
+
+- **Added:** `DEMO_TOKEN_TTL_SECS` makes `scripts/demo-board.sh` mint every token with an `expires_at`, so a public demo's tokens expire on their own.
+- **Added:** `deploy/cloudflare/wrangler.demo.jsonc` and `src/demo.js`, a Worker for `try.maidan.world` that is not deployed by any workflow. Its container (`deploy/cloudflare/demo/`) seeds a fresh SQLite workspace from `scripts/demo-board.sh` on boot, with bootstrap on only for a loopback seed listener. A cron destroys the container every six hours, and the next request reseeds. The container has no internet access and holds no production secret, rate limits and the free-allowance meters are on, sign-up is off, and bodies over 64 KiB are refused at the edge.
+- **Changed:** `docs/Listing.md` documents the demo instance and how to deploy it, and `listings/docker/server.yaml` gains an `about` block with the title, description and 400×400 icon.
+
+### The launch surfaces: docs.maidan.world and two ways to run it
+
+- **Added:** a `maidan-docs` Worker config (`deploy/cloudflare/wrangler.docs.jsonc`) serves the docs at `docs.maidan.world` as static assets, and a `docs.maidan.world` job in the docs workflow builds and deploys it from `main` once the `DOCS_DOMAIN` variable is set after the DNS step. The runbook is in `docs/Production.md`, "The docs site".
+- **Changed:** the README and the landing page lead with the hosted room at maidan.world and the self-hosted path side by side.
+
+### The official MCP SDKs as clients in CI, and connect recipes
+
+- **Added:** A report-only CI job, `mcp sdk clients`, runs the official
+  TypeScript (`@modelcontextprotocol/sdk`) and Python (`mcp`) SDKs as clients
+  of a seeded server on `/mcp/streamable` and `/mcp`: initialize, list tools,
+  post and read back a message, and check that a bad argument is refused by
+  name. `scripts/mcp-sdk-clients.sh` runs the same thing locally.
+- **Added:** `examples/connect/` has recipes for claude.ai custom connectors,
+  Perplexity, grok.com and the Gemini app, with a `MAIDAN_OAUTH_CLIENTS`
+  example. Only the claude.ai flow has been run end to end; the others say so.
+- **Changed:** docs/Clients.md's claude.ai section describes the OAuth flow
+  instead of the no-sign-in dev instance, and the client matrix
+  (`contracts/mcp-clients.json`) gains an `oauth` auth mode for it.
+
+### A per-peer private egress allowlist
+
+- **Added:** `MAIDAN_PRIVATE_EGRESS_HOSTS` names the peers (a federation peer, an A2A push receiver, a webhook) that may live on a private network. A listed host may resolve to a private address in production; every other target keeps the public-only rule, and a listed host that resolves to a link-local address (cloud metadata) is still refused. It replaces the whole-guard `MAIDAN_ALLOW_PRIVATE_EGRESS` for real peers, which stays development-only.
+
+### A route index at `/` when sign-up is off
+
+- **Added:** Without sign-up, `GET /` returns a route index instead of a 404: `/openapi.json`, the MCP endpoints, `/health`, `/llms.txt` and the console at `/ui`. It's JSON by default, or a plain HTML list with no script or style, under a CSP that allows neither, when the client asks for HTML and not JSON. The waitlist page is unchanged when sign-up is on.
+- **Changed:** A 404 problem's `detail` now ends with "GET /openapi.json lists the routes".
+
+### A thread's votes in one read
+
+- **Added:** `GET /threads/{tid}/votes` (`workspace:read`) returns, for each message in the thread that holds a vote, counts of `approve`, `request_changes` and `ack` plus the vote rows. A board can badge cards without one call per message. It uses the same access rule as reading the thread.
+
+### A minted member token cannot exceed the minter's grant
+
+- **Security:** `POST /workspaces/{wid}/members/{mid}/tokens` refuses (403) any capability the minting credential doesn't hold, including the default grant, so `token:admin` can hand out only what it holds. Before, a narrow admin token could mint a wider token for any member; only app tokens were bounded.
+
+### A validation-record template for every listing
+
+- **Added:** `listings/validation/TEMPLATE.md`, the Next 14 record each listing copies and fills in before it is published or submitted: release, commit and image digest, the listed surface, a clean install on another host, valid and invalid calls per tool, example prompts through the platform's own model, the reviewer token's lifetime, the three protocol-layer properties and the trust-model sentence. A contract test keeps every field.
+
+### Paste a file into the console's composer
+
+- **Added:** A file pasted into a conversation's composer in the console is stored as an artifact, under its name without any path, and linked to that conversation's thread; an image is kept as a screenshot. Pasted text stays text.
+
+### Next 14: a clean-machine install job and runnable example prompts
+
+- **Added:** A `clean-machine install` workflow runs `scripts/clean-machine-install.sh` on a fresh runner against each published release (and weekly, and by hand), with no checkout or source build, failing when the quickstart pins a different release.
+- **Added:** `listings/prompts.json` holds the example prompts per listing with the tools each should pick, and `scripts/listing-prompts.py` runs them through a platform's own model and prints the validation record's table. CI checks every expected tool is in the MCP catalog.
+
+### OIDC: a unit test for MAIDAN_OIDC_EMAILS_VERIFIED
+
+- **Fixed:** `OidcSettings::from_env` now has a test that `MAIDAN_OIDC_EMAILS_VERIFIED` is off by default, on for `1`/`true`/`TRUE`, and off for anything else.
+
+### A public status page on the hosted Worker
+
+- **Added:** The Cloudflare Worker serves `/status`, a plain page drawn from the container's `/health` that says whether the database, artifact storage, live updates and search index are working, says plainly when the container does not answer, and never shows the server's error text.
+
+### `prod` behind a remote prefix is never a change base
+
+- **Fixed:** a change pull request's base and a `github_branch` allowlist selector now refuse `prod` behind any remote-style prefix (`upstream/prod`, `fork/PROD`), not only bare `prod` (#1693).
+- **Changed:** documented that a `github_branch` row stored with a non-ASCII branch before #1691 stays listable for revocation but no longer parses as a target (#1693).
+
+### Claim worked time uses one clock
+
+- **Fixed:** on Postgres, acknowledging a claim and charging its worked time now read the app clock, the same clock that sets claim deadlines, instead of the database's `NOW()`. A database clock that drifts no longer skews worked time or a lapsed claim's charge (#1728).
+
+### The console keeps the classic board's accessibility checks
+
+- **Added:** A skip link that moves focus to the page content, 44px touch targets on the console's segmented controls, small buttons, reactions and chips, reduced motion that also stops animations, and a member picker that finds people by handle and labels each one Person or Agent.
+- **Added:** Browser specs on the console for the skip link, reduced motion, 44px targets on a phone, the phone header, a calm Needs you, the palette by keyboard, the member picker, deliveries replay, a missing artifact and a workspace with one channel.
+
+### Hosted instances wake once a day, not hourly
+
+- **Changed:** The cron trigger on maidan.world and dev.maidan.world now wakes the container daily (09:17 UTC) instead of hourly. Each wake kept the container and Neon's compute running for the 15 minutes of `sleepAfter`, so an idle instance was billed about a quarter of every day. On an idle instance, scheduled work now waits up to a day; any request runs it.
+
+### A sent digest is always metered and never re-sent by a failed save
+
+- **Fixed:** the digest sweeper now advances a member's watermark before sending and puts it back if the send fails. A failed save sends nothing, so a sent digest is always counted as a delivery and is no longer re-sent next tick because the watermark could not be saved (#1721).
+
+### A suspended workspace gets no email digest
+
+- **Fixed:** the digest sweeper leaves members of a suspended workspace out of its due page and skips them at send time, matching the mail worker, on both backends. Their watermark stays put, so the digest goes out once the suspension is lifted (#1720).
+
+### An Alloy config for a local OTLP workbench
+
+- **Added:** `deploy/observability/alloy/config.alloy` receives the server's OTLP traces and metrics, scrapes `/metrics` (including the usage counters), and deletes prompt, diff, rendered and body span attributes before export. The OTLP smoke now fails if the server exports such an attribute.
+
+### A result delivery that gives up alerts the operator channel
+
+- **Added:** When a task result's delivery exhausts its retries, the operator channel now gets an alert naming the thread, the target (for GitHub, the repository and pull request), the error, and the replay route, alongside the existing `result_delivery_failed` event (#1649).
+
+### One submitter counts once toward required reviewers
+
+- **Fixed:** a required-reviewers threshold now counts distinct submitters, both in review status and in the close gate, on both backends. Approvals one member submits on behalf of several reviewers through delegation count once, so N approvals can no longer come from one person (#1714).
+
+### Review family rule: what it does not cover
+
+- **Changed:** docs/Swarms.md now says that a seat's model family is judged only from its past usage, at hand-out time, and that workspace import does not apply the author-family rule (#1703).
+
+### A named review head must be checkable
+
+- **Changed:** `submit_review` (REST and MCP) now refuses a `head_sha` with a conflict when the change has no tracked pull request head to check it against, on both backends, instead of storing a head nobody verified. Omitting `head_sha` still works (#1744).
+
+### SCIM delete ends sessions after a racing sign-in
+
+- **Fixed:** SCIM delete now removes the SCIM row before ending the member's tokens and sessions, so it waits behind an in-flight sign-in and also ends the session that sign-in commits, rather than leaving an unusable orphan session row for the tombstoned member (#1716).
+
+### SDK usage normalizers carry the standard price
+
+- **Added:** The four SDKs' usage normalizers take a `batch` flag and a `standard_price` snapshot and put them in the evidence, so a batch or flex call reports what its lane saved without hand-building the evidence (#1592).
+- **Added:** Shared fixtures for a flex call and a batch call with a standard price, and an invalid one for a standard price on a standard-tier call. The SDKs refuse it with the server's message, and the ledger's fixture test checks the server refuses it too.
+
+### A SCIM-deactivated member's tokens stop resolving at the lookup
+
+- **Fixed:** the bearer-token lookup refuses a token whose member, or whose delegate, is deactivated over SCIM (`active = false`), on both backends, as browser sessions already did. Before, it relied on the SCIM update revoking the tokens in the same transaction, so a token that survived the revoke kept working (#1706).
+
+### Docs: quickstart and README fixes from a first-run audit
+
+- **Fixed:** The README now says to set `MAIDAN_URL` along with `MAIDAN_HOST_PORT` when port 8080 is taken; otherwise the quickstart script still calls port 8080.
+- **Fixed:** The from-source steps list their prerequisites (Rust toolchain, `curl`, `jq`) and wait for `/health` before `init` and the demo script.
+- **Fixed:** The Postgres compose example starts detached with `--wait`, so the `curl` after it works in the same shell.
+- **Fixed:** The mdBook install pins `0.4.40`, the version CI builds with.
+
+### Intake: concurrent accepts leave no orphan thread
+
+- **Fixed:** Accepting an intake item into a channel now creates its thread inside the triage transaction. When two accepts race, the loser gets `409` and its thread rolls back with it, so no orphan thread is left in the channel.
+
+### Intake: proposed work before it is a task
+
+- **Added:** An intake queue per workspace (`/workspaces/{wid}/intake`). Agents, humans and integrations propose items; a member accepts one into a new or existing thread, or rejects it with a required reason. Proposals and triage are announced as `intake_proposed`, `intake_accepted` and `intake_rejected`, and triage is audited.
+
+A failed member lookup on propose is now an error instead of a human proposal; list and get show an accepted item's `thread_id` only to callers who can read that thread; intake events carry their actor (`member_id`) and `intake_accepted` its thread (`thread_id`) for filtered readers.
+`intake_accepted` now carries the thread's `channel_id`, so live and replay subscribers denied that channel do not receive it.
+
+### OAuth P6 validation record
+
+- **Added:** `scripts/oauth-p6-record.py` runs discovery, consent, token and `tools/list` against a Maidan instance and writes a record naming the commit, with tokens kept only as SHA-256 prefixes. Its checks are tested against fixtures in CI.
+
+### Evidence records on a task
+
+- **Added:** A task can carry evidence records: a test run, a CI run, a diff, a review verdict, a screenshot by URL, or a note, each with its source, who recorded it and when, and an optional URL, sha256 and note. `POST /threads/{id}/evidence-records` (`workspace:write`) adds one and `GET` (`workspace:read`) lists them, with the MCP twins `add_evidence_record` and `list_evidence_records`. Each record publishes `evidence_added`, and `GET /threads/{id}/evidence` merges the records into the timeline.
+
+Evidence record ids are UUIDv7, and `POST /threads/{id}/evidence-records` checks thread access before validating the body, so an outsider gets 404 rather than a 400 that confirms the thread exists.
+
+### close_abandoned_thread annotation names the right table
+
+- **Fixed:** The `close_abandoned_thread` readOnlyHint reason names `maidan_references`, the table it writes (follow-up note on #1754).
+
+### Dependents move to the thread that replaces a duplicate or superseded close
+
+- **Changed:** Closing a thread as `duplicate` or `superseded` with `duplicate_of` moves each open dependent onto `duplicate_of`, so it becomes ready when that thread lands, and posts a notice on the dependent. The replacement's own edge to the closed thread is dropped. A move that would make a cycle is skipped and the dependent is told. The audit row lists `repointed_dependents` and `kept_dependents`. An abandoned close leaves dependents waiting, as before (#1754).
+
+### Landing page Copy buttons work on plain http and say what happened
+
+- **Fixed:** The landing page's Copy buttons did nothing on a self-hosted page served over plain http (a LAN address), where browsers hide the Clipboard API. They now fall back to copying from a selected text field, announce "Copied" to screen readers, and show "Select and copy" when the browser refuses both ways.
+
+### The invite sheet keeps keyboard focus where it belongs
+
+- **Fixed:** On the landing page, Tab and Shift+Tab stay inside the open invite sheet instead of wandering into the page behind it, closing the sheet returns focus to the button that opened it (the header Invite button or the "Join the hosted waitlist" button), focus moves to the "You're on the list" confirmation after a successful request so screen readers announce it, and the email field is focused at once when reduced motion is on.
+
+### The landing page's Scale counter holds still under reduced motion
+
+- **Fixed:** With "reduce motion" on, the "tasks closed" figure in the landing page's Scale section shows one still number instead of counting up six times a second while the section is on screen.
+
+### The integration suite builds one test binary per crate
+
+- **Changed:** maidan-server and maidan-store each build one integration-test binary (`tests/it/main.rs`, generated by `scripts/gen-integration-main.py`) instead of one per `tests/*.rs` file, so each crate links once. Run one file's tests with `cargo test -p maidan-server --test it name::`. CI builds the binary once as a nextest archive and runs it in three shards; `integration (testcontainers)` stays the required check.
+- **Fixed:** Tests that run the `maidan` or `maidan-server` binary find it through nextest's `NEXTEST_BIN_EXE_<name>` when run from the archive, where the build-time `CARGO_BIN_EXE_<name>` path does not exist, and fall back to it under `cargo test`.
+
+### `prod` behind a remote prefix is never a change base
+
+- **Fixed:** a change pull request's base and a `github_branch` allowlist selector now refuse `prod` behind any remote-style prefix (`upstream/prod`, `fork/PROD`), not only bare `prod` (#1693).
+- **Changed:** documented that a `github_branch` row stored with a non-ASCII branch before #1691 stays listable for revocation but no longer parses as a target (#1693).
+
+### Claim worked time uses one clock
+
+- **Fixed:** on Postgres, acknowledging a claim and charging its worked time now read the app clock, the same clock that sets claim deadlines, instead of the database's `NOW()`. A database clock that drifts no longer skews worked time or a lapsed claim's charge (#1728).
+
+### Swarms.md documents closing a task that will not land
+
+- **Added:** `docs/Swarms.md` has a section on `close_abandoned_thread`: who may close, what each reason records, and what happens to dependents.
+
+### The console keeps the classic board's accessibility checks
+
+- **Added:** A skip link that moves focus to the page content, 44px touch targets on the console's segmented controls, small buttons, reactions and chips, reduced motion that also stops animations, and a member picker that finds people by handle and labels each one Person or Agent.
+- **Added:** Browser specs on the console for the skip link, reduced motion, 44px targets on a phone, the phone header, a calm Needs you, the palette by keyboard, the member picker, deliveries replay, a missing artifact and a workspace with one channel.
+
+### The console shows and adds a task's evidence records
+
+- **Added:** a task's "Result and evidence" panel in the console lists its evidence records (test runs, CI runs, diffs, outside reviews, screenshots and notes) on the timeline, with a link for each record's URL. Only `http` and `https` links are rendered.
+- **Added:** an "Add evidence" form on the same panel records one with `POST /threads/{id}/evidence-records`. It checks the draft the way the server does before sending, and needs a bearer token, as the route does.
+
+### The console's first run points somewhere
+
+- **Fixed:** Signed out, the console's top bar says "Sign in" and "Signed out" instead of the Board title and "Offline", and the place tabs are hidden so Tab reaches the token field first.
+- **Fixed:** A workspace with no channel says "No channels yet" on the board and thread list instead of "No tasks in this channel yet", and points to Tools, then Workspace.
+- **Fixed:** "Start a task" on an empty board, and a new link on the empty thread list, open Tools › Workspace, where tasks are created, instead of the thread list.
+
+### try.maidan.world deploys from each release, and costs less to run
+
+- **Added:** each release publishes `maidan-server:<tag>-demo`. It is built with the bootstrap routes for the try.maidan.world seed, and is signed, SBOM-attested and trivy-scanned like the stock image. It is amd64 only and never tagged `latest`.
+- **Added:** `.github/workflows/deploy-demo.yml` runs on a published release or on a dispatch, and only when `vars.DEMO_DOMAIN` is `true`. It cosign-verifies the demo server and CLI images, builds the demo image on them without compiling anything, pushes it with `wrangler containers push`, and deploys `wrangler.demo.jsonc`.
+- **Changed:** the demo sleeps after 15 idle minutes instead of 30. Its reset cron runs once a day instead of every 6 hours, and only destroys a running container, so it never wakes one. Seeded tokens now last 30 hours. `deploy/cloudflare/test/cost.test.js` checks all of this.
+- **Changed:** `scripts/check-deploy-contract.sh` fails if a stock server image stops building with `MAIDAN_ENABLE_BOOTSTRAP=0`, or if the demo image is tagged `latest`.
+- **Docs:** `docs/Deploy.md` has a try.maidan.world section.
+
+### Hosted instances wake once a day, not hourly
+
+- **Changed:** The cron trigger on maidan.world and dev.maidan.world now wakes the container daily (09:17 UTC) instead of hourly. Each wake kept the container and Neon's compute running for the 15 minutes of `sleepAfter`, so an idle instance was billed about a quarter of every day. On an idle instance, scheduled work now waits up to a day; any request runs it.
+
+### A sent digest is always metered and never re-sent by a failed save
+
+- **Fixed:** the digest sweeper now advances a member's watermark before sending and puts it back if the send fails. A failed save sends nothing, so a sent digest is always counted as a delivery and is no longer re-sent next tick because the watermark could not be saved (#1721).
+
+### A suspended workspace gets no email digest
+
+- **Fixed:** the digest sweeper leaves members of a suspended workspace out of its due page and skips them at send time, matching the mail worker, on both backends. Their watermark stays put, so the digest goes out once the suspension is lifted (#1720).
+
+### Docs: quickstart and README fixes from a first-run audit
+
+- **Fixed:** The README now says to set `MAIDAN_URL` along with `MAIDAN_HOST_PORT` when port 8080 is taken; otherwise the quickstart script still calls port 8080.
+- **Fixed:** The from-source steps list their prerequisites (Rust toolchain, `curl`, `jq`) and wait for `/health` before `init` and the demo script.
+- **Fixed:** The Postgres compose example starts detached with `--wait`, so the `curl` after it works in the same shell.
+- **Fixed:** The mdBook install pins `0.4.40`, the version CI builds with.
+
+### Intake: concurrent accepts leave no orphan thread
+
+- **Fixed:** Accepting an intake item into a channel now creates its thread inside the triage transaction. When two accepts race, the loser gets `409` and its thread rolls back with it, so no orphan thread is left in the channel.
+
+### Landing page Copy buttons work on plain http and say what happened
+
+- **Fixed:** The landing page's Copy buttons did nothing on a self-hosted page served over plain http (a LAN address), where browsers hide the Clipboard API. They now fall back to copying from a selected text field, announce "Copied" to screen readers, and show "Select and copy" when the browser refuses both ways.
+
+### The invite sheet keeps keyboard focus where it belongs
+
+- **Fixed:** On the landing page, Tab and Shift+Tab stay inside the open invite sheet instead of wandering into the page behind it, closing the sheet returns focus to the button that opened it (the header Invite button or the "Join the hosted waitlist" button), focus moves to the "You're on the list" confirmation after a successful request so screen readers announce it, and the email field is focused at once when reduced motion is on.
+
+### The landing page's Scale counter holds still under reduced motion
+
+- **Fixed:** With "reduce motion" on, the "tasks closed" figure in the landing page's Scale section shows one still number instead of counting up six times a second while the section is on screen.
+
+### OAuth server metadata advertises iss
+
+- **Fixed:** the authorization-server document now sets `authorization_response_iss_parameter_supported`, so clients know authorization responses carry `iss` (RFC 9207) and check it.
+
+### OAuth P6 validation record
+
+- **Added:** `scripts/oauth-p6-record.py` runs discovery, consent, token and `tools/list` against a Maidan instance and writes a record naming the commit, with tokens kept only as SHA-256 prefixes. Its checks are tested against fixtures in CI.
+
+### An Alloy config for a local OTLP workbench
+
+- **Added:** `deploy/observability/alloy/config.alloy` receives the server's OTLP traces and metrics, scrapes `/metrics` (including the usage counters), and deletes prompt, diff, rendered and body span attributes before export. The OTLP smoke now fails if the server exports such an attribute.
+
+### Warm hold covers only a recipe run's own children
+
+- **Fixed:** The warm hold no longer holds sub-threads added by hand under a recipe run's parent. Firing a recipe now records the run id on each child it creates (new `maidan_recipe_run_children` table, both backends), and `claim_next` holds a sibling only when it and the warming sibling carry the same run id (#1729).
+
+### A result delivery that gives up alerts the operator channel
+
+- **Added:** When a task result's delivery exhausts its retries, the operator channel now gets an alert naming the thread, the target (for GitHub, the repository and pull request), the error, and the replay route, alongside the existing `result_delivery_failed` event (#1649).
+
+### A thread's result says whether it was delivered
+
+- **Changed:** `GET /threads/{id}/result` now carries `delivery_state` (`pending`, `delivered`, `failed`, `skipped` or `not_routable`) and the per-target `deliveries` rows, so a stored-but-undelivered result is visible without a second request (#1719). The existing result fields are unchanged.
+
+### One submitter counts once toward required reviewers
+
+- **Fixed:** a required-reviewers threshold now counts distinct submitters, both in review status and in the close gate, on both backends. Approvals one member submits on behalf of several reviewers through delegation count once, so N approvals can no longer come from one person (#1714).
+
+### Review family rule: what it does not cover
+
+- **Changed:** docs/Swarms.md now says that a seat's model family is judged only from its past usage, at hand-out time, and that workspace import does not apply the author-family rule (#1703).
+
+### A named review head must be checkable
+
+- **Changed:** `submit_review` (REST and MCP) now refuses a `head_sha` with a conflict when the change has no tracked pull request head to check it against, on both backends, instead of storing a head nobody verified. Omitting `head_sha` still works (#1744).
+
+### SCIM delete ends sessions after a racing sign-in
+
+- **Fixed:** SCIM delete now removes the SCIM row before ending the member's tokens and sessions, so it waits behind an in-flight sign-in and also ends the session that sign-in commits, rather than leaving an unusable orphan session row for the tombstoned member (#1716).
+
+### SDK usage normalizers carry the standard price
+
+- **Added:** The four SDKs' usage normalizers take a `batch` flag and a `standard_price` snapshot and put them in the evidence, so a batch or flex call reports what its lane saved without hand-building the evidence (#1592).
+- **Added:** Shared fixtures for a flex call and a batch call with a standard price, and an invalid one for a standard price on a standard-tier call. The SDKs refuse it with the server's message, and the ledger's fixture test checks the server refuses it too.
+
+### Test SQLite pools open like the server's
+
+- **Changed:** Every SQLite pool in `crates/*/tests` now opens through `maidan_search::sqlite_pool_options`, so tests run with sqlite-vec and the per-connection PRAGMAs the server uses (#1725).
+- **Changed:** `scripts/check-sqlite-pools.sh` covers `crates/*/tests` too. The two tests that check what a bare pool does are marked `// sqlite-pools: bare on purpose`.
+
+### A SCIM-deactivated member's tokens stop resolving at the lookup
+
+- **Fixed:** the bearer-token lookup refuses a token whose member, or whose delegate, is deactivated over SCIM (`active = false`), on both backends, as browser sessions already did. Before, it relied on the SCIM update revoking the tokens in the same transaction, so a token that survived the revoke kept working (#1706).
+
+### No delivery email is an answer, and the thread view fits the window
+
+- **Changed:** `GET /members/{id}/email` answers `200` with `null` when the member has set no address, instead of `404`, matching the MCP `get_member_email` tool. A `404` now means only an unknown member.
+- **Fixed:** At desktop widths the console's Threads screen fits the window instead of running 18px past it at 1280×900.
+
+### API errors link to maidan.world, where each problem type is explained
+
+- **Fixed:** every problem `type` was `https://maidan.dev/problems/<name>`, a domain Maidan does not own, so each API error linked a stranger's site. Types are now `https://maidan.world/problems/<name>`, in the server, the OpenAPI document and all four SDKs. This changes the wire value, so clients that compare whole `type` strings must update; the SDKs compare against their new base.
+- **Added:** `maidan.world/problems` explains every type: what happened and what to do. A type's URI opens its row there. `scripts/check-our-domains.sh` (in `lint`) fails on any link to `maidan.dev` outside history, and the Worker's tests hold the page's rows to the server's list of types.
+- **Changed:** a browser that follows a bad link on maidan.world gets a not-found page instead of the server's JSON body. API clients still get `application/problem+json`.
+- **Changed:** the k8s overlays label resources `maidan.world/environment`, replacing `maidan.dev/environment`.
+
+### Invite people to a workspace
+
+- **Added:** A workspace admin invites a person by email as a viewer or member with `POST /workspaces/{wid}/invites`, lists invites, and revokes one. The link is shown once, works once, expires (7 days by default, 30 at most), is stored only as a hash, and never grants a role above the inviter's. The person signs in or signs up with `?invite=`, and joins only when the identity provider's verified email matches. The console's People page has an Invite form.
+
+### Console board: task drawer, filters and new task
+
+- **Added:** Opening a task on the board shows a side drawer with its state, holder, result, latest messages, linked evidence and actions. Esc closes it and the URL deep-links to it.
+- **Added:** A filter bar on the board for agent, state and free-text search, kept in the URL.
+- **Added:** A New task composer, opened with `c` or the button, that creates a task in the current channel.
+- **Changed:** The task drawer on a wide screen sits beside the board, which narrows to make room so the open card stays visible and highlighted, and other cards stay clickable. Opening a card no longer scrolls the page away from the filter bar. It shows state with the board's status dot, the holder with initials, and the actions that fit the state up front (Claim, Send to review, Approve, Send back), with Close, Archive and Record a result in a More actions menu.
+- **Fixed:** A sign-in rejected for an older credential no longer signs out the new one, and the palette's Sign out ends the server session the same way the Session card does.
+- **Fixed:** File buttons are disabled while an erase is in flight, the palette ranks title matches above hint matches, and focus rings, disabled buttons, dark-mode toasts and the channel picker read correctly.
+
+### The console board is calmer and easier to scan
+
+- **Changed:** Lanes are full height on one gutter, empty lanes are quiet, and cards have one meta row (status dot, assignee initials, time) with a thin lease bar that only turns loud near expiry.
+- **Changed:** Tasks closed without review read "Unreviewed" in a caution tone.
+- **Changed:** The connection indicator is a dot that shows only when something is wrong, and the channel picker is a compact switcher.
+- **Changed:** Cards lift on hover, skeletons match the card layout, and motion respects reduced motion.
+- **Changed:** A thread's result and evidence is a quiet disclosure, Files buttons share one style, and Tools tabs are an underlined nav on wide screens.
+
+### A keyboard-first command palette in the console
+
+- **Added:** ⌘K / Ctrl+K opens a palette that jumps to any place and runs the main actions: new message, upload a file, refresh the screen, sign out. Typing ranks prefixes first, then word starts, then scattered letters.
+- **Added:** G then a letter jumps between places without the palette (B board, N needs you, T threads, P people, O tools, F files). It is ignored while typing in a field or with a dialog open.
+- **Changed:** The palette is a proper combobox over a listbox. The active option is announced, Home and End work, Tab stays inside, and focus returns to whatever opened it.
+- **Fixed:** Text links and refusal chips in signal orange now pass AA contrast, as does the green "ok" color in the light theme.
+
+### The console has a dark theme and one set of design tokens
+
+- **Added:** The console follows the system's dark setting, with a warm near-black palette drawn from the landing's steel style.
+- **Added:** Color, type, spacing, radius, shadow and motion tokens in `styles.css`; controls share one hover, press, focus and disabled treatment, and reduced motion turns off every transition and animation.
+- **Added:** Board lanes and the thread list hold their shape with skeletons while the first load is in flight.
+- **Fixed:** Task rows in Threads no longer show blank black squares, the Tools and Threads tab strips no longer clip their last tab, checkboxes match the ink color, disabled buttons keep readable text, and list times use the body face with aligned digits.
+
+### Console finish
+
+- **Fixed:** Author names no longer flash raw ids before the member list loads; a neutral placeholder shows instead.
+- **Changed:** One type scale, consistent weights, tabular numbers for counts and times, and optically aligned icons.
+- **Changed:** Dark mode uses three elevation steps, soft hairline borders, and no pure black or white.
+- **Added:** Page title tracks the current screen, plus selection colour, thin scrollbars, a print stylesheet, and a max content width on wide screens.
+- **Changed:** The evidence label now reads "automated check".
+
+### Console: interactions
+
+- **Added:** The thread list shows each task's board state dot and its state in words, plus who holds it. Direct rows keep initials. Conversations with new messages since you last opened them get a bold title and a small dot.
+- **Changed:** Messages from the same author group under one header until the author or the day changes, and each day starts with a separator. The add-reaction button shows on hover or focus; reactions with counts always show.
+- **Added:** One focus ring colour everywhere, including the composer and text fields. j and k move between rows on the board, threads, people and needs lists.
+- **Changed:** Approving shows as done straight away and rolls back with a message if the server refuses. Reactions roll back the same way. Actions on Needs you confirm with a toast.
+- **Fixed:** A task's result value scrolls on one line instead of breaking mid-value. Human avatars in messages match the list.
+
+### The console reads real conversations cleanly
+
+- **Added:** Message bodies render fenced code blocks, inline code, bold and links, as plain elements and never as HTML.
+- **Changed:** A task result shows as indented JSON, and the evidence warning says in plain words that nobody outside the task checked the work.
+- **Fixed:** A long assignee name in the thread list no longer cuts off the state word.
+- **Added:** Playwright covers the approve toast, a refused approve being put back, j/k through the thread list, the unread dot appearing and clearing, loading skeletons on a slow network, and the offline banner and recovery.
+
+### The console handles a down or refusing server the same way everywhere
+
+- **Fixed:** When a sign-in ends or a token is revoked, any 401 from any screen now sends the console back to sign-in with a reason, instead of leaving each screen showing its own refusal.
+- **Fixed:** An unreachable server reads as "Could not reach the server" on every screen, never as a raw browser error, and a 429 says how long to wait from the server's `Retry-After`.
+- **Fixed:** The task sheet and Files no longer send a second claim, close, result or erase when clicked twice.
+- **Changed:** Board, Needs you, Threads and Tools share one failure path (`failure` in `core/api.ts`) in place of four copies.
+
+### Console review detail pane
+
+- **Added:** On wide screens the selected review fills the height, shows the result, file previews and recent messages inline, and keeps Approve, Send back and Add a note in a sticky footer.
+- **Added:** j/k move through the queue; answering an item selects the next one; an empty queue shows "All caught up".
+- **Changed:** Queue titles clamp to two lines with the waiting time right-aligned in tabular numbers.
+- **Fixed:** Phone tap targets for Add a note and the Tools tabs are 44px again, and the sign-in field's focus ring is 3px.
+
+### Console review layout
+
+- **Added:** On wide screens Needs you is a two-pane review: the queue on the left, the picked item's evidence and actions on the right.
+- **Added:** Keyboard shortcuts on the picked item: a approves and r sends back, shown on hover.
+- **Changed:** Review cards are one flat surface split by hairlines, with sentence-case evidence labels in the UI font.
+- **Changed:** The self-reported warning is a quiet caution line, with the explanation behind a disclosure.
+- **Changed:** Approve is the primary action, Send back secondary, and Add a note a text button.
+
+### Console screens share one type and badge style
+
+- **Changed:** Status pills, card meta, timestamps, counts and avatars use the sans face with tabular numbers.
+- **Changed:** Agent and Human badges share one quiet style, and disabled buttons look disabled.
+- **Fixed:** The Tools tabs wrap on wide screens instead of hiding behind a fade.
+
+### Every console screen matches the board
+
+- **Changed:** Needs you, People, Threads, Files, Tools, the palette and sign-in share the board's card and meta style.
+- **Changed:** Thread detail has a quieter message rhythm, a single-surface composer, and a result-and-evidence panel with a timeline.
+- **Fixed:** Buttons and pills are flat, and review labels pass contrast checks in light and dark mode.
+
+### Console follow-ups: task links carry their channel, and a failed read is not an empty one
+
+- **Fixed:** a task link names its channel, so it opens the drawer in a reader whose board is on another channel. Choosing a channel by hand drops the link.
+- **Fixed:** a task you just created opens from the create's answer even if the board's refresh fails. A deep-linked card scrolls into view once the threads arrive.
+- **Fixed:** after an action in the task sheet, the sheet reloads its result and evidence.
+- **Fixed:** names fall back to an id prefix once the member read has finished, even when it failed. Before, they stayed blank.
+- **Fixed:** the review pane says when the result or the messages could not be read, and offers Try again, instead of showing "No result recorded yet". "Refresh this screen" also reloads Tools and Files.
+- **Fixed:** `a` and `r` on Needs you act only when focus is in the selected row. A bare URL keeps a closing parenthesis that balances one inside it.
+
+### Every problem type has its own SDK error
+
+- **Added:** the four SDKs raise a dedicated error for `unprocessable-entity`, `media-quota-exceeded`, `footprint-conflict`, `plan-conflict` and `claim-lost` (for example `ClaimLostError` in TypeScript and Python, `*maidan.ClaimLostError` in Go, `MaidanError::ClaimLost` in Rust), where they arrived as the unknown-problem error before. Each SDK's test now holds its map to all 22 types the server sends.
+
 ## [419.0.0] — 2026-10-27
 
 The first published release since 417.0.0. `v418.0.0` was tagged but never

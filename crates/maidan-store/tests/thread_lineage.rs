@@ -9,13 +9,12 @@ use maidan_types::{
     NewWorkspace, PARENT_RUN_ID_MAX_BYTES,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The authoritative waiter fixture's `run_id` — the first real producer.
 const PRODUCER_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

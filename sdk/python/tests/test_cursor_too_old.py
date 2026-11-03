@@ -8,14 +8,14 @@ def test_is_cursor_too_old_requires_409_must_refetch():
     too_old = MaidanError(
         409,
         {
-            "type": "https://maidan.dev/problems/cursor-too-old",
+            "type": "https://maidan.world/problems/cursor-too-old",
             "must_refetch": True,
         },
     )
     assert too_old.is_conflict
     assert too_old.is_cursor_too_old
 
-    plain = MaidanError(409, {"type": "https://maidan.dev/problems/conflict"})
+    plain = MaidanError(409, {"type": "https://maidan.world/problems/conflict"})
     assert plain.is_conflict
     assert not plain.is_cursor_too_old
 
@@ -24,7 +24,7 @@ def test_is_cursor_too_old_requires_409_must_refetch():
     typed = problem_error(
         409,
         {
-            "type": "https://maidan.dev/problems/cursor-too-old",
+            "type": "https://maidan.world/problems/cursor-too-old",
             "must_refetch": True,
             "snapshot": "/workspaces/w/snapshot",
         },

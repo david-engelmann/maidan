@@ -311,6 +311,47 @@ pub fn list_share_tickets() {}
     ))]
 pub fn revoke_share_ticket() {}
 
+/// Invite a person into the workspace
+///
+/// Mints a single-use invite bound to an email and a role (`viewer` or
+/// `member`, never above the caller's own). The secret and `accept_path` are
+/// returned once; only the secret's SHA-256 hash is stored.
+#[utoipa::path(post, path = "/workspaces/{wid}/invites", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWorkspaceInvite,
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 201, body = MintWorkspaceInviteResponse),
+        (status = 400, description = "Invalid email or expiry", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+        (status = 429, description = "Too many invites for this email domain", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn create_workspace_invite() {}
+
+/// List a workspace's invites
+#[utoipa::path(get, path = "/workspaces/{wid}/invites", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 200, body = Vec<WorkspaceInvite>),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_workspace_invites() {}
+
+/// Revoke an unused workspace invite
+#[utoipa::path(delete, path = "/workspaces/{wid}/invites/{iid}", tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("iid" = Uuid, Path, description = "Invite id"),
+    ),
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No unused invite with this id in this workspace", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn revoke_workspace_invite() {}
+
 /// Get a share ticket's manifest
 #[utoipa::path(get, path = "/share/manifest", tag = "share",
     security(("shareTicketAuth" = [])),
@@ -967,7 +1008,7 @@ pub fn set_member_email() {}
     params(("id" = Uuid, Path, description = "Member id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = MemberEmail),
+        (status = 200, body = Option<MemberEmail>),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]
@@ -1326,7 +1367,10 @@ pub fn transition_thread() {}
 /// maintainer. A thread with a result keeps every landing gate; a thread
 /// with no result skips the review gates. A duplicate records a
 /// `duplicates` reference to `duplicate_of`; a superseded thread records
-/// `duplicate_of supersedes` it. Audited as `thread.close_abandoned`.
+/// `duplicate_of supersedes` it. Each open dependent of a duplicate or
+/// superseded thread then depends on `duplicate_of` instead and gets a
+/// notice, unless the move would make a cycle; an abandoned thread's
+/// dependents keep waiting. Audited as `thread.close_abandoned`.
 #[utoipa::path(post, path = "/threads/{id}/close-abandoned", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = CloseAbandonedThread,
@@ -1600,11 +1644,35 @@ pub fn get_review_packet() {}
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only.", body = EvidenceTimeline),
+        (status = 200, description = "Everything recorded as the thread's evidence, oldest first: linked artifacts, evidence records, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only.", body = EvidenceTimeline),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]
 pub fn get_evidence_timeline() {}
+
+/// Attach an evidence record to a thread
+#[utoipa::path(post, path = "/threads/{id}/evidence-records", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = NewEvidenceRecord,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, description = "The record as stored. Emits evidence_added. Records are append-only and are not pinned at a review hand-off.", body = EvidenceRecord),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn add_evidence_record() {}
+
+/// A thread's evidence records
+#[utoipa::path(get, path = "/threads/{id}/evidence-records", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The thread's evidence records, oldest first", body = Vec<EvidenceRecord>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_evidence_records() {}
 
 /// A thread's linked artifacts
 #[utoipa::path(get, path = "/threads/{id}/artifacts", tag = "threads",
@@ -3058,7 +3126,7 @@ pub fn clear_slot_capacity() {}
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = ThreadResult),
+        (status = 200, body = ThreadResultView),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]

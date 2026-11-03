@@ -484,7 +484,7 @@ async fn run_suite(db: Db) {
 
 #[tokio::test]
 async fn audit_rows_belong_to_a_workspace_sqlite() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

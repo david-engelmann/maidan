@@ -19,11 +19,10 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -276,7 +275,7 @@ async fn spawn() -> (
     reqwest::Client,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -9,6 +9,9 @@ import {
   ThreadsApi,
   ThreadsError,
   aggregateReactions,
+  attachKind,
+  attachName,
+  pastedFiles,
   atBottom,
   convHash,
   dmConversation,
@@ -21,6 +24,10 @@ import {
   parseConv,
   slashResult,
   startsGroup,
+  dayLabel,
+  isUnread,
+  markOpened,
+  toggleReaction,
   touchesThread,
   visibleMessages,
   type Message,
@@ -83,7 +90,8 @@ test("one author's run within five minutes shares a header", () => {
   const a = msg({ id: "1" });
   assert.equal(startsGroup(undefined, a), true);
   assert.equal(startsGroup(a, msg({ id: "2", posted_at: "2026-10-30T10:04:00Z" })), false);
-  assert.equal(startsGroup(a, msg({ id: "3", posted_at: "2026-10-30T10:06:00Z" })), true);
+  assert.equal(startsGroup(a, msg({ id: "3", posted_at: "2026-10-30T11:30:00Z" })), false);
+  assert.equal(startsGroup(a, msg({ id: "5", posted_at: "2026-11-02T10:00:00Z" })), true);
   assert.equal(startsGroup(a, msg({ id: "4", author_id: "z" })), true);
 });
 
@@ -166,7 +174,7 @@ test("opening a DM or group refuses bad picks before the network", async () => {
 
 test("a refused write shows the server's own sentence; other failures stay plain", async () => {
   const r = fake([{ status: 422, body: { message: "body too long" } }]);
-  await assert.rejects(r.api.post({ kind: "dm", id: "d" }, "x"), new ThreadsError("body too long"));
+  await assert.rejects(r.api.post({ kind: "dm", id: "d" }, "x"), new ThreadsError("body too long", 422));
   const s = fake([{ status: 500, body: {} }]);
   await assert.rejects(s.api.messages("t"), (e: unknown) => e instanceof ThreadsError && !/body/.test((e as Error).message));
 });
@@ -176,4 +184,63 @@ test("reactions toggle with POST and DELETE", async () => {
   await api.react("m", "👍", true);
   await api.react("m", "👍", false);
   assert.deepEqual(calls.map((c) => `${c.init?.method} ${c.url}`), ["POST http://h/ui/api/messages/m/reactions", "DELETE http://h/ui/api/messages/m/reactions"]);
+});
+
+test("a pasted file keeps only its name, and an image is a screenshot", () => {
+  assert.equal(attachName("../../etc/evil.png", "image/png"), "evil.png");
+  assert.equal(attachName("C:\\Users\\me\\shot.png", "image/png"), "shot.png");
+  assert.equal(attachName("", "image/png"), "pasted.png");
+  assert.equal(attachName("..", "text/plain"), "pasted");
+  assert.equal(attachKind("image/png"), "screenshot");
+  assert.equal(attachKind("application/pdf"), "attachment");
+});
+
+test("a paste with no files is left as text", () => {
+  const text = { items: [{ kind: "string", getAsFile: () => null }] } as unknown as DataTransfer;
+  assert.deepEqual(pastedFiles(text), []);
+  assert.deepEqual(pastedFiles(null), []);
+  const f = new File(["x"], "a.png", { type: "image/png" });
+  const withFile = { items: [{ kind: "string", getAsFile: () => null }, { kind: "file", getAsFile: () => f }] } as unknown as DataTransfer;
+  assert.deepEqual(pastedFiles(withFile), [f]);
+});
+
+test("attach stores the file by name only, then links it to the thread", async () => {
+  const { api, calls } = fake([{ status: 201, body: { sha256: "ab", filename: "evil.png" } }, { body: {} }]);
+  const out = await api.attach("t", new File(["x"], "../../etc/evil.png", { type: "image/png" }));
+  assert.deepEqual(out, { sha256: "ab", filename: "evil.png" });
+  const up = new URL(calls[0].url);
+  assert.equal(up.pathname, "/ui/api/artifacts");
+  assert.equal(up.searchParams.get("filename"), "evil.png");
+  assert.equal(up.searchParams.get("kind"), "screenshot");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.equal(`${calls[1].init?.method} ${calls[1].url}`, "PUT http://h/ui/api/threads/t/artifacts/ab");
+});
+
+test("day labels say Today and Yesterday, then a short date", () => {
+  const now = new Date(2026, 10, 2, 12).getTime();
+  assert.equal(dayLabel(new Date(2026, 10, 2, 9).toISOString(), now), "Today");
+  assert.equal(dayLabel(new Date(2026, 10, 1, 23).toISOString(), now), "Yesterday");
+  assert.notEqual(dayLabel(new Date(2026, 9, 20, 9).toISOString(), now), "Yesterday");
+});
+
+test("a conversation is unread until opened after its last message", () => {
+  const c = { threadId: "t", updatedAt: "2026-11-02T10:00:00Z" } as Parameters<typeof isUnread>[0];
+  const seen = { baseline: "2026-11-02T09:00:00Z", opened: {} };
+  assert.equal(isUnread(c, seen), true);
+  assert.equal(isUnread(c, markOpened(seen, "t", "2026-11-02T10:01:00Z")), false);
+  assert.equal(isUnread(c, { baseline: "2026-11-02T11:00:00Z", opened: {} }), false);
+});
+
+test("toggling a reaction counts it once and can be undone", () => {
+  const added = toggleReaction([], "👍", true);
+  assert.deepEqual(added.map((r) => [r.emoji, r.count, r.mine]), [["👍", 1, true]]);
+  assert.deepEqual(toggleReaction(added, "👍", false), []);
+  assert.equal(toggleReaction(added, "👍", true), added);
+});
+
+test("unread compares instants, whatever fractional digits each side carries", () => {
+  const c = { threadId: "t", updatedAt: "2026-11-02T10:00:00Z" } as Parameters<typeof isUnread>[0];
+  // As strings "…00Z" sorts after "…00.000Z" ("Z" > "."), though they are the same instant.
+  assert.equal(isUnread(c, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.000Z" } }), false);
+  assert.equal(isUnread({ ...c, updatedAt: "2026-11-02T10:00:01Z" }, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.900Z" } }), true);
 });

@@ -3,12 +3,15 @@
 //! reviewer != owner/assignee, in the named set when one exists). Both
 //! backends.
 
+use maidan_store::attribution::with_attribution;
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision};
-use sqlx::sqlite::SqlitePoolOptions;
+use maidan_types::{
+    Attribution, DelegationGrantId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
+    ReviewDecision,
+};
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -157,10 +160,110 @@ async fn run_suite(store: &dyn Store) {
     assert!(s.approvals_met, "no requirement → met");
 }
 
+/// One workspace whose thread requires `required` approvals, with an
+/// operator and `n` reviewers. Returns (thread, operator, reviewers).
+async fn review_tenant(
+    store: &dyn Store,
+    name: &str,
+    required: i64,
+    n: usize,
+) -> (
+    maidan_types::ThreadId,
+    maidan_types::MemberId,
+    Vec<maidan_types::MemberId>,
+) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .expect("ws");
+    let mut members = Vec::new();
+    for i in 0..=n {
+        let m = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: format!("{name}-m{i}"),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .expect("member");
+        members.push(m.id);
+    }
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread");
+    store
+        .set_review_requirement(thread.id, required)
+        .await
+        .expect("req");
+    let operator = members.remove(0);
+    (thread.id, operator, members)
+}
+
+/// Approvals one member submits for several reviewers (through delegation)
+/// count once toward the requirement, and a second tenant is unaffected
+/// (#1714).
+async fn one_submitter_counts_once(store: &dyn Store) {
+    let (a_thread, a_operator, a_reviewers) = review_tenant(store, "a", 2, 3).await;
+    let (b_thread, _, b_reviewers) = review_tenant(store, "b", 2, 2).await;
+    for reviewer in &a_reviewers {
+        with_attribution(
+            Some(Attribution {
+                actor_id: a_operator,
+                subject_id: *reviewer,
+                grant_id: Some(DelegationGrantId(uuid::Uuid::now_v7())),
+            }),
+            store.submit_review(a_thread, *reviewer, ReviewDecision::Approve, None, None),
+        )
+        .await
+        .expect("delegated approve");
+    }
+    let s = store.review_status(a_thread).await.unwrap();
+    assert_eq!(
+        s.approvals, 1,
+        "three approvals from one submitter count once"
+    );
+    assert!(!s.approvals_met);
+    // The operator's own approval is the same person again.
+    store
+        .submit_review(a_thread, a_operator, ReviewDecision::Approve, None, None)
+        .await
+        .unwrap();
+    assert_eq!(store.review_status(a_thread).await.unwrap().approvals, 1);
+
+    for reviewer in &b_reviewers {
+        store
+            .submit_review(b_thread, *reviewer, ReviewDecision::Approve, None, None)
+            .await
+            .unwrap();
+    }
+    let s = store.review_status(b_thread).await.unwrap();
+    assert_eq!(s.approvals, 2, "tenant B's distinct reviewers each count");
+    assert!(s.approvals_met);
+    assert_eq!(store.review_status(a_thread).await.unwrap().approvals, 1);
+}
+
 #[tokio::test]
 async fn reviews_requirement_named_set_and_sod_counting_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    one_submitter_counts_once(&store).await;
 }
 
 #[tokio::test]
@@ -195,4 +298,5 @@ async fn reviews_requirement_named_set_and_sod_counting_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    one_submitter_counts_once(&store).await;
 }

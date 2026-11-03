@@ -11,6 +11,15 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled and no embedding errors), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
+### Public status page
+
+On Cloudflare, the Worker serves `/status` to anyone: whether the database,
+artifact storage, live updates and search index are working, read from the
+container's `/health`, or a plain "not answering" when the container does not
+reply within eight seconds. It never shows the server's error text. One
+reading answers the page for a minute, so a crawler cannot keep a sleeping
+container awake.
+
 ### Operator status
 
 `GET /operator/status` (`operator:global`) is the page to read before a deploy
@@ -1220,7 +1229,7 @@ which clients reconnect.
 | Front door | The `maidan-dev` Worker on the `dev.maidan.world` custom domain | TLS at Cloudflare; the Worker sets `X-Forwarded-For` to the connecting address, and the server trusts one hop |
 | Postgres | Neon project `maidan-dev`, Postgres 17 with pgvector | Direct connection, not the pooler, because the bus `LISTEN`s |
 | Artifacts | R2 bucket `maidan-artifacts-dev` | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto` |
-| Scheduled work | An hourly cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake |
+| Scheduled work | A daily cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake; an hourly cron kept an idle instance billed about a quarter of the day |
 
 | Instance | Worker and config | Runs | Postgres | Artifacts |
 |----------|-------------------|------|----------|-----------|
@@ -1318,7 +1327,9 @@ Worker secrets ([Bootstrap](#bootstrap)).
   15 minutes after the last one does. An agent that stays connected keeps its
   instance running, and is billed as running.
 - Work a sleeping server would have done waits for the next request or the
-  hourly cron.
+  daily cron (09:17 UTC). Each wake costs 15 minutes of container and Neon
+  compute, so the cron is daily on purpose: cost comes first while the
+  instance is mostly idle.
 - Any request wakes it, a crawler's too. Scanners find a new domain within
   hours of its certificate and probe for `/.env`, `/.git/config` and PHP
   files; the Worker answers paths no Maidan route serves with 404 itself
@@ -1539,7 +1550,7 @@ minus replica replay LSN, shared by both). Complement with Postgres's own
 **Testing.** `scripts/replica-harness.sh up` stands up a local pgvector primary +
 streaming standby and prints `MAIDAN_PRIMARY_URL` / `MAIDAN_REPLICA_URL`; the
 `#[ignore]`d `read_routing` / `replication` store tests validate store routing and
-read-your-writes against it (`cargo test -p maidan-store --test read_routing --
+read-your-writes against it (`cargo test -p maidan-store --test it read_routing:: --
 --ignored`), and the `#[ignore]`d `replica_routing` search test proves the same for
 message search (`cargo test -p maidan-search --test replica_routing -- --ignored`).
 
@@ -1961,7 +1972,7 @@ needs to free room:
 
 ```json
 {
-  "type": "https://maidan.dev/problems/media-quota-exceeded",
+  "type": "https://maidan.world/problems/media-quota-exceeded",
   "title": "Media Quota Exceeded",
   "status": 409,
   "detail": "this upload of 60 bytes would take the workspace's media to 120 bytes, past its quota of 100 (60 used). Erase media it no longer needs, or raise the quota.",

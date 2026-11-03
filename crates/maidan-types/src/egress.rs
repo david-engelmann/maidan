@@ -389,6 +389,12 @@ pub fn is_github_repo(s: &str) -> bool {
 /// anything that could reach a URL path as something other than a name, and
 /// ASCII only, so a look-alike (`prоd` with a Cyrillic `о`) or an invisible
 /// character (`prod` plus a zero-width space) is not taken for another name.
+///
+/// ASCII only. Rows stored before #1691 with a non-ASCII branch no longer
+/// parse as a `github_branch` target: they stay listable (surface and
+/// selector are text) so an operator can revoke and re-bless them, and the
+/// change flow refuses them rather than writing to a branch it cannot name
+/// unambiguously (#1693).
 pub fn is_branch_name(s: &str) -> bool {
     s.is_ascii()
         && !s.is_empty()
@@ -496,7 +502,7 @@ pub fn validate_allowlist_selector(
                     "github_branch selector names a ref; end it with the branch name alone",
                 );
             }
-            if base.eq_ignore_ascii_case(crate::FORBIDDEN_CHANGE_BASE) {
+            if crate::waiter::names_forbidden_base(base) {
                 return Err("`prod` is never an allowed base for change pull requests");
             }
             if crate::is_change_branch(base) {

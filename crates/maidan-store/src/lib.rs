@@ -181,6 +181,7 @@ pub mod usage_meters;
 mod usage_metrics;
 mod usage_sql;
 pub mod workspace_export;
+pub mod workspace_invites;
 
 pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 pub use automation_deliveries::AutomationDeliveryFilter;
@@ -233,12 +234,12 @@ pub use workspace_export::build_workspace_export;
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
-    GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
-    MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
-    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
+    GlossaryStore, IdempotencyStore, IntakeStore, IntegrityStore, MailStore, McpSubscriptionStore,
+    MemberStore, MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore,
+    PeerStore, PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
     SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, StraySweep,
     TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore,
-    TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
+    TokenStore, UsageLedgerStore, WebhookStore, WorkspaceInviteStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.

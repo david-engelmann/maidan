@@ -14,10 +14,9 @@ use maidan_types::{
     EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

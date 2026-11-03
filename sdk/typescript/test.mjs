@@ -71,12 +71,12 @@ test("parseRoomLsn accepts decimal and rejects WAL", () => {
 
 test("isCursorTooOld is 409 must_refetch, not a plain conflict", () => {
   const tooOld = new MaidanError(409, {
-    type: "https://maidan.dev/problems/cursor-too-old",
+    type: "https://maidan.world/problems/cursor-too-old",
     must_refetch: true,
   });
   assert.equal(tooOld.isConflict, true);
   assert.equal(tooOld.isCursorTooOld, true);
-  const plain = new MaidanError(409, { type: "https://maidan.dev/problems/conflict" });
+  const plain = new MaidanError(409, { type: "https://maidan.world/problems/conflict" });
   assert.equal(plain.isConflict, true);
   assert.equal(plain.isCursorTooOld, false);
 });
@@ -304,7 +304,7 @@ test("the server's problem types arrive as their error classes", async () => {
       assert.ok(err instanceof Cls, `expected ${Cls.name}, got ${err && err.name}`);
       assert.ok(err instanceof MaidanError);
       assert.equal(err.status, status);
-      assert.equal(err.type, `https://maidan.dev/problems/${type}`);
+      assert.equal(err.type, `https://maidan.world/problems/${type}`);
       assert.equal(err.problem.type, err.type, "the raw problem is kept");
       assert.equal(typeof err.title, "string");
       assert.equal(typeof err.detail, "string");

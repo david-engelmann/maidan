@@ -19,7 +19,6 @@ use maidan_types::{
     CATCH_UP_TYPE, LOG_SNAPSHOT_TYPE,
 };
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     addr: SocketAddr,
@@ -41,7 +40,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -242,7 +241,7 @@ async fn snapshot_then_catch_up_then_tamper_and_prune_fail_closed() {
     let problem: serde_json::Value = broken.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/event-log-broken"
+        "https://maidan.world/problems/event-log-broken"
     );
     assert!(problem["detail"]
         .as_str()
@@ -307,7 +306,7 @@ async fn catch_up_pruned_prefix_is_409_with_snapshot_href() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CONFLICT);
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["type"], "https://maidan.dev/problems/cursor-too-old");
+    assert_eq!(body["type"], "https://maidan.world/problems/cursor-too-old");
     assert_eq!(body["must_refetch"], true);
     assert_eq!(body["snapshot"], LogSnapshot::path(ws.id));
 

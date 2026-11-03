@@ -3,10 +3,9 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations, sqlite::outbox, OutboxRow};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite_pool() -> sqlx::SqlitePool {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
