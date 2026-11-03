@@ -128,7 +128,7 @@ export const HEALTH: ReadonlyArray<{ key: HealthKey; one: string; many: string; 
 ];
 
 /** Whether a task shows a health signal. Done tasks never do. */
-export function healthMatch(th: Thread, key: HealthKey, now: number): boolean {
+export function healthMatch(th: Thread, key: HealthKey, now: number, gates: Record<string, Gate> = {}): boolean {
   if (th.state === "closed" || th.state === "archived") return false;
   switch (key) {
     case "stalled":
@@ -139,19 +139,21 @@ export function healthMatch(th: Thread, key: HealthKey, now: number): boolean {
       return Number.isFinite(at) && at - now <= LEASE_WARN_MS;
     }
     case "blocked":
-      return Boolean(th.block);
+      // A ThreadBlock, or an agent that declared itself blocked: the card flags both.
+      return Boolean(th.block) || th.status?.status === "blocked";
     case "waiting":
       return th.human_wait?.state === "waiting" || th.human_wait?.state === "overdue";
     case "unclaimed":
-      return !th.assignee_id && th.state !== "in_review";
+      // A gated task sits in Needs review and can't be claimed, so it isn't unclaimed work.
+      return !th.assignee_id && th.state !== "in_review" && !gates[th.id];
   }
 }
 
 /** The non-zero health signals across the board, in strip order. */
-export function boardHealth(threads: Thread[], now: number): Array<{ key: HealthKey; count: number; text: string; title: string }> {
+export function boardHealth(threads: Thread[], now: number, gates: Record<string, Gate> = {}): Array<{ key: HealthKey; count: number; text: string; title: string }> {
   const out: Array<{ key: HealthKey; count: number; text: string; title: string }> = [];
   for (const h of HEALTH) {
-    const count = threads.filter((t) => healthMatch(t, h.key, now)).length;
+    const count = threads.filter((t) => healthMatch(t, h.key, now, gates)).length;
     if (count) out.push({ key: h.key, count, text: `${count} ${count === 1 ? h.one : h.many}`, title: h.title });
   }
   return out;
@@ -379,7 +381,8 @@ export class BoardApi {
       this.threadVotesMissing = true;
     }
     const messages = await this.getOr404<Array<{ id: string }>>(`/threads/${threadId}/messages?limit=50`);
-    if (!messages) return null;
+    // A full page may not be every message, and a partial count would mislead.
+    if (!messages || messages.length >= 50) return null;
     const rows: VoteKindRow[] = [];
     for (const m of messages) {
       const votes = await this.getOr404<VoteKindRow[]>(`/messages/${m.id}/votes`);

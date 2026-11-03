@@ -95,12 +95,13 @@ export function Board() {
   const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
   const stale = staleBanner(live, data.loadedAt, data.failedSince, now);
   const [focus, setFocus] = useState<HealthKey | null>(null);
-  const health = useMemo(() => boardHealth(data.threads, now), [data.threads, now]);
-  // A filter whose signal has cleared falls away on its own.
+  const health = useMemo(() => boardHealth(data.threads, now, data.gates), [data.threads, now, data.gates]);
+  // A filter whose signal has cleared falls away for good, so it can't come back on its own.
   const active = focus && health.some((h) => h.key === focus) ? focus : null;
+  if (focus && !active) setFocus(null);
   const shownThreads = useMemo(
-    () => (active ? data.threads.filter((t) => healthMatch(t, active, now)) : data.threads),
-    [data.threads, active, now],
+    () => (active ? data.threads.filter((t) => healthMatch(t, active, now, data.gates)) : data.threads),
+    [data.threads, active, now, data.gates],
   );
   const all = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
   const lanes = useMemo(() => {
@@ -121,8 +122,12 @@ export function Board() {
   const more = (k: string) => setLimits((m) => ({ ...m, [k]: (m[k] ?? LANE_PAGE) + LANE_PAGE }));
   const [view, setViewState] = useState<"lanes" | "agents">(() => (localStorage.getItem(VIEW_KEY) === "agents" ? "agents" : "lanes"));
   const setView = (v: "lanes" | "agents") => {
-    localStorage.setItem(VIEW_KEY, v);
     setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Storage full or blocked: the view still changes, it just isn't remembered.
+    }
   };
   const groups = useMemo(() => {
     if (view !== "agents") return [];

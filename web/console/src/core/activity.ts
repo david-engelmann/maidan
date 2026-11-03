@@ -57,10 +57,14 @@ export function mergeActivity(rows: ActivityRow[], incoming: ActivityRow[], cap 
   return [...by.values()].sort((a, b) => b.id - a.id).slice(0, cap);
 }
 
+/** Task and message events whose kind carries no thread_ or message_ prefix. */
+const TASK_KINDS = new Set(["claim_expired", "approval_requested", "blocked_resolved", "review_submitted"]);
+const MESSAGE_KINDS = new Set(["mention_recorded"]);
+
 export function groupOf(kind: string): Exclude<ActivityGroup, "all"> | null {
   if (kind.startsWith("vote_")) return "votes";
-  if (kind.startsWith("message_") || kind.startsWith("reaction_")) return "messages";
-  if (kind.startsWith("thread_") || kind.startsWith("task_")) return "tasks";
+  if (kind.startsWith("message_") || kind.startsWith("reaction_") || MESSAGE_KINDS.has(kind)) return "messages";
+  if (kind.startsWith("thread_") || kind.startsWith("task_") || TASK_KINDS.has(kind)) return "tasks";
   if (kind.startsWith("member_") || kind.startsWith("agent_") || kind.startsWith("token_")) return "members";
   return null;
 }

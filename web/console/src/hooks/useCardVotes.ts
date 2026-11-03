@@ -13,10 +13,14 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
 
   useEffect(() => {
     let live = true;
+    // Each card's latest read wins; an older response that lands late is dropped.
+    const seq = new Map<string, number>();
     const read = async (id: string) => {
+      const mine = (seq.get(id) ?? 0) + 1;
+      seq.set(id, mine);
       try {
         const b = await api.cardVotes(id);
-        if (!live) return;
+        if (!live || seq.get(id) !== mine) return;
         setVotes((m) => {
           const next = new Map(m);
           if (b) next.set(id, b);
@@ -24,7 +28,14 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
           return next;
         });
       } catch {
-        // A failed read leaves the last badge; the board's own banner covers outages.
+        // A failed read drops the badge rather than keep a count that may be stale.
+        if (!live || seq.get(id) !== mine) return;
+        setVotes((m) => {
+          if (!m.has(id)) return m;
+          const next = new Map(m);
+          next.delete(id);
+          return next;
+        });
       }
     };
     for (const id of key ? key.split(",") : []) void read(id);

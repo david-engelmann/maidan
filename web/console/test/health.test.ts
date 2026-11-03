@@ -38,3 +38,9 @@ test("waiting covers waiting and overdue; in-review is never unclaimed; done nev
   assert.equal(healthMatch(th({ id: "a", state: "archived", block: { reason: "x" } }), "blocked", NOW), false);
   assert.equal(healthMatch(th({ id: "a", block: { reason: "x" } }), "blocked", NOW), true);
 });
+
+test("declared blocked counts as blocked, and a gated task is not unclaimed", () => {
+  assert.equal(healthMatch(th({ id: "a", status: { status: "blocked" } } as never), "blocked", NOW), true);
+  assert.equal(healthMatch(th({ id: "g" }), "unclaimed", NOW, { g: { hasSchema: false } } as never), false);
+  assert.equal(healthMatch(th({ id: "g" }), "unclaimed", NOW), true);
+});

@@ -31,9 +31,10 @@ export function Activity() {
         },
         () => live && setError("Could not load recent events."),
       );
-    void read();
+    // Paused, the list holds still: no REST merge until Resume re-runs this.
+    if (!paused) void read();
     const off = liveBus.listen((m) => {
-      if (m.type === "resync") return void read();
+      if (m.type === "resync") return void (paused ? undefined : read());
       const row = toActivity(m.frame);
       if (!row) return;
       if (paused) setHeld((h) => mergeActivity(h, [row]));

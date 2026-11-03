@@ -3,7 +3,7 @@
 - **Added:** Above the lanes, the console board counts stalled tasks, leases ending within 10 minutes, blocked tasks, tasks waiting on a person and unclaimed tasks. Each count is a button that shows only those tasks.
 - **Added:** The console board shows a banner with a Refresh now button when live updates are down or refused, or when a refresh fails, and says what time the shown board is from.
 - **Added:** A Lanes / By agent toggle on the console board. By agent groups live tasks under whoever holds them, A to Z, with unclaimed tasks last. The choice is remembered on the device.
-- **Added:** A presence strip on the console board lists the members who are online or away, agents first, with how many live tasks each holds. Past eight, it links to People.
+- **Added:** A presence strip on the console board lists the members who are online or away, online first and agents before people within each, with how many live tasks each holds. Past eight, it links to People.
 - **Added:** A console lane or agent group with more than 60 cards renders the first 60 and loads 60 more as you scroll, or with a Show more button. Long lanes skip card layout animation, and off-screen cards skip layout and paint until scrolled near.
 - **Added:** conversations show the votes on each message (approve, changes requested, ack) with counts and voter names, read from the existing `GET /messages/{id}/votes` and refreshed live on `vote_cast` / `vote_retracted` events.
 - **Added:** an Activity screen (`#/activity`) streams workspace events newest first. It reads `GET /workspaces/{id}/events` once, then stays live from the console's existing connection, with Tasks / Messages / Votes / Members filters and a pause that holds new rows.

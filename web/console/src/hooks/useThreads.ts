@@ -76,7 +76,8 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
     if (retry.current) clearTimeout(retry.current);
     try {
       const messages = await api.messages(threadId);
-      const pairs = await Promise.all(
+      // Reactions and votes read side by side, so votes add no extra wait.
+      const [pairs, votePairs] = await Promise.all([Promise.all(
         messages.map(async (m) => {
           try {
             return [m.id, await api.reactions(m.id, me)] as const;
@@ -84,8 +85,7 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
             return [m.id, [] as Reaction[]] as const;
           }
         }),
-      );
-      const votePairs = await Promise.all(
+      ), Promise.all(
         messages.map(async (m) => {
           try {
             return [m.id, await api.votes(m.id, me)] as const;
@@ -93,7 +93,7 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
             return [m.id, [] as VoteTally[]] as const;
           }
         }),
-      );
+      )]);
       if (mine !== gen.current) return;
       failures.current = 0;
       setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), votes: Object.fromEntries(votePairs), staleSince: null, error: null });

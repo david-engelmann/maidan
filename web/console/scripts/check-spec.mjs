@@ -16,7 +16,7 @@ const SRC = resolve(here, "../src");
 export const PENDING = new Map();
 
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me)(\/|$|\?)/;
-const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/;
+const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/g;
 
 export function callsIn(text) {
   const out = [];
@@ -25,12 +25,15 @@ export function callsIn(text) {
     // A path built into a variable is sent on the next line: `send("POST", path, ...)`.
     const v = line.match(/^\s*(?:const|let) (\w+) = /)?.[1];
     const next = v && new RegExp(`, ${v}[,)]`).test(lines[i + 1] ?? "") ? lines[i + 1] : "";
-    const method = (line.match(METHOD) ?? next.match(METHOD) ?? [])[1] ?? "GET";
+    // A conditional send (`on ? "POST" : "DELETE"`) names more than one method: check each.
+    const named = [...line.matchAll(METHOD)].map((m) => m[1]);
+    const methods = named.length ? named : [...next.matchAll(METHOD)].map((m) => m[1]);
+    if (!methods.length) methods.push("GET");
     for (const m of line.matchAll(/`([^`]*)`|"([^"]*)"/g)) {
       const raw = m[1] ?? m[2];
       if (!API_ROOTS.test(raw)) continue;
       const path = raw.split("?")[0].replace(/\$\{[^}]*\}/g, "{}");
-      out.push({ line: i + 1, method, path });
+      for (const method of new Set(methods)) out.push({ line: i + 1, method, path });
     }
   });
   return out;
