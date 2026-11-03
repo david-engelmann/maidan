@@ -45,6 +45,7 @@ import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 type Tab = "people" | "swarm";
 
@@ -183,7 +184,7 @@ function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Pe
           {note ? <span className="note"> · {note}</span> : null}
         </p>
         {loaded.error && loaded.value ? <p className="stale" role="alert">{loaded.error}</p> : loaded.error ? <LoadError message={loaded.error} onRetry={onRetry} /> : null}
-        {loaded.status === "ready" && !shown.length ? <p className="muted">{query ? `No member matches “${query}”.` : "No members yet."}</p> : null}
+        {loaded.status === "ready" && !shown.length ? (query ? <EmptyState title={`No member matches “${query}”`} body="Try a name, an email or an agent's handle." /> : <EmptyState title="No members yet" body="Invite a person from Swarm, or start an agent; they show here once they join." action={<a className="button ghost" href="#/people/swarm">Open Swarm</a>} />) : null}
         <ul className="roster-list">
           {shown.map((r) => (
             <li key={r.person.id}>

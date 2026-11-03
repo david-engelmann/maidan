@@ -5,6 +5,7 @@ import { liveBus } from "../core/bus.ts";
 import { ACTIVITY_GROUPS, describeKind, filterActivity, mergeActivity, toActivity, type ActivityGroup, type ActivityRow } from "../core/activity.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { EmptyState } from "../shell/EmptyState";
 
 const NONE: ActivityRow[] = [];
 
@@ -77,7 +78,7 @@ export function Activity() {
       </header>
       {error && <p className="muted" role="alert">{error}</p>}
       {shown.length === 0 ? (
-        <p className="muted pad">{ws ? "No events yet." : "Sign in to see activity."}</p>
+        <EmptyState title={ws ? "No events yet" : "Not signed in"} body={ws ? "Tasks, messages and reviews show here as they happen." : "Sign in to see activity."} />
       ) : (
         <ol className="activity-list" aria-live={paused ? "off" : "polite"}>
           {shown.map((r) => (

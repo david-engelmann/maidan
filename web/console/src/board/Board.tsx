@@ -15,6 +15,7 @@ import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery
 import { isTyping } from "../shell/commands.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 const QUERY_EVENT = "maidan:board-query";
 function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
@@ -496,11 +497,7 @@ const EMPTY: Record<LaneKey, { head: string; body: string; action?: { href: stri
 function EmptyLane({ k }: { k: LaneKey }) {
   const e = EMPTY[k];
   return (
-    <div className="empty-state">
-      <strong>{e.head}</strong>
-      <p className="muted">{e.body}</p>
-      {e.action ? <a className="button ink" href={e.action.href}>{e.action.text}</a> : null}
-    </div>
+    <EmptyState title={e.head} body={e.body} action={e.action ? <a className="button ink" href={e.action.href}>{e.action.text}</a> : undefined} />
   );
 }
 
