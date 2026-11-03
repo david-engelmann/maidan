@@ -777,7 +777,7 @@ summary:focus-visible { border-radius: var(--r-xs); }
 .pins.facts-panel[open] { padding-bottom: var(--space-2); }
 
 /* Files: one button family. */
-.tool-panel .button, .artifact .button { min-height: 38px; padding: 0 14px; border-radius: var(--r-md); font-size: var(--text-sm); font-weight: 500; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+.tool-panel .button, .artifact .button { min-height: 44px; padding: 0 1.1rem; border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: 500; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
 .tool-panel .button:hover, .artifact .button:hover { border-color: color-mix(in srgb, var(--ink) 22%, var(--line)); }
 .tool-panel .button.danger, .artifact .button.danger { color: var(--danger); }
 .tool-panel .button[disabled], .artifact .button[disabled] { background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; cursor: not-allowed; }
