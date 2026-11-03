@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v423.0.0](https://github.com/david-engelmann/maidan/releases/tag/v423.0.0) — the launch release
+
+The console design pass lands: the Board health strip, presence, a Lanes / By agent toggle, vote badges, an Activity screen, and a Catalog of the MCP tools a caller can see (`GET /tools`). Console sessions read votes through `/ui/api`. `deploy prod` branches the prod Neon database before a deploy, and redeploys the release that was running when the new one fails `/health` or the anonymous `/me` check. v422.0.0 was published but never deployed; this release carries it. `CHANGELOG.md` under `[423.0.0]` has every entry.
+
 ## [v422.0.0](https://github.com/david-engelmann/maidan/releases/tag/v422.0.0) — v420, published
 
 `v420.0.0` and `v421.0.0` were tagged but never published: there was no npm in the aarch64 cross build, and then the release scan refused the distroless base's `libssl3`. v422.0.0 carries all of v420.0.0 (the record below) and both fixes. The server and CLI images run on Chainguard's `glibc-dynamic`, and the SDKs model a result's delivery state. `CHANGELOG.md` under `[422.0.0]`, `[421.0.0]` and `[420.0.0]` has every entry.

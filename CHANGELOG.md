@@ -7,6 +7,156 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [423.0.0] — 2026-11-03
+
+The launch release for maidan.world. It finishes the console design pass
+(board health, presence, Lanes / By agent, vote badges, Activity, Catalog),
+lets console sessions read votes, and makes `deploy prod` snapshot the
+database and roll back a release that fails its checks. `v422.0.0` was
+published but never deployed; this release carries it.
+
+### The smoke jobs reuse a cached server image build
+
+- **Changed:** The docker compose, scale-out and OTLP smoke jobs build the server image through buildx with a GitHub Actions layer cache, so the cargo-chef dependency layer is reused across runs instead of compiled cold in each job.
+
+### Cargo caches are saved only from main and dev
+
+- **Changed:** Every `Swatinem/rust-cache` step in `ci.yml` saves only on `main` and `dev`, as the lint job already did (#1680). PR-scoped saves of up to 1 GB each had filled the 10 GB Actions cache and evicted the `dev` entries that pull requests restore from, so most PR jobs compiled cold.
+
+### Console
+
+- **Fixed:** A thread's message field fills the composer again. The board's new-task form shared the `composer` class, and its wrapping rule shrank the thread's field to a small pill; the board form is now `task-composer`.
+
+### Console: Files library and agent work
+
+- **Added:** Files shows every file attached to a thread in a grid or list, with search, previews, type, size, date, sha256 and links back to the threads it came from, plus loading, empty and error states.
+- **Added:** A member's detail on People shows the tasks they hold now and their recent results in the open channel, each linked to its thread.
+
+### The console's corners and review colour come from tokens
+
+- **Changed:** Cards, sheets, chips and buttons take their corners from one radius scale (`--r-xs` through `--r-pill`) instead of 14 loose pixel values, so the surfaces read as one set.
+- **Changed:** Review states and review-request badges use a `--review` colour token with a dark-mode twin, replacing the hard-coded fallback.
+- **Changed:** In dark mode the board steps up from page to lane to card, and each card has a lit top edge, so cards no longer blend into their lane. The search and filter fields sit on the same raised surface.
+- **Fixed:** A thread's message field fills the composer again. The board's new-task form shared the `composer` class, and its wrapping rule shrank the thread's field to a small pill; the board form is now `task-composer`.
+- **Changed:** The empty Threads and People detail panes show a centred empty state, a small steel mark with a title and one line of help, instead of a lone muted sentence or a dashed box.
+- **Fixed:** At a 1024px window the board shows all four lanes. Each lane could not shrink below 220px, so the Done lane was cut off and needed a sideways scroll; the floor is now 168px.
+- **Fixed:** In a narrow board lane a card's state, flag, avatar and time wrap onto a second line instead of being clipped at the card edge.
+- **Fixed:** Keyboard focus on a fold-out row, such as **Result and evidence** in a thread, draws a rounded ring that matches the rest of the console instead of a square box.
+- **Fixed:** An open task thread's header shows its state in the same words and casing as the list beside it, such as "Claimed" or "In review", instead of the raw lowercase state, which could disagree with the list.
+- **Fixed:** The command palette's search field no longer draws a thick orange ring that ran off the top of the palette; the open palette and the caret show where you are typing.
+
+### The stale token rotation UI test no longer hangs
+
+- **Fixed:** the UI test for a token rotation that lands after sign-out could wait forever on a held `/rotate` request. Signing out navigates the page, which can drop the paused request without a `requestfailed` event. The test now reads the rotation's outcome inside its route handler and waits until the request is held before signing out.
+
+### maidan-mcp and maidan-search build one integration-test binary each
+
+- **Changed:** `maidan-mcp` (14 test files) and `maidan-search` (17, besides the two sqlite-vec ones that keep their own feature-gated targets) set `autotests = false` and build a single `it` binary from `tests/it/main.rs`, written by the same `scripts/gen-integration-main.py` as maidan-server and maidan-store. Run one file with `cargo test -p maidan-mcp --test it wire_snapshots::`.
+
+### The Needs you keyboard check tabs to its row
+
+- **Fixed:** the "Tab reaches a Needs you row's actions" UI test focused the button from script, which in Chromium does not match `:focus-visible`, so the focus ring never drew and the test failed on every run. It now presses Tab until the row's first action has focus, the way a keyboard user gets there, and then checks the ring.
+
+### A submitted review is said on the task's thread
+
+- **Added:** the change sweep says `review_submitted` once per review on a tracked pull request, a bot's included, naming the `reviewer`, the `review_state` (`approved`, `changes_requested` or `commented`) and the `head_sha` it reviewed. It comes from the GraphQL read the sweep already makes, with no webhook; drafts and dismissed reviews say nothing (#1935).
+
+### Console board health, presence, votes, Activity and a spec-checked client
+
+- **Added:** Above the lanes, the console board counts stalled tasks, leases ending within 10 minutes, blocked tasks, tasks waiting on a person and unclaimed tasks. Each count is a button that shows only those tasks.
+- **Added:** The console board shows a banner with a Refresh now button when live updates are down or refused, or when a refresh fails, and says what time the shown board is from.
+- **Added:** A Lanes / By agent toggle on the console board. By agent groups live tasks under whoever holds them, A to Z, with unclaimed tasks last. The choice is remembered on the device.
+- **Added:** A presence strip on the console board lists the members who are online or away, online first and agents before people within each, with how many live tasks each holds. Past eight, it links to People.
+- **Added:** A console lane or agent group with more than 60 cards renders the first 60 and loads 60 more as you scroll, or with a Show more button. Long lanes skip card layout animation, and off-screen cards skip layout and paint until scrolled near.
+- **Added:** conversations show the votes on each message (approve, changes requested, ack) with counts and voter names, read from the existing `GET /messages/{id}/votes` and refreshed live on `vote_cast` / `vote_retracted` events.
+- **Added:** an Activity screen (`#/activity`) streams workspace events newest first. It reads `GET /workspaces/{id}/events` once, then stays live from the console's existing connection, with Tasks / Messages / Votes / Members filters and a pause that holds new rows.
+- **Added:** board cards in review and in progress show vote badges (approve, changes requested, ack) that refresh live on `vote_cast` / `vote_retracted`. One `GET /threads/{tid}/votes` per card. On a server without that route (404), the console falls back to the thread's messages and their per-message votes.
+- **Added:** `web/console/src/core/api.gen.ts` holds TypeScript types for every schema and route in the committed OpenAPI spec (`crates/maidan-server/tests/fixtures/wire/openapi.json`), generated by `npm run gen:api`. `src/core/api-contract.ts` pins the console's read shapes (messages, threads, votes, transitions, notifications and others) to those types.
+- **Added:** `npm run check:spec`, run in CI, fails when `api.gen.ts` is stale, when the console calls a method and path the spec does not document, or when a pinned shape no longer fits. A route still waiting on its server PR is listed with that PR's number, and the check fails once the spec documents it so the entry gets dropped.
+- **Added:** `G` then `A` jumps to Activity.
+
+### Console: visible idle dots
+
+- **Fixed:** The offline pip on People avatars, the open-task dot on the board and the idle live dot now reach 3:1 contrast in light and dark. In dark mode they were close to invisible (1.1:1).
+
+### Console: board lanes fit at 1024px
+
+- **Fixed:** At 1024px all four board lanes now fit the window. Done used to be cut off at the right edge. A narrow lane wraps its card foot instead of clipping the time or the stalled flag.
+
+### Console: evidence sizes
+
+- **Fixed:** An evidence file in Needs you just under 1 MB now reads "1.0 MB", not "1024.0 KB". Files of a gigabyte or more now read in GB, not thousands of MB.
+
+### Needs you loads with placeholder rows
+
+- **Changed:** while Needs you loads, the console shows three placeholder rows where the list will be, like Board and Threads, instead of a line of muted text.
+
+### `GET /tools` lists the caller's MCP tools over REST
+
+- **Added:** `GET /tools` returns `{ tools: [...] }`, the same catalog the caller's MCP `tools/list` returns: each tool's name, title, description, input schema (JSON Schema) and annotations. It needs `workspace:read` and follows the token's capabilities, so a narrow token sees the same smaller set on both surfaces.
+- **Added:** `GET /ui/api/tools` serves the same catalog to a signed-in console session, through the same handler and the same `workspace:read` check, so a person signed in without a token sees the list their agents get.
+
+### A Tools panel that fails to load offers Try again
+
+- **Fixed:** when a Tools panel (Inbox, Preferences, Deliveries and the rest) fails to load, it now shows a Try again button that reloads just that panel. Before, the error said "Try again" with nothing to press.
+
+### Console: busy or restarting server wording
+
+- **Fixed:** A 502, 503 or 504 now reads "The server is busy or restarting. Try again in a moment" instead of telling a hosted user to check the server log, and a 503 with Retry-After no longer says "Try again" twice.
+
+### Console: Board filters match the pills
+
+- **Changed:** The Board search, filter selects and Clear are 44px tall, the same as the Lanes and By agent pills, from one `--control-h` token.
+
+### Console: Catalog matches the design pass
+
+- **Changed:** Catalog shows a failed load on the shared card with Try again, and an empty or unmatched search on the shared empty state.
+- **Changed:** Catalog's Try again on stale data uses the pill button, and its last literal corner joins the radius scale.
+
+### Console: review fixes for the board, Activity, Files and Catalog
+
+- **Fixed:** Activity offers Try again when its first read of recent events fails, instead of an error above "No events yet". A member freeze or unfreeze names who did it, not the frozen member.
+- **Fixed:** In People, a member's work list labels a task waiting on an approval gate as the Board does, and its ages keep moving while the panel is open.
+- **Fixed:** The Board says "Nothing here matches." when a health chip hides every task in a lane or in the By agent view, and warns when live updates never connect.
+- **Fixed:** Vote text and badges reach 4.5:1 contrast in dark mode, and a freshly updated card keeps its ring in dark mode.
+- **Fixed:** Files labels a CSV file as Data, reports a failed read of a task's links with Try again instead of leaving its files out, says when an image's bytes are missing, and reloads a thumbnail after switching from List back to Grid.
+- **Fixed:** Catalog shows its load error and Try again on a phone when a tool is open. A tool's hint badges wrap so its title keeps its room.
+- **Fixed:** `j` and `k` move through every list row in Tools, Artifacts and the chooser.
+- **Fixed:** `npm run check:spec` also checks single-quoted paths and calls under `/tools` and `/ui/api`.
+
+### The console lists the MCP tools agents can call
+
+- **Added:** a Catalog screen in the console (`#/catalog`, or `g` then `c`) reads `GET /tools` and lists every tool the caller's MCP `tools/list` would return, with a filter. Each tool opens to its description, its input parameters from the JSON Schema (name, type, required or optional, description and allowed values) and read-only, destructive, idempotent and open-world badges from its annotations. Loading, empty, error and no-access (403) states each say what happened.
+
+### Console: design pass 2
+
+- **Fixed:** Board, Needs you, Threads and People now show a failed load the same way: one card with the reason and Try again. The board no longer shows the error twice.
+- **Fixed:** People shows skeleton rows while members load, like Board and Threads.
+- **Changed:** Every button has the same height and pill shape.
+- **Changed:** The phone tab bar shows five places. Tools and Files are under More.
+- **Changed:** Empty Board lanes, Threads, People, Activity and Files share one empty state: a title, a line of help, and a next step where there is one.
+- **Changed:** Every corner uses the radius scale, and dark mode sets its colours in one place.
+
+### Console: one file-size format
+
+- **Changed:** Files and the Needs you evidence list format file sizes with one shared helper, so a negative or missing size reads as nothing everywhere.
+
+### Console: health chips on the type scale
+
+- **Changed:** The Board health chips and the stale-data banner take their 14px text from the `--text-base` token instead of a hard-coded size.
+
+### Console: readable "refused" chip
+
+- **Fixed:** The refused chip label now uses the darker signal ink, so its text meets contrast in light mode.
+
+### Prod deploys snapshot the database and roll back on failure
+
+- **Added:** `deploy prod` snapshots the prod database to a Neon branch (`pre-deploy-<tag>-<time>`, the three newest kept) before it deploys. When the new release fails its `/health` or anonymous-access check, it redeploys the release that was running and fails. The deploy steps live in `deploy/cloudflare/deploy-release.sh`, shared by the deploy and the rollback.
+
+### Console sessions read votes
+
+- **Fixed:** A console signed in with a browser session reads message votes and thread vote badges through `GET /ui/api/messages/{mid}/votes` and `GET /ui/api/threads/{tid}/votes`. Before, those paths were not routed, so vote tallies and card badges were empty for session users.
+
 ## [422.0.0] — 2026-11-03
 
 The first published release since 419.0.0. `v420.0.0` (no npm in the aarch64
