@@ -55,3 +55,7 @@ test("four board lanes fit a 1024px window", () => {
   // 1024 window - 240 sidebar - 36 padding = 748; four lanes and three 12px gaps must fit.
   assert.ok(Number(m![1]) * 4 + 36 <= 748, `lane min ${m![1]}px is too wide`);
 });
+
+test("card meta wraps instead of clipping in a narrow lane", () => {
+  assert.match(css, /\.task-meta \{[^}]*flex-wrap: wrap/);
+});
