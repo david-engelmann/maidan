@@ -45,8 +45,13 @@ version_gt() {
   return 1
 }
 
+# A release that was tagged but never published has no images to pin
+# (v418.0.0's scan failed; v420.0.0's aarch64 build had no npm), so it is not
+# a pin target. Each such release is one line here, with its reason.
+unpublished=" $(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' scripts/unpublished-releases 2>/dev/null | tr '\n' ' ') "
 best=""
 while read -r version; do
+  [[ "$unpublished" == *" ${version} "* ]] && continue
   if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
     if [[ -z "$best" ]] || version_gt "$version" "$best"; then
       best="$version"

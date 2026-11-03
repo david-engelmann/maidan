@@ -211,6 +211,31 @@ type ThreadResult struct {
 	Result     json.RawMessage `json:"result"`
 	ProducedBy string          `json:"produced_by"`
 	ProducedAt time.Time       `json:"produced_at"`
+	// DeliveryState is set on GetResult: one word for every deliver_to target
+	// together (failed, pending, delivered, skipped or not_routable).
+	DeliveryState string `json:"delivery_state,omitempty"`
+	// Deliveries is set on GetResult: each target's delivery row.
+	Deliveries []ResultDelivery `json:"deliveries,omitempty"`
+}
+
+// ResultDelivery is one deliver_to target's delivery of a result.
+type ResultDelivery struct {
+	ID                string     `json:"id"`
+	ThreadID          string     `json:"thread_id"`
+	Surface           string     `json:"surface"`
+	Selector          string     `json:"selector"`
+	Status            string     `json:"status"`
+	ArmedRevision     time.Time  `json:"armed_revision"`
+	DeliveredRevision *time.Time `json:"delivered_revision,omitempty"`
+	Attempts          int64      `json:"attempts"`
+	LastError         *string    `json:"last_error,omitempty"`
+	ExternalRef       *string    `json:"external_ref,omitempty"`
+	HeadSHA           *string    `json:"head_sha,omitempty"`
+	PRNumber          *int64     `json:"pr_number,omitempty"`
+	PRURL             *string    `json:"pr_url,omitempty"`
+	TemplateWarnings  []any      `json:"template_warnings,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // ContentBlock is a structured message block, discriminated by Type ("text",
