@@ -128,7 +128,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .top-actions { display: flex; align-items: center; gap: 0.5rem; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; }
 .icon-btn:active { background: var(--paper-2); }
-.live { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--text-xs); font-weight: 500; color: var(--muted); padding: 0.3rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; }
+.live { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--text-xs); font-weight: 500; color: var(--muted); padding: 0.3rem 0.6rem; border: 1px solid var(--line); border-radius: var(--r-pill); }
 .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); }
 .live-connected .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
 .live-reconnecting .dot { background: var(--signal); }
