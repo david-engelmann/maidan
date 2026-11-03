@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import type { BoardApi, VoteBadge } from "../core/board.ts";
 import { liveBus } from "../core/bus.ts";
 
@@ -38,7 +38,8 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
         });
       }
     };
-    for (const id of key ? key.split(",") : []) void read(id);
+    const wanted = new Set(key ? key.split(",") : []);
+    for (const id of wanted) void read(id);
     const off = liveBus.listen((m) => {
       if (m.type === "resync") {
         for (const id of ids.current) void read(id);
@@ -53,5 +54,10 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
       off();
     };
   }, [api, key]);
-  return votes;
+  // A card that leaves the read set loses its badge, since it would never refresh.
+  return useMemo(() => {
+    const wanted = new Set(key ? key.split(",") : []);
+    if ([...votes.keys()].every((id) => wanted.has(id))) return votes;
+    return new Map([...votes].filter(([id]) => wanted.has(id)));
+  }, [votes, key]);
 }

@@ -58,7 +58,7 @@ export function mergeActivity(rows: ActivityRow[], incoming: ActivityRow[], cap 
 }
 
 /** Task and message events whose kind carries no thread_ or message_ prefix. */
-const TASK_KINDS = new Set(["claim_expired", "approval_requested", "blocked_resolved", "review_submitted"]);
+const TASK_KINDS = new Set(["claim_expired", "claim_unacknowledged", "claim_stalled", "claim_failed", "approval_requested", "blocked_resolved", "review_submitted"]);
 const MESSAGE_KINDS = new Set(["mention_recorded"]);
 
 export function groupOf(kind: string): Exclude<ActivityGroup, "all"> | null {

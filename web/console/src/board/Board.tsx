@@ -131,9 +131,11 @@ export function Board() {
   };
   const groups = useMemo(() => {
     if (view !== "agents") return [];
-    const ids = new Set(LANES.flatMap((l) => lanes[l.key].map((c) => c.thread.id)));
+    // The State filter narrows By agent the same way it narrows the lanes.
+    const keys = query.state ? [query.state] : LANES.map((l) => l.key);
+    const ids = new Set(keys.flatMap((k) => lanes[k].map((c) => c.thread.id)));
     return byAgent(shownThreads.filter((t) => ids.has(t.id)), data.gates, data.members);
-  }, [view, lanes, shownThreads, data.gates, data.members]);
+  }, [view, lanes, shownThreads, data.gates, data.members, query.state]);
   // A task just created opens from the create's answer until the board's own
   // read has it, so a failed refresh does not leave the drawer shut.
   const [created, setCreated] = useState<Thread | null>(null);

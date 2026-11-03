@@ -88,7 +88,7 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
       ), Promise.all(
         messages.map(async (m) => {
           try {
-            return [m.id, await api.votes(m.id, me)] as const;
+            return [m.id, await withinVoteWait(api.votes(m.id, me))] as const;
           } catch {
             return [m.id, [] as VoteTally[]] as const;
           }
@@ -188,4 +188,13 @@ export function useVisualViewport(inset: (innerHeight: number, vv: VisualViewpor
       for (const k of ["--vv-top", "--vv-h", "--kb"]) root.style.removeProperty(k);
     };
   }, [inset]);
+}
+
+/** A vote read that hangs must not hold the conversation on "Loading messages…": give up after 5s and show no tally. */
+function withinVoteWait<T>(p: Promise<T>, ms = 5000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("vote read timed out")), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
