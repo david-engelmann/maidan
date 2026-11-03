@@ -743,3 +743,21 @@ jobs:
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  # A release published with the job's GITHUB_TOKEN does not trigger the
+  # `release: published` workflows, so deploy-prod never ran on its own and
+  # maidan.world was deployed by hand. A workflow_dispatch from GITHUB_TOKEN
+  # does run, so the release starts the prod deploy itself.
+  deploy-prod:
+    name: start the prod deploy
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: dispatch deploy-prod for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: gh workflow run deploy-prod.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"

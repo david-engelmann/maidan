@@ -71,9 +71,16 @@ function tierOf(a: Attestation | undefined): EvidenceItem["tier"] {
 
 export function formatBytes(n: number | null | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n < 1024) return `${Math.round(n)} B`;
+  // Step up a unit when rounding would print 1024.0, so 1048575 bytes reads 1.0 MB.
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (i < units.length - 1 && Number(v.toFixed(1)) >= 1024) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(1)} ${units[i]}`;
 }
 
 /**

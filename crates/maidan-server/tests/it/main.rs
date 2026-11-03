@@ -773,6 +773,9 @@ mod token_quota_e2e;
 #[path = "../token_rotation_e2e.rs"]
 mod token_rotation_e2e;
 
+#[path = "../tool_catalog_e2e.rs"]
+mod tool_catalog_e2e;
+
 #[path = "../tool_transcript_e2e.rs"]
 mod tool_transcript_e2e;
 

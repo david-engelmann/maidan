@@ -108,9 +108,17 @@ function Panel({ title, children, action }: { title: string; children: ReactNode
   );
 }
 
-function State<T>({ loaded, empty, children }: { loaded: Loaded<T>; empty?: (v: T) => boolean; children: (v: T) => ReactNode }) {
+function State<T>({ loaded, empty, children }: { loaded: Loaded<T> & { reload?: () => Promise<void> }; empty?: (v: T) => boolean; children: (v: T) => ReactNode }) {
   if (loaded.status === "loading") return <p className="muted">Loading…</p>;
-  if (loaded.value === null) return <p className="err" role="alert">{loaded.error}</p>;
+  if (loaded.value === null) {
+    const reload = loaded.reload;
+    return (
+      <div className="load-failed" role="alert">
+        <p className="err">{loaded.error}</p>
+        {reload ? <button type="button" className="btn" onClick={() => void reload()}>Try again</button> : null}
+      </div>
+    );
+  }
   return (
     <>
       {loaded.error ? <p className="err small" role="alert">{loaded.error}</p> : null}
