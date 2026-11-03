@@ -46,7 +46,7 @@ proxy. On SIGTERM the server therefore reports `/health/ready` as `503
 then closes its listener and drains in-flight requests. Liveness stays `200`
 throughout. The Helm chart and `k8s/base` set the drain to `10` and
 `terminationGracePeriodSeconds` to `45`; the default outside them is `0`. The
-runtime image is distroless, so this is done in-process rather than with an exec
+runtime image has no shell, so this is done in-process rather than with an exec
 `preStop` hook. A long-poll MCP call (up to 330 s) still open at the grace
 period is cut, and clients retry.
 
@@ -54,7 +54,7 @@ period is cut, and clients retry.
 
 | Variable        | Required | Notes                                                |
 |-----------------|----------|------------------------------------------------------|
-| `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite. A managed Postgres (Neon, PlanetScale, RDS, Cloud SQL) requires TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the server's certificate. The server carries its own root certificates, so this works on the distroless image. |
+| `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite. A managed Postgres (Neon, PlanetScale, RDS, Cloud SQL) requires TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the server's certificate. The server carries its own root certificates, so this works on the shell-less image. |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
 | `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_DEPLOY_HOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_LINEAR_API_KEY`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
@@ -249,7 +249,7 @@ DATABASE_URL=postgres://… MAIDAN_CONTENT_KEK=… maidan init --workspace my-te
 
 For containerized deployments, the separately published CLI image runs the
 same release binary without adding a shell or operator tooling to the
-distroless server image. Put it on a network that can reach the database and
+shell-less server image. Put it on a network that can reach the database and
 pin it to the server's exact tag:
 
 ```sh
