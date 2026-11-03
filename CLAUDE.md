@@ -91,8 +91,8 @@ change.
 
 ## Current state (2026-11-03)
 
-- **Releases:** latest **`v422.0.0`** (2026-11-03), the React console at `/ui`
-  and the hosted launch surfaces. A release is cut from the newest `dev`
+- **Releases:** latest **`v423.0.0`** (2026-11-03), the launch release: the
+  console design pass and Catalog, and a `deploy prod` that rolls back. A release is cut from the newest `dev`
   commit whose push CI is green, with no soak wait (the maintainer,
   2026-10-30). Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
@@ -102,7 +102,8 @@ change.
   published (a Trivy scan failure); `v419.0.0` carried its contents. `v420.0.0`
   is tagged on `05549018` but was never published (the aarch64 `cross` build
   had no npm for `build.rs`), and `v421.0.0` on `16898a6b` (the release
-  scan refused the distroless `libssl3`); `v422.0.0` carries both.
+  scan refused the distroless `libssl3`); `v422.0.0` carries both, and was
+  published but never deployed; `v423.0.0` carries it.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
   41): finding and closing threads by attribute (MaidanFadin), and the M13
   alert proof. Then the launch path (Next 23,
@@ -115,7 +116,7 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v422.0.0`** in the PR that follows its tag.
+- **Deploy pins move to `v423.0.0`** in the PR that follows its tag.
   `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`
