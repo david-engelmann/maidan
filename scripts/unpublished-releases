@@ -3,3 +3,4 @@
 418.0.0 the release scan failed on a CVE in the distroless base's libssl3; v419.0.0 carried its contents
 420.0.0 the aarch64 Linux build had no npm inside cross for build.rs; v421.0.0 carries its contents
 421.0.0 its release scan failed on the distroless base's libssl3 once the scan exception expired; v422.0.0 carries its contents, on a Chainguard base
+424.0.0 its release scans could not install Trivy (get.trivy.dev stopped resolving); v425.0.0 carries its contents

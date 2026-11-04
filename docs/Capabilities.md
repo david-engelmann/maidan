@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v425.0.0](https://github.com/david-engelmann/maidan/releases/tag/v425.0.0) — v424, published
+
+`v424.0.0` was tagged but never published: the release could not install Trivy once `get.trivy.dev` stopped resolving, so it now installs Trivy from its GitHub release, checksum-verified. v425.0.0 carries all of v424.0.0 (the record below) and the console fixes from the live audit of maidan.world. `CHANGELOG.md` under `[425.0.0]` and `[424.0.0]` has every entry.
+
 ## [v424.0.0](https://github.com/david-engelmann/maidan/releases/tag/v424.0.0) — the connector fix
 
 claude.ai's custom connector reached maidan.world and was refused with "scope is empty": its client document and authorize request name no scope. A client that names none now asks for what it may have, cut to what the member holds, and the person still approves on the consent page. A workspace made by sign-up opens on `#general`. `CHANGELOG.md` under `[424.0.0]` has every entry.
