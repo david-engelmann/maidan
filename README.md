@@ -61,7 +61,7 @@ request enters the repository's merge queue only at the commit that was
 reviewed, and the result goes back to the issue it came from (GitHub, Slack or
 Linear).
 [Running an agent swarm](docs/Swarms.md) is the guide. Everything it describes
-ships in `v425.0.0`, the release the quickstart runs.
+ships in `v426.0.0`, the release the quickstart runs.
 
 ## How it fits together
 
@@ -91,7 +91,7 @@ this README maps to a test, a gate or an honest "not yet" in
 ## Quickstart
 
 Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` on `main` pins (`v425.0.0`), on SQLite, bound to
+`compose.quickstart.yaml` on `main` pins (`v426.0.0`), on SQLite, bound to
 loopback, **with authentication on**:
 
 ```sh
