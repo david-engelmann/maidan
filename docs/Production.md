@@ -1287,6 +1287,11 @@ Web push takes three more secrets, `MAIDAN_VAPID_PRIVATE_KEY`,
 `MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` (an `https:` contact),
 which the Worker passes to the server; without them "This device" in the
 console cannot turn notifications on.
+Result delivery to GitHub takes `MAIDAN_GITHUB_TOKEN` and
+`MAIDAN_GITHUB_WRITE_REPOS`, both set as secrets so the repository list stays
+out of this tree. Without them a session's change is never committed and a
+review never reaches its pull request: the result is stored and its delivery
+fails.
 
 ### Deploying
 
