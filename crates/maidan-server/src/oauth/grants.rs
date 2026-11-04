@@ -20,8 +20,7 @@ use axum::{
 use maidan_types::OAuthGrantId;
 use uuid::Uuid;
 
-use super::consent::html_escape;
-use crate::app::OAUTH_PAGE_CSP;
+use super::page::{self, html_escape};
 use crate::error::ApiError;
 use crate::extract::ApiPath;
 use crate::session::{require_same_origin, SessionContext};
@@ -63,35 +62,25 @@ pub async fn grants_page(
             Some(client) => html_escape(&client.name),
             None => html_escape(&grant.client_id),
         };
-        let scopes: String = grant
-            .scope
-            .iter()
-            .map(|s| format!("<li><code>{}</code></li>", html_escape(s)))
-            .collect::<Vec<_>>()
-            .join("");
         rows.push_str(&format!(
-            "<section><h2>{client_name}</h2><p><code>{client_id}</code></p><ul>{scopes}</ul><form method=\"post\" action=\"/ui/api/oauth/grants/{grant_id}/revoke\"><button type=\"submit\">Revoke</button></form></section>",
+            r#"<section class="app"><header><div><h3>{client_name}</h3><div class="id">{client_id}</div></div><form method="post" action="/ui/api/oauth/grants/{grant_id}/revoke"><button type="submit" class="danger">Disconnect</button></form></header>{capabilities}</section>"#,
             client_id = html_escape(&grant.client_id),
+            capabilities = page::capability_list(&grant.scope),
             grant_id = grant.id.0,
         ));
     }
     if rows.is_empty() {
-        rows.push_str("<p>No apps hold your consent in this workspace.</p>");
+        rows.push_str(r#"<p class="empty">No apps are connected to this workspace.</p>"#);
     }
     let body = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Connected apps</title></head>
-<body>
-<h1>Connected apps</h1>
-<p>These clients hold your consent in this workspace. Revoking one ends its access tokens and refresh tokens at once.</p>
+        r#"<h1>Connected apps</h1>
+<p class="sub">These apps act as you in this workspace. Disconnecting one ends its access at once.</p>
 {rows}
-</body>
-</html>"#
+<p class="foot"><a href="/ui/">Back to Maidan</a></p>"#
     );
     Ok((
-        [(axum::http::header::CONTENT_SECURITY_POLICY, OAUTH_PAGE_CSP)],
-        Html(body),
+        [(axum::http::header::CONTENT_SECURITY_POLICY, page::csp())],
+        Html(page::render("Connected apps", "wide", &body)),
     ))
 }
 

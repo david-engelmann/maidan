@@ -25,9 +25,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::app::OAUTH_PAGE_CSP;
 use crate::error::ApiError;
 use crate::extract::{ApiForm, ApiQuery};
+use crate::oauth::page::{self, html_escape};
 use crate::oauth::registry::resolve_client;
 use crate::session::{require_same_origin, SessionContext};
 use crate::state::AppState;
@@ -79,50 +79,54 @@ pub async fn consent_page(
         .await
         .map_err(|_| ApiError::BadRequest("unknown client".into()))?;
 
-    let scopes: String = pending
-        .scope
-        .iter()
-        .map(|s| format!("<li><code>{}</code></li>", html_escape(s)))
-        .collect::<Vec<_>>()
-        .join("");
+    let workspace = state.store.get_workspace(session.workspace_id).await?;
+    let member = state.store.get_member(session.member_id).await?;
+    let you = member.display_name.as_deref().unwrap_or(&member.handle);
+    let client_name = html_escape(&client.name);
+    let returns_to = redirect_host(&pending.redirect_uri);
     // The consent form POSTs to /ui/api/oauth/consent, and the 303 after it
     // navigates to the client's redirect URI. `form-action 'self'` alone
     // would block that navigation, so allow the redirect target's origin.
     let redirect_origin = redirect_origin_for_csp(&pending.redirect_uri);
-    let csp = OAUTH_PAGE_CSP.replacen(
+    let csp = page::csp().replacen(
         "form-action 'self'",
         &format!("form-action 'self' {redirect_origin}"),
         1,
     );
     let body = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Authorize {client_name}</title></head>
-<body>
-<h1>Authorize {client_name}?</h1>
-<p><strong>{client_name}</strong> wants access to your Maidan workspace with these capabilities:</p>
-<ul>{scopes}</ul>
-<form method="post" action="/ui/api/oauth/consent">
+        r#"<h1>Connect {client_name} to Maidan?</h1>
+<p class="sub"><b>{client_name}</b> will act as <b>{you}</b> in the <b>{workspace}</b> workspace.</p>
+<h2>It will be able to</h2>
+{capabilities}
+<p class="note">It cannot invite people, change roles, mint tokens or read secrets. You can disconnect it at any time from <a href="/ui/oauth/grants">Connected apps</a>.</p>
+<div class="actions"><form method="post" action="/ui/api/oauth/consent">
 <input type="hidden" name="request_id" value="{request_id}">
-<button type="submit" name="approved" value="true">Allow</button>
 <button type="submit" name="approved" value="false">Deny</button>
-</form>
-</body>
-</html>"#,
-        client_name = html_escape(&client.name),
+<button type="submit" name="approved" value="true" class="primary">Allow</button>
+</form></div>
+<p class="foot">Either way, you go back to {returns_to}.</p>"#,
+        you = html_escape(you),
+        workspace = html_escape(&workspace.name),
+        capabilities = page::capability_list(&pending.scope),
+        returns_to = html_escape(&returns_to),
         request_id = pending.id.0,
     );
     Ok((
         [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
-        Html(body),
+        Html(page::render(&format!("Connect {}", client.name), "", &body)),
     ))
 }
 
-pub(super) fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+/// Where the redirect goes, as a person reads it: the host for a web
+/// address, the scheme for an app's own.
+fn redirect_host(redirect_uri: &str) -> String {
+    match url::Url::parse(redirect_uri) {
+        Ok(u) => u
+            .host_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{}:", u.scheme())),
+        Err(_) => "the app".to_string(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
