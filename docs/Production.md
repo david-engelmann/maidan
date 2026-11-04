@@ -1283,6 +1283,10 @@ Its Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 secret and the OIDC secret are prod's own; the R2 keys should be a token
 scoped to `maidan-artifacts-prod` alone. The first admin comes from `maidan init` against the prod Neon
 project, with the same `DATABASE_URL` and `MAIDAN_CONTENT_KEK`.
+Web push takes three more secrets, `MAIDAN_VAPID_PRIVATE_KEY`,
+`MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` (an `https:` contact),
+which the Worker passes to the server; without them "This device" in the
+console cannot turn notifications on.
 
 ### Deploying
 
