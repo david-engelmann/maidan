@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v426.0.0](https://github.com/david-engelmann/maidan/releases/tag/v426.0.0) — the OAuth pages look like Maidan
+
+The consent and connected-apps pages share the console's look in light and dark, name the member and workspace an app will act in, and describe each capability in words; the inline stylesheet is admitted by its hash in the page CSP. The hosted Worker passes `MAIDAN_VAPID_*` to the server, so maidan.world can turn on web push once its keys are set. `CHANGELOG.md` under `[426.0.0]` has every entry.
+
 ## [v425.0.0](https://github.com/david-engelmann/maidan/releases/tag/v425.0.0) — v424, published
 
 `v424.0.0` was tagged but never published: the release could not install Trivy once `get.trivy.dev` stopped resolving, so it now installs Trivy from its GitHub release, checksum-verified. v425.0.0 carries all of v424.0.0 (the record below) and the console fixes from the live audit of maidan.world. `CHANGELOG.md` under `[425.0.0]` and `[424.0.0]` has every entry.
