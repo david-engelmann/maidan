@@ -311,3 +311,35 @@ def test_the_servers_problem_types_arrive_as_their_error_classes(call, cls, stat
     assert err.type == f"https://maidan.world/problems/{type_}"
     assert err.problem["type"] == err.type, "the raw problem is kept"
     assert isinstance(err.title, str) and isinstance(err.detail, str)
+
+
+def test_every_request_names_the_sdk_as_its_user_agent():
+    # Cloudflare refuses urllib's default "Python-urllib/x" agent with error
+    # 1010, so a client of maidan.world must send its own. No server needed:
+    # the request is caught before it leaves.
+    from maidan.client import __version__
+
+    seen = []
+
+    class _Resp:
+        status = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout=None):
+        seen.append(req)
+        return _Resp()
+
+    c = Client("https://maidan.example", "t")
+    c._urlopen = fake_urlopen
+    c._req("GET", "/me")
+    c._req("POST", "/x", {"a": 1})
+    assert [r.get_header("User-agent") for r in seen] == [f"maidan-python/{__version__}"] * 2

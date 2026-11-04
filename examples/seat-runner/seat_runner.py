@@ -180,6 +180,9 @@ class Maidan:
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(self.url + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self.token}")
+        # Cloudflare refuses urllib's default agent (error 1010) in front of
+        # maidan.world, so every queue check read as unreachable.
+        req.add_header("User-Agent", "maidan-seat-runner/1")
         if data is not None:
             req.add_header("Content-Type", "application/json")
         try:
