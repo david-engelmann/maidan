@@ -56,7 +56,7 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
   await expect(page.locator("h1")).toContainText("Connect");
   await expect(page.locator("ul.caps")).toContainText("Read channels");
   // The inline stylesheet runs only if the CSP hash admits it: unstyled,
-  // the primary button would keep the browser's default background.
+  // the Allow button would keep the browser's square default shape.
   const allow = page.locator('button[name="approved"][value="true"]');
   await expect(allow).toHaveCSS("border-radius", "999px");
 
