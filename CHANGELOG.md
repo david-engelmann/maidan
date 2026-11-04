@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The OAuth pages look like Maidan
+
+- **Changed:** the consent page an outside app (claude.ai's custom connector, for one) opens is styled like the console, in light and dark: the mark, a card naming the app, the member it will act as and the workspace, each capability in words with its name beside it, what it can never do, and Deny and Allow buttons. It was unstyled HTML listing raw capability names. The connected-apps page at `/ui/oauth/grants` matches it. The stylesheet is inline and admitted by its SHA-256 in the page CSP, which still allows no other inline style.
+
 ## [425.0.0] — 2026-11-04
 
 `v424.0.0` was tagged but never published: its image scans could not

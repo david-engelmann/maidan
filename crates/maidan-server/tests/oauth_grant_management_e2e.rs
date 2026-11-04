@@ -418,9 +418,9 @@ async fn the_console_lists_and_revokes_and_refuses_token_sessions() {
         "the page carries alpha's grant"
     );
     assert_eq!(
-        page.matches("Revoke").count(),
+        page.matches("/revoke\"").count(),
         1,
-        "only alpha's grant is offered"
+        "only alpha's grant has a revoke form"
     );
 
     // A session a token made is refused: no person owns that consent.

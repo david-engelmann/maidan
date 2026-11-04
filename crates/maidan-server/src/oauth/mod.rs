@@ -25,6 +25,7 @@ pub mod consent;
 pub mod error;
 pub mod grants;
 pub mod metadata;
+mod page;
 pub mod registry;
 pub mod revoke;
 pub mod token;
