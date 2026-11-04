@@ -387,7 +387,9 @@ class Client:
         A write carries one ``Idempotency-Key`` across all its attempts, so a
         retry after a lost response gets the first answer back instead of
         writing twice."""
-        headers = {"authorization": f"Bearer {self.token}", **headers}
+        # Cloudflare answers urllib's default agent with error 1010 (a 403),
+        # so a client of a host behind it, maidan.world among them, names itself.
+        headers = {"authorization": f"Bearer {self.token}", "user-agent": f"maidan-python/{__version__}", **headers}
         if method in _WRITE_METHODS:
             headers["idempotency-key"] = new_idempotency_key()
         attempt = 0
