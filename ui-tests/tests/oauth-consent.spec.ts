@@ -53,7 +53,12 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
 
   // Open the consent page in the browser.
   await page.goto(`${fx.base_url}/ui/oauth/consent?request=${requestId}`);
-  await expect(page.locator("h1")).toContainText("Authorize");
+  await expect(page.locator("h1")).toContainText("Connect");
+  await expect(page.locator("ul.caps")).toContainText("Read channels");
+  // The inline stylesheet runs only if the CSP hash admits it: unstyled,
+  // the primary button would keep the browser's default background.
+  const allow = page.locator('button[name="approved"][value="true"]');
+  await expect(allow).toHaveCSS("border-radius", "999px");
 
   // The page's CSP allows form-action to the client's origin.
   const csp = await page.evaluate(() => {
