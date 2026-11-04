@@ -7,9 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [426.0.0] — 2026-11-04
+
+The consent page an outside app opens (claude.ai's custom connector, for
+one) and the connected-apps page now look like the console, and the hosted
+Worker passes the web-push keys to the server.
+
 ### The OAuth pages look like Maidan
 
 - **Changed:** the consent page an outside app (claude.ai's custom connector, for one) opens is styled like the console, in light and dark: the mark, a card naming the app, the member it will act as and the workspace, each capability in words with its name beside it, what it can never do, and Deny and Allow buttons. It was unstyled HTML listing raw capability names. The connected-apps page at `/ui/oauth/grants` matches it. The stylesheet is inline and admitted by its SHA-256 in the page CSP, which still allows no other inline style.
+
+### maidan.world can send web push
+
+- **Added:** The hosted Worker passes `MAIDAN_VAPID_PRIVATE_KEY`, `MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` to the server, so once those secrets are set the console's This device can turn notifications on. Before, the hosted instance had no way to receive a VAPID key.
 
 ## [425.0.0] — 2026-11-04
 
