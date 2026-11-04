@@ -423,12 +423,28 @@ jobs:
       # image is never signed or announced. The images are already pushed by
       # then; an unsigned image fails `cosign verify`, which is the check the
       # README tells operators to run.
+      # get.trivy.dev, where setup-trivy's installer downloads the binary,
+      # stopped resolving on 2026-11-03 and failed every scan of the v424
+      # release. The GitHub release carries the same binary and its checksums,
+      # so the scans install from there and skip setup-trivy.
+      - name: install trivy from its GitHub release
+        env:
+          TRIVY_VERSION: "0.70.0"
+        run: |
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tgz="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO --retry 3 "$base/$tgz"
+          curl -fsSL --retry 3 "$base/trivy_${TRIVY_VERSION}_checksums.txt" | grep " ${tgz}\$" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin/trivy-bin"
+          tar -xzf "$tgz" -C "$HOME/.local/bin/trivy-bin" trivy
+          echo "$HOME/.local/bin/trivy-bin" >> "$GITHUB_PATH"
       - name: trivy vulnerability scan
         # v0.36.0: pins its internal `setup-trivy` by commit SHA, so it can't
         # break when an upstream tag is removed — v0.28.0 pinned the since-yanked
         # `setup-trivy@v0.2.1` and failed to resolve on the v170.0.0 release run.
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.tag.outputs.tag }}${{ matrix.suffix }}
           format: table
           severity: "CRITICAL,HIGH"
@@ -554,9 +570,25 @@ jobs:
       # lists its OS packages and binaries from the pushed image. Its packages
       # differ by architecture, so each platform's manifest gets its own SBOM:
       # one scan of the index reads only the runner's platform.
+      # get.trivy.dev, where setup-trivy's installer downloads the binary,
+      # stopped resolving on 2026-11-03 and failed every scan of the v424
+      # release. The GitHub release carries the same binary and its checksums,
+      # so the scans install from there and skip setup-trivy.
+      - name: install trivy from its GitHub release
+        env:
+          TRIVY_VERSION: "0.70.0"
+        run: |
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tgz="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO --retry 3 "$base/$tgz"
+          curl -fsSL --retry 3 "$base/trivy_${TRIVY_VERSION}_checksums.txt" | grep " ${tgz}\$" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin/trivy-bin"
+          tar -xzf "$tgz" -C "$HOME/.local/bin/trivy-bin" trivy
+          echo "$HOME/.local/bin/trivy-bin" >> "$GITHUB_PATH"
       - name: SBOM of the postgres image (linux/amd64)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: image
           image-ref: ${{ steps.postgres.outputs.amd64_ref }}
           format: cyclonedx
@@ -564,6 +596,7 @@ jobs:
       - name: SBOM of the postgres image (linux/arm64)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: image
           image-ref: ${{ steps.postgres.outputs.arm64_ref }}
           format: cyclonedx
