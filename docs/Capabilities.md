@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v427.0.0](https://github.com/david-engelmann/maidan/releases/tag/v427.0.0) — GitHub delivery on maidan.world
+
+The hosted Worker forwards `MAIDAN_GITHUB_TOKEN` and `MAIDAN_GITHUB_WRITE_REPOS`, so a hosted instance commits session changes, opens their draft pull requests and posts reviews. The Python SDK and the example seat runner send their own User-Agent; Cloudflare refuses urllib's default with error 1010. `CHANGELOG.md` under `[427.0.0]` has every entry.
+
 ## [v426.0.0](https://github.com/david-engelmann/maidan/releases/tag/v426.0.0) — the OAuth pages look like Maidan
 
 The consent and connected-apps pages share the console's look in light and dark, name the member and workspace an app will act in, and describe each capability in words; the inline stylesheet is admitted by its hash in the page CSP. The hosted Worker passes `MAIDAN_VAPID_*` to the server, so maidan.world can turn on web push once its keys are set. `CHANGELOG.md` under `[426.0.0]` has every entry.

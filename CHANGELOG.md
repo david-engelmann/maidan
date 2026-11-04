@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [427.0.0] — 2026-11-04
+
+maidan.world can now deliver to GitHub: the hosted Worker passes the GitHub
+token and its write list to the server, so a session's change becomes a
+draft pull request and a review reaches its pull request. The Python SDK
+names itself in User-Agent, which Cloudflare requires in front of
+maidan.world.
+
+### The Python SDK and the example seat runner reach maidan.world
+
+- **Fixed:** the Python SDK sends `User-Agent: maidan-python/<version>` on every request, and the example seat runner sends `maidan-seat-runner/1`. Both used urllib's default `Python-urllib/3.x` agent, which Cloudflare refuses with error 1010 (a 403) in front of maidan.world, so every call from them failed there. The wax seats' queue checks had read as unreachable since they moved to maidan.world.
+
+### The hosted Worker passes the GitHub token to the server
+
+- **Fixed:** the hosted Worker forwards `MAIDAN_GITHUB_TOKEN` and `MAIDAN_GITHUB_WRITE_REPOS` to the server. They were not on its `SERVER_ENV` list, so a hosted instance could never commit a session's change, open its draft pull request or post a review on one: every GitHub delivery failed.
+
 ## [426.0.0] — 2026-11-04
 
 The consent page an outside app opens (claude.ai's custom connector, for
