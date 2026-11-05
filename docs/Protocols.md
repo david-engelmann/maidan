@@ -91,7 +91,7 @@ client that declares it hears `capabilities.extensions["io.modelcontextprotocol/
 `initialize` and `server/discover` (that discover result, and a `tools/list` with the link
 taken out, are `cacheScope: "private"`, since they answer what the request declared). A stateless 2025 request declares nothing, so it is offered the
 link and `structuredContent`, which a host without MCP Apps ignores. The details, and how the card
-answers a gate, are in [Integration](Integration.md#mcp-streamable).
+answers a gate, are in [Integration reference](Integration%20Reference.md#mcp-streamable).
 
 ## MCP discovery and cache hints
 

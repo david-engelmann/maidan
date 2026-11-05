@@ -66,7 +66,7 @@ class Maidan:
         """Call one MCP tool on `2026-07-28`: stateless, no initialize, no session.
 
         That revision states itself on every request, and the server refuses a
-        request that leaves any of it out (docs/Integration.md, "MCP
+        request that leaves any of it out (docs/Integration Reference.md, "MCP
         streamable"): the `MCP-Protocol-Version` header, the same version in
         `params._meta` beside the client's capabilities, and `Mcp-Method` and
         `Mcp-Name` headers naming the method and the tool.

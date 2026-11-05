@@ -553,7 +553,7 @@ batches of 5000 and counts what it deletes in
 
 A workspace admin can set shorter values for that workspace
 (`PUT /workspaces/{wid}/retention`, see
-[Integration](Integration.md#workspace-retention)); the instance values are
+[Integration reference](Integration%20Reference.md#workspace-retention)); the instance values are
 the ceiling. With `MAIDAN_RETENTION_MESSAGES_DAYS` unset, only a workspace
 policy prunes messages.
 
@@ -633,7 +633,8 @@ go with the last one.
 Maidan can verify and import without contacting the origin. It needs
 `MAIDAN_EXPORT_SIGNING_KEY`; set `MAIDAN_EXPORT_VERIFY_KEYS` on the destination
 to accept only your key (`GET /operator/export-public-key`). Bundles carry no
-tokens or secrets. See [Integration](Integration.md#workspace-portability-signed-export).
+tokens or secrets. See
+[Integration reference](Integration%20Reference.md#workspace-portability-signed-export).
 
 ### Event-log integrity
 
@@ -642,7 +643,7 @@ Every event is hash-chained, and `GET /workspaces/:wid/events/verify` answers
 and counts `maidan_chain_verify_total{outcome}`. Alert on `broken` (tampering
 or corruption) apart from `error` (the check could not run). Recovery is a
 rebuild from the domain tables, not a repair of the log. See
-[Integration](Integration.md#event-log-hash-chain).
+[Integration reference](Integration%20Reference.md#event-log-hash-chain).
 
 ## Observability
 

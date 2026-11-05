@@ -36,7 +36,7 @@ mkdir -p "$src_docs/assets"
 # deliberately stays out of the published book. Space-named sources are staged
 # under hyphenated names (space -> hyphen).
 top_pages=(
-  "Integration" "Swarms" "Capability Map" "Result Delivery"
+  "Integration" "Integration Reference" "Swarms" "Capability Map" "Result Delivery"
   "Production" "Configuration" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison" "Architecture" "Claims"
   "Providers" "Protocols" "Clients"
@@ -79,6 +79,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{\]\((?:\.\./)?(Gates|Clusters|Retros)/([^)]*)\)}{]($ENV{GH}/docs/$1/$2)}g' "$f"
 
   # 2) links to the hyphen-renamed space-files (any `docs/` prefix, %20-encoded)
+  perl -pi -e 's{Integration%20Reference\.md}{Integration-Reference.md}g' "$f"
   perl -pi -e 's{Capability%20Map\.md}{Capability-Map.md}g' "$f"
   perl -pi -e 's{Open%20Work\.md}{Open-Work.md}g' "$f"
   perl -pi -e 's{Cluster%20A\.md}{Cluster-A.md}g' "$f"

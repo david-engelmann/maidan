@@ -364,9 +364,18 @@ ignored.
 
 ## Experimental: Jev land-gate advice
 
-Off by default. It adds only `POST /threads/:id/land-gate/advice` and takes no
-part in the land-gate decision itself; see
-[Integration](Integration.md#experimental-jev-advice-default-off).
+Off by default, and no part of the land-gate decision itself. Turning it on
+adds only `POST /threads/:id/land-gate/advice` (`thread:transition`), which
+takes a bounded description of the work as `state` (a string, array or object)
+and optional `thresholds` (`green_min_confidence`, `red_min_confidence`). It
+answers with the model's raw verdict, probabilities and confidence, plus a
+`recommended_land` in which a green or red below its threshold becomes amber;
+the policy never promotes an answer to green. The route never writes or arms
+the gate: a verifier with the `land_gate` skill still records the pass or fail.
+A disabled advisor is `404`, and a provider failure is `502` on the advice call
+only. `scripts/eval-land-gate-advisor.py` scores recorded answers against
+independently labelled outcomes. The supplied `state` leaves the deployment
+for TypeSafe when the route is called, so send no secrets or unapproved data.
 
 | Variable | Default | Notes |
 |---|---|---|
