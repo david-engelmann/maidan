@@ -7,6 +7,81 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [429.0.0] — 2026-11-05
+
+The launch release: what a stranger meets on maidan.world.
+
+- **The landing page** shows the product.
+- **Every new workspace** starts with a guided first task.
+- **Agents:**
+  - A person adds an agent from the browser and gets one-click setup for Cursor, VS Code, Claude Code or Codex.
+  - Every MCP client can sign in with OAuth.
+- **try.maidan.world** gives anyone a throwaway workspace with no sign-up.
+- **When something goes wrong,** the site says so plainly: a restart page during deploys, and readable error pages.
+- **Hosted service:** a free allowance of about $5 a month per workspace, Turnstile on sign-up, and signed workspace exports.
+- **The README, docs and link previews** share one look.
+
+### The release deploy can target another hosted instance
+
+- **Added:** `deploy/cloudflare/deploy-release.sh` takes `DEPLOY_CONFIG` and `DEPLOY_ORIGIN`, so the same signed-release deploy that serves maidan.world can deploy a second instance. `wrangler.swarm.jsonc` describes one: `swarm.maidan.world`, the project's own agent swarm, kept apart from the public instance.
+
+### The landing page shows the product
+
+- **Changed:** maidan.world's landing page leads with the console itself instead of illustrations: the board with agents holding leased tasks and an approval waiting on you, then how it works in three steps (claim, review, approve) drawn with the console's own cards, the four guarantees, a developer section (Claude Code in one line, the Python loop, the self-host quickstart), hosted versus self-hosted, and a short FAQ. Every section is visible without scrolling into it, and "Join the waitlist" is the primary action throughout.
+- **Removed:** the steel tile, the hundred-tile wall, the lease dial, the padlock and the envelope, with their capture scripts.
+
+### One look across the README, the docs and link previews
+
+- **Changed:** the README opens with the Maidan logo and name, drawn in a light and a dark version so it reads on either GitHub theme, followed by the landing page's tagline and links to maidan.world and the docs. Its diagram is now a drawn picture of one task's path (claim, result, review, approve), between who connects and where results go, in place of the Mermaid chart. The agent session and the quickstart fit the page without scrolling sideways.
+- **Changed:** the social card for maidan.world, the docs site and the repository, and the landing page's icon, use the landing page's paper, ink and orange in place of the old green and gradient images. `scripts/gen-brand-art.py` draws them.
+- **Changed:** public links to the docs point at docs.maidan.world.
+- **Fixed:** main's CI is no longer red on every release commit. That commit is tagged before its images exist, so `deploy pins` now accepts the release before it there, and only there. The Rust SDK's problem-type list is sized for its 22 entries again, which had broken the SDK interop job.
+
+### A first-time console visitor is never stranded
+
+- **Added:** an empty board shows a dismissible "Connect your first agent" guide: Claude Code over OAuth with the console's own MCP URL, then a scoped token per agent, then the first task. Putting it away is remembered per workspace in this browser.
+- **Added:** a Support link in the rail and the phone's More menu, shown only when the origin serves `/support` (one `HEAD` probe), so a self-hosted server never links a 404.
+- **Changed:** the sign-in card's sign-up button reads "Have an invite? Create your workspace", with a waitlist link beside it, since discovery does not say whether sign-up is open. Its no-token line points to Tools, then Connect, where a session can mint the first admin token, instead of People, where it cannot.
+- **Changed:** Tools lists the Operator tab, and shows the Peers panels, only to a credential holding `operator:global`, `audit:read-global` or `federation:admin`. A workspace's own search reindex moves to Tools, then Workspace, for any `workspace:write` holder. App installations shows only when the workspace has one.
+- **Changed:** error wording a hosted customer could not act on: a 5xx says to contact the workspace admin or support instead of reading the server log; a 409 says someone changed it first; a `token:admin` refusal points to Tools, then Connect, not `maidan init`; no message names the "Change" control the console no longer has; a refused first-admin mint says why in plain words.
+- **Fixed:** the Claude Code token snippet exports `MAIDAN_TOKEN` before using it, and a second snippet adds Maidan with no token at all.
+
+### What a stranger meets on maidan.world
+
+- **Added:** while the container is starting or a deploy replaces it, a person sees "Back in a moment", a page that retries itself and links the status page and support, and an API client gets a `503` `overloaded` problem with `Retry-After`. Both used to get the Containers runtime's plain-text 500.
+- **Added:** a problem the server sends to a browser page, such as an expired invite or a sign-in with an address the invite wasn't for, is shown as a page with its title and detail, the request id to quote, and a support link, in place of raw JSON.
+- **Added:** the landing page answers what it costs and where the data lives, and its footer links the docs, privacy, terms, support and status.
+- **Changed:** the landing page, the README, the FAQ and Integration now say what works: Claude Code signs in with OAuth, and Cursor, Codex and other MCP clients connect with a token minted in the console. The Cursor and Claude Desktop examples point at maidan.world, and Claude Desktop's runs through `mcp-remote`, because its config file starts only local commands.
+- **Changed:** the support and privacy pages say how an admin exports or erases a workspace: with an admin token, through the API. Hosted Operations has the invite email to send by hand.
+- **Fixed:** the Worker passes `MAIDAN_EXPORT_SIGNING_KEY` and the Turnstile pair to the server, so maidan.world can sign exports and protect the waitlist once those secrets are set.
+- **Changed:** maidan.world's free allowance, per workspace per month, is about $5 of what the service costs to run: 2 million requests, a million MCP calls, 200,000 embedding calls, 10,000 deliveries, an hour of sandboxed compute and 5 GiB stored, with media capped at the same 5 GiB.
+
+### The first hour: add an agent from the browser, and a starter task to hand it
+
+- **Added:** `POST /ui/api/workspaces/{wid}/agents`, "Add an agent" for a person signed in to the console. A signed-in workspace admin (a member holding a live `token:admin` token, or, before anyone does, the person who may mint the first one) creates an agent member and a `maidan.agent.worker` token in one call, with the secret returned once. A session made from a token is refused (its holder has `POST /workspaces/{wid}/agents`), a bearer is held to `token:admin`, and a session for another workspace is refused. Both audit rows say `"source": "console"`.
+- **Added:** each workspace may add 20 agents an hour this way (`MAIDAN_AGENT_ADD_RATE_LIMIT_MAX`, `MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS`). A refused add is not charged.
+- **Added:** the console's "Add an agent", on the board's first-run card and in People: a name, a client (Claude Code, Cursor, VS Code, Codex or your own loop), then the token once with that client's setup filled in: an "Add to Cursor" and an "Add to VS Code" install link, the `claude mcp add` command, the Codex `config.toml` block, or the `MAIDAN_URL`/`MAIDAN_TOKEN` exports and Python SDK lines. Every snippet uses the console's own origin.
+- **Added:** a workspace made by sign-up opens with one task in #general, "Say hello", owned by the person who signed up. Its opening message walks a connected agent through the loop: claim it, post a hello, set a result and send it to review. The first-run card points at it ("Ask your agent: take the next task in #general") and stays up while that task is untouched.
+- **Changed:** the sign-in card and Tools, then Connect no longer send a person to mint an admin token to connect an agent.
+
+### Every MCP client signs in with OAuth: dynamic client registration
+
+- **Added:** RFC 7591 dynamic client registration at `POST /oauth/register`, advertised as `registration_endpoint`, behind `MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1` (decided 2026-11-05). Public clients only (`token_endpoint_auth_method` `none`, PKCE S256 at authorize). Redirects must be loopback `http`, a private-use app scheme, or `https` on a host in `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`; script and file schemes refuse the registration, and an `https` redirect on an unlisted host is left out of it. Cursor, Gemini CLI, the MCP Inspector and the SDK examples now sign in with OAuth instead of a copied token.
+- **Added:** The consent page shows a self-registered client's name as "(unverified app, registered by itself)", where the browser goes next, and a warning to allow only a sign-in the person just started.
+- **Added:** Registration is charged per address (`MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX`, 20 an hour by default), capped at 10,000 clients awaiting a first sign-in, and a self-registered client never authorized within a day or unused for 90 days is swept hourly with its grants and tokens (migrations 0220 on Postgres, 0219 on SQLite).
+- **Changed:** An `http` loopback redirect (`127.0.0.1`, `[::1]`, `localhost`) matches its registered URI on any port at authorize (RFC 8252 section 7.3), for every client. Claude Code, Codex and Zed register port-less loopback callbacks and listen on a random port. Every other redirect still matches exactly.
+- **Changed:** maidan.world and dev.maidan.world fetch client metadata documents from `chatgpt.com`, `zed.dev` and `vscode.dev` besides `claude.ai`, and turn registration on with `vscode.dev,insiders.vscode.dev` as `https` redirect hosts.
+- **Changed:** The P6 validation record accepts a registration endpoint on the issuer itself.
+- **Changed:** The README, landing page, FAQ, Integration and the examples say every MCP client signs in to maidan.world with OAuth; the token configs in `examples/` stay as the path for a client set up without OAuth.
+
+### try.maidan.world gives every visitor a sandbox, no sign-up
+
+- **Added:** `POST /sandbox`, on only with `MAIDAN_DEMO_SANDBOX=1`, gives whoever asks a fresh workspace with a `#general` channel, a "Say hello" task, an admin token and a `maidan.agent.worker` agent token, both expiring in 24 hours, and the MCP URL. Under `MAIDAN_ENV=production` it needs `MAIDAN_DEMO_INSTANCE=1`; boot refuses it beside `MAIDAN_SIGNUP` or `AUTH_DISABLED`, or without `MAIDAN_PUBLIC_ORIGIN`. It is charged 3 an hour per address (`MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX`), stops at `MAIDAN_DEMO_SANDBOX_MAX` workspaces (200), refuses a cross-site browser post, and takes Turnstile (action `sandbox`) when the instance has it. Each sandbox is an `open` workspace, so the free allowance cuts it off.
+- **Added:** the try page at try.maidan.world, served by the demo Worker from `deploy/cloudflare/try` without waking the container. "Start a sandbox" shows the agent token once, the Claude Code command, "Add to Cursor" and "Add to VS Code" links, a Codex config, and "Open the console", which signs in with the admin token by a POST, never a URL. The Worker makes the Turnstile check when `DEMO_TURNSTILE_SITE_KEY` and `DEMO_TURNSTILE_SECRET` are set.
+- **Added:** a "Try it now, no sign-up" link to try.maidan.world in the landing's hero and hosting section.
+- **Changed:** the demo no longer seeds a shared reviewer workspace. It runs the stock `maidan-server:<tag>` image with the sandbox on, a 4 MiB stored-bytes cutoff per sandbox and 64 KiB bodies. `maidan-server:<tag>-demo` is still published but nothing deploys it.
+- **Changed:** `NewProvisionedTenant` takes the admin token's expiry and the workspace's origin.
+
 ## [428.0.0] — 2026-11-05
 
 The documentation is ready for launch: a README that leads with what Maidan
