@@ -10,15 +10,15 @@
 # ubuntu:24.04 to match that glibc generation.
 FROM ubuntu:24.04
 
-ARG MAIDAN_VERSION=v427.0.0
+ARG MAIDAN_VERSION=v428.0.0
 # Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
 # ALL THREE together when MAIDAN_VERSION changes — and the default in
 # `compose.quickstart.yaml`, which overrides this one, and every other deploy pin
 # (`scripts/check-deploy-pins.sh` lists them and checks them):
 #   gh release download <tag> -R david-engelmann/maidan -p 'maidan-*-linux-gnu.tar.gz'
 #   shasum -a 256 maidan-*-linux-gnu.tar.gz
-ARG MAIDAN_SHA256_AMD64=c5a38038a7b824415a57df5c396b5667a87c6940569be40d2017119a01eceffa
-ARG MAIDAN_SHA256_ARM64=63d7241bc56d58c1f7cadc325b93755433e87a606e2f367fed3f2607d1ef57b7
+ARG MAIDAN_SHA256_AMD64=45834d5856c45a88f38028c31357dbeb4d9134445fc50ade81c9d882b7e93d16
+ARG MAIDAN_SHA256_ARM64=63e78ff9c08d7bd20da9aac351bdabea0629f4d3caba6279175228ab2aa5a55b
 # Set by buildkit; fall back to the build host's arch for a plain `docker build`.
 ARG TARGETARCH
 
