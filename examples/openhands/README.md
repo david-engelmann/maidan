@@ -12,7 +12,7 @@ channel. It's the same loop as the [Goose recipe](../goose/).
 
 1. Give the agent its own identity: install it as an app with a token that
    holds `workspace:read`, `message:post` and `thread:transition`
-   ([Integration, "An agent joins as an installed app"](../../docs/Integration.md)).
+   ([Integration reference, "An agent as an installed app"](../../docs/Integration%20Reference.md#an-agent-as-an-installed-app)).
    Don't give it the admin token. Those three capabilities cover every tool
    the loop uses, approval gates included.
 2. Install the SDK (Python 3.12 or later):

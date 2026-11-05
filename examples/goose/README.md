@@ -10,7 +10,7 @@ person or another agent filed on the channel.
 
 1. Give Goose its own identity: install it as an app with a token that holds
    `workspace:read`, `message:post` and `thread:transition`
-   ([Integration, minimal integration step 3](../../docs/Integration.md#minimal-integration-http)).
+   ([Integration reference, "An agent as an installed app"](../../docs/Integration%20Reference.md#an-agent-as-an-installed-app)).
    Do not give it the admin token.
 2. Point the recipe's `uri` at your server's `/mcp/streamable` if it is not
    `http://127.0.0.1:8080`.
