@@ -84,6 +84,75 @@ for cmd in manifest.split("docker buildx imagetools create")[1:]:
         fail("the -demo image must never be tagged latest")
 PY
 
+# A release created with GITHUB_TOKEN does not emit `release: published`.
+# release.yml has to dispatch every workflow that listens for that event.
+# sdk-release.yml must not be one of them: it publishes on its own
+# sdk-*-v* tags. deploy-demo.yml keeps the only DEMO_DOMAIN switch.
+python3 - <<'PY' || exit 1
+import pathlib, sys, yaml
+root = pathlib.Path(".github/workflows")
+release = yaml.safe_load((root / "release.yml").read_text())
+
+def fail(msg):
+    print(f"release.yml follow-ups: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def trigger(wf):
+    # PyYAML reads the workflow key `on` as boolean True.
+    return wf.get(True) or wf.get("on") or {}
+
+runs = []
+for job in release["jobs"].values():
+    for step in job.get("steps") or []:
+        run = step.get("run") or ""
+        if "gh workflow run" in run:
+            runs.append(run)
+blob = "\n".join(runs)
+
+listeners = []
+for path in sorted(root.glob("*.yml")):
+    wf = yaml.safe_load(path.read_text())
+    types = (trigger(wf).get("release") or {}).get("types") or []
+    if "published" in types:
+        listeners.append(path.name)
+expected = ["clean-install.yml", "deploy-demo.yml", "deploy-prod.yml"]
+if listeners != expected:
+    fail(
+        "workflows listening for release: published are "
+        + ", ".join(listeners)
+        + "; expected "
+        + ", ".join(expected)
+        + ". A new listener needs a dispatch from release.yml, or it should not use this event."
+    )
+
+for name in expected:
+    if f"gh workflow run {name}" not in blob:
+        fail(f"must dispatch {name}")
+    chunk = blob.split(f"gh workflow run {name}", 1)[1].split("gh workflow run", 1)[0]
+    if "--ref main" not in chunk or "-f tag=" not in chunk:
+        fail(f"{name} must be dispatched with --ref main and -f tag=")
+
+if "sdk-release" in blob:
+    fail("must not dispatch sdk-release.yml")
+
+for job_name, workflow in (
+    ("deploy-prod", "deploy-prod.yml"),
+    ("deploy-demo", "deploy-demo.yml"),
+    ("clean-install", "clean-install.yml"),
+):
+    job = release["jobs"].get(job_name) or {}
+    if job.get("needs") != ["release"]:
+        fail(f"{job_name} must run after the release job")
+    if (job.get("permissions") or {}).get("actions") != "write":
+        fail(f"{job_name} needs actions: write to dispatch {workflow}")
+    if job.get("if"):
+        fail(f"{job_name} must not add its own if; the target workflow decides")
+
+demo = yaml.safe_load((root / "deploy-demo.yml").read_text())
+if demo["jobs"]["deploy"].get("if") != "vars.DEMO_DOMAIN == 'true'":
+    fail("deploy-demo.yml must skip its deploy unless vars.DEMO_DOMAIN == 'true'")
+PY
+
 # The registry manifest and the image label must name the same server.
 name=$(python3 -c 'import json;print(json.load(open("listings/registry/server.json"))["name"])')
 grep -q "io.modelcontextprotocol.server.name=\"$name\"" crates/maidan-server/Dockerfile \
