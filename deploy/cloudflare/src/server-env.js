@@ -12,6 +12,13 @@
 // fail the start, so the previous container would keep running without the
 // new value. The hosted configs set the registration switch to `1`; the
 // server treats `1` and `true` as on.
+//
+// The fingerprint is stored only after the container is running. Until then a
+// second request on this Durable Object can see `running` and a missing
+// fingerprint and would recycle the container the first request just started.
+// A start this instance already has in flight for the same fingerprint is
+// the environment being applied, so it is left running. Once it has been
+// verified, later requests skip the lock.
 
 export const ENV_FINGERPRINT_KEY = "containerEnvFingerprint";
 
@@ -101,4 +108,73 @@ export function containerEnvPlan({ running, startedFingerprint, fingerprint }) {
     return { destroy: false, remember: false };
   }
   return { destroy: running === true, remember: true };
+}
+
+// In-memory coordination for one MaidanServer instance. Storage is shared
+// across isolates; this state is not, and that is what stops a concurrent
+// request from recycling a start that has not been recorded yet.
+export class ContainerEnvSession {
+  constructor() {
+    this.verifiedFingerprint = null;
+    this.startingFingerprint = null;
+    this.inFlightStarts = 0;
+  }
+
+  async serve({ fingerprint, container, storage, blockConcurrencyWhile, destroy, forward }) {
+    if (this.verifiedFingerprint === fingerprint && container.running === true) {
+      try {
+        return await forward();
+      } finally {
+        if (container.running !== true) this.verifiedFingerprint = null;
+      }
+    }
+
+    const joined = await blockConcurrencyWhile(() =>
+      this.#enter(fingerprint, container, storage, destroy),
+    );
+    if (!joined) {
+      try {
+        return await forward();
+      } finally {
+        if (container.running !== true) this.verifiedFingerprint = null;
+      }
+    }
+
+    try {
+      const response = await forward();
+      if (container.running === true) {
+        if (this.verifiedFingerprint !== fingerprint) {
+          await storage.put(ENV_FINGERPRINT_KEY, fingerprint);
+          this.verifiedFingerprint = fingerprint;
+        }
+      } else {
+        this.verifiedFingerprint = null;
+      }
+      return response;
+    } finally {
+      this.inFlightStarts -= 1;
+      if (this.inFlightStarts === 0) this.startingFingerprint = null;
+    }
+  }
+
+  async #enter(fingerprint, container, storage, destroy) {
+    const running = container.running === true;
+    // A start this instance already began flips `running` before the
+    // fingerprint is stored. That container has this environment.
+    if (!(running && this.startingFingerprint === fingerprint)) {
+      const started = await storage.get(ENV_FINGERPRINT_KEY);
+      if (running && started === fingerprint) {
+        this.verifiedFingerprint = fingerprint;
+      } else if (running && started !== fingerprint) {
+        await destroy();
+        this.verifiedFingerprint = null;
+      }
+    }
+    if (container.running !== true || this.startingFingerprint === fingerprint) {
+      this.startingFingerprint = fingerprint;
+      this.inFlightStarts += 1;
+      return true;
+    }
+    return false;
+  }
 }

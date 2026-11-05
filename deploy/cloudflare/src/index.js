@@ -25,12 +25,7 @@ import {
   withSecurityHeaders,
 } from "./edge.js";
 import { isStatusRequest, statusResponse } from "./status.js";
-import {
-  ENV_FINGERPRINT_KEY,
-  containerEnvPlan,
-  envFingerprint,
-  serverEnv,
-} from "./server-env.js";
+import { ContainerEnvSession, envFingerprint, serverEnv } from "./server-env.js";
 
 export class MaidanServer extends Container {
   defaultPort = 8080;
@@ -39,36 +34,27 @@ export class MaidanServer extends Container {
   constructor(ctx, env) {
     super(ctx, env);
     this.envVars = serverEnv(env);
+    this.envSession = new ContainerEnvSession();
   }
 
   // The container keeps the environment of the start() that created it. An
   // image rollout can leave the new image running on the previous start's
   // environment, so a var that arrived in the same deploy never reaches the
-  // process. Recycle before proxying, and remember the fingerprint only once
-  // the replacement is running: recording it earlier would hide a failed start.
+  // process. The session recycles that container, and keeps a start already
+  // in flight on this instance from being recycled by the next request.
   async fetch(request) {
     const fingerprint = await envFingerprint(this.envVars);
-    const plan = await this.ctx.blockConcurrencyWhile(async () => {
-      const running = this.ctx.container.running === true;
-      const started = await this.ctx.storage.get(ENV_FINGERPRINT_KEY);
-      const plan = containerEnvPlan({
-        running,
-        startedFingerprint: started,
-        fingerprint,
-      });
-      if (plan.destroy) {
+    return this.envSession.serve({
+      fingerprint,
+      container: this.ctx.container,
+      storage: this.ctx.storage,
+      blockConcurrencyWhile: (fn) => this.ctx.blockConcurrencyWhile(fn),
+      destroy: async () => {
         console.log("recycling container to apply environment changes");
         await this.destroy();
-      }
-      // Observed before the lock is released, so a request that starts the
-      // container in between cannot make this one forget to record the env.
-      return { ...plan, startedFresh: this.ctx.container.running !== true };
+      },
+      forward: () => super.fetch(request),
     });
-    const response = await super.fetch(request);
-    if (plan.remember && plan.startedFresh && this.ctx.container.running === true) {
-      await this.ctx.storage.put(ENV_FINGERPRINT_KEY, fingerprint);
-    }
-    return response;
   }
 }
 
