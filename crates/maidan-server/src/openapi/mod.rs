@@ -675,6 +675,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ui_list_channels,
         paths::ui_rename_workspace,
         paths::ui_create_channel,
+        paths::ui_create_agent,
         paths::ui_create_thread,
         paths::ui_post_message,
         paths::ui_list_threads,

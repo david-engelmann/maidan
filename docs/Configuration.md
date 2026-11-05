@@ -143,6 +143,7 @@ Off unless `MAIDAN_SIGNUP=1`. [OIDC](OIDC.md) describes the flow.
 | `MAIDAN_TURNSTILE_HOSTNAME` | host of `MAIDAN_PUBLIC_ORIGIN` | The host name a token must have been solved on. |
 | `MAIDAN_SIGNUP_RATE_LIMIT_MAX`, `MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS` | `30` per `3600` s | Per-address limit on the waitlist form, the sign-up start and the operator's invite mint. |
 | `MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX`, `MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS` | `100` per `3600` s | Per-email-domain limit on waitlist joins. |
+| `MAIDAN_AGENT_ADD_RATE_LIMIT_MAX`, `MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS` | `20` per `3600` s | Per-workspace limit on adding an agent from the console (`POST /ui/api/workspaces/{wid}/agents`). A refused add is not charged. |
 | `MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX`, `MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS` | `100` per `3600` s | Per-email-domain limit on invite mints and on finished sign-ups, in separate buckets. |
 
 ## OAuth for MCP clients

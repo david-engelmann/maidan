@@ -1349,6 +1349,14 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .first-run-steps p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
 .first-run-steps a:not(.button) { color: var(--ink); text-underline-offset: 2px; }
 .first-run-steps .button { min-height: 38px; margin-top: var(--space-1); }
+/* "Add an agent": a name, the client chips (which wrap on a phone), then the
+   token once with that client's setup. */
+.add-agent { display: grid; gap: var(--space-2); justify-self: stretch; min-width: 0; }
+.add-agent p { margin: 0; }
+.add-agent .snippet { margin-top: 0; }
+.add-agent .snippet-head .button { min-height: 36px; }
+.client-pick { display: flex; flex-wrap: wrap; }
+.add-agent-card { margin-top: var(--space-3); }
 .sign-in-waitlist { margin: -4px 0 0; color: var(--muted); font-size: var(--text-sm); }
 .sign-in-waitlist a { color: var(--ink); text-underline-offset: 2px; }
 /* Support sits at the foot of the rail, apart from the places. */

@@ -15,6 +15,7 @@ use super::{
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath, ApiQuery};
+use crate::session::SessionContext;
 use crate::state::AppState;
 
 /// `GET /me` — the caller's own identity. Reflects the request's auth
@@ -162,12 +163,123 @@ pub async fn create_agent(
             "handle must be 1..={AGENT_HANDLE_MAX_CHARS} characters with no whitespace"
         )));
     }
+    insert_agent(&state, &auth, workspace_id, handle, body, "agent-invite").await
+}
+
+/// The longest handle "Add an agent" in the console takes. Shorter than the
+/// API's bound: it is typed by a person and read back in every list.
+const CONSOLE_AGENT_HANDLE_MAX_CHARS: usize = 40;
+
+/// `POST /ui/api/workspaces/{wid}/agents` — "Add an agent" in the console.
+///
+/// The same agent member and `maidan.agent.worker` token as `POST
+/// /workspaces/{wid}/agents`, for the person who signed in: a fresh sign-up
+/// holds no token, and without this the only way to an agent was minting an
+/// admin token first, which invited handing that token to the agent.
+///
+/// An OIDC session may call it when its member is a workspace admin (see
+/// `console_admin`). A session made from a token may not: that token's
+/// holder has the bearer route, and a narrowed or borrowed token's session
+/// must not turn into a minting one. A bearer on this route is held to the
+/// bearer route's rule, `token:admin`. Each workspace is charged against the
+/// agent-add budget once the caller is allowed, so a refusal spends nothing.
+pub async fn ui_create_agent(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<CreateAgent>,
+) -> ApiResult<(StatusCode, Json<CreatedAgentResponse>)> {
+    let workspace_id = WorkspaceId(workspace_id);
+    match &session {
+        Some(Extension(session)) => {
+            ensure_workspace(&auth, workspace_id)?;
+            console_admin(&state, session).await?;
+        }
+        None => {
+            cap(&auth, TOKEN_ADMIN)?;
+            ensure_workspace(&auth, workspace_id)?;
+        }
+    }
+    let handle = body.handle.trim().to_string();
+    let len = handle.chars().count();
+    if len == 0
+        || len > CONSOLE_AGENT_HANDLE_MAX_CHARS
+        || !handle
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "name must be 1..={CONSOLE_AGENT_HANDLE_MAX_CHARS} characters of letters, digits, '-', '_' or '.'"
+        )));
+    }
+    crate::rate_limit::charge_agent_add(&state, workspace_id).await?;
+    insert_agent(&state, &auth, workspace_id, handle, body, "console").await
+}
+
+/// Whether the person behind an OIDC session is a workspace admin, for adding
+/// an agent. A session carries no role of its own, so admin is what the rest
+/// of the server already takes it to be: a member holding a live
+/// `token:admin` token in the workspace. Before anyone holds one, the person
+/// who may mint the first one (`POST /auth/session/mint`: not invited, with
+/// the first-admin mint on) is the admin too; adding a worker agent is
+/// strictly less than that mint.
+async fn console_admin(state: &AppState, session: &SessionContext) -> ApiResult<()> {
+    if session.token.is_some() {
+        return Err(ApiError::Forbidden(
+            "a session made from a token cannot add an agent here; that token's holder uses POST /workspaces/{wid}/agents".into(),
+        ));
+    }
+    let workspace_id = session.workspace_id;
+    let now = chrono::Utc::now();
+    let holds_admin = state
+        .store
+        .list_api_tokens_for_member(workspace_id, session.member_id)
+        .await?
+        .iter()
+        .any(|t| {
+            t.revoked_at.is_none()
+                && t.expires_at.is_none_or(|at| at > now)
+                && t.capabilities.iter().any(|c| c == TOKEN_ADMIN)
+        });
+    if holds_admin {
+        return Ok(());
+    }
+    let first_admin_open = session.invite_role.is_none()
+        && state
+            .oidc
+            .as_ref()
+            .is_some_and(|oidc| oidc.settings.first_admin_mint)
+        && !state
+            .store
+            .workspace_has_active_capability(workspace_id, TOKEN_ADMIN)
+            .await?;
+    if first_admin_open {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(
+            "only a workspace admin can add an agent".into(),
+        ))
+    }
+}
+
+/// Create the agent member and its worker token, both audit rows naming
+/// `source`. The caller has already been authorized for `workspace_id` and
+/// the handle checked.
+async fn insert_agent(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    handle: String,
+    body: CreateAgent,
+    source: &'static str,
+) -> ApiResult<(StatusCode, Json<CreatedAgentResponse>)> {
     let display_name = normalize_display_name(body.display_name.as_deref())?;
     // The worker set, granted the way a mint grants it: through the caller's
     // mint vocabulary, so this route can never hand out more than token:admin
     // could mint directly.
     let capabilities = maidan_auth::progressive_grant(
-        &super::token::mint_vocabulary(&auth),
+        &super::token::mint_vocabulary(auth),
         Some(AGENT_WORKER),
         &[],
     )
@@ -197,7 +309,7 @@ pub async fn create_agent(
                     "workspace_id": member.workspace_id.0,
                     "handle": member.handle,
                     "kind": member.kind,
-                    "source": "agent-invite",
+                    "source": source,
                 }),
             }),
             Box::new(move |record: &ApiToken| NewAuditEvent {
@@ -212,12 +324,12 @@ pub async fn create_agent(
                     "capabilities": record.capabilities.clone(),
                     "capability_set": AGENT_WORKER,
                     "expires_at": record.expires_at,
-                    "source": "agent-invite",
+                    "source": source,
                 }),
             }),
         )
         .await?;
-    super::publish_stored(&state, created.event).await;
+    super::publish_stored(state, created.event).await;
     let token = created.token;
     Ok((
         StatusCode::CREATED,

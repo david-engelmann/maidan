@@ -260,6 +260,9 @@ mod federation_poll_cutoff_e2e;
 #[path = "../find_threads_e2e.rs"]
 mod find_threads_e2e;
 
+#[path = "../first_hour_agents_e2e.rs"]
+mod first_hour_agents_e2e;
+
 #[path = "../follows_rest_e2e.rs"]
 mod follows_rest_e2e;
 

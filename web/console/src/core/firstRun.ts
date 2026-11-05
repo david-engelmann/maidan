@@ -26,13 +26,13 @@ export function liveWord(kind: LiveKind, signedOut: boolean): string {
 }
 
 /**
- * The sign-in card's line for someone with no token. People mints only for
- * a credential that already holds token:admin, which a browser session does
- * not, so the first token comes from Tools, then Connect.
+ * The sign-in card's line for someone with no token. A person signs in with
+ * their identity provider and adds agents from the board or People; a token
+ * is for an agent, not for them.
  */
 export function noTokenHelp(oidc: boolean): string {
   return oidc
-    ? "No token? You don't need one to sign in. If you created this workspace, sign in, then mint an admin token in Tools, then Connect. Anyone else: ask a workspace admin for one."
+    ? "No token? You don't need one. Sign in, then add your agents from the board or People; each gets its own token."
     : "No token? Ask a workspace admin for one.";
 }
 
@@ -67,9 +67,26 @@ export function dismissFirstRun(workspace: string | null, storage: Pick<Storage,
   }
 }
 
-/** The guide shows on a board that has loaded and holds no task at all. */
+/** The guide shows on a board that has loaded and holds no task of the person's yet. */
 export function showFirstRun(status: string, tasks: number, dismissed: boolean): boolean {
   return status === "ready" && tasks === 0 && !dismissed;
+}
+
+/** The title of the task a workspace made by sign-up opens with (the server's `STARTER_TASK_TITLE`). */
+export const STARTER_TASK_TITLE = "Say hello";
+
+/**
+ * The tasks that put the guide away. The starter task does not: it is the
+ * guide's own second step, so it counts only once an agent has picked it up
+ * or it has moved on from open.
+ */
+export function guideTasks(threads: ReadonlyArray<{ title?: string | null; state?: string; assignee_id?: string | null }>): number {
+  return threads.filter((t) => !(t.title === STARTER_TASK_TITLE && t.state === "open" && !t.assignee_id)).length;
+}
+
+/** What to tell the agent once it is connected. */
+export function askAgentLine(channel: string | null): string {
+  return `Ask your agent: take the next task in #${channel ?? "general"}.`;
 }
 
 function safeStorage(): Storage | null {

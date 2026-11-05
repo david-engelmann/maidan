@@ -1225,6 +1225,12 @@
   },
   {
     "method": "POST",
+    "path": "/ui/api/workspaces/{wid}/agents",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:write",
     "surface": "http"

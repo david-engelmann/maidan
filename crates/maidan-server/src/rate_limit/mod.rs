@@ -241,6 +241,41 @@ pub(crate) async fn charge_email_domain(
     }
 }
 
+/// Per-workspace limit on "Add an agent" in the console: 20 / 3600 s. Each
+/// add creates a member and mints a token, so a signed-in browser looping on
+/// it would fill the workspace with credentials; nobody sets up twenty agents
+/// by hand in an hour.
+const AGENT_ADD: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_AGENT_ADD_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 20,
+        window: Duration::from_secs(3600),
+    },
+};
+
+/// Charge `workspace_id` for one agent added from the console. The handler
+/// calls this once the caller is allowed and before anything is written, so a
+/// refused add spends nothing and a charged one that is refused writes nothing.
+pub(crate) async fn charge_agent_add(
+    state: &crate::state::AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<(), ApiError> {
+    let Some(cfg) = resolve_env(&AGENT_ADD, state.rate_limit_default_on) else {
+        return Ok(());
+    };
+    let key = format!("agent-add:{}", workspace_id.0);
+    if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
+        Ok(())
+    } else {
+        Err(ApiError::TooManyRequests(format!(
+            "rate limit exceeded ({} agents per {}s for this workspace)",
+            cfg.max,
+            cfg.window.as_secs()
+        )))
+    }
+}
+
 fn resolve_signup_ip(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&SIGNUP_IP, default_on)
 }

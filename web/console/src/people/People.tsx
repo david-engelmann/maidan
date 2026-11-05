@@ -41,6 +41,7 @@ import { convHash } from "../core/threads.ts";
 import { capsExceeding, parseCaps } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { SecretOnce } from "../tools/SecretOnce.tsx";
+import { AddAgent } from "./AddAgent.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -210,6 +211,7 @@ function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Pe
             </li>
           ))}
         </ul>
+        <AddAgentCard api={api} onAdded={onRetry} />
         <Invites api={api} />
       </section>
       {open ? (
@@ -368,6 +370,19 @@ function MintForm({ busy, held, onMint }: { busy: boolean; held: string[] | null
 // ---- Invites ---------------------------------------------------------------
 // A person joins by an invite link an admin sends them. The link is shown
 // once, here only, and goes when "I have it" is pressed or the page closes.
+
+/** "Add an agent" for whoever is signed in; the server says no to anyone not an admin. */
+function AddAgentCard({ api, onAdded }: { api: PeopleApi; onAdded: () => void }) {
+  const { session } = useSession();
+  if (session.status !== "signed-in" || !session.workspaceId) return null;
+  const base = session.credentials.base || window.location.origin;
+  return (
+    <div className="add-agent-card">
+      <h3>Add an agent</h3>
+      <AddAgent api={api} workspace={session.workspaceId} base={base} channelId={null} onAdded={onAdded} />
+    </div>
+  );
+}
 
 function Invites({ api }: { api: PeopleApi }) {
   const { session } = useSession();

@@ -30,7 +30,8 @@ behaviour.
 | First admin | `crates/maidan-server/src/session/handlers.rs` | `POST /auth/session/mint` lets an OIDC session mint the workspace's first `token:admin`, only while none is live and `MAIDAN_OIDC_FIRST_ADMIN` allows it. |
 | Console sign-in | `web/console/src/shell/SignIn.tsx` | Signed out, every place shows **Sign in**, which sends the browser to `/auth/oidc/login?return_to=/ui/` with no workspace id (the callback picks the most recently used workspace), and a token field that trades a pasted token for a session. |
 | A second workspace | `crates/maidan-server/src/routes/workspace.rs` | `POST /operator/workspaces` (`operator:global`, #1208) creates a workspace, its first human admin and a one-time admin token in one transaction, without `MAIDAN_BOOTSTRAP`. |
-| Connect an agent | `web/console/src/tools/Connect.tsx` | Tools > Connect shows the MCP and HTTP snippets to paste into an agent; its token is minted in People. |
+| Connect an agent | `web/console/src/people/AddAgent.tsx` | "Add an agent", on the board's first-run card and in People, takes a name and a client and calls `POST /ui/api/workspaces/{wid}/agents` as the signed-in admin. The agent's own `maidan.agent.worker` token is shown once with that client's setup filled in (Cursor and VS Code install links, the Claude Code command, the Codex `config.toml`, or `MAIDAN_URL`/`MAIDAN_TOKEN` for a loop). Tools > Connect keeps the placeholder snippets. |
+| Starter task | `crates/maidan-server/src/oidc/handlers.rs` | A sign-up opens its workspace with #general and one task in it, "Say hello", owned by the person who signed up, whose message walks a connected agent through claim, hello, result and review. |
 | SCIM | `crates/maidan-server/src/scim.rs` | `token:admin` creates and updates human members at `/scim/v2/Users`. `active: false` revokes the member's tokens and releases its claims. |
 
 [OIDC](OIDC.md) has the whole sign-in flow and its configuration. The

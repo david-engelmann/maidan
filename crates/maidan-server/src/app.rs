@@ -1702,6 +1702,12 @@ pub fn router(state: AppState) -> Router {
 
     let ui_api_write = Router::new()
         .route("/ui/api/workspaces/{wid}", patch(routes::rename_workspace))
+        // "Add an agent" in the console: a signed-in admin makes an agent
+        // member and its worker token without holding an admin token.
+        .route(
+            "/ui/api/workspaces/{wid}/agents",
+            no_store(post(routes::ui_create_agent)),
+        )
         .route(
             "/ui/api/workspaces/{wid}/channels",
             post(routes::create_channel),

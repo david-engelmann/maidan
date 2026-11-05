@@ -4,11 +4,11 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
-    ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
-    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm, OidcSignupQuery,
-    PeerResponse, RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
-    SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
+    ConfirmApprovalGate, CreateAgent, CreateChannel, CreateMessage, CreateThread,
+    CreatedAgentResponse, ListAuditQuery, ListEventsQuery, ListMessageEditsQuery,
+    ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery,
+    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    SessionWorkspaces, SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -379,6 +379,28 @@ pub fn ui_rename_workspace() {}
     )
 )]
 pub fn ui_create_channel() {}
+
+/// Add an agent (console)
+#[utoipa::path(
+    post,
+    path = "/ui/api/workspaces/{wid}/agents",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateAgent,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = CreatedAgentResponse,
+        description = "The agent member and a one-time `maidan.agent.worker` token, created together. A signed-in workspace admin, or a bearer with `token:admin`; never a session made from a token. Charged against the workspace's agent-add budget"),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+        (status = 409, response = Conflict),
+    )
+)]
+pub fn ui_create_agent() {}
 
 /// Create a thread in a channel (console)
 #[utoipa::path(

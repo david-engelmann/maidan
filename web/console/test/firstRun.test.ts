@@ -24,10 +24,10 @@ test("signed out, the top bar says sign in, not a place or offline", () => {
   assert.equal(liveWord("offline", false), "Offline");
 });
 
-test("the sign-in card never sends a stranger to People for a first token", () => {
-  // A browser session cannot mint in People; the first token comes from Tools, then Connect.
-  assert.match(noTokenHelp(true), /Tools, then Connect/);
-  assert.doesNotMatch(noTokenHelp(true), /under People/);
+test("the sign-in card sends a person to sign in, never to an admin token", () => {
+  // A signed-in admin adds each agent with its own token; nobody pastes an admin token.
+  assert.match(noTokenHelp(true), /Sign in, then add your agents/);
+  assert.doesNotMatch(noTokenHelp(true), /admin token/);
   assert.doesNotMatch(noTokenHelp(false), /under People/);
   assert.match(noWorkspaceText(false), /isn't a member of any workspace/);
   assert.doesNotMatch(noWorkspaceText(false), /create/i);

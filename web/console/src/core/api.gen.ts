@@ -809,6 +809,7 @@ export type ApiRoute =
   | "POST /tokens/{id}/rotate"
   | "POST /ui/api/channels/{cid}/threads"
   | "POST /ui/api/threads/{tid}/messages"
+  | "POST /ui/api/workspaces/{wid}/agents"
   | "POST /ui/api/workspaces/{wid}/channels"
   | "POST /waitlist"
   | "POST /workspaces"
