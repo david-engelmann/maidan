@@ -5,8 +5,7 @@
 import { useState } from "react";
 import { CLIENTS, HANDLE_MAX, SHOWN_ONCE, clientSetup, handleFrom, type ClientId } from "../core/addAgent.ts";
 import type { PeopleApi } from "../core/people.ts";
-import { Copy } from "../tools/Connect.tsx";
-import { SecretOnce } from "../tools/SecretOnce.tsx";
+import { Copy, SecretOnce } from "../tools/SecretOnce.tsx";
 
 export function AddAgent({ api, workspace, base, channelId, onAdded }: { api: PeopleApi; workspace: string; base: string; channelId: string | null; onAdded?: () => void }) {
   const [name, setName] = useState("");

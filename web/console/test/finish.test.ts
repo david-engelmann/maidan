@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { TOKEN_PLACEHOLDER, claudeOAuthCommand, cursorDeeplink, mcpUrl, oauthLine, snippets } from "../src/core/connect.ts";
+import { TOKEN_PLACEHOLDER, claudeOAuthCommand, cursorDeeplink, cursorOAuthDeeplink, mcpUrl, oauthLine, snippets, vscodeOAuthDeeplink } from "../src/core/connect.ts";
 import { parseResult, transitionsFor, type Thread } from "../src/core/board.ts";
 import { pushRefusal } from "../src/pwa/push.ts";
 import { SHELL_FILES } from "../src/pwa/policy.ts";
@@ -17,6 +17,28 @@ test("connect snippets point at the MCP endpoint and never carry a token", () =>
   const cfg = JSON.parse(Buffer.from(decodeURIComponent(link.split("config=")[1]), "base64").toString());
   assert.equal(cfg.url, "https://m.example/mcp/streamable");
   assert.equal(cfg.headers.Authorization, `Bearer ${TOKEN_PLACEHOLDER}`);
+});
+
+test("OAuth install links point at the MCP endpoint and carry no token", () => {
+  const url = "https://m.example/mcp/streamable";
+  const cursor = cursorOAuthDeeplink("https://m.example/", b64);
+  const cursorCfg = JSON.parse(Buffer.from(decodeURIComponent(cursor.split("config=")[1]), "base64").toString());
+  assert.equal(cursorCfg.url, url);
+  assert.equal("headers" in cursorCfg, false);
+  assert.equal(cursor.includes("Authorization"), false);
+  assert.equal(cursor.includes(TOKEN_PLACEHOLDER), false);
+  const cursorLive = cursorOAuthDeeplink("https://m.example");
+  const cursorLiveCfg = JSON.parse(Buffer.from(decodeURIComponent(cursorLive.split("config=")[1]), "base64").toString());
+  assert.deepEqual(cursorLiveCfg, { url });
+
+  const vscode = vscodeOAuthDeeplink("https://m.example/");
+  assert.match(vscode, /^vscode:mcp\/install\?/);
+  const vscodeCfg = JSON.parse(decodeURIComponent(vscode.slice("vscode:mcp/install?".length)));
+  assert.deepEqual(vscodeCfg, { name: "maidan", type: "http", url });
+  assert.equal("headers" in vscodeCfg, false);
+  assert.equal(vscode.includes("headers"), false);
+  assert.equal(vscode.includes("Authorization"), false);
+  assert.equal(vscode.includes(TOKEN_PLACEHOLDER), false);
 });
 
 test("the Claude Code snippets say how the token gets in, or that none is needed", () => {
