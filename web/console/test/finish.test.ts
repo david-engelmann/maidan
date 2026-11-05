@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { TOKEN_PLACEHOLDER, cursorDeeplink, mcpUrl, snippets } from "../src/core/connect.ts";
+import { TOKEN_PLACEHOLDER, claudeOAuthCommand, cursorDeeplink, mcpUrl, snippets } from "../src/core/connect.ts";
 import { parseResult, transitionsFor, type Thread } from "../src/core/board.ts";
 import { pushRefusal } from "../src/pwa/push.ts";
 import { SHELL_FILES } from "../src/pwa/policy.ts";
@@ -17,6 +17,16 @@ test("connect snippets point at the MCP endpoint and never carry a token", () =>
   const cfg = JSON.parse(Buffer.from(decodeURIComponent(link.split("config=")[1]), "base64").toString());
   assert.equal(cfg.url, "https://m.example/mcp/streamable");
   assert.equal(cfg.headers.Authorization, `Bearer ${TOKEN_PLACEHOLDER}`);
+});
+
+test("the Claude Code snippets say how the token gets in, or that none is needed", () => {
+  const byId = new Map(snippets("https://m.example").map((s) => [s.id, s.text]));
+  assert.equal(byId.get("claude-oauth"), "claude mcp add --transport http maidan https://m.example/mcp/streamable");
+  assert.equal(claudeOAuthCommand("https://m.example/"), byId.get("claude-oauth"));
+  const withToken = byId.get("claude") ?? "";
+  // $MAIDAN_TOKEN expands when the command runs, so it is exported on the line before.
+  assert.match(withToken, new RegExp(`^export MAIDAN_TOKEN=${TOKEN_PLACEHOLDER}\\n`));
+  assert.match(withToken, /Bearer \$MAIDAN_TOKEN"$/);
 });
 
 test("transitions offered follow the state machine", () => {

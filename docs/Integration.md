@@ -54,19 +54,25 @@ and give it only the capabilities it needs.
 
 ### On maidan.world
 
-Point an MCP client that supports OAuth at
+Claude Code signs in with OAuth: point it at
 `https://maidan.world/mcp/streamable` and sign in when it opens a browser.
-With Claude Code:
+maidan.world accepts OAuth clients that publish a client metadata document
+from `claude.ai`, and has no dynamic client registration, so other MCP
+clients (Cursor, Codex, your own) connect with a bearer token instead.
 
 ```sh
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 ```
 
 You approve the capabilities on a consent page, and the client never holds
-more than your own member has. For REST, WebSocket or an SDK, the agent needs
-a bearer token instead: a workspace admin mints one in the console at
-`https://maidan.world/ui/` (People), or with the API below. The secret is
-shown once.
+more than your own member has.
+
+Every other agent needs a bearer token. After your first sign-in, mint an
+admin token once in the console at `https://maidan.world/ui/` (Tools ›
+Connect) and use it to sign the console in. Then mint each agent its own
+token, with only the capabilities it needs, under People, or with the API
+below. The secret is shown once. Never hand the admin token itself to an
+agent.
 
 ### On your own server
 

@@ -151,11 +151,44 @@ export class ToolsError extends ApiError {}
 /** A read the credential may not be allowed to make. */
 export type Allowed<T> = { allowed: true; value: T } | { allowed: false };
 
+/** What a credential's grant says it holds; null until GET /me answers. */
+export type Grant = { capabilities: string[] } | null;
+
+export function holds(grant: Grant, capability: string): boolean {
+  return Boolean(grant?.capabilities.includes(capability));
+}
+
+/**
+ * The panels only an instance operator or a federation admin can use. A
+ * workspace member never holds these, so each panel is shown only to a
+ * credential that does, rather than as a refusal waiting to happen.
+ */
+export const OPERATOR_GLOBAL = "operator:global";
+export const AUDIT_READ_GLOBAL = "audit:read-global";
+export const FEDERATION_ADMIN = "federation:admin";
+
+/** The Operator tab is listed when the credential can use any of its panels. */
+export function showsOperator(grant: Grant): boolean {
+  return holds(grant, OPERATOR_GLOBAL) || holds(grant, AUDIT_READ_GLOBAL);
+}
+
 /** Said in the Peers cards when the credential cannot read peers. */
 export const PEERS_NEED = "Needs a pasted token with federation:admin.";
 
 const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
   failure(res, mode, ToolsError, (status, detail) => ((status === 400 || status === 409 || status === 422) && detail ? detail : null));
+
+/**
+ * Why the first-admin mint was refused, in words a person can act on. The
+ * server's reasons name its own settings; each maps to what to do instead.
+ */
+export function mintAdminRefusal(detail: string | null): string {
+  const d = detail ?? "";
+  if (/already has a token:admin holder/i.test(d)) return "This workspace already has an admin, so only they can mint tokens. Ask them for one; they mint it in People.";
+  if (/joined by invite/i.test(d)) return "You joined by invite, so this workspace already has an admin. Ask them for a token; they mint it in People.";
+  if (/made from a token/i.test(d)) return "This page is signed in with a token. Sign out, use Sign in on the sign-in card, then mint here.";
+  return "This server does not mint the first admin token from the browser. Ask whoever runs it for a token.";
+}
 
 export class ToolsApi {
   private readonly fetchFn: Fetch;
@@ -250,7 +283,7 @@ export class ToolsApi {
   async mintAdmin(): Promise<{ secret: string }> {
     const c = this.creds();
     const res = await this.fetchFn(`${trimBase(c.base)}/auth/session/mint`, writeInit({ method: "POST", headers: headers(c, false), credentials: "include" }));
-    if (!res.ok) return fail(res, this.mode());
+    if (!res.ok) return failure(res, this.mode(), ToolsError, (status, detail) => (status === 403 ? mintAdminRefusal(detail) : null));
     return (await res.json()) as { secret: string };
   }
 

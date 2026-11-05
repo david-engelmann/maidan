@@ -12,11 +12,22 @@ function server(base: string) {
   return { url: mcpUrl(base), headers: { Authorization: `Bearer ${TOKEN_PLACEHOLDER}` } };
 }
 
+/** Claude Code with OAuth: no token; a browser opens to sign in on first use. */
+export function claudeOAuthCommand(base: string): string {
+  return `claude mcp add --transport http maidan ${mcpUrl(base)}`;
+}
+
 export function snippets(base: string): Snippet[] {
   const url = mcpUrl(base);
   return [
     { id: "json", title: "MCP config (JSON)", text: JSON.stringify({ mcpServers: { maidan: server(base) } }, null, 2) },
-    { id: "claude", title: "Claude Code", text: `claude mcp add --transport http maidan ${url} --header "Authorization: Bearer $MAIDAN_TOKEN"` },
+    { id: "claude-oauth", title: "Claude Code (sign in, no token)", text: claudeOAuthCommand(base) },
+    {
+      id: "claude",
+      title: "Claude Code (with a token)",
+      // The shell expands $MAIDAN_TOKEN when the command runs, so it is set first.
+      text: `export MAIDAN_TOKEN=${TOKEN_PLACEHOLDER}\nclaude mcp add --transport http maidan ${url} --header "Authorization: Bearer $MAIDAN_TOKEN"`,
+    },
     {
       id: "prompt",
       title: "Agent prompt",

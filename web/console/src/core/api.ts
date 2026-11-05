@@ -118,35 +118,48 @@ export function credentialMode(
 export function humanError(status: number, detail: string | null, mode: CredentialMode | null): string {
   const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail ?? "");
   if (status === 401) {
-    if (mode === "session") return "Your session was not accepted; it may have ended. Sign in again, or use Change to paste a token";
-    if (mode === "delegated") return "This delegated token was not accepted; it or its grant may have ended. Use Change to set a working one";
-    if (mode === "bearer") return "Your token was not accepted. Use Change to set a working one";
-    return "Your token or session was not accepted. Use Change to set a working one";
+    if (mode === "session") return "Your session was not accepted; it may have ended. Sign in again";
+    if (mode === "delegated") return "This delegated token was not accepted; it or its grant may have ended. Sign in again with a working one";
+    if (mode === "bearer") return "Your token was not accepted. Sign in again with a working one";
+    return "Your token or session was not accepted. Sign in again";
   }
   if (status === 403) return refusal(needs ? needs[1] : null, mode);
   if (status === 404) return "Not found. It may have been deleted, or it belongs to another workspace";
-  if (status === 409) return "Refused";
+  if (status === 409) return CONFLICT;
   if (status === 413) return "That is too large for the server to accept";
   if (status === 429) return "Too many requests. Wait a moment, then try again";
   if (status === 0) return OFFLINE;
   if (status === 502 || status === 503 || status === 504) return UNAVAILABLE;
-  if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
+  if (status >= 500) return SERVER_ERROR;
   return "The request was not accepted";
 }
+
+/** A 409: the thing changed under the request, so the page is behind. */
+export const CONFLICT = "Someone changed this first. Reload and try again";
+
+/** A 5xx with no better word. A hosted customer has no server log to read. */
+export const SERVER_ERROR = "The server hit an error. Try again; if it keeps failing, contact your workspace admin or support";
 
 /** 502, 503 and 504: the server is up behind a proxy but not answering yet, often mid-deploy. */
 export const UNAVAILABLE = "The server is busy or restarting. Try again in a moment";
 
+/**
+ * Where token:admin comes from. People mints only for a credential that
+ * already holds it, so the first one comes from Tools, then Connect.
+ */
+export const ADMIN_TOKEN_PATH =
+  "Ask a workspace admin for a token that has it. If you created this workspace, mint an admin token in Tools, then Connect, then sign out and sign in with it";
+
 function refusal(cap: string | null, mode: CredentialMode | null): string {
   const who = mode === "session" ? "Your session" : mode === "delegated" ? "This delegated token" : "Your token";
   const lead = cap ? `${who} is not allowed to do this; it needs ${cap}.` : `${who} is not allowed to do this.`;
-  if (cap === "token:admin") return `${lead} Ask a workspace admin for a token (maidan init prints the first admin token)`;
+  if (cap === "token:admin") return `${lead} ${ADMIN_TOKEN_PATH}`;
   if (cap === "approval:grant")
     return `${lead} Accepting a gate needs you signed in through your identity provider, or a token an admin granted approval:grant. You can still decline or cancel it`;
   if (mode === "session")
     return cap
-      ? `${lead} A session cannot mint tokens, so use Change to paste a token that has it`
-      : `${lead} Use Change to paste a token with the right capability`;
+      ? `${lead} Sign out, then sign in with a token that has it; a workspace admin mints one in People`
+      : `${lead} Sign out, then sign in with a token that has the right capability`;
   if (mode === "delegated")
     return cap
       ? `${lead} It holds only what its grant lends: ask for a grant that includes it`

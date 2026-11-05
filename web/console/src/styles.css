@@ -1336,3 +1336,24 @@ h1, h2, h3, strong, b { font-weight: 600; }
 
 /* People loading: the roster's rows as skeletons, like Board and Threads. */
 .roster-sk { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* ---- First run ----------------------------------------------------------- */
+/* The guide on a new workspace's empty board: three numbered steps, the
+   command in the same snippet box Tools, then Connect uses. */
+.first-run { display: grid; gap: var(--space-3); min-width: 0; }
+.first-run-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.first-run-head h2 { margin: 0; font-size: var(--text-lg); }
+.first-run-steps { display: grid; gap: var(--space-4); margin: 0; padding-left: 1.4rem; min-width: 0; }
+.first-run-steps li { display: grid; gap: var(--space-1); justify-items: start; min-width: 0; }
+.first-run-steps li > .snippet { justify-self: stretch; margin-top: var(--space-1); }
+.first-run-steps p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
+.first-run-steps a:not(.button) { color: var(--ink); text-underline-offset: 2px; }
+.first-run-steps .button { min-height: 38px; margin-top: var(--space-1); }
+.sign-in-waitlist { margin: -4px 0 0; color: var(--muted); font-size: var(--text-sm); }
+.sign-in-waitlist a { color: var(--ink); text-underline-offset: 2px; }
+/* Support sits at the foot of the rail, apart from the places. */
+.rail-foot { display: none; }
+@media (min-width: 900px) {
+  .rail-foot { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; min-height: 42px; padding: 0 0.8rem; border-radius: var(--r-md); color: var(--muted); text-decoration: none; font-size: var(--text-md); }
+  .rail-foot:hover { background: var(--hover); color: var(--ink); }
+}
