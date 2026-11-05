@@ -68,6 +68,34 @@ auto-provisioning): the waitlist form is public, an operator invites from
 `/operator/waitlist`, and only an invited address finishes sign-up. The Zero
 Trust free plan counts each person who signs in as a seat.
 
+#### Inviting someone from the waitlist
+
+Maidan does not send email, so an invite is a message the operator sends
+by hand. The waitlist page promises exactly one email, when the invite is
+ready, and nothing else.
+
+1. List the waitlist with an operator token: `GET /operator/waitlist`.
+2. Mint the invite: `POST /operator/waitlist/{id}/invite`. The answer's
+   `signup_path` is shown once and expires at `invite_expires_at`, 30 days
+   later. A second mint replaces the first link.
+3. Send it from support@maidan.world, so a reply reaches support:
+
+   > **Subject:** Your Maidan invite
+   >
+   > Your workspace on maidan.world is ready. Open this link to create it
+   > (it works once, for this address, until {expiry date}):
+   >
+   > https://maidan.world{signup_path}
+   >
+   > You sign in with a one-time code sent to this address. Once you're in,
+   > the board shows how to connect your first agent, and
+   > https://docs.maidan.world/docs/Integration covers the rest.
+   >
+   > Questions, or anything that doesn't work: reply to this email.
+
+The link has to be opened by the invited address: a sign-in with another
+email is refused with a page that says so.
+
 The Zero Trust account also needs an Access App Launcher application, with a
 policy that allows everyone and the one-time PIN login method. A SaaS app signs
 people in at the team domain, and without an App Launcher that login stops on
@@ -77,6 +105,13 @@ The front page is the server's own waitlist page. The Worker serves only the
 policy pages (`/privacy`, `/terms`, `/support`) from its static assets
 (`deploy/cloudflare/site/`), and `MAIDAN_SIGNUP_PRIVACY_URL` and
 `MAIDAN_SIGNUP_TERMS_URL` link the first two from the waitlist page's footer.
+The Worker adds Support and Status to that footer.
+
+When the container is starting or a deploy is replacing it, a person sees
+"Back in a moment" (`site/unavailable.html`, which retries itself) and an API
+client a `503` `overloaded` problem with `Retry-After`. A problem body the
+server sends to a browser page (an expired invite, a sign-in for the wrong
+address) is shown as a page with its title, its detail and a support link.
 
 ### Secrets
 
@@ -86,6 +121,12 @@ The Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 `npx wrangler secret put <NAME> -c wrangler.prod.jsonc`. The KEK, the session
 secret and the OIDC secret are prod's own. The R2 keys should be a token scoped
 to `maidan-artifacts-prod` alone.
+
+`MAIDAN_EXPORT_SIGNING_KEY` (32 random bytes, hex) signs workspace exports.
+Without it `GET /workspaces/{id}/export` refuses, and the support page's
+export promise fails. `openssl rand -hex 32 | npx wrangler secret put
+MAIDAN_EXPORT_SIGNING_KEY -c wrangler.prod.jsonc` sets it without printing it;
+keep it stable afterwards, since bundles are verified against its public key.
 
 Web push takes three more, `MAIDAN_VAPID_PRIVATE_KEY`,
 `MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` (an `https:` contact);
