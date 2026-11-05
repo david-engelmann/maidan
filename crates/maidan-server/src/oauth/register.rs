@@ -37,9 +37,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use axum::{
-    body::Body,
-    extract::State,
-    http::{header, HeaderMap, StatusCode},
+    extract::{Request, State},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -478,7 +477,9 @@ pub fn validate(
 
 /// `POST /oauth/register`. 404 unless the instance names its public origin
 /// and turns registration on.
-pub async fn register(State(state): State<AppState>, headers: HeaderMap, body: Body) -> Response {
+/// Takes the raw request, so a body that is too large or not JSON is
+/// answered here, as a problem or an RFC 7591 error, never as axum's text.
+pub async fn register(State(state): State<AppState>, req: Request) -> Response {
     let (Some(_), Some(config)) = (
         state.public_origin.as_deref(),
         state.oauth_dynamic_registration.as_ref(),
@@ -487,7 +488,8 @@ pub async fn register(State(state): State<AppState>, headers: HeaderMap, body: B
     };
     // RFC 7591 registration is a JSON document. A missing type is read as
     // JSON; a declared other one is refused rather than guessed at.
-    if let Some(content_type) = headers.get(header::CONTENT_TYPE) {
+    let (parts, body) = req.into_parts();
+    if let Some(content_type) = parts.headers.get(header::CONTENT_TYPE) {
         let json = content_type.to_str().is_ok_and(|v| {
             v.trim_start()
                 .to_ascii_lowercase()
