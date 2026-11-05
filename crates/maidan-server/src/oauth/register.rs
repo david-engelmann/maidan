@@ -777,7 +777,7 @@ mod tests {
         for spoof in [
             "Claude\u{202E}edoC",
             "Clau\u{200B}de",
-            "Claude\n",
+            "Clau\nde",
             "a\u{FEFF}b",
         ] {
             assert!(clean_client_name(Some(spoof)).is_err(), "{spoof:?}");
