@@ -1503,6 +1503,10 @@ pub fn router(state: AppState) -> Router {
         // The public waitlist form's POST: signed-out by design, charged
         // per address and per email domain by the rate-limit middleware.
         .route("/waitlist", post(routes::join_waitlist))
+        // The demo's per-visitor sandbox: signed-out by design, 404 unless
+        // `MAIDAN_DEMO_SANDBOX=1`, charged per address by the rate-limit
+        // middleware. Its answer carries two secrets.
+        .route("/sandbox", no_store(post(crate::sandbox::mint)))
         .route("/auth/logout", post(oidc::logout))
         .route(
             "/auth/session",
@@ -1702,6 +1706,12 @@ pub fn router(state: AppState) -> Router {
 
     let ui_api_write = Router::new()
         .route("/ui/api/workspaces/{wid}", patch(routes::rename_workspace))
+        // "Add an agent" in the console: a signed-in admin makes an agent
+        // member and its worker token without holding an admin token.
+        .route(
+            "/ui/api/workspaces/{wid}/agents",
+            no_store(post(routes::ui_create_agent)),
+        )
         .route(
             "/ui/api/workspaces/{wid}/channels",
             post(routes::create_channel),
@@ -1871,6 +1881,10 @@ pub fn router(state: AppState) -> Router {
                 oauth::token::require_public_origin,
             )),
         )
+        // RFC 7591 dynamic client registration (public by design). 404 unless
+        // `MAIDAN_PUBLIC_ORIGIN` is set and `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`
+        // is on; the handler reads its own small body.
+        .route("/oauth/register", no_store(post(oauth::register::register)))
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.

@@ -7,7 +7,8 @@ flow an MCP client walks, in order, and stops at the first step that fails:
   1. discovery   an unauthenticated POST /mcp/streamable answers 401 with a
                  resource_metadata challenge; the RFC 9728 and RFC 8414
                  documents name each other and advertise S256 and client
-                 metadata documents, and no dynamic registration
+                 metadata documents, and a registration endpoint, if
+                 any, on the issuer itself
   2. consent     the maintainer signs in and clicks Allow in a browser; the
                  redirect back to the loopback callback carries the state
                  sent and `iss` (RFC 9207)
@@ -174,7 +175,15 @@ def check_server_metadata(report: Report, issuer: str, meta: object) -> bool:
         "client metadata documents advertised",
         meta.get("client_id_metadata_document_supported") is True,
     )
-    report.add("discovery", "no dynamic registration endpoint", "registration_endpoint" not in meta)
+    # RFC 7591 registration is optional (MAIDAN_OAUTH_DYNAMIC_REGISTRATION),
+    # but when advertised it must be this issuer's own endpoint.
+    registration = meta.get("registration_endpoint")
+    report.add(
+        "discovery",
+        "registration endpoint, if any, is the issuer's",
+        registration is None or registration == f"{issuer}/oauth/register",
+        f"registration_endpoint={registration!r}",
+    )
     return report.ok
 
 

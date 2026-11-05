@@ -485,6 +485,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/agents" && method == "POST" {
         return b.json(&json!({ "handle": "deny-matrix-agent" }));
     }
+    if path == "/ui/api/workspaces/{wid}/agents" && method == "POST" {
+        return b.json(&json!({ "handle": "deny-matrix-agent" }));
+    }
     if path.contains("/members/") && path.ends_with("/tokens") && method == "POST" {
         return b.json(&json!({
             "capabilities": [capability::WORKSPACE_READ],

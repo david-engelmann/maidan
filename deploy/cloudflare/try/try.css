@@ -1,0 +1,78 @@
+/* The try page. The materials are the landing's (web/landing/src/styles.css):
+   warm paper, ink, one signal orange, Geist. No inline styles: the page's
+   CSP is style-src 'self'. */
+@font-face { font-family: Geist; src: url("/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root {
+  color-scheme: light;
+  --paper: #f2eee6;
+  --paper-2: #e9e4d9;
+  --card: #faf8f3;
+  --ink: #151411;
+  --muted: #5c5850;
+  --line: rgba(21, 20, 17, 0.12);
+  --signal: #e8501c;
+  --signal-ink: #a83a0d;
+  --danger: #b4231a;
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --pad: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: progress; opacity: 0.6; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
+[hidden] { display: none !important; }
+.skip { position: fixed; left: 1rem; top: 1rem; z-index: 9; padding: 0.6rem 1rem; background: var(--ink); color: var(--paper); transform: translateY(-200%); }
+.skip:focus { transform: none; }
+
+.top { display: flex; align-items: center; gap: 0.4rem; padding: calc(env(safe-area-inset-top) + 0.4rem) var(--pad) 0.4rem; max-width: 52rem; width: 100%; margin: 0 auto; }
+.brand { font-weight: 640; letter-spacing: -0.04em; font-size: 1.1rem; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+.top-link { margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); }
+.top-link:hover { color: var(--ink); }
+
+main { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 0 var(--pad); }
+section { padding: 3.5rem 0 2rem; min-width: 0; }
+h1, h2 { margin: 0; font-weight: 560; letter-spacing: -0.06em; line-height: 0.92; text-wrap: balance; }
+h1 { font-size: clamp(3rem, 12vw, 6.4rem); }
+h2 { font-size: clamp(2rem, 8vw, 3.4rem); outline: none; }
+h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
+.eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { margin: 1.3rem 0 0; max-width: 36rem; text-wrap: pretty; color: var(--muted); font-size: 1.08rem; }
+.lede b { color: var(--ink); font-weight: 600; }
+.muted { color: var(--muted); margin: 0 0 0.8rem; font-size: 0.95rem; }
+
+.start { margin-top: 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.8rem; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.cta { min-height: 52px; padding: 0 1.3rem; border-radius: 99px; background: var(--ink); color: var(--paper); font-weight: 560; text-decoration: none; display: inline-flex; align-items: center; }
+.cta.ghost { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.cta:hover { opacity: 0.88; }
+.status { margin: 0; min-height: 1.5em; font-size: 0.95rem; color: var(--muted); }
+.status.error { color: var(--danger); }
+.notice { margin: 1.8rem 0 0; padding: 0.9rem 1rem; border-radius: 12px; background: var(--paper-2); font-size: 0.95rem; max-width: 36rem; }
+.notice a { color: var(--signal-ink); font-weight: 560; }
+
+.ready h2 { margin-bottom: 1.6rem; }
+.card { margin: 0 0 1rem; padding: 1.3rem; border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.client + .client { margin-top: 1rem; }
+.client-name { margin: 0 0 0.4rem; font-weight: 600; font-size: 0.95rem; }
+.client-name .muted { font-weight: 400; font-size: 0.88rem; }
+.secret, .snippet { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; }
+.secret code, .snippet pre { flex: 1; min-width: 0; margin: 0; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; overflow-x: auto; }
+.secret code { display: block; word-break: break-all; }
+.snippet pre { white-space: pre; }
+.snippet pre code { font: inherit; }
+.copy { flex: none; min-height: 44px; padding: 0 0.9rem; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 0.9rem; font-weight: 560; }
+.copy.done { background: var(--ink); color: var(--paper); }
+code { font-family: var(--mono); font-size: 0.9em; }
+
+.foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }
+.foot a { text-decoration: none; }
+.foot a:hover { color: var(--ink); }
+
+@media (max-width: 30rem) {
+  .secret, .snippet { flex-direction: column; align-items: stretch; }
+  .copy { align-self: flex-start; }
+}

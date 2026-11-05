@@ -82,8 +82,29 @@ pub async fn consent_page(
     let workspace = state.store.get_workspace(session.workspace_id).await?;
     let member = state.store.get_member(session.member_id).await?;
     let you = member.display_name.as_deref().unwrap_or(&member.handle);
-    let client_name = html_escape(&client.name);
-    let returns_to = redirect_host(&pending.redirect_uri);
+    // A client that registered itself chose its own name, so the name is
+    // marked unverified wherever it shows, and the page says where the code
+    // goes and when to refuse.
+    let self_registered = client.registered_at.is_some();
+    let shown_name = if self_registered {
+        format!("{} (unverified app, registered by itself)", client.name)
+    } else {
+        client.name.clone()
+    };
+    let client_name = html_escape(&shown_name);
+    let returns_to = if self_registered {
+        redirect_target(&pending.redirect_uri)
+    } else {
+        redirect_host(&pending.redirect_uri)
+    };
+    let warning = if self_registered {
+        format!(
+            r#"<p class="warn"><b>Maidan has not verified this app.</b> It named itself “{name}” when it registered, and any app can claim any name. Allow only if you just started this sign-in yourself, from an app you trust. If you did not, choose Deny.</p>"#,
+            name = html_escape(&client.name),
+        )
+    } else {
+        String::new()
+    };
     // The consent form POSTs to /ui/api/oauth/consent, and the 303 after it
     // navigates to the client's redirect URI. `form-action 'self'` alone
     // would block that navigation, so allow the redirect target's origin.
@@ -96,6 +117,7 @@ pub async fn consent_page(
     let body = format!(
         r#"<h1>Connect {client_name} to Maidan?</h1>
 <p class="sub"><b>{client_name}</b> will act as <b>{you}</b> in the <b>{workspace}</b> workspace.</p>
+{warning}
 <h2>It will be able to</h2>
 {capabilities}
 <p class="note">It cannot invite people, change roles, mint tokens or read secrets. You can disconnect it at any time from <a href="/ui/oauth/grants">Connected apps</a>.</p>
@@ -113,7 +135,7 @@ pub async fn consent_page(
     );
     Ok((
         [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
-        Html(page::render(&format!("Connect {}", client.name), "", &body)),
+        Html(page::render(&format!("Connect {shown_name}"), "", &body)),
     ))
 }
 
@@ -126,6 +148,27 @@ fn redirect_host(redirect_uri: &str) -> String {
             .map(str::to_string)
             .unwrap_or_else(|| format!("{}:", u.scheme())),
         Err(_) => "the app".to_string(),
+    }
+}
+
+/// Where a self-registered client's redirect goes, in words: the person's
+/// own computer for a loopback address, the app that opens a private-use
+/// scheme, or the host of an `https` address.
+fn redirect_target(redirect_uri: &str) -> String {
+    let Ok(url) = url::Url::parse(redirect_uri) else {
+        return "the app".to_string();
+    };
+    match url.scheme() {
+        "http" if super::registry::is_loopback_host(&url) => format!(
+            "an app on this computer ({}:{})",
+            url.host_str().unwrap_or("localhost"),
+            url.port_or_known_default().unwrap_or(80)
+        ),
+        "http" | "https" => url
+            .host_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| "the app".to_string()),
+        scheme => format!("the app that opens {scheme}: links"),
     }
 }
 
@@ -313,6 +356,23 @@ mod tests {
             redirect_origin_for_csp("https://client.example/callback?x=1"),
             "https://client.example"
         );
+    }
+
+    #[test]
+    fn a_self_registered_clients_redirect_is_named_for_a_person() {
+        assert_eq!(
+            redirect_target("http://127.0.0.1:53123/callback"),
+            "an app on this computer (127.0.0.1:53123)"
+        );
+        assert_eq!(
+            redirect_target("http://localhost/callback"),
+            "an app on this computer (localhost:80)"
+        );
+        assert_eq!(
+            redirect_target("cursor://anysphere.cursor-mcp/oauth/callback"),
+            "the app that opens cursor: links"
+        );
+        assert_eq!(redirect_target("https://vscode.dev/redirect"), "vscode.dev");
     }
 
     #[test]

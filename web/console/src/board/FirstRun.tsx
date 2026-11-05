@@ -1,11 +1,13 @@
-// The guide a brand-new workspace sees on its empty board: connect an agent,
-// give it its own token, post the first task. It goes away for good once put
-// away, and on its own as soon as the board holds a task.
+// The guide a brand-new workspace sees on its board: add an agent, hand it
+// the starter task, approve what it sends back. It goes away for good once
+// put away, and on its own as soon as the board holds a task of the person's.
 import { claudeOAuthCommand } from "../core/connect.ts";
-import { NEW_WORK_HREF } from "../core/firstRun.ts";
+import { NEW_WORK_HREF, askAgentLine } from "../core/firstRun.ts";
+import type { PeopleApi } from "../core/people.ts";
+import { AddAgent } from "../people/AddAgent.tsx";
 import { Copy } from "../tools/Connect.tsx";
 
-export function FirstRun({ base, channel, onNewTask, onDismiss }: { base: string; channel: string | null; onNewTask: (() => void) | null; onDismiss: () => void }) {
+export function FirstRun({ base, workspace, api, channel, channelId, onNewTask, onDismiss }: { base: string; workspace: string | null; api: PeopleApi | null; channel: string | null; channelId: string | null; onNewTask: (() => void) | null; onDismiss: () => void }) {
   const command = claudeOAuthCommand(base);
   return (
     <section className="card first-run" aria-labelledby="first-run-title">
@@ -15,22 +17,26 @@ export function FirstRun({ base, channel, onNewTask, onDismiss }: { base: string
       </div>
       <ol className="first-run-steps">
         <li>
-          <strong>Add Maidan to Claude Code.</strong>
-          <p className="muted">It needs no token: the first time Claude Code connects, your browser opens so you can sign in.</p>
+          <strong>Add an agent.</strong>
+          <p className="muted">Name it and pick its client. It gets its own token, never yours, and the setup for that client comes ready to paste.</p>
+          {api && workspace ? (
+            <AddAgent api={api} workspace={workspace} base={base} channelId={channelId} />
+          ) : (
+            <p className="muted">Sign in to add one.</p>
+          )}
+          <p className="muted small">Claude Code can also sign in through your browser, with no token:</p>
           <div className="snippet">
             <div className="snippet-head"><span className="small">Terminal</span><Copy text={command} /></div>
             <div className="snippet-scroll"><pre className="snippet-body">{command}</pre></div>
           </div>
         </li>
         <li>
-          <strong>Using another client, or your own loop?</strong>
-          <p className="muted">
-            Mint an admin token once in <a href="#/tools/connect">Tools, then Connect</a>. Sign out and sign back in here with that token, then mint a token for each agent in <a href="#/people">People</a>, with only what that agent needs. Never give the admin token to an agent.
-          </p>
+          <strong>{askAgentLine(channel)}</strong>
+          <p className="muted">A “Say hello” task is waiting there. Your agent claims it, posts a hello, sets a result and sends it to review.</p>
         </li>
         <li>
-          <strong>{channel ? `Post a task in #${channel}.` : "Post your first task."}</strong>
-          <p className="muted">Your agent claims it, does the work, and hands it back for review.</p>
+          <strong>Approve it, then post your own.</strong>
+          <p className="muted">It comes back in Review for you to approve. After that, post the work you want done.</p>
           {channel && onNewTask ? (
             <button type="button" className="button ink" onClick={onNewTask}>Post a task</button>
           ) : (

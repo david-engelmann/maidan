@@ -6,8 +6,8 @@ use axum::{
 use chrono::{Duration, Utc};
 use maidan_auth::TOKEN_ADMIN;
 use maidan_types::{
-    AuditScope, NewAuditEvent, NewChannel, NewMaidanSession, NewOidcPendingAuth, OidcPendingTarget,
-    WorkspaceId,
+    AuditScope, ChannelId, MemberId, NewAuditEvent, NewChannel, NewMaidanSession, NewMessage,
+    NewOidcPendingAuth, NewThread, OidcPendingTarget, WorkspaceId,
 };
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
@@ -29,6 +29,22 @@ pub const SESSION_CREATE: &str = "session.create";
 pub const WORKSPACE_SIGNUP: &str = "workspace.signup";
 /// The channel a workspace made by sign-up opens on.
 pub const FIRST_CHANNEL: &str = "general";
+/// The title of the task a workspace made by sign-up opens with.
+pub const STARTER_TASK_TITLE: &str = "Say hello";
+/// The starter task's description: what a claim hands the agent.
+const STARTER_TASK_DESCRIPTION: &str = "A first task for the agent you connect: claim it, post a \
+     one-line hello, set a result, and send it to review.";
+/// The starter task's opening message: the loop, one step a line.
+const STARTER_TASK_MESSAGE: &str = "Welcome to Maidan. This task is practice for the agent you \
+connect.
+
+Agent, do this:
+1. Claim this task (claim_next_thread on #general).
+2. Post a one-line hello on this thread (post_message).
+3. Set a result, for example {\"said\": \"hello\"} (set_thread_result).
+4. Send it to review (transition_thread with start_review).
+
+Then the person who made this workspace approves it on the board, and the first loop is done.";
 /// The audit action of signing out.
 pub const SESSION_DELETE: &str = "session.delete";
 
@@ -471,7 +487,10 @@ async fn complete_signup(
         })
         .await
     {
-        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Ok((channel, stored)) => {
+            crate::routes::publish_stored(state, stored).await;
+            open_starter_task(state, channel.id, outcome.member.id).await;
+        }
         Err(err) => tracing::warn!(error = %err, "sign-up: the first channel was not created"),
     }
     finish_with_session(
@@ -482,6 +501,54 @@ async fn complete_signup(
         pending.return_to.as_deref(),
     )
     .await
+}
+
+/// Open the starter task in a new workspace's first channel: one thread whose
+/// opening message walks a freshly connected agent through the whole loop, so
+/// the person's first look at the board has something to hand it. It is the
+/// new admin's task, made through the normal store calls so its events chain
+/// like any other; owning it is what puts its review in their queue.
+/// Best-effort, like the channel: the sign-up already stands.
+async fn open_starter_task(state: &AppState, channel_id: ChannelId, admin: MemberId) {
+    let created = state
+        .store
+        .create_thread_with_event(NewThread {
+            channel_id,
+            parent_thread_id: None,
+            title: Some(STARTER_TASK_TITLE.into()),
+            description: Some(STARTER_TASK_DESCRIPTION.into()),
+            created_by: Some(admin),
+        })
+        .await;
+    let thread = match created {
+        Ok((thread, stored)) => {
+            crate::routes::publish_stored(state, stored).await;
+            thread
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "sign-up: the starter task was not created");
+            return;
+        }
+    };
+    match state
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: thread.id,
+                author_id: admin,
+                body: STARTER_TASK_MESSAGE.into(),
+                metadata: serde_json::json!({ "starter": true }),
+                content: None,
+            },
+            None,
+        )
+        .await
+    {
+        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Err(err) => {
+            tracing::warn!(error = %err, "sign-up: the starter task's message was not posted");
+        }
+    }
 }
 
 /// End this browser's previous session, set the new session's cookie and

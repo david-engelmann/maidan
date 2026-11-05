@@ -644,9 +644,36 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.oauth_client_metadata_hosts =
         maidan_server::oauth::registry::ClientMetadataHosts::from_env()
             .map_err(anyhow::Error::msg)?;
+    state.oauth_dynamic_registration =
+        maidan_server::oauth::register::DynamicRegistration::from_env()
+            .map_err(anyhow::Error::msg)?;
+    if let Some(registration) = &state.oauth_dynamic_registration {
+        if state.public_origin.is_none() {
+            tracing::warn!(
+                "MAIDAN_OAUTH_DYNAMIC_REGISTRATION is on but MAIDAN_PUBLIC_ORIGIN is unset, \
+                 so the authorization server and registration stay off"
+            );
+        }
+        tracing::info!(
+            https_redirect_hosts = ?registration.redirect_hosts().collect::<Vec<_>>(),
+            "OAuth dynamic client registration is on"
+        );
+    }
     state.turnstile =
         maidan_server::turnstile::TurnstileSettings::from_env(state.public_origin.as_deref())?
             .map(Arc::new);
+    state.sandbox = maidan_server::sandbox::SandboxSettings::from_env(
+        state.public_origin.as_deref(),
+        auth_disabled,
+    )?
+    .map(Arc::new);
+    if let Some(sandbox) = &state.sandbox {
+        tracing::warn!(
+            max_sandboxes = sandbox.max_sandboxes,
+            "{} is set; POST /sandbox hands a throwaway workspace to anyone who asks",
+            maidan_server::sandbox::ENV
+        );
+    }
     let oauth_clients = maidan_server::oauth::registry::load_preregistered_clients(&state)
         .await
         .map_err(|e| anyhow::anyhow!("loading pre-registered OAuth clients: {e:?}"))?;
@@ -941,6 +968,16 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         tokio::spawn(async move {
             maidan_server::retention::run(retention_store, retention_artifacts, retention_cfg)
                 .await;
+        });
+    }
+
+    // Self-registered OAuth clients that never finished a sign-in within a
+    // day, or went unused for 90 days, are deleted hourly. Runs whether or
+    // not registration is on, so clients left from when it was still go.
+    {
+        let sweep_store = state.store.clone();
+        tokio::spawn(async move {
+            maidan_server::oauth::register::run_sweeper(sweep_store).await;
         });
     }
 

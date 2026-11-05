@@ -5,7 +5,8 @@
 //! before this route: the member is authenticated by a bearer or a signed-in
 //! session, and a browser with no credential at all was redirected to sign in
 //! and brought back ([`sign_in_redirect`]). This step
-//! validates everything — client, exact redirect URI, S256 PKCE, scopes as
+//! validates everything — client, redirect URI (exact, or a loopback one on
+//! any port), S256 PKCE, scopes as
 //! delegatable capabilities the member holds and the client allows — then
 //! stores a pending request and redirects to the consent page. No code is
 //! issued here; the member approves or denies with a same-origin POST on
@@ -96,8 +97,10 @@ pub async fn authorize(
     // P1: pre-registered clients first, then CIMD via the fetch guard.
     let client = super::registry::resolve_client(&state, &query.client_id).await?;
 
-    // Exact match: no prefix games, no path confusion.
-    if !client.redirect_uris.contains(&query.redirect_uri) {
+    // Exact match, no prefix games or path confusion, except that a loopback
+    // redirect's port may vary (RFC 8252 section 7.3): a native app listens on
+    // whatever port its OS hands it.
+    if !super::registry::redirect_uri_matches(&client.redirect_uris, &query.redirect_uri) {
         return Err(ApiError::BadRequest("redirect_uri mismatch".into()));
     }
 

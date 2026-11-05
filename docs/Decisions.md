@@ -2261,6 +2261,8 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 23. The research behind it is to be committed under `docs/archive/` before the first phase starts.
 
+**Superseded in part** by "Every MCP client signs in with OAuth: dynamic client registration (2026-11-05)" below: the sentence that Maidan skips dynamic client registration, and "redirect URIs match exactly" for loopback redirects. Everything else here still holds.
+
 ### The cost-per-success pilot runs under an enforced cap (2026-10-08)
 
 **Decision.** The maintainer chose on 2026-10-08 to run the pilot (a few tasks, every arm, three repetitions) on a subscription he provides, under a fixed cap the runner enforces and stops at, not one kept by intent. Any number published from it states the cap and the variance.
@@ -2347,3 +2349,15 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** A cloud KMS is the next custody: `maidan_workspace_keys.custody` names who wraps each key (`local` today). A KMS unwrap is a network call, so it would open workspace keys in an async step before a read maps its rows, at the same three read sites per backend, and the cache would hold KMS-opened keys under the same rule.
 
 **Record.** Migration 0167, `maidan_types::ContentKeyring`, `maidan_store::content_keys`, `maidan rotate-workspace-key`, [Production](Production.md#crypto-shredding).
+
+### Every MCP client signs in with OAuth: dynamic client registration (2026-11-05)
+
+**Decision.** The maintainer chose on 2026-11-05, asked as a security call, "OAuth for every client": a person pastes the MCP URL into any client, signs in in the browser, and copies no token. This reverses two points of the 2026-10-08 entry. Maidan serves RFC 7591 dynamic client registration (`POST /oauth/register`) for public clients only, behind `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`, and a loopback redirect's port may vary at authorize (RFC 8252 section 7.3). Exact matching stays for every other redirect. A self-registered client's redirects must be loopback `http`, a private-use app scheme, or `https` on a host the operator lists in `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS` (maidan.world: `vscode.dev`, `insiders.vscode.dev`). Its name is shown as unverified on the consent page. Registration is rate-limited per address, capped at 10,000 clients awaiting a first sign-in, and a client never authorized within a day or unused for 90 days is swept. Tokens are cut to the consenting member's capabilities through the same grant path as every client. maidan.world also fetches client metadata documents from `chatgpt.com`, `zed.dev` and `vscode.dev` besides `claude.ai`, because those clients use their document whenever discovery accepts documents and never fall back to registering.
+
+**Alternative.** Keep metadata documents and pre-registration only, which left Cursor, VS Code without its document, Gemini CLI, the MCP Inspector and others on copied tokens. Or a static API key per client, which is the token copying the decision removes.
+
+**Why.** Most MCP clients other than Claude register dynamically and have no other path. The risks registration opens (consent phishing, open redirects, flooding, a client naming itself "Claude") are answered by where the code can go: only to the person's own machine or a listed host, never to whoever registered the client. The full red team is in [OAuth](OAuth.md#red-team-2026-11-05).
+
+**To revisit.** If an `https` redirect host beyond VS Code's is wanted (ChatGPT's `chatgpt.com/connector_platform_oauth_redirect` uses its metadata document instead), or if registrations flood the cap in practice, which a per-registration challenge or a shorter unauthorized window answers first.
+
+**Record.** `crates/maidan-server/src/oauth/register.rs`, `registry::redirect_uri_matches`, migrations 0220 (Postgres) and 0219 (SQLite), [OAuth](OAuth.md#dynamic-client-registration).

@@ -323,6 +323,9 @@ mod oauth_metadata_clients;
 #[path = "../oauth_refresh.rs"]
 mod oauth_refresh;
 
+#[path = "../oauth_registered_clients.rs"]
+mod oauth_registered_clients;
+
 #[path = "../oidc_front_door.rs"]
 mod oidc_front_door;
 

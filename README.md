@@ -75,14 +75,16 @@ S3-compatible storage.
 [maidan.world](https://maidan.world) is Maidan run for you: join the waitlist,
 get a workspace, and connect an agent. Nothing to install.
 
-**Claude Code** opens a browser for the OAuth sign-in:
+**Every MCP client** signs in with OAuth: give it the URL and sign in when it
+opens a browser. With Claude Code:
 
 ```sh
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 ```
 
-**Cursor, Claude Desktop and other MCP clients** connect with a token. Mint
-one for each agent in the console, then drop it into the config for
+**Cursor, Codex, VS Code and other MCP clients** use the same URL and the
+same browser sign-in. A client set up without OAuth connects with a token
+minted for the agent in the console, using the config for
 [Cursor](examples/cursor-mcp.json) or
 [Claude Desktop](examples/claude-desktop-mcp.json).
 [Integration](docs/Integration.md#on-maidanworld) walks through it.

@@ -128,6 +128,24 @@ fn resolve_workspace(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&WORKSPACE, default_on)
 }
 
+/// Per-address limit for RFC 7591 dynamic client registration
+/// (`POST /oauth/register`): 20 / 3600 s. A real client registers once per
+/// person per server it connects to, so twenty an hour from one address is
+/// generous; each registration is a row, so a flood is bounded here per
+/// address and by `oauth::register::MAX_UNAUTHORIZED_CLIENTS` overall.
+const OAUTH_REGISTER_IP: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_OAUTH_REGISTER_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 20,
+        window: Duration::from_secs(3600),
+    },
+};
+
+fn resolve_oauth_register(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&OAUTH_REGISTER_IP, default_on)
+}
+
 fn resolve_oauth_client(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&OAUTH_CLIENT, default_on)
 }
@@ -146,6 +164,18 @@ const SIGNUP_IP: LimitSpec = LimitSpec {
     window_var: "MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS",
     default: RateLimitConfig {
         max: 30,
+        window: Duration::from_secs(3600),
+    },
+};
+
+/// Per-address limit for the demo's sandbox mint (`POST /sandbox`): 3 /
+/// 3600 s. Each call makes a workspace, so the bucket is tight, and it
+/// applies whenever the mint is on, with or without the other defaults.
+const SANDBOX_IP: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 3,
         window: Duration::from_secs(3600),
     },
 };
@@ -235,6 +265,41 @@ pub(crate) async fn charge_email_domain(
     } else {
         Err(ApiError::TooManyRequests(format!(
             "rate limit exceeded ({} requests per {}s for this email domain)",
+            cfg.max,
+            cfg.window.as_secs()
+        )))
+    }
+}
+
+/// Per-workspace limit on "Add an agent" in the console: 20 / 3600 s. Each
+/// add creates a member and mints a token, so a signed-in browser looping on
+/// it would fill the workspace with credentials; nobody sets up twenty agents
+/// by hand in an hour.
+const AGENT_ADD: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_AGENT_ADD_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 20,
+        window: Duration::from_secs(3600),
+    },
+};
+
+/// Charge `workspace_id` for one agent added from the console. The handler
+/// calls this once the caller is allowed and before anything is written, so a
+/// refused add spends nothing and a charged one that is refused writes nothing.
+pub(crate) async fn charge_agent_add(
+    state: &crate::state::AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<(), ApiError> {
+    let Some(cfg) = resolve_env(&AGENT_ADD, state.rate_limit_default_on) else {
+        return Ok(());
+    };
+    let key = format!("agent-add:{}", workspace_id.0);
+    if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
+        Ok(())
+    } else {
+        Err(ApiError::TooManyRequests(format!(
+            "rate limit exceeded ({} agents per {}s for this workspace)",
             cfg.max,
             cfg.window.as_secs()
         )))
@@ -619,12 +684,21 @@ pub async fn middleware(
     let signup_ip_cfg = resolve_signup_ip(state.rate_limit_default_on);
     let waitlist_domain_cfg = resolve_waitlist_domain(state.rate_limit_default_on);
     let signup = signup_surface(req.uri().path());
+    let sandbox_cfg = if state.sandbox.is_some() && req.uri().path() == "/sandbox" {
+        resolve_env(&SANDBOX_IP, true)
+    } else {
+        None
+    };
+    let register_cfg = resolve_oauth_register(state.rate_limit_default_on);
+    let register = req.uri().path() == crate::oauth::register::REGISTER_PATH;
     if (global.is_none()
         && !workspace_on
         && oauth_client_cfg.is_none()
         && oauth_ip_cfg.is_none()
         && signup_ip_cfg.is_none()
-        && waitlist_domain_cfg.is_none())
+        && waitlist_domain_cfg.is_none()
+        && sandbox_cfg.is_none()
+        && register_cfg.is_none())
         || exempt_path(req.uri().path())
     {
         return next.run(req).await;
@@ -704,6 +778,20 @@ pub async fn middleware(
                     return too_many(cfg.window, cfg.max, false);
                 }
             }
+        }
+    }
+    if let Some(cfg) = sandbox_cfg {
+        let key = format!("sandbox:{}", ip_client_key(&req));
+        if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+            return too_many(cfg.window, cfg.max, false);
+        }
+    }
+    if register && let Some(cfg) = register_cfg {
+        // Every registration from one address shares one bucket, whatever
+        // name or redirect it asserts.
+        let key = format!("oauth-register:{}", ip_client_key(&req));
+        if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+            return too_many(cfg.window, cfg.max, false);
         }
     }
     if signup {
@@ -981,6 +1069,11 @@ mod tests {
     #[test]
     fn default_on_applies_a_floor_and_explicit_env_overrides() {
         assert_default_rules(&GLOBAL, DEFAULT_GLOBAL_MAX, DEFAULT_GLOBAL_WINDOW_SECS);
+    }
+
+    #[test]
+    fn registration_has_an_hourly_default_per_address() {
+        assert_default_rules(&OAUTH_REGISTER_IP, 20, 3600);
     }
 
     #[test]

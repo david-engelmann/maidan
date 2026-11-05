@@ -16,8 +16,10 @@ checks the queue while both leases are still held.
 
 ## Connect an MCP client (Cursor / Claude)
 
-Point any MCP client at `POST /mcp/streamable` with a bearer token; Maidan negotiates MCP
-`2026-07-28` (stateless — no session id). Drop-in configs for maidan.world:
+Point any MCP client at `POST /mcp/streamable`; on maidan.world it signs in with OAuth in
+the browser ([OAuth](../docs/OAuth.md)), and Maidan negotiates MCP
+`2026-07-28` (stateless — no session id). For a client set up with a bearer token instead,
+the drop-in configs for maidan.world:
 [`cursor-mcp.json`](cursor-mcp.json) uses Cursor's `url` and `headers`, and
 [`claude-desktop-mcp.json`](claude-desktop-mcp.json) runs the server through `mcp-remote`,
 because Claude Desktop's config file starts local commands only. Replace

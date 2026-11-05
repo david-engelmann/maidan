@@ -179,47 +179,97 @@ values.
 | `maidan-server`  | `crates/maidan-server/Dockerfile.dev`       | Dev hot-reload.        |
 | `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector.   |
 | `maidan-cli`     | `docker/Dockerfile.cli`                     | The `maidan` CLI, pinned to the server's tag. |
-| `maidan-server:<tag>-demo` | `crates/maidan-server/Dockerfile` with `MAIDAN_ENABLE_BOOTSTRAP=1` | try.maidan.world only: the one build with the bootstrap routes. Signed and attested; never `latest`. |
+| `maidan-server:<tag>-demo` | `crates/maidan-server/Dockerfile` with `MAIDAN_ENABLE_BOOTSTRAP=1` | The one build with the bootstrap routes, for the seed try.maidan.world used before its sandbox; nothing deploys it now. Signed and attested; never `latest`. |
 | (local only)     | `docker/Dockerfile.quickstart`              | Built by `compose.quickstart.yaml` from a pinned release binary; not published, not for production. |
 
 ## try.maidan.world
 
-try.maidan.world is the public demo: one seeded SQLite workspace inside a
-Cloudflare container, which the reviewers in the directory listings connect to.
-The Worker and its config are `deploy/cloudflare/src/demo.js` and
+try.maidan.world is the public demo, a no-sign-up sandbox. A visitor clicks
+"Start a sandbox" and gets a workspace of their own: a `#general` channel, a
+"Say hello" task, an admin token for the console and an agent token for an MCP
+client, both expiring in 24 hours. The landing's "Try it now, no sign-up" links
+here. The Worker and its config are `deploy/cloudflare/src/demo.js` and
 `deploy/cloudflare/wrangler.demo.jsonc`.
 
-**Images.** Each release publishes `maidan-server:<tag>-demo` beside the stock
-`maidan-server:<tag>`. It is the same Dockerfile built with
-`MAIDAN_ENABLE_BOOTSTRAP=1`, because the demo's seed creates its members through
-the bootstrap routes. It is signed, has an SBOM attestation, and passes the same
-trivy scan as the stock image. It is amd64 only and is never tagged `latest`.
-Every other image builds with bootstrap off, and
-`scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if
+**The page.** The Worker serves the try page itself from
+`deploy/cloudflare/try` (`src/try-page.js`), so a visit never wakes the
+container. Its button posts `POST /sandbox`, and the answer fills in the agent
+token (shown once), the Claude Code command, "Add to Cursor" and "Add to VS
+Code" links, a Codex config and the prompt for the task. "Open the console"
+trades the admin token for an HttpOnly session with
+`POST /auth/session/from-token`, as the console's own token sign-in does, and
+opens `/ui/`. No secret goes into a URL the browser sends anywhere: the Cursor
+and VS Code links carry the agent token, but they are `cursor:` and `vscode:`
+links that the browser hands to the local app.
+
+**The mint.** `POST /sandbox` (`crates/maidan-server/src/sandbox.rs`) is on only
+with `MAIDAN_DEMO_SANDBOX=1`, and under `MAIDAN_ENV=production` only beside
+`MAIDAN_DEMO_INSTANCE=1`, the marker that the whole instance is a throwaway.
+Boot refuses it beside `MAIDAN_SIGNUP` or `AUTH_DISABLED`, or without
+`MAIDAN_PUBLIC_ORIGIN`. Elsewhere the route answers 404. Each sandbox is an
+ordinary tenant, so one visitor's tokens see nothing of another's
+(`demo_sandbox_e2e`). What bounds it:
+
+| Limit | Value on try.maidan.world |
+| --- | --- |
+| Sandboxes per address | 3 an hour (`MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX`) |
+| Sandboxes in the instance | 200 (`MAIDAN_DEMO_SANDBOX_MAX`), then 503 until the reset |
+| Per sandbox | a hard cutoff at 5000 requests, 2000 MCP calls and 4 MiB stored: each sandbox is an `open` workspace, so the free allowance refuses past it ([Operations](Operations.md)) |
+| Request rate | 60 a minute per client, 120 a minute per workspace |
+| Bodies | 64 KiB, refused at the edge before they wake the container |
+| Human check | Turnstile, when the Worker has `DEMO_TURNSTILE_SITE_KEY` and the secret `DEMO_TURNSTILE_SECRET`. The Worker checks it, since the container cannot reach Cloudflare |
+| Cross-site | a browser post from another origin is refused |
+
+**Images.** The demo runs the stock `maidan-server:<tag>`, which has no
+bootstrap routes. Each release still publishes `maidan-server:<tag>-demo`
+beside it, built with `MAIDAN_ENABLE_BOOTSTRAP=1` for the seed the demo used
+before the sandbox; nothing deploys it now. It is signed, has an SBOM
+attestation, and passes the same trivy scan as the stock image. It is amd64
+only and is never tagged `latest`. Every other image builds with bootstrap
+off, and `scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if
 release.yml stops passing `MAIDAN_ENABLE_BOOTSTRAP=0` to a stock leg, or tags
 the demo image `latest`.
 
 **Deploy.** `.github/workflows/deploy-demo.yml` runs on a published release, or
 on a dispatch with a tag. It does nothing unless the repository variable
 `DEMO_DOMAIN` is `true`. It checks that the tag is on `main` and cosign-verifies
-`maidan-server:<tag>-demo` and `maidan-cli:<tag>`. It then builds
-`deploy/cloudflare/demo/Dockerfile`, which copies both binaries by digest onto
-Debian with bash, curl and jq and compiles nothing. It pushes the image with
-`wrangler containers push` and deploys `wrangler.demo.jsonc`, as
-`deploy-prod.yml` does for maidan.world. It reads `CLOUDFLARE_API_TOKEN` and
+`maidan-server:<tag>`. It then builds `deploy/cloudflare/demo/Dockerfile`,
+which copies the binary by digest onto Debian with bash and openssl and
+compiles nothing. It pushes the image with `wrangler containers push` and
+deploys `wrangler.demo.jsonc` with the try page as the Worker's static assets,
+as `deploy-prod.yml` does for maidan.world. It reads `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` from the repository secrets. The container's keys are
-made fresh on each boot, so the demo stores no secret.
+made fresh on each boot, so the demo stores no secret. The route's
+`custom_domain` creates the DNS record for try.maidan.world on the first
+deploy.
 
-**Boot and reset.** On every boot `demo/entrypoint.sh` seeds a fresh workspace
-with `scripts/demo-board.sh`. It does this on a loopback listener with
-bootstrap on, then restarts the server without bootstrap for the public
-listener. Once a day at 04:00 UTC the cron destroys a running container, which
-deletes its data. It never starts a stopped one, so the next visitor boots a
-freshly seeded demo. Seeded tokens expire after 30 hours.
+**Turning it on.** Once a release carries `POST /sandbox`:
+
+1. Set the repository variable `DEMO_DOMAIN` to `true`
+   (`gh variable set DEMO_DOMAIN --body true`). `CLOUDFLARE_API_TOKEN` and
+   `CLOUDFLARE_ACCOUNT_ID` are the secrets `deploy-prod.yml` already uses.
+2. Publish a release, or dispatch `deploy demo` with its tag. The deploy
+   creates the try.maidan.world DNS record (`custom_domain`); the zone must be
+   on the same Cloudflare account.
+3. Open `https://try.maidan.world`, start a sandbox, and connect an agent.
+4. Recommended: make a Turnstile widget for `try.maidan.world`, store its
+   secret with
+   `npx wrangler secret put DEMO_TURNSTILE_SECRET -c wrangler.demo.jsonc`,
+   and add `DEMO_TURNSTILE_SITE_KEY` to the `vars` in `wrangler.demo.jsonc`.
+   The next deploy turns the check on; with only one of the two set, it stays
+   off.
+
+**Boot and reset.** On every boot `demo/entrypoint.sh` deletes any old
+database, makes this boot's keys and starts the server; nothing is seeded.
+Once a day at 04:00 UTC the cron destroys a running container, which deletes
+every sandbox. It never starts a stopped one, so the next visitor boots an
+empty demo.
 
 **Cost.** One `basic` instance (`max_instances: 1`) sleeps after 15 idle
-minutes. The cron runs once a day and only destroys. Nothing else runs on a
-timer. `deploy/cloudflare/test/cost.test.js` holds all of this.
+minutes. The try page is answered by the Worker, so only a sandbox and the
+agents using it wake the container. The cron runs once a day and only
+destroys. Nothing else runs on a timer. `deploy/cloudflare/test/cost.test.js`
+holds all of this.
 
 ## Migrations
 

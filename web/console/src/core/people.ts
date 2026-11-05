@@ -1,7 +1,8 @@
 // People and Swarm: the roster with presence, a member's details, the
 // workspace's footprint lists, and the swarm builder's role circuit.
 // Everything here is plain data in, plain data out, so it can be tested.
-import { apiPath, bearerRefusal, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { handleFrom, nameRefusal } from "./addAgent.ts";
+import { apiPath, bearerRefusal, hasToken, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Thread } from "./board.ts";
 import type { ControlFrame } from "./live.ts";
 
@@ -221,6 +222,9 @@ export function nextWell(role: Role, key: string): Role {
 
 export class PeopleError extends Error {}
 
+/** A refused add: only a workspace admin adds agents, from their own sign-in or an admin token. */
+export const ADD_AGENT_REFUSED = "Only a workspace admin can add an agent. Ask one to add it for you.";
+
 async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
   noteAuthLost(res);
   let detail: string | null = null;
@@ -315,6 +319,30 @@ export class PeopleApi {
     if (!req.preset && !req.capabilities.length) throw new PeopleError(CAPS_REQUIRED);
     const body = req.preset ? { label: req.label.trim() || null, capability_set: req.preset, capabilities: [] } : { label: req.label.trim() || null, capabilities: req.capabilities };
     return this.secretWrite("POST", `/workspaces/${workspace}/members/${member}/tokens`, body);
+  }
+
+  /**
+   * Adds an agent: a member and its worker token in one call. A signed-in
+   * admin goes through the session route, a token through the bearer one;
+   * both mint `maidan.agent.worker` and nothing more. The secret comes back
+   * once; nothing here keeps or logs it.
+   */
+  async addAgent(workspace: string, name: string): Promise<{ memberId: string; handle: string; secret: string }> {
+    const why = nameRefusal(name);
+    if (why) throw new PeopleError(why);
+    const c = this.creds();
+    if (!hasToken(c) && !c.sessionMemberId) throw new PeopleError("Sign in first.");
+    const body = { handle: handleFrom(name), display_name: name.trim() };
+    const init: RequestInit = { headers: headers(c, true), credentials: "include", body: JSON.stringify(body) };
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspace}/agents`), writeInit({ ...init, method: "POST" }));
+    if (res.status === 403) {
+      noteAuthLost(res);
+      throw new PeopleError(ADD_AGENT_REFUSED);
+    }
+    if (!res.ok) return fail(res, this.mode());
+    const out = (await res.json()) as { member?: { id?: string; handle?: string }; token?: { secret?: string } };
+    if (typeof out.member?.id !== "string" || typeof out.token?.secret !== "string") throw new PeopleError("The server did not send the new token back.");
+    return { memberId: out.member.id, handle: out.member.handle ?? body.handle, secret: out.token.secret };
   }
 
   /** Rotates a token: the old secret stops working and the new one comes back once. */

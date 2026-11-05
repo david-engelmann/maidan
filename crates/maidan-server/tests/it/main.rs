@@ -191,6 +191,9 @@ mod delivery_mode_rest_e2e;
 #[path = "../delivery_ops_unified_e2e.rs"]
 mod delivery_ops_unified_e2e;
 
+#[path = "../demo_sandbox_e2e.rs"]
+mod demo_sandbox_e2e;
+
 #[path = "../deploy_ingest_e2e.rs"]
 mod deploy_ingest_e2e;
 
@@ -259,6 +262,9 @@ mod federation_poll_cutoff_e2e;
 
 #[path = "../find_threads_e2e.rs"]
 mod find_threads_e2e;
+
+#[path = "../first_hour_agents_e2e.rs"]
+mod first_hour_agents_e2e;
 
 #[path = "../follows_rest_e2e.rs"]
 mod follows_rest_e2e;
@@ -440,6 +446,9 @@ mod notifications_inbox_e2e;
 #[path = "../oauth_authorize_signin_hosts_e2e.rs"]
 mod oauth_authorize_signin_hosts_e2e;
 
+#[path = "../oauth_dynamic_registration_e2e.rs"]
+mod oauth_dynamic_registration_e2e;
+
 #[path = "../oauth_grant_management_e2e.rs"]
 mod oauth_grant_management_e2e;
 
@@ -448,6 +457,9 @@ mod oauth_metadata_client_row_e2e;
 
 #[path = "../oauth_rate_limit_e2e.rs"]
 mod oauth_rate_limit_e2e;
+
+#[path = "../oauth_registration_rate_limit_e2e.rs"]
+mod oauth_registration_rate_limit_e2e;
 
 #[path = "../oauth_resource_metadata_e2e.rs"]
 mod oauth_resource_metadata_e2e;

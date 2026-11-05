@@ -54,6 +54,11 @@ pub struct NewProvisionedTenant {
     pub token_hash: String,
     pub token_label: Option<String>,
     pub capabilities: Vec<String>,
+    /// When the admin token stops working; `None` never.
+    pub token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// How the workspace came to be. An `Open` one is cut off at the free
+    /// allowance (docs/Operations.md, "The hard cutoff").
+    pub origin: maidan_types::WorkspaceOrigin,
 }
 
 /// What [`WorkspaceStore::provision_workspace`] committed.
@@ -4089,9 +4094,39 @@ pub trait OAuthCodeStore: Send + Sync {
 
 #[async_trait]
 pub trait OAuthAsStore: Send + Sync {
-    /// Register a pre-registered OAuth 2.1 client. There is no dynamic client
-    /// registration: rows are inserted by the operator, never by the protocol.
+    /// Register a pre-registered OAuth 2.1 client, inserted by the operator.
     async fn create_oauth_client(&self, new: NewOAuthClient) -> Result<OAuthClient, StoreError>;
+
+    /// Insert a client that registered itself through RFC 7591 dynamic
+    /// client registration: a public client (no secret), marked with
+    /// `registered_at = now` so the sweep and the consent page can tell it
+    /// from an operator's or a metadata document's.
+    async fn register_oauth_client(
+        &self,
+        new: NewOAuthClient,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<OAuthClient, StoreError>;
+
+    /// How many self-registered clients have never completed an
+    /// authorization: the rows a registration flood adds.
+    async fn count_unauthorized_registered_oauth_clients(&self) -> Result<i64, StoreError>;
+
+    /// Record that a self-registered client completed a token exchange or a
+    /// refresh at `now`. A no-op for any other client.
+    async fn mark_registered_oauth_client_used(
+        &self,
+        client_id: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+
+    /// Delete self-registered clients never authorized and registered before
+    /// `unauthorized_before`, or last used before `unused_before`, with
+    /// everything issued to them. Returns how many were deleted.
+    async fn sweep_registered_oauth_clients(
+        &self,
+        unauthorized_before: chrono::DateTime<chrono::Utc>,
+        unused_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, StoreError>;
 
     /// A live (not revoked) client by its `client_id`, or `None`.
     async fn get_oauth_client_by_client_id(

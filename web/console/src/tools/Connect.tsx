@@ -38,7 +38,7 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
     <>
       <section className="card">
         <h3>Connect an agent</h3>
-        <p className="muted small">Claude Code can sign in through your browser and needs no token. For any other client, replace <code className="mono-id">{TOKEN_PLACEHOLDER}</code> with a token minted for that agent in People.</p>
+        <p className="muted small">Claude Code can sign in through your browser and needs no token. For any other client, <a href="#/people">add the agent in People</a>: it gets its own token and its setup filled in. Here, replace <code className="mono-id">{TOKEN_PLACEHOLDER}</code> with that token.</p>
         <p className="mono-id break">{mcpUrl(base)}</p>
         {snippets(base).map((s) => (
           <div key={s.id} className="snippet">
@@ -54,7 +54,7 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
       {signedIn ? (
         <section className="card">
           <h3>First admin token</h3>
-          <p className="muted small">If you created this workspace, mint its first admin token here; it is shown once. Sign out and sign back in with it, then mint a token for each agent in People. Never give the admin token to an agent.</p>
+          <p className="muted small">You do not need this to connect an agent: add agents in People. If you created this workspace and want an admin token for yourself (to script against the API), mint it here; it is shown once. Never give the admin token to an agent.</p>
           <button type="button" className="button steel" disabled={busy} onClick={() => void mint()}>{busy ? "Minting…" : "Mint an admin token"}</button>
           {note ? <p className="err small" role="alert">{note}</p> : null}
           {secret ? <SecretOnce title="Admin token" secret={secret} onDone={() => setSecret(null)} /> : null}

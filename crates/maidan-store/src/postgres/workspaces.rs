@@ -162,12 +162,13 @@ pub async fn provision(
     let id = Uuid::now_v7();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "INSERT INTO maidan_workspaces (id, name)
-         VALUES ($1, $2)
+        "INSERT INTO maidan_workspaces (id, name, origin)
+         VALUES ($1, $2, $3)
          RETURNING id, name, created_at, updated_at, tombstoned_at",
     )
     .bind(id)
     .bind(&new.name)
+    .bind(new.origin.as_str())
     .fetch_one(&mut *tx)
     .await?;
     let workspace = row_to_workspace(&row);
@@ -207,7 +208,7 @@ pub async fn provision(
             token_hash: new.token_hash,
             label: new.token_label,
             capabilities: new.capabilities,
-            expires_at: None,
+            expires_at: new.token_expires_at,
         },
     )
     .await?;

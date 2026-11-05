@@ -947,7 +947,7 @@
         "type": "object"
       },
       "AuthorizationServerMetadata": {
-        "description": "RFC 8414 authorization-server metadata.\n\nOnly the grants, response type and challenge method the server implements\nare listed. There is no `registration_endpoint` because clients are\npre-registered or carry a client metadata document, never registered\ndynamically.",
+        "description": "RFC 8414 authorization-server metadata.\n\nOnly the grants, response type and challenge method the server implements\nare listed. `registration_endpoint` is named only while the instance\nserves RFC 7591 dynamic client registration\n(`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`).",
         "properties": {
           "authorization_endpoint": {
             "type": "string"
@@ -957,7 +957,7 @@
             "type": "boolean"
           },
           "client_id_metadata_document_supported": {
-            "description": "A client may name itself by the HTTPS URL of its metadata document\n(draft-ietf-oauth-client-id-metadata-document), which `registry`\nresolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. Without this flag\na client such as claude.ai assumes it must register dynamically,\nwhich this server never offers, and stops.",
+            "description": "A client may name itself by the HTTPS URL of its metadata document\n(draft-ietf-oauth-client-id-metadata-document), which `registry`\nresolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. A\nclient that sees this flag uses its document and never falls back to\nregistering, so every such client's host must be listed (claude.ai,\nchatgpt.com, zed.dev, vscode.dev on maidan.world).",
             "type": "boolean"
           },
           "code_challenge_methods_supported": {
@@ -974,6 +974,13 @@
           },
           "issuer": {
             "type": "string"
+          },
+          "registration_endpoint": {
+            "description": "`POST /oauth/register` (RFC 7591), when registration is on. A client\nwith no pre-registration and no client metadata document the\ninstance fetches registers here; without it, such a client stops.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "response_modes_supported": {
             "description": "Named because an omitted list means `query` and `fragment`, and the\nauthorization response is only ever a query string.",
@@ -1612,6 +1619,116 @@
           "none"
         ],
         "type": "string"
+      },
+      "ClientRegistrationRequest": {
+        "description": "An RFC 7591 registration request. Only the fields this server reads;\nany other metadata (`client_uri`, `logo_uri`, `software_id`) is ignored\nand never shown, so a client cannot dress the consent page.",
+        "properties": {
+          "client_name": {
+            "description": "The client's own name, shown on the consent page as unverified.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grant_types": {
+            "description": "A subset of `authorization_code` and `refresh_token`, or omitted.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "redirect_uris": {
+            "description": "Where the authorization response may go. Required, one to ten.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "response_types": {
+            "description": "`[\"code\"]`, or omitted.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "scope": {
+            "description": "Space-delimited capabilities the client may ask for. Omitted or\nempty, any delegatable capability.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_endpoint_auth_method": {
+            "description": "`none`, or omitted. A confidential method is refused.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ClientRegistrationResponse": {
+        "description": "The registered client, as RFC 7591 section 3.2.1 returns it.",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_id_issued_at": {
+            "description": "Seconds since the epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "client_name": {
+            "type": "string"
+          },
+          "grant_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "redirect_uris": {
+            "description": "The redirect URIs registered: the request's, less any `https` URI\non a host the instance does not list.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "response_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "token_endpoint_auth_method": {
+            "description": "Always `none`: a self-registered client is public.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_id_issued_at",
+          "client_name",
+          "redirect_uris",
+          "grant_types",
+          "response_types",
+          "token_endpoint_auth_method",
+          "scope"
+        ],
+        "type": "object"
       },
       "CloseAbandonedThread": {
         "additionalProperties": false,
@@ -21218,6 +21335,69 @@
         ]
       }
     },
+    "/oauth/register": {
+      "post": {
+        "description": "RFC 7591 dynamic client registration, advertised as\n`registration_endpoint` in the RFC 8414 document when the instance sets\n`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`. Public clients only:\n`token_endpoint_auth_method` is `none` and no secret is issued; PKCE S256\nis required at authorize. A redirect URI must be `http` on a loopback\nhost (any port is accepted at authorize), a private-use scheme in\nreverse-DNS form or a known app's, or `https` on a host listed in\n`MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`; an `https` URI on any other host is\nleft out of the registration, and script or file schemes refuse it. The\nclient's name is shown on the consent page as unverified. A client never\nauthorized within a day, or unused for 90 days, is deleted. Client errors\nare RFC 7591 section 3.2.2 errors, not problems. 404 until\n`MAIDAN_PUBLIC_ORIGIN` is set and registration is on.",
+        "operationId": "oauth_register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientRegistrationResponse"
+                }
+              }
+            },
+            "description": "Registered: the client id to use at authorize and token"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "`invalid_redirect_uri` or `invalid_client_metadata`"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Register an OAuth client dynamically",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/oauth/revoke": {
       "post": {
         "description": "RFC 7009 token revocation. The client authenticates as at the token\nendpoint. A refresh token revokes its whole lineage (every grant, access\ntoken and refresh token under it); an access token revokes that token\nonly. The answer is 200 with an empty body whether or not the token was\nknown, and a token issued to another client is left alone with the same\n200. Client errors are RFC 6749 section 5.2 errors, not problems. 404\nuntil `MAIDAN_PUBLIC_ORIGIN` is set.",
@@ -32530,6 +32710,98 @@
           }
         ],
         "summary": "Name a workspace (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/workspaces/{wid}/agents": {
+      "post": {
+        "operationId": "ui_create_agent",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedAgentResponse"
+                }
+              }
+            },
+            "description": "The agent member and a one-time `maidan.agent.worker` token, created together. A signed-in workspace admin, or a bearer with `token:admin`; never a session made from a token. Charged against the workspace's agent-add budget"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Add an agent (console)",
         "tags": [
           "auth"
         ]

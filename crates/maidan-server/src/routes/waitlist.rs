@@ -124,7 +124,7 @@ fn plausible_email(email: &str) -> bool {
 /// `Sec-Fetch-Site`. A client that sends neither (curl, an SDK) is not a
 /// browser being driven by another page, so it passes; the rate limits
 /// still apply to it.
-fn cross_site(headers: &HeaderMap, public_origin: Option<&str>) -> bool {
+pub(crate) fn cross_site(headers: &HeaderMap, public_origin: Option<&str>) -> bool {
     if let Some(origin) = headers.get(header::ORIGIN) {
         let Ok(origin) = origin.to_str() else {
             return true;
