@@ -191,6 +191,9 @@ mod delivery_mode_rest_e2e;
 #[path = "../delivery_ops_unified_e2e.rs"]
 mod delivery_ops_unified_e2e;
 
+#[path = "../demo_sandbox_e2e.rs"]
+mod demo_sandbox_e2e;
+
 #[path = "../deploy_ingest_e2e.rs"]
 mod deploy_ingest_e2e;
 

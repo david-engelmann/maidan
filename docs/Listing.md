@@ -20,8 +20,8 @@ names. If a sentence outruns its evidence, fix the sentence.
   ([Decisions](Decisions.md), 2026-10-12). Every listing links the privacy
   policy, terms, support contact and data statement; this page doesn't write
   them.
-- **The demo instance** that directory reviewers connect to is built but not
-  deployed. See [The demo instance](#the-demo-instance) below.
+- **The demo instance** where directory reviewers start a sandbox is built but
+  not deployed. See [The demo instance](#the-demo-instance) below.
 
 ## Name and short description
 
@@ -137,46 +137,45 @@ capture.
 
 ## The demo instance
 
-Directory reviewers connect to `try.maidan.world`, a seeded workspace that
-resets on its own. Each release deploys it (`deploy-demo.yml`, once
+Directory reviewers, like anyone else, start a sandbox at `try.maidan.world`:
+a workspace of their own with a `#general` channel, a "Say hello" task, an
+agent token and a console sign-in, all deleted within 24 hours. Nothing is
+handed out privately. Each release deploys it (`deploy-demo.yml`, once
 `vars.DEMO_DOMAIN` is `true`); the runbook is [Deploy](Deploy.md#trymaidanworld).
 
 | Piece | Where |
 | --- | --- |
-| Worker and route | `deploy/cloudflare/wrangler.demo.jsonc`, `deploy/cloudflare/src/demo.js` |
-| Image | `deploy/cloudflare/demo/Dockerfile`: the release's signed `maidan-server:<tag>-demo` (with the bootstrap routes) and `maidan-cli:<tag>`, plus bash, curl and jq |
-| Seed | `deploy/cloudflare/demo/entrypoint.sh` runs `scripts/demo-board.sh` against a fresh SQLite file on every boot |
-| Reset | Once a day the cron (`0 4 * * *`) destroys a running container and never starts one; the next request boots a fresh one and reseeds |
+| Worker, route and try page | `deploy/cloudflare/wrangler.demo.jsonc`, `deploy/cloudflare/src/demo.js`, `deploy/cloudflare/try` |
+| Sandbox mint | `POST /sandbox`, `crates/maidan-server/src/sandbox.rs` (`MAIDAN_DEMO_SANDBOX=1`) |
+| Image | `deploy/cloudflare/demo/Dockerfile`: the release's signed `maidan-server:<tag>`, plus bash and openssl |
+| Reset | Once a day the cron (`0 4 * * *`) destroys a running container and never starts one; the next request boots an empty one |
 | Settings | `deploy/cloudflare/src/demo-config.js`, checked by `deploy/cloudflare/test/demo.test.js` |
 
 What keeps it safe to leave open:
 
-- **Tokens expire.** Every token the seed mints has an `expires_at` 30 hours
-  out (`DEMO_TOKEN_TTL_SECS`), so a missed reset still leaves no older token.
+- **Every visitor is their own tenant.** A sandbox's tokens see nothing of
+  another sandbox (`demo_sandbox_e2e`), and tokens expire after 24 hours.
 - **No outbound egress.** The container runs with `enableInternet = false`.
-  Webhooks and delivery to GitHub, Slack or Linear fail closed.
+  Webhooks and delivery to GitHub, Slack, Linear or mail fail closed, so a
+  sandbox cannot send anything anywhere.
 - **No production secret.** The Worker passes none of its secrets in. The
   content key and session secret are generated on each boot and die with the
   container.
-- **Bootstrap never faces the internet.** The seed runs against a loopback
-  listener with `MAIDAN_BOOTSTRAP=1`. That listener stops, and the public one
-  starts without it.
-- **Limits.** 60 requests a minute per address, 10 OAuth requests a minute,
-  the free-allowance meters on every workspace, 1 MiB artifacts, sign-up off,
-  and request bodies over 64 KiB refused at the edge before they wake the
-  container.
+- **No bootstrap routes.** The image is the stock server.
+- **Limits.** 3 sandboxes an hour per address and 200 in all; each sandbox
+  cut off at 5000 requests, 2000 MCP calls and 4 MiB stored; 60 requests a
+  minute per client; sign-up off; request bodies over 64 KiB refused at the
+  edge before they wake the container; Turnstile when configured.
 
 ### Deploying it
 
-1. Point `try.maidan.world` at the account (a custom domain on the Worker),
-   and set the repository variable `DEMO_DOMAIN` to `true`.
+1. Set the repository variable `DEMO_DOMAIN` to `true`. The Worker's
+   `custom_domain` route creates the try.maidan.world record on the first
+   deploy.
 2. Publish a release, or dispatch `deploy demo` with its tag.
-3. Open `https://try.maidan.world/health`. The first request after a deploy or
-   a reset waits for the seed, which takes a few seconds.
-4. For each directory, mint a reviewer token with an `expires_at` no later than
-   the review window, labelled with the directory's name. Remember that the
-   next reset wipes it, so mint it right before handing it over, or pause the
-   cron for the review.
+3. Open `https://try.maidan.world` and start a sandbox. The first sandbox after
+   a deploy or a reset waits a few seconds for the container to boot.
+4. A reviewer needs nothing from us: point them at `https://try.maidan.world`.
 
 ## The Cursor package
 

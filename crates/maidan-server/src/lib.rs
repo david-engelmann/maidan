@@ -86,6 +86,7 @@ pub mod retry_budget;
 pub mod room_lsn;
 pub mod routes;
 pub mod routing;
+pub mod sandbox;
 pub mod scheduler;
 pub mod scim;
 pub mod scim_groups;

@@ -67,3 +67,12 @@ test("the only timer is the reset cron, and it fires once a day", () => {
   assert.deepEqual([dom, mon, dow], ["*", "*", "*"]);
   assert.doesNotMatch(worker, /setInterval|setAlarm|storage\.setAlarm/);
 });
+
+test("the try page is answered before the container is reached, so visiting it never wakes one", () => {
+  const fetchHandler = worker.slice(worker.indexOf("async fetch("), worker.indexOf("async scheduled("));
+  const own = fetchHandler.indexOf("handleTry(");
+  const container = fetchHandler.indexOf("getContainer(");
+  assert.ok(own > 0 && container > own, "handleTry runs before getContainer");
+  assert.equal(wrangler.assets?.binding, "ASSETS");
+  assert.equal(wrangler.assets?.directory, "./try");
+});

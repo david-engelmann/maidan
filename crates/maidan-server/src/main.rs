@@ -647,6 +647,18 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.turnstile =
         maidan_server::turnstile::TurnstileSettings::from_env(state.public_origin.as_deref())?
             .map(Arc::new);
+    state.sandbox = maidan_server::sandbox::SandboxSettings::from_env(
+        state.public_origin.as_deref(),
+        auth_disabled,
+    )?
+    .map(Arc::new);
+    if let Some(sandbox) = &state.sandbox {
+        tracing::warn!(
+            max_sandboxes = sandbox.max_sandboxes,
+            "{} is set; POST /sandbox hands a throwaway workspace to anyone who asks",
+            maidan_server::sandbox::ENV
+        );
+    }
     let oauth_clients = maidan_server::oauth::registry::load_preregistered_clients(&state)
         .await
         .map_err(|e| anyhow::anyhow!("loading pre-registered OAuth clients: {e:?}"))?;

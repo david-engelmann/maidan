@@ -144,6 +144,8 @@ section > *, .hero > * { min-width: 0; }
 .plan h3 { font-size: 1.35rem; }
 .plan p { margin: 0 0 0.8rem; color: var(--muted); text-wrap: pretty; }
 .plan .cta { margin-top: auto; }
+.plan .cta-row { margin-top: auto; }
+.plan .cta-row .cta { margin-top: 0; }
 
 /* Questions */
 .faq { border-top: 1px solid var(--line); }

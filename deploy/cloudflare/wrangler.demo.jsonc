@@ -1,8 +1,9 @@
-// try.maidan.world: the public demo directory reviewers connect to. A seeded
-// workspace in SQLite inside one container, destroyed and reseeded on the cron.
-// The runbook is docs/Deploy.md "try.maidan.world". .github/workflows/deploy-demo.yml
-// deploys each release: it builds demo/Dockerfile on the release's signed
-// maidan-server:<tag>-demo and maidan-cli:<tag> images and swaps in the image.
+// try.maidan.world: the public demo. A visitor starts a sandbox of their own
+// (POST /sandbox) from the try page, in SQLite inside one container that the
+// cron destroys once a day. The runbook is docs/Deploy.md "try.maidan.world".
+// .github/workflows/deploy-demo.yml deploys each release: it builds
+// demo/Dockerfile on the release's signed maidan-server:<tag> image and swaps
+// in the image.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-demo",
@@ -20,12 +21,19 @@
       "max_instances": 1
     }
   ],
+  // The try page (deploy/cloudflare/try). The Worker serves it itself
+  // (src/try-page.js), so a visit to the page never wakes the container.
+  "assets": { "directory": "./try", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": {
     "bindings": [{ "name": "MAIDAN_DEMO", "class_name": "MaidanDemo" }]
   },
   "exports": {
     "MaidanDemo": { "type": "durable-object", "storage": "sqlite" }
   },
+  // DEMO_TURNSTILE_SITE_KEY (a var, set here) and DEMO_TURNSTILE_SECRET (a
+  // Worker secret) turn on the human check before a sandbox mint; the Worker
+  // makes it, since the container has no internet. Neither reaches the
+  // container.
   "vars": { "MAIDAN_PUBLIC_ORIGIN": "https://try.maidan.world" },
   // Keep in step with DEMO_RESET_CRON in src/demo-config.js.
   "triggers": { "crons": ["0 4 * * *"] },

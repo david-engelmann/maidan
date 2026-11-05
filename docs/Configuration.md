@@ -145,6 +145,18 @@ Off unless `MAIDAN_SIGNUP=1`. [OIDC](OIDC.md) describes the flow.
 | `MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX`, `MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS` | `100` per `3600` s | Per-email-domain limit on waitlist joins. |
 | `MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX`, `MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS` | `100` per `3600` s | Per-email-domain limit on invite mints and on finished sign-ups, in separate buckets. |
 
+## Demo sandbox
+
+For a throwaway demo instance such as try.maidan.world only
+([Deploy](Deploy.md#trymaidanworld)). Off unless `MAIDAN_DEMO_SANDBOX=1`.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `MAIDAN_DEMO_SANDBOX` | unset | `1` turns on the public `POST /sandbox`, which gives anyone who asks a fresh workspace with a `#general` channel, a "Say hello" task, an admin token and an agent token, both expiring in 24 hours. Off, the route answers 404. Needs `MAIDAN_PUBLIC_ORIGIN`; refused beside `AUTH_DISABLED` and `MAIDAN_SIGNUP`. With `MAIDAN_TURNSTILE_SECRET` set, the call needs a Turnstile token for the `sandbox` action. |
+| `MAIDAN_DEMO_INSTANCE` | unset | `1` says the whole instance is a disposable demo. Under `MAIDAN_ENV=production`, boot refuses `MAIDAN_DEMO_SANDBOX` without it. |
+| `MAIDAN_DEMO_SANDBOX_MAX` | `200` | The most workspaces the instance holds. Past it, the mint answers 503 until the next reset. |
+| `MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX`, `MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS` | `3` per `3600` s | Per-address limit on `POST /sandbox`, on whenever the mint is. `0` turns it off. |
+
 ## OAuth for MCP clients
 
 See [OAuth](OAuth.md).

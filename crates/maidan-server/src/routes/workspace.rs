@@ -87,6 +87,8 @@ pub async fn provision_workspace(
                 token_hash: hash_secret(secret.as_str()),
                 token_label: Some("workspace admin".to_string()),
                 capabilities,
+                token_expires_at: None,
+                origin: WorkspaceOrigin::Operator,
             },
             Box::new(move |record| NewAuditEvent {
                 scope: AuditScope::Workspace(record.workspace_id),

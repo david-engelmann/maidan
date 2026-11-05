@@ -140,6 +140,9 @@ pub struct AppState {
     pub oidc: Option<Arc<OidcRuntime>>,
     /// Turnstile on the sign-up surface when `MAIDAN_TURNSTILE_SECRET` is set.
     pub turnstile: Option<Arc<crate::turnstile::TurnstileSettings>>,
+    /// The demo's per-visitor sandbox mint (`POST /sandbox`) when
+    /// `MAIDAN_DEMO_SANDBOX=1`; `None` everywhere else ([`crate::sandbox`]).
+    pub sandbox: Option<Arc<crate::sandbox::SandboxSettings>>,
     /// Browser-session keys when `MAIDAN_SESSION_SECRET` is set, for the token
     /// exchange on a server without OIDC. Read through
     /// [`Self::browser_sessions`], which prefers OIDC's.
@@ -374,6 +377,7 @@ impl AppState {
             outbox_backend: None,
             oidc: None,
             turnstile: None,
+            sandbox: None,
             sessions: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
