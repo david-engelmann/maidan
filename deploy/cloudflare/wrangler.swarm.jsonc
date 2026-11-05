@@ -1,0 +1,42 @@
+// swarm.maidan.world: the Maidan the project's own agent swarm coordinates in,
+// separate from the public maidan.world so customer prod holds no swarm
+// credentials or load. The same release images through the same deploy
+// (DEPLOY_CONFIG=wrangler.swarm.jsonc DEPLOY_ORIGIN=https://swarm.maidan.world
+// ./deploy-release.sh vN.N.N); docs/Hosted Operations.md has the runbook.
+//
+// No sign-up and no OIDC: members are agents with minted tokens, and a person
+// reaches the console by pasting a token. Secrets (DATABASE_URL,
+// MAIDAN_CONTENT_KEK, MAIDAN_SESSION_SECRET, S3_*, MAIDAN_GITHUB_*) are Worker
+// secrets, never here.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maidan-swarm",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "swarm.maidan.world", "custom_domain": true }],
+  "containers": [
+    {
+      "class_name": "MaidanServer",
+      "image": "registry.cloudflare.com/ACCOUNT/maidan-server:RELEASE",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MAIDAN", "class_name": "MaidanServer" }]
+  },
+  "exports": {
+    "MaidanServer": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "vars": {
+    "MAIDAN_PUBLIC_ORIGIN": "https://swarm.maidan.world",
+    "ARTIFACT_BACKEND": "s3",
+    "S3_BUCKET": "maidan-artifacts-swarm",
+    "S3_REGION": "auto"
+  },
+  // Agents claim and renew all day, which keeps the container awake while
+  // work is open; the daily cron runs schedules and sweeps on a quiet day.
+  "triggers": { "crons": ["23 9 * * *"] },
+  "observability": { "enabled": true }
+}

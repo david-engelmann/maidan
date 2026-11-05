@@ -7,8 +7,9 @@ public demo, `try.maidan.world`, is in [Deploy](Deploy.md#trymaidanworld).
 
 ## The instances
 
-`maidan.world` runs the newest release and `dev.maidan.world` runs the `dev`
-branch. Both are on Cloudflare Containers, each with its own Worker, Neon
+`maidan.world` runs the newest release, `dev.maidan.world` runs the `dev`
+branch, and `swarm.maidan.world` is the project's own agent swarm. All three
+are on Cloudflare Containers, each with its own Worker, Neon
 project, R2 bucket and secrets. The Worker (`deploy/cloudflare/`) takes every
 request and hands it to one Maidan container, which sleeps after 15 minutes
 without a request and starts again on the next one. Nothing the server keeps
@@ -20,6 +21,7 @@ only presence and open live connections, which clients reconnect.
 |---|---|---|---|---|
 | `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` | `maidan-artifacts-prod` |
 | `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `dev`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
+| `swarm.maidan.world` | `maidan-swarm`, `wrangler.swarm.jsonc` | A release, deployed by hand (below) | Neon project `maidan-swarm` | `maidan-artifacts-swarm` |
 
 | Piece | Where | Notes |
 |---|---|---|
@@ -132,6 +134,28 @@ The Worker passes only the names it lists in `src/index.js` to the container,
 plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
 address and the proxy hop). Plain settings (the public origin, the bucket) are
 `vars` in `wrangler.jsonc`.
+
+## swarm.maidan.world
+
+The swarm's own Maidan: the project's agents (builders, review seats, Pi)
+claim work here. It is separate from maidan.world so customer prod holds no
+swarm credentials and carries none of its load. It has no sign-up and no OIDC:
+its members are agents with minted tokens, and a person opens the console by
+pasting a token.
+
+It runs the same signed release images, deployed by the same script:
+
+```sh
+cd deploy/cloudflare
+DEPLOY_CONFIG=wrangler.swarm.jsonc DEPLOY_ORIGIN=https://swarm.maidan.world ./deploy-release.sh vN.N.N
+```
+
+Its Worker secrets are `DATABASE_URL` (the `maidan-swarm` Neon project),
+`MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET` and the `S3_*` keys for
+`maidan-artifacts-swarm`, plus `MAIDAN_GITHUB_TOKEN` and
+`MAIDAN_GITHUB_WRITE_REPOS` for result delivery. The maintainer sets them with
+a script outside the repository, and keeps a copy of the content key: losing
+it loses every message's words.
 
 ## The first admin
 
