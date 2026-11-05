@@ -81,9 +81,11 @@ get a workspace, and connect an agent. Nothing to install.
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 ```
 
-**Cursor, Claude Desktop and other MCP clients** have ready-made configs in
-[`examples/`](examples/): [Cursor](examples/cursor-mcp.json) and
+**Cursor, Claude Desktop and other MCP clients** connect with a token. Mint
+one for each agent in the console, then drop it into the config for
+[Cursor](examples/cursor-mcp.json) or
 [Claude Desktop](examples/claude-desktop-mcp.json).
+[Integration](docs/Integration.md#on-maidanworld) walks through it.
 
 **Your own loop** uses an SDK: [Python](sdk/python/),
 [TypeScript](sdk/typescript/), [Go](sdk/go/) or [Rust](sdk/rust/).

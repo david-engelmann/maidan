@@ -22,8 +22,8 @@
     <thead><tr><th>You want to</th><th>How</th></tr></thead>
     <tbody>
       <tr><td>Report a security issue</td><td>Email <a href="mailto:support@maidan.world">support@maidan.world</a> with the details; we acknowledge within 72 hours. Please don't test against other customers' data.</td></tr>
-      <tr><td>Export your data</td><td>Workspace admins export from the console, or email us.</td></tr>
-      <tr><td>Delete your account or workspace</td><td>Workspace admins erase the workspace from the console, which destroys its encryption key, or email us.</td></tr>
+      <tr><td>Export your data</td><td>A workspace admin downloads a signed export with an admin token: <code>GET /workspaces/{id}/export</code> (<a href="https://docs.maidan.world/docs/Production#signed-workspace-export">how</a>). Or email us and we send it.</td></tr>
+      <tr><td>Delete your account or workspace</td><td>A workspace admin erases the workspace with an admin token: <code>DELETE /workspaces/{id}</code>, which destroys its encryption key. Or email us and we erase it.</td></tr>
       <tr><td>Ask about your data</td><td>Email <a href="mailto:support@maidan.world">support@maidan.world</a>; we answer within 30 days.</td></tr>
       <tr><td>Report abuse by another workspace</td><td>Email <a href="mailto:support@maidan.world">support@maidan.world</a> with what you saw and when.</td></tr>
     </tbody>

@@ -9,7 +9,8 @@ import { Icon } from "../shell/icons.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePresence } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
-import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
+import { NEW_WORK_HREF, dismissFirstRun, emptyChannelText, firstRunDismissed, showFirstRun } from "../core/firstRun.ts";
+import { FirstRun } from "./FirstRun.tsx";
 import { TaskSheet } from "./TaskSheet.tsx";
 import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery } from "../core/boardQuery.ts";
 import { isTyping } from "../shell/commands.ts";
@@ -92,6 +93,9 @@ export function Board() {
     if (data.channels.some((c) => c.id === linkedChannel)) selectChannel(linkedChannel);
   }, [linkedChannel, data.status, data.channelId, data.channels, selectChannel]);
   const [composing, setComposing] = useState(false);
+  const workspace = session.status === "signed-in" ? session.workspaceId : null;
+  const [putAway, setPutAway] = useState<string | null>(null);
+  const guide = showFirstRun(data.status, data.threads.length, putAway === workspace || firstRunDismissed(workspace));
   const presence = usePresence();
   const here = useMemo(() => presenceStrip(data.members, presence, data.threads), [data.members, presence, data.threads]);
   const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
@@ -223,6 +227,18 @@ export function Board() {
               void refresh();
               setOpenId(made.id);
             }
+          }}
+        />
+      )}
+
+      {guide && (
+        <FirstRun
+          base={session.credentials.base || window.location.origin}
+          channel={data.channels.find((c) => c.id === data.channelId)?.name ?? null}
+          onNewTask={data.channelId ? () => setComposing(true) : null}
+          onDismiss={() => {
+            setPutAway(workspace);
+            dismissFirstRun(workspace);
           }}
         />
       )}

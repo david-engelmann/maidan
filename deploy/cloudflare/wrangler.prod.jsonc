@@ -58,7 +58,13 @@
     "MAIDAN_SIGNUP": "1",
     // The site's policy pages, linked from the waitlist page's footer.
     "MAIDAN_SIGNUP_PRIVACY_URL": "/privacy",
-    "MAIDAN_SIGNUP_TERMS_URL": "/terms"
+    "MAIDAN_SIGNUP_TERMS_URL": "/terms",
+    // The free allowance, per workspace per month: about $5 of what the
+    // service costs to run (David, 2026-11-05). Past it a workspace is told;
+    // an open sign-up workspace is also cut off until the month turns.
+    "MAIDAN_FREE_ALLOWANCE": "requests=2000000,mcp_calls=1000000,embedding_calls=200000,deliveries=10000,wasi_ms=3600000,stored_bytes=5368709120",
+    // Media a workspace may hold, matching the allowance's 5 GiB.
+    "MAIDAN_MEDIA_QUOTA_BYTES": "5368709120"
   },
   // Once a day, not hourly: each wake keeps the container (and Neon's
   // compute) running for the 15 minutes of sleepAfter, so an hourly cron kept

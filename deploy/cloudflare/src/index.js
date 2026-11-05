@@ -13,8 +13,15 @@ import {
   edgeRedirect,
   isPageNavigation,
   isSitePage,
+  HOSTED_FOOTER_LINKS,
+  isContainerUnavailable,
+  isProblemForAPerson,
+  problemPage,
   NOT_FOUND_PAGE,
   SITE_CSP,
+  UNAVAILABLE_PAGE,
+  UNAVAILABLE_RETRY_SECS,
+  unavailableProblem,
   withSecurityHeaders,
 } from "./edge.js";
 import { isStatusRequest, statusResponse } from "./status.js";
@@ -48,6 +55,10 @@ const SERVER_ENV = [
   "MAIDAN_SIGNUP_PRIVACY_URL",
   "MAIDAN_SIGNUP_TERMS_URL",
   "MAIDAN_FREE_ALLOWANCE",
+  "MAIDAN_MEDIA_QUOTA_BYTES",
+  "MAIDAN_EXPORT_SIGNING_KEY",
+  "MAIDAN_TURNSTILE_SECRET",
+  "MAIDAN_TURNSTILE_SITE_KEY",
   "MAIDAN_GITHUB_TOKEN",
   "MAIDAN_GITHUB_WRITE_REPOS",
   "MAIDAN_OPS_ALERT_CHANNEL",
@@ -106,7 +117,57 @@ export default {
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
-    const response = await getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
+    let response;
+    try {
+      response = await getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
+    } catch (err) {
+      console.error("container fetch failed", err);
+      response = null;
+    }
+    // While a deploy replaces the container, or one fails to start, a person
+    // sees a page that says so and retries itself, and a client gets a
+    // problem it knows to retry, not the runtime's own error text.
+    if (response === null || (await isContainerUnavailable(response))) {
+      if (hasSite && isPageNavigation(request)) {
+        const page = await env.ASSETS.fetch(new Request(new URL(UNAVAILABLE_PAGE, request.url)));
+        if (page.ok) {
+          return withSecurityHeaders(new Response(page.body, { status: 503, headers: page.headers }), {
+            "content-security-policy": SITE_CSP,
+            "retry-after": String(UNAVAILABLE_RETRY_SECS),
+            "cache-control": "no-store",
+          });
+        }
+      }
+      return withSecurityHeaders(unavailableProblem());
+    }
+    // The waitlist page links the hosted site's support and status pages,
+    // which a self-hosted instance does not have.
+    const url = new URL(request.url);
+    if (hasSite && url.pathname === "/" && response.ok
+        && (response.headers.get("content-type") ?? "").startsWith("text/html")) {
+      const links = HOSTED_FOOTER_LINKS.map(([href, label]) => `<a href="${href}">${label}</a>\n        `).join("");
+      response = new HTMLRewriter()
+        .on('nav.legal a[href="/ui"]', { element: (el) => el.before(links, { html: true }) })
+        .transform(response);
+    }
+    // Any other problem body a browser was sent as a page (an expired invite,
+    // a sign-in for the wrong identity) becomes a page that says it plainly.
+    if (hasSite && response.status !== 404 && isProblemForAPerson(request, response)) {
+      let problem = null;
+      try {
+        problem = await response.clone().json();
+      } catch {
+        problem = null;
+      }
+      const page = problemPage(problem, response.headers.get("x-request-id"));
+      return withSecurityHeaders(
+        new Response(page, {
+          status: response.status,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        }),
+        { "content-security-policy": SITE_CSP },
+      );
+    }
     // The server's 404 is a problem+json body, which a person who followed a
     // bad link should not be shown.
     if (hasSite && response.status === 404 && isPageNavigation(request)) {

@@ -63,7 +63,7 @@ test("credentialMode reads session, bearer, or delegated from /me", () => {
 });
 
 test("humanError names the capability and never the status or the raw body", () => {
-  assert.equal(humanError(401, "unauthorized", null), "Your token or session was not accepted. Use Change to set a working one");
+  assert.equal(humanError(401, "unauthorized", null), "Your token or session was not accepted. Sign in again");
   assert.match(humanError(403, "needs approval:grant", "bearer"), /it needs approval:grant/);
   assert.match(humanError(401, "", "session"), /^Your session was not accepted/);
   assert.doesNotMatch(humanError(403, "", "session"), /token is not/);
@@ -72,6 +72,20 @@ test("humanError names the capability and never the status or the raw body", () 
     assert.equal(said.includes("raw server body"), false);
     assert.equal(said.includes(String(status)), false);
   }
+});
+
+test("a hosted customer is never sent to a server log, a CLI, or a control the console lacks", () => {
+  for (const status of [401, 403, 409, 500]) {
+    for (const mode of [null, "session", "bearer", "delegated"] as const) {
+      for (const detail of [null, "needs capability token:admin", "needs capability workspace:write"]) {
+        const said = humanError(status, detail, mode);
+        assert.doesNotMatch(said, /server log|maidan init|Use Change/, `${status} ${mode} ${detail}`);
+      }
+    }
+  }
+  assert.equal(humanError(409, null, "session"), "Someone changed this first. Reload and try again");
+  assert.match(humanError(500, null, "session"), /contact your workspace admin or support$/);
+  assert.match(humanError(403, "needs capability token:admin", "session"), /Tools, then Connect/);
 });
 
 test("each write carries its own idempotency key and keeps its headers", () => {
