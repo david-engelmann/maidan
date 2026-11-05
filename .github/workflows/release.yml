@@ -777,10 +777,20 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
 
-  # A release published with the job's GITHUB_TOKEN does not trigger the
-  # `release: published` workflows, so deploy-prod never ran on its own and
-  # maidan.world was deployed by hand. A workflow_dispatch from GITHUB_TOKEN
-  # does run, so the release starts the prod deploy itself.
+  # A release published with the job's GITHUB_TOKEN does not trigger
+  # `release: published` workflows: GitHub drops those events so a workflow
+  # cannot start another by publishing. workflow_dispatch from that token
+  # does run, so the release starts the workflows that listen for it.
+  # maidan.world was deployed by hand until deploy-prod was dispatched here;
+  # try.maidan.world and the clean-machine install had the same gap.
+  #
+  # deploy-demo.yml skips its only job unless vars.DEMO_DOMAIN is 'true'.
+  # That file is the switch, so this dispatch does not grow a second one:
+  # while the demo is off, the run starts and the job skips.
+  # docs.yml deploys on a push to main, which is how the release commit
+  # already published its docs. sdk-release.yml publishes from its own
+  # sdk-*-v* tags and is not started here. release-darwin-x86.yml stays a
+  # manual dispatch: a macos-13 runner can sit queued for hours.
   deploy-prod:
     name: start the prod deploy
     needs: [release]
@@ -794,3 +804,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: gh workflow run deploy-prod.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+
+  deploy-demo:
+    name: start the demo deploy
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: dispatch deploy-demo for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: gh workflow run deploy-demo.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+
+  clean-install:
+    name: start the clean-machine install
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: dispatch clean-install for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: gh workflow run clean-install.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
