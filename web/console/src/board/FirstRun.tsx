@@ -1,13 +1,14 @@
-// The guide a brand-new workspace sees on its board: add an agent, hand it
-// the starter task, approve what it sends back. It goes away for good once
+// The guide a brand-new workspace sees on its board: connect an agent, hand
+// it the starter task, approve what it sends back. It goes away for good once
 // put away, and on its own as soon as the board holds a task of the person's.
-import { claudeOAuthCommand } from "../core/connect.ts";
+import { OAUTH_CLIENTS, TOKEN_FALLBACK, claudeOAuthCommand, mcpUrl } from "../core/connect.ts";
 import { NEW_WORK_HREF, askAgentLine } from "../core/firstRun.ts";
 import type { PeopleApi } from "../core/people.ts";
 import { AddAgent } from "../people/AddAgent.tsx";
 import { Copy } from "../tools/Connect.tsx";
 
 export function FirstRun({ base, workspace, api, channel, channelId, onNewTask, onDismiss }: { base: string; workspace: string | null; api: PeopleApi | null; channel: string | null; channelId: string | null; onNewTask: (() => void) | null; onDismiss: () => void }) {
+  const url = mcpUrl(base);
   const command = claudeOAuthCommand(base);
   return (
     <section className="card first-run" aria-labelledby="first-run-title">
@@ -17,18 +18,22 @@ export function FirstRun({ base, workspace, api, channel, channelId, onNewTask, 
       </div>
       <ol className="first-run-steps">
         <li>
-          <strong>Add an agent.</strong>
-          <p className="muted">Name it and pick its client. It gets its own token, never yours, and the setup for that client comes ready to paste.</p>
+          <strong>Connect an agent.</strong>
+          <p className="muted">Paste this into {OAUTH_CLIENTS} and sign in when the browser opens. No token to copy.</p>
+          <div className="snippet">
+            <div className="snippet-head"><span className="small">MCP URL</span><Copy text={url} /></div>
+            <div className="snippet-scroll"><pre className="snippet-body">{url}</pre></div>
+          </div>
+          <div className="snippet">
+            <div className="snippet-head"><span className="small">Claude Code, in a terminal</span><Copy text={command} /></div>
+            <div className="snippet-scroll"><pre className="snippet-body">{command}</pre></div>
+          </div>
+          <p className="muted small">{TOKEN_FALLBACK} Add the agent here instead: it gets its own token, never yours, and the setup for its client comes ready to paste.</p>
           {api && workspace ? (
             <AddAgent api={api} workspace={workspace} base={base} channelId={channelId} />
           ) : (
             <p className="muted">Sign in to add one.</p>
           )}
-          <p className="muted small">Claude Code can also sign in through your browser, with no token:</p>
-          <div className="snippet">
-            <div className="snippet-head"><span className="small">Terminal</span><Copy text={command} /></div>
-            <div className="snippet-scroll"><pre className="snippet-body">{command}</pre></div>
-          </div>
         </li>
         <li>
           <strong>{askAgentLine(channel)}</strong>
