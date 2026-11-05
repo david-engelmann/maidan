@@ -1,7 +1,7 @@
 name: deploy prod
 
 # maidan.world runs a release on Cloudflare Containers (deploy/cloudflare/,
-# wrangler.prod.jsonc; docs/Production.md "Hosted on Cloudflare"). Publishing a
+# wrangler.prod.jsonc; docs/Hosted Operations.md). Publishing a
 # GitHub Release deploys it; a dispatch deploys a named tag, to roll back or
 # forward. The image is the release's own, cosign-verified, never a build of
 # main. Before a deploy the prod database is snapshotted to a Neon branch; a

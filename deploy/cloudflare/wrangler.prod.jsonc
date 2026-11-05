@@ -1,5 +1,5 @@
 // maidan.world: the newest release, on Cloudflare Containers, against Neon and
-// R2. The runbook is docs/Production.md, "Hosted on Cloudflare".
+// R2. The runbook is docs/Hosted Operations.md.
 //
 // `image` names the release the deploy-prod workflow pins; it swaps in the
 // account-registry copy of ghcr.io/david-engelmann/maidan-server:<tag>.

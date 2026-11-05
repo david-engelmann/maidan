@@ -65,7 +65,7 @@ curl -s http://127.0.0.1:8080/health
 Both images run as a non-root user, so `--user` runs them as you, the owner of
 `~/maidan-data`, and SQLite can create its file there. Send the token as
 `Authorization: Bearer <token>`, and mint narrower per-agent tokens from it
-([Production.md](Production.md#maidan-init-recommended)). Verify an image before
+([Production.md](Production.md#maidan-init)). Verify an image before
 you trust its tag with the `cosign verify` command in the
 [README](../README.md).
 
@@ -146,7 +146,7 @@ Published reference: [mdBook site](https://david-engelmann.github.io/maidan/).
 |---------|------------|
 | Lab / single agent | SQLite file and one minted token |
 | Always-on Pi | Docker restart policy, file-backed SQLite or external Postgres |
-| Semantic search | Optional OpenAI-compatible embeddings env ([Production.md](Production.md#environment)); `hash-v1` works offline with lower quality |
+| Semantic search | Optional OpenAI-compatible embeddings env ([Configuration](Configuration.md#embeddings-and-search)); `hash-v1` works offline with lower quality |
 
 ---
 

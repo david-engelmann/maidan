@@ -22,8 +22,8 @@ specification (`kubectl describe pod`, `kubectl get pod -o yaml`) holds paths,
 never values. The server reads each file once at boot into its own process
 environment. The chart's own
 Secret is mounted with every key it renders. An `existingSecret` is mounted with
-the keys in `secretFiles.existingSecretKeys` (`DATABASE_URL` and
-`MAIDAN_CONTENT_KEK` by default), because the chart cannot read a Secret it did
+the keys in `secretFiles.existingSecretKeys` (`DATABASE_URL`,
+`MAIDAN_CONTENT_KEK` and `MAIDAN_SESSION_SECRET` by default), because the chart cannot read a Secret it did
 not render, so list every key yours holds. More Secrets go in
 `secretFiles.extra` as a name and its keys, and a key there replaces the same key
 in the chart's own Secret. A key a Secret lacks stops the pod before the server
@@ -41,9 +41,10 @@ rather than deploy something that only works on a laptop:
   `latest`. `values-prod.yaml` pins `ghcr.io/david-engelmann/maidan-server` at
   the newest release; `--set image.digest=sha256:…` pins it harder.
 - without `existingSecret`, `secrets.DATABASE_URL` must be set and must not be
-  the development default (`maidan:maidan@postgres`), and no `secrets` value may
-  be empty. `existingSecret` names a Secret you create holding
-  `DATABASE_URL`, `MAIDAN_CONTENT_KEK` and any other runtime secret, which keeps
+  the development default (`maidan:maidan@postgres`), no `secrets` value may
+  be empty, and `secrets.MAIDAN_SESSION_SECRET` must be set: with sign-in on,
+  the server refuses to boot without it. `existingSecret` names a Secret you create holding
+  `DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET` and any other runtime secret, which keeps
   them out of values files and the release history. Setting them inline instead:
   `--set secrets.DATABASE_URL=… --set contentKek=…`. With `extraEnvFrom` or
   `secretFiles.extra` set (more sources, whose keys win over the chart's own),

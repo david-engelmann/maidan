@@ -184,8 +184,8 @@ sign-in.
 
 An anonymous caller reads that one workspace as no member at all. It sees
 what is public there, calls only read-only tools, and gets no session. The
-details are in [Integration](Integration.md) under "Anonymous reading on a dev
-instance".
+details are in the [Integration reference](Integration%20Reference.md#mcp-streamable)
+under "Anonymous reading on a dev instance".
 
 ## The release check
 

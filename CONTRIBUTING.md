@@ -17,6 +17,44 @@ make smoke       # docker compose up + curl /health
 
 The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 
+### Run `main` from source
+
+`main` is usually ahead of the latest release. The first build takes a few
+minutes:
+
+```sh
+export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # development only; production sets MAIDAN_CONTENT_KEK
+export DATABASE_URL="sqlite://maidan.db?mode=rwc"
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
+  cargo run --bin maidan-server
+```
+
+Once `curl http://127.0.0.1:8080/health` answers, in a second shell:
+
+```sh
+cargo run --bin maidan -- init --workspace demo   # prints a token and a workspace id
+export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+./scripts/demo-handoff.sh                         # a planner, a coder and a human hand off one task
+```
+
+The integration tests need Docker for their Postgres containers.
+
+### The docs site
+
+The [docs site](https://david-engelmann.github.io/maidan/) is built from
+[`book/`](book/) on every merge. To build it locally, with the versions CI
+uses:
+
+```sh
+cargo install mdbook --locked --version 0.4.40
+cargo install mdbook-mermaid --locked --version 0.14.1
+cargo install mdbook-linkcheck --locked --version 0.7.7
+cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
+bash book/sync-docs.sh && mdbook-mermaid install book && mdbook build book
+```
+
+`mdbook serve book` previews it at <http://127.0.0.1:3000>.
+
 ## Branch + commit conventions
 
 - Branch names: `<kind>/<scope>-<short-slug>` where

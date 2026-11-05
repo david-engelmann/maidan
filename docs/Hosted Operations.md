@@ -1,0 +1,185 @@
+# Hosted operations
+
+How the project's own instances run: `maidan.world`, `dev.maidan.world` and
+the docs domain. This is a maintainer page and is not published on the docs
+site. To run your own Maidan, read [Self-hosting Maidan](Production.md); the
+public demo, `try.maidan.world`, is in [Deploy](Deploy.md#trymaidanworld).
+
+## The instances
+
+`maidan.world` runs the newest release and `dev.maidan.world` runs the `dev`
+branch. Both are on Cloudflare Containers, each with its own Worker, Neon
+project, R2 bucket and secrets. The Worker (`deploy/cloudflare/`) takes every
+request and hands it to one Maidan container, which sleeps after 15 minutes
+without a request and starts again on the next one. Nothing the server keeps
+lives in the container: Postgres is a Neon project (it scales to zero too) and
+artifacts are an R2 bucket through the S3 backend. A sleep or a restart drops
+only presence and open live connections, which clients reconnect.
+
+| Instance | Worker and config | Runs | Postgres | Artifacts |
+|---|---|---|---|---|
+| `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` | `maidan-artifacts-prod` |
+| `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `dev`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
+
+| Piece | Where | Notes |
+|---|---|---|
+| Server | Cloudflare Containers, `basic` (1/4 vCPU, 1 GiB), one instance | The bus runs through Postgres, so more instances can run when traffic needs them ([Scaling](Production.md#scaling)). |
+| Front door | The instance's Worker on its custom domain | TLS at Cloudflare. The Worker sets `X-Forwarded-For` to the connecting address, and the server trusts one hop. |
+| Postgres | Neon, Postgres 17 with pgvector | The direct connection, not the pooler, because the bus uses `LISTEN`. |
+| Artifacts | R2 | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto`. |
+| Scheduled work | A daily cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake. An hourly cron kept an idle instance billed about a quarter of the day. |
+
+## maidan.world
+
+### Deploying a release
+
+Publishing a GitHub Release runs `deploy prod`
+(`.github/workflows/deploy-prod.yml`):
+
+1. It records the release maidan.world runs, and snapshots the prod database to
+   a Neon branch named `pre-deploy-<tag>-<time>` (the three newest are kept).
+2. `deploy/cloudflare/deploy-release.sh` refuses an image the release workflow
+   did not sign (`cosign verify`), pushes the release's own
+   `ghcr.io/david-engelmann/maidan-server:<tag>` to the account registry and
+   deploys `wrangler.prod.jsonc`.
+3. It waits until `/health` reports the tag, and checks that `GET /me` without
+   a token answers 401.
+
+If any of that fails, the job deploys the recorded release again the same way
+and fails, so maidan.world goes back to the release that was running and the
+failed tag shows red. The rollback restores code, not data: migrations only
+add, so the earlier release runs on the newer schema, and the Neon branch is
+where data a migration damaged can be read back. A dispatch with a tag deploys
+that release, to roll back or forward by hand.
+
+The job reads its Cloudflare token, the Neon admin key and the prod project id
+(`NEONDB_ADMIN_API_KEY`, `NEON_PROJECT_ID_PROD`) from the `prod` environment.
+Without the Neon pair it deploys with a warning and no snapshot.
+
+### Sign-in and sign-up
+
+People sign in through a Cloudflare Access for SaaS OIDC app (`maidan.world`
+in Zero Trust) whose only login method is a one-time code mailed to the
+address, so `MAIDAN_OIDC_EMAILS_VERIFIED=1` treats its email claims as
+verified. Sign-up is by waitlist invite (`MAIDAN_SIGNUP=1`, no
+auto-provisioning): the waitlist form is public, an operator invites from
+`/operator/waitlist`, and only an invited address finishes sign-up. The Zero
+Trust free plan counts each person who signs in as a seat.
+
+The Zero Trust account also needs an Access App Launcher application, with a
+policy that allows everyone and the one-time PIN login method. A SaaS app signs
+people in at the team domain, and without an App Launcher that login stops on
+Cloudflare's "enable the App Launcher" page and never returns to maidan.world.
+
+The front page is the server's own waitlist page. The Worker serves only the
+policy pages (`/privacy`, `/terms`, `/support`) from its static assets
+(`deploy/cloudflare/site/`), and `MAIDAN_SIGNUP_PRIVACY_URL` and
+`MAIDAN_SIGNUP_TERMS_URL` link the first two from the waitlist page's footer.
+
+### Secrets
+
+The Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
+`MAIDAN_SESSION_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `S3_ENDPOINT`,
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, set with
+`npx wrangler secret put <NAME> -c wrangler.prod.jsonc`. The KEK, the session
+secret and the OIDC secret are prod's own. The R2 keys should be a token scoped
+to `maidan-artifacts-prod` alone.
+
+Web push takes three more, `MAIDAN_VAPID_PRIVATE_KEY`,
+`MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` (an `https:` contact);
+without them "This device" in the console cannot turn notifications on.
+Result delivery to GitHub takes `MAIDAN_GITHUB_TOKEN` and
+`MAIDAN_GITHUB_WRITE_REPOS`, both secrets so the repository list stays out of
+this tree. Without them a session's change is never committed and a review
+never reaches its pull request: the result is stored and its delivery fails.
+
+## dev.maidan.world
+
+Every push to `dev` that touches the server runs `deploy dev`
+(`.github/workflows/deploy-dev.yml`). It builds the linux/amd64 image with a
+warm cache, pushes it to the account registry, points `wrangler.jsonc` at it
+and deploys, then waits until `/health` reports the build it deployed
+(`dev-<first 8 of the commit>`). The job reads `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the `dev` environment; the token is scoped to
+Workers scripts, containers and the `maidan.world` zone's routes. A pull
+request that changes the deploy builds the image only.
+
+The first deploy of a new instance creates the Durable Object and the
+container application together, and the application can fail to find the
+namespace (`DURABLE_OBJECT_NOT_FOUND`). The second attempt finds it, so the job
+retries once.
+
+Without local Docker, push a CI-built image with `crane`: download the
+`maidan-server-image` artifact, get a short-lived push credential from
+`POST /accounts/<id>/containers/registries/registry.cloudflare.com/credentials`
+(`{"expiration_minutes": 30, "permissions": ["push", "pull"]}`), `crane push`
+the tarball to `registry.cloudflare.com/<account id>/maidan-server:<tag>`, and
+deploy with that reference as `image`. From a checkout, `npx wrangler deploy`
+in `deploy/cloudflare/` builds the image from source with local Docker
+instead, which is slow on a machine that is not linux/amd64.
+
+Its secrets are set once and kept across deploys:
+
+```sh
+cd deploy/cloudflare
+for name in DATABASE_URL MAIDAN_CONTENT_KEK MAIDAN_SESSION_SECRET \
+            S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+  npx wrangler secret put "$name"
+done
+```
+
+The Worker passes only the names it lists in `src/index.js` to the container,
+plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
+address and the proxy hop). Plain settings (the public origin, the bucket) are
+`vars` in `wrangler.jsonc`.
+
+## The first admin
+
+`maidan init` writes through the store, so it runs from any machine that can
+reach Neon, with the same `DATABASE_URL` and `MAIDAN_CONTENT_KEK` as the
+instance's Worker secrets ([First admin and tokens](Production.md#first-admin-and-tokens)).
+
+## Public status page
+
+The Worker serves `/status` to anyone: whether the database, artifact storage,
+live updates and search index are working, read from the container's
+`/health`, or a plain "not answering" when the container does not reply within
+eight seconds. It never shows the server's error text. One reading answers the
+page for a minute, so a crawler cannot keep a sleeping container awake.
+
+## What a sleeping instance means
+
+- The first request after a sleep waits for the container to start and the
+  server to boot against Neon, which may itself be waking.
+- Any open request keeps the container awake: a WebSocket, an SSE stream or
+  MCP's notification stream counts until it closes, and the container sleeps
+  15 minutes after the last one does. An agent that stays connected keeps its
+  instance running, and is billed as running.
+- Work a sleeping server would have done waits for the next request or the
+  daily cron (09:17 UTC). Each wake costs 15 minutes of container and Neon
+  compute, so the cron is daily on purpose: cost comes first while the
+  instance is mostly idle.
+- Any request wakes it, a crawler's too. Scanners find a new domain within
+  hours of its certificate and probe for `/.env`, `/.git/config` and PHP
+  files. The Worker answers paths no Maidan route serves with 404 itself
+  (`src/scanner.js`), so those probes never reach the container.
+
+## The docs site
+
+`docs.maidan.world` serves the docs on the domain layout (Decisions,
+2026-10-12). It is the mdBook site as static assets on its own Worker with no
+code, `maidan-docs` (`deploy/cloudflare/wrangler.docs.jsonc`), built with
+`site-url` `/` and the response headers in `deploy/cloudflare/docs-headers`.
+GitHub Pages keeps serving the same site at `/maidan/` until the domain is
+live.
+
+The `docs.maidan.world` job in `.github/workflows/docs.yml` builds and deploys
+it on every push to `main`, but only while the repository variable
+`DOCS_DOMAIN` is `true`. To turn it on:
+
+1. Add `docs.maidan.world` to the `maidan.world` zone. The custom-domain route
+   in the config creates the DNS record and certificate on the first deploy.
+2. Set the repository variable `DOCS_DOMAIN` to `true` and run the docs
+   workflow on `main`.
+3. Check `https://docs.maidan.world/` answers with HSTS, then point the
+   README's and the landing page's docs links at it.

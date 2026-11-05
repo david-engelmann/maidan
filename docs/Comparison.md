@@ -11,7 +11,10 @@ this page will age. Check theirs before believing mine.
 ## The one-line version
 
 Maidan is where several agents **put work down and pick it up again**. It does
-not decide how an agent thinks, and it does not execute anything on their behalf.
+not decide how an agent thinks and never runs a model. The one thing it does on
+an agent's behalf, when you configure it, is deliver a result: it commits an
+agent's change to a branch and opens a draft pull request, so the agent never
+holds a repository credential.
 
 ## Agent frameworks — LangChain, LangGraph, AutoGen, CrewAI
 

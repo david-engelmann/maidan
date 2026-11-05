@@ -81,11 +81,16 @@ helm template maidan "${chart}" -f "${chart}/values-ci.yaml" --set contentKek="$
 # A production render needs real credentials: a database URL that is not the
 # chart's development default, or an existing Secret.
 db="postgres://maidan:smoke-password@db.internal:5432/maidan"
+ss="smoke-session-secret-0123456789abcdef"
 prod=(maidan "${chart}" -f "${chart}/values-prod.yaml")
-helm template "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}" >/dev/null
+helm template "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 helm template "${prod[@]}" --set existingSecret=maidan-secrets >/dev/null
+# Sign-in needs a session secret, so a production render without one refuses
+# rather than ship a pod that never boots.
+refuses "a production install needs MAIDAN_SESSION_SECRET" \
+  "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}"
 helm template "${prod[@]}" -f "${chart}/values-cert-manager.yaml" \
-  --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}" >/dev/null
+  --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 # A production render names a release image, never the local development one.
 refuses "maidan-server, the local development image" \
   maidan "${chart}" -f "${chart}/values-cert-manager.yaml" --set existingSecret=maidan-secrets
@@ -126,13 +131,13 @@ helm template "${prod[@]}" \
   -f "${chart}/values-cert-manager.yaml" \
   -f "${chart}/values-profile-otel.yaml" \
   -f "${chart}/values-profile-redis.yaml" \
-  --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}" >/dev/null
+  --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 refuses "secrets.S3_ACCESS_KEY_ID still holds the placeholder CHANGE_ME" \
   "${prod[@]}" -f "${chart}/values-profile-s3.yaml" \
-  --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}"
+  --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}"
 helm template "${prod[@]}" -f "${chart}/values-profile-s3.yaml" \
   --set secrets.DATABASE_URL="${db}" --set secrets.S3_ACCESS_KEY_ID=smoke \
-  --set secrets.S3_SECRET_ACCESS_KEY=smoke --set contentKek="${kek}" >/dev/null
+  --set secrets.S3_SECRET_ACCESS_KEY=smoke --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 if [[ -f "${stack}/Chart.lock" ]]; then
   # has <rendered> <fixed text, lines included> <why>: the render contains it.
   has() {

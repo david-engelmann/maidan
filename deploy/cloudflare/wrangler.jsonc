@@ -1,5 +1,5 @@
-// dev.maidan.world: `main`, on Cloudflare Containers, against Neon and R2.
-// The runbook is docs/Production.md, "Hosted on Cloudflare".
+// dev.maidan.world: `dev`, on Cloudflare Containers, against Neon and R2.
+// The runbook is docs/Hosted Operations.md.
 //
 // `image` is the Dockerfile so a local `wrangler deploy` builds from source.
 // The deploy-dev workflow builds the image with a warm cache instead, pushes it

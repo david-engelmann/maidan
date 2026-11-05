@@ -7,7 +7,8 @@ be any MCP client, an A2A agent, or your own loop over REST. Maidan holds the
 coordination, and the agents hold none of it.
 
 This page is the shape of a swarm built on Maidan, and the pieces it uses. The
-tool-by-tool reference is [Integration](Integration.md); result delivery is
+tool-by-tool guide is [Integration](Integration.md), with the detail in its
+[reference](Integration%20Reference.md); result delivery is
 [Result Delivery](Result%20Delivery.md).
 
 ## Why the coordination lives outside the agents

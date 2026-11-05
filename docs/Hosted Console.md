@@ -164,7 +164,7 @@ operator out of band, as today.
   caller already holds them, so a tenant admin can never become an instance
   operator.
 - **Where it runs:** the route is on the production image.
-- **Docs:** [Production](Production.md), "A second workspace".
+- **Docs:** [Production](Production.md), "More workspaces and agents".
 
 It is the authorization change the hosted console needs, not the console:
 - the operator calls it with a bearer;

@@ -143,8 +143,8 @@ change an example or the surface it calls. Owner: the maintainer.
 | `lease_demo/` (`scripts/lease-demo.sh`) | 2026-09-25 | `main` @ `111e24ae` | Two distinct fenced claims; both workers acknowledged, reported usage, renewed and released | Python 3.12, Node 23; in-repo SDKs |
 | `rest_maidan.py --seed` | 2026-09-25 | `main` @ `111e24ae` | Seeded a channel and thread in the token's workspace, read context, posted a reply | httpx 0.28.1 |
 | `a2a_interop.py` | 2026-09-28 | `main` @ `bf19d30b` + the A2A TCK change, auth on | All checks passed (also run by `scripts/a2a-tck.sh`) | httpx 0.28.1 |
-| `langchain_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
-| `autogen_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | autogen-ext 0.6.4, mcp 1.30.0 |
+| `langchain_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
+| `autogen_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present | autogen-ext 0.6.4, mcp 1.30.0 |
 | `recipes/coding-agent.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Claimed the filed task once, attached the stand-in's patch, result `done`, thread `in_review`; with a shell `AGENT_COMMAND`, exit 0 recorded `done` and exit 3 `failed`, each with its output attached | Docker Compose 5.1.3, `python:3.13-slim` |
 | `recipes/deploy.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Opened a gate on the thread and waited; the agent's own token was refused (403) answering it; `approve` deployed, `approve --decline` recorded `not_deployed`; lease held across a multi-minute wait | Docker Compose 5.1.3, `python:3.13-slim` |
 | `goose/maidan-waiter.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | Not run inside Goose (needs an LLM provider). The recipe's eight steps were replayed as MCP calls with an app token holding exactly its three capabilities: all ten tools it names are visible, the gate held until accepted, and the thread ended `in_review` and unclaimable | recipe schema per Goose's recipe reference, 2026-09 |
@@ -165,4 +165,4 @@ clean run. Once it says `wiring ok`, pass `tools` to your agent.
 
 Pin `mcp < 2`: the 2.x SDK is not yet compatible with the current LangChain/AutoGen MCP
 adapters. Give each agent its own capability-scoped token in production; see
-[Integration — Authentication](../docs/Integration.md#3-give-each-agent-its-own-identity-and-token).
+[Integration — Get a token](../docs/Integration.md#get-a-token).

@@ -7,7 +7,7 @@ module, and what the module writes to stdout becomes the command's response.
 **The guest is the tool, not an agent.** It gets one invocation, no network, no
 filesystem, a fuel budget and a memory cap, and then it exits. If you want
 something that holds a conversation, claims threads and calls back in, that is
-an agent over [MCP](Integration.md#transports) — not this.
+an agent over [MCP](Integration%20Reference.md#transports) — not this.
 
 Use a WASI handler when the work is a pure function of its inputs: format a
 table, validate a spec, compute a diff, render a checklist. Use an `http`
