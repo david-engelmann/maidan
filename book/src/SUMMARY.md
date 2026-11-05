@@ -16,12 +16,10 @@
 
 # Reference
 
-- [Release stream](docs/Capabilities.md)
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](docs/Production.md)
 - [Benchmark](docs/Benchmark.md)
-- [Scale gate (maidan-scale-1.0)](docs/Gates/maidan-scale-1.0.md)
 - [Embeddings & semantic search](docs/Embeddings.md)
 - [Deploy](docs/Deploy.md)
 - [WASI slash handlers](docs/WASI-Handlers.md)
@@ -31,23 +29,7 @@
 - [FAQ](docs/FAQ.md)
 - [How Maidan relates to other things](docs/Comparison.md)
 
-# Design (maintainers)
+# Design
 
 - [Architecture](docs/Architecture.md)
-- [Architecture history](docs/Architecture-history.md)
 - [Claims & evidence](docs/Claims.md)
-- [Decisions](docs/Decisions.md)
-- [Conventions](docs/Conventions.md)
-- [Operations](docs/Operations.md)
-- [Kani proofs](docs/Kani.md)
-- [Dependencies](docs/Dependencies.md)
-- [Open Work](docs/Open-Work.md)
-- [Roadmap](docs/Roadmap.md)
-- [OAuth authorization server plan](docs/OAuth.md)
-- [Hosted console (design)](docs/Hosted-Console.md)
-
-# Historical (optional)
-
-- [Vault index](docs/README.md)
-- [Cluster plans](docs/Clusters/Cluster-A.md) — see `docs/Clusters/` in the repo
-- [Retrospectives](docs/Retros/README.md)
