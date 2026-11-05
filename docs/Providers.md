@@ -60,7 +60,7 @@ Two rules hold on every host:
 
 | Host | `DATABASE_URL` | Status |
 |------|----------------|--------|
-| **Neon** | The **direct** endpoint, the host without `-pooler`: `postgres://<role>:<password>@ep-<id>.<region>.aws.neon.tech/<db>?sslmode=require` | Runs in production: `dev.maidan.world` is on a Neon Postgres 17 project, direct connection ([Production](Production.md), "Hosted on Cloudflare"). A Neon compute that scales to zero adds a cold start to the first query after it sleeps. |
+| **Neon** | The **direct** endpoint, the host without `-pooler`: `postgres://<role>:<password>@ep-<id>.<region>.aws.neon.tech/<db>?sslmode=require` | Runs in production: `dev.maidan.world` is on a Neon Postgres 17 project, direct connection ([Hosted Operations](Hosted%20Operations.md)). A Neon compute that scales to zero adds a cold start to the first query after it sleeps. |
 | **Amazon RDS / Aurora PostgreSQL** | `postgres://<master user>:<password>@<instance>.<id>.<region>.rds.amazonaws.com:5432/<db>?sslmode=require` | Written, not run against an RDS instance. Check that the engine version offers pgvector (`SELECT name FROM pg_available_extensions WHERE name = 'vector'`). The master user holds `rds_superuser`, which can create the three extensions. Connect to the instance or cluster endpoint, not RDS Proxy, which shares connections between clients. |
 | **Supabase** | The direct connection, `postgres://postgres:<password>@db.<ref>.supabase.co:5432/postgres?sslmode=require`, or the session pooler on port **5432** of the pooler host | Written, not run against a Supabase project. The direct host answers over IPv6 only unless the project has the IPv4 add-on; from an IPv4-only network use the session pooler. Never port 6543 (transaction mode). |
 
@@ -165,7 +165,7 @@ alone is not enough. Both keys also take a `_FILE` form.
 ### Recipe: Cloudflare R2
 
 Runs in production: `dev.maidan.world` keeps its artifacts in an R2 bucket
-([Production](Production.md), "Hosted on Cloudflare").
+([Hosted Operations](Hosted%20Operations.md)).
 
 1. Create the bucket, then an R2 API token with **Object Read & Write** on that
    bucket only. R2 shows the token's access key id and secret once.

@@ -53,6 +53,8 @@ const SCANNED: &[&str] = &[
     "CLAUDE.md",
     "CONTRIBUTING.md",
     "docs/Production.md",
+    "docs/Configuration.md",
+    "docs/Hosted Operations.md",
     "docs/Deploy.md",
     "docs/Integration.md",
     "docs/Embeddings.md",

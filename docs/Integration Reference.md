@@ -7,7 +7,8 @@ you need the exact rule for one surface.
 The machine-readable contracts are `GET /openapi.json` on your server and the
 generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html).
 Where another page owns a topic, this one links to it: deployment and
-environment variables are in [Production](Production.md), running many agents
+environment variables are in [Self-hosting](Production.md) and the
+[Configuration reference](Configuration.md), running many agents
 on one repository is in [Running an agent swarm](Swarms.md), and where results
 go after a task is in [Result Delivery](Result%20Delivery.md).
 
@@ -465,7 +466,7 @@ People can also be provisioned from the IdP over SCIM 2.0 at `/scim/v2/`
 (`Users` and `Groups`, with a `token:admin` bearer confined to its workspace).
 A SCIM `userName` is the member handle, and changing it renames the member
 without changing its id. Groups record the IdP's membership and grant nothing.
-[Production](Production.md) lists the supported operations and the Okta and
+[Production](Production.md#scim-provisioning) lists the supported operations and the Okta and
 Entra ID request shapes.
 
 A browser with no working credential opens on a first-run card: API base,
@@ -1911,7 +1912,7 @@ other, so acknowledge first and do slow work afterwards. The JSON body also carr
 Each POST stamps `Maidan-Room-LSN` with the subscribing workspace's event-log
 high-water (decimal; not a WAL token), never the instance's, so a receiver
 learns nothing about other tenants' volume. Slack/GitHub API egress is not stamped.
-Worker polls the outbox; see [Production.md](Production.md) for env tuning.
+Worker polls the outbox; see [Configuration](Configuration.md#background-workers) for env tuning.
 
 #### Mention webhook (dedicated route)
 
@@ -1996,7 +1997,7 @@ GET /workspaces/{workspace_id}/search?q=hello&mode=lexical
 Authorization: Bearer {token}
 ```
 
-Requires `search:query`. Semantic mode needs embedding provider configuration ([Production.md](Production.md#environment)).
+Requires `search:query`. Semantic mode needs embedding provider configuration ([Configuration](Configuration.md#embeddings-and-search)).
 
 #### Thread-result `result_kind` facet
 
