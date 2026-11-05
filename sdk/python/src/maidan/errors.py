@@ -156,6 +156,13 @@ class UnknownProblemError(MaidanError):
     """A problem ``type`` this client does not know, or a body that is not a problem."""
 
 
+class UnreadableResponseError(MaidanError):
+    """A 2xx answer this client cannot read: cut short, not JSON, or missing
+    what its model needs (a claim without a string ``id`` and
+    ``claim_lease_id``). ``status`` is the answer's. Whether the server acted
+    on the request is known only from the status; on a write it did."""
+
+
 PROBLEM_TYPES: Dict[str, Type[MaidanError]] = {
     f"{PROBLEM_BASE}not-found": NotFoundError,
     f"{PROBLEM_BASE}method-not-allowed": MethodNotAllowedError,

@@ -12,6 +12,9 @@ token_env = "MAIDAN_TOKEN"   # the seat token is read from this variable, never 
 # Other variables that must never reach the repository's preflight commands.
 secret_env = []
 lease_secs = 3600            # also bounds how long a crashed runner's claim stays held
+timeout_secs = 60            # give up on a request after this long without an answer
+claim_attempts = 3           # tries for claim-next and acknowledge, under one Idempotency-Key
+claim_backoff_secs = 2       # doubled after each try, unless the server sends Retry-After
 release_attempts = 4         # tries for a release the server did not answer
 release_backoff_secs = 2     # doubled after each try
 

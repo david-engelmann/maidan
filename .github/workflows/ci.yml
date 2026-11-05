@@ -178,6 +178,11 @@ jobs:
         run: python3 scripts/gen-hol-guard.py --check
       - name: listing example prompts name real tools
         run: python3 scripts/listing-prompts.py --check
+      - name: claimants under MCP faults (seat runner, Python SDK, OpenRouter claimant)
+        # Standard library only, about a minute, and in this job so every PR
+        # runs it, not only a batch: the claim loops are where a lost answer
+        # turns into a double claim.
+        run: python3 scripts/test-mcp-fault-injection.py
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
       - name: links name only domains Maidan owns
