@@ -1,8 +1,0 @@
-### A first-time console visitor is never stranded
-
-- **Added:** an empty board shows a dismissible "Connect your first agent" guide: Claude Code over OAuth with the console's own MCP URL, then a scoped token per agent, then the first task. Putting it away is remembered per workspace in this browser.
-- **Added:** a Support link in the rail and the phone's More menu, shown only when the origin serves `/support` (one `HEAD` probe), so a self-hosted server never links a 404.
-- **Changed:** the sign-in card's sign-up button reads "Have an invite? Create your workspace", with a waitlist link beside it, since discovery does not say whether sign-up is open. Its no-token line points to Tools, then Connect, where a session can mint the first admin token, instead of People, where it cannot.
-- **Changed:** Tools lists the Operator tab, and shows the Peers panels, only to a credential holding `operator:global`, `audit:read-global` or `federation:admin`. A workspace's own search reindex moves to Tools, then Workspace, for any `workspace:write` holder. App installations shows only when the workspace has one.
-- **Changed:** error wording a hosted customer could not act on: a 5xx says to contact the workspace admin or support instead of reading the server log; a 409 says someone changed it first; a `token:admin` refusal points to Tools, then Connect, not `maidan init`; no message names the "Change" control the console no longer has; a refused first-admin mint says why in plain words.
-- **Fixed:** the Claude Code token snippet exports `MAIDAN_TOKEN` before using it, and a second snippet adds Maidan with no token at all.
