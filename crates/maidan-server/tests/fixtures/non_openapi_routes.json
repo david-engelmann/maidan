@@ -32,6 +32,7 @@
     "/metrics",
     "/oauth/app/token",
     "/openapi.json",
+    "/sandbox",
     "/scim/v2/Groups",
     "/scim/v2/Groups/{id}",
     "/scim/v2/ServiceProviderConfig",

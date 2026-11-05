@@ -31,6 +31,8 @@ const MAX_TOKEN_CHARS: usize = 2048;
 pub enum Action {
     Waitlist,
     Signup,
+    /// Starting a demo sandbox ([`crate::sandbox`]).
+    Sandbox,
 }
 
 impl Action {
@@ -38,6 +40,7 @@ impl Action {
         match self {
             Action::Waitlist => "waitlist",
             Action::Signup => "signup",
+            Action::Sandbox => "sandbox",
         }
     }
 }

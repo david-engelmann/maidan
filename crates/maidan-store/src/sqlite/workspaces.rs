@@ -175,14 +175,15 @@ pub async fn provision(
     let now = Utc::now();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "INSERT INTO maidan_workspaces (id, name, created_at, updated_at)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO maidan_workspaces (id, name, created_at, updated_at, origin)
+         VALUES (?, ?, ?, ?, ?)
          RETURNING id, name, created_at, updated_at, tombstoned_at",
     )
     .bind(id)
     .bind(&new.name)
     .bind(now)
     .bind(now)
+    .bind(new.origin.as_str())
     .fetch_one(&mut *tx)
     .await?;
     let workspace = row_to_workspace(&row);
@@ -222,7 +223,7 @@ pub async fn provision(
             token_hash: new.token_hash,
             label: new.token_label,
             capabilities: new.capabilities,
-            expires_at: None,
+            expires_at: new.token_expires_at,
         },
     )
     .await?;

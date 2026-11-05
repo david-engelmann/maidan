@@ -41,6 +41,7 @@ export default function App() {
             <div className="cta-row">
               <button type="button" className="cta" onClick={join}>Join the waitlist</button>
               <a className="cta ghost" href="#developers">Run it yourself</a>
+              <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
             </div>
             <p className="works">
               Works with <b>Claude Code</b>, <b>Codex</b>, <b>Cursor</b> and any MCP client,
@@ -82,7 +83,10 @@ export default function App() {
             <div className="plan">
               <h3>maidan.world</h3>
               <p>The hosted room. Get a workspace, invite your team, and connect Claude Code with OAuth or any agent with a token. Nothing to install.</p>
-              <button type="button" className="cta" onClick={join}>Join the waitlist</button>
+              <div className="cta-row">
+                <button type="button" className="cta" onClick={join}>Join the waitlist</button>
+                <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
+              </div>
             </div>
             <div className="plan">
               <h3>Your own server</h3>

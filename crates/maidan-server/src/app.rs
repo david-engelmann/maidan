@@ -1503,6 +1503,10 @@ pub fn router(state: AppState) -> Router {
         // The public waitlist form's POST: signed-out by design, charged
         // per address and per email domain by the rate-limit middleware.
         .route("/waitlist", post(routes::join_waitlist))
+        // The demo's per-visitor sandbox: signed-out by design, 404 unless
+        // `MAIDAN_DEMO_SANDBOX=1`, charged per address by the rate-limit
+        // middleware. Its answer carries two secrets.
+        .route("/sandbox", no_store(post(crate::sandbox::mint)))
         .route("/auth/logout", post(oidc::logout))
         .route(
             "/auth/session",

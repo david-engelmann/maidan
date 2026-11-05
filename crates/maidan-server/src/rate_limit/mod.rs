@@ -150,6 +150,18 @@ const SIGNUP_IP: LimitSpec = LimitSpec {
     },
 };
 
+/// Per-address limit for the demo's sandbox mint (`POST /sandbox`): 3 /
+/// 3600 s. Each call makes a workspace, so the bucket is tight, and it
+/// applies whenever the mint is on, with or without the other defaults.
+const SANDBOX_IP: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 3,
+        window: Duration::from_secs(3600),
+    },
+};
+
 /// Per-email-domain limit for the waitlist form alone: 100 / 3600 s. One
 /// address can rotate local parts all day; the domain bucket is what keeps
 /// a single domain's flood from filling the list, while a large provider's
@@ -654,12 +666,18 @@ pub async fn middleware(
     let signup_ip_cfg = resolve_signup_ip(state.rate_limit_default_on);
     let waitlist_domain_cfg = resolve_waitlist_domain(state.rate_limit_default_on);
     let signup = signup_surface(req.uri().path());
+    let sandbox_cfg = if state.sandbox.is_some() && req.uri().path() == "/sandbox" {
+        resolve_env(&SANDBOX_IP, true)
+    } else {
+        None
+    };
     if (global.is_none()
         && !workspace_on
         && oauth_client_cfg.is_none()
         && oauth_ip_cfg.is_none()
         && signup_ip_cfg.is_none()
-        && waitlist_domain_cfg.is_none())
+        && waitlist_domain_cfg.is_none()
+        && sandbox_cfg.is_none())
         || exempt_path(req.uri().path())
     {
         return next.run(req).await;
@@ -739,6 +757,12 @@ pub async fn middleware(
                     return too_many(cfg.window, cfg.max, false);
                 }
             }
+        }
+    }
+    if let Some(cfg) = sandbox_cfg {
+        let key = format!("sandbox:{}", ip_client_key(&req));
+        if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+            return too_many(cfg.window, cfg.max, false);
         }
     }
     if signup {

@@ -54,6 +54,11 @@ pub struct NewProvisionedTenant {
     pub token_hash: String,
     pub token_label: Option<String>,
     pub capabilities: Vec<String>,
+    /// When the admin token stops working; `None` never.
+    pub token_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// How the workspace came to be. An `Open` one is cut off at the free
+    /// allowance (docs/Operations.md, "The hard cutoff").
+    pub origin: maidan_types::WorkspaceOrigin,
 }
 
 /// What [`WorkspaceStore::provision_workspace`] committed.

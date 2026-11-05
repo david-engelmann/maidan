@@ -167,6 +167,7 @@
   {"method":"PUT","path":"/operator/workspaces/{id}/suspension","kind":"changes"},
   {"method":"GET","path":"/references","kind":"reads"},
   {"method":"POST","path":"/references","kind":"changes"},
+  {"method":"POST","path":"/sandbox","kind":"changes"},
   {"method":"GET","path":"/scim/v2/Groups","kind":"reads"},
   {"method":"POST","path":"/scim/v2/Groups","kind":"changes"},
   {"method":"DELETE","path":"/scim/v2/Groups/{id}","kind":"changes"},

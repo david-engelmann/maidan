@@ -1,12 +1,14 @@
-// The Worker for try.maidan.world, the public demo directory reviewers
-// connect to. The runbook is docs/Deploy.md "try.maidan.world"; the
-// deploy-demo workflow deploys it.
+// The Worker for try.maidan.world, the public demo: a stranger starts a
+// sandbox of their own on the "try" page and connects an agent to it. The
+// runbook is docs/Deploy.md "try.maidan.world"; the deploy-demo workflow
+// deploys it.
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
 import { withSecurityHeaders } from "./edge.js";
 import { DEMO_PUBLIC_ORIGIN_VAR, demoEnv } from "./demo-env.js";
 import { tooLarge } from "./demo-config.js";
+import { handleTry } from "./try-page.js";
 
 export class MaidanDemo extends Container {
   defaultPort = 8080;
@@ -41,6 +43,10 @@ export default {
     if (tooLarge(request)) {
       return withSecurityHeaders(new Response("request too large for the demo\n", { status: 413 }));
     }
+    // The try page and its files never wake the container; a sandbox mint
+    // whose human check fails never reaches it.
+    const own = await handleTry(request, env);
+    if (own) return withSecurityHeaders(own);
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
@@ -49,8 +55,8 @@ export default {
     );
   },
 
-  // The reset: destroy the container and its SQLite file. The next request
-  // boots a fresh one, whose entrypoint reseeds from scripts/demo-board.sh.
+  // The reset: destroy the container and its SQLite file, and with it every
+  // sandbox. The next request boots a fresh, empty one.
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(getContainer(env.MAIDAN_DEMO).reset());
   },
