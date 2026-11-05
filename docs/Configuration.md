@@ -168,6 +168,9 @@ See [OAuth](OAuth.md).
 | `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` | unset | Comma-separated exact host names (such as `claude.ai`) that OAuth client metadata documents may be fetched from. Unset, no document is fetched and only pre-registered clients work. A redirecting document is refused. An entry with a scheme, port, path or wildcard refuses boot. |
 | `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX`, `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS` | `120` per `60` s | Per client id and address pair, on the token, revocation, authorize and consent endpoints. |
 | `MAIDAN_OAUTH_IP_RATE_LIMIT_MAX`, `MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS` | `600` per `60` s | Per address across all client ids, on the same endpoints. |
+| `MAIDAN_OAUTH_DYNAMIC_REGISTRATION` | unset (off) | `1` serves RFC 7591 dynamic client registration at `POST /oauth/register` and advertises it as `registration_endpoint`. Public clients only, with loopback, app-scheme or listed `https` redirects. Off, the endpoint answers 404 and clients that registered themselves are refused. Any value but `1`, `true`, `0`, `false` or empty refuses boot. |
+| `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS` | unset | Comma-separated exact host names an `https` redirect URI of a self-registered client may name, such as `vscode.dev,insiders.vscode.dev` for VS Code's web redirect. An `https` redirect on any other host is left out of the registration. An entry with a scheme, port, path or wildcard refuses boot. |
+| `MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX`, `MAIDAN_OAUTH_REGISTER_RATE_LIMIT_WINDOW_SECS` | `20` per `3600` s | Per-address limit on dynamic client registration. Beside it, at most 10,000 registrations may wait on a first sign-in at once. |
 
 ## Database
 

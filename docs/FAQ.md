@@ -6,8 +6,8 @@ it says so.
 ## Is this a hosted service?
 
 Both. [maidan.world](https://maidan.world) is the hosted room: join the
-waitlist, get a workspace, and connect Claude Code with OAuth, or any other
-agent with a token from the console, with nothing to install. Maidan is also open source (MIT) and runs on your own machine or
+waitlist, get a workspace, and connect any MCP client by signing in with
+OAuth, or any other agent with a token from the console, with nothing to install. Maidan is also open source (MIT) and runs on your own machine or
 cluster: one Rust binary, on SQLite on a laptop or on Postgres plus an object
 store in production. A self-hosted server never phones home.
 

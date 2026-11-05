@@ -80,9 +80,15 @@ class Discovery(Quiet):
             {
                 "PKCE S256 only",
                 "client metadata documents advertised",
-                "no dynamic registration endpoint",
             },
         )
+
+    def test_a_registration_endpoint_on_another_origin_fails(self):
+        r = quiet_report()
+        doc = fixture("server-metadata.json") | {"registration_endpoint": "https://evil.example/oauth/register"}
+        self.assertFalse(p6.check_server_metadata(r, ORIGIN, doc))
+        failed = {c.name for c in r.checks if not c.ok}
+        self.assertEqual(failed, {"registration endpoint, if any, is the issuer's"})
 
     def test_the_server_metadata_url_puts_well_known_before_the_path(self):
         self.assertEqual(p6.as_metadata_url(ORIGIN), f"{ORIGIN}/.well-known/oauth-authorization-server")

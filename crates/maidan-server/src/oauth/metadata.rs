@@ -130,15 +130,20 @@ pub async fn oauth_protected_resource(
 /// RFC 8414 authorization-server metadata.
 ///
 /// Only the grants, response type and challenge method the server implements
-/// are listed. There is no `registration_endpoint` because clients are
-/// pre-registered or carry a client metadata document, never registered
-/// dynamically.
+/// are listed. `registration_endpoint` is named only while the instance
+/// serves RFC 7591 dynamic client registration
+/// (`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`).
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AuthorizationServerMetadata {
     issuer: String,
     authorization_endpoint: String,
     token_endpoint: String,
     revocation_endpoint: String,
+    /// `POST /oauth/register` (RFC 7591), when registration is on. A client
+    /// with no pre-registration and no client metadata document the
+    /// instance fetches registers here; without it, such a client stops.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    registration_endpoint: Option<String>,
     response_types_supported: Vec<String>,
     /// Named because an omitted list means `query` and `fragment`, and the
     /// authorization response is only ever a query string.
@@ -154,21 +159,24 @@ pub struct AuthorizationServerMetadata {
     code_challenge_methods_supported: Vec<String>,
     /// A client may name itself by the HTTPS URL of its metadata document
     /// (draft-ietf-oauth-client-id-metadata-document), which `registry`
-    /// resolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. Without this flag
-    /// a client such as claude.ai assumes it must register dynamically,
-    /// which this server never offers, and stops.
+    /// resolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. A
+    /// client that sees this flag uses its document and never falls back to
+    /// registering, so every such client's host must be listed (claude.ai,
+    /// chatgpt.com, zed.dev, vscode.dev on maidan.world).
     client_id_metadata_document_supported: bool,
     /// Responses carry the RFC 9207 `iss` parameter (`issuer_param`), and a
     /// client that does not see this flag may ignore it.
     authorization_response_iss_parameter_supported: bool,
 }
 
-fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
+fn authorization_server_document(origin: &str, registration: bool) -> AuthorizationServerMetadata {
     AuthorizationServerMetadata {
         issuer: origin.into(),
         authorization_endpoint: format!("{origin}{AUTHORIZE_PATH}"),
         token_endpoint: format!("{origin}{TOKEN_PATH}"),
         revocation_endpoint: format!("{origin}{REVOKE_PATH}"),
+        registration_endpoint: registration
+            .then(|| format!("{origin}{}", super::register::REGISTER_PATH)),
         response_types_supported: vec!["code".into()],
         response_modes_supported: vec!["query".into()],
         grant_types_supported: vec!["authorization_code".into(), "refresh_token".into()],
@@ -187,7 +195,10 @@ pub async fn oauth_authorization_server(
     State(state): State<AppState>,
 ) -> Result<Json<AuthorizationServerMetadata>, ApiError> {
     let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
-    Ok(Json(authorization_server_document(origin)))
+    Ok(Json(authorization_server_document(
+        origin,
+        state.oauth_dynamic_registration.is_some(),
+    )))
 }
 
 /// The RFC 9207 `iss` parameter for an authorization response, as a query
@@ -304,9 +315,11 @@ mod tests {
 
     #[test]
     fn the_authorization_server_document_lists_only_what_the_server_does() {
-        let json =
-            serde_json::to_value(authorization_server_document("https://maidan.example.com"))
-                .expect("json");
+        let json = serde_json::to_value(authorization_server_document(
+            "https://maidan.example.com",
+            false,
+        ))
+        .expect("json");
         assert_eq!(
             json["client_id_metadata_document_supported"], true,
             "a metadata-document client must learn it may use one"
@@ -317,7 +330,7 @@ mod tests {
         );
         assert!(
             json.get("registration_endpoint").is_none(),
-            "no dynamic registration is advertised"
+            "no dynamic registration is advertised while it is off"
         );
         assert_eq!(json["issuer"], "https://maidan.example.com");
         assert_eq!(
@@ -359,9 +372,23 @@ mod tests {
             json["code_challenge_methods_supported"],
             serde_json::json!(["S256"])
         );
-        assert!(
-            json.get("registration_endpoint").is_none(),
-            "there is no dynamic client registration to advertise"
+    }
+
+    #[test]
+    fn the_registration_endpoint_is_named_only_while_registration_is_on() {
+        let json = serde_json::to_value(authorization_server_document(
+            "https://maidan.example.com",
+            true,
+        ))
+        .expect("json");
+        assert_eq!(
+            json["registration_endpoint"],
+            "https://maidan.example.com/oauth/register"
+        );
+        assert_eq!(
+            json["token_endpoint_auth_methods_supported"],
+            serde_json::json!(["client_secret_basic", "client_secret_post", "none"]),
+            "a self-registered client authenticates with none"
         );
     }
 

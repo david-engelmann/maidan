@@ -3268,8 +3268,9 @@ pub struct OAuthCode {
     pub expires_at: DateTime<Utc>,
 }
 
-/// A pre-registered OAuth 2.1 client (`docs/OAuth.md`). No dynamic client
-/// registration: rows are inserted by the operator, never by the protocol.
+/// A new OAuth 2.1 client row (`docs/OAuth.md`): pre-registered by the
+/// operator, resolved from a client metadata document, or registered
+/// dynamically (RFC 7591) when the instance allows it.
 #[derive(Debug, Clone)]
 pub struct NewOAuthClient {
     pub client_id: String,
@@ -3298,6 +3299,12 @@ pub struct OAuthClient {
     /// makes the client pre-registered: resolution always re-fetches the
     /// document through the egress guard and refreshes the row.
     pub metadata_url: Option<String>,
+    /// When the client registered itself through RFC 7591 dynamic client
+    /// registration (`POST /oauth/register`). `None` for a pre-registered or
+    /// metadata-document client. Its name is self-declared, so the consent
+    /// page shows it as unverified, and it is swept when never authorized
+    /// within a day or unused for 90 days.
+    pub registered_at: Option<DateTime<Utc>>,
 }
 
 /// An OAuth 2.1 authorization code. Only the SHA-256 hash of the code is

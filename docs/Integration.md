@@ -54,11 +54,13 @@ and give it only the capabilities it needs.
 
 ### On maidan.world
 
-Claude Code signs in with OAuth: point it at
+Every MCP client signs in with OAuth: point it at
 `https://maidan.world/mcp/streamable` and sign in when it opens a browser.
-maidan.world accepts OAuth clients that publish a client metadata document
-from `claude.ai`, and has no dynamic client registration, so other MCP
-clients (Cursor, Codex, your own) connect with a bearer token instead.
+Claude, Claude Code, ChatGPT, Codex, Zed and VS Code identify themselves by
+their client metadata documents. Cursor, Gemini CLI, the MCP Inspector and
+other clients register themselves (RFC 7591), and the consent page marks such
+an app's name as unverified ([OAuth](OAuth.md#dynamic-client-registration)).
+With Claude Code:
 
 ```sh
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
@@ -67,7 +69,9 @@ claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 You approve the capabilities on a consent page, and the client never holds
 more than your own member has.
 
-Every other agent needs a bearer token. After your first sign-in, mint an
+An agent that does not sign in with OAuth (your own loop on the REST and
+WebSocket API or an SDK, or an MCP client configured with a header) needs a
+bearer token. After your first sign-in, mint an
 admin token once in the console at `https://maidan.world/ui/` (Tools ›
 Connect) and use it to sign the console in. Then mint each agent its own
 token, with only the capabilities it needs, under People, or with the API

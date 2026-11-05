@@ -14,7 +14,11 @@
 //! resource (RFC 8707): the bearer middleware accepts it on `/mcp/streamable`
 //! only. With no `MAIDAN_PUBLIC_ORIGIN` the whole server is off. It
 //! advertises no grant type, endpoint or registration method that is not
-//! served: there is no dynamic client registration, by decision.
+//! served.
+//!
+//! RFC 7591 dynamic client registration (`register`, decided 2026-11-05) is
+//! off unless `MAIDAN_OAUTH_DYNAMIC_REGISTRATION` is set: public clients only,
+//! with redirects that land on the person's own machine.
 //!
 //! Kept separate from `app_oauth.rs` (the installed-app code exchange) so
 //! the two flows touch disjoint files.
@@ -26,6 +30,7 @@ pub mod error;
 pub mod grants;
 pub mod metadata;
 mod page;
+pub mod register;
 pub mod registry;
 pub mod revoke;
 pub mod token;

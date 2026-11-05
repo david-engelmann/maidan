@@ -30,7 +30,7 @@ export type AssignThread = { assignee_id: string; note?: string | null; };
 export type AttenuateToken = { capabilities: string[]; expires_at?: string | null; label?: string | null; };
 export type AttestationTier = "verified" | "attached" | "self_reported";
 export type AuditEvent = { action: string; actor_id?: null | MemberId; grant_id?: null | DelegationGrantId; id: number; metadata: unknown; occurred_at: string; subject_id?: null | MemberId; target_id?: string | null; target_kind?: string | null; workspace_id?: null | WorkspaceId; };
-export type AuthorizationServerMetadata = { authorization_endpoint: string; authorization_response_iss_parameter_supported: boolean; client_id_metadata_document_supported: boolean; code_challenge_methods_supported: string[]; grant_types_supported: string[]; issuer: string; response_modes_supported: string[]; response_types_supported: string[]; revocation_endpoint: string; revocation_endpoint_auth_methods_supported: string[]; token_endpoint: string; token_endpoint_auth_methods_supported: string[]; };
+export type AuthorizationServerMetadata = { authorization_endpoint: string; authorization_response_iss_parameter_supported: boolean; client_id_metadata_document_supported: boolean; code_challenge_methods_supported: string[]; grant_types_supported: string[]; issuer: string; registration_endpoint?: string | null; response_modes_supported: string[]; response_types_supported: string[]; revocation_endpoint: string; revocation_endpoint_auth_methods_supported: string[]; token_endpoint: string; token_endpoint_auth_methods_supported: string[]; };
 export type AuthorizeAppInstall = { code_challenge?: string | null; redirect_uri: string; state: string; };
 export type BlockedReason = "dag" | "gate" | "human" | "child" | "quota" | "unclaimable";
 export type BootPack = { accepted_decisions?: AcceptedDecision[]; channel_id: ChannelId; glossary?: GlossaryTerm[]; workspace_id: WorkspaceId; };
@@ -56,6 +56,8 @@ export type ClaimLeaseId = string;
 export type ClaimNextThread = { engine?: null | TaskEngine; lane?: null | TaskLane; lease_secs?: number | null; repo?: string | null; };
 export type ClaimThread = Record<string, unknown>;
 export type ClientIdentitySource = "credential" | "self_reported" | "none";
+export type ClientRegistrationRequest = { client_name?: string | null; grant_types?: string[] | null; redirect_uris?: string[] | null; response_types?: string[] | null; scope?: string | null; token_endpoint_auth_method?: string | null; };
+export type ClientRegistrationResponse = { client_id: string; client_id_issued_at: number; client_name: string; grant_types: string[]; redirect_uris: string[]; response_types: string[]; scope: string; token_endpoint_auth_method: string; };
 export type CloseAbandonedThread = { duplicate_of?: string | null; reason: CloseReason; };
 export type CloseReason = "duplicate" | "abandoned" | "superseded";
 export type CompleteMultipartArtifact = { filename?: string | null; kind: ArtifactKind; mime_type?: string | null; object_key: string; parts: MultipartPartInput[]; };
@@ -770,6 +772,7 @@ export type ApiRoute =
   | "POST /messages/{id}/reactions"
   | "POST /messages/{id}/seed"
   | "POST /messages/{id}/votes"
+  | "POST /oauth/register"
   | "POST /oauth/revoke"
   | "POST /oauth/token"
   | "POST /operator/egress/dead/{id}/requeue"

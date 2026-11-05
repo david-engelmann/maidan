@@ -33,9 +33,10 @@ const REDIRECT_ONLY: &[(&str, &str)] = &[
     ("get", "/oauth/authorize"),
 ];
 
-/// The OAuth token and revocation endpoints answer their own client errors
-/// in the RFC 6749 section 5.2 envelope, because they are called by OAuth
-/// clients that parse it (`crate::oauth::error`). Only these statuses: a 404
+/// The OAuth token, revocation and registration endpoints answer their own
+/// client errors in the RFC 6749 section 5.2 envelope (RFC 7591 section
+/// 3.2.2 reuses it), because they are called by OAuth clients that parse it
+/// (`crate::oauth::error`). Only these statuses: a 404
 /// with the server off, a 413 and a 429 come from layers in front of the
 /// handler and stay problems.
 const OAUTH_ERROR_ENVELOPE: &[(&str, &str, &str)] = &[
@@ -43,6 +44,7 @@ const OAUTH_ERROR_ENVELOPE: &[(&str, &str, &str)] = &[
     ("post", "/oauth/token", "401"),
     ("post", "/oauth/revoke", "400"),
     ("post", "/oauth/revoke", "401"),
+    ("post", "/oauth/register", "400"),
 ];
 
 fn document() -> Value {

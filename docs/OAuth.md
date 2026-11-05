@@ -14,10 +14,24 @@ people in against it. The research behind this plan is archived under
 - **Consent happens in the `/ui` console.**
 - **Public and confidential clients** from the start.
 - **No dynamic client registration, by choice.** Clients register through
-  client metadata documents or pre-registration.
+  client metadata documents or pre-registration. *Superseded on 2026-11-05;
+  see below.*
 - **Capabilities are the scopes**, never wider than the member's own.
 - **An OAuth token never accepts an approval gate.** Only a signed-in browser
   session or a token holding `approval:grant` can (#1325).
+
+## Decision (2026-11-05): every MCP client signs in with OAuth
+
+The maintainer reversed the 2026-10-08 "no dynamic registration" point
+([Decisions](Decisions.md)), knowing it opens client registration to anyone:
+
+- **RFC 7591 dynamic client registration** for public clients only, behind
+  `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`.
+- **RFC 8252 loopback redirects whose port may vary.** Exact matching stays
+  for every other redirect.
+
+A person pastes `https://maidan.world/mcp/streamable` into any MCP client,
+signs in in the browser, and is done; no token is copied.
 
 ## Phases
 
@@ -28,7 +42,7 @@ the security controls in Next 23.
 |---|---|---|
 | P0, resource metadata | RFC 9728 metadata for the MCP endpoint at `/.well-known/oauth-protected-resource/mcp/streamable`, and a `WWW-Authenticate` challenge on a 401 from that endpoint, both off until `MAIDAN_PUBLIC_ORIGIN` is set | An unauthenticated `POST /mcp/streamable` answers 401 with `Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and no root-form document is served, since a client must reject metadata whose `resource` is not the URL it asked. The document names no authorization server yet (`oauth_resource_metadata_e2e`) |
 | P1, client registry | Pre-registered clients and client metadata documents | Metadata documents are fetched only from hosts the operator lists in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. A client id resolves to exactly one client |
-| P2, authorize and consent | `GET /oauth/authorize` and the consent page in `/ui` | PKCE S256 only. Redirect URIs match exactly. The consent page cannot be framed. A grant never exceeds the member's capabilities, and a scope names only a delegatable capability, never `token:*`, `operator:*` or `audit:read-global` |
+| P2, authorize and consent | `GET /oauth/authorize` and the consent page in `/ui` | PKCE S256 only. Redirect URIs match exactly, except that an `http` loopback redirect's port may vary (RFC 8252, since 2026-11-05). The consent page cannot be framed. A grant never exceeds the member's capabilities, and a scope names only a delegatable capability, never `token:*`, `operator:*` or `audit:read-global` |
 | P3, token endpoint and server metadata | `POST /oauth/token`, `POST /oauth/revoke`, and the RFC 8414 document, which lists only the endpoints and grants that now exist | A code is consumed only after its client, `redirect_uri`, verifier and resource all validate, in one atomic step, so a stolen code cannot be burned by a wrong guess. Every access and refresh token from one grant carries the grant's lineage id, and a reused refresh token revokes everything under that id. Tokens are bound to the MCP resource (RFC 8707). Responses carry `iss` (RFC 9207). The resource document gains `authorization_servers` |
 | P4, consent management | Listing and revoking grants in the console | A revoked grant stops working on the next request |
 | P5, hardening | Rate limits on the new endpoints, audit rows, scope contract tests | A contract fails on a grant wider than its member |
@@ -101,7 +115,10 @@ P3 shipped. These are its controls and what each one does.
   guard is against server-side request forgery, which is the operator's
   concern, so it is an instance setting and not a workspace one: a workspace
   fresh from sign-up resolves the same clients as every other. The hosted
-  instances list `claude.ai`.
+  instances list `claude.ai` (Claude, Claude Code), `chatgpt.com` (ChatGPT,
+  Codex), `zed.dev` and `vscode.dev`. A client that sees
+  `client_id_metadata_document_supported` uses its document and does not fall
+  back to registering, so leaving its host out breaks it.
 - **Signing in from the authorization endpoint.** A browser that reaches
   `GET /oauth/authorize` with no credential at all, usually a person arriving
   from an MCP client before signing in, is answered 302 to
@@ -131,6 +148,85 @@ P3 shipped. These are its controls and what each one does.
   limit, a 404 and a 429 stay problems: they come from layers in front of the
   handler.
 
+## Dynamic client registration
+
+`POST /oauth/register` (RFC 7591) lets an MCP client that has neither a
+pre-registration nor a client metadata document the instance fetches register
+itself: Cursor, Gemini CLI, the MCP Inspector, the SDK examples. It is off
+unless `MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1`, and only then does the RFC 8414
+document name `registration_endpoint`. Turning it off answers 404 and refuses
+every client that registered itself, at authorize and at the token endpoint.
+
+- **Public clients only.** `token_endpoint_auth_method` must be `none` or
+  omitted (an omitted one is answered as `none`); no secret is ever issued,
+  and PKCE S256 is required at authorize as for every client. `grant_types`
+  may name only `authorization_code` and `refresh_token`, `response_types`
+  only `code`.
+- **Redirects that land on the person's own machine.**
+  - `http` on `127.0.0.1`, `[::1]` or `localhost`, exactly (not the rest of
+    `127/8`, not a name that resolves to loopback). At authorize the port may
+    differ from the registered one, per RFC 8252 section 7.3; scheme, host,
+    path and query must match, and `localhost` never stands in for an IP
+    literal.
+  - A private-use scheme in reverse-DNS form (`com.example.app:`) or a known
+    MCP client's (`cursor`, `vscode`, `vscode-insiders`, `windsurf`, `zed`).
+  - `https` only on a host in `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`. maidan.world
+    lists `vscode.dev` and `insiders.vscode.dev`, for VS Code's
+    `https://vscode.dev/redirect`.
+  - `javascript:`, `data:`, `file:` and other script or local schemes, `http`
+    to any other host, a fragment or credentials refuse the registration
+    (`invalid_redirect_uri`). An `https` redirect on an unlisted host is left
+    out of the registration rather than refusing it, because Cursor registers
+    `https://www.cursor.com/agents/mcp/oauth/callback` beside the loopback
+    callback it uses; the response lists what was registered.
+- **What a client may ask for.** A `scope` naming delegatable capabilities,
+  or none, which allows any delegatable capability. What a token carries is
+  still cut at authorize to what the consenting member holds, through the
+  same grant path as every client, and never includes `approval:grant`.
+- **Its name is unverified.** `client_name` is at most 100 characters with no
+  control or invisible formatting characters (bidirectional overrides,
+  zero-width joiners). The consent page shows it as "Cursor (unverified app,
+  registered by itself)", says where the browser goes next (an app on this
+  computer and its port, the app that opens a scheme, or the `https` host),
+  and warns to allow only a sign-in the person just started. `client_uri`,
+  `logo_uri` and other metadata are ignored, so nothing else a client says
+  reaches the page.
+- **Bounded.** At most ten redirect URIs of 512 bytes each and a 16 KiB body.
+  Registration is charged per address (20 an hour by default,
+  `MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX` and `_WINDOW_SECS`), and at most
+  10,000 registrations may wait on a first sign-in at once; past that,
+  registration answers 429 until room is made.
+- **Swept.** A client that completes no token exchange within 24 hours of
+  registering, or no exchange or refresh for 90 days, is deleted hourly with
+  its grants, codes and tokens (migration 0220 on Postgres, 0219 on SQLite).
+  The sweep runs whether or not registration is on.
+
+### Red team (2026-11-05)
+
+- **Consent phishing and open redirect.** An attacker can register a client
+  named anything and send a person an authorize link. The code goes only to a
+  loopback address or an app scheme on the victim's own machine, or to a host
+  the operator listed, never to the attacker's server, and the page marks the
+  name unverified and names the destination. An `https` redirect is never
+  registered unless its host is listed, and authorize refuses any redirect the
+  client did not register.
+- **Code interception on loopback.** Another process on the person's machine
+  that answers the loopback port gets the code but not the PKCE verifier,
+  which the real client holds, so it cannot redeem it. A malicious local app
+  that starts its own flow is consent phishing, above.
+- **Registration flooding.** Charged per address, capped globally at 10,000
+  rows awaiting a first sign-in, swept after a day. A distributed flood can
+  fill the cap and hold new registrations off for up to a day, which refuses
+  clients rather than filling the table.
+- **A client calling itself "Claude".** Its name is shown unverified, with the
+  warning. Claude and Claude Code identify themselves by their metadata
+  documents on claude.ai, which a registration cannot spoof (a registered
+  `client_id` is server-chosen, `dyn-<uuid>`, never a URL).
+- **Redirect matching.** Port leeway applies only to `http` on the three
+  loopback hosts; `127.0.0.2`, `localhost.evil.example`, an added path,
+  query, trailing slash, credentials or fragment all miss
+  (`registry::redirect_uri_matches`).
+
 ## P6 validation record
 
 `scripts/oauth-p6-record.py` runs the flow a remote MCP client runs and writes
@@ -139,8 +235,8 @@ a JSON record of each step, named by the commit it ran against:
 1. Discovery. An unauthenticated `POST /mcp/streamable` must answer 401 with a
    `resource_metadata` challenge. The resource document must name
    `<origin>/mcp/streamable` and an authorization server, and the RFC 8414
-   document must offer PKCE S256 only, client metadata documents, and no
-   registration endpoint.
+   document must offer PKCE S256 only and client metadata documents, and a
+   registration endpoint, if it names one, must be `<issuer>/oauth/register`.
 2. Consent. The script opens the authorize URL and waits up to ten minutes on
    a loopback redirect. The redirect must carry the same `state` and an `iss`
    equal to the issuer (RFC 9207).
@@ -174,4 +270,5 @@ malformed value refuses boot.
 ## Code layout
 
 New code lives in `crates/maidan-server/src/oauth/`, apart from the
-installed-app flow in `app_oauth.rs`. Migrations for this work use 0150 to 0159.
+installed-app flow in `app_oauth.rs`. Migrations for this work use 0150 to 0159,
+plus 0172 (client metadata rows) and 0220/0219 (self-registered clients).

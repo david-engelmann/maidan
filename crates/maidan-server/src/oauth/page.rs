@@ -33,6 +33,8 @@ ul.caps li{display:flex;justify-content:space-between;align-items:baseline;gap:1
 ul.caps li:first-child{border-top:0}
 ul.caps code{font:12px var(--mono);color:var(--muted);white-space:nowrap}
 .note{font-size:13px;color:var(--muted);margin-top:20px}
+.warn{font-size:14px;margin:16px 0 0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--signal) 45%,transparent);border-radius:12px;background:color-mix(in srgb,var(--signal) 8%,transparent)}
+.warn b{font-weight:600}
 .actions{display:flex;gap:10px;margin-top:20px}
 .actions form{display:contents}
 button{flex:1;height:44px;padding:0 18px;border-radius:999px;font:600 15px var(--sans);cursor:pointer;border:1px solid var(--line-strong);background:transparent;color:var(--ink);transition:background .12s}

@@ -4664,6 +4664,35 @@ macro_rules! store_delegations {
                 oauth_as::insert_client(self.pool(), new).await
             }
 
+            async fn register_oauth_client(
+                &self,
+                new: NewOAuthClient,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<OAuthClient, StoreError> {
+                oauth_as::insert_registered_client(self.pool(), new, now).await
+            }
+
+            async fn count_unauthorized_registered_oauth_clients(&self) -> Result<i64, StoreError> {
+                oauth_as::count_unauthorized_registered_clients(self.pool()).await
+            }
+
+            async fn mark_registered_oauth_client_used(
+                &self,
+                client_id: &str,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                oauth_as::mark_registered_client_used(self.pool(), client_id, now).await
+            }
+
+            async fn sweep_registered_oauth_clients(
+                &self,
+                unauthorized_before: chrono::DateTime<chrono::Utc>,
+                unused_before: chrono::DateTime<chrono::Utc>,
+            ) -> Result<u64, StoreError> {
+                oauth_as::sweep_registered_clients(self.pool(), unauthorized_before, unused_before)
+                    .await
+            }
+
             async fn get_oauth_client_by_client_id(
                 &self,
                 client_id: &str,

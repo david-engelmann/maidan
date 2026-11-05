@@ -209,6 +209,9 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     // in the form body, or PKCE alone, never with a Maidan bearer.
     ("POST", "/oauth/token"),
     ("POST", "/oauth/revoke"),
+    // RFC 7591 dynamic client registration: anyone may register a public
+    // client, which is the point; 404 unless the instance turns it on.
+    ("POST", "/oauth/register"),
 ];
 
 /// Authenticated by the `maidan_session` cookie (the OIDC browser flow), not a
