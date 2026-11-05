@@ -364,9 +364,17 @@ detail. Summary:
 
 The decision-model spike is **off by default** and does not participate in the
 authoritative land-gate write or close paths. Enabling it adds only
-`POST /threads/:id/land-gate/advice`; see
-[Agent integration — Experimental Jev advice](Integration.md#experimental-jev-advice-default-off)
-for its request, response, calibration harness, and privacy boundary.
+`POST /threads/:id/land-gate/advice` (`thread:transition`), which takes a
+bounded description of the work as `state` (a string, array or object) and
+optional `thresholds` (`green_min_confidence`, `red_min_confidence`). It
+answers with the model's raw verdict, probabilities and confidence, plus a
+`recommended_land` in which a green or red below its threshold becomes amber;
+the policy never promotes an answer to green. The route never writes or arms
+the gate: a verifier with the `land_gate` skill still records the pass or fail.
+A disabled advisor is `404`, and a provider failure is `502` on the advice call
+only. `scripts/eval-land-gate-advisor.py` scores recorded answers against
+independently labelled outcomes. The supplied `state` leaves the deployment
+for TypeSafe when the route is called, so send no secrets or unapproved data.
 
 | Variable | Default | Notes |
 |----------|---------|-------|
@@ -1734,7 +1742,7 @@ Set `MAIDAN_EXPORT_SIGNING_KEY` on the origin. On a destination that
 should accept *only your* key, set `MAIDAN_EXPORT_VERIFY_KEYS` to that
 public key (`GET /operator/export-public-key` on the origin). A blank
 instance with neither key still verifies integrity (tamper-evident).
-See [Integration.md](Integration.md#workspace-portability-signed-export).
+See [Integration reference](Integration%20Reference.md#workspace-portability-signed-export).
 
 ## Crypto-shredding
 
@@ -1929,7 +1937,7 @@ not touch.
 
 A workspace administrator can set a shorter retention for that workspace's
 messages, events and finished deliveries with `PUT /workspaces/{wid}/retention`
-(`token:admin`, audited; see [Integration](Integration.md#workspace-retention)).
+(`token:admin`, audited; see [Integration reference](Integration%20Reference.md#workspace-retention)).
 The instance knobs above are the ceiling: a workspace value longer than the
 instance's for that kind is refused, and if you later lower an instance knob
 below a workspace's value, the instance's applies. `MAIDAN_RETENTION_MESSAGES_DAYS`
@@ -2031,7 +2039,7 @@ ingest checks origin hashes the same way before remap. After retention
 prune, verify the remaining suffix — snapshot catch-up of a dropped
 prefix is described below.
 
-No extra env vars. See [Integration.md](Integration.md#event-log-hash-chain)
+No extra env vars. See [Integration reference](Integration%20Reference.md#event-log-hash-chain)
 and [Threat-Model.md](Threat-Model.md).
 
 ## Log snapshot
@@ -2042,7 +2050,7 @@ the retained event-log floor/head, so a peer can catch up after
 retention pruned the prefix. It is not Ed25519-signed (391 is
 authorship). `include_graph=true` is `token:admin` or a federation
 peer — the default header + `graph_hash` is enough to verify a later
-graph fetch. See [Integration.md](Integration.md#snapshot--since-lsn-catch-up).
+graph fetch. See [Integration reference](Integration%20Reference.md#snapshot--since-lsn-catch-up).
 
 ## API stability
 

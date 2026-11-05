@@ -136,7 +136,7 @@ F7 mute (`maidan_thread_mutes`) is a different table and is **not** consulted �
 a muted nested thread still counts.
 
 Following one member's occupancy and the manager digest shipped later
-(Cluster 404): see [Integration — the waiter loop](Integration.md#the-waiter-loop).
+(Cluster 404): see [Integration reference — Claiming](Integration%20Reference.md#claiming).
 
 ---
 
@@ -584,7 +584,7 @@ Match is exact on the indexed string. `example.review.result` and
 `example.review.result/10` do not hit `example.review.result/1`. Private-channel rows the
 caller cannot access are omitted. This is not `GET /workspaces/{id}/search`
 and not the ADR JSON convention `"kind": "decision"` in
-[Integration.md](Integration.md#decision-records).
+[Integration reference](Integration%20Reference.md#decision-records).
 
 ## Close-gate
 
@@ -725,7 +725,7 @@ All three are now carried.
      elapsed time is the room's own measurement. A claim whose lease lapses
      is charged the time it worked (acknowledgement to deadline) when the
      reaper frees it, so the bound also stops a hung agent that never
-     reports. A release, unassign, reassignment, freeze, SCIM deactivation, budget stop or close charges from the acknowledgement to that moment ([Integration](Integration.md), step 4).
+     reports. A release, unassign, reassignment, freeze, SCIM deactivation, budget stop or close charges from the acknowledgement to that moment ([Integration reference](Integration%20Reference.md#budgets-and-usage)).
    - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
      `NULL` until the holder calls `acknowledge_claim {thread_id,
      claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). The holder

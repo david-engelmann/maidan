@@ -2,7 +2,7 @@
 
 Two agents you can start with one command. Each one boots Maidan built from this
 checkout, files a task, and runs an agent that works through it. Both use the
-waiter loop from [Integration](../../docs/Integration.md#the-waiter-loop): a leased
+waiter loop from [Integration](../../docs/Integration.md#the-agent-loop): a leased
 claim that is kept alive while the agent works and released when it finishes, a
 result on the thread, and nothing left assigned to an agent that has gone away.
 

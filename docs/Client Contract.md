@@ -171,7 +171,7 @@ Map non-2xx to the error for its RFC 9457 problem `type`: a base
 error carrying the status, `type`, `title`, `detail` and the problem
 body as sent, and one subclass (TS, Python), wrapper type (Go,
 matched with `errors.As`) or enum variant (Rust) per type the server
-documents (the table in [Integration](Integration.md#problem-types)).
+documents (the table in [Integration reference](Integration%20Reference.md#problem-types)).
 A type the client does not know, or a body that is not a problem, is
 the unknown-problem error, never a crash. Honor `Retry-After` on
 429 (Cluster 172), and on 503, which the server answers when it sheds load. Treat 409 as conflict (`errors.Is` in Go later;

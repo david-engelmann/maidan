@@ -12,6 +12,7 @@ as the [docs site](https://david-engelmann.github.io/maidan/) (mdBook).
 | Doc | What it answers |
 |---|---|
 | [Integration](Integration.md) | How an agent or client connects, authenticates, subscribes and runs the waiter loop. **Start here** |
+| [Integration Reference](Integration%20Reference.md) | Every rule behind the guide, by topic: tokens and delegation, MCP, events, the loop in depth, files, other surfaces, errors |
 | [Capability Map](Capability%20Map.md) | What each capability string allows, and the contract files that pin it |
 | [Protocols](Protocols.md) | MCP, A2A, REST, WebSocket or webhooks: which to use |
 | [Clients](Clients.md) | Connecting each MCP client, the release check by hand, and what counts as an attributed connect |
