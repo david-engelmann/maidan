@@ -3,28 +3,21 @@
 Bearer tokens carry a JSON array of capability strings. Routes and MCP tools
 check the required capability before handling the request.
 
-Canonical machine-readable maps:
+The tables below summarize what each capability allows. The machine-readable
+maps in the repository are complete, and the server is tested against them:
 
-- MCP tools: [`contracts/mcp-capability-map.json`](../contracts/mcp-capability-map.json) (keys ⊆ [`contracts/mcp-tool-names.json`](../contracts/mcp-tool-names.json))
-- HTTP full map: [`contracts/http-capability-map.json`](../contracts/http-capability-map.json) (every OpenAPI bearer operation + transport appendix)
-- HTTP denial samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json) (table-driven e2e)
-- Event production: [`contracts/event-surface-disposition.json`](../contracts/event-surface-disposition.json) (every `EventKind`: REST-only, MCP-only, both, or internal-only, with executable evidence)
+- MCP tools: [`contracts/mcp-capability-map.json`](../contracts/mcp-capability-map.json) (every tool in [`contracts/mcp-tool-names.json`](../contracts/mcp-tool-names.json))
+- HTTP: [`contracts/http-capability-map.json`](../contracts/http-capability-map.json) (every OpenAPI bearer operation, plus the transports outside OpenAPI)
+- HTTP denial samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json)
+- Events: [`contracts/event-surface-disposition.json`](../contracts/event-surface-disposition.json) (for every event kind, whether REST, MCP, both or only the server produces it)
 
-CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, table-driven HTTP denial via `http_capability_matrix_e2e`, exhaustive event-surface classification via `event_surface_disposition_contract`, and `scripts/check-agent-contract.sh`.
-
-> **This page itself is covered by none of them.** They guard the JSON contracts
-> above; nothing compares *this* table to `capability::all()`. That is why five
-> live capabilities — `channel:admin`, `secret:read`, `secret:admin`,
-> `audit:read-global`, `operator:global` — were missing here until 2026-09-23
-> while being correct in the contracts the entire time. A guard is scheduled in
-> Cluster 411.1; until it lands, add new capabilities here by hand.
+When a table here and a JSON map disagree, the JSON map is right.
 
 **Delegation lends work, never authority.** A delegation grant may carry only
 `workspace:read`, `workspace:write`, `message:post`, `thread:transition`,
 `artifact:upload`, `search:query` and `event:subscribe`. Every other capability
-is refused at grant creation and stripped from any borrowed token regardless of
-how its grant was created. `capability::tests::every_capability_is_classified_as_work_or_authority`
-fails if a new capability is added without deciding which it is.
+is refused at grant creation and stripped from any borrowed token, however its
+grant was created.
 
 ## HTTP (member bearer)
 
@@ -82,11 +75,3 @@ The HTTP+JSON binding (`/a2a/v1/...`) checks the same capabilities.
 |------------|------------------|
 | `message:post` | `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`, `GetExtendedAgentCard` |
 | `workspace:write` | the four push-config methods; a `SendMessage` that opens a new context thread |
-
-## Tests
-
-| Suite | Coverage |
-|-------|----------|
-| `capability_matrix_e2e.rs` | HTTP search/artifacts, MCP `post_message`, A2A, WS subscribe |
-| `mcp_capability_matrix_e2e.rs` | Every MCP tool: deny without cap + pass capability gate with cap |
-| `http_capability_map_contract.rs` | HTTP contract uses known capability strings |
