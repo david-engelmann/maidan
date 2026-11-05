@@ -3,8 +3,8 @@
 # `## [N.N.N]` CHANGELOG version whose `vN.N.N` tag exists, whatever the section order. A section added by a
 # close PR before its tag is cut does not count, because a pin can only move
 # once the tag's images and tarballs exist. Red after a tag is cut, until the one
-# PR that bumps every pin below merges. Needs the tags (actions/checkout with
-# fetch-depth: 0).
+# PR that bumps every pin below merges, except on the tagged commit itself (see
+# below). Needs the tags (actions/checkout with fetch-depth: 0).
 #
 # Pins checked, each against that version:
 #   helm/maidan/values-prod.yaml          image.tag
@@ -17,8 +17,7 @@
 #   listings/toolhive/server.json,
 #   listings/docker/server.yaml           the image they name
 #   README.md, docs/Production.md         every ghcr.io/david-engelmann/maidan-{server,
-#                                         cli,postgres}:vN.N.N and MAIDAN_TAG=vN.N.N,
-#                                         and README's "pins (`vN.N.N`)" quickstart line
+#                                         cli,postgres}:vN.N.N and MAIDAN_TAG=vN.N.N
 #   docs/Pi.md                            its image pins, MAIDAN_TAG=vN.N.N and the
 #                                         release link the native install downloads
 set -euo pipefail
@@ -74,6 +73,22 @@ if [[ -n "$record" ]] && version_gt "$record" "$best" \
   record_ok="v${record}"
 fi
 
+# The release commit is tagged before its images exist, and the pins can only
+# move in a PR after it, so on that one commit (main's push CI right after a
+# promotion) the pins may still name the release before it. Any later commit
+# is held to the newest release.
+release_alt=""
+if git tag --points-at HEAD | grep -qx "v${best}"; then
+  while read -r version; do
+    [[ "$unpublished" == *" ${version} "* ]] && continue
+    git rev-parse -q --verify "refs/tags/v${version}" >/dev/null || continue
+    version_gt "$best" "$version" || continue
+    if [[ -z "$release_alt" ]] || version_gt "$version" "${release_alt#v}"; then
+      release_alt="v${version}"
+    fi
+  done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+fi
+
 failures=()
 checked=()
 
@@ -88,7 +103,8 @@ pin() {
     found=$((found + 1))
     version="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"$text" | head -n 1)"
     checked+=("${file}:${line}")
-    [[ "$version" == "$expected" || ( -n "$alt" && "$version" == "$alt" ) ]] ||
+    [[ "$version" == "$expected" || ( -n "$alt" && "$version" == "$alt" ) \
+      || ( -n "$release_alt" && "$version" == "$release_alt" ) ]] ||
       failures+=("${file}:${line} pins ${version}: ${text}")
   done < <(grep -noE "$pattern" "$file" || true)
   if [[ "$count" -eq 0 ]]; then
@@ -110,7 +126,6 @@ pin compose.quickstart.yaml 1 "MAIDAN_VERSION: \\$\\{MAIDAN_VERSION:-${v}\\}"
 pin k8s/overlays/prod/kustomization.yaml 2 "^    newTag: ${v}$"
 pin README.md 0 "${image}" "$record_ok"
 pin README.md 1 "^MAIDAN_TAG=${v}$" "$record_ok"
-pin README.md 1 "pins \(\`${v}\`\)"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
 # The catalog listings under listings/ name the published image too: the
 # registry entry's package version, and the image in ToolHive and Docker.
@@ -119,7 +134,7 @@ pin listings/toolhive/server.json 0 "${image}"
 pin listings/docker/server.yaml 0 "${image}"
 # The registry entry's own version is the release without its v.
 registry_version="$(grep -oE '^  "version": "[0-9]+\.[0-9]+\.[0-9]+"' listings/registry/server.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
-[[ "v${registry_version}" == "$expected" ]] || \
+[[ "v${registry_version}" == "$expected" || "v${registry_version}" == "$release_alt" ]] || \
   failures+=("listings/registry/server.json version is ${registry_version:-missing}, not ${expected#v}")
 pin docs/Pi.md 0 "${image}"
 pin docs/Pi.md 1 "^MAIDAN_TAG=${v}$"
@@ -130,4 +145,4 @@ if [[ "${#failures[@]}" -gt 0 ]]; then
   printf '  %s\n' "${failures[@]}" >&2
   exit 1
 fi
-echo "deploy pins: ${#checked[@]} pins at ${expected}: ${checked[*]}"
+echo "deploy pins: ${#checked[@]} pins at ${expected}${release_alt:+ or ${release_alt} (this commit is the ${expected} release)}: ${checked[*]}"
