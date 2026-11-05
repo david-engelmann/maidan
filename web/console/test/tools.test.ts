@@ -13,10 +13,13 @@ import {
   deliveryState,
   emailRefusal,
   formatBytes,
+  holds,
   isSha,
+  mintAdminRefusal,
   parseCaps,
   previewable,
   scheduleCadence,
+  showsOperator,
   slashRefusal,
 } from "../src/core/tools.ts";
 import { ROUTES, parseRoute } from "../src/shell/router.ts";
@@ -196,4 +199,22 @@ test("a credential without federation:admin reads peers as not allowed, and a re
   assert.deepEqual(await ok.api.peers("w"), { allowed: true, value: [{ id: "p1", name: "east", base_url: "https://e.example" }] });
   await assert.rejects(tools([{ status: 500 }]).api.peers("w"));
   assert.match(PEERS_NEED, /federation:admin/);
+});
+
+test("operator and federation panels are offered only to a credential that holds them", () => {
+  assert.equal(showsOperator(null), false);
+  assert.equal(showsOperator({ capabilities: ["workspace:read", "workspace:write", "token:admin"] }), false);
+  assert.equal(showsOperator({ capabilities: ["operator:global"] }), true);
+  assert.equal(showsOperator({ capabilities: ["audit:read-global"] }), true);
+  assert.equal(holds({ capabilities: ["federation:admin"] }, "federation:admin"), true);
+  assert.equal(holds(null, "federation:admin"), false);
+});
+
+test("a refused first-admin mint says what to do instead, never the server's setting", () => {
+  assert.match(mintAdminRefusal("workspace already has a token:admin holder"), /already has an admin/);
+  assert.match(mintAdminRefusal("a member who joined by invite cannot mint the first admin token"), /joined by invite/);
+  assert.match(mintAdminRefusal("a session made from a token cannot mint the first admin token"), /signed in with a token/);
+  for (const d of ["first-admin session mint is disabled (MAIDAN_OIDC_FIRST_ADMIN)", "OIDC is not enabled", null]) {
+    assert.doesNotMatch(mintAdminRefusal(d), /MAIDAN_|OIDC/);
+  }
 });
