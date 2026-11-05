@@ -124,7 +124,7 @@ test.describe("connect on a phone", () => {
 
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     const bad = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-    expect(bad.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 4).join(" | ")}`)).toEqual([]);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     expect(await shortTargets(page)).toEqual([]);
   });

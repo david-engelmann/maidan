@@ -17,7 +17,8 @@ function SnippetBlock({ s }: { s: Snippet }) {
   return (
     <div className="snippet">
       <div className="snippet-head"><strong>{s.title}</strong><Copy text={s.text} /></div>
-      <div className="snippet-scroll"><pre className="snippet-body">{s.text}</pre></div>
+      {/* A long line scrolls sideways on a phone; the region has to take keyboard focus. */}
+      <div className="snippet-scroll"><pre className="snippet-body" tabIndex={0}>{s.text}</pre></div>
     </div>
   );
 }
