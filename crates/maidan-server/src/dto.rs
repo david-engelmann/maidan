@@ -1948,6 +1948,11 @@ pub struct OidcSignupQuery {
     /// sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
+    /// Display name for the workspace this sign-up creates. Omitted or
+    /// blank, the workspace is named after the new member. Longer than 200
+    /// characters, or containing a control character, the start is refused.
+    /// Ignored when `invite` joins an existing workspace.
+    pub workspace_name: Option<String>,
 }
 
 /// The console's sign-up start after its Turnstile check, as a form POST.
@@ -1957,6 +1962,10 @@ pub struct OidcSignupQuery {
 pub struct OidcSignupForm {
     pub invite: Option<String>,
     pub return_to: Option<String>,
+    /// Display name for the new workspace. Omitted or blank, it is named
+    /// after the new member. Longer than 200 characters, or containing a
+    /// control character, the start is refused.
+    pub workspace_name: Option<String>,
     /// The Turnstile widget's token.
     pub turnstile: Option<String>,
 }

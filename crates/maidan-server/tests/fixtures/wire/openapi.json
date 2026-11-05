@@ -6553,6 +6553,13 @@
               "string",
               "null"
             ]
+          },
+          "workspace_name": {
+            "description": "Display name for the new workspace. Omitted or blank, it is named\nafter the new member. Longer than 200 characters, or containing a\ncontrol character, the start is refused.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -14795,7 +14802,7 @@
     },
     "/auth/oidc/signup": {
       "get": {
-        "description": "Two kinds of `invite`. A workspace invite (`maid_inv_…`) joins the\nidentity to the invite's existing workspace, creates no workspace, and\nworks whether or not sign-up is enabled. Otherwise this creates a\nworkspace for someone who is not a member anywhere yet: the `invite`\nnames the waitlist invite the operator minted, and without one the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. Without a workspace invite, 404 unless sign-up is\nenabled on the instance.",
+        "description": "Two kinds of `invite`. A workspace invite (`maid_inv_…`) joins the\nidentity to the invite's existing workspace, creates no workspace, and\nworks whether or not sign-up is enabled. Otherwise this creates a\nworkspace for someone who is not a member anywhere yet: the `invite`\nnames the waitlist invite the operator minted, and without one the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. An optional `workspace_name` names that workspace;\nomitted or blank, it is named after the new member. A browser\n(`Accept: text/html`) is sent to the console form first and posts\nback; an API caller starts here. Without a workspace invite, 404\nunless sign-up is enabled on the instance.",
         "operationId": "oidc_signup",
         "parameters": [
           {
@@ -14814,11 +14821,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Display name for the workspace this sign-up creates. Omitted or\nblank, the workspace is named after the new member. Longer than 200\ncharacters, or containing a control character, the start is refused.\nIgnored when `invite` joins an existing workspace.",
+            "in": "query",
+            "name": "workspace_name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "307": {
-            "description": "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"
+            "description": "Redirect to the console form for a browser, or to the IdP for an API caller (mock callback when MAIDAN_OIDC_MOCK=1)"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -14862,7 +14878,7 @@
         ]
       },
       "post": {
-        "description": "The console's form POST once its Turnstile widget has a token. Same start\nas the GET, with the token in the form body so it never sits in a URL.\nAnswers 303 to the identity provider.",
+        "description": "The console's form POST once its Turnstile widget has a token, carrying\nthe workspace name chosen on that form. Same start as the GET, with the\ntoken in the form body so it never sits in a URL. Answers 303 to the\nidentity provider. A blank name is named after the new member.",
         "operationId": "oidc_signup_form",
         "requestBody": {
           "content": {

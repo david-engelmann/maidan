@@ -141,7 +141,7 @@ pub async fn get_workspace(
 /// Longest display name `PATCH /workspaces/:id` accepts, in Unicode scalars.
 const WORKSPACE_NAME_MAX_CHARS: usize = 200;
 
-fn normalize_workspace_name(raw: &str) -> Result<String, ApiError> {
+pub fn normalize_workspace_name(raw: &str) -> Result<String, ApiError> {
     let name = raw.trim();
     let len = name.chars().count();
     if len == 0 || len > WORKSPACE_NAME_MAX_CHARS {
@@ -149,7 +149,24 @@ fn normalize_workspace_name(raw: &str) -> Result<String, ApiError> {
             "workspace name must be 1..={WORKSPACE_NAME_MAX_CHARS} characters"
         )));
     }
+    // A newline or NUL would break the name in the chooser and in logs.
+    // Sign-up uses this same check, so a name refused there is refused here.
+    if name.chars().any(char::is_control) {
+        return Err(ApiError::BadRequest(
+            "workspace name may not contain control characters".into(),
+        ));
+    }
     Ok(name.to_string())
+}
+
+/// A name chosen at sign-up. Omitted or blank waits until the callback,
+/// which names the workspace after the handle. A present name is held to
+/// [`normalize_workspace_name`].
+pub fn signup_workspace_name(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    match raw.map(str::trim).filter(|name| !name.is_empty()) {
+        None => Ok(None),
+        Some(name) => normalize_workspace_name(name).map(Some),
+    }
 }
 
 /// `PATCH /workspaces/:id` — set the workspace display name. `workspace:write`.
@@ -1433,4 +1450,61 @@ pub async fn catch_up_events(
         });
     }
     Ok(Json(page))
+}
+
+#[cfg(test)]
+mod workspace_name_tests {
+    use super::{signup_workspace_name, WORKSPACE_NAME_MAX_CHARS};
+    use crate::error::ApiError;
+
+    fn message(result: Result<Option<String>, ApiError>) -> Result<Option<String>, String> {
+        result.map_err(|err| match err {
+            ApiError::BadRequest(msg) => msg,
+            other => format!("{other:?}"),
+        })
+    }
+
+    fn expect_ok(result: Result<Option<String>, String>) -> Option<String> {
+        match result {
+            Ok(name) => name,
+            Err(err) => panic!("a name that should be kept was refused: {err}"),
+        }
+    }
+
+    fn expect_err(result: Result<Option<String>, String>) -> String {
+        match result {
+            Err(err) => err,
+            Ok(name) => panic!("a name that should be refused was kept: {name:?}"),
+        }
+    }
+
+    #[test]
+    fn a_blank_sign_up_name_is_left_for_the_handle() {
+        assert_eq!(expect_ok(message(signup_workspace_name(None))), None);
+        assert_eq!(expect_ok(message(signup_workspace_name(Some("  ")))), None);
+        assert_eq!(
+            expect_ok(message(signup_workspace_name(Some("\n\t")))),
+            None
+        );
+    }
+
+    #[test]
+    fn a_sign_up_name_is_trimmed_and_held_to_the_rename_rule() {
+        assert_eq!(
+            expect_ok(message(signup_workspace_name(Some("  North Room  ")))),
+            Some("North Room".to_string())
+        );
+        let max = "n".repeat(WORKSPACE_NAME_MAX_CHARS);
+        assert_eq!(
+            expect_ok(message(signup_workspace_name(Some(&max)))),
+            Some(max)
+        );
+        let over = "n".repeat(WORKSPACE_NAME_MAX_CHARS + 1);
+        let err = expect_err(message(signup_workspace_name(Some(&over))));
+        assert!(err.contains("200"), "{err}");
+        let control = expect_err(message(signup_workspace_name(Some("North\nRoom"))));
+        assert!(control.contains("control"), "{control}");
+        let nul = expect_err(message(signup_workspace_name(Some("North\u{0000}Room"))));
+        assert!(nul.contains("control"), "{nul}");
+    }
 }

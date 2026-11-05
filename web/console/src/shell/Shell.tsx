@@ -9,6 +9,7 @@ import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { MODE_WORD } from "../core/api.ts";
 import { readFrontDoorHint } from "../core/session.ts";
+import { readSignupCheck } from "../core/signup.ts";
 import { hasSupportPage, liveWord, shellTitle, supportHref } from "../core/firstRun.ts";
 import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
@@ -47,6 +48,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   // The front door's hint is read once and taken off the address bar, so a
   // reload never replays it.
   const [hint, setHint] = useState(() => readFrontDoorHint(window.location.search).hint);
+  // A browser that followed a sign-up link lands here to name the workspace
+  // before the provider. A session already in this tab must not hide that form.
+  const namingWorkspace = readSignupCheck(window.location.search).active;
   useEffect(() => {
     const { rest } = readFrontDoorHint(window.location.search);
     if (rest !== window.location.search) window.history.replaceState(null, "", `${window.location.pathname}${rest}${window.location.hash}`);
@@ -167,7 +171,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={shellTitle(signedOut, current.title)}
         >
-          {session.status === "signed-out" ? <SignIn noWorkspace={hint === "no-workspace"} /> : route === "not-found" ? <NotFound /> : screens[route]}
+          {session.status === "signed-out" || namingWorkspace ? <SignIn noWorkspace={hint === "no-workspace"} /> : route === "not-found" ? <NotFound /> : screens[route]}
         </motion.section>
       </main>
 
