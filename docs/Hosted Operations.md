@@ -171,9 +171,14 @@ for name in DATABASE_URL MAIDAN_CONTENT_KEK MAIDAN_SESSION_SECRET \
 done
 ```
 
-The Worker passes only the names it lists in `src/index.js` to the container,
+The Worker passes only the names it lists in `src/server-env.js` to the container,
 plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
-address and the proxy hop). Plain settings (the public origin, the bucket) are
+address and one trusted proxy hop). Every value is a string, so a switch set
+to `1` arrives as `1` (the server also accepts `true`). A running container
+keeps the environment of the `start()` that created it, and an image rollout
+can leave the new image on the previous start's environment: when the values
+change, the Worker recycles the container before the next request. Plain
+settings (the public origin, the bucket, dynamic client registration) are
 `vars` in `wrangler.jsonc`.
 
 ## swarm.maidan.world
