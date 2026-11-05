@@ -1,75 +1,40 @@
-# Result delivery — the external last mile
+# Result delivery: the external last mile
 
-**Audience:** authors of agents that write a structured result to a Maidan thread
-and want it to reach an external surface (a GitHub PR comment, a Slack message).
-An external code-review waiter publishes a
-`maidan.waiter.result/1` envelope via `set_thread_result`.
+**Audience:** you write an agent (a *result producer*) that sets a structured
+result on a Maidan thread, and you want that result to reach a surface outside
+Maidan: a GitHub pull request, a Slack thread, a Linear issue. This page is the
+contract between your producer and Maidan. Read it alongside
+[Integrating with Maidan](Integration.md).
 
-**This page is the interface contract between a result producer and Maidan.**
-Read it alongside [Integrating with Maidan](Integration.md).
+## How delivery works
 
----
+1. Your producer writes a `maidan.waiter.result/1` envelope with
+   `set_thread_result` (MCP) or `PUT /threads/:id/result` (REST). The envelope
+   names where it should go in `deliver_to`.
+2. An operator has allowed each destination once, on the workspace's egress
+   allowlist ([the trust model](#the-trust-model--deliver_to-selects-the-workspace-allowlist-authorizes)).
+3. Maidan delivers the result to every named target that is on the allowlist,
+   through a durable queue that retries, dead-letters and can be replayed.
+   A later result on the same thread edits what it delivered, in place.
+4. You confirm where it landed with the [delivery status](#delivery-status)
+   API.
 
-## Status — read this first
+A correct `deliver_to` can still deliver nowhere when its target is not on the
+allowlist. That is a normal outcome, not a producer bug.
 
-> ### ⚠️ Breaking change for existing producers
->
-> The envelope discriminator was renamed. **Producers still sending the old
-> value are silently not delivered.**
->
-> | Was | Is now |
-> |---|---|
-> | `pi.waiter.result/1` | **`maidan.waiter.result/1`** |
-> | `pi.review.result/1` | **`example.review.result/1`** (a `result_kind`) |
-> | `view_in_pi` | **`view_url`** |
->
-> A `schema`/`$type` this build does not recognize makes `parse_waiter_result`
-> return `None`, which is **inert by design** — no delivery is attempted, and
-> because an unrecognized envelope is not an error there is no warning, no
-> `skipped` delivery row, and nothing on the status API. A producer on the old
-> string therefore goes dark rather than failing loudly. Update the
-> discriminator; nothing else about the grammar changed.
->
-> This rename is also the reason the fixture lock could not catch it: the same
-> change renamed `crates/maidan-types/tests/fixtures/waiter_result_v1.json` and
-> edited its contents in lockstep with the parser, so the guard moved with the
-> code instead of failing. Going dark silently is the cost, and it is why this
-> notice exists rather than a changelog line.
+What a result can do on each surface:
 
+- **GitHub:** a summary comment on the pull request or issue, then inline
+  review comments for each finding ([Inline findings](#inline-findings)).
+- **GitHub branch:** a commit of the producer's diff and a draft pull request
+  ([The change flow](#the-change-flow-pichangeresult1--github_branch)).
+- **Slack:** a message, or a reply in a thread.
+- **Linear:** a comment on an issue, with an optional state move
+  ([Linear](#linear)).
 
-**Shipped.** This page is the interface contract between a result producer
-and Maidan. The grammar is **frozen** at `maidan.waiter.result/1`. Additive fields are
-free; a change to the meaning of an existing field, or to the `deliver_to` shape,
-requires a new `schema` value. The `result_kind` list facet shipped.
-
-| Piece | State on `main` today |
-|---|---|
-| `set_thread_result` / `get_thread_result` / `ThreadResultSet` event | **Shipped**. A result is durable and observable. |
-| Slack + GitHub connectors (post, link tables, link management) | **Shipped**. |
-| Durable retrying delivery queue + DLQ + replay | **Shipped**. |
-| The per-workspace egress allowlist (the trust boundary below) | **Shipped**. `POST`/`GET /workspaces/:wid/egress-targets` + `DELETE …/:tid`, `token:admin`. |
-| A `ThreadResultSet` handler that delivers to `deliver_to` | **Shipped**. Fetch → parse → per-target allowlist check then enqueue. |
-| Idempotent update-in-place | **Shipped**. Stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0. |
-| Per-thread delivery status + replay | **Shipped**. `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
-| Inline per-finding PR review comments | **Shipped**. After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
-| `result_kind` list facet | **Shipped**. Exact-match on the namespaced string — see [Discoverability](#discoverability). |
-| Run lineage (`parent_run_id`) | **Shipped**. The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage). |
-
-**Producer loop:** write `deliver_to` on the envelope; bless the destination once over
-the allowlist; confirm where it landed with the status API. A perfectly correct
-`deliver_to` can still deliver nowhere if the target is unblessed — that is a
-normal outcome, not a producer bug.
-
-Inline per-finding PR review comments are **shipped**.
-**380.1** pinned the `line_range` frame: file-absolute **post-image**
-lines (the file as it exists at envelope `head_sha`), 1-indexed inclusive. On
-GitHub that is the **RIGHT** side of the pull-request diff. **380.2** posts
-`POST /repos/{repo}/pulls/{n}/reviews` after a successful summary comment, with
-those coordinates and `commit_id = head_sha` — never the live PR head. **380.3**
-locks the remaining failure modes: replay after a 5xx review, dual-surface
-envelopes, review errors that must not `disable_link`, a vanished envelope at
-send time, and the projector kind-split. The summary comment path
-is unchanged.
+The grammar is frozen at `maidan.waiter.result/1`. Adding fields is free; a
+change to the meaning of an existing field, or to the `deliver_to` shape, needs
+a new `schema` value ([Versioning](#versioning)).
 
 ---
 
@@ -82,46 +47,49 @@ field never breaks delivery.
 | Field | Required | How Maidan uses it |
 |---|---|---|
 | `schema` | yes | Envelope discriminator. Must be `maidan.waiter.result/1`. An unrecognized value means no delivery is attempted. |
-| `result_kind` | yes | Which producer shape this is, e.g. `example.review.result/1`. Recorded; the list facet shipped (see "Discoverability"). |
+| `result_kind` | yes | Which producer shape this is, e.g. `example.review.result/1`. Recorded, and filterable ([Discoverability](#discoverability)). |
 | `status` | yes | Delivery happens only on `reviewed`. Any other value delivers a short **Maidan-authored** failure notice instead — never silence, never a clean pass. |
 | `deliver_to` | no | The routing list. Absent or empty is **valid and normal**: thread-only, delivered nowhere. |
 | `rendered` | on `reviewed` | The delivery body. Producer-authored trusted markdown. |
 | `summary` | on `reviewed` | One line. The Slack body and the notification title. |
 | `view_url` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
-| `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the 379 summary comment still posts). **Never resolved from the live PR head.** |
-| `findings` | no | Two readers. Each usable finding needs `file`, `body`, and `line_range`. Any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a review-skilled producer writes `request_changes` (and arms `k=1` if unset). A critical finding without file/body/`line_range` still arms the gate. Other finding fields stay in the stored JSON unread. |
+| `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the summary comment still posts). **Never resolved from the live PR head.** |
+| `findings` | no | Read twice. For [inline comments](#inline-findings), each usable finding needs `file`, `body` and `line_range`. For the [close-gate](#close-gate), any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a producer holding the `review` skill is a `request_changes`; a critical finding without `file`, `body` or `line_range` still counts. Other finding fields stay in the stored JSON, unread. |
 
-`run_id` is **not** a delivery-routing field. Delivery parse still ignores it.
-The producer's string is homed as `parent_run_id` on the thread — see
-[Run lineage](#run-lineage). Everything else in the envelope —
-`corroboration`, `per_seat`, `seats`, `cost_usd`, `duration_secs`, `sandbox`,
-`finding_count`, `diff_available` — is carried through untouched. Maidan does
-not interpret those for delivery.
+`run_id` is **not** a delivery-routing field. Maidan keeps it as the thread's
+`parent_run_id` ([Run lineage](#run-lineage)). Every other field in the
+envelope (for example `cost_usd`, `duration_secs` or `finding_count`) is
+stored untouched and not interpreted.
 
-**The canonical `Finding` wire shape is the producer's and does not change.**
-Maidan stores the envelope byte-for-byte, then *projects* `file` /
-`line_range` / `body` for the GitHub review POST, reads
-`severity` for the close-gate adapter only, and reads `run_id` for
+**The `Finding` shape is the producer's.** Maidan stores the envelope byte for
+byte, then *projects* `file`, `line_range` and `body` for the GitHub review,
+reads `severity` for the [close-gate](#close-gate) only, and reads `run_id` for
 lineage only.
+
+**Cost is not read from the result.** Report a run's tokens, cost and turns
+with `report_usage` (MCP) or `POST /threads/:id/usage` while you hold the
+claim. Wall time is measured by Maidan from the claim's acknowledgement, not
+reported. A `cost_usd` or `duration_secs` in the envelope is stored and never
+counted ([Budgets and usage](Integration%20Reference.md#budgets-and-usage)).
 
 ---
 
 ## Run lineage
 
-Wave 2 #28's lineage half. The waiter envelope already carries `run_id` (and
-`view_url`). Until this cluster that string had **no home in Maidan**. The
-field **accepts the producer's value** — Maidan does not mint a parallel id.
-The authoritative fixture value is `aa4dc966-0e09-44c3-b7a5-2d048b48b301` in
-`crates/maidan-types/tests/fixtures/waiter_result_v1.json`.
+A producer's envelope may carry a `run_id`: the id of the run that produced
+the result, in the producer's own system. Maidan keeps the producer's value as
+the thread's `parent_run_id`; it does not mint a parallel id. Threads that
+share a `parent_run_id` can then be listed and counted together.
 
-`run_id_from_payload` extracts a string (trim; empty / whitespace / longer
-than 256 bytes → ignored). It does **not** require `schema = maidan.waiter.result/1`.
-`parse_waiter_result` still ignores `run_id`, so delivery routing is unchanged.
+Maidan reads `run_id` from any result, whatever its `schema`. The value is
+trimmed; an empty value, or one longer than 256 bytes, is ignored. It never
+changes where the result is delivered.
 
-`set_thread_result` (REST `PUT /threads/:id/result` and the MCP tool) homes
-the value as `parent_run_id` when present — best-effort, so a lineage hiccup
-never undoes a stored result. A caller can also set it directly.
+`set_thread_result` (REST `PUT /threads/:id/result` and the MCP tool) stores
+the value as `parent_run_id` when present. This is best effort: a lineage
+failure never undoes a stored result. A caller can also set the lineage
+directly.
 
 | Surface | Capability |
 |---|---|
@@ -130,19 +98,18 @@ never undoes a stored result. A caller can also set it directly.
 | `GET /workspaces/:id/run-occupancy?parent_run_id=` | `workspace:read` (empty / unknown run → zeros, not 404) |
 | MCP `set_thread_lineage` / `get_thread_lineage` / `list_run_threads` / `get_run_occupancy` | the twins of those routes |
 
-Nested occupancy is the two-clocks partition (`queued` / `claimed` / `working` /
-`blocked`) of every **open** workspace thread that shares `parent_run_id`.
-F7 mute (`maidan_thread_mutes`) is a different table and is **not** consulted —
-a muted nested thread still counts.
+Run occupancy counts every **open** thread in the workspace that shares the
+`parent_run_id`, split into `queued`, `claimed`, `working` and `blocked`.
+Muting a thread does not change this: a muted nested thread still counts.
 
-Following one member's occupancy and the manager digest shipped later
-(Cluster 404): see [Integration reference — Claiming](Integration%20Reference.md#claiming).
+To follow one member's occupancy, or read the manager digest, see
+[Integration reference: Claiming](Integration%20Reference.md#claiming).
 
 ---
 
 ## Inline findings
 
-**Frame of reference (pinned 380.1).** `findings[].line_range` is a 1-indexed
+**Frame of reference.** `findings[].line_range` is a 1-indexed
 **inclusive** span (`start`..=`end`) on the **post-image** file at `head_sha` —
 the file as that commit left it, not a diff-hunk relative offset. On GitHub's
 split view this is **RIGHT**. `LEFT` is deletions that no longer exist in the
@@ -175,11 +142,11 @@ GitHub creates a review. Projector rows aimed at the same issue never call
 `create_review`.
 
 Each result POSTs a new COMMENT review (a re-review on a new `head_sha` lands
-on that commit); the 379 summary comment is the object that updates in place.
+on that commit); the summary comment is the object that updates in place.
 
 ---
 
-## The `deliver_to` grammar (pinned)
+## The `deliver_to` grammar
 
 An array of target objects. Each names a `surface` plus per-surface detail:
 
@@ -289,10 +256,9 @@ Blessing is idempotent — a re-bless returns the existing entry with its origin
 `created_at`, so the list stays "what may we post to" with nothing to reconcile.
 
 **The selector is two fields, not one string.** There is no `github:owner/repo`
-target syntax at this boundary: `surface` is the enum (`github` | `slack` |
-`github_branch`) and
-`selector` is the per-surface id (`linear` is a surface too). The rules, enforced on every write path
-(`400` with the reason on a violation):
+target syntax at this boundary: `surface` is one of `github`, `slack`,
+`github_branch` or `linear`, and `selector` is the per-surface id. The rules,
+enforced on every write path (`400` with the reason on a violation):
 
 | Surface | `selector` | Rejected |
 |---|---|---|
@@ -316,9 +282,12 @@ API below, and an operator — not the agent — fixes an unblessed target.
 
 ## The change flow (`pi.change.result/1` → `github_branch`)
 
-A coding seat (the producer's coding agent) edits a checkout but holds no GitHub write credential. It
-returns the commit it started from and a diff; Maidan, holding the operator's
-token, makes the commit and opens a **draft** pull request, and answers in the
+`pi.change.result/1` is the change-result schema: the `result_kind` of a
+result that carries a diff for Maidan to commit.
+
+A coding agent edits a checkout but holds no GitHub write credential. It
+returns the commit it started from and a diff. Maidan, holding the operator's
+token, makes the commit, opens a **draft** pull request, and answers in the
 Slack thread the work started in.
 
 **The envelope.** `result_kind` is `pi.change.result/1`. Besides the usual
@@ -332,7 +301,7 @@ envelope fields, Maidan reads:
 | `branch` | The branch the producer worked on, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
 | `error_detail` | Optional. Why a run that changed nothing ended. The Slack reply to a status other than `changed` gives it after the status, in place of `summary`, with a cause repeated across retries said once and the whole cut at 600 characters. Without it the reply gives `summary`. |
-| `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message (the `!change` instructions), first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
+| `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message, first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
 | `pr_state` | Optional, `{title, body}`. `body` describes the whole branch against its base as it stands after this round (where `title` and `summary` describe this round). Maidan keeps it in one section of the pull request body, between `<!-- pi:current-state -->` and `<!-- /pi:current-state -->`, replacing only that section on each delivery and appending it when the markers are missing, so edits people and review bots make elsewhere in the body stay. Mentions are defused and the section is capped at 20,000 characters. `pr_state.title` is not read: a title people fixed is never reverted. A failed body edit never fails the delivery. |
 
 **What a `changed` result does**, per `github_branch` target the workspace has
@@ -429,10 +398,9 @@ branch head immediately before the move, and moves the branch with
 `force: true` only if the head is still the one it checked. This is the change
 flow's **only non-fast-forward write**. It is allowed only for a
 `feature/agent-*` branch whose head is the last commit Maidan delivered, and
-only through one guard in `change_flow.rs` that no other code can call: the
-GitHub client's force method takes a single-use pass that only that guard
-mints, bound to the branch and both commits, and checks the branch shape
-again. GitHub's ref API has no compare-and-swap, so a push landing between the
+only through one guard that no other code path can reach: the force write
+takes a single-use pass that only that guard mints, bound to the branch and
+both commits, and checks the branch shape again. GitHub's ref API has no compare-and-swap, so a push landing between the
 re-read and the move (one round trip) is the window that remains. The round is
 recorded with `rebase: true` and `base_behind` 0, and the pull request's
 current-state section is updated from `pr_state` as for any round. A retry that
@@ -456,7 +424,7 @@ and the Slack reply says the rebase stopped on conflicts and gives
 `error_detail` (the conflicting paths, when the producer lists them).
 
 **The merge queue.** For a repository listed in `MAIDAN_MERGE_QUEUE_LABELS`,
-the mark-ready app may enter a ready agent pull request into the merge queue
+the client that marks agent pull requests ready may enter one into the merge queue
 by asking Maidan to add the queue's label (`POST /operator/github/enqueue`
 with `repo` and `pull_number`), read whether it is labelled (`GET`), and take
 the label off (`DELETE`). Enqueue reads the pull request once and refuses
@@ -569,8 +537,6 @@ different unit of work.
 `result_kind` is a **namespaced string**, not a closed enumeration. A producer publishes
 `result_kind = "example.review.result/1"` inside `schema = "maidan.waiter.result/1"`; a
 future producer ships a new string and the facet works without a server change.
-The old guess of a closed enum (`decision|plan|merge_authorized`) is not the
-wire vocabulary and is not a filter value.
 
 List (not message-FTS) surfaces, `workspace:read`:
 
@@ -589,25 +555,25 @@ and not the ADR JSON convention `"kind": "decision"` in
 ## Close-gate
 
 A reviewed `example.review.result/1` whose `findings` contain any
-`severity == "critical"` is a `request_changes` from a
-review-skilled producer (`REVIEW_SKILL = "review"`). If the thread has no
-requirement, Maidan arms `k = 1` so the existing close-gate refuses
-`closed` until a human who is neither owner nor assignee approves.
+`severity == "critical"`, from a producer that holds the `review` skill, is a
+`request_changes`. If the thread has no review requirement, Maidan sets one
+(`k = 1`: one approval), so the thread cannot close until a person who is
+neither its owner nor its assignee approves it.
 
-This is an adapter, not a new gate:
+This uses the existing review gate; it is not a new one:
 
-- Warning-only / wrong `result_kind` / not `reviewed` / unskilled producer
-  → no-op.
-- An existing `k` is left alone.
-- A clean re-review does **not** auto-approve.
-- Empty `deliver_to` still arms — the room blocks the land even when
-  nothing is posted externally.
-- The GitHub review posted stays `event: COMMENT`. The
-  room gate is the land decision; the PR is not REQUEST_CHANGES.
+- A result with only warnings, another `result_kind`, a status other than
+  `reviewed`, or a producer without the `review` skill changes nothing.
+- An existing requirement is left alone.
+- A clean re-review does **not** approve on its own.
+- An empty `deliver_to` still sets the requirement: the thread is held even
+  when nothing is posted outside Maidan.
+- The GitHub review stays `event: COMMENT`. The gate in Maidan decides the
+  land; the pull request is not marked `REQUEST_CHANGES`.
 
-`PUT /threads/:id/result` and MCP `set_thread_result` arm on the write
-path. The `ThreadResultSet` bus consumer arms again (every-replica /
-replay). Both are idempotent.
+Both `PUT /threads/:id/result` and MCP `set_thread_result` set the requirement
+when the result is written, and the `ThreadResultSet` event handler sets it
+again on every replica and on replay. Both are idempotent.
 
 ## Delivery status
 
@@ -677,71 +643,27 @@ can tell the task's own thread where its result did not go.
 
 ## What Maidan will never deliver
 
-- Raw agent output of any kind — seat stdout, un-rendered model text, tool
+- Raw agent output of any kind: agent stdout, un-rendered model text, tool
   transcripts. **Only `rendered`, `summary`, and structured `findings`.**
 - Anything at all when `status` is not `reviewed` (beyond the failure notice).
 - Anything to a target the workspace has not blessed.
 
-Maidan does not run seats, does not render reviews, and does not become a
-CI product. The close-gate adapter reads `findings[].severity`
-adapter only (`critical` → `request_changes`); it does not
-judge finding bodies or invent a land vocabulary. GitHub review `event`
-stays `COMMENT`. It delivers trusted bytes to blessed
-surfaces, durably, once.
+Maidan does not run agents, does not render reviews, and is not a CI product.
+The close-gate reads only `findings[].severity` (`critical` →
+`request_changes`); it does not judge finding bodies. A GitHub review's `event`
+stays `COMMENT`. Maidan delivers trusted bytes to allowed surfaces, durably,
+once.
 
 ---
 
-## Open requests to result producers
-
-All three are now carried.
-
-1. ~~**`head_sha`** — the commit the review was computed against.~~ **Carried and used.** Present on
-   `maidan.waiter.result/1` (fixture lock). Maidan passes it as GitHub's `commit_id`
-   rather than resolving the PR head at delivery time.
-2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
-   **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
-   [Inline findings](#inline-findings).
-3. ~~**Call `report_usage`** with the run's cost and wall time.~~ **Carried, and
-   the wall half needs nothing.** Maidan ships a per-task token/USD/turn/wall
-   budget envelope that stops a run when it is exceeded, and a producer that
-   reports spend only inside an opaque result leaves that envelope blind.
-   Self-reporting through the ledger API is the supported path — Maidan
-   deliberately does not fold an agent-declared cost out of a result payload into
-   its own billing basis. The exact contract:
-
-   - **Cost, tiered tokens, and turns are reported.** `report_usage` carries a
-     unique `usage_report_id`, the active `claim_lease_id`, model, explicit
-     input/output/cache-read/cache-write tokens, the matching immutable price
-     snapshot, integer `usd_micros`, and turns — over MCP or
-     `POST /threads/:id/usage`. Exact retries are idempotent; conflicting reuse
-     and stale leases fail before charging. The reporter and payer are derived,
-     never caller-selected. Money never crosses the wire as a float, and there
-     is **no `cost_usd` argument** — convert at the edge.
-   - **Wall time is *not* reported — it is derived.** There is no
-     `duration_secs`/`wall_secs` argument and there will not be one: a
-     self-reported clock is the same trust hole as a self-reported cost, and
-     Maidan already holds the authoritative one. `max_wall_secs` is measured
-     against the thread's **working clock** (`work_started_at`), so
-     elapsed time is the room's own measurement. A claim whose lease lapses
-     is charged the time it worked (acknowledgement to deadline) when the
-     reaper frees it, so the bound also stops a hung agent that never
-     reports. A release, unassign, reassignment, freeze, SCIM deactivation, budget stop or close charges from the acknowledgement to that moment ([Integration reference](Integration%20Reference.md#budgets-and-usage)).
-   - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
-     `NULL` until the holder calls `acknowledge_claim {thread_id,
-     claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). The holder
-     comes from the authenticated identity; it is not a caller-selected field. Until then
-     `max_wall_secs` is inert — a claimed-but-unacknowledged run is never stopped
-     on time. Acknowledging is idempotent (the first start time is kept) and is
-     also what splits `claimed` from `working` in `GET /channels/:cid/occupancy`.
-   - **Extra arguments are rejected.** Lifecycle and usage request schemas use
-     strict deserialization, so stale acting-identity fields fail at the boundary
-     instead of being silently ignored.
-
 ## Versioning
 
-The grammar above is **frozen at `maidan.waiter.result/1`** (confirmed against the shipped delivery path).
-Additive fields are free. A change to the meaning of an existing field, or to the
-`deliver_to` shape, requires a new `schema` value — Maidan will route on the
-discriminator and an unrecognized one is inert rather than mis-delivered. The
-Maidan-side lock is `crates/maidan-types/tests/fixtures/waiter_result_v1.json`:
-a producer-side grammar change breaks that test.
+The grammar above is **frozen at `maidan.waiter.result/1`**. Additive fields
+are free. A change to the meaning of an existing field, or to the `deliver_to`
+shape, requires a new `schema` value.
+
+**An unrecognized `schema` is inert.** Maidan attempts no delivery and records
+nothing: no warning, no `skipped` row, nothing on the status API. If a result
+is never delivered and the status API is empty, check the `schema` string
+first. A reference envelope is
+[`crates/maidan-types/tests/fixtures/waiter_result_v1.json`](https://github.com/david-engelmann/maidan/blob/main/crates/maidan-types/tests/fixtures/waiter_result_v1.json).

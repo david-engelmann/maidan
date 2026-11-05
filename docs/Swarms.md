@@ -6,10 +6,11 @@ result reviewed and delivered back to where the work came from. The agents can
 be any MCP client, an A2A agent, or your own loop over REST. Maidan holds the
 coordination, and the agents hold none of it.
 
-This page is the shape of a swarm built on Maidan, and the pieces it uses. The
-tool-by-tool guide is [Integration](Integration.md), with the detail in its
-[reference](Integration%20Reference.md); result delivery is
-[Result Delivery](Result%20Delivery.md).
+This page is the shape of a swarm built on Maidan, and the pieces it uses. It
+does not repeat the basics: the claim, result and review calls are in
+[Integrating with Maidan](Integration.md) (every rule in its
+[reference](Integration%20Reference.md)), and how a result reaches GitHub,
+Slack or Linear is in [Result delivery](Result%20Delivery.md).
 
 ## Why the coordination lives outside the agents
 
@@ -38,98 +39,150 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
                    and footprint     + fence    worktree               + humans   comment, chat
 ```
 
-1. **Intake.** A producer turns an issue into a thread: the task text, a
-   `deliver_to` list saying where the result goes, and, when it knows, a
-   footprint saying what part of the repository the work touches.
-2. **Planning.** A task with `kind: plan` goes to a planner, which claims it
-   and submits its children in one call: `POST /threads/{id}/plan` or the MCP
-   `submit_plan`, with the claim's `lease_id` and 1–50 children. Each child has
-   a key, a title, attributes, a footprint, a `test` command, and optionally a
-   description and `depends_on` (keys of other children in the plan).
-   - **Lint.** So each child can be worked and checked without asking the
-     planner, every child needs `attributes.acceptance`, `attributes.engine`,
-     a `test` command (kept at the end of its description as ``Test: `…` ``)
-     and a footprint with at least one item. A child with `threat_model: true`
-     goes to a session (`engine: session`). A child that misses any of these
-     is a 400 naming it, and nothing is created.
-   - **Held for review.** A plan with five or more children, or any child
-     with `threat_model: true`, is created held: the answer says
-     `"held": true`, and each child carries a `human` block, so `claim_next`
-     skips it and the board shows the hold. A Maintainer releases it with
-     `POST /threads/{id}/plan/release` (`token:admin`, audited), which clears
-     only the plan hold and answers the children released.
-   - **All or nothing.** The children, their footprints, attributes and
-     dependency edges are made in one transaction in the plan's channel. A bad
-     child, an unknown or cyclic `depends_on`, a repository missing from the
-     workspace's `github_branch` egress allowlist, or a plan larger than the
-     spawn budget is a 400 naming the child, and nothing is created.
-   - **Retries.** The same claim sending the same keys again gets a 200 with
-     the children already made. Any other plan on a parent that has children
-     is a 409 (`plan-conflict`, MCP `-32010`) listing them.
-   - **Amending.** Under the same claim, the planner changes a submitted plan
-     with `POST /threads/{id}/plan/amend` or the MCP `amend_plan`: `cancel`
-     names children to cancel, `add` gives new ones (linted as above, and
-     their `depends_on` may name any child of the plan), and `rewire` sets a
-     child's `depends_on` afresh. Cancelling and adding the same key
-     replaces the child, and its dependents wait for the new thread. A
-     cancelled child leaves the plan, so its dependents stop waiting for it
-     instead of being blocked. Only open, unclaimed children can be
-     cancelled or rewired; a claimed or finished one is a 409 and nothing
-     changes. A plan takes at most three amendments. Added children are held
-     for review when the plan is held or one needs a threat model.
-   - **Dispatch.** `claim_next` never hands out a thread whose dependencies
-     are unfinished, so a child becomes claimable when what it depends on
-     lands. A plan's children move through review and close while the plan
-     stays open under its planner's claim.
-   - **A child that closes without landing** (no `ThreadLanded`: closed by
-     hand, or cancelled) blocks each open dependent with a `dag` block naming
-     it, plus a message on the dependent, so no work starts on a base that
-     never merged. The plan gets one message. A person or the planner clears
-     the blocks once the work is redone.
-   - **The plan closes itself** when its last child lands, in that child's
-     transaction, through the plan's own review and close gates, with a
-     `ThreadLanded` and a message listing every child's pull request. When a
-     gate refuses, the plan stays open with one message saying why.
-   - `GET /threads/{id}` on a plan shows `plan_state: {total, closed, open,
-     blocked}`.
-3. **Claiming.** Workers call `claim_next_thread` (or the workspace-wide
-   `claim_next_workspace_thread`). Each claim carries a lease and a fencing
-   token (`claim_lease_id`). The worker acknowledges it when it starts
-   (`acknowledge_claim`), renews it while it works (`renew_claim`), and
-   releases it if it stops early (`release_claim`). A lease that lapses
-   returns the thread to the queue, charged against its budget, so a crashed
-   agent never holds work.
-4. **Footprints.** The claim queue only hands out work whose footprint
-   overlaps no live claim (below).
-5. **Work.** Each agent works in its own worktree or container. Maidan does
+1. **Intake.** A producer turns an issue into a thread: the task text, its
+   [attributes](#task-attributes), a `deliver_to` list saying where the
+   result goes, and, when it knows, a [footprint](#claim-footprints) saying
+   what part of the repository the work touches.
+2. **Planning.** A planner can split a large task into child tasks
+   ([Plans](#plans)).
+3. **Claiming.** Workers claim ready threads. A lease keeps a crashed agent
+   from holding work, and footprints keep two agents off the same code
+   ([Claiming, results and review](#claiming-results-and-review)).
+4. **Work.** Each agent works in its own worktree or container. Maidan does
    not run the agents.
-6. **Result.** The agent sets a structured result (`set_thread_result`),
-   naming its claim's lease. A seat whose lease lapsed and was taken over is
-   refused (`claim_lost`), so only the current holder's result lands. A
-   change result names the branch, the base commit and the diff. Maidan
-   commits it and opens a draft pull request, so the agent never holds a
-   repository credential. Every change opens on the repository's base: a
-   base that is another change's `feature/agent-*` branch is refused,
-   because that pull request would close when its base lands and is deleted.
-   Order stacked work with `depends_on`, which keeps the child unclaimed
-   until its parent closes.
-7. **Review.** Review requirements, approval gates and second-agent reviews
-   decide when a thread can close. An agent cannot approve its own work.
-8. **Delivery.** The result is delivered to every target the producer named,
-   once the workspace has allowed it: a GitHub pull request or comment, a
-   Slack thread, a Linear issue comment (with an optional state move). See
-   [Result Delivery](Result%20Delivery.md).
-9. **Merge queue.** Once checks and reviews pass, the client that marks agent
-   pull requests ready can enqueue one (`POST /operator/github/enqueue`): Maidan
-   adds the repository's merge-queue label, and only when the pull request's
-   head is still the commit Maidan delivered, so nothing pushed after review
-   reaches the queue. While a pull request is queued, Maidan refuses to push
-   another change to it; dequeue first (`DELETE`). A pull request GitHub's queue dropped
-   (`merge_dequeued`) but whose label stayed is not queued: the next round's
-   delivery takes the stale label off and goes ahead, and the next enqueue
-   labels the new head. The queue itself (a label
-   driven one, such as Graphite's) does the merging. A repository a person
-   merges is left out of `MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued.
+5. **Result.** The agent sets a structured result. For a code change, Maidan
+   makes the commit and opens a draft pull request, so the agent holds no
+   repository credential.
+6. **Review.** Review requirements and approval gates decide when the thread
+   can close.
+7. **Delivery.** The result reaches every target the producer named that the
+   workspace allows ([Result delivery](Result%20Delivery.md)).
+8. **Merge.** A ready pull request can enter the repository's merge queue
+   ([The merge queue](#the-merge-queue)).
+
+## Plans
+
+A task with `kind: plan` goes to a planner. The planner claims it and submits
+the plan's children in one call: `POST /threads/{id}/plan`, or the MCP tool
+`submit_plan`. The call names the claim's `lease_id` and 1 to 50 children.
+Each child has a key, a title, attributes, a footprint and a `test` command,
+and optionally a description and `depends_on` (the keys of other children in
+the plan).
+
+### What each child needs
+
+Every child must be workable and checkable without asking the planner. So
+each child needs `attributes.acceptance`, `attributes.engine`, a `test`
+command and a footprint with at least one item. The `test` command is kept at
+the end of the child's description as ``Test: `…` ``. A child with
+`threat_model: true` must go to a session (`engine: session`). A child that
+misses any of these is refused with a 400 that names it, and nothing is
+created.
+
+### All or nothing
+
+Maidan creates the children, their footprints, attributes and dependency
+edges in one transaction, in the plan's channel. The whole plan is refused,
+with a 400 naming the child, when:
+
+- a child is invalid;
+- a `depends_on` names an unknown child or makes a cycle;
+- a child's repository is missing from the workspace's `github_branch` egress
+  allowlist;
+- the plan is larger than the workspace's spawn budget.
+
+Retries are safe. The same claim sending the same keys again gets a 200 with
+the children already made. Any other plan on a parent that already has
+children is a 409 (`plan-conflict`, MCP `-32010`) listing them.
+
+### Plans held for review
+
+A plan with five or more children, or with any child that has
+`threat_model: true`, is created held. The answer says `"held": true`, and
+each child carries a `human` block, so `claim_next` skips it and the board
+shows the hold. An admin releases it with `POST /threads/{id}/plan/release`
+(`token:admin`, audited). The release clears only the plan hold, and answers
+with the children it released.
+
+### Amending a plan
+
+Under the same claim, the planner changes a submitted plan with
+`POST /threads/{id}/plan/amend` or the MCP tool `amend_plan`. An amendment can:
+
+- `cancel` children;
+- `add` children, checked as above; their `depends_on` may name any child of
+  the plan;
+- `rewire` a child, setting its `depends_on` afresh.
+
+Cancelling and adding the same key replaces the child, and its dependents
+wait for the new thread. A cancelled child leaves the plan, so its dependents
+stop waiting for it instead of being blocked. Only open, unclaimed children
+can be cancelled or rewired: a claimed or finished one is a 409, and nothing
+changes. A plan takes at most three amendments. Added children are held for
+review when the plan is held, or when one of them needs a threat model.
+
+### Running a plan
+
+`claim_next` never hands out a thread whose dependencies are unfinished, so a
+child becomes claimable when what it depends on lands. The children move
+through review and close while the plan stays open under its planner's claim.
+`GET /threads/{id}` on a plan shows `plan_state: {total, closed, open,
+blocked}`.
+
+A child can close without landing (no `ThreadLanded`), when it is closed by
+hand or cancelled. Then each open dependent gets a `dag` block naming it and a
+message, so no work starts on a base that never merged, and the plan gets one
+message. A person or the planner clears the blocks once the work is redone.
+
+The plan closes itself when its last child lands. This happens in that
+child's transaction, through the plan's own review and close gates, with a
+`ThreadLanded` and a message listing every child's pull request. When a gate
+refuses, the plan stays open, with one message saying why.
+
+## Claiming, results and review
+
+Workers call `claim_next_thread`, or `claim_next_workspace_thread` to claim
+from the whole workspace. Each claim carries a lease and a fencing token
+(`claim_lease_id`). The worker acknowledges the claim when it starts
+(`acknowledge_claim`), renews it while it works (`renew_claim`), and releases
+it if it stops early (`release_claim`). A lease that lapses returns the
+thread to the queue and is charged against its budget, so a crashed agent
+never holds work. [The agent loop](Integration.md#the-agent-loop) walks
+through the calls.
+
+The agent sets its result with `set_thread_result`, naming its claim's lease.
+An agent whose lease lapsed and was taken over is refused (`claim_lost`), so
+only the current holder's result lands. A change result names the branch, the
+base commit and the diff; Maidan commits it and opens a draft pull request
+([the change flow](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch)).
+
+Every change opens on the repository's base. A base that is another change's
+`feature/agent-*` branch is refused, because that pull request would close
+when its base lands and the branch is deleted. To stack work, use
+`depends_on`: it keeps the child unclaimed until its parent closes.
+
+Review requirements, approval gates and second-agent reviews decide when a
+thread can close. An agent cannot approve its own work
+([Reviews and approval gates](Integration.md#reviews-and-approval-gates)).
+
+## The merge queue
+
+Once checks and reviews pass, the client that marks agent pull requests ready
+can enqueue one with `POST /operator/github/enqueue`. Maidan adds the
+repository's merge-queue label, but only when the pull request's head is
+still the commit Maidan delivered, so nothing pushed after review reaches the
+queue. The queue itself (a label-driven one, such as Graphite's) does the
+merging.
+
+While a pull request is queued, Maidan refuses to push another change to it.
+Dequeue it first (`DELETE` on the same path). A pull request that GitHub's
+queue dropped (`merge_dequeued`) but whose label stayed is not treated as
+queued: the next round's delivery takes the stale label off and goes ahead,
+and the next enqueue labels the new head.
+
+A repository that a person merges by hand is left out of
+`MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued. The full rules are in
+[Result delivery](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch).
 
 ## Claim footprints
 
@@ -356,8 +409,12 @@ should do it, and whether it needs a threat model:
   "size": "M", "acceptance": "The bridge retries twice; its test proves it." }
 ```
 
-`kind` is `change` (the default), `plan` or `review`. `engine` is `pi`,
-`session` or `human`, or absent when nobody has routed the work yet.
+`kind` is `change` (the default), `plan` or `review`. `engine` says which kind
+of worker should take the task: `pi` (an automated worker), `session` (an
+interactive agent session) or `human` (a person). It is absent when nobody has
+routed the work yet. Maidan uses the engine for routing, for the
+[handoff](#handoff-at-non_converging) and for the per-engine metrics; what
+runs behind each name is up to you.
 `threat_model` marks work that needs one. `size` (`S`, `M` or `L`) is the
 planner's estimate, and `acceptance` says how a reviewer verifies the task;
 the worker sees it in the thread context. The lane is not an attribute: it is
@@ -386,9 +443,9 @@ own.
 
 Claiming respects the engine. `claim_next` (HTTP and MCP, channel and
 workspace) takes an optional `engine`, and a claimer that names one is
-handed only work routed to it. A Pi worker that passes `engine: "pi"` is
-never handed session or human work, and work nobody routed waits for a
-claim that names no engine.
+handed only work routed to it. A worker that passes `engine: "pi"` is never
+handed session or human work, and work nobody routed waits for a claim that
+names no engine.
 
 A workspace can route that work by default. Maidan creates threads that name
 no engine: schedules fire them, inbound A2A messages open them, a message
@@ -396,13 +453,13 @@ becomes one, and a plan child or a REST or MCP create can leave the engine out.
 `PUT /workspaces/{id}/default-engine` with `{ "engine": "pi" }` (`token:admin`,
 audited as `workspace.default_engine.set`) routes every thread created in the
 workspace afterwards with no engine to `pi`, in the transaction that creates
-it, so a Pi worker's `claim_next` with `engine: "pi"` is handed it. An engine
+it, so a worker's `claim_next` with `engine: "pi"` is handed it. An engine
 named at creation still wins, threads created before keep their routing, and
 `{ "engine": null }` turns the default off. `GET` on the same path reads it
 (`workspace:read`).
 
-A worked pass through the surface: intake files a review for a Pi worker
-and a plan for a session,
+A worked pass through the surface: intake files a review for the automated
+worker and a plan for a session,
 
 ```http
 POST /channels/{cid}/threads
@@ -414,21 +471,21 @@ POST /channels/{cid}/threads
   "attributes": { "kind": "plan", "engine": "session" } }
 ```
 
-The Pi worker's `claim_next` with `{ "engine": "pi" }` is handed the
+The automated worker's `claim_next` with `{ "engine": "pi" }` is handed the
 review; the plan waits for a session claim. If the review turns out to
 need a person instead, `PUT /threads/{id}/attributes` with
 `{ "kind": "review", "engine": "human", "threat_model": true }` reroutes
 it whole, and the metrics read for the workspace
 (`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
-that was routed to Pi.
+that was routed to `pi`.
 
 ### A review's author family
 
 A review must come from another model family than the change it reviews.
 When a change Maidan tracks enters review, Maidan files the review child
 itself and records the author's family. A producer filing a review of a
-change written elsewhere (an outside pull request, a Codex-written branch)
-names it in the attributes:
+change written elsewhere (an outside pull request, a branch another model
+wrote) names the author's family in the attributes:
 
 ```json
 { "kind": "review", "engine": "session", "author_family": "openai" }
@@ -438,27 +495,24 @@ names it in the attributes:
 anything else is refused). The rule holds on every path a thread takes to a
 member: `claim_next` skips the thread for a member whose usage reports name
 that family, and a direct claim or an assign to one (REST and MCP) is
-refused with a 409 naming the family. So a Codex seat is never handed a
-review of Codex's own work. One family is stored per change: a later
+refused with a 409 naming the family. So an agent running an OpenAI model is
+never handed a review of OpenAI-written work. One family is stored per change: a later
 `PUT /threads/{id}/attributes` or `set_thread_attributes` that omits it
 keeps it, and one that names another is refused with a 409, so nobody who
 may set attributes, the change's author included, can lift or move it. A
 member that has reported no usage in the workspace has no known family and
 is not refused.
 
-What the rule does not cover (#1703):
+What the rule does not cover:
 
-- **A seat's family comes only from its past usage.** It is read when the
-  thread is handed out. A seat with no usage yet, or whose first usage under
+- **A member's family comes only from its past usage.** It is read when the
+  thread is handed out. A member with no usage yet, or whose first usage under
   the author's family arrives after it claims, passes the check, and nothing
-  re-checks the holder afterwards. Give review seats a usage history (or a
-  dedicated member per family) before they take reviews.
+  re-checks the holder afterwards. Give each reviewing agent a usage history
+  (or a dedicated member per family) before it takes reviews.
 - **Workspace import does not apply it.** An admin importing a bundle can
   restore a review already held by a member of the author's family; import
   checks only that the holder belongs to the imported workspace.
-
-Releasing a review at usage-report time, when the reporter's family matches
-the review's `author_family`, is the proposed fix and is not built yet.
 
 ### Claim and release comments on Linear
 
@@ -471,13 +525,13 @@ reads it (`workspace:read`). While it is off, nothing is said on Linear.
 
 With it on, the change sweep says each of these once per task:
 
-- `CLAIM: pi/<task id> claimed in Maidan by <handle>: <title>` when the task
-  is first claimed;
-- `RELEASED: pi/<task id> ended without merging: <title>` when, after a
+- `CLAIM: <engine>/<task id> claimed in Maidan by <handle>: <title>` when
+  the task is first claimed;
+- `RELEASED: <engine>/<task id> ended without merging: <title>` when, after a
   claim was said, the task closes or is archived with no merged pull
   request.
 
-The prefix is the task's engine (`maidan` when it has none). The comments go
+`<engine>` is the task's engine, or `maidan` when it has none. The comments go
 out through the Linear delivery path with the same key and the same
 per-team allowlist as a result's comment. There is no assignee and no new
 identity. The issue is looked up first, and a comment is queued only when its
@@ -489,15 +543,15 @@ several replicas sweeping.
 
 ### Handoff at `non_converging`
 
-A Pi task that stops converging is handed to a session, once. The change
-sweep flags a task `non_converging` when it is still open after the round
-limit (3), or its diff grew in each of the last three rounds. For a task
-routed to Pi, it then:
+A task routed to the automated engine (`pi`) that stops converging is handed
+to a session, once. The change sweep flags a task `non_converging` when it is
+still open after the round limit (3), or when its diff grew in each of the
+last three rounds. For a task routed to `pi`, it then:
 
 - ends the claim, charging its worked time as any claim end does, so the
   worker's next renew is refused;
-- sets the task's engine to `session`, so a Pi `claim_next` never takes it
-  again, and leaves the task open for a session;
+- sets the task's engine to `session`, so a `pi` worker's `claim_next` never
+  takes it again, and leaves the task open for a session;
 - appends a `ThreadHandoff` event (rounds, repository, pull request, the new
   engine), posts a line in the thread, and queues the same line in the
   result's Slack thread when that channel is blessed;
@@ -626,7 +680,7 @@ retried or replayed call) says nothing, so the signature needs no replay
 window. The answer is `{"noticed": n}`. A deploy that arrives before the
 change sweep has read the merge is not matched; send it again later.
 
-## Measuring the ramp
+## Measuring the swarm
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
 `?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`), or the MCP tool
@@ -656,10 +710,10 @@ The first seven numbers are repeated for three splits: by the engine each
 task was routed to (`by_engine`: `pi`, `session`, `human`, then unrouted),
 by size (`by_size`: `S`, `M`, `L`, then unsized) and by risk tier
 (`by_risk`: standard work, then `threat_model` work). A split leaves out a
-slice with no tasks. Pi is given small and medium work and sessions the risky
-work, so compare engines within one size or one tier: across the whole
-repository the comparison mostly measures the routing. Cost per merged change
-in each engine slice is what compares Pi with sessions on cost.
+slice with no tasks. If you route work to engines by size or risk, compare
+engines within one size or one tier: across the whole repository the
+comparison mostly measures the routing. Cost per merged change in each engine
+slice compares the engines on cost.
 
 Two more splits compare who did the work: `by_provider` (the model provider
 that spent the most on each task: `anthropic`, `openai`, `xai`, ...) and
@@ -676,8 +730,8 @@ unless it is a key), else the issue of its Linear `deliver_to` target. The
 first round that knows it records it. `?engine=`, `?kind=` and `?size=`
 narrow the whole report to one slice, and `?linear_issue=ENG-1,ENG-2`
 to the tasks for those issues (the attribute, else the one the result
-named), so a paired pilot can be read apart from other work in the same
-repository. These are the numbers each ramp step is gated on.
+named), so a trial on a few issues can be read apart from other work in the same
+repository. Use these numbers to decide when to add workers.
 
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.

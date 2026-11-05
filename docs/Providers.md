@@ -5,15 +5,13 @@ What you can plug in **without forking Maidan**. Two database *dialects*
 surfaces (embeddings, object store, IdP, mail) are already traits with
 one or two implementations.
 
-This page is the operator-facing matrix. The workstream that keeps it
-honest is [Pre-Public Hardening.md](archive/Pre-Public%20Hardening.md) section
-**I**. Embeddings detail: [Embeddings.md](Embeddings.md). Deploy:
-[Deploy.md](Deploy.md).
+This page is the operator-facing matrix: what each surface accepts, and a recipe
+for each common host. Embeddings in detail: [Embeddings](Embeddings.md).
+Network placement: [Deploy](Deploy.md).
 
-**Written:** 2026-08-25 (verified against code through `v273`): `Store`
-is Postgres + SQLite only; embeddings are `hash-v1` |
-`openai-compatible`; artifacts are LocalFs | S3-compatible; auth is
-OIDC; mail is SMTP.
+In short: the `Store` is Postgres or SQLite; embeddings are `hash-v1` or
+`openai-compatible`; artifacts live on a local filesystem or any S3-compatible
+store; people sign in through OIDC; mail goes out over SMTP.
 
 ---
 
@@ -66,8 +64,7 @@ Two rules hold on every host:
 
 ### LibSQL / Turso (measured: not a driver flag)
 
-Measured on 2026-10-16 against `main` @ 466c2ec6. `DATABASE_URL` picks the
-dialect by prefix, and only `postgres://`, `postgresql://` and `sqlite:` are
+`DATABASE_URL` picks the dialect by prefix, and only `postgres://`, `postgresql://` and `sqlite:` are
 accepted:
 
 - `libsql://<db>.turso.io?authToken=...` stops boot: "cannot detect dialect from
@@ -116,8 +113,7 @@ docker compose -f compose.yaml -f examples/embeddings/compose.ollama.yaml \
   --profile full up -d --build
 ```
 
-Run on 2026-10-16 with a release image of `main` @ 466c2ec6 plus the fix below:
-the stack came up healthy, the server probed 768 dimensions, and three semantic
+When this recipe was run end to end, the stack came up healthy, the server probed 768 dimensions, and three semantic
 queries each ranked the matching message first.
 
 A one-shot `ollama-pull` service downloads the model into a volume before
@@ -132,11 +128,8 @@ host: `MAIDAN_EMBEDDING_PROVIDER=openai-compatible`,
 `MAIDAN_EMBEDDING_ENDPOINT=http://127.0.0.1:11434/v1/embeddings` and
 `MAIDAN_EMBEDDING_MODEL=nomic-embed-text`.
 
-**A debug build needs the fix "A remote embedding provider no longer crashes a
-debug build at boot"** (CHANGELOG). Before it, a debug build crashed at boot
-with this provider. In every build, each embedding call still holds a runtime
-worker until the endpoint answers, so a slow endpoint can delay other requests.
-A follow-up moves those calls off the workers.
+Each embedding call holds a runtime worker until the endpoint answers, so a
+slow endpoint can delay other requests.
 
 **Hugging Face text-embeddings-inference** serves the same OpenAI-style route,
 so the overlay's three variables work with its `/v1/embeddings` in place of
@@ -286,29 +279,26 @@ implies Postgres.
 
 ---
 
-## Still to prove (Hardening I, not new code)
+## What has been run
 
-- **I1 (done)** — this page; keep it true when env vars change. (written 2026-08-25)
-- **I2 (written 2026-10-16)** — embedding: the Ollama compose overlay
-  ("Recipe: local embeddings with Ollama"). TEI is described but not run.
-- **I3 (written 2026-10-16)** — R2 runs in production. AWS S3 is written, not
-  run.
-- **I4** — Keycloak done (2026-10-08, [OIDC](OIDC.md)). The SaaS recipe (Google)
-  is written, not run.
-- **I5 (written 2026-10-16)** — Neon runs in production. RDS and Supabase are
-  written, not run.
-- **I6 (measured 2026-10-16)** — LibSQL/Turso is not a driver flag, so it is not
-  implemented.
+- **Run in production:** Neon (Postgres) and Cloudflare R2 (artifacts), behind
+  the hosted service.
+- **Run end to end:** Keycloak as the identity provider ([OIDC](OIDC.md));
+  local embeddings with Ollama (the recipe above).
+- **Written, not run:** Amazon RDS / Aurora and Supabase; AWS S3; Google as the
+  identity provider; text-embeddings-inference. Each recipe says so. If you run
+  one, the steps above are the place to start, and a report of what differed
+  is welcome.
+- **Measured and not supported:** LibSQL / Turso, which needs its own driver
+  ([above](#libsql--turso-measured-not-a-driver-flag)).
 
 ---
 
 ## See also
 
-- [Handoff.md](archive/Handoff.md) — session pickup
-- [Protocols.md](Protocols.md) — wires (MCP/A2A/REST), not hosts
-- [Embeddings.md](Embeddings.md)
-- [Production.md](Production.md)
-- [Deploy.md](Deploy.md)
-- [Pi.md](Pi.md)
-- [Pre-Public Hardening.md](archive/Pre-Public%20Hardening.md) (section I)
-- [Path to Impressive.md](archive/Path%20to%20Impressive.md) (ecosystem / provider matrix)
+- [Protocols](Protocols.md): the wires (MCP, A2A, REST), not the hosts
+- [Embeddings](Embeddings.md)
+- [Self-hosting](Production.md)
+- [Configuration reference](Configuration.md)
+- [Deploy](Deploy.md)
+- [Raspberry Pi / ARM64](Pi.md)
