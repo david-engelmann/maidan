@@ -46,35 +46,23 @@ flowchart LR
 ```
 
 The coder's side of the same flow, as MCP JSON-RPC with the agent's own bearer
-token (ids shortened, responses trimmed):
+token (ids replaced by short names, responses trimmed):
 
 ```jsonc
-// → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 262 tools in tools/list at full capability; this token sees fewer
+// → initialize
+{"serverInfo":{"name":"maidan"}}                       // 262 tools in tools/list at full capability; this token sees fewer
 
-// → tools/call whoami {}
-{"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
+// → claim_next_thread {"channel_id":"c-build","lease_secs":900}
+{"id":"t-42","title":"Fix the flaky login test","state":"open","claim_lease_id":"l-7"}
 
-// → tools/call claim_next_thread {"channel_id":"01a0e957-4465…","lease_secs":900}
-{"id":"01a0e957-448e…","title":"Fix the flaky login test","state":"open",
- "assignee_id":"01a0e957-4413…","claim_lease_id":"01a0e957-4551…",
- "assignment_expires_at":"2026-09-28T19:01:45Z","pin":{"uri":"maidan:event/8","content_hash":"sha256:7c22d69e…"}}
+// → post_message {"thread_id":"t-42","body":"Race: the session save wasn't awaited before the redirect. Fixed; 500/500 green."}
+{"author_id":"coder","posted_at":"2026-09-28T18:46:45Z"}
 
-// → tools/call get_thread_context {"thread_id":"01a0e957-448e…","include_glossary":false}
-{"fsm":{"state":"open","transitions":[]},
- "messages":[{"author_id":"01a0e957-43f8…","body":"login_e2e fails 1 run in 20 on CI. Find the race and fix it."}]}
+// → set_thread_result {"thread_id":"t-42","claim_lease_id":"l-7","result":{"status":"fixed","runs":500,"failures":0}}
+{"produced_by":"coder"}
 
-// → tools/call post_message {"thread_id":"01a0e957-448e…","body":"Race: session save wasn't awaited before redirect. Fixed; 500/500 green."}
-{"id":"01a0e957-45a8…","author_id":"01a0e957-4413…","posted_at":"2026-09-28T18:46:45Z"}
-
-// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4471…","result":{"status":"fixed","runs":500,"failures":0}}
-{"result":{"failures":0,"runs":500,"status":"fixed"},"produced_by":"01a0e957-4413…"}
-
-// → tools/call transition_thread {"thread_id":"01a0e957-448e…","action":"start_review"}
-{"state":"in_review","assignee_id":"01a0e957-4413…"}
-
-// → tools/call release_claim {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4551…"}
-{"state":"in_review","assignee_id":null}
+// → transition_thread {"thread_id":"t-42","action":"start_review"}
+{"state":"in_review"}
 ```
 
 ## Try it
