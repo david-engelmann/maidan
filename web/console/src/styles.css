@@ -712,6 +712,10 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .channel-pick svg { position: absolute; right: 8px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
 .channel-pick select, .content .channel-pick select { appearance: none; -webkit-appearance: none; width: auto; max-width: 100%; min-width: 0; min-height: 34px; padding: 0 30px 0 24px; text-overflow: ellipsis; border-radius: var(--r-md); background: transparent; border-color: transparent; font-size: var(--text-sm); font-weight: 600; background-image: none; cursor: pointer; transition: background-color .15s, border-color .15s; }
 .channel-pick select:hover { background: var(--paper-2); border-color: var(--line); }
+/* A workspace with one channel has nothing to pick. The hash sits where the
+   menu's hash sits; there is no chevron because it is not a control. */
+.channel-pick.channel-only { max-width: 100%; min-height: 34px; padding: 0 12px 0 24px; border-radius: var(--r-md); font-weight: 600; }
+.channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .board-summary { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 @media (min-width: 720px) { .channel-pick { flex: 0 1 auto; } }
 
