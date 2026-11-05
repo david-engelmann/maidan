@@ -1871,6 +1871,10 @@ pub fn router(state: AppState) -> Router {
                 oauth::token::require_public_origin,
             )),
         )
+        // RFC 7591 dynamic client registration (public by design). 404 unless
+        // `MAIDAN_PUBLIC_ORIGIN` is set and `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`
+        // is on; the handler reads its own small body.
+        .route("/oauth/register", no_store(post(oauth::register::register)))
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.

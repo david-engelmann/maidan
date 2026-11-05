@@ -3,7 +3,7 @@
   "auth_modes": {
     "bearer-header": "A static Authorization: Bearer header carrying a token minted for the agent. The client sends it on every request.",
     "anonymous-dev": "No credential. Only a dev instance with MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE answers, read-only, on one synthetic workspace.",
-    "oauth": "OAuth 2.1 sign-in on /mcp/streamable (docs/OAuth.md): the client identifies itself by a client metadata document or a pre-registered client, and the person consents. The flow is proven by the oauth_*_e2e tests, not here."
+    "oauth": "OAuth 2.1 sign-in on /mcp/streamable (docs/OAuth.md): the client identifies itself by a client metadata document, a pre-registered client, or one it registered itself (RFC 7591, when the instance turns it on), and the person consents. The flow is proven by the oauth_*_e2e tests, not here."
   },
   "elicitation_values": ["supported", "none", "unverified"],
   "clients": [

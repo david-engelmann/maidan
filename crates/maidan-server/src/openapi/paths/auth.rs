@@ -270,6 +270,38 @@ pub fn oauth_token() {}
 )]
 pub fn oauth_revoke() {}
 
+/// Register an OAuth client dynamically
+///
+/// RFC 7591 dynamic client registration, advertised as
+/// `registration_endpoint` in the RFC 8414 document when the instance sets
+/// `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`. Public clients only:
+/// `token_endpoint_auth_method` is `none` and no secret is issued; PKCE S256
+/// is required at authorize. A redirect URI must be `http` on a loopback
+/// host (any port is accepted at authorize), a private-use scheme in
+/// reverse-DNS form or a known app's, or `https` on a host listed in
+/// `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`; an `https` URI on any other host is
+/// left out of the registration, and script or file schemes refuse it. The
+/// client's name is shown on the consent page as unverified. A client never
+/// authorized within a day, or unused for 90 days, is deleted. Client errors
+/// are RFC 7591 section 3.2.2 errors, not problems. 404 until
+/// `MAIDAN_PUBLIC_ORIGIN` is set and registration is on.
+#[utoipa::path(
+    post,
+    path = "/oauth/register",
+    tag = "auth",
+    request_body(
+        content = crate::oauth::register::ClientRegistrationRequest,
+        content_type = "application/json",
+    ),
+    security(()),
+    responses(
+        (status = 201, description = "Registered: the client id to use at authorize and token", body = crate::oauth::register::ClientRegistrationResponse),
+        (status = 400, description = "`invalid_redirect_uri` or `invalid_client_metadata`", body = crate::oauth::error::OAuthErrorBody, content_type = "application/json"),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn oauth_register() {}
+
 /// Start an OAuth authorization request
 ///
 /// The OAuth 2.1 authorization endpoint. Validates the request (client,

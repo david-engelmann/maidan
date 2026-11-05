@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const CLIENT_COLUMNS: &str = "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at, metadata_url";
+const CLIENT_COLUMNS: &str = "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at, metadata_url, registered_at";
 const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
 const GRANT_COLUMNS: &str = "id, client_id, member_id, workspace_id, scope, lineage_id, revoked_at";
 
@@ -36,6 +36,7 @@ fn row_to_client(row: &sqlx::sqlite::SqliteRow) -> Result<OAuthClient, StoreErro
         allowed_scopes: scopes_from(&row.get::<String, _>("allowed_scopes"))?,
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
         metadata_url: row.get("metadata_url"),
+        registered_at: row.get::<Option<DateTime<Utc>>, _>("registered_at"),
     })
 }
 
@@ -143,6 +144,93 @@ pub async fn upsert_metadata_client(
     .fetch_optional(pool)
     .await?;
     row.map(|r| row_to_client(&r)).transpose()
+}
+
+/// Insert a client that registered itself (RFC 7591). The row is marked
+/// with `registered_at`, and `last_used_at` starts there, so the sweep can
+/// tell a client that never came back from one in use.
+pub async fn insert_registered_client(
+    pool: &SqlitePool,
+    new: NewOAuthClient,
+    now: DateTime<Utc>,
+) -> Result<OAuthClient, StoreError> {
+    let id = Uuid::now_v7();
+    let redirect_uris = serde_json::to_string(&new.redirect_uris)?;
+    let allowed_scopes = serde_json::to_string(&new.allowed_scopes)?;
+    let row = sqlx::query(&format!(
+        "INSERT INTO oauth_clients
+            (id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes,
+             created_at, registered_at, last_used_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+         RETURNING {CLIENT_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(&new.client_id)
+    .bind(&new.name)
+    .bind(&redirect_uris)
+    .bind(&allowed_scopes)
+    .bind(now)
+    .bind(now)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+    row_to_client(&row)
+}
+
+/// How many self-registered clients have not completed an authorization:
+/// the rows a registration flood would add.
+pub async fn count_unauthorized_registered_clients(pool: &SqlitePool) -> Result<i64, StoreError> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM oauth_clients
+         WHERE registered_at IS NOT NULL AND authorized_at IS NULL",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+/// Record that a self-registered client completed a token exchange or a
+/// refresh. Any other client is left alone.
+pub async fn mark_registered_client_used(
+    pool: &SqlitePool,
+    client_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "UPDATE oauth_clients
+            SET authorized_at = COALESCE(authorized_at, ?), last_used_at = ?
+          WHERE client_id = ? AND registered_at IS NOT NULL",
+    )
+    .bind(now)
+    .bind(now)
+    .bind(client_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Delete self-registered clients never authorized since before
+/// `unauthorized_before`, or last used before `unused_before`. Their codes,
+/// grants, refresh tokens and access tokens go with them by cascade.
+/// Timestamps compare through `julianday()`, which reads every spelling
+/// sqlx writes.
+pub async fn sweep_registered_clients(
+    pool: &SqlitePool,
+    unauthorized_before: DateTime<Utc>,
+    unused_before: DateTime<Utc>,
+) -> Result<u64, StoreError> {
+    let done = sqlx::query(
+        "DELETE FROM oauth_clients
+          WHERE registered_at IS NOT NULL
+            AND ((authorized_at IS NULL
+                  AND julianday(registered_at) < julianday(?))
+                 OR julianday(last_used_at) < julianday(?))",
+    )
+    .bind(unauthorized_before)
+    .bind(unused_before)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
 }
 
 pub async fn insert_code(

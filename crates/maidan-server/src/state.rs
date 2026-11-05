@@ -110,6 +110,11 @@ pub struct AppState {
     /// The hosts client metadata documents may be fetched from
     /// (`MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`). Empty fetches none.
     pub oauth_client_metadata_hosts: crate::oauth::registry::ClientMetadataHosts,
+    /// RFC 7591 dynamic client registration (`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`
+    /// and `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`). `None` is off: no
+    /// `registration_endpoint` is advertised, `POST /oauth/register` answers
+    /// 404, and clients that registered themselves are refused.
+    pub oauth_dynamic_registration: Option<crate::oauth::register::DynamicRegistration>,
     /// Enables the explicit test-identity header used by in-process E2E
     /// harnesses. Never enabled by the server binary.
     pub test_identity_header: bool,
@@ -358,6 +363,7 @@ impl AppState {
             allowed_hosts: Vec::new(),
             public_origin: None,
             oauth_client_metadata_hosts: Default::default(),
+            oauth_dynamic_registration: None,
             test_identity_header: false,
             bootstrap_enabled,
             federation,

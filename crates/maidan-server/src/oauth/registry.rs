@@ -1,9 +1,8 @@
 //! P1 client registry (`docs/OAuth.md`).
 //!
-//! Two ways a client identifies itself, and no others:
+//! Three ways a client identifies itself, and no others:
 //! 1. **Pre-registered**: rows in `oauth_clients`, inserted by the operator
-//!    (via `MAIDAN_OAUTH_CLIENTS` at boot, or directly). No dynamic
-//!    registration: the protocol never creates clients.
+//!    (via `MAIDAN_OAUTH_CLIENTS` at boot, or directly).
 //! 2. **Client ID Metadata Documents (CIMD)**: when `client_id` is an HTTPS
 //!    URL, the server fetches the document — but only if the URL's host is
 //!    in the instance's `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. This is the
@@ -12,6 +11,10 @@
 //!    operator's concern, so it is an instance setting and no workspace
 //!    configures it: a workspace fresh from sign-up resolves the same
 //!    clients as any other.
+//! 3. **Dynamically registered** (RFC 7591, `oauth::register`): rows the
+//!    client created itself through `POST /oauth/register`, marked with
+//!    `registered_at`, only while `MAIDAN_OAUTH_DYNAMIC_REGISTRATION` is on.
+//!    A marked row is refused once the instance turns registration off.
 //!
 //! A resolved CIMD client is persisted as a row in `oauth_clients`,
 //! marked with its metadata URL (migration 0172): its codes and grants
@@ -56,28 +59,8 @@ impl ClientMetadataHosts {
     /// a DNS name cannot carry is an error, so a typo refuses boot instead of
     /// silently allowing nothing (or too much).
     pub fn parse(raw: &str) -> Result<Self, String> {
-        let mut hosts = BTreeSet::new();
-        for entry in raw.split(',') {
-            let host = entry.trim().to_ascii_lowercase();
-            if host.is_empty() {
-                continue;
-            }
-            let labels_ok = host.split('.').all(|label| {
-                !label.is_empty()
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-            });
-            if !labels_ok || host.len() > 253 {
-                return Err(format!(
-                    "{CLIENT_METADATA_HOSTS_VAR}: {entry:?} is not an exact host name \
-                     (no scheme, port, path or wildcard)"
-                ));
-            }
-            hosts.insert(host);
-        }
         Ok(Self {
-            hosts,
+            hosts: parse_host_list(CLIENT_METADATA_HOSTS_VAR, raw)?,
             fetch_origin_override: None,
         })
     }
@@ -129,6 +112,88 @@ impl ClientMetadataHosts {
             None => url.to_string(),
         }
     }
+}
+
+/// Parse a comma-separated list of exact, lowercase host names for the
+/// setting `var`. Blank entries are skipped. An entry with a scheme, port,
+/// path, wildcard or any character a DNS name cannot carry is an error, so a
+/// typo refuses boot instead of silently allowing nothing (or too much).
+pub(crate) fn parse_host_list(var: &str, raw: &str) -> Result<BTreeSet<String>, String> {
+    let mut hosts = BTreeSet::new();
+    for entry in raw.split(',') {
+        let host = entry.trim().to_ascii_lowercase();
+        if host.is_empty() {
+            continue;
+        }
+        let labels_ok = host.split('.').all(|label| {
+            !label.is_empty()
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        });
+        if !labels_ok || host.len() > 253 {
+            return Err(format!(
+                "{var}: {entry:?} is not an exact host name \
+                 (no scheme, port, path or wildcard)"
+            ));
+        }
+        hosts.insert(host);
+    }
+    Ok(hosts)
+}
+
+/// Whether `given`, the redirect URI an authorization request names, is one
+/// of the client's `registered` redirect URIs. Exact string match, with one
+/// exception from RFC 8252 section 7.3: for an `http` loopback redirect
+/// (`127.0.0.1`, `[::1]` or `localhost`) the port may differ, because a
+/// native app listens on whatever port the OS gives it. Scheme, host, path
+/// and query must still match, and `localhost` never matches an IP literal.
+pub fn redirect_uri_matches(registered: &[String], given: &str) -> bool {
+    if registered.iter().any(|uri| uri == given) {
+        return true;
+    }
+    let Some(given) = loopback_without_port(given) else {
+        return false;
+    };
+    registered
+        .iter()
+        .filter_map(|uri| loopback_without_port(uri))
+        .any(|uri| uri == given)
+}
+
+/// An `http` loopback URL with its port removed, as a string to compare;
+/// `None` for anything else, or for a URL carrying credentials or a
+/// fragment, which no redirect URI may.
+fn loopback_without_port(uri: &str) -> Option<String> {
+    let mut url = Url::parse(uri).ok()?;
+    if url.scheme() != "http"
+        || !is_loopback_host(&url)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    url.set_port(None).ok()?;
+    Some(url.to_string())
+}
+
+/// `127.0.0.1`, `[::1]` or `localhost`, exactly: not the rest of `127/8`,
+/// not a name that merely resolves to loopback.
+pub(crate) fn is_loopback_host(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(d)) => d == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        None => false,
+    }
+}
+
+/// Whether the instance accepts this client now: a self-registered client
+/// only while dynamic registration is on, so turning it off disconnects
+/// every client that registered itself.
+pub fn client_enabled(state: &AppState, client: &OAuthClient) -> bool {
+    client.registered_at.is_none() || state.oauth_dynamic_registration.is_some()
 }
 
 /// A pre-registered client from `MAIDAN_OAUTH_CLIENTS`.
@@ -226,6 +291,9 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
     if let Some(client) = state.store.get_oauth_client_by_client_id(client_id).await? {
         if client.revoked_at.is_some() {
             return Err(ApiError::BadRequest("client is revoked".into()));
+        }
+        if !client_enabled(state, &client) {
+            return Err(ApiError::BadRequest("unknown client_id".into()));
         }
         if client.metadata_url.is_none() {
             return Ok(client);
@@ -339,6 +407,52 @@ mod tests {
             document_scopes(Some("workspace:read  message:post")),
             vec!["workspace:read".to_string(), "message:post".to_string()]
         );
+    }
+
+    #[test]
+    fn a_loopback_redirect_matches_on_any_port_and_nothing_else_does() {
+        let registered = vec![
+            "http://127.0.0.1/".to_string(),
+            "http://localhost:8787/callback".to_string(),
+            "http://[::1]/cb?x=1".to_string(),
+            "https://vscode.dev/redirect".to_string(),
+            "cursor://anysphere.cursor-mcp/oauth/callback".to_string(),
+        ];
+        for ok in [
+            "http://127.0.0.1/",
+            "http://127.0.0.1:33418/",
+            "http://127.0.0.1:1",
+            "http://localhost:8787/callback",
+            "http://localhost:51000/callback",
+            "http://[::1]:4000/cb?x=1",
+            "https://vscode.dev/redirect",
+            "cursor://anysphere.cursor-mcp/oauth/callback",
+        ] {
+            assert!(redirect_uri_matches(&registered, ok), "{ok}");
+        }
+        for bad in [
+            // Another path, query or host on the same loopback.
+            "http://127.0.0.1:33418/other",
+            "http://localhost:8787/callback/",
+            "http://localhost:8787/callback?x=1",
+            "http://[::1]:4000/cb",
+            // localhost never stands in for an IP literal, or the reverse.
+            "http://localhost:33418/",
+            "http://127.0.0.1:8787/callback",
+            // The rest of 127/8 is not the registered host.
+            "http://127.0.0.2:33418/",
+            // https gets no port leeway, and no prefix games.
+            "https://vscode.dev:8443/redirect",
+            "https://vscode.dev/redirect/../evil",
+            "https://vscode.dev/redirectx",
+            "https://127.0.0.1/",
+            // Credentials and fragments are never a match.
+            "http://user@127.0.0.1:33418/",
+            "http://127.0.0.1:33418/#frag",
+            "cursor://anysphere.cursor-mcp/oauth/callback/x",
+        ] {
+            assert!(!redirect_uri_matches(&registered, bad), "{bad}");
+        }
     }
 
     #[test]

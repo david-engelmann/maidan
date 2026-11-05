@@ -131,6 +131,11 @@ pub async fn authenticate_preregistered(
     if client.metadata_url.is_some() {
         return Ok(None);
     }
+    // A client that registered itself is refused once the instance turns
+    // registration off, like an unknown one.
+    if !super::registry::client_enabled(state, &client) {
+        return Err(creds.invalid_client("unknown client"));
+    }
     check_secret(&client, creds)?;
     Ok(Some(client))
 }

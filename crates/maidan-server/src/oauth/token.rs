@@ -249,6 +249,7 @@ async fn exchange_code(
             mint_audit(&grant, "oauth_code_exchange"),
         )
         .await?;
+    note_registered_client_used(state, &client).await;
     Ok(token_response(access.as_str(), &refresh_secret, &record))
 }
 
@@ -345,6 +346,7 @@ async fn refresh(
         .await?;
     match outcome {
         OAuthRefreshOutcome::Rotated { access: record, .. } => {
+            note_registered_client_used(state, &client).await;
             Ok(token_response(access.as_str(), &refresh_secret, &record))
         }
         OAuthRefreshOutcome::Reused(_) => Err(OAuthError::invalid_grant(
@@ -353,6 +355,27 @@ async fn refresh(
         OAuthRefreshOutcome::Invalid => Err(OAuthError::invalid_grant(
             "the refresh token is expired or revoked",
         )),
+    }
+}
+
+/// A self-registered client just completed an exchange or a refresh: record
+/// it, so the sweep keeps it. The tokens are already minted, so a failure
+/// here is logged rather than turned into a refusal; at worst the client is
+/// swept early and registers again.
+async fn note_registered_client_used(state: &AppState, client: &OAuthClient) {
+    if client.registered_at.is_none() {
+        return;
+    }
+    if let Err(e) = state
+        .store
+        .mark_registered_oauth_client_used(&client.client_id, Utc::now())
+        .await
+    {
+        tracing::warn!(
+            client_id = %client.client_id,
+            error = %e,
+            "recording a self-registered OAuth client's use failed"
+        );
     }
 }
 
