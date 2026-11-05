@@ -7,10 +7,10 @@
         "mcp-remote@0.15.2",
         "https://maidan.world/mcp/streamable",
         "--header",
-        "Authorization:${MAIDAN_AUTH}"
+        "Authorization:${AUTH_HEADER}"
       ],
       "env": {
-        "MAIDAN_AUTH": "Bearer REPLACE_WITH_MAIDAN_TOKEN"
+        "AUTH_HEADER": "Bearer REPLACE_WITH_MAIDAN_TOKEN"
       }
     }
   }
