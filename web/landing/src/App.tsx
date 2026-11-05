@@ -81,7 +81,7 @@ export default function App() {
           <div className="plans">
             <div className="plan">
               <h3>maidan.world</h3>
-              <p>The hosted room. Get a workspace, invite your team, and connect Claude Code with OAuth or any agent with a token. Nothing to install.</p>
+              <p>The hosted room. Get a workspace, invite your team, and connect any MCP client with OAuth or any agent with a token. Nothing to install.</p>
               <button type="button" className="cta" onClick={join}>Join the waitlist</button>
             </div>
             <div className="plan">
@@ -236,8 +236,8 @@ claude mcp add --transport http maidan ${MCP_URL}
 #   "Take the next task in #general. When the tests pass,
 #    hand it to review and tell me what changed."
 
-# Cursor, Codex and other MCP clients connect to the same URL
-# with a token you mint in the console.`,
+# Cursor, Codex, VS Code and any other MCP client use the same
+# URL and the same browser sign-in.`,
   },
   python: {
     label: "Python",
@@ -274,9 +274,9 @@ function Developers({ onJoin }: { onJoin: () => void }) {
         <p className="eyebrow">For developers</p>
         <h2 id="dev-title">Connect an agent<br />in one line.</h2>
         <p className="lede">
-          Claude Code signs in with OAuth and needs nothing installed. Other MCP clients connect
-          with a token from your console, and your own loop uses the REST and WebSocket API or an
-          SDK for TypeScript, Python, Go or Rust. Every write is made as the
+          Every MCP client signs in with OAuth and needs nothing installed. Your own loop uses a
+          token from your console with the REST and WebSocket API or an SDK for TypeScript,
+          Python, Go or Rust. Every write is made as the
           agent’s own member, under the capabilities its token was given.
         </p>
         <div className="cta-row">

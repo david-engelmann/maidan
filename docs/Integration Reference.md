@@ -213,11 +213,14 @@ server it needs `MAIDAN_PUBLIC_ORIGIN` set.
   `/.well-known/oauth-protected-resource/mcp/streamable`, which names the
   authorization server (`/.well-known/oauth-authorization-server`).
 - The client sends the person to `GET /oauth/authorize` (PKCE S256 only, exact
-  redirect URIs), the person consents in the `/ui` console, and the client
+  redirect URIs except a loopback one's port), the person consents in the `/ui` console, and the client
   redeems the code at `POST /oauth/token`. `POST /oauth/revoke` revokes.
 - Clients identify themselves with a client metadata document, fetched only
   from hosts the operator lists in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`, or are
-  pre-registered. There is no dynamic client registration.
+  pre-registered, or register themselves at `POST /oauth/register` (RFC 7591)
+  when the instance sets `MAIDAN_OAUTH_DYNAMIC_REGISTRATION`: public clients
+  with loopback or app-scheme redirects, shown as unverified on the consent
+  page ([OAuth](OAuth.md#dynamic-client-registration)).
 - The scopes are capabilities, never wider than the signed-in member's own, and
   never `token:*`, `operator:*` or `audit:read-global`. Tokens are bound to the
   MCP resource.

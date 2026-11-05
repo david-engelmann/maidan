@@ -6,3 +6,4 @@
 - **Changed:** An `http` loopback redirect (`127.0.0.1`, `[::1]`, `localhost`) matches its registered URI on any port at authorize (RFC 8252 section 7.3), for every client. Claude Code, Codex and Zed register port-less loopback callbacks and listen on a random port. Every other redirect still matches exactly.
 - **Changed:** maidan.world and dev.maidan.world fetch client metadata documents from `chatgpt.com`, `zed.dev` and `vscode.dev` besides `claude.ai`, and turn registration on with `vscode.dev,insiders.vscode.dev` as `https` redirect hosts.
 - **Changed:** The P6 validation record accepts a registration endpoint on the issuer itself.
+- **Changed:** The README, landing page, FAQ, Integration and the examples say every MCP client signs in to maidan.world with OAuth; the token configs in `examples/` stay as the path for a client set up without OAuth.

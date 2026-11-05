@@ -20,11 +20,14 @@ send a bearer header (Claude Code, Cursor, Gemini CLI, Copilot CLI) are in
 - **The instance needs `MAIDAN_PUBLIC_ORIGIN`** set to its public HTTPS origin,
   and a sign-in method, so the authorization endpoint can send a signed-out
   browser to sign in. Without the origin, every OAuth endpoint answers 404.
-- **Maidan has no dynamic client registration, by choice**
-  ([docs/OAuth.md](../../docs/OAuth.md)). An assistant that can only register
-  itself dynamically gets no client id. Every assistant here either fetches a
-  client metadata document (claude.ai) or takes a client id and secret typed
-  into its connector dialog.
+- **Dynamic client registration is an instance setting**
+  (`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`, on at maidan.world;
+  [docs/OAuth.md](../../docs/OAuth.md#dynamic-client-registration)). It
+  registers public clients whose redirects land on the person's own machine,
+  or on an `https` host the operator lists. An assistant whose redirect is its
+  own web host either fetches a client metadata document (claude.ai,
+  chatgpt.com) or takes a client id and secret typed into its connector
+  dialog.
 - **A grant never exceeds the person who consents.** The scopes are Maidan
   capabilities, and a client's `allowed_scopes` caps them further. Start with
   `workspace:read`; add `workspace:write` when the assistant should post.
