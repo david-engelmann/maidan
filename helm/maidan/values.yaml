@@ -78,8 +78,8 @@ contentKek: ""
 # Retired KEKs during a rotation (comma-separated); drop them once rewrapped.
 contentKekPrevious: ""
 
-# Reference a pre-created Secret (holding DATABASE_URL, MAIDAN_CONTENT_KEK and
-# any other runtime secrets) instead of rendering one from `.Values.secrets`.
+# Reference a pre-created Secret (holding DATABASE_URL, MAIDAN_CONTENT_KEK,
+# MAIDAN_SESSION_SECRET and any other runtime secrets) instead of rendering one from `.Values.secrets`.
 # When set, the chart creates no Secret of its own and mounts this one via
 # envFrom. Keeps secret material out of values files / release history.
 existingSecret: ""
@@ -97,9 +97,12 @@ secretFiles:
   enabled: true
   # The keys existingSecret holds. The chart cannot read a Secret it did not
   # render, so it mounts exactly these.
+  # MAIDAN_SESSION_SECRET is among them because a server with sign-in on
+  # refuses to boot without it: it signs browser sessions and stream resume.
   existingSecretKeys:
     - DATABASE_URL
     - MAIDAN_CONTENT_KEK
+    - MAIDAN_SESSION_SECRET
   # More Secrets to mount as files: `name` (through tpl) and the `keys` it holds.
   extra: []
 
