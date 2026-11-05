@@ -9,7 +9,7 @@ import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { MODE_WORD } from "../core/api.ts";
 import { readFrontDoorHint } from "../core/session.ts";
-import { liveWord, shellTitle } from "../core/firstRun.ts";
+import { hasSupportPage, liveWord, shellTitle, supportHref } from "../core/firstRun.ts";
 import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
@@ -32,6 +32,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const route = useRoute();
   const { session, store } = useSession();
   const signedIn = session.status === "signed-in";
+  const support = useSupport(session.credentials.base || window.location.origin);
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
@@ -132,6 +133,12 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           <span>Maidan</span>
         </a>
         {signedOut ? null : <Tabs route={route} reduce={Boolean(reduce)} layoutId="rail-pill" />}
+        {support ? (
+          <a className="rail-foot" href={support} target="_blank" rel="noreferrer">
+            <Icon name="help" />
+            <span>Support</span>
+          </a>
+        ) : null}
       </nav>
 
       <header className={scrolled ? "top scrolled" : "top"}>
@@ -166,7 +173,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
       {signedOut ? null : (
         <nav className="tabbar" aria-label="Places">
-          <PhoneTabs route={route} reduce={Boolean(reduce)} />
+          <PhoneTabs route={route} reduce={Boolean(reduce)} support={support} />
         </nav>
       )}
 
@@ -177,6 +184,28 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
   );
+}
+
+const supportProbes = new Map<string, Promise<boolean>>();
+
+/** The support page's address when this origin serves one, probed once per origin. */
+function useSupport(base: string): string | null {
+  const [found, setFound] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    let probe = supportProbes.get(base);
+    if (!probe) {
+      probe = hasSupportPage(base);
+      supportProbes.set(base, probe);
+    }
+    void probe.then((ok) => {
+      if (live) setFound(ok ? supportHref(base) : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [base]);
+  return found;
 }
 
 const NOT_FOUND = { title: "Not found" };
@@ -193,7 +222,7 @@ function NotFound() {
 }
 
 // Five places and a More that opens the rest, so labels stay readable at 390px.
-function PhoneTabs({ route, reduce }: { route: Route; reduce: boolean }) {
+function PhoneTabs({ route, reduce, support }: { route: Route; reduce: boolean; support: string | null }) {
   const { tabs, more } = phoneTabs();
   const inMore = more.some((r) => r.id === route);
   return (
@@ -213,6 +242,14 @@ function PhoneTabs({ route, reduce }: { route: Route; reduce: boolean }) {
               </a>
             </li>
           ))}
+          {support ? (
+            <li>
+              <a href={support} target="_blank" rel="noreferrer">
+                <Icon name="help" />
+                <span>Support</span>
+              </a>
+            </li>
+          ) : null}
         </ul>
       </details>
     </div>

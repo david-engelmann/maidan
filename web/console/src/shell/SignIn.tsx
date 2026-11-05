@@ -4,6 +4,7 @@
 import { useState, type FormEvent } from "react";
 import { useSession } from "../hooks/useSession.ts";
 import { Mark } from "./icons.tsx";
+import { noTokenHelp, noWorkspaceText } from "../core/firstRun.ts";
 
 export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const { session, store } = useSession();
@@ -30,15 +31,18 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
       <h2>Sign in to Maidan</h2>
       <p className="sign-in-lead">Pick up where your agents left off.</p>
       {noWorkspace ? (
-        <p className="err small no-workspace" role="alert">
-          You signed in, but that identity isn't a member of any workspace on this server, so no session was made. Ask an admin to add you, or create a workspace.
-        </p>
+        <p className="err small no-workspace" role="alert">{noWorkspaceText(Boolean(signupPath))}</p>
       ) : null}
       {oidcLoginPath ? (
         <div className="edit-actions">
           <a className="button ink" href={`${oidcLoginPath}?return_to=/ui/`}>Sign in</a>
-          {signupPath ? <a className="button ghost" href={signupPath}>Create a workspace</a> : null}
+          {/* Discovery does not say whether sign-up is open, and an invite is
+              the common case, so the button says so instead of promising. */}
+          {signupPath ? <a className="button ghost" href={signupPath}>Have an invite? Create your workspace</a> : null}
         </div>
+      ) : null}
+      {signupPath ? (
+        <p className="sign-in-waitlist">No invite yet? <a href="/">Join the waitlist</a>.</p>
       ) : null}
       <form className="sign-in-token" onSubmit={(e) => void submit(e)}>
         <label htmlFor="sign-in-token">{oidcLoginPath ? "Or paste a token" : "Paste a token"}</label>
@@ -46,7 +50,7 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
         <button type="submit" className="button ink" disabled={busy || !secret.trim()}>{busy ? "Signing in…" : "Sign in with token"}</button>
       </form>
       {error || session.error ? <p className="err small" role="alert">{error ?? session.error}</p> : null}
-      <p className="sign-in-help">No token? An admin can mint one for you under People.</p>
+      <p className="sign-in-help">{noTokenHelp(Boolean(oidcLoginPath))}</p>
     </div>
   );
 }

@@ -1,11 +1,11 @@
 // Connect an agent to this workspace over MCP, and mint the first admin
 // token for this session. Snippets carry a placeholder, never a token.
 import { useState } from "react";
-import { cursorDeeplink, llmsTxt, mcpUrl, snippets } from "../core/connect.ts";
+import { TOKEN_PLACEHOLDER, cursorDeeplink, llmsTxt, mcpUrl, snippets } from "../core/connect.ts";
 import type { ToolsApi } from "../core/tools.ts";
 import { SecretOnce } from "./SecretOnce.tsx";
 
-function Copy({ text }: { text: string }) {
+export function Copy({ text }: { text: string }) {
   const [said, setSaid] = useState<string | null>(null);
   return (
     <button
@@ -38,7 +38,7 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
     <>
       <section className="card">
         <h3>Connect an agent</h3>
-        <p className="muted small">Paste one into your agent, then swap in a token from People.</p>
+        <p className="muted small">Claude Code can sign in through your browser and needs no token. For any other client, replace <code className="mono-id">{TOKEN_PLACEHOLDER}</code> with a token minted for that agent in People.</p>
         <p className="mono-id break">{mcpUrl(base)}</p>
         {snippets(base).map((s) => (
           <div key={s.id} className="snippet">
@@ -54,7 +54,7 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
       {signedIn ? (
         <section className="card">
           <h3>First admin token</h3>
-          <p className="muted small">A new workspace has no token yet. Mint one for your session; it is shown once.</p>
+          <p className="muted small">If you created this workspace, mint its first admin token here; it is shown once. Sign out and sign back in with it, then mint a token for each agent in People. Never give the admin token to an agent.</p>
           <button type="button" className="button steel" disabled={busy} onClick={() => void mint()}>{busy ? "Minting…" : "Mint an admin token"}</button>
           {note ? <p className="err small" role="alert">{note}</p> : null}
           {secret ? <SecretOnce title="Admin token" secret={secret} onDone={() => setSecret(null)} /> : null}

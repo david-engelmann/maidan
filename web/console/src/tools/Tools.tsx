@@ -1,7 +1,8 @@
 // Tools: what the classic board kept on its Tools tabs, minus the gates
 // Needs you already answers. Inbox and Preferences are the signed-in
 // member's own; Deliveries and Commands are the workspace's; Explore reads
-// queues, schedules, events and peers; Operator is audit and reindexing;
+// queues, schedules, events and peers; Operator is the server-wide audit and
+// reindex, listed only for a credential that holds them;
 // Search finds messages; Workspace renames, switches, and adds channels,
 // tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
@@ -18,6 +19,11 @@ import {
   handleRefusal,
   peerRefusal,
   PEERS_NEED,
+  AUDIT_READ_GLOBAL,
+  FEDERATION_ADMIN,
+  OPERATOR_GLOBAL,
+  holds,
+  showsOperator,
   searchQuery,
   switchHref,
   NOTIFICATION_KINDS,
@@ -73,11 +79,12 @@ export function Tools() {
   }, [tab]);
   const me = session.status === "signed-in" ? session.memberId : null;
   const ws = session.status === "signed-in" ? session.workspaceId : null;
+  const operator = showsOperator(session.grant);
   return (
     <div className="tools">
       <div className="seg-wrap">
       <div ref={tabs} className="seg seg-scroll" role="tablist" aria-label="Tools">
-        {TOOL_TABS.map((t) => (
+        {TOOL_TABS.filter((t) => t.id !== "operator" || operator).map((t) => (
           <a key={t.id} role="tab" aria-selected={tab === t.id} href={`#/tools/${t.id}`}>{t.title}</a>
         ))}
       </div>
@@ -89,7 +96,7 @@ export function Tools() {
       {tab === "search" ? <Search api={api} ws={ws} /> : null}
       {tab === "workspace" ? <Workspace api={api} ws={ws} /> : null}
       {tab === "explore" ? <Explore api={api} ws={ws} /> : null}
-      {tab === "operator" ? <Operator api={api} ws={ws} /> : null}
+      {tab === "operator" ? operator ? <Operator api={api} ws={ws} /> : <Panel title="Operator"><p className="muted">These tools are for whoever runs this server. Your sign-in does not include them.</p></Panel> : null}
       {tab === "recent" ? <Recent /> : null}
       {tab === "device" ? <Device api={api} me={me} /> : null}
       {tab === "connect" ? <Connect api={api} base={session.credentials.base || window.location.origin} signedIn={session.status === "signed-in"} /> : null}
@@ -384,7 +391,9 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const schedules = useLoad(ws, () => api.schedules(ws ?? ""));
   const [kind, setKind] = useState<string>(EVENT_KINDS[0]);
   const events = useLoad(ws ? `${ws}|${kind}` : null, () => api.events(ws ?? "", kind));
-  const peers = useLoad(ws, () => api.peers(ws ?? ""));
+  const { session } = useSession();
+  const federation = holds(session.grant, FEDERATION_ADMIN);
+  const peers = useLoad(ws && federation ? ws : null, () => api.peers(ws ?? ""));
   return (
     <div className="tool-grid">
       <Panel title="Queue">
@@ -441,21 +450,24 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
           }
         </State>
       </Panel>
-      <Panel title="Peers">
-        <State loaded={peers}>
-          {(read) => (!read.allowed ? <p className="muted small">{PEERS_NEED}</p> : read.value.length ? <ul className="tool-list">{read.value.map((p) => <li key={p.id} tabIndex={-1} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
-        </State>
-      </Panel>
+      {federation ? (
+        <Panel title="Peers">
+          <State loaded={peers}>
+            {(read) => (!read.allowed ? <p className="muted small">{PEERS_NEED}</p> : read.value.length ? <ul className="tool-list">{read.value.map((p) => <li key={p.id} tabIndex={-1} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
+          </State>
+        </Panel>
+      ) : null}
     </div>
   );
 }
 
 // ---- Operator ------------------------------------------------------------
 
-function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
-  const [limit, setLimit] = useState(100);
-  const [auditOn, setAuditOn] = useState(false);
-  const audit = useLoad(auditOn ? String(limit) : null, () => api.audit(limit));
+/**
+ * Rebuild search embeddings. A workspace's own rebuild needs workspace:write;
+ * every workspace at once is an operator's call (operator:global).
+ */
+function Reindex({ api, ws, server }: { api: ToolsApi; ws: string | null; server: boolean }) {
   const [job, setJob] = useState<ReindexJob | null>(null);
   const [jobId, setJobId] = useState("");
   const { busy, act } = useAct();
@@ -466,12 +478,11 @@ function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
       setJobId(j.job_id);
     }, "Reindex started", "Could not start the reindex");
   return (
-    <div className="tool-grid">
-      <Panel title="Reindex embeddings">
-        <p className="muted small">Rebuilds search embeddings. The whole server needs a token with token:admin.</p>
+      <Panel title={server ? "Reindex embeddings" : "Search index"}>
+        <p className="muted small">{server ? "Rebuilds search embeddings for this workspace, or for every workspace on the server." : "Rebuilds this workspace's search embeddings, if search results look stale."}</p>
         <div className="row-form">
-          <button type="button" className="button steel" disabled={busy !== null || !ws} onClick={() => start(false)}>This workspace</button>
-          <button type="button" className="button ghost" disabled={busy !== null} onClick={() => start(true)}>Whole server</button>
+          <button type="button" className="button steel" disabled={busy !== null || !ws} onClick={() => start(false)}>{server ? "This workspace" : "Rebuild"}</button>
+          {server ? <button type="button" className="button ghost" disabled={busy !== null} onClick={() => start(true)}>Whole server</button> : null}
         </div>
         <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); if (!jobId.trim()) return; void act("poll", async () => setJob(await api.reindexJob(jobId)), null, "Could not check that job"); }}>
           <label className="field grow">Job id<input value={jobId} onChange={(e) => setJobId(e.target.value)} spellCheck={false} /></label>
@@ -488,6 +499,18 @@ function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
           </dl>
         ) : null}
       </Panel>
+  );
+}
+
+function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const { session } = useSession();
+  const [limit, setLimit] = useState(100);
+  const [auditOn, setAuditOn] = useState(false);
+  const audit = useLoad(auditOn ? String(limit) : null, () => api.audit(limit));
+  return (
+    <div className="tool-grid">
+      {holds(session.grant, OPERATOR_GLOBAL) ? <Reindex api={api} ws={ws} server /> : null}
+      {holds(session.grant, AUDIT_READ_GLOBAL) ? (
       <Panel title="Server audit" action={<button type="button" className="chip-btn" onClick={() => (auditOn ? void audit.reload() : setAuditOn(true))}>{auditOn ? "Refresh" : "Load"}</button>}>
         <p className="muted small">Every workspace's audit trail. Needs a token with audit:read-global.</p>
         <label className="field">Rows<select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[50, 100, 200, 500].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
@@ -509,6 +532,7 @@ function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
           </State>
         ) : null}
       </Panel>
+      ) : null}
     </div>
   );
 }
@@ -589,7 +613,8 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const [dropping, setDropping] = useState<string | null>(null);
   const [auditOn, setAuditOn] = useState(false);
   const channels = useLoad(ws, () => api.channels(ws ?? ""));
-  const peers = useLoad(ws, () => api.peers(ws ?? ""));
+  const federation = holds(session.grant, FEDERATION_ADMIN);
+  const peers = useLoad(ws && federation ? ws : null, () => api.peers(ws ?? ""));
   const installs = useLoad(ws, () => api.appInstallations(ws ?? ""));
   const audit = useLoad(ws && auditOn ? ws : null, () => api.workspaceAudit(ws ?? "", 100));
   const spaces = useLoad("switchable", () => api.switchable());
@@ -639,6 +664,8 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
         </form>
         {agent.handle && agentWhy ? <p className="err small">{agentWhy}</p> : null}
       </Panel>
+      {holds(session.grant, "workspace:write") ? <Reindex api={api} ws={ws} server={false} /> : null}
+      {federation ? (
       <Panel title="Peers">
         <State loaded={peers}>
           {(read) =>
@@ -667,6 +694,9 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
           <button className="button steel" disabled={busy !== null || peerWhy !== null}>Add</button>
         </form>
       </Panel>
+      ) : null}
+      {/* Installing an app happens elsewhere; an empty list here is only noise. */}
+      {installs.value?.length ? (
       <Panel title="App installations">
         <State loaded={installs}>
           {(rows) =>
@@ -682,6 +712,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
           }
         </State>
       </Panel>
+      ) : null}
       <Panel title="Workspace audit" action={<button type="button" className="chip-btn" onClick={() => (auditOn ? void audit.reload() : setAuditOn(true))}>{auditOn ? "Refresh" : "Load"}</button>}>
         <p className="muted small">The last 100 audited actions in this workspace.</p>
         {auditOn ? (
