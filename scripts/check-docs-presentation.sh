@@ -22,8 +22,8 @@ file "$root/docs/assets/maidan-social.png" | rg -q 'PNG image data, 1200 x 630'
 test "$(shasum -a 256 "$root/docs/assets/maidan-mark.svg" | cut -d ' ' -f 1)" = \
   "50f55af250bca3351dfb7c4c6fd1fea9bb94899371edb69c315335c7c57b371f"
 rg -q 'width="1200" height="630"' "$root/docs/assets/maidan-social.svg"
-rg -q 'fill="#14532D"' "$root/docs/assets/maidan-social.svg"
-rg -q 'color="#4ADE80"' "$root/docs/assets/maidan-social.svg"
+rg -q 'fill="#f2eee6"' "$root/docs/assets/maidan-social.svg"
+rg -q 'fill="#e8501c"' "$root/docs/assets/maidan-social.svg"
 test -f "$html/docs/assets/maidan-mark.svg"
 test -f "$html/docs/assets/maidan-social.png"
 test -f "$html/favicon.svg"

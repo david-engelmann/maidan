@@ -55,6 +55,11 @@ maintainer_pages=(
 )
 cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
 cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"
+for art in maidan-lockup how-it-works; do
+  for theme in light dark; do
+    cp "$repo_root/docs/assets/$art-$theme.svg" "$src_docs/assets/$art-$theme.svg"
+  done
+done
 cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
 
 export GH="https://github.com/david-engelmann/maidan/blob/main"

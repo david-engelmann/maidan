@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentation
-    url: https://david-engelmann.github.io/maidan/
+    url: https://docs.maidan.world/
     about: Integration, architecture, operations, and the MCP/HTTP references.

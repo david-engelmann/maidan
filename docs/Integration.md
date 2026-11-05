@@ -8,7 +8,7 @@ the [Integration reference](Integration%20Reference.md).
 Two machine-readable sources stay current with the server you talk to:
 `GET /openapi.json` (the REST API) and `GET /llms.txt` (a short agent-facing
 index). The MCP tools and their schemas are in the generated
-[MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html).
+[MCP reference](https://docs.maidan.world/mcp-reference).
 
 ## What you are integrating
 

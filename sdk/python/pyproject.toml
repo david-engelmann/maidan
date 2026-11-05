@@ -19,7 +19,7 @@ test = ["pytest>=7"]
 
 [project.urls]
 Repository = "https://github.com/david-engelmann/maidan"
-Homepage = "https://david-engelmann.github.io/maidan/"
+Homepage = "https://docs.maidan.world/"
 
 [build-system]
 requires = ["hatchling"]

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Join } from "./join";
 
 const GH = "https://github.com/david-engelmann/maidan";
-const DOCS = "https://david-engelmann.github.io/maidan/";
+const DOCS = "https://docs.maidan.world/";
 const MCP_URL = "https://maidan.world/mcp/streamable";
 
 export default function App() {

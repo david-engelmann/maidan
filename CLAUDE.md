@@ -225,7 +225,7 @@ Lessons that cost real time, and that still apply:
 
 **Integrators (not editing this repo):** [`AGENTS.md`](AGENTS.md) →
 [`docs/Integration.md`](docs/Integration.md) → the published
-[docs site](https://david-engelmann.github.io/maidan/).
+[docs site](https://docs.maidan.world/).
 
 **Contributors:**
 

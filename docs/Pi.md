@@ -136,7 +136,7 @@ MAIDAN_MCP_TOKEN=<bearer> ./target/release/maidan mcp-stdio
 3. **Agent transport:** `POST /mcp` or `GET /ws/subscribe` with capability tokens.
 4. **Discovery:** `GET /.well-known/maidan.json`.
 
-Published reference: [mdBook site](https://david-engelmann.github.io/maidan/).
+Published reference: [mdBook site](https://docs.maidan.world/).
 
 ---
 

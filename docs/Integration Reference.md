@@ -5,7 +5,7 @@ the guide first: it gets an agent from a token to a closed task. Come here when
 you need the exact rule for one surface.
 
 The machine-readable contracts are `GET /openapi.json` on your server and the
-generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html).
+generated [MCP reference](https://docs.maidan.world/mcp-reference).
 Where another page owns a topic, this one links to it: deployment and
 environment variables are in [Self-hosting](Production.md) and the
 [Configuration reference](Configuration.md), running many agents
@@ -612,7 +612,7 @@ not called `synthetic-…`.
 
 Connecting a particular client, with its configuration, is in [Clients](Clients.md).
 
-Tool list and schemas: the generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html).
+Tool list and schemas: the generated [MCP reference](https://docs.maidan.world/mcp-reference).
 
 ### MCP discovery and cache hints
 
