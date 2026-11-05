@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { TOKEN_PLACEHOLDER, claudeOAuthCommand, cursorDeeplink, mcpUrl, snippets } from "../src/core/connect.ts";
+import { TOKEN_PLACEHOLDER, claudeOAuthCommand, cursorDeeplink, mcpUrl, oauthLine, snippets } from "../src/core/connect.ts";
 import { parseResult, transitionsFor, type Thread } from "../src/core/board.ts";
 import { pushRefusal } from "../src/pwa/push.ts";
 import { SHELL_FILES } from "../src/pwa/policy.ts";
@@ -27,6 +27,17 @@ test("the Claude Code snippets say how the token gets in, or that none is needed
   // $MAIDAN_TOKEN expands when the command runs, so it is exported on the line before.
   assert.match(withToken, new RegExp(`^export MAIDAN_TOKEN=${TOKEN_PLACEHOLDER}\\n`));
   assert.match(withToken, /Bearer \$MAIDAN_TOKEN"$/);
+});
+
+test("connect leads with OAuth sign-in and keeps the token snippets as the fallback", () => {
+  assert.equal(
+    oauthLine("https://m.example/"),
+    "Paste https://m.example/mcp/streamable into Cursor, VS Code, Codex, Zed or Claude Code and sign in when the browser opens.",
+  );
+  const all = snippets("https://m.example");
+  // Sign-in snippets come first and need nothing pasted in; only the token ones name the placeholder.
+  assert.deepEqual(all.map((s) => s.id), ["url", "claude-oauth", "prompt", "json", "claude"]);
+  for (const s of all) assert.equal(s.text.includes(TOKEN_PLACEHOLDER), s.token, s.id);
 });
 
 test("transitions offered follow the state machine", () => {

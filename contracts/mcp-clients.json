@@ -69,7 +69,7 @@
       "endpoint": "/mcp/streamable",
       "elicitation": "none",
       "release_check": true,
-      "note": "It takes OAuth or no authentication, and Maidan has no OAuth server, so it reads a dev instance anonymously.",
+      "note": "It signs in with OAuth by its client metadata document on chatgpt.com (MAIDAN_OAUTH_CLIENT_METADATA_HOSTS). Against a dev instance it can instead read anonymously, which is how this test connects.",
       "source": "https://developers.openai.com/apps-sdk/build/auth",
       "checked": "2026-10-06"
     }
