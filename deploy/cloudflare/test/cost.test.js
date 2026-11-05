@@ -13,7 +13,7 @@ const config = (file) =>
 // Each cron wake keeps a container (and Neon's compute) up for sleepAfter, so
 // a schedule more often than daily bills an idle instance for nothing.
 test("the hosted instances wake at most once a day on their own", () => {
-  for (const file of ["wrangler.prod.jsonc", "wrangler.jsonc"]) {
+  for (const file of ["wrangler.prod.jsonc", "wrangler.jsonc", "wrangler.swarm.jsonc"]) {
     const crons = config(file).triggers?.crons ?? [];
     assert.ok(crons.length <= 1, `${file}: one cron at most`);
     for (const cron of crons) {
