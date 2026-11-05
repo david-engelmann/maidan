@@ -118,12 +118,14 @@ test("on a wide screen the drawer sits beside the board, which does not scroll",
   await card.click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toBeVisible();
-  await page.waitForTimeout(400);
   expect(await page.evaluate(() => scrollY)).toBe(0);
   await expect(page.getByRole("search", { name: "Filter tasks" })).toBeInViewport();
-  const c = await card.boundingBox();
-  const s = await sheet.boundingBox();
-  expect(c && s && c.x + c.width <= s.x).toBeTruthy();
+  // The drawer slides in. Wait until the card's box sits fully to its left.
+  await expect.poll(async () => {
+    const c = await card.boundingBox();
+    const s = await sheet.boundingBox();
+    return Boolean(c && s && c.width > 0 && s.width > 0 && c.x + c.width <= s.x + 1);
+  }).toBe(true);
   // Cards behind stay clickable and switch the drawer.
   await page.locator(".lane .task", { hasText: "Open:" }).click();
   await expect(sheet.locator("#sheet-title")).toContainText("Open:");

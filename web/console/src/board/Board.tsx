@@ -392,7 +392,7 @@ export function Board() {
                       initial={reduce ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
-                      transition={{ duration: 0.18 }}
+                      transition={reduce ? { duration: 0 } : { duration: 0.18 }}
                     >
                       <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} votes={votes.get(c.thread.id)} selected={openId === c.thread.id} onOpen={() => setOpenId(c.thread.id)} />
                     </motion.li>

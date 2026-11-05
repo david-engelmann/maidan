@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
 import { openOnChannel, signInWithCookie } from "./_console";
+import { laidOutBox } from "./_layout";
 
 // The checks the classic board held, carried onto the console after the
 // switch: a skip link, reduced motion, 44px targets, a quiet empty Needs you
@@ -62,10 +63,26 @@ test.describe("on a phone", () => {
     await signInWithCookie(page, fx);
     await openOnChannel(page, fx.board_channel_id, "#/needs");
     await expect(page.locator("header.top h1")).toHaveText(/Needs you/);
-    await expect(page.getByRole("button", { name: /Search and commands/ })).toBeVisible();
-    const labels = await page.locator(".tabbar .label").allTextContents();
-    expect(labels.length).toBeGreaterThanOrEqual(3);
-    for (const l of labels) expect(l.trim()).not.toBe("");
+    const search = page.getByRole("button", { name: /Search and commands/ });
+    await expect(search).toBeVisible();
+    await expect(search).toContainText("Search");
+    const searchBox = await laidOutBox(search);
+    expect(searchBox.height).toBeGreaterThanOrEqual(44);
+    expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(391);
+    // The word sits inside the button, so a grid that stacks the icon over
+    // the label cannot clip "Search" out of the 44px control.
+    const word = await laidOutBox(search.locator(".btn-label"));
+    expect(word.height).toBeGreaterThanOrEqual(10);
+    expect(word.y).toBeGreaterThanOrEqual(searchBox.y - 1);
+    expect(word.y + word.height).toBeLessThanOrEqual(searchBox.y + searchBox.height + 1);
+    const labels = page.locator(".tabbar .label");
+    expect(await labels.count()).toBeGreaterThanOrEqual(3);
+    for (const label of await labels.all()) {
+      expect((await label.textContent())?.trim() ?? "").not.toBe("");
+      const box = await laidOutBox(label);
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(391);
+    }
     await page.locator(".tabbar a", { hasText: "Board" }).click();
     await expect(page.locator("header.top h1")).toHaveText(/Board/);
   });
@@ -112,8 +129,14 @@ test("Tab reaches a Needs you row's actions", async ({ page }) => {
   }
   expect(reached, "Tab never reached the row's first action").toBe(true);
   // Rows keep loading after the count shows (Add a note enables once the
-  // evidence arrives), so `first` can re-resolve to another button. Check the
-  // button that took focus, not the locator.
+  // evidence arrives). Focus can move a moment after the redraw, and it must
+  // not settle on a disabled control. Poll until it has landed.
+  await expect.poll(() =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      return el instanceof HTMLButtonElement && Boolean(el.closest(".need-actions")) && el.disabled !== true;
+    }),
+  ).toBe(true);
   const focused = page.locator(".need-actions button:focus");
   await expect(focused).toHaveCount(1);
   await expect(focused).toHaveCSS("outline-style", "solid");
