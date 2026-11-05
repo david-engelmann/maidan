@@ -86,7 +86,7 @@ Returns `200` when the process and dependencies are ready ([Production.md](Produ
 ### 2. Seed workspace (dev / first boot)
 
 The production-safe path is the `maidan init` CLI, which writes through the store — no
-unauthenticated HTTP routes, no `AUTH_DISABLED` ([Production.md](Production.md#maidan-init-recommended)):
+unauthenticated HTTP routes, no `AUTH_DISABLED` ([Production.md](Production.md#maidan-init)):
 
 ```sh
 DATABASE_URL=… MAIDAN_CONTENT_KEK=… maidan init --workspace my-team
@@ -97,7 +97,7 @@ token (printed once), and refuses if the database already has a workspace. Skip 
 step 4 with that token.
 
 In development only, a server built with the `bootstrap` feature can be seeded over the
-HTTP bootstrap routes once ([Production.md](Production.md#bootstrap); the published image
+HTTP bootstrap routes once ([Production.md](Production.md#http-bootstrap-development-only); the published image
 has no such routes) — `MAIDAN_BOOTSTRAP=1`, or `AUTH_DISABLED=1` together with
 `MAIDAN_ALLOW_INSECURE_NO_AUTH=1`:
 
@@ -2196,7 +2196,7 @@ GET /workspaces/{workspace_id}/search?q=hello&mode=lexical
 Authorization: Bearer {token}
 ```
 
-Requires `search:query`. Semantic mode needs embedding provider configuration ([Production.md](Production.md#environment)).
+Requires `search:query`. Semantic mode needs embedding provider configuration ([Configuration](Configuration.md#embeddings-and-search)).
 
 ### Thread-result `result_kind` facet
 

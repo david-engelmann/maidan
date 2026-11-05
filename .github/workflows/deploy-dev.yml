@@ -1,7 +1,7 @@
 name: deploy dev
 
 # dev.maidan.world runs the `dev` branch on Cloudflare Containers (deploy/cloudflare/,
-# docs/Production.md "Hosted on Cloudflare"). Every push to dev that changes
+# docs/Hosted Operations.md). Every push to dev that changes
 # the server builds the image and deploys it. A pull request that changes the
 # deploy itself builds the image only, so a broken Dockerfile or Worker shows
 # before it reaches dev.

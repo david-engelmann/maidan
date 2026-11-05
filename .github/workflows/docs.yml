@@ -83,7 +83,7 @@ jobs:
 
   # docs.maidan.world (deploy/cloudflare/wrangler.docs.jsonc). Off until the
   # repository variable DOCS_DOMAIN is "true", which is set once the DNS record
-  # exists (docs/Production.md, "The docs site"). The site is rebuilt with
+  # exists (docs/Hosted Operations.md, "The docs site"). The site is rebuilt with
   # site-url "/" because the domain serves it from the root, not /maidan/.
   docs-domain:
     name: docs.maidan.world

@@ -14,4 +14,4 @@ not sent as `application/json` a 415, a body over `MAIDAN_MAX_BODY_BYTES` a
 
 See [Integrating with Maidan](docs/Integration.md) for auth, capabilities, and transports.
 
-See also [Production](docs/Production.md) for probes, environment variables, and bootstrap.
+See also [Self-hosting](docs/Production.md) for probes and the first admin, and the [Configuration reference](docs/Configuration.md) for environment variables.

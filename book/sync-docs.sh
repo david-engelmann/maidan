@@ -37,7 +37,7 @@ mkdir -p "$src_docs/assets"
 # under hyphenated names (space -> hyphen).
 top_pages=(
   "Integration" "Swarms" "Capability Map" "Result Delivery"
-  "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
+  "Production" "Configuration" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison" "Architecture" "Claims"
   "Providers" "Protocols" "Clients"
   "Framework Integrations" "Harness Caching" "WASI-Handlers"
@@ -51,6 +51,7 @@ done
 maintainer_pages=(
   "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "OAuth" "README" "Kani" "Hosted Console"
+  "Hosted Operations"
 )
 cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
 cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"

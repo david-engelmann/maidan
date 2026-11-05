@@ -32,7 +32,8 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 
 | Doc | What it answers |
 |---|---|
-| [Production](Production.md) | Every environment variable, probes, metrics, retention, legal holds, crypto-shredding |
+| [Production](Production.md) | Self-hosting: what it needs, running it, the first admin, scaling, backups, retention, observability, upgrades |
+| [Configuration](Configuration.md) | Every environment variable, by area |
 | [Deploy](Deploy.md) | Docker Compose, Kubernetes, Helm |
 | [Migrations](Migrations.md) | Expand, then a later contract, when two server versions share one database |
 | [Providers](Providers.md) | Database hosts, object stores, embedding providers, OIDC, SMTP |
@@ -53,6 +54,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 | [Decisions](Decisions.md) | The load-bearing decisions and what each rejected |
 | [Conventions](Conventions.md) | Branches, commits, PRs and every CI job |
 | [Operations](Operations.md) | The PR flow, CI, closing a cluster, cutting a release |
+| [Hosted Operations](Hosted%20Operations.md) | How maidan.world, dev.maidan.world and the docs domain are deployed |
 | [Kani](Kani.md) | The local Kani proofs of capability containment and cursor arithmetic |
 | [Dependencies](Dependencies.md) | Dependency currency and the `deny.toml` policy |
 

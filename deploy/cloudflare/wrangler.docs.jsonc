@@ -2,7 +2,7 @@
 // code. The docs workflow builds it with site-url "/" and deploys it from
 // `main` once the repository variable DOCS_DOMAIN is "true", which is set
 // after the docs.maidan.world DNS record exists. The runbook is
-// docs/Production.md, "The docs site".
+// docs/Hosted Operations.md, "The docs site".
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-docs",

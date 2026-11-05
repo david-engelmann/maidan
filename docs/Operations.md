@@ -89,7 +89,7 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 
 Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
 keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See
-[Production.md](Production.md) for the full config surface.
+[Configuration](Configuration.md) for the full config surface.
 
 ## Suspending a workspace
 
@@ -555,7 +555,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 1. Reproduce lag locally: `cargo test -p maidan-server subscribe_emits_replay_hint_when_bus_subscriber_lags -- --nocapture`.
 2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_(bus_lag|subscribe_replay)'`.
 3. **No workspace filter** — subscribers without `filter.workspace_id` only get
-   `replay_hint`, not auto-replay; see [Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics-v600).
+   `replay_hint`, not auto-replay; see [Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics).
 4. **Truncation loop** — sustained `replay_truncated` means the client must advance
    `after_id` until the frame stops.
 5. **Postgres LISTEN** — `maidan_bus_listener_ok` and `/health/ready` `bus` field;
@@ -573,7 +573,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_bus_notify_hydrate'`.
 3. **Spike in `not_found`** — confirm HTTP mutations call `append_event` before `bus.publish`; check for federation or scripts calling `pg_notify` directly.
 4. **Spike in `invalid_payload`** — inspect NOTIFY payloads in logs (`drop notify payload`); legacy full-envelope path still requires valid JSON.
-5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics-v600)); hydrate failures are listener-side only.
+5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics)); hydrate failures are listener-side only.
 
 ### Authorization-denial troubleshooting (`v410.0.0`)
 

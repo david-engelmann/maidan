@@ -144,7 +144,7 @@ The `prod` overlay is a template. Before applying:
 already run. `helm/maidan-stack` wraps it and can run its own Postgres
 (`maidan-postgres`, the pgvector image above) and MinIO (Chainguard's, by the
 digest compose uses), wiring the server to both. Values, refusals and the
-install commands are in [Production.md](Production.md#helm-production) and
+install commands are in [Production.md](Production.md#kubernetes-with-helm) and
 `helm/maidan-stack/README.md`. To try the stack on the kind cluster above:
 
 ```sh
