@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [428.0.0] — 2026-11-05
+
+The documentation is ready for launch: a README that leads with what Maidan
+does and shows real examples, a docs site that carries only public pages, an
+Integration guide with a separate reference, and Production split into a
+self-hosting guide and a configuration reference. The Helm chart mounts the
+session secret by default, so an install that follows the docs boots.
+
+### A Helm install boots with sign-in on
+
+- **Fixed:** the `maidan` chart mounts `MAIDAN_SESSION_SECRET` from `existingSecret` by default. The default key list held only `DATABASE_URL` and `MAIDAN_CONTENT_KEK`, so an install that followed the docs gave a server with sign-in on no session secret, and it refused to boot.
+- **Changed:** a production render without `existingSecret` refuses when no session secret is supplied (`secrets.MAIDAN_SESSION_SECRET`, a `secretFiles.extra` source or `extraEnvFrom`), unless `config.AUTH_DISABLED` is set, instead of shipping a pod that never starts.
+
 ## [427.0.0] — 2026-11-04
 
 maidan.world can now deliver to GitHub: the hosted Worker passes the GitHub

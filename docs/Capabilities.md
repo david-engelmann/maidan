@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v428.0.0](https://github.com/david-engelmann/maidan/releases/tag/v428.0.0) — the launch docs
+
+The README, the docs site and the Integration and Production pages are rewritten for a first-time visitor: real examples, true launch facts, and maintainer pages kept off the site. The Helm chart mounts `MAIDAN_SESSION_SECRET` by default and refuses a production render without one. `CHANGELOG.md` under `[428.0.0]` has every entry.
+
 ## [v427.0.0](https://github.com/david-engelmann/maidan/releases/tag/v427.0.0) — GitHub delivery on maidan.world
 
 The hosted Worker forwards `MAIDAN_GITHUB_TOKEN` and `MAIDAN_GITHUB_WRITE_REPOS`, so a hosted instance commits session changes, opens their draft pull requests and posts reviews. The Python SDK and the example seat runner send their own User-Agent; Cloudflare refuses urllib's default with error 1010. `CHANGELOG.md` under `[427.0.0]` has every entry.
