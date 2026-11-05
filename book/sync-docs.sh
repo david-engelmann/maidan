@@ -29,7 +29,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 src_docs="$repo_root/book/src/docs"
 
 rm -rf "$src_docs"
-mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros" "$src_docs/assets"
+mkdir -p "$src_docs/assets"
 
 # Curated set — exactly the pages referenced by book/src/SUMMARY.md. The rest of
 # docs/ (most Clusters/, Retros/, Tracks/, Gates/) is maintainer history and
@@ -38,18 +38,20 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros" "$src_docs/as
 top_pages=(
   "Integration" "Swarms" "Capability Map" "Result Delivery"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
-  "FAQ" "Comparison"
-  "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
-  "Dependencies" "Open Work" "Roadmap" "OAuth" "README" "Claims" "Kani"
+  "FAQ" "Comparison" "Architecture" "Claims"
   "Providers" "Protocols" "Clients"
-  "Framework Integrations" "Harness Caching" "WASI-Handlers" "Hosted Console"
+  "Framework Integrations" "Harness Caching" "WASI-Handlers"
 )
 for name in "${top_pages[@]}"; do
   cp "$repo_root/docs/$name.md" "$src_docs/${name// /-}.md"
 done
-cp "$repo_root/docs/Gates/maidan-scale-1.0.md" "$src_docs/Gates/maidan-scale-1.0.md"
-cp "$repo_root/docs/Clusters/Cluster A.md"      "$src_docs/Clusters/Cluster-A.md"
-cp "$repo_root/docs/Retros/README.md"           "$src_docs/Retros/README.md"
+
+# Maintainer pages: the repo's own process, plans and history. They stay in
+# docs/ for contributors, and a published page that links one links GitHub.
+maintainer_pages=(
+  "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
+  "Dependencies" "Open Work" "Roadmap" "OAuth" "README" "Kani" "Hosted Console"
+)
 cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
 cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"
 cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
@@ -67,6 +69,13 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{\]\(\.\./examples/}{]($ENV{GH}/examples/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.github/}{]($ENV{GH}/.github/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.\./crates/}{]($ENV{GH}/crates/}g' "$f"
+
+  # 1b) links to maintainer pages -> GitHub, before step 2 renames spaces
+  for name in "${maintainer_pages[@]}"; do
+    export PAGE="${name// /%20}"
+    perl -pi -e 's{\]\((?:\.\./docs/|\.\./)?\Q$ENV{PAGE}\E\.md(#[^)]*)?\)}{]($ENV{GH}/docs/$ENV{PAGE}.md$1)}g' "$f"
+  done
+  perl -pi -e 's{\]\((?:\.\./)?(Gates|Clusters|Retros)/([^)]*)\)}{]($ENV{GH}/docs/$1/$2)}g' "$f"
 
   # 2) links to the hyphen-renamed space-files (any `docs/` prefix, %20-encoded)
   perl -pi -e 's{Capability%20Map\.md}{Capability-Map.md}g' "$f"

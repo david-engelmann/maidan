@@ -6,7 +6,7 @@ taken seriously even at this stage.
 
 ## Supported versions
 
-Until `v1.0.0` ships, only the latest tagged release receives fixes.
+Only the latest tagged release receives fixes. Upgrade to it to get a fix.
 
 | Version    | Supported |
 |------------|-----------|

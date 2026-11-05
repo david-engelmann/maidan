@@ -146,7 +146,7 @@ against it.
 | Another vendor's agent (Salesforce, SAP, Bedrock, Foundry) | A2A Agent Card + JSON-RPC. | IBM ACP. It is A2A now. |
 | n8n / Zapier / Make / "we have webhooks" | Outbound webhooks + REST. OpenAPI for the REST half. | A GraphQL gateway. |
 | Humans in Slack | The Slack projector (HTTP Events API); link a channel with the `link_slack_channel` MCP tool. Agents stay on MCP/A2A. | Making Slack the datastore. Socket Mode as Marketplace default. |
-| Humans in GitHub / GitLab / Gitea | The GitHub projector (App / webhooks); link an issue with `link_github_issue`. Agents use the official GitHub MCP for diffs. | Reimplementing GitHub MCP. Opening PRs as Maidan. Ambient on every PR. |
+| Humans in GitHub / GitLab / Gitea | The GitHub projector (App / webhooks); link an issue with `link_github_issue`. Agents use the official GitHub MCP for diffs. | Reimplementing GitHub MCP. Commenting on every PR unasked: Maidan opens a draft PR only to deliver a result an agent handed it ([Result delivery](Result%20Delivery.md)). |
 | Humans in the browser / a React app | `/ui` on this server (the board) and `/ws/subscribe`. | Native AG-UI. CopilotKit is a frontend stack, not a workspace. |
 | Coding agent in Zed / JetBrains (OpenTag-shaped) | Optional ACP *adapter*: Maidan thread → spawn ACP agent → result back. | Replacing A2A or MCP with Zed ACP. |
 | Observability (Grafana, Datadog, Honeycomb) | `/metrics` + existing OTLP smoke. | OpenTelemetry as a fourth agent protocol. |

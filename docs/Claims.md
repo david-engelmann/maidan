@@ -5,8 +5,8 @@ things: a **gate** (a tagged, CI-guarded milestone), a **test** (a named test or
 you can read), or an honest **"not yet."** This page is that map. If a sentence in our
 marketing can't point at a row here, it shouldn't ship.
 
-Maidan is **pre-1.0 and solo-maintained.** The tags are the engineering record; there is
-no marketing "1.0." This page is kept honest by hand — if you find a claim that outruns
+Release numbers count releases; the API can still change between them until the 1.0
+launch. This page is kept honest by hand — if you find a claim that outruns
 its evidence, that's a bug: open an issue.
 
 ## Product gates (tagged, CI-guarded)

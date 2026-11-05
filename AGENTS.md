@@ -25,8 +25,8 @@ On versions: MCP negotiates `2026-07-28` by default and accepts `2025-11-25`,
 JSON-RPC and REST, plus an opt-in gRPC binding (`lf.a2a.v1.A2AService`) that
 covers every operation.
 
-`maidan.world` is the planned home for this project. It is not live yet, so use
-the GitHub Pages link above.
+The hosted room is [maidan.world](https://maidan.world). Connect an MCP client
+to `https://maidan.world/mcp/streamable` and sign in with OAuth.
 
 Skip `docs/Clusters/` and `docs/Retros/`. They are maintainer planning notes,
 they assume context you have no reason to have, and they use Obsidian

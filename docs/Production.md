@@ -1,6 +1,6 @@
 # Production deployment
 
-Guidance for running Maidan at `v1.0.0` and later. Security overview:
+Running your own Maidan in production. Security overview:
 [Threat-Model.md](Threat-Model.md).
 
 ## Probes
@@ -2046,5 +2046,7 @@ graph fetch. See [Integration.md](Integration.md#snapshot--since-lsn-catch-up).
 
 ## API stability
 
-From `v1.0.0`, HTTP and MCP shapes are semver-stable. Pre-1.0 releases
-may break without migration shims.
+Until the 1.0 launch, HTTP and MCP shapes can change between releases without
+migration shims; the CHANGELOG says when they do. From 1.0 they are stable.
+Release numbers count releases, so `v427.0.0` is a release number, not a
+promise of stability.
