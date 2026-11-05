@@ -154,13 +154,13 @@ every message:
 export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret manager
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> -e MAIDAN_CONTENT_KEK \
-  ghcr.io/david-engelmann/maidan-server:v427.0.0
+  ghcr.io/david-engelmann/maidan-server:v428.0.0
 ```
 
 Create the first workspace and its admin token with the matching CLI image:
 
 ```sh
-MAIDAN_TAG=v427.0.0
+MAIDAN_TAG=v428.0.0
 docker run --rm -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace my-team
 ```
