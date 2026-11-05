@@ -25,12 +25,12 @@
 <p align="center">
   <a href="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
   <a href="https://github.com/david-engelmann/maidan/releases"><img src="https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver&color=e8501c" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/david-engelmann/maidan?color=151411" alt="MIT license"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/david-engelmann/maidan" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screens/board-waiting.png"
-       alt="The Maidan board for #build: a server coder and a UI coder each hold a running task with time left on their lease, a fix waits on David's review with its test results and log as evidence, and two tasks sit open and two done"
+  <img src="docs/assets/screens/board-readme.png"
+       alt="The Maidan board for #build: two open tasks, two in progress held by a UI coder and a server coder with time left on their leases, one waiting on review, and two done"
        width="860">
 </p>
 

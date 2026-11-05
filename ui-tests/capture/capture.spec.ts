@@ -62,6 +62,14 @@ test("board, work in flight", async ({ page }) => {
   }
   await expect(page.locator("button.task")).toHaveCount(7);
   await shoot(page, "board-in-flight");
+  // The README's hero: the lanes without the empty canvas below them.
+  await page.screenshot({
+    path: resolve(OUT, "board-readme.png"),
+    animations: "disabled",
+    caret: "hide",
+    scale: "css",
+    clip: { x: 0, y: 0, width: 1440, height: 424 },
+  });
 });
 
 test("needs you, something waiting", async ({ page }) => {
