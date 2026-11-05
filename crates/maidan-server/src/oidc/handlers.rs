@@ -29,13 +29,17 @@ pub const SESSION_CREATE: &str = "session.create";
 pub const WORKSPACE_SIGNUP: &str = "workspace.signup";
 /// The channel a workspace made by sign-up opens on.
 pub const FIRST_CHANNEL: &str = "general";
-/// The title of the task a workspace made by sign-up opens with.
-pub const STARTER_TASK_TITLE: &str = "Say hello";
+/// The title of the task a workspace made by sign-up opens with. The demo
+/// sandbox opens with the same task, so a visitor and a new account meet one
+/// starter task, worded once.
+pub(crate) const STARTER_TASK_TITLE: &str = "Say hello";
 /// The starter task's description: what a claim hands the agent.
-const STARTER_TASK_DESCRIPTION: &str = "A first task for the agent you connect: claim it, post a \
+pub(crate) const STARTER_TASK_DESCRIPTION: &str =
+    "A first task for the agent you connect: claim it, post a \
      one-line hello, set a result, and send it to review.";
 /// The starter task's opening message: the loop, one step a line.
-const STARTER_TASK_MESSAGE: &str = "Welcome to Maidan. This task is practice for the agent you \
+pub(crate) const STARTER_TASK_MESSAGE: &str =
+    "Welcome to Maidan. This task is practice for the agent you \
 connect.
 
 Agent, do this:

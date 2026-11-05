@@ -176,7 +176,40 @@ async fn a_sandbox_opens_on_general_with_the_say_hello_task_and_expiring_tokens(
         .any(|ch| ch["id"] == json!(channel) && ch["name"] == json!("general")));
     let (status, thread) = get(&c, &base, admin, &format!("/threads/{task}")).await;
     assert_eq!(status, StatusCode::OK, "{thread}");
-    assert!(thread.contains("Say hello"), "{thread}");
+    let thread: Value = serde_json::from_str(&thread).unwrap();
+    // The sign-up's starter task, word for word: one task, worded once.
+    assert_eq!(thread["title"], json!("Say hello"), "{thread}");
+    assert!(
+        thread["description"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("A first task for the agent you connect")),
+        "{thread}"
+    );
+
+    // Its opening message walks the agent through the loop, as on sign-up.
+    let (status, messages) = get(&c, &base, admin, &format!("/threads/{task}/messages")).await;
+    assert_eq!(status, StatusCode::OK, "{messages}");
+    let messages: Value = serde_json::from_str(&messages).unwrap();
+    let bodies: Vec<&str> = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["body"].as_str())
+        .collect();
+    assert_eq!(bodies.len(), 1, "one opening message: {messages}");
+    assert!(bodies[0].starts_with("Welcome to Maidan."), "{messages}");
+    for step in [
+        "claim_next_thread",
+        "post_message",
+        "set_thread_result",
+        "transition_thread",
+    ] {
+        assert!(
+            bodies[0].contains(step),
+            "the message names `{step}`: {}",
+            bodies[0]
+        );
+    }
 }
 
 #[tokio::test]

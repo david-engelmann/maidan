@@ -8,13 +8,14 @@
 //! be set for the MCP URL the answer gives. Off, the route answers 404.
 //!
 //! Each call makes a workspace (origin `open`, so the free allowance cuts it
-//! off), a `#general` channel, a "Say hello" task, an admin and an agent, and
-//! returns both secrets once. Both tokens expire in 24 hours; the demo's
-//! daily reset deletes everything sooner or later anyway. The route is
-//! charged per address by the rate-limit middleware, takes Turnstile when the
-//! instance has it, refuses a cross-site browser post, and stops at
-//! `MAIDAN_DEMO_SANDBOX_MAX` workspaces. Each sandbox is an ordinary tenant,
-//! so tenant isolation keeps one visitor out of another's.
+//! off), a `#general` channel, the sign-up's "Say hello" starter task with its
+//! opening message, an admin and an agent, and returns both secrets once.
+//! Both tokens expire in 24 hours; the demo's daily reset deletes everything
+//! sooner or later anyway. The route is charged per address by the
+//! rate-limit middleware, takes Turnstile when the instance has it, refuses a
+//! cross-site browser post, and stops at `MAIDAN_DEMO_SANDBOX_MAX` workspaces.
+//! Each sandbox is an ordinary tenant, so tenant isolation keeps one visitor
+//! out of another's.
 
 use std::sync::Arc;
 
@@ -30,14 +31,15 @@ use maidan_auth::{
     hash_secret, TokenSecret,
 };
 use maidan_types::{
-    ApiToken, AuditScope, ChannelId, Member, MemberId, NewAuditEvent, NewChannel, NewThread,
-    ThreadId, WorkspaceId, WorkspaceOrigin,
+    ApiToken, AuditScope, ChannelId, Member, MemberId, NewAuditEvent, NewChannel, NewMessage,
+    NewThread, ThreadId, WorkspaceId, WorkspaceOrigin,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::config::ConfigError;
 use crate::error::ApiError;
 use crate::extract::ApiJson;
+use crate::oidc::{STARTER_TASK_DESCRIPTION, STARTER_TASK_MESSAGE, STARTER_TASK_TITLE};
 use crate::state::AppState;
 
 /// Turns the mint on.
@@ -55,13 +57,6 @@ pub const DEFAULT_MAX: i64 = 200;
 pub const TOKEN_TTL_HOURS: i64 = 24;
 /// The channel a sandbox opens on.
 pub const CHANNEL: &str = "general";
-/// The starter task's title.
-pub const TASK_TITLE: &str = "Say hello";
-/// The starter task's brief: the whole work loop, in the tools' own names.
-pub const TASK_BRIEF: &str =
-    "Your first task. Claim it (claim_next_thread), post \"hello\" in this \
-     thread (post_message), set a result (set_thread_result), then send it to review \
-     (transition_thread with start_review). A person approves it in the console.";
 
 #[derive(Debug, Clone)]
 pub struct SandboxSettings {
@@ -336,8 +331,8 @@ async fn mint_sandbox(
             NewThread {
                 channel_id: channel.id,
                 parent_thread_id: None,
-                title: Some(TASK_TITLE.into()),
-                description: Some(TASK_BRIEF.into()),
+                title: Some(STARTER_TASK_TITLE.into()),
+                description: Some(STARTER_TASK_DESCRIPTION.into()),
                 created_by: Some(admin.id),
             },
             None,
@@ -351,6 +346,22 @@ async fn mint_sandbox(
         .store
         .set_thread_owner(task.id, Some(admin.id))
         .await?;
+    // The opening message is what walks a freshly connected agent through
+    // the loop, so a visitor gets the one a sign-up does.
+    let (_, stored) = state
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: task.id,
+                author_id: admin.id,
+                body: STARTER_TASK_MESSAGE.into(),
+                metadata: serde_json::json!({ "starter": true }),
+                content: None,
+            },
+            None,
+        )
+        .await?;
+    crate::routes::publish_stored(state, stored).await;
 
     tracing::info!(workspace = %workspace_id.0, "demo sandbox minted");
     Ok((
