@@ -36,7 +36,7 @@ import {
 import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { MODE_LINE } from "../core/api.ts";
-import { grantCard } from "../core/session.ts";
+import { capabilityCard } from "../core/session.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
@@ -805,7 +805,7 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
 
 // ---- Session ---------------------------------------------------------------
 
-/** The capability card: what GET /me says this credential can and cannot do. */
+/** The capability card: what this credential can do in the console. */
 function SessionCard() {
   const { session, store } = useSession();
   const [leaving, setLeaving] = useState(false);
@@ -816,7 +816,7 @@ function SessionCard() {
     await store.logout();
     setLeaving(false);
   };
-  const card = session.grant ? grantCard(session.grant) : null;
+  const card = session.grant ? capabilityCard(session.mode, session.grant) : null;
   return (
     <Panel title="Session">
       <dl className="facts">

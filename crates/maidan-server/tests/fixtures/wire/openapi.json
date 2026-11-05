@@ -13074,6 +13074,7 @@
             "type": "string"
           },
           "capabilities": {
+            "description": "What this credential can do. A bearer, and a session made from a\ntoken, is that grant. An OIDC browser session is what the console\ncan do with it: posting, editing, uploading and moving a task, as\nwell as reading, unless a viewer invite keeps it to the read routes.",
             "items": {
               "type": "string"
             },

@@ -1410,6 +1410,10 @@ pub struct WhoAmI {
     pub member_id: uuid::Uuid,
     pub delegation_grant_id: Option<uuid::Uuid>,
     pub workspace_id: uuid::Uuid,
+    /// What this credential can do. A bearer, and a session made from a
+    /// token, is that grant. An OIDC browser session is what the console
+    /// can do with it: posting, editing, uploading and moving a task, as
+    /// well as reading, unless a viewer invite keeps it to the read routes.
     pub capabilities: Vec<String>,
     pub is_bearer: bool,
     /// The bearer token this request used, null on a session: the id a client
