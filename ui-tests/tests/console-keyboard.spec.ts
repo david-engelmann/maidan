@@ -47,6 +47,18 @@ for (const hash of SCREENS) {
   });
 }
 
+test("Needs you keeps focus when a note opens and Escape closes it", async ({ page }) => {
+  await signInWithCookie(page, fx);
+  await openOnChannel(page, fx.desk_channel_id, "#/needs");
+  const row = page.locator(`li.need[data-thread-id="${fx.desk_send_back_thread_id}"]`);
+  await expect(row).toBeVisible();
+  const send = row.getByRole("button", { name: "Send back" });
+  await send.click();
+  await expect(row.locator("textarea")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(send).toBeFocused();
+});
+
 test("a live refresh keeps focus on the card it was on", async ({ page, request }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/board");

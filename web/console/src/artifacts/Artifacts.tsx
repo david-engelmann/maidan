@@ -1,13 +1,49 @@
 // Files: the content-addressed artifact store. Look one up by its sha256,
 // upload a file to get one, and link files to a task as its evidence.
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { BoardApi, type Thread } from "../core/board.ts";
 import { say, sayError } from "../core/notices.ts";
 import { formatBytes, isSha, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
+import { useSession } from "../hooks/useSession.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { Library } from "./Library.tsx";
 
+/** A handful of reads at a time, matching the file library. */
+async function mapLimited<T, R>(items: T[], n: number, f: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (i < items.length) {
+        const k = i++;
+        out[k] = await f(items[k]);
+      }
+    }),
+  );
+  return out;
+}
+
+export type TaskChoice = { id: string; channel: string; title: string };
+
+/** `#general — Deploy v9`, the line in the task picker. */
+export function taskOptionLabel(channel: string, title: string): string {
+  const name = channel.trim().replace(/^#/, "") || "channel";
+  return `#${name} — ${title.trim() || "Untitled task"}`;
+}
+
 export function Artifacts() {
   const api = useToolsApi();
+  const { session, store } = useSession();
+  const board = useMemo(() => new BoardApi((u, i) => fetch(u, i), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+  const ws = session.status === "signed-in" ? session.workspaceId : null;
+  const tasks = useLoad(ws, async () => {
+    const channels = await board.channels(ws ?? "");
+    const lists = await mapLimited(channels, 4, async (c) => {
+      const found = await board.threads(c.id).catch(() => [] as Thread[]);
+      return found.map((t) => ({ id: t.id, channel: c.name, title: t.title?.trim() || "Untitled task" }));
+    });
+    return lists.flat().sort((a, b) => a.channel.localeCompare(b.channel) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+  });
   const [sha, setSha] = useState("");
   const [looked, setLooked] = useState<string | null>(null);
   const [thread, setThread] = useState("");
@@ -15,6 +51,12 @@ export function Artifacts() {
   const [busy, setBusy] = useState(false);
   const meta = useLoad(looked, () => api.artifact(looked ?? ""));
   const linked = useLoad(threadOn, () => api.linked(threadOn ?? ""));
+  const choices = tasks.value ?? [];
+  const known = choices.some((t) => t.id === thread);
+  const openTask = (id: string) => {
+    setThread(id);
+    setThreadOn(id || null);
+  };
   const lookup = (e: FormEvent) => {
     e.preventDefault();
     const s = sha.trim().toLowerCase();
@@ -81,25 +123,52 @@ export function Artifacts() {
       <section className="card tool-panel">
         <h2>A task's evidence</h2>
         <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); setThreadOn(thread.trim() || null); }}>
+          <label className="field grow">Choose a task
+            <select aria-label="Choose a task" value={known ? thread : ""} onChange={(e) => openTask(e.target.value)}>
+              <option value="">Choose a task</option>
+              {choices.map((t) => <option key={t.id} value={t.id}>{taskOptionLabel(t.channel, t.title)}</option>)}
+            </select>
+          </label>
           <label className="field grow">Task id<input value={thread} onChange={(e) => setThread(e.target.value)} spellCheck={false} /></label>
           <button className="button steel" disabled={!thread.trim()}>Open</button>
         </form>
         {threadOn ? (
           linked.status === "loading" ? <p className="muted">Loading this task's files…</p> : linked.value === null ? <p className="err" role="alert">{linked.error}</p> : linked.value.length ? (
-            <ul className="tool-list">
-              {linked.value.map((s) => (
-                <li key={s} tabIndex={-1} className="tool-row">
-                  <button type="button" className="link-btn mono-id grow" onClick={() => { setSha(s); setLooked(s); }}>{s.slice(0, 16)}…</button>
-                  <button type="button" className="chip-btn" disabled={busy} onClick={() => void linkOp("unlink", s)}>Unlink</button>
-                </li>
-              ))}
-            </ul>
+            <EvidenceList threadId={threadOn} shas={linked.value} api={api} busy={busy} onOpen={(s) => { setSha(s); setLooked(s); }} onUnlink={(s) => void linkOp("unlink", s)} />
           ) : (
             <p className="muted">No files linked to this task yet. Look one up, then link it.</p>
           )
         ) : <p className="muted small">Open a task to see and change the files linked to it as evidence.</p>}
       </section>
     </div>
+  );
+}
+
+function EvidenceList({ threadId, shas, api, busy, onOpen, onUnlink }: { threadId: string; shas: string[]; api: ToolsApi; busy: boolean; onOpen: (sha: string) => void; onUnlink: (sha: string) => void }) {
+  const key = `${threadId}:${shas.join("\n")}`;
+  const metas = useLoad(key, async () => {
+    const pairs = await mapLimited(shas, 6, async (s) => [s, await api.artifact(s).catch(() => null)] as const);
+    return new Map(pairs);
+  });
+  return (
+    <ul className="tool-list">
+      {shas.map((s) => {
+        const meta = metas.value?.get(s) ?? null;
+        const named = meta?.filename?.trim() || "";
+        const size = formatBytes(meta?.size_bytes);
+        return (
+          <li key={s} tabIndex={-1} className="tool-row">
+            <button type="button" className="link-btn grow" onClick={() => onOpen(s)}>
+              <span>{named || `${s.slice(0, 16)}…`}</span>
+              {size ? <span className="muted small"> {size}</span> : null}
+              {named ? <span className="mono-id"> {s.slice(0, 12)}…</span> : null}
+            </button>
+            <a href={`#/threads/t/${encodeURIComponent(threadId)}`}>Open task</a>
+            <button type="button" className="chip-btn" disabled={busy} onClick={() => onUnlink(s)}>Unlink</button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
