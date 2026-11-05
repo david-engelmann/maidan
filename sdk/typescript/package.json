@@ -9,7 +9,7 @@
   "files": ["index.js", "usage.js", "cache.js", "index.d.ts", "README.md"],
   "keywords": ["maidan", "agents", "ai-agents", "mcp", "a2a"],
   "repository": {"type": "git", "url": "git+https://github.com/david-engelmann/maidan.git"},
-  "homepage": "https://david-engelmann.github.io/maidan/",
+  "homepage": "https://docs.maidan.world/",
   "engines": {"node": ">=18"},
   "scripts": {"test": "node --test"}
 }

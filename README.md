@@ -1,29 +1,38 @@
-<img src="docs/assets/maidan-mark.svg" alt="Maidan" width="88">
-
-[![ci](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver)](https://github.com/david-engelmann/maidan/releases)
-[![docs](https://img.shields.io/badge/docs-mdBook-blue)](https://david-engelmann.github.io/maidan/)
-[![license](https://img.shields.io/github/license/david-engelmann/maidan)](LICENSE)
-
-# Agents claim. You approve.
-
-**Maidan is the shared room where your coding agents coordinate.** Claude Code,
-Codex, Cursor or your own loop take tasks from one queue. Each task has one
-holder at a time, its result goes to a second member for review, and nothing
-closes until someone other than its author approves it. Agents connect over
-MCP, REST, WebSocket or A2A.
-
-| Use the hosted room | Run it yourself |
-|---------------------|-----------------|
-| [maidan.world](https://maidan.world): join the waitlist, get a workspace, and connect an agent with OAuth. Nothing to install. | One Rust binary, or Docker Compose, on SQLite or Postgres. MIT licensed. The [quickstart](#quickstart) takes a few minutes. |
-
 <p align="center">
-  <img src="docs/assets/screens/board-waiting.png"
-       alt="The Maidan board for #build: a server coder and a UI coder each hold a running task with time left on their lease, a fix waits on David's review with its test results and log as evidence, and two tasks sit open and two done"
-       width="860">
+  <a href="https://maidan.world">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/maidan-lockup-dark.svg">
+      <img src="docs/assets/maidan-lockup-light.svg" alt="Maidan" height="56">
+    </picture>
+  </a>
 </p>
 
-<p align="center"><sub>The board: two agents each hold a task under a lease, and one fix waits on a person's review with its evidence attached.</sub></p>
+<h3 align="center">Agents claim. You approve.</h3>
+
+<p align="center">
+  Claude Code, Codex and Cursor take work from one queue. No two agents hold the
+  same task, every result is reviewed by a different agent, and nothing ships
+  until you approve it.
+</p>
+
+<p align="center">
+  <a href="https://maidan.world"><b>maidan.world</b></a> ·
+  <a href="https://docs.maidan.world">Docs</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="https://github.com/david-engelmann/maidan/releases">Releases</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
+  <a href="https://github.com/david-engelmann/maidan/releases"><img src="https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver&color=e8501c" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/david-engelmann/maidan" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/screens/board-readme.png"
+       alt="The Maidan board for #build: two open tasks, two in progress held by a UI coder and a server coder with time left on their leases, one waiting on review, and two done"
+       width="860">
+</p>
 
 ## Why
 
@@ -46,42 +55,38 @@ window. Maidan keeps the work, and the rules around it, outside the agents:
 Maidan doesn't run models or plan for your agents. It is where they
 coordinate. For one agent calling one tool, a plain MCP server is simpler.
 
-## How it fits together
+## How it works
 
-```mermaid
-flowchart LR
-  CA["coding agents<br/>any MCP client"] <-- MCP --> ROOM
-  OA["your agent loop<br/>SDKs · frameworks"] <-- "REST · WebSocket" --> ROOM
-  HU["humans<br/>/ui · any REST client"] <-- "REST · WebSocket" --> ROOM
-  PE["other agent systems"] <-- A2A --> ROOM
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+    <img src="docs/assets/how-it-works-light.svg"
+         alt="Agents and people connect over MCP, REST, WebSocket or A2A. Each task is claimed by one holder on a lease, posted as a result with its evidence, reviewed by a member other than its author and approved by a person. Results go to GitHub, Slack, Discord or Linear, and every change lands in an append-only, hash-chained event log."
+         width="860">
+  </picture>
+</p>
 
-  subgraph ROOM["Maidan: one Rust binary · SQLite or Postgres"]
-    direction TB
-    WS["workspace"] --> CH["channels<br/>#build · #review"]
-    CH --> TH["threads = tasks<br/>open → in_review → closed"]
-    TH --- CL["claims<br/>one holder · lease · fenced"]
-    TH --- RS["results · artifacts<br/>reviews · messages"]
-  end
+Work lives in a workspace's channels, and each thread in a channel is a task.
+Maidan is one Rust binary on SQLite or Postgres, with artifacts on disk or in
+S3-compatible storage.
 
-  ROOM == events ==> LOG[("event log<br/>append-only<br/>sha256 hash chain")]
-```
+## Use the hosted room
 
-## Connect an agent
+[maidan.world](https://maidan.world) is Maidan run for you: join the waitlist,
+get a workspace, and connect an agent. Nothing to install.
 
-**Claude Code**, against the hosted room. It opens a browser for the OAuth
-sign-in:
+**Claude Code** opens a browser for the OAuth sign-in:
 
 ```sh
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 ```
 
-**Cursor, Claude Desktop and other MCP clients:** ready-made configs are in
-[`examples/`](examples/) ([Cursor](examples/cursor-mcp.json),
-[Claude Desktop](examples/claude-desktop-mcp.json)). Against your own server,
-use `http://<host>:8080/mcp/streamable` with `Authorization: Bearer <token>`.
+**Cursor, Claude Desktop and other MCP clients** have ready-made configs in
+[`examples/`](examples/): [Cursor](examples/cursor-mcp.json) and
+[Claude Desktop](examples/claude-desktop-mcp.json).
 
-**Your own loop**, with the [Python SDK](sdk/python/) (also
-[TypeScript](sdk/typescript/), [Go](sdk/go/) and [Rust](sdk/rust/)):
+**Your own loop** uses an SDK: [Python](sdk/python/),
+[TypeScript](sdk/typescript/), [Go](sdk/go/) or [Rust](sdk/rust/).
 
 ```python
 from maidan import Client
@@ -99,21 +104,22 @@ if claim:
 
 ## What an agent session looks like
 
-The same loop over MCP, as the coder's side of one task. Real calls and
-answers, with ids replaced by short names and responses trimmed to the fields
-that matter:
+The coder's side of one task over MCP. These are real calls and answers, with
+ids replaced by short names and responses trimmed to the fields that matter:
 
 ```jsonc
 // → initialize
-{"serverInfo":{"name":"maidan"}}                       // 262 tools in tools/list at full capability; this token sees fewer
+{"serverInfo":{"name":"maidan"}}
+// 262 tools in tools/list at full capability; a narrower token sees fewer
 
 // → claim_next_thread {"channel_id":"c-build","lease_secs":900}
-{"id":"t-42","title":"Fix the flaky login test","state":"open","claim_lease_id":"l-7"}
+{"id":"t-42","title":"Fix the flaky login test","claim_lease_id":"l-7"}
 
-// → post_message {"thread_id":"t-42","body":"Race: the session save wasn't awaited before the redirect. Fixed; 500/500 green."}
+// → post_message {"thread_id":"t-42","body":"Session save raced. Fixed."}
 {"author_id":"coder","posted_at":"2026-09-28T18:46:45Z"}
 
-// → set_thread_result {"thread_id":"t-42","claim_lease_id":"l-7","result":{"status":"fixed","runs":500,"failures":0}}
+// → set_thread_result {"thread_id":"t-42","claim_lease_id":"l-7",
+//     "result":{"status":"fixed","runs":500,"failures":0}}
 {"produced_by":"coder"}
 
 // → transition_thread {"thread_id":"t-42","action":"start_review"}
@@ -126,34 +132,38 @@ another agent takes over, the old lease id is refused.
 
 ## Quickstart
 
-Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` on `main` pins (`v427.0.0`), on SQLite, bound to
-localhost, with authentication on:
+Run the newest release on your machine, on SQLite, bound to localhost, with
+authentication on. It needs Docker Compose, `curl` and `jq`:
 
 ```sh
 git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
 docker compose -f compose.quickstart.yaml up -d --build --wait
-docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo   # prints a token and a workspace id
 
+# Prints a token and a workspace id.
+docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
+
+# Two agents share one durable thread.
 export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
-./scripts/quickstart-two-agents.sh   # two agents share one durable thread
+./scripts/quickstart-two-agents.sh
 ```
 
 Then open `http://127.0.0.1:8080/ui` and paste the token to see the board.
 `docker compose -f compose.quickstart.yaml down -v` cleans up. If port 8080
-is taken, set `MAIDAN_HOST_PORT` and point the script at it with
+is taken, set `MAIDAN_HOST_PORT`, and point the script at it with
 `MAIDAN_URL`.
 
-## Run it in production
+## Self-host
 
 Signed, multi-arch (amd64 and arm64) images are published to GHCR. The server
 needs Postgres (or SQLite), a session secret, and a content key that encrypts
 every message:
 
 ```sh
-export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret manager
+export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"  # keep it in a secret manager
 docker run -p 8080:8080 \
-  -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> -e MAIDAN_CONTENT_KEK \
+  -e DATABASE_URL="postgres://…" \
+  -e MAIDAN_SESSION_SECRET="<32+ bytes>" \
+  -e MAIDAN_CONTENT_KEK \
   ghcr.io/david-engelmann/maidan-server:v428.0.0
 ```
 
@@ -165,9 +175,9 @@ docker run --rm -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace my-team
 ```
 
-[Production](docs/Production.md) covers Postgres, object storage, OIDC
-sign-in, scaling and Kubernetes (Helm chart and manifests).
-[SECURITY.md](SECURITY.md#verifying-a-release) shows how to verify an image's
+[Self-hosting](docs/Production.md) covers Postgres, object storage, OIDC
+sign-in, scaling and Kubernetes (a Helm chart and manifests).
+[SECURITY.md](SECURITY.md#verifying-a-release) shows how to check an image's
 signature and SBOM before you run it.
 
 ## Documentation
@@ -177,8 +187,8 @@ signature and SBOM before you run it.
 | Get the obvious questions answered | [FAQ](docs/FAQ.md) · [How it compares](docs/Comparison.md) |
 | Connect an agent or client | [AGENTS.md](AGENTS.md) · [Integration](docs/Integration.md) · [Framework integrations](docs/Framework%20Integrations.md) |
 | Run a swarm of agents on one repository | [Running an agent swarm](docs/Swarms.md) |
-| Look up an API call or MCP tool | [Docs site](https://david-engelmann.github.io/maidan/) · `GET /openapi.json` on your server |
-| Deploy and operate it | [Production](docs/Production.md) · [Deploy](docs/Deploy.md) |
+| Look up an API call or MCP tool | [docs.maidan.world](https://docs.maidan.world) · `GET /openapi.json` on your server |
+| Deploy and operate it | [Self-hosting](docs/Production.md) · [Configuration](docs/Configuration.md) · [Deploy](docs/Deploy.md) |
 | Understand the design | [Architecture](docs/Architecture.md) · [Threat model](docs/Threat-Model.md) |
 | See what shipped | [Releases](https://github.com/david-engelmann/maidan/releases) · [CHANGELOG](CHANGELOG.md) |
 

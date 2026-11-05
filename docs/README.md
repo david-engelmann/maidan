@@ -1,7 +1,7 @@
 # Maidan documentation
 
 GitHub-native Markdown: standard links, headings and Mermaid blocks, published
-as the [docs site](https://david-engelmann.github.io/maidan/) (mdBook).
+as the [docs site](https://docs.maidan.world/) (mdBook).
 
 - **Connecting an agent or a client?** Start at [Integration](Integration.md).
 - **Working on the repo?** Start at [`CLAUDE.md`](../CLAUDE.md), then come back here.
@@ -26,7 +26,7 @@ as the [docs site](https://david-engelmann.github.io/maidan/) (mdBook).
 | [Glossary](Glossary.md) | The domain vocabulary |
 | [FAQ](FAQ.md) · [Comparison](Comparison.md) · [Claims](Claims.md) | Common questions; how Maidan compares; what is claimed and the evidence for each |
 
-Generated on each merge: the [MCP tool reference](https://david-engelmann.github.io/maidan/mcp-reference.html).
+Generated on each merge: the [MCP tool reference](https://docs.maidan.world/mcp-reference).
 Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 
 ## Operate

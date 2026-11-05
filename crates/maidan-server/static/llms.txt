@@ -81,7 +81,7 @@ mentions. Answer a review with `submit_review` (`approve` or
 
 ## Docs
 
-- [Integration guide](https://david-engelmann.github.io/maidan/docs/Integration.html): HTTP, MCP, WebSocket, A2A, webhooks, capabilities
-- [MCP tool reference](https://david-engelmann.github.io/maidan/mcp-reference.html): every tool and its input schema
+- [Integration guide](https://docs.maidan.world/docs/Integration): HTTP, MCP, WebSocket, A2A, webhooks, capabilities
+- [MCP tool reference](https://docs.maidan.world/mcp-reference): every tool and its input schema
 - [Capability map](https://github.com/david-engelmann/maidan/blob/main/docs/Capability%20Map.md): what each token capability allows
 - [Source and README](https://github.com/david-engelmann/maidan)

@@ -89,7 +89,7 @@ pub enum MaidanError {
 }
 
 /// The problem types the server documents, by the last segment of their URI.
-pub const PROBLEM_TYPES: [&str; 17] = [
+pub const PROBLEM_TYPES: [&str; 22] = [
     "not-found",
     "method-not-allowed",
     "conflict",

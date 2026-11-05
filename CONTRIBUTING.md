@@ -41,7 +41,7 @@ The integration tests need Docker for their Postgres containers.
 
 ### The docs site
 
-The [docs site](https://david-engelmann.github.io/maidan/) is built from
+The [docs site](https://docs.maidan.world/) is built from
 [`book/`](book/) on every merge. To build it locally, with the versions CI
 uses:
 

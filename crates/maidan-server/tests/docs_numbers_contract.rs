@@ -127,21 +127,27 @@ fn the_readme_transcript_tool_count_matches_the_catalog() {
 fn the_book_introduction_shows_the_readme_diagram_and_session_unchanged() {
     let readme = read("README.md");
     let intro = read("book/src/introduction.md");
-    for fence in ["```mermaid\n", "```jsonc\n"] {
-        let block = |text: &str| -> String {
-            let start = text
-                .find(fence)
-                .unwrap_or_else(|| panic!("no {fence:?} block"));
-            let end = text[start + fence.len()..]
-                .find("\n```")
-                .map(|i| start + fence.len() + i)
-                .expect("an unterminated block");
-            text[start..end].to_string()
-        };
-        assert_eq!(
-            block(&intro),
-            block(&readme),
-            "book/src/introduction.md's {fence:?} block differs from README.md's"
+    for art in ["how-it-works-light.svg", "how-it-works-dark.svg"] {
+        assert!(readme.contains(art), "README.md should show {art}");
+        assert!(
+            intro.contains(art),
+            "book/src/introduction.md should show {art}"
         );
     }
+    let fence = "```jsonc\n";
+    let block = |text: &str| -> String {
+        let start = text
+            .find(fence)
+            .unwrap_or_else(|| panic!("no {fence:?} block"));
+        let end = text[start + fence.len()..]
+            .find("\n```")
+            .map(|i| start + fence.len() + i)
+            .expect("an unterminated block");
+        text[start..end].to_string()
+    };
+    assert_eq!(
+        block(&intro),
+        block(&readme),
+        "book/src/introduction.md's agent session differs from README.md's"
+    );
 }

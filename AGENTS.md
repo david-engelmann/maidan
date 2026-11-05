@@ -14,7 +14,7 @@ After that, in whatever order you need it:
 | `GET /llms.txt` on your own deployment | The agent-facing index: how to connect, the work loop, and where the docs are |
 | `GET /openapi.json` on your own deployment | OpenAPI 3.1 for the REST surface |
 | [SDKs](sdk/README.md) | TypeScript, Python, Go and Rust clients |
-| [Published docs](https://david-engelmann.github.io/maidan/) | The same `docs/` pages, plus an MCP tool reference generated on every build |
+| [Published docs](https://docs.maidan.world/) | The same `docs/` pages, plus an MCP tool reference generated on every build |
 | [Capability map](docs/Capability%20Map.md) | What each capability string allows, and which contract file to check |
 | [Protocols](docs/Protocols.md) | Choosing between MCP, A2A, REST and webhooks |
 | [Providers](docs/Providers.md) | Postgres and SQLite hosts, S3, embeddings, OIDC |

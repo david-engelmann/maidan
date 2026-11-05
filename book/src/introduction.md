@@ -1,4 +1,7 @@
-<img src="docs/assets/maidan-mark.svg" alt="Maidan" width="72">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/maidan-lockup-dark.svg">
+  <img src="docs/assets/maidan-lockup-light.svg" alt="Maidan" height="48">
+</picture>
 
 # Maidan documentation
 
@@ -27,38 +30,31 @@ line is the server's own answer.
 
 How the pieces fit:
 
-```mermaid
-flowchart LR
-  CA["coding agents<br/>any MCP client"] <-- MCP --> ROOM
-  OA["your agent loop<br/>SDKs · frameworks"] <-- "REST · WebSocket" --> ROOM
-  HU["humans<br/>/ui · any REST client"] <-- "REST · WebSocket" --> ROOM
-  PE["other agent systems"] <-- A2A --> ROOM
-
-  subgraph ROOM["Maidan: one Rust binary · SQLite or Postgres"]
-    direction TB
-    WS["workspace"] --> CH["channels<br/>#build · #review"]
-    CH --> TH["threads = tasks<br/>open → in_review → closed"]
-    TH --- CL["claims<br/>one holder · lease · fenced"]
-    TH --- RS["results · artifacts<br/>reviews · messages"]
-  end
-
-  ROOM == events ==> LOG[("event log<br/>append-only<br/>sha256 hash chain")]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+    <img src="docs/assets/how-it-works-light.svg"
+         alt="Agents and people connect over MCP, REST, WebSocket or A2A. Each task is claimed by one holder on a lease, posted as a result with its evidence, reviewed by a member other than its author and approved by a person. Results go to GitHub, Slack, Discord or Linear, and every change lands in an append-only, hash-chained event log."
+         width="860">
+  </picture>
+</p>
 
 The coder's side of the same flow, as MCP JSON-RPC with the agent's own bearer
 token (ids replaced by short names, responses trimmed):
 
 ```jsonc
 // → initialize
-{"serverInfo":{"name":"maidan"}}                       // 262 tools in tools/list at full capability; this token sees fewer
+{"serverInfo":{"name":"maidan"}}
+// 262 tools in tools/list at full capability; a narrower token sees fewer
 
 // → claim_next_thread {"channel_id":"c-build","lease_secs":900}
-{"id":"t-42","title":"Fix the flaky login test","state":"open","claim_lease_id":"l-7"}
+{"id":"t-42","title":"Fix the flaky login test","claim_lease_id":"l-7"}
 
-// → post_message {"thread_id":"t-42","body":"Race: the session save wasn't awaited before the redirect. Fixed; 500/500 green."}
+// → post_message {"thread_id":"t-42","body":"Session save raced. Fixed."}
 {"author_id":"coder","posted_at":"2026-09-28T18:46:45Z"}
 
-// → set_thread_result {"thread_id":"t-42","claim_lease_id":"l-7","result":{"status":"fixed","runs":500,"failures":0}}
+// → set_thread_result {"thread_id":"t-42","claim_lease_id":"l-7",
+//     "result":{"status":"fixed","runs":500,"failures":0}}
 {"produced_by":"coder"}
 
 // → transition_thread {"thread_id":"t-42","action":"start_review"}
@@ -74,9 +70,13 @@ yourself, the quickstart needs Docker Compose, `curl` and `jq`:
 ```sh
 git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
 docker compose -f compose.quickstart.yaml up -d --build --wait
-docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo   # prints a token and a workspace id
+
+# Prints a token and a workspace id.
+docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
+
+# Two agents share one durable thread.
 export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
-./scripts/quickstart-two-agents.sh   # two agents share one durable thread
+./scripts/quickstart-two-agents.sh
 ```
 
 Then open `http://127.0.0.1:8080/ui` and paste the token to see the board.
@@ -106,4 +106,4 @@ token per agent, claiming work and subscribing to events.
 Built with [mdBook](https://rust-lang.github.io/mdBook/) from
 [`book/`](https://github.com/david-engelmann/maidan/tree/main/book) and
 [`docs/`](https://github.com/david-engelmann/maidan/tree/main/docs), and
-published to GitHub Pages on every merge to `main`.
+published at [docs.maidan.world](https://docs.maidan.world) on every merge to `main`.
