@@ -406,9 +406,11 @@ fn find_event(buf: &[u8]) -> Option<(usize, usize)> {
 fn event_data(block: &[u8]) -> Result<Option<String>, A2aClientError> {
     let text = std::str::from_utf8(block)
         .map_err(|e| A2aClientError::Decode(format!("sse frame is not utf-8: {e}")))?;
+    // `find_event` ends a line on `\n`, `\r\n`, or a lone `\r`. `str::lines`
+    // does not split on a lone `\r`, so normalise those the same way first.
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut data_lines = Vec::new();
-    for line in text.lines() {
-        let line = line.trim_end_matches('\r');
+    for line in normalized.split('\n') {
         if line.is_empty() || line.starts_with(':') {
             continue;
         }
@@ -455,6 +457,12 @@ mod tests {
             frames,
             vec!["{\"a\":\n1}".to_string(), "{\"tail\":true}".to_string()]
         );
+    }
+
+    #[test]
+    fn sse_joins_data_lines_separated_by_a_bare_cr() {
+        let frames = collect(vec![b"data: a\rdata: b\r\r".to_vec()]).unwrap();
+        assert_eq!(frames, vec!["a\nb".to_string()]);
     }
 
     #[test]
