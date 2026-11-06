@@ -9,6 +9,7 @@ import {
   envFingerprint,
   serverEnv,
 } from "../src/server-env.js";
+import { demoEnv } from "../src/demo-env.js";
 
 const config = (file) =>
   JSON.parse(
@@ -316,4 +317,155 @@ test("a warm container whose environment is already verified skips the lock and 
   });
   assert.ok(world.locks.length > 0);
   assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+});
+
+test("a daily reset drops verified state so the next request starts with the current fingerprint", async () => {
+  const fingerprint = await envFingerprint(demoEnv("https://try.maidan.world"));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  world.session.verifiedFingerprint = fingerprint;
+
+  world.session.invalidate();
+  if (world.container.running) await world.destroy();
+
+  assert.equal(world.session.verifiedFingerprint, null);
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+  assert.equal(world.session.epoch, 1);
+  assert.equal(world.destroys(), 1);
+  assert.equal(world.container.running, false);
+  // The fingerprint of the destroyed process stays stored. The container is
+  // not running, so the next request must start it, not destroy it again.
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+
+  const answer = await world.serve(async () => {
+    world.container.running = true;
+    return "fresh";
+  });
+  assert.equal(answer, "fresh");
+  assert.equal(world.destroys(), 1);
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+});
+
+test("after a reset, a running container already on this fingerprint is kept and re-checked", async () => {
+  const fingerprint = await envFingerprint(demoEnv("https://try.maidan.world"));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  world.session.verifiedFingerprint = fingerprint;
+  world.session.invalidate();
+
+  const answer = await world.serve(async () => "kept");
+  assert.equal(answer, "kept");
+  assert.equal(world.destroys(), 0);
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.ok(world.locks.length > 0, "verified memory was cleared, so the request checks storage");
+});
+
+test("after a reset, a running container on a stale fingerprint is recycled once", async () => {
+  const before = await envFingerprint(demoEnv("https://try.maidan.world"));
+  const after = await envFingerprint(demoEnv("https://preview.example"));
+  assert.notEqual(before, after);
+  const world = rig({ fingerprint: after, running: true, stored: before });
+  world.session.verifiedFingerprint = before;
+  world.session.invalidate();
+
+  const answer = await world.serve(async () => {
+    assert.equal(world.container.running, false, "the stale container is stopped before the replacement starts");
+    world.container.running = true;
+    return "recycled";
+  });
+  assert.equal(answer, "recycled");
+  assert.equal(world.destroys(), 1);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), after);
+  assert.equal(world.session.verifiedFingerprint, after);
+  assert.equal(world.session.inFlightStarts, 0);
+});
+
+test("a request in flight during a reset does not record the destroyed container or clobber the next start", async () => {
+  const fingerprint = await envFingerprint(demoEnv("https://try.maidan.world"));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  world.session.verifiedFingerprint = fingerprint;
+  const inside = deferred();
+  const release = deferred();
+
+  const first = world.serve(async () => {
+    inside.release();
+    await release.gate;
+    return "old";
+  });
+  await inside.gate;
+  assert.equal(world.locks.length, 0, "a verified container skips the lock");
+  assert.equal(world.session.inFlightStarts, 0);
+
+  world.session.invalidate();
+  if (world.container.running) await world.destroy();
+  assert.equal(world.destroys(), 1);
+  assert.equal(world.session.verifiedFingerprint, null);
+
+  const secondInside = deferred();
+  const secondRelease = deferred();
+  const second = world.serve(async () => {
+    assert.equal(world.container.running, false);
+    world.container.running = true;
+    secondInside.release();
+    await secondRelease.gate;
+    return "new";
+  });
+  await secondInside.gate;
+  assert.equal(world.destroys(), 1, "the fresh start is not recycled");
+  assert.equal(world.session.inFlightStarts, 1);
+  assert.equal(world.session.verifiedFingerprint, null, "not recorded until the start finishes");
+
+  release.release();
+  assert.equal(await first, "old");
+  assert.equal(world.session.inFlightStarts, 1, "the request from before the reset must not decrement the new start");
+  assert.equal(world.session.verifiedFingerprint, null);
+  assert.equal(world.storage.puts, 0);
+
+  secondRelease.release();
+  assert.equal(await second, "new");
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(world.destroys(), 1);
+});
+
+test("a cold start still in flight when the demo resets does not record itself, and its error still surfaces", async () => {
+  const fingerprint = await envFingerprint(demoEnv("https://try.maidan.world"));
+  const world = rig({ fingerprint });
+  const inside = deferred();
+  const release = deferred();
+
+  const first = world.serve(async () => {
+    world.container.running = true;
+    inside.release();
+    await release.gate;
+    throw new Error("container failed to start");
+  });
+  await inside.gate;
+  assert.equal(world.session.inFlightStarts, 1);
+
+  world.session.invalidate();
+  world.container.running = false;
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+
+  const second = world.serve(async () => {
+    world.container.running = true;
+    return "new";
+  });
+  assert.equal(await second, "new");
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+
+  release.release();
+  await assert.rejects(first, /container failed to start/);
+  assert.equal(world.session.inFlightStarts, 0, "the failed start does not decrement the replacement");
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.session.startingFingerprint, null);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(world.destroys(), 0);
 });

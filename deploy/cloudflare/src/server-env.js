@@ -110,11 +110,24 @@ export function containerEnvPlan({ running, startedFingerprint, fingerprint }) {
   return { destroy: running === true, remember: true };
 }
 
-// In-memory coordination for one MaidanServer instance. Storage is shared
-// across isolates; this state is not, and that is what stops a concurrent
-// request from recycling a start that has not been recorded yet.
+// In-memory coordination for one container Durable Object (the hosted
+// server, or the demo). Storage is shared across isolates; this state is
+// not, and that is what stops a concurrent request from recycling a start
+// that has not been recorded yet.
 export class ContainerEnvSession {
   constructor() {
+    this.verifiedFingerprint = null;
+    this.startingFingerprint = null;
+    this.inFlightStarts = 0;
+    // Bumped when the container is destroyed from outside serve() (the
+    // demo's daily reset). A request already inside forward() belongs to
+    // the previous epoch: it must not record that process, or decrement a
+    // start that began after the reset.
+    this.epoch = 0;
+  }
+
+  invalidate() {
+    this.epoch += 1;
     this.verifiedFingerprint = null;
     this.startingFingerprint = null;
     this.inFlightStarts = 0;
@@ -122,10 +135,11 @@ export class ContainerEnvSession {
 
   async serve({ fingerprint, container, storage, blockConcurrencyWhile, destroy, forward }) {
     if (this.verifiedFingerprint === fingerprint && container.running === true) {
+      const epoch = this.epoch;
       try {
         return await forward();
       } finally {
-        if (container.running !== true) this.verifiedFingerprint = null;
+        if (this.epoch === epoch && container.running !== true) this.verifiedFingerprint = null;
       }
     }
 
@@ -133,15 +147,21 @@ export class ContainerEnvSession {
       this.#enter(fingerprint, container, storage, destroy),
     );
     if (!joined) {
+      const epoch = this.epoch;
       try {
         return await forward();
       } finally {
-        if (container.running !== true) this.verifiedFingerprint = null;
+        if (this.epoch === epoch && container.running !== true) this.verifiedFingerprint = null;
       }
     }
 
+    const epoch = this.epoch;
     try {
       const response = await forward();
+      // A reset landed while this start was in flight. The container it
+      // saw is gone; recording it would pin the next request to a process
+      // that no longer exists.
+      if (this.epoch !== epoch) return response;
       if (container.running === true) {
         if (this.verifiedFingerprint !== fingerprint) {
           await storage.put(ENV_FINGERPRINT_KEY, fingerprint);
@@ -152,8 +172,12 @@ export class ContainerEnvSession {
       }
       return response;
     } finally {
-      this.inFlightStarts -= 1;
-      if (this.inFlightStarts === 0) this.startingFingerprint = null;
+      // A return here would swallow the forward() error. Only the counter
+      // this epoch owns is touched.
+      if (this.epoch === epoch) {
+        this.inFlightStarts -= 1;
+        if (this.inFlightStarts === 0) this.startingFingerprint = null;
+      }
     }
   }
 
