@@ -10,12 +10,11 @@ export class CacheError extends Error {
   }
 }
 
-/** A required non-blank string; whitespace-only values are refused. */
+/** Validate a required non-blank string without changing it; callers keep the original so cache keys and headers stay byte-stable. */
 export function requireText(value, label) {
   if (typeof value !== "string") throw new CacheError(`${label} is required`);
-  const t = value.trim();
-  if (!t) throw new CacheError(`${label} is required`);
-  return t;
+  if (!value.trim()) throw new CacheError(`${label} is required`);
+  return value;
 }
 
 async function sha256Hex(text) {

@@ -95,3 +95,10 @@ test("blank or non-string cache inputs are refused", async () => {
   expectError(() => routingHints("dynamo", "  "), "thread id is required");
   await assert.rejects(() => cacheSalt("  ", "k".repeat(32)), CacheError);
 });
+
+test("padded cache inputs keep original bytes", async () => {
+  const { createHash } = await import("node:crypto");
+  const got = await cacheKey(" ws", "group ");
+  const want = `maidan-${createHash("sha256").update(" ws\ngroup ", "utf8").digest("hex").slice(0, 32)}`;
+  assert.equal(got, want);
+});
