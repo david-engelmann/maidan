@@ -605,4 +605,114 @@ async fn three_send_backs_wait_on_a_person_and_a_worker_cannot_wave_them_through
         again.is_null(),
         "a declined round stays off the queue: {again}"
     );
+
+    // The confirmation link names the reviewer who opened the gate. Spending
+    // it from that person's signed-in session accepts the round.
+    let confirm_channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "confirm".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let confirm_thread = store
+        .create_thread(NewThread {
+            channel_id: confirm_channel.id,
+            parent_thread_id: None,
+            title: Some("confirm the round".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let (status, body) = call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{}/review-requirement", confirm_thread.id.0),
+        &reviewer_h,
+        Some(json!({"required_count": 0, "max_rounds": 1})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    hand_off(
+        &client,
+        &base,
+        &worker_h,
+        confirm_channel.id.0,
+        confirm_thread.id.0,
+    )
+    .await;
+    let (status, body) = call(
+        &client,
+        Method::POST,
+        format!("{base}/threads/{}/reviews", confirm_thread.id.0),
+        &reviewer_h,
+        Some(json!({"decision": "request_changes", "note": "confirm me"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, list) = call(
+        &client,
+        Method::GET,
+        format!("{base}/workspaces/{}/approval-gates", ws.id.0),
+        &reviewer_h,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    let view = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| {
+            g["gate"]["thread_id"] == json!(confirm_thread.id.0)
+                || g["gate"]["thread_id"] == json!(confirm_thread.id.0.to_string())
+        })
+        .expect("the confirmation gate");
+    let confirm_gate = view["gate"]["id"].as_str().unwrap();
+    let asked = mcp(
+        &client,
+        &base,
+        &reviewer,
+        "approval_decide",
+        json!({"gate_id": confirm_gate, "decision": "accept"}),
+    )
+    .await;
+    let text = asked["result"]["content"][0]["text"].as_str().unwrap();
+    let payload: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(payload["status"], "confirmation_required", "{payload}");
+    let url = payload["confirmation_url"].as_str().unwrap();
+    let fragment = url.split("#confirm-approval=").nth(1).unwrap();
+    let (gate_part, token) = fragment.split_once('.').unwrap();
+    assert_eq!(gate_part, confirm_gate);
+    let confirmed = client
+        .post(format!("{base}/auth/approval-confirmations/confirm"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .header("sec-fetch-site", "same-origin")
+        .header(reqwest::header::ORIGIN, &base)
+        .json(&json!({"gate_id": confirm_gate, "token": token}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        confirmed.status(),
+        StatusCode::OK,
+        "{}",
+        confirmed.text().await.unwrap()
+    );
+    let (status, claimed) = call(
+        &client,
+        Method::POST,
+        format!(
+            "{base}/channels/{}/threads/claim-next",
+            confirm_channel.id.0
+        ),
+        &worker_h,
+        Some(json!({"lease_secs": 60})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{claimed}");
+    assert_eq!(claimed["id"], json!(confirm_thread.id.0));
 }

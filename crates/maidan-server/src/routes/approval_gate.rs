@@ -116,18 +116,25 @@ async fn decide_round_cap(
     }
     let person = acceptance_credential(state, auth, session, headers).await;
     match target {
-        ApprovalGateState::Accepted => {
-            person.map_err(|_| ApiError::Forbidden(ROUND_CAP_REFUSAL.into()))
-        }
+        ApprovalGateState::Accepted => round_cap_refusal(person),
         ApprovalGateState::Declined | ApprovalGateState::Cancelled => {
             if auth.has_capability(CHANNEL_ADMIN) {
                 return Ok(());
             }
-            person.map_err(|_| ApiError::Forbidden(ROUND_CAP_REFUSAL.into()))
+            round_cap_refusal(person)
         }
         ApprovalGateState::Pending => Err(ApiError::BadRequest(
             "action must be accept, decline, or cancel".into(),
         )),
+    }
+}
+
+/// A missing credential is the round-cap refusal. A store failure stays a
+/// store failure: folding it into 403 hides the outage from the caller.
+fn round_cap_refusal(result: ApiResult<()>) -> ApiResult<()> {
+    match result {
+        Err(ApiError::Forbidden(_)) => Err(ApiError::Forbidden(ROUND_CAP_REFUSAL.into())),
+        other => other,
     }
 }
 
@@ -341,6 +348,8 @@ const CONFIRM_NEEDS: &str = "confirming a model's approval request needs the sig
 /// holding that token could otherwise finish the confirmation itself. The link is
 /// bound to the member whose credential the model used, so only that person's
 /// session can spend it, and nobody confirms acceptance of their own request.
+/// A review-round cap is the exception: the person who sent the work back is
+/// the requester, and that same person is who the confirmation link is for.
 /// The gate is recorded as decided via the client the model asked through.
 ///
 /// A link that is unknown, someone else's, for another workspace, used or
@@ -383,7 +392,12 @@ pub async fn confirm_approval_gate(
         .ok_or(ApiError::NotFound)?;
     let asked = [Some(gate.requested_by), gate.requested_actor_id];
     let answering = [auth.member_id, auth.actor_id];
-    if answering.iter().any(|m| asked.contains(&Some(*m))) {
+    // The cap gate's requester is the reviewer the link was sent to. Refusing
+    // them here leaves the gate pending forever when they confirm from the
+    // console. Every other gate still refuses a self-grant.
+    if gate.kind != ApprovalGateKind::ReviewRoundCap
+        && answering.iter().any(|m| asked.contains(&Some(*m)))
+    {
         return Err(ApiError::Forbidden(
             "an approval cannot be granted by whoever requested it".into(),
         ));
