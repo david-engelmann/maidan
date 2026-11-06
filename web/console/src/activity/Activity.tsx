@@ -1,5 +1,5 @@
 // Activity: a live stream of the workspace's events, newest first.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../core/api.ts";
 import { ago, BoardApi, type Channel, type Member, type Thread } from "../core/board.ts";
 import { liveBus } from "../core/bus.ts";
@@ -78,7 +78,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   // Try again re-runs the read; a healthy socket sends no resync to do it.
   const [tries, setTries] = useState(0);
   const rowsRef = useRef(rows);
-  useLayoutEffect(() => {
+  useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
   const gone = useRef(false);
