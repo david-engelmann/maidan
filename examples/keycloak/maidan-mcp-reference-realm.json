@@ -39,7 +39,9 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "consentRequired": true,
-      "redirectUris": ["http://127.0.0.1:33418/callback"],
+      "redirectUris": [
+        "http://127.0.0.1:33418/callback"
+      ],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256"
@@ -68,11 +70,16 @@
             "executor": "client-id-metadata-document",
             "configuration": {
               "cimd-allow-http-scheme": "true",
-              "cimd-allow-permitted-domains": ["127.0.0.1", "localhost"],
+              "cimd-allow-permitted-domains": [
+                "127.0.0.1",
+                "localhost"
+              ],
               "cimd-restrict-same-domain": "false",
               "only-allow-confidential-client": "false",
               "accept-public-client-with-confidential-client-only-grant": "false",
-              "cimd-resource-indicator-allow-list": ["http://127.0.0.1:8080/mcp"]
+              "cimd-resource-indicator-allow-list": [
+                "http://127.0.0.1:8080/mcp"
+              ]
             }
           }
         ]
@@ -89,12 +96,19 @@
           {
             "condition": "client-id-uri",
             "configuration": {
-              "client-id-uri-scheme": ["http"],
-              "client-id-uri-allow-permitted-domains": ["127.0.0.1", "localhost"]
+              "client-id-uri-scheme": [
+                "http"
+              ],
+              "client-id-uri-allow-permitted-domains": [
+                "127.0.0.1",
+                "localhost"
+              ]
             }
           }
         ],
-        "profiles": ["mcp-cimd-loopback-dev"]
+        "profiles": [
+          "mcp-cimd-loopback-dev"
+        ]
       }
     ]
   },
@@ -105,9 +119,16 @@
         "providerId": "trusted-hosts",
         "subType": "anonymous",
         "config": {
-          "trusted-hosts": ["127.0.0.1", "localhost"],
-          "host-sending-registration-request-must-match": ["true"],
-          "client-uris-must-match": ["true"]
+          "trusted-hosts": [
+            "127.0.0.1",
+            "localhost"
+          ],
+          "host-sending-registration-request-must-match": [
+            "true"
+          ],
+          "client-uris-must-match": [
+            "true"
+          ]
         }
       },
       {
@@ -121,7 +142,9 @@
         "providerId": "max-clients",
         "subType": "anonymous",
         "config": {
-          "max-clients": ["200"]
+          "max-clients": [
+            "200"
+          ]
         }
       }
     ]
