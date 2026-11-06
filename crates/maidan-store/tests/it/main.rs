@@ -590,6 +590,9 @@ mod tombstoned_member_tokens;
 #[path = "../trace_context.rs"]
 mod trace_context;
 
+#[path = "../unique_thread_attributes.rs"]
+mod unique_thread_attributes;
+
 #[path = "../usage_cutoff.rs"]
 mod usage_cutoff;
 

@@ -210,6 +210,90 @@ pub struct WorkspaceReviewChildren {
     pub review_children: ReviewChildren,
 }
 
+/// A task attribute a workspace can keep unique among its open threads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum UniqueAttributeKey {
+    /// The Linear issue a task is for: one open thread per ticket.
+    LinearIssue,
+}
+
+impl UniqueAttributeKey {
+    /// Every key, in the order a write checks them. The order is fixed so
+    /// two writers naming several keys take their locks in the same order.
+    pub const ALL: [Self; 1] = [Self::LinearIssue];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LinearIssue => "linear_issue",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "linear_issue" => Some(Self::LinearIssue),
+            _ => None,
+        }
+    }
+
+    /// The `maidan_thread_attributes` column holding this key. Spelled here,
+    /// never taken from a request, so it is safe to splice into SQL.
+    pub fn column(self) -> &'static str {
+        match self {
+            Self::LinearIssue => "linear_issue",
+        }
+    }
+
+    /// The value `attributes` gives this key, or `None` when it gives none:
+    /// an unset attribute never conflicts.
+    pub fn value_of(self, attributes: &TaskAttributes) -> Option<&str> {
+        match self {
+            Self::LinearIssue => attributes.linear_issue.as_deref(),
+        }
+    }
+}
+
+/// A workspace's unique thread attributes, read and set by
+/// `/workspaces/{id}/unique-thread-attributes`: no two open threads in the
+/// workspace may hold the same value of any key listed. Empty by default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceUniqueThreadAttributes {
+    /// The attribute keys held unique, such as `linear_issue`.
+    pub keys: Vec<UniqueAttributeKey>,
+}
+
+impl WorkspaceUniqueThreadAttributes {
+    /// The keys sorted and without repeats, as they are stored.
+    pub fn normalized(mut self) -> Self {
+        self.keys.sort();
+        self.keys.dedup();
+        self
+    }
+
+    /// Read the stored form: a JSON array of key names. A name this build
+    /// does not know is skipped rather than failing every thread write.
+    pub fn from_stored(stored: &str) -> Self {
+        let names: Vec<String> = serde_json::from_str(stored).unwrap_or_default();
+        Self {
+            keys: names
+                .iter()
+                .map(String::as_str)
+                .filter_map(UniqueAttributeKey::parse)
+                .collect(),
+        }
+        .normalized()
+    }
+
+    /// The stored form: a JSON array of key names.
+    pub fn to_stored(&self) -> String {
+        let names: Vec<&str> = self.keys.iter().map(|key| key.as_str()).collect();
+        serde_json::Value::from(names).to_string()
+    }
+}
+
 /// The model provider families a review can be routed between, in the
 /// order a review family is picked, each with the words that name it in a
 /// usage record's provider or model. The SQL twin is built from this table.
@@ -354,6 +438,64 @@ impl TaskAttributes {
             }
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod unique_attribute_tests {
+    use super::*;
+
+    #[test]
+    fn the_unique_keys_round_trip_through_their_stored_form() {
+        let set = WorkspaceUniqueThreadAttributes {
+            keys: vec![
+                UniqueAttributeKey::LinearIssue,
+                UniqueAttributeKey::LinearIssue,
+            ],
+        }
+        .normalized();
+        assert_eq!(set.keys, vec![UniqueAttributeKey::LinearIssue]);
+        assert_eq!(set.to_stored(), r#"["linear_issue"]"#);
+        assert_eq!(
+            WorkspaceUniqueThreadAttributes::from_stored(&set.to_stored()),
+            set
+        );
+        assert_eq!(
+            WorkspaceUniqueThreadAttributes::from_stored("[]"),
+            WorkspaceUniqueThreadAttributes::default()
+        );
+        // A name a later build added reads as absent, not as a broken row.
+        assert_eq!(
+            WorkspaceUniqueThreadAttributes::from_stored(r#"["linear_issue","later_key"]"#).keys,
+            vec![UniqueAttributeKey::LinearIssue]
+        );
+    }
+
+    #[test]
+    fn a_unique_key_names_a_known_attribute_and_nothing_else() {
+        let body: WorkspaceUniqueThreadAttributes =
+            serde_json::from_str(r#"{"keys":["linear_issue"]}"#).unwrap();
+        assert_eq!(body.keys, vec![UniqueAttributeKey::LinearIssue]);
+        assert!(
+            serde_json::from_str::<WorkspaceUniqueThreadAttributes>(r#"{"keys":["kind"]}"#)
+                .is_err()
+        );
+        assert!(serde_json::from_str::<WorkspaceUniqueThreadAttributes>(r#"{"key":[]}"#).is_err());
+        for key in UniqueAttributeKey::ALL {
+            assert_eq!(UniqueAttributeKey::parse(key.as_str()), Some(key));
+        }
+        let attributes = TaskAttributes {
+            linear_issue: Some("ENG-6598".into()),
+            ..TaskAttributes::default()
+        };
+        assert_eq!(
+            UniqueAttributeKey::LinearIssue.value_of(&attributes),
+            Some("ENG-6598")
+        );
+        assert_eq!(
+            UniqueAttributeKey::LinearIssue.value_of(&TaskAttributes::default()),
+            None
+        );
     }
 }
 

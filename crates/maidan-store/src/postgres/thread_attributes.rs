@@ -5,7 +5,7 @@
 use chrono::Utc;
 use maidan_types::{
     NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskLane, TaskSize, TaskTier, ThreadId,
-    WorkspaceId,
+    UniqueAttributeKey, WorkspaceId, WorkspaceUniqueThreadAttributes,
 };
 use sqlx::{PgPool, Row};
 
@@ -19,6 +19,7 @@ pub(crate) async fn insert_on(
     thread_id: ThreadId,
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
+    refuse_held_on(conn, thread_id, attributes).await?;
     sqlx::query(
         "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7)",
@@ -37,6 +38,125 @@ pub(crate) async fn insert_on(
     .execute(&mut *conn)
     .await?;
     Ok(())
+}
+
+/// Refuse `attributes` for `thread_id` when its workspace keeps one of them
+/// unique and another open thread there already holds the same value.
+///
+/// Race-safe on the caller's transaction: before reading for a holder it
+/// takes a transaction-scoped advisory lock on (workspace, key, value), so
+/// two writers of one value run one after the other, and under READ
+/// COMMITTED the second one's read sees the first one's committed thread.
+/// A unique index cannot say this rule: whether a value is unique depends
+/// on the workspace's setting and on the other thread's state, both in other
+/// tables. A hash collision only serializes two unrelated writes; the read
+/// itself compares the exact value.
+pub(crate) async fn refuse_held_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+    attributes: &TaskAttributes,
+) -> Result<(), StoreError> {
+    let given: Vec<(UniqueAttributeKey, &str)> = UniqueAttributeKey::ALL
+        .into_iter()
+        .filter_map(|key| key.value_of(attributes).map(|value| (key, value)))
+        .collect();
+    if given.is_empty() {
+        return Ok(());
+    }
+    // A closed, archived or erased thread holds nothing, so setting
+    // attributes on one is never refused.
+    let row = sqlx::query(
+        "SELECT c.workspace_id, w.unique_thread_attributes
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         JOIN maidan_workspaces w ON w.id = c.workspace_id
+         WHERE t.id = $1 AND t.state NOT IN ('closed', 'archived') AND t.tombstoned_at IS NULL",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some(row) = row else {
+        return Ok(());
+    };
+    let workspace_id: uuid::Uuid = row.try_get("workspace_id")?;
+    let stored: String = row.try_get("unique_thread_attributes")?;
+    let unique = WorkspaceUniqueThreadAttributes::from_stored(&stored);
+    for (key, value) in given {
+        if !unique.keys.contains(&key) {
+            continue;
+        }
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 2203))")
+            .bind(format!(
+                "maidan.unique-attribute:{workspace_id}:{}:{value}",
+                key.as_str()
+            ))
+            .execute(&mut *conn)
+            .await?;
+        let holder: Option<uuid::Uuid> = sqlx::query_scalar(&format!(
+            "SELECT t.id FROM maidan_threads t
+             JOIN maidan_channels c ON c.id = t.channel_id
+             JOIN maidan_thread_attributes a ON a.thread_id = t.id
+             WHERE c.workspace_id = $1 AND a.{column} = $2 AND t.id <> $3
+               AND t.state NOT IN ('closed', 'archived') AND t.tombstoned_at IS NULL
+             ORDER BY t.created_at, t.id
+             LIMIT 1",
+            column = key.column(),
+        ))
+        .bind(workspace_id)
+        .bind(value)
+        .bind(thread_id.0)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if let Some(holder) = holder {
+            return Err(StoreError::AttributeHeld {
+                key,
+                value: value.to_string(),
+                holder: ThreadId(holder),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The workspace's unique thread attributes.
+pub async fn unique_thread_attributes(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<WorkspaceUniqueThreadAttributes, StoreError> {
+    let row: Option<String> =
+        sqlx::query_scalar("SELECT unique_thread_attributes FROM maidan_workspaces WHERE id = $1")
+            .bind(workspace_id.0)
+            .fetch_optional(pool)
+            .await?;
+    Ok(WorkspaceUniqueThreadAttributes::from_stored(
+        &row.ok_or(StoreError::NotFound)?,
+    ))
+}
+
+/// Replace the workspace's unique thread attributes, with its audit row in
+/// the same transaction. Returns the setting as stored. Threads already
+/// open keep their values: the rule refuses the next write that would make
+/// a second holder.
+pub async fn set_unique_thread_attributes(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    setting: WorkspaceUniqueThreadAttributes,
+    audit: NewAuditEvent,
+) -> Result<WorkspaceUniqueThreadAttributes, StoreError> {
+    let setting = setting.normalized();
+    let mut tx = pool.begin().await?;
+    let updated =
+        sqlx::query("UPDATE maidan_workspaces SET unique_thread_attributes = $2 WHERE id = $1")
+            .bind(workspace_id.0)
+            .bind(setting.to_stored())
+            .execute(&mut *tx)
+            .await?;
+    if updated.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
+    tx.commit().await?;
+    Ok(setting)
 }
 
 /// Route `thread_id` to its workspace's default engine when it has none,
@@ -299,6 +419,7 @@ pub async fn set(
     .bind(attributes.author_family.as_deref())
     .execute(&mut *tx)
     .await?;
+    refuse_held_on(&mut tx, thread_id, &attributes).await?;
     // Naming the family after a seat of that family already holds the
     // review would leave it holding work it may not do: every claim-time
     // check ran while the thread was unlabeled. Refuse, and roll back.

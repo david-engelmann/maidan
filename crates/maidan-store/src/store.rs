@@ -2762,6 +2762,22 @@ pub trait AssignmentStore: Send + Sync {
         setting: maidan_types::ReviewChildren,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
+    /// The task attributes the workspace keeps unique among its open
+    /// threads: a thread write that would give a second open thread the same
+    /// value of one is refused with [`StoreError::AttributeHeld`].
+    async fn workspace_unique_thread_attributes(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError>;
+    /// Replace the workspace's unique thread attributes, audited in the same
+    /// transaction, and return them as stored (sorted, without repeats).
+    /// Applies to thread writes afterwards; open threads keep their values.
+    async fn set_workspace_unique_thread_attributes(
+        &self,
+        workspace_id: WorkspaceId,
+        setting: maidan_types::WorkspaceUniqueThreadAttributes,
+        audit: NewAuditEvent,
+    ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError>;
     /// Claim and release notices due on tasks' Linear issues in a workspace.
     async fn list_linear_notices_due(
         &self,
