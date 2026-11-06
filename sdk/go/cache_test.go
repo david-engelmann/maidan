@@ -188,3 +188,29 @@ func TestTheCacheSaltIsSharedInsideAWorkspaceAndDiffersAcrossWorkspacesAndKeys(t
 		}
 	}
 }
+
+func TestBlankOrWhitespaceCacheInputsAreRefused(t *testing.T) {
+	for _, bad := range []string{"", "   ", "\t"} {
+		if _, err := CacheKey(bad, "g"); err == nil {
+			t.Fatalf("CacheKey workspace %q: want error", bad)
+		}
+		if _, err := CacheKey("ws", bad); err == nil {
+			t.Fatalf("CacheKey group %q: want error", bad)
+		}
+	}
+	if _, err := CachedPrefix("   ", "hi", ""); err == nil || !strings.Contains(err.Error(), "provider is required") {
+		t.Fatalf("CachedPrefix blank provider: %v", err)
+	}
+	if _, err := CacheKeyFields("openai-chat", "  "); err == nil || !strings.Contains(err.Error(), "cache key is required") {
+		t.Fatalf("CacheKeyFields blank key: %v", err)
+	}
+	if _, err := GatewaySession("openrouter", "\t", "", ""); err == nil || !strings.Contains(err.Error(), "thread id is required") {
+		t.Fatalf("GatewaySession blank thread: %v", err)
+	}
+	if _, err := RoutingHints("dynamo", "  ", ""); err == nil || !strings.Contains(err.Error(), "thread id is required") {
+		t.Fatalf("RoutingHints blank thread: %v", err)
+	}
+	if _, err := CacheSalt("  ", []byte(strings.Repeat("k", 32))); err == nil || !strings.Contains(err.Error(), "workspace id is required") {
+		t.Fatalf("CacheSalt blank workspace: %v", err)
+	}
+}

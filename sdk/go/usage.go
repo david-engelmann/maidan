@@ -81,11 +81,18 @@ type obj = map[string]any
 func at(o any, path string) any {
 	v := o
 	for _, key := range strings.Split(path, ".") {
+		if key == "__proto__" || key == "prototype" || key == "constructor" {
+			return nil
+		}
 		m, ok := v.(obj)
 		if !ok {
 			return nil
 		}
-		v = m[key]
+		next, ok := m[key]
+		if !ok {
+			return nil
+		}
+		v = next
 	}
 	return v
 }
@@ -371,6 +378,10 @@ var UsageProviders = []string{
 // report_usage body: the model, the ledger's tokens, and the evidence the
 // response carries.
 func NormalizeUsage(provider string, response []byte, opts UsageOptions) (NormalizedUsage, error) {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return NormalizedUsage{}, usageErr("provider is required")
+	}
 	reader, ok := usageReaders[provider]
 	if !ok {
 		return NormalizedUsage{}, usageErr("unknown provider %s", provider)
@@ -394,7 +405,11 @@ func NormalizeUsage(provider string, response []byte, opts UsageOptions) (Normal
 	}
 	evidence := UsageEvidence{Provider: reader.name, ServiceTier: got.serviceTier, CacheMissReason: got.cacheMissReason}
 	if opts.Provider != "" {
-		evidence.Provider = opts.Provider
+		ep := strings.TrimSpace(opts.Provider)
+		if ep == "" {
+			return NormalizedUsage{}, usageErr("evidence provider is required")
+		}
+		evidence.Provider = ep
 	}
 	evidence.Batch = opts.Batch
 	if opts.StandardPrice != nil {

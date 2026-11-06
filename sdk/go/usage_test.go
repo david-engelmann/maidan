@@ -172,3 +172,20 @@ func TestNormalizeUsageEvidenceProviderCanBeOverridden(t *testing.T) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
+
+func TestBlankProvidersAndPrototypePathKeysAreRefused(t *testing.T) {
+	if _, err := NormalizeUsage("  ", []byte(`{"model":"m","usage":{}}`), UsageOptions{}); err == nil || !strings.Contains(err.Error(), "provider is required") {
+		t.Fatalf("blank provider: %v", err)
+	}
+	nested := []byte(`{"model":"m","usage":{"prompt_tokens":3,"completion_tokens":1,"prompt_tokens_details":{"__proto__":{"cached_tokens":99}}}}`)
+	got, err := NormalizeUsage("openai-chat", nested, UsageOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Tokens.CacheRead != 0 {
+		t.Fatalf("cache_read=%d, want 0 (prototype-edge key ignored)", got.Tokens.CacheRead)
+	}
+	if _, err := NormalizeUsage("openai-chat", []byte(`{"model":"m","usage":{"prompt_tokens":1,"completion_tokens":1}}`), UsageOptions{Provider: "  "}); err == nil || !strings.Contains(err.Error(), "evidence provider is required") {
+		t.Fatalf("blank evidence provider: %v", err)
+	}
+}
