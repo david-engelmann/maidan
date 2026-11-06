@@ -341,6 +341,7 @@ pub(crate) fn group_active(rows: Vec<ItemRow>) -> Result<Vec<ActiveClaim>, Store
                         .and_then(maidan_types::TaskLane::parse),
                     review_family: None,
                     author_family: None,
+                    repo: None,
                 },
             },
         );

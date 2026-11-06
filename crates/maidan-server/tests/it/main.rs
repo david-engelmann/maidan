@@ -851,6 +851,9 @@ mod ui_ws_tail_e2e;
 #[path = "../unclaimable_e2e.rs"]
 mod unclaimable_e2e;
 
+#[path = "../unique_thread_attributes_e2e.rs"]
+mod unique_thread_attributes_e2e;
+
 #[path = "../unroutable_waiter_result_rest_e2e.rs"]
 mod unroutable_waiter_result_rest_e2e;
 

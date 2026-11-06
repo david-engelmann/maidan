@@ -7224,6 +7224,24 @@
           "detail": {
             "type": "string"
           },
+          "holder_thread_id": {
+            "description": "On a `conflict` 409 refusing values the workspace keeps unique among\nits open threads: the open thread that holds them, when the caller may\nread that thread.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key_set": {
+            "description": "On a `conflict` 409 refusing values the workspace keeps unique among\nits open threads: the unique key set they were held under.",
+            "items": {
+              "$ref": "#/components/schemas/UniqueAttributeKey"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "must_refetch": {
             "description": "A CursorTooOld 409 is a must-refetch, never a silent clamp.",
             "type": "boolean"
@@ -10334,6 +10352,13 @@
               "null"
             ]
           },
+          "repo": {
+            "description": "The repository the task changes, as `owner/name` (a GitHub URL is\nread as its `owner/name`). With `linear_issue` it names the half of a\nticket a thread owns, where one ticket has a pull request in each of\nseveral repositories.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "review_family": {
             "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
             "type": [
@@ -12276,6 +12301,14 @@
         "additionalProperties": false,
         "type": "object"
       },
+      "UniqueAttributeKey": {
+        "description": "A task attribute a workspace can name in a unique key set.",
+        "enum": [
+          "linear_issue",
+          "repo"
+        ],
+        "type": "string"
+      },
       "UnreadCount": {
         "description": "The unread-notification badge count for a member.",
         "properties": {
@@ -13471,6 +13504,26 @@
           "workspace_id",
           "reason",
           "suspended_at"
+        ],
+        "type": "object"
+      },
+      "WorkspaceUniqueThreadAttributes": {
+        "additionalProperties": false,
+        "description": "A workspace's unique thread attributes, read and set by\n`/workspaces/{id}/unique-thread-attributes`. Each entry of `unique` is a\nkey set: no two open threads in the workspace that both give every key of\na set may give the same values for all of them. Empty by default.",
+        "properties": {
+          "unique": {
+            "description": "The key sets held unique, such as `[[\"linear_issue\", \"repo\"]]`: one\nopen thread per ticket in each repository.",
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/UniqueAttributeKey"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "unique"
         ],
         "type": "object"
       },
@@ -36922,7 +36975,7 @@
     },
     "/workspaces/{id}/threads": {
       "get": {
-        "description": "Equality filters over the threads' task attributes, combined with AND:\n`attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,\n`attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and\n`ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to\nthat thread. `engine`, `tier` and `lane` are also accepted bare. A\nthread with no stored attributes matches the defaults it reads with\n(`attr.kind=change`, `attr.threat_model=false`); the other fields match\nonly a stored value. Scoped to the caller's own workspace and to the\nthreads the caller may read. Keyset-paginated like the channel thread\nlist (`limit`, `cursor`, `order`); returned threads carry their\nattributes. A `cursor` that is not a live thread the caller can read\nin the workspace is a 400; a foreign, unreadable, deleted or made-up\nid read the same. An unused `ref.<relation>` is an empty page.",
+        "description": "Equality filters over the threads' task attributes, combined with AND:\n`attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,\n`attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, `attr.repo`, and\n`ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to\nthat thread. `engine`, `tier` and `lane` are also accepted bare. A\nthread with no stored attributes matches the defaults it reads with\n(`attr.kind=change`, `attr.threat_model=false`); the other fields match\nonly a stored value. Scoped to the caller's own workspace and to the\nthreads the caller may read. Keyset-paginated like the channel thread\nlist (`limit`, `cursor`, `order`); returned threads carry their\nattributes. A `cursor` that is not a live thread the caller can read\nin the workspace is a 400; a foreign, unreadable, deleted or made-up\nid read the same. An unused `ref.<relation>` is an empty page.",
         "operationId": "list_workspace_threads",
         "parameters": [
           {
@@ -37212,6 +37265,155 @@
           }
         ],
         "summary": "List a workspace's withdrawn messages",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/unique-thread-attributes": {
+      "get": {
+        "operationId": "get_workspace_unique_thread_attributes",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The task attribute key sets no two open threads in the workspace may share values for",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "operationId": "set_workspace_unique_thread_attributes",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Replace the task attribute key sets no two open threads in the workspace may share values for",
         "tags": [
           "workspaces"
         ]

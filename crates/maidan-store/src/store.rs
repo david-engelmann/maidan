@@ -125,8 +125,8 @@ impl ThreadPageQuery {
 /// combine with AND. Matching follows how the attributes read: a thread
 /// with no attributes row reads as the defaults, so `kind` matches the
 /// default `change` and `threat_model` matches `false` for such a thread,
-/// while the optional fields (`engine`, `size`, `linear_issue`, `tier`,
-/// `lane`, `review_family`) match only a stored value — an unset tier is
+/// while the optional fields (`engine`, `size`, `linear_issue`, `repo`,
+/// `tier`, `lane`, `review_family`) match only a stored value — an unset tier is
 /// not `B` here, whatever the metrics count it as, because the stored
 /// value is what was said. `ref.<relation>` keeps the threads that hold a
 /// reference with that relation (its wire name: `twin_of`, `duplicates`,
@@ -142,6 +142,8 @@ pub struct ThreadAttributeFilter {
     pub threat_model: Option<bool>,
     pub size: Option<TaskSize>,
     pub linear_issue: Option<String>,
+    /// `owner/name`, lowercase, as the attribute is stored.
+    pub repo: Option<String>,
     pub tier: Option<TaskTier>,
     pub lane: Option<TaskLane>,
     pub review_family: Option<String>,
@@ -191,6 +193,12 @@ impl ThreadAttributeFilter {
                     }
                     filter.linear_issue = Some(value);
                 }
+                "repo" => {
+                    filter.repo = Some(
+                        maidan_types::normalize_repo(&value)
+                            .map_err(|_| bad("a repository such as owner/name"))?,
+                    );
+                }
                 "tier" => {
                     filter.tier =
                         Some(TaskTier::parse(&value).ok_or_else(|| bad("a task tier (A or B)"))?);
@@ -221,7 +229,7 @@ impl ThreadAttributeFilter {
                 _ => {
                     return Err(format!(
                         "unknown attribute filter {key:?}: filter on kind, engine, \
-                         threat_model, size, linear_issue, tier, lane, review_family or ref.<relation>"
+                         threat_model, size, linear_issue, repo, tier, lane, review_family or ref.<relation>"
                     ));
                 }
             }
@@ -2762,6 +2770,22 @@ pub trait AssignmentStore: Send + Sync {
         setting: maidan_types::ReviewChildren,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
+    /// The task attributes the workspace keeps unique among its open
+    /// threads: a thread write that would give a second open thread the same
+    /// value of one is refused with [`StoreError::AttributeHeld`].
+    async fn workspace_unique_thread_attributes(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError>;
+    /// Replace the workspace's unique thread attributes, audited in the same
+    /// transaction, and return them as stored (sorted, without repeats).
+    /// Applies to thread writes afterwards; open threads keep their values.
+    async fn set_workspace_unique_thread_attributes(
+        &self,
+        workspace_id: WorkspaceId,
+        setting: maidan_types::WorkspaceUniqueThreadAttributes,
+        audit: NewAuditEvent,
+    ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError>;
     /// Claim and release notices due on tasks' Linear issues in a workspace.
     async fn list_linear_notices_due(
         &self,

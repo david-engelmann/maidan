@@ -42,6 +42,18 @@ pub enum McpError {
     /// keys; nothing was created. `data.children` lists the ones it has.
     #[error("this plan already has {} children; nothing was created", .0.len())]
     PlanConflict(Vec<maidan_types::PlannedChild>),
+
+    /// A thread write refused because another open thread in the workspace
+    /// holds the same value of an attribute the workspace keeps unique;
+    /// nothing was written. The REST twin is a 409 `conflict`, and
+    /// `data.holder_thread_id` names the holder as REST does: only when the
+    /// caller may read that thread.
+    #[error("{message}")]
+    AttributeHeld {
+        message: String,
+        key_set: Vec<maidan_types::UniqueAttributeKey>,
+        holder: Option<maidan_types::ThreadId>,
+    },
 }
 
 /// JSON-RPC error code for a refused footprint. In the server-defined range; a
@@ -51,6 +63,11 @@ pub const FOOTPRINT_CONFLICT_CODE: i32 = -32009;
 /// JSON-RPC error code for a refused plan. A planner should work with the
 /// children in `data.children` rather than plan again.
 pub const PLAN_CONFLICT_CODE: i32 = -32010;
+
+/// JSON-RPC error code for a value the workspace keeps unique among its open
+/// threads, already held by another one. Work in the holder
+/// (`data.holder_thread_id`, when given) or close it first.
+pub const ATTRIBUTE_HELD_CODE: i32 = -32011;
 
 /// JSON-RPC error code for backpressure. In the server-defined range
 /// (-32000..=-32099); a client that recognizes it should back off for
@@ -105,6 +122,23 @@ impl McpError {
                 message: self.to_string(),
                 data: Some(serde_json::json!({ "children": children })),
             },
+            Self::AttributeHeld {
+                key_set, holder, ..
+            } => {
+                let mut data = serde_json::json!({
+                    "status": 409,
+                    "type": "https://maidan.world/problems/conflict",
+                    "key_set": key_set,
+                });
+                if let (Some(holder), Some(fields)) = (holder, data.as_object_mut()) {
+                    fields.insert("holder_thread_id".into(), serde_json::json!(holder.0));
+                }
+                JsonRpcError {
+                    code: ATTRIBUTE_HELD_CODE,
+                    message: self.to_string(),
+                    data: Some(data),
+                }
+            }
             Self::OverAllowance(meter) => JsonRpcError {
                 code: OVER_ALLOWANCE_CODE,
                 message: self.to_string(),
@@ -158,6 +192,13 @@ impl From<maidan_store::StoreError> for McpError {
                 "cursor too old: after_id {after_id} is behind oldest retained event {oldest_id}; must refetch"
             )),
             maidan_store::StoreError::OverAllowance(meter) => Self::OverAllowance(meter),
+            // Named only by a tool that has checked the caller may read the
+            // holder (`tools::thread::disclose_holder`).
+            maidan_store::StoreError::AttributeHeld { ref held, .. } => Self::AttributeHeld {
+                key_set: held.iter().map(|(key, _)| *key).collect(),
+                message: err.to_string(),
+                holder: None,
+            },
             other => Self::Internal(other.to_string()),
         }
     }

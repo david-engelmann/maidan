@@ -433,6 +433,8 @@
   {"method":"GET","path":"/workspaces/{id}/thread-lookup","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/threads","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/tombstones","kind":"reads"},
+  {"method":"GET","path":"/workspaces/{id}/unique-thread-attributes","kind":"reads"},
+  {"method":"PUT","path":"/workspaces/{id}/unique-thread-attributes","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/usage","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage-conformance","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage-meters","kind":"reads"},

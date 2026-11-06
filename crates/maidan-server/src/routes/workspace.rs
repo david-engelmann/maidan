@@ -325,6 +325,56 @@ pub async fn set_workspace_review_children(
     Ok(Json(body))
 }
 
+/// `GET /workspaces/:id/unique-thread-attributes` — the key sets no two open
+/// threads in the workspace may share values for. `workspace:read`: a
+/// producer may learn why its thread was refused.
+pub async fn get_workspace_unique_thread_attributes(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<WorkspaceUniqueThreadAttributes>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(
+        state
+            .store
+            .workspace_unique_thread_attributes(workspace_id)
+            .await?,
+    ))
+}
+
+/// `PUT /workspaces/:id/unique-thread-attributes` — replace the unique key
+/// sets (`{"unique": [["linear_issue", "repo"]]}`: one open thread per ticket
+/// in each repository; `{"unique": []}` clears them). It decides which thread
+/// writes every producer in the workspace has refused, so it takes
+/// `token:admin` and is audited. Threads already open keep their values.
+pub async fn set_workspace_unique_thread_attributes(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<WorkspaceUniqueThreadAttributes>,
+) -> ApiResult<Json<WorkspaceUniqueThreadAttributes>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let setting = body.validated().map_err(ApiError::BadRequest)?;
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: "workspace.unique_thread_attributes.set".into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(workspace_id.0),
+        metadata: serde_json::json!({ "unique": setting.unique }),
+    };
+    Ok(Json(
+        state
+            .store
+            .set_workspace_unique_thread_attributes(workspace_id, setting, audit)
+            .await?,
+    ))
+}
+
 /// Export the whole workspace content graph as a signed
 /// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
 /// export — secrets are omitted and the envelope records `token_policy`.

@@ -445,6 +445,32 @@ async fn publish_from(
     Some(stored.id)
 }
 
+/// The 409 for a thread write the store refused because another open thread
+/// holds a value the workspace keeps unique, naming that thread only when the
+/// caller may read it: a caller outside its private channel or DM learns that
+/// the value is taken, never which thread took it. Any other error converts
+/// as usual.
+pub(crate) async fn disclose_holder(
+    state: &AppState,
+    auth: &AuthContext,
+    err: maidan_store::StoreError,
+) -> ApiError {
+    let maidan_store::StoreError::AttributeHeld { held, holder } = &err else {
+        return err.into();
+    };
+    let holder = *holder;
+    let key_set = held.iter().map(|(key, _)| *key).collect();
+    let readable = matches!(
+        maidan_auth::can_access_thread(state.store.as_ref(), auth, holder).await,
+        Ok(true)
+    );
+    ApiError::AttributeHeld {
+        detail: err.to_string(),
+        key_set,
+        holder: readable.then_some(holder),
+    }
+}
+
 /// Pass a mutation's result through, first recording a `ThreadSpawnDenied`
 /// event when the store refused the spawn.
 ///

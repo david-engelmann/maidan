@@ -223,6 +223,8 @@ class TaskAttributes(Model):
     review_family: Optional[str] = None
     #: The provider family that wrote the change a review task reviews.
     author_family: Optional[str] = None
+    #: The repository the task changes, as ``owner/name``.
+    repo: Optional[str] = None
 
 
 @dataclass(kw_only=True)

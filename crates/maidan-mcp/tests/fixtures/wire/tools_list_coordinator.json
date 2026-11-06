@@ -196,6 +196,10 @@
                 "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
                 "type": "string"
               },
+              "repo": {
+                "description": "the repository the task changes, as owner/name (a GitHub URL is read as its owner/name); with linear_issue it says which half of a ticket the thread owns, where a workspace keeps [linear_issue, repo] unique",
+                "type": "string"
+              },
               "size": {
                 "enum": [
                   "S",
@@ -337,11 +341,11 @@
         "readOnlyHint": true,
         "title": "Find threads"
       },
-      "description": "Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing (an unused relation is an empty result too). Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order; a cursor that is not a thread you can read in your workspace is refused); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.",
+      "description": "Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, repo, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing (an unused relation is an empty result too). Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order; a cursor that is not a thread you can read in your workspace is refused); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.",
       "inputSchema": {
         "properties": {
           "attr": {
-            "description": "Attribute equality filters by field name: kind, engine, threat_model, size, linear_issue, tier, lane, review_family. Values are the fields' wire forms.",
+            "description": "Attribute equality filters by field name: kind, engine, threat_model, size, linear_issue, repo, tier, lane, review_family. Values are the fields' wire forms.",
             "type": "object"
           },
           "cursor": {
@@ -1248,6 +1252,10 @@
           },
           "linear_issue": {
             "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
+            "type": "string"
+          },
+          "repo": {
+            "description": "the repository the task changes, as owner/name (a GitHub URL is read as its owner/name); with linear_issue it says which half of a ticket the thread owns, where a workspace keeps [linear_issue, repo] unique",
             "type": "string"
           },
           "size": {

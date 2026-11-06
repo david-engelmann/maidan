@@ -301,6 +301,8 @@ model! {
         review_family: Option<String>,
         /// The provider family that wrote the change a review task reviews.
         author_family: Option<String>,
+        /// The repository the task changes, as `owner/name`.
+        repo: Option<String>,
     }
 }
 

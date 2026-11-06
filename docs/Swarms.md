@@ -417,7 +417,10 @@ routed the work yet. Maidan uses the engine for routing, for the
 runs behind each name is up to you.
 `threat_model` marks work that needs one. `size` (`S`, `M` or `L`) is the
 planner's estimate, and `acceptance` says how a reviewer verifies the task;
-the worker sees it in the thread context. The lane is not an attribute: it is
+the worker sees it in the thread context. `linear_issue` names the Linear
+issue the task is for and `repo` the repository it changes (`owner/name`); a
+workspace can keep the pair unique among its open threads (see
+[One owner per ticket](#one-owner-per-ticket)). The lane is not an attribute: it is
 a footprint item.
 
 A producer sets them, and a dispatch `priority` (higher is claimed first),
@@ -513,6 +516,84 @@ What the rule does not cover:
 - **Workspace import does not apply it.** An admin importing a bundle can
   restore a review already held by a member of the author's family; import
   checks only that the holder belongs to the imported workspace.
+
+### One owner per ticket
+
+A ticket should have one owner at a time in each repository. When the router
+stamps a thread with its Linear issue, nothing else stops a second path from
+opening another thread on the same work: ENG-6598 got a hosted Pi draft and a
+laptop session pull request at once. A ticket often has deliberate halves in
+two repositories (a pull request in a web app and one in its API), so the rule that stops
+two owners is per ticket **and** repository, and a workspace makes it a
+refusal.
+
+**The router stamps both attributes.** Every thread the router opens for a
+ticket carries `linear_issue` and `repo`:
+
+```json
+{ "kind": "change", "engine": "pi", "linear_issue": "ENG-6598", "repo": "example/wax" }
+```
+
+`repo` is `owner/name` (a GitHub URL is read as its `owner/name`, and any case
+is folded). A thread missing either attribute is not held to the rule, so a
+router that leaves out `repo` gets no protection. Find-by-attribute filters on
+it too: `GET /workspaces/{id}/threads?attr.repo=example/wax`, or MCP
+`find_threads` with `attr.repo`.
+
+**The setting.** `PUT /workspaces/{id}/unique-thread-attributes` with
+`{"unique": [ ["linear_issue", "repo"] ]}` (`token:admin`, audited as
+`workspace.unique_thread_attributes.set`) lists key sets. Each set is unique as
+a tuple among the workspace's **open** threads: no two open threads that both
+give every key of the set may give the same values for all of them. A thread
+that lacks any key of a set is not checked against that set. Only threads of
+`kind: change` are held to the sets: a change is the work that owns a ticket.
+A review or plan thread on the same ticket and repository never conflicts and
+never holds a tuple. That covers a red-team review, which carries the ticket
+and the repository of the change it reviews. A single-key set
+works too: `[["linear_issue"]]` is one open thread per ticket whatever the
+repository. `{"unique": []}`, the default, keeps nothing unique, an empty set
+is refused, and `GET` reads the setting (`workspace:read`). Today the keys are
+`linear_issue` and `repo`. The other attributes are kinds and routing, where
+"only one open thread" would be a WIP limit, not ownership.
+
+With a set in force, a thread write that would give a second open thread the
+same tuple is refused and writes nothing:
+
+- **Where.** Creating a thread (REST `POST /channels/{cid}/threads`, MCP
+  `create_thread`, and every other create path that stores attributes, plan
+  children included), and setting attributes on an open thread
+  (`PUT /threads/{id}/attributes`, MCP `set_thread_attributes`).
+- **The answer.** REST answers `409` with type
+  `https://maidan.world/problems/conflict`. Its `key_set` is the set the tuple
+  was held under (`["linear_issue", "repo"]`), and its `holder_thread_id` is
+  the open thread holding it. MCP answers error `-32011`, whose `data` carries
+  `status` `409`, the same `type`, `key_set` and `holder_thread_id`. The
+  holder is named only when the caller may read it. A caller outside its
+  private channel or DM learns that the tuple is taken, not by which thread.
+  Work in the holder, or close it first.
+- **What holds.** An open thread is one that is not closed, archived or
+  erased. Only open threads in the same workspace hold a tuple:
+  - closing the holder frees the tuple, so the ticket can be reworked;
+  - another workspace's threads never count;
+  - the holder may restate its own attributes;
+  - a closed thread can be given any attributes, since it holds nothing.
+- **Races.** Two writers of one tuple cannot both win. On Postgres each takes
+  a transaction-scoped advisory lock on (workspace, key set, values) before
+  looking for a holder. The second writer waits for the first to commit, then
+  sees its thread. Writers that check several sets take the locks in one
+  sorted order. On SQLite the check runs inside a transaction that already
+  holds the database's one write lock. A unique index cannot express the
+  rule, because whether a tuple is held depends on the workspace's setting
+  and on the other thread's state.
+
+What it does not do:
+
+- Turning it on does not close duplicates already open. The next write on
+  such a tuple is refused.
+- Reopening a closed thread is not checked.
+- A planner that stamps the parent's ticket and repository on each plan child
+  is refused while the parent is open. Put them on the parent only, or give
+  each child its own repository.
 
 ### Claim and release comments on Linear
 

@@ -27,6 +27,7 @@ Connect as in the claimant runbook's step 0. Call `whoami` first; keep
    | `size` | `S`, `M` or `L` |
    | `threat_model` | `true` when the change touches authorization, secrets or tenant boundaries |
    | `linear_issue` | the tracker key, such as `ENG-123` |
+   | `repo` | the repository the change lands in, `owner/name`. Give it with `linear_issue`: a workspace that keeps `[linear_issue, repo]` unique refuses a second open thread on the same ticket and repository with a 409 naming the holder (MCP `-32011`), so work in that thread instead |
    | `tier` | `A` for the stricter review tier, else omit (B) |
    | `lane` | `batch` (async, cheapest) or `flex`; omit for standard |
    | `author_family` | on a `review` task: the model family that wrote the change, so a claimer of the same family is never handed it |

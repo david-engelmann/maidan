@@ -275,6 +275,8 @@ export interface TaskAttributes {
   review_family?: string;
   /** The provider family that wrote the change a review task reviews; kept once set. */
   author_family?: string | null;
+  /** The repository the task changes, as `owner/name`. */
+  repo?: string | null;
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */

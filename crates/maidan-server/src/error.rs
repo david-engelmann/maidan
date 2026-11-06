@@ -71,6 +71,15 @@ pub enum ApiError {
     /// longer holds: it lapsed and was taken over, or was released. 409 with
     /// its own type, so a seat stops the work rather than retrying.
     ClaimLost(String),
+    /// A thread write refused because another open thread in the workspace
+    /// gives the same values for one of its unique key sets. 409 `conflict`
+    /// naming the set in `key_set`, and the holder in `holder_thread_id` only
+    /// when the caller may read that thread.
+    AttributeHeld {
+        detail: String,
+        key_set: Vec<maidan_types::UniqueAttributeKey>,
+        holder: Option<maidan_types::ThreadId>,
+    },
 }
 
 impl ApiError {
@@ -96,6 +105,7 @@ impl ApiError {
             Self::FootprintConflict(_) => StatusCode::CONFLICT,
             Self::PlanConflict(_) => StatusCode::CONFLICT,
             Self::ClaimLost(_) => StatusCode::CONFLICT,
+            Self::AttributeHeld { .. } => StatusCode::CONFLICT,
         }
     }
 
@@ -103,7 +113,7 @@ impl ApiError {
         match self {
             Self::NotFound => "Not Found",
             Self::MethodNotAllowed => "Method Not Allowed",
-            Self::Conflict(_) => "Conflict",
+            Self::Conflict(_) | Self::AttributeHeld { .. } => "Conflict",
             Self::BadRequest(_) => "Bad Request",
             Self::Unauthorized | Self::SignatureInvalid => "Unauthorized",
             Self::Forbidden(_) => "Forbidden",
@@ -153,7 +163,8 @@ impl ApiError {
             | Self::Internal(msg)
             | Self::UnprocessableEntity(msg)
             | Self::ClaimLost(msg)
-            | Self::Overloaded(msg) => msg.clone(),
+            | Self::Overloaded(msg)
+            | Self::AttributeHeld { detail: msg, .. } => msg.clone(),
             Self::CursorTooOld {
                 after_id,
                 oldest_id,
@@ -203,7 +214,9 @@ impl ApiError {
         match self {
             Self::NotFound => "https://maidan.world/problems/not-found",
             Self::MethodNotAllowed => "https://maidan.world/problems/method-not-allowed",
-            Self::Conflict(_) => "https://maidan.world/problems/conflict",
+            Self::Conflict(_) | Self::AttributeHeld { .. } => {
+                "https://maidan.world/problems/conflict"
+            }
             Self::BadRequest(_) => "https://maidan.world/problems/bad-request",
             Self::Unauthorized => "https://maidan.world/problems/unauthorized",
             Self::SignatureInvalid => "https://maidan.world/problems/invalid-signature",
@@ -298,6 +311,15 @@ pub struct ProblemDetails {
     /// On a `plan-conflict` 409: the children the plan already has.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<maidan_types::PlannedChild>>,
+    /// On a `conflict` 409 refusing values the workspace keeps unique among
+    /// its open threads: the unique key set they were held under.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_set: Option<Vec<maidan_types::UniqueAttributeKey>>,
+    /// On a `conflict` 409 refusing values the workspace keeps unique among
+    /// its open threads: the open thread that holds them, when the caller may
+    /// read that thread.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holder_thread_id: Option<uuid::Uuid>,
 }
 
 impl IntoResponse for ApiError {
@@ -323,6 +345,12 @@ impl IntoResponse for ApiError {
             Self::PlanConflict(children) => Some(children.clone()),
             _ => None,
         };
+        let (key_set, holder_thread_id) = match &self {
+            Self::AttributeHeld {
+                key_set, holder, ..
+            } => (Some(key_set.clone()), holder.map(|holder| holder.0)),
+            _ => (None, None),
+        };
         let body = ProblemDetails {
             type_: self.problem_type().to_string(),
             title: self.title().to_string(),
@@ -335,6 +363,8 @@ impl IntoResponse for ApiError {
             upload_bytes: quota.map(|(_, _, upload)| upload),
             conflicts,
             children,
+            key_set,
+            holder_thread_id,
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(
@@ -399,6 +429,13 @@ impl From<StoreError> for ApiError {
             },
             StoreError::InvalidInput(msg) => Self::BadRequest(msg),
             StoreError::ClaimLost(msg) => Self::ClaimLost(msg),
+            // Named only by a route that has checked the caller may read the
+            // holder (`routes::disclose_holder`); by default it stays unnamed.
+            StoreError::AttributeHeld { ref held, .. } => Self::AttributeHeld {
+                key_set: held.iter().map(|(key, _)| *key).collect(),
+                detail: err.to_string(),
+                holder: None,
+            },
             StoreError::Database(e) => {
                 tracing::error!(error = %e, "database error");
                 Self::Internal("database error".into())

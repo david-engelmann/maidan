@@ -1486,7 +1486,7 @@ pub async fn find_for_workspace(
                 a.thread_id AS attr_thread_id, a.kind AS kind, a.engine AS engine,
                 a.threat_model AS threat_model, a.size AS size, a.acceptance AS acceptance,
                 a.linear_issue AS linear_issue, a.tier AS tier, a.lane AS lane,
-                a.review_family AS review_family, a.author_family AS author_family
+                a.review_family AS review_family, a.author_family AS author_family, a.repo AS repo
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
@@ -1504,6 +1504,7 @@ pub async fn find_for_workspace(
            AND ($10::text IS NULL OR a.tier = $10)
            AND ($11::text IS NULL OR a.lane = $11)
            AND ($12::text IS NULL OR a.review_family = $12)
+           AND ($16::text IS NULL OR a.repo = $16)
            AND ($13::uuid IS NULL OR EXISTS (
                  SELECT 1 FROM maidan_references r
                  WHERE r.src_kind = 'thread' AND r.src_id = t.id
@@ -1535,6 +1536,7 @@ pub async fn find_for_workspace(
                 .as_ref()
                 .map(|(relation, _)| relation.as_str()),
         )
+        .bind(filter.repo.as_deref())
         .fetch_all(pool)
         .await?;
     rows.iter()

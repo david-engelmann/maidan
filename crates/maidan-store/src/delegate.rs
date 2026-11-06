@@ -3133,6 +3133,28 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn workspace_unique_thread_attributes(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError> {
+                thread_attributes::unique_thread_attributes(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_unique_thread_attributes(
+                &self,
+                workspace_id: WorkspaceId,
+                setting: maidan_types::WorkspaceUniqueThreadAttributes,
+                audit: NewAuditEvent,
+            ) -> Result<maidan_types::WorkspaceUniqueThreadAttributes, StoreError> {
+                thread_attributes::set_unique_thread_attributes(
+                    self.pool(),
+                    workspace_id,
+                    setting,
+                    audit,
+                )
+                .await
+            }
+
             async fn list_linear_notices_due(
                 &self,
                 workspace_id: WorkspaceId,
