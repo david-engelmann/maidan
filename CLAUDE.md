@@ -92,8 +92,8 @@ change.
 
 ## Current state (2026-11-03)
 
-- **Releases:** latest **`v430.0.0`** (2026-11-06), the first hour smoothed:
-  OAuth-first connect, sign-up names, deploy fixes and MCP fault tests. A release is cut from the newest `dev`
+- **Releases:** latest **`v431.0.0`** (2026-11-06), internal hosts:
+  webhooks to our own Workers over service bindings, never the internet. A release is cut from the newest `dev`
   commit whose push CI is green, with no soak wait (the maintainer,
   2026-10-30). Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
@@ -117,7 +117,7 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v430.0.0`** in the PR that follows its tag.
+- **Deploy pins move to `v431.0.0`** in the PR that follows its tag.
   `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`

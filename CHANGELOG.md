@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [431.0.0] — 2026-11-06
+
+Internal hosts: the hosted Maidan sends webhooks to our own Cloudflare Workers over service bindings, never across the internet. The first use is waking the review seats when work is ready, in place of polling.
+
+### Internal hosts: webhooks to our own Workers over service bindings
+
+- **Added:** `MAIDAN_INTERNAL_EGRESS_HOSTS` names, exactly, the hostnames under `.internal` that a webhook or other operator-supplied target may use over plain `http://`. The egress guard refuses every unlisted `.internal` name at registration and at delivery, and does not judge a listed name's address, which the platform answers. Plain HTTP to a public host keeps the public-address rule, and private addresses still need `MAIDAN_PRIVATE_EGRESS_HOSTS`.
+- **Added:** the Cloudflare Worker's `MAIDAN_INTERNAL_HOSTS` (`seats.internal=SEATS`) routes the container's calls to each mapped `.internal` name to a service binding (`outboundByHost`), so the server reaches our own Workers without either having a public API. Only names under `.internal` whose binding the config declares are mapped; every other host keeps the container's internet egress. The server is handed only the `MAIDAN_INTERNAL_EGRESS_HOSTS` names the Worker routes. The swarm config binds `SEATS` to `maidan-wax-seats`; prod and dev declare none. See [Internal hosts](docs/Hosted%20Operations.md#internal-hosts).
+
 ## [430.0.0] — 2026-11-06
 
 The first hour, smoothed.

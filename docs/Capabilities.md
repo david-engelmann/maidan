@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v431.0.0](https://github.com/david-engelmann/maidan/releases/tag/v431.0.0) — internal hosts
+
+`MAIDAN_INTERNAL_HOSTS` maps `.internal` names to service bindings in the Worker, and `MAIDAN_INTERNAL_EGRESS_HOSTS` lets the server deliver webhooks to exactly those names. Every other `.internal` name is refused. `CHANGELOG.md` under `[431.0.0]` has every entry.
+
 ## [v430.0.0](https://github.com/david-engelmann/maidan/releases/tag/v430.0.0) — the first hour, smoothed
 
 OAuth-first connect guidance in the console and docs, one shared starter task, workspace names at sign-up, palette search, named activity rows, and minting a worker token from Connect. Deploys apply OAuth registration on a running container, release publishing dispatches the demo deploy, the demo answers 503 while it starts, and a fault-injection suite holds the claimants to recover or stop cleanly. `CHANGELOG.md` under `[430.0.0]` has every entry.
