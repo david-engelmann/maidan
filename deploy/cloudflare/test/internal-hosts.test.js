@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { internalOutboundByHost, parseInternalHosts, routedEgressHosts } from "../src/edge.js";
+import { serverEnv } from "../src/server-env.js";
 
 const binding = (name) => ({
   calls: [],
@@ -66,12 +67,25 @@ test("no map means no interception at all", () => {
 
 // `outboundByHost` is a static accessor on Container that registers the map by
 // class name; a static class field would shadow it and register nothing.
-test("the Worker assigns the map through the accessor and passes the egress list on", () => {
+test("the Worker assigns the map through the accessor", () => {
   const worker = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
   assert.doesNotMatch(worker, /static\s+outboundByHost\s*=/);
   assert.match(worker, /MaidanServer\.outboundByHost = /);
   assert.match(worker, /export \{ ContainerProxy \} from "@cloudflare\/containers";/);
-  assert.match(worker, /"MAIDAN_INTERNAL_EGRESS_HOSTS",/);
+});
+
+test("the container's environment carries only the routed internal names", () => {
+  const env = {
+    MAIDAN_INTERNAL_HOSTS: "seats.internal=SEATS",
+    MAIDAN_INTERNAL_EGRESS_HOSTS: "seats.internal,other.internal",
+    SEATS: binding("seats"),
+  };
+  assert.equal(serverEnv(env).MAIDAN_INTERNAL_EGRESS_HOSTS, "seats.internal");
+  // The map itself and the binding stay in the Worker.
+  assert.equal(serverEnv(env).MAIDAN_INTERNAL_HOSTS, undefined);
+  assert.equal(serverEnv(env).SEATS, undefined);
+  const unrouted = { MAIDAN_INTERNAL_EGRESS_HOSTS: "seats.internal" };
+  assert.equal("MAIDAN_INTERNAL_EGRESS_HOSTS" in serverEnv(unrouted), false);
 });
 
 const config = (file) =>

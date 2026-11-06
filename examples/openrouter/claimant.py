@@ -18,6 +18,7 @@ Standard library only.
 """
 
 import argparse
+import http.client
 import ipaddress
 import json
 import math
@@ -66,12 +67,26 @@ class Maidan:
         self.lock = threading.Lock()
 
     def _send(self, req, timeout):
+        # No answer, a timeout, an answer cut short or one that is not JSON is
+        # Fatal, not a traceback: in the renewer thread a traceback ended the
+        # thread with `lost` unset, so the claimant worked on as if it held a
+        # lease that was lapsing.
+        where = f"{req.get_method()} {urllib.parse.urlsplit(req.full_url).path}"
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 text = resp.read().decode("utf-8")
                 return resp.status, (json.loads(text) if text else None)
         except urllib.error.HTTPError as err:
-            return err.code, err.read().decode("utf-8", "replace")
+            try:
+                return err.code, err.read().decode("utf-8", "replace")
+            except (http.client.HTTPException, OSError):
+                return err.code, ""
+            finally:
+                err.close()
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as err:
+            raise Fatal(f"{where}: no answer: {type(err).__name__}: {err}") from None
+        except ValueError as err:
+            raise Fatal(f"{where}: an answer that is not JSON: {err}") from None
 
     def rest(self, method, path, body=None, raw=None, timeout=60):
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
@@ -109,6 +124,8 @@ class Maidan:
             raise Fatal(f"{method} {name or ''}: HTTP {status}: {str(reply)[:300]}")
         if "error" in reply:
             raise Fatal(f"{method} {name or ''}: {reply['error']}")
+        if not isinstance(reply.get("result"), dict):
+            raise Fatal(f"{method} {name or ''}: HTTP {status}: a reply without a result: {str(reply)[:300]}")
         return reply["result"]
 
     def tool(self, name, args, timeout=60):
@@ -193,7 +210,8 @@ def openrouter(path, key, body=None, timeout=600):
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as err:
-        raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {err.read().decode('utf-8', 'replace')[:300]}")
+        with err:
+            raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {err.read().decode('utf-8', 'replace')[:300]}")
 
 
 def price_snapshot(model):
@@ -362,6 +380,8 @@ def plain_envelope(status, detail, deliver_to):
 
 def work(args, maidan, key):
     me = maidan.tool("whoami", {})
+    if not (isinstance(me, dict) and isinstance(me.get("workspace_id"), str)):
+        raise Fatal(f"whoami answer without a workspace_id: {str(me)[:300]}")
     workspace = me["workspace_id"]
     checkout = Checkout(args.repo_dir)
     repo = args.repo or repo_from_remote(checkout)
@@ -373,6 +393,10 @@ def work(args, maidan, key):
     if not claim:
         print("no work")
         return 0
+    if not (isinstance(claim, dict) and isinstance(claim.get("id"), str)
+            and isinstance(claim.get("claim_lease_id"), str)):
+        # Nothing to release it with; its lease bounds how long it is held.
+        raise Fatal(f"claim answer without a string id and claim_lease_id: {str(claim)[:300]}")
     thread_id, lease = claim["id"], claim["claim_lease_id"]
     print(f"claimed {thread_id}")
     renewer = Renewer(maidan, thread_id, lease, args.lease_secs)

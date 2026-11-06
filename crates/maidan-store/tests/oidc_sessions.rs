@@ -88,6 +88,7 @@ async fn oidc_pending_is_single_use() {
             expires_at: Utc::now() + Duration::minutes(10),
             invite_entry_id: None,
             workspace_invite_id: None,
+            workspace_name: None,
         })
         .await
         .expect("insert");

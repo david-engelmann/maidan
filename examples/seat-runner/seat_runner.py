@@ -9,8 +9,10 @@ Each run, per seat (README.md has the detail):
    repo. Nothing ready, no run.
 3. Preflight: the repo's own commands under `capped`, without the seat token
    in their environment. A failure claims nothing.
-4. Claim (`claim-next`) and acknowledge. `null` ends the run; a failed
-   acknowledge releases the claim and runs no harness.
+4. Claim (`claim-next`) and acknowledge, each with one Idempotency-Key
+   across its retries, so a claim whose answer was lost is answered again
+   rather than taken twice. `null` ends the run; a failed acknowledge
+   releases the claim and runs no harness.
 5. Harness: the whole harness process under `capped`, told the thread and
    lease so it skips the runbook's "Claim" and "Acknowledge" sections.
 6. Release, always, and only once every process the run started is dead.
@@ -24,6 +26,7 @@ claims are released.
 from __future__ import annotations
 
 import argparse
+import http.client
 import ipaddress
 import json
 import os
@@ -37,6 +40,7 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,6 +49,12 @@ ENGINE = "session"
 UNREACHABLE = 0
 # `capped`'s exit codes: the time cap, the memory cap.
 CAPPED_TIME, CAPPED_MEMORY = 124, 137
+# Answers worth another try with the same Idempotency-Key: the server did not
+# do it, or may not have, and says so.
+RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+IN_FLIGHT = "https://maidan.world/problems/idempotency-key-in-flight"
+# The longest a Retry-After holds a seat between tries.
+MAX_RETRY_AFTER_SECS = 60.0
 
 
 class ConfigError(Exception):
@@ -80,6 +90,9 @@ class Config:
     preflight_secs: int
     preflight_mem_gb: float
     lease_secs: int
+    timeout_secs: float
+    claim_attempts: int
+    claim_backoff_secs: float
     max_load15: float
     min_free_gb: float
     idle_secs: float
@@ -160,23 +173,34 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
         preflight_secs=int(caps.get("preflight_secs", 600)),
         preflight_mem_gb=float(caps.get("preflight_mem_gb", 4)),
         lease_secs=int(maidan.get("lease_secs", 3600)),
+        timeout_secs=float(maidan.get("timeout_secs", 60)),
+        claim_attempts=max(1, int(maidan.get("claim_attempts", 3))),
+        claim_backoff_secs=float(maidan.get("claim_backoff_secs", 2)),
         max_load15=float(host.get("max_load15", os.cpu_count() or 1)),
         min_free_gb=float(host.get("min_free_gb", 5)),
         idle_secs=float(raw.get("idle_secs", 60)),
         kill_grace_secs=float(raw.get("kill_grace_secs", 10)),
-        release_attempts=int(maidan.get("release_attempts", 4)),
+        release_attempts=max(1, int(maidan.get("release_attempts", 4))),
         release_backoff_secs=float(maidan.get("release_backoff_secs", 2)),
         repos=repos,
     )
 
 
 class Maidan:
-    def __init__(self, url: str, token: str) -> None:
+    def __init__(self, url: str, token: str, timeout: float = 60) -> None:
         self.url = url
         self.token = token
+        self.timeout = timeout
 
     def call(self, method: str, path: str, body: object | None = None) -> tuple[int, object]:
         """`(status, body)`; `(UNREACHABLE, reason)` when there is no answer."""
+        status, answer, _ = self.send(method, path, body)
+        return status, answer
+
+    def send(self, method: str, path: str, body: object | None = None,
+             key: str | None = None) -> tuple[int, object, str | None]:
+        """`(status, body, Retry-After)`. An answer cut short or not JSON
+        counts as no answer: whether the server acted is unknown."""
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(self.url + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self.token}")
@@ -185,18 +209,46 @@ class Maidan:
         req.add_header("User-Agent", "maidan-seat-runner/1")
         if data is not None:
             req.add_header("Content-Type", "application/json")
+        if key is not None:
+            req.add_header("Idempotency-Key", key)
         try:
-            with urllib.request.urlopen(req, timeout=60) as res:
+            with urllib.request.urlopen(req, timeout=self.timeout) as res:
                 text = res.read().decode()
-                return res.status, json.loads(text) if text else None
+                return res.status, json.loads(text) if text else None, None
         except urllib.error.HTTPError as e:
-            text = e.read().decode(errors="replace")
+            retry_after = e.headers.get("Retry-After") if e.headers is not None else None
             try:
-                return e.code, json.loads(text)
+                text = e.read().decode(errors="replace")
+            except (http.client.HTTPException, OSError):
+                text = ""
+            finally:
+                e.close()
+            try:
+                return e.code, json.loads(text), retry_after
             except ValueError:
-                return e.code, text
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
-            return UNREACHABLE, str(e)
+                return e.code, text, retry_after
+        # An answer cut off mid-body (IncompleteRead) is an
+        # `http.client.HTTPException`, neither a URLError nor an OSError, and
+        # escaped this, so the run and its release ended in a traceback.
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
+            return UNREACHABLE, f"{type(e).__name__}: {e}", None
+
+
+def retry_wait(attempt: int, backoff: float, retry_after: str | None) -> float:
+    """Seconds before the next try: the server's Retry-After when it sent
+    one, else `backoff` doubled per try; never more than a minute."""
+    if retry_after is not None:
+        try:
+            return min(max(float(retry_after), 0.0), MAX_RETRY_AFTER_SECS)
+        except ValueError:
+            pass
+    return min(backoff * 2**attempt, MAX_RETRY_AFTER_SECS)
+
+
+def worth_retrying(status: int, body: object) -> bool:
+    if status == UNREACHABLE or status in RETRY_STATUSES:
+        return True
+    return status == 409 and isinstance(body, dict) and body.get("type") == IN_FLIGHT
 
 
 def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
@@ -334,7 +386,7 @@ class Tree:
 class Runner:
     def __init__(self, cfg: Config, out=sys.stdout) -> None:
         self.cfg = cfg
-        self.api = Maidan(cfg.url, cfg.token)
+        self.api = Maidan(cfg.url, cfg.token, cfg.timeout_secs)
         self.stop = threading.Event()
         self.out = out
         self.lock = threading.Lock()
@@ -360,12 +412,20 @@ class Runner:
             return f"{free_gb:.0f} GB free < {self.cfg.min_free_gb}"
         return None
 
-    def ready(self, repo: Repo) -> int | None:
+    def ready(self, repo: Repo) -> tuple[int | None, str, str]:
+        """`(ready, outcome, detail)`: the count, or `None` with the outcome
+        to log and why. An answer without a whole-number `ready` is not read
+        as an empty queue: a server whose schema moved would look idle."""
         q = urllib.parse.urlencode({"engine": ENGINE, "repo": repo.repo})
         status, body = self.api.call("GET", f"/workspaces/{self.cfg.workspace_id}/queue-depth?{q}")
-        if status != 200 or not isinstance(body, dict):
-            return None
-        return int(body.get("ready", 0))
+        if status == UNREACHABLE:
+            return None, "queue_unreachable", str(body)
+        if status != 200:
+            return None, "queue_unreachable", f"queue-depth answered {status}"
+        ready = body.get("ready") if isinstance(body, dict) else None
+        if isinstance(ready, bool) or not isinstance(ready, int) or ready < 0:
+            return None, "queue_unreadable", f"queue-depth answer without a whole-number ready: {str(body)[:200]}"
+        return ready, "", ""
 
     def run_process(self, seat: int, cmd: list[str], cwd: Path, env: dict[str, str]) -> int:
         """Run `cmd` to its end. Returns only once everything it started is
@@ -403,16 +463,28 @@ class Runner:
                 return f"{' '.join(cmd)} exited {code}"
         return None
 
+    def write(self, path: str, body: object, attempts: int, backoff: float) -> tuple[int, object, int]:
+        """POST with one Idempotency-Key across up to `attempts` tries,
+        retrying no answer, 408, 429, 5xx and a key still in flight.
+        Returns `(status, body, tries)`. The key is what makes a retry safe:
+        a claim whose answer was lost is answered again, not taken again."""
+        key = str(uuid.uuid4())
+        status, answer = UNREACHABLE, None
+        for attempt in range(attempts):
+            status, answer, retry_after = self.api.send("POST", path, body, key=key)
+            if not worth_retrying(status, answer):
+                return status, answer, attempt + 1
+            if attempt + 1 < attempts:
+                # Not `stop.wait`: a claim the server may have taken, or a
+                # release, is worth finishing even while the seat stops.
+                time.sleep(retry_wait(attempt, backoff, retry_after))
+        return status, answer, attempts
+
     def release(self, thread_id: str, lease_id: str) -> int:
-        """Release, retrying an unreachable server with backoff. 2xx or 409
-        (the harness already released, or the lease lapsed) is final."""
-        status = UNREACHABLE
-        for attempt in range(self.cfg.release_attempts):
-            status, _ = self.api.call("POST", f"/threads/{thread_id}/claim/release",
-                                      {"claim_lease_id": lease_id})
-            if status != UNREACHABLE and status < 500:
-                return status
-            time.sleep(self.cfg.release_backoff_secs * 2**attempt)
+        """Release, retrying with backoff. 2xx or 409 (the harness already
+        released, or the lease lapsed) is final."""
+        status, _, _ = self.write(f"/threads/{thread_id}/claim/release", {"claim_lease_id": lease_id},
+                                  self.cfg.release_attempts, self.cfg.release_backoff_secs)
         return status
 
     def run_once(self, seat: int, repo: Repo) -> str:
@@ -427,9 +499,9 @@ class Runner:
         problem = self.host_problem(repo)
         if problem:
             return done("host_busy", detail=problem)
-        ready = self.ready(repo)
+        ready, outcome, detail = self.ready(repo)
         if ready is None:
-            return done("queue_unreachable")
+            return done(outcome, detail=detail)
         if ready == 0:
             return done("no_work", ready=0)
         problem = self.preflight(seat, repo)
@@ -437,25 +509,28 @@ class Runner:
             return done("preflight_failed", detail=problem)
         if self.stop.is_set():
             return done("stopped")
-        status, claim = self.api.call(
-            "POST",
+        status, claim, tries = self.write(
             f"/workspaces/{self.cfg.workspace_id}/threads/claim-next",
             {"engine": ENGINE, "repo": repo.repo, "lease_secs": self.cfg.lease_secs},
+            self.cfg.claim_attempts, self.cfg.claim_backoff_secs,
         )
         if status != 200:
-            return done("claim_failed", status=status)
+            detail = claim if status == UNREACHABLE else f"claim-next answered {status}"
+            return done("claim_failed", status=status, tries=tries, detail=str(detail)[:300])
         if claim is None:
             return done("no_work", ready=ready)
         if not (isinstance(claim, dict) and isinstance(claim.get("id"), str)
                 and isinstance(claim.get("claim_lease_id"), str)):
-            return done("claim_failed", status=status, detail="claim answer without id and claim_lease_id")
+            # Nothing here to release with; the lease bounds how long it is held.
+            return done("claim_failed", status=status, tries=tries,
+                        detail=f"claim answer without id and claim_lease_id: {str(claim)[:200]}")
         thread_id, lease_id = claim["id"], claim["claim_lease_id"]
         attributes = claim.get("attributes")
         kind = attributes.get("kind") if isinstance(attributes, dict) else None
         outcome, code = "stopped", None
         try:
-            ack, _ = self.api.call("POST", f"/threads/{thread_id}/claim/acknowledge",
-                                   {"claim_lease_id": lease_id})
+            ack, _, _ = self.write(f"/threads/{thread_id}/claim/acknowledge", {"claim_lease_id": lease_id},
+                                   self.cfg.claim_attempts, self.cfg.claim_backoff_secs)
             if not 200 <= ack < 300:
                 outcome = "ack_failed"
             elif not self.stop.is_set():

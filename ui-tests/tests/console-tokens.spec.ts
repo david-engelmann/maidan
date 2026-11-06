@@ -116,7 +116,10 @@ test("a rotation that lands after the page signed out does not sign it back in",
     await held;
     let outcome: "done" | "dropped" = "dropped";
     try {
-      const res = await route.fetch();
+      // fetch waits forever by default. A navigation or sign-out can drop the
+      // paused request, and that used to hold the whole test until its 30s
+      // budget. A miss is the same as a rotation that never landed.
+      const res = await route.fetch({ timeout: 5_000 });
       outcome = res.ok() ? "done" : "dropped";
       await route.fulfill({ response: res }).catch(() => {});
     } catch {
@@ -133,8 +136,12 @@ test("a rotation that lands after the page signed out does not sign it back in",
   await row.getByRole("button", { name: "Rotate: sure?" }).click();
   // The rotation is held before the page signs out, not merely clicked.
   await routed;
-  // Sign out in another view while the rotation is in flight.
-  await page.goto("/ui/#/tools/prefs");
+  // Sign out from Preferences while the rotation is still in flight. A full
+  // reload does not commit in Chromium while that request stays paused, so
+  // the open page changes view instead of loading a new document.
+  await page.evaluate(() => {
+    location.hash = "#/tools/prefs";
+  });
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByLabel(/paste a token/i)).toBeVisible();
   release();

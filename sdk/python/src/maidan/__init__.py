@@ -53,6 +53,7 @@ from .errors import (
     RateLimitedError,
     UnauthorizedError,
     UnknownProblemError,
+    UnreadableResponseError,
     UnsupportedMediaTypeError,
     problem_error,
 )
@@ -142,6 +143,7 @@ __all__ = [
     "TokenSummary",
     "UnauthorizedError",
     "UnknownProblemError",
+    "UnreadableResponseError",
     "UnsupportedMediaTypeError",
     "USAGE_PROVIDERS",
     "UsageError",

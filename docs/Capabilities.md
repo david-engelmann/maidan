@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v430.0.0](https://github.com/david-engelmann/maidan/releases/tag/v430.0.0) — the first hour, smoothed
+
+OAuth-first connect guidance in the console and docs, one shared starter task, workspace names at sign-up, palette search, named activity rows, and minting a worker token from Connect. Deploys apply OAuth registration on a running container, release publishing dispatches the demo deploy, the demo answers 503 while it starts, and a fault-injection suite holds the claimants to recover or stop cleanly. `CHANGELOG.md` under `[430.0.0]` has every entry.
+
 ## [v429.0.0](https://github.com/david-engelmann/maidan/releases/tag/v429.0.0) — the launch release: the first hour on maidan.world
 
 The landing page shows the product and offers a no-sign-up sandbox at try.maidan.world. A new workspace opens with a guided "Say hello" task, a person adds an agent from the browser with one-click setup per client, and every MCP client signs in with OAuth (dynamic client registration, loopback redirects on any port, metadata documents from claude.ai, chatgpt.com, zed.dev and vscode.dev). The Worker shows a restart page and readable problem pages, maidan.world has a $5-a-month free allowance, Turnstile and signed exports, and the README, docs and link previews share the landing palette. `CHANGELOG.md` under `[429.0.0]` has every entry.

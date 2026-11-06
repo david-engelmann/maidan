@@ -84,6 +84,39 @@ test("the sign-in card's buttons span the card like its token field", () => {
   assert.equal(lastValue(".sign-in .edit-actions", "justify-content"), "stretch");
 });
 
+test("reduced motion removes animation, transition and smooth scrolling", () => {
+  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const block = /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{([^}]+)\}/.exec(css)?.[1] ?? "";
+  assert.match(block, /animation:\s*none\s*!important/);
+  assert.match(block, /transition:\s*none\s*!important/);
+  assert.match(block, /scroll-behavior:\s*auto\s*!important/);
+  // The composer that actually animates is .task-composer. A rule aimed at
+  // .composer never reached it.
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.task-composer \{ animation: none; \} \}/);
+  assert.doesNotMatch(css, /\.mode-chip \{ display: none/);
+});
+
+test("the skip link sits off screen until it is focused", () => {
+  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  assert.equal(lastValue(".skip-link", "top"), "-100px");
+  assert.match(css, /\.skip-link:focus, \.skip-link:focus-visible \{ top: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\); \}/);
+  const shell = readFileSync(join(root, "src/shell/Shell.tsx"), "utf8");
+  const skip = shell.indexOf('className="skip-link"');
+  assert.ok(skip >= 0 && skip < shell.indexOf("<nav") && skip < shell.indexOf("<header"));
+  assert.match(shell, />\s*Skip to content\s*</);
+  assert.match(shell, /getElementById\("main"\)\?\.focus\(\)/);
+});
+
+test("a phone header shows Search and does not drop the credential word", () => {
+  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.icon-btn \.btn-label \{ display: inline;/);
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.live-label \{ position: static;/);
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.mode-chip \{ display: inline-flex;/);
+  const shell = readFileSync(join(root, "src/shell/Shell.tsx"), "utf8");
+  assert.match(shell, /className="btn-label">Search</);
+  assert.match(shell, /className="live-label"/);
+});
+
 test("text hidden for screen readers uses the class the stylesheet defines", () => {
   // An undefined hiding class shows its text: the presence chip printed
   // ", online, free" beside the name.

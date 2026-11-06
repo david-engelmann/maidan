@@ -4,8 +4,9 @@
 import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Icon } from "../shell/icons.tsx";
 import { BoardApi, chromeFor, stateWord, type Gate, type Member, type Thread } from "../core/board.ts";
+import { ChannelPick } from "../shell/ChannelPick.tsx";
+import { reducedMotion, scrollBehavior } from "../core/motion.ts";
 import { membersPending,
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -198,16 +199,7 @@ export function Threads() {
             <button role="tab" aria-selected={tab === "direct"} className={tab === "direct" ? "on" : ""} onClick={() => setTab("direct")}>Direct</button>
           </div>
           {tab === "tasks" ? (
-            <label className="channel-pick">
-              <span className="visually-hidden">Channel</span>
-              <span className="channel-hash" aria-hidden="true">#</span>
-              <select value={board.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!board.channels.length}>
-                {board.channels.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <Icon name="chevron" />
-            </label>
+            <ChannelPick channels={board.channels} channelId={board.channelId} onChange={selectChannel} />
           ) : (
             <button className="btn small-btn" onClick={() => setComposing((v) => !v)} aria-expanded={composing}>{composing ? "Cancel" : "New message"}</button>
           )}
@@ -483,7 +475,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
 
   const toEnd = () => {
     const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: scrollBehavior(reducedMotion()) });
     setUnseen(0);
   };
 
@@ -508,7 +500,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 <button
                   type="button"
                   className="link-btn"
-                  onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                  onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: scrollBehavior(reducedMotion()) })}
                 >
                   <b className={membersPending(members) ? "name-pending" : undefined}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
