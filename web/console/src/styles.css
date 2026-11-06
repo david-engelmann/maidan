@@ -1166,7 +1166,8 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .sheet-menu-btn .icon { fill: currentColor; stroke: none; }
 .menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 2; min-width: 200px; display: grid; padding: 4px; background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-3); }
 .menu-item { min-height: 44px; min-width: 44px; padding: 0 12px; text-align: left; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
-.menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); outline: 2px solid var(--focus); outline-offset: -2px; }
+.menu-item:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); outline: none; }
+.menu-item:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); outline: 2px solid var(--focus); outline-offset: -2px; }
 .menu-item.danger { color: var(--danger); }
 .task.selected { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink), var(--shadow-2); }
 @media (min-width: 900px) {

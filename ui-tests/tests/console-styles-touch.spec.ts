@@ -36,13 +36,24 @@ test.describe("on a desktop", () => {
     await openOnChannel(page, fx.board_channel_id);
     const select = page.locator(".channel-pick select");
     await expect(select).toBeVisible();
-    expect(await select.evaluate((el) => (el as HTMLSelectElement).options.length)).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => select.evaluate((el) => (el as HTMLSelectElement).options.length)).toBeGreaterThanOrEqual(2);
     const box = await select.boundingBox();
     expect(box).not.toBeNull();
     expect(Math.round(box!.width)).toBeGreaterThanOrEqual(44);
     expect(Math.round(box!.height)).toBeGreaterThanOrEqual(44);
     expect(await focusRing(page)).not.toBe("none");
     expect(await fits(page)).toBe(true);
+
+    await page.locator("button.task").first().click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    const item = page.getByRole("menuitem").first();
+    await expect(item).toBeVisible();
+    await item.hover();
+    expect(await item.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none");
+    await page.getByRole("button", { name: "More actions" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(item).toBeFocused();
+    expect(await item.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe("none");
   });
 });
 
