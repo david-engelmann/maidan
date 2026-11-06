@@ -13,18 +13,32 @@ export function toastRole(tone: Tone): "alert" | "status" {
 }
 
 /** Notices still on screen. `frozenAt` stops the clock while the pointer or focus is inside. */
-export function selectLiveToasts(list: Notice[], gone: ReadonlySet<number>, navAt: number, now: number, credit: number, frozenAt: number | null): Notice[] {
+export function selectLiveToasts(list: Notice[], gone: ReadonlySet<number>, navAt: number, now: number, credits: ReadonlyMap<number, number>, frozenAt: number | null): Notice[] {
   const clock = frozenAt ?? Math.max(now, list[0]?.at ?? 0);
-  return list.filter((n) => !gone.has(n.id) && n.at >= navAt && clock - n.at - credit < TOAST_MS).slice(0, 3);
+  return list.filter((n) => !gone.has(n.id) && n.at >= navAt && clock - n.at - (credits.get(n.id) ?? 0) < TOAST_MS).slice(0, 3);
 }
 
-/** Pause time is given back. A toast that would have under 1.5 s left gets that grace instead of snapping shut. */
-export function pauseCredit(credit: number, spent: number, now: number, list: Notice[], navAt: number, gone: ReadonlySet<number>): number {
-  const next = credit + spent;
-  const ages = list.filter((n) => !gone.has(n.id) && n.at >= navAt).map((n) => now - n.at - next);
-  if (!ages.length) return next;
-  const remain = TOAST_MS - Math.max(...ages);
-  return remain < TOAST_GRACE_MS ? next + (TOAST_GRACE_MS - remain) : next;
+/**
+ * Pause time belongs to the notices that were on screen for it.
+ * A notice created after the pause keeps no credit, so it still lasts `TOAST_MS`.
+ * Ids that have left `list` are dropped.
+ */
+export function nextToastCredits(credits: ReadonlyMap<number, number>, list: readonly Notice[], start: number, end: number): ReadonlyMap<number, number> {
+  const next = new Map<number, number>();
+  for (const n of list) {
+    const prev = credits.get(n.id) ?? 0;
+    const aliveUntil = n.at + TOAST_MS + prev;
+    if (n.at >= end || start >= aliveUntil) {
+      next.set(n.id, prev);
+      continue;
+    }
+    const overlap = Math.max(0, end - Math.max(start, n.at));
+    let credit = prev + overlap;
+    const remain = TOAST_MS - (end - n.at - credit);
+    if (remain < TOAST_GRACE_MS) credit += TOAST_GRACE_MS - remain;
+    next.set(n.id, credit);
+  }
+  return next;
 }
 
 export function Toasts() {
@@ -32,7 +46,7 @@ export function Toasts() {
   const [gone, setGone] = useState<ReadonlySet<number>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
   const [navAt, setNavAt] = useState(0);
-  const [credit, setCredit] = useState(0);
+  const [credits, setCredits] = useState<ReadonlyMap<number, number>>(() => new Map());
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   const holds = useRef({ hover: false, focus: false });
   const frozenRef = useRef<number | null>(null);
@@ -50,7 +64,7 @@ export function Toasts() {
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  const live = selectLiveToasts(list, gone, navAt, now, credit, frozenAt);
+  const live = selectLiveToasts(list, gone, navAt, now, credits, frozenAt);
   const liveRef = useRef(live);
   useEffect(() => {
     listRef.current = list;
@@ -76,9 +90,11 @@ export function Toasts() {
     if (holds.current.hover || holds.current.focus) return;
     const start = frozenRef.current;
     frozenRef.current = null;
-    const spent = start !== null ? Date.now() - start : 0;
     const t = Date.now();
-    setCredit((c) => pauseCredit(c, spent, t, listRef.current, navRef.current, goneRef.current));
+    if (start !== null) {
+      const showing = listRef.current.filter((n) => !goneRef.current.has(n.id) && n.at >= navRef.current);
+      setCredits((c) => nextToastCredits(c, showing, start, t));
+    }
     setFrozenAt(null);
     setNow(t);
   };
@@ -96,8 +112,7 @@ export function Toasts() {
       onMouseLeave={() => release("hover")}
       onFocus={() => engage("focus")}
       onBlur={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-        release("focus");
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) release("focus");
       }}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
@@ -106,18 +121,7 @@ export function Toasts() {
       }}
     >
       {live.map((n) => (
-        <div
-          key={n.id}
-          className={`toast ${n.tone}`}
-          role={toastRole(n.tone)}
-          onMouseEnter={() => engage("hover")}
-          onMouseLeave={() => release("hover")}
-          onFocus={() => engage("focus")}
-          onBlur={(e) => {
-            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-            release("focus");
-          }}
-        >
+        <div key={n.id} className={`toast ${n.tone}`} role={toastRole(n.tone)}>
           <span>{n.text}</span>
           <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => setGone((g) => new Set(g).add(n.id))}>×</button>
         </div>
