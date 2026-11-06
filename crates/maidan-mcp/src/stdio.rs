@@ -4,7 +4,81 @@ use std::io::{self, BufRead, Write};
 
 use maidan_auth::AuthContext;
 
-use crate::{JsonRpcNotification, JsonRpcResponse, McpServer, McpSession};
+use crate::{JsonRpcError, JsonRpcNotification, JsonRpcResponse, McpServer, McpSession};
+
+/// The largest stdin line `mcp-stdio` will buffer. A request past this is
+/// rejected and the rest of the line discarded, so one stream without a
+/// newline cannot grow the process without bound. 16 MiB still covers a
+/// 10 MiB base64 artifact upload.
+pub const MAX_STDIO_LINE_BYTES: usize = 16 * 1024 * 1024;
+
+const LINE_BUF_IDLE_CAP: usize = 64 * 1024;
+
+enum LineRead {
+    Eof,
+    Line,
+    TooLong,
+}
+
+/// Read one `\n`-terminated line into `buf`, or stop once `buf` would pass
+/// `max_bytes`. An oversized line is drained through its newline (or EOF) and
+/// reported as [`LineRead::TooLong`] with `buf` cleared, so the next call
+/// starts at the following line.
+fn read_bounded_line(
+    input: &mut impl BufRead,
+    buf: &mut Vec<u8>,
+    max_bytes: usize,
+) -> io::Result<LineRead> {
+    buf.clear();
+    loop {
+        let available = input.fill_buf()?;
+        if available.is_empty() {
+            return Ok(if buf.is_empty() {
+                LineRead::Eof
+            } else {
+                LineRead::Line
+            });
+        }
+        if let Some(pos) = available.iter().position(|byte| *byte == b'\n') {
+            let take = pos + 1;
+            if buf.len() + take > max_bytes {
+                input.consume(take);
+                buf.clear();
+                return Ok(LineRead::TooLong);
+            }
+            buf.extend_from_slice(&available[..take]);
+            input.consume(take);
+            return Ok(LineRead::Line);
+        }
+        if buf.len() + available.len() > max_bytes {
+            let n = available.len();
+            input.consume(n);
+            buf.clear();
+            loop {
+                let available = input.fill_buf()?;
+                if available.is_empty() {
+                    return Ok(LineRead::TooLong);
+                }
+                if let Some(pos) = available.iter().position(|byte| *byte == b'\n') {
+                    input.consume(pos + 1);
+                    return Ok(LineRead::TooLong);
+                }
+                let n = available.len();
+                input.consume(n);
+            }
+        }
+        buf.extend_from_slice(available);
+        let n = available.len();
+        input.consume(n);
+    }
+}
+
+fn shrink_line_buf(buf: &mut Vec<u8>) {
+    if buf.capacity() > LINE_BUF_IDLE_CAP {
+        buf.clear();
+        buf.shrink_to(LINE_BUF_IDLE_CAP);
+    }
+}
 
 /// Run the MCP dispatcher until stdin EOF. The process is one session: what
 /// it subscribes to is written after each response, and nothing else is.
@@ -19,30 +93,52 @@ pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()>
 async fn serve_lines(
     server: &McpServer,
     auth: &AuthContext,
-    input: impl BufRead,
+    mut input: impl BufRead,
     output: &mut impl Write,
 ) -> io::Result<()> {
     let mut listener = server.listen(auth, McpSession::Stdio).await;
-    for line in input.lines() {
-        let line = line?;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let request = match crate::protocol::parse_request(trimmed.as_bytes()) {
-            Ok(r) => r,
-            Err(rejected) => {
-                write_response(output, JsonRpcResponse::rejected(rejected))?;
-                continue;
+    let mut buf = Vec::new();
+    loop {
+        match read_bounded_line(&mut input, &mut buf, MAX_STDIO_LINE_BYTES)? {
+            LineRead::Eof => break,
+            LineRead::TooLong => {
+                write_response(
+                    output,
+                    JsonRpcResponse::rejected(JsonRpcError::invalid_request(
+                        "request line exceeds maximum length",
+                    )),
+                )?;
+                for notification in listener.drain() {
+                    write_notification(output, notification)?;
+                }
+                shrink_line_buf(&mut buf);
             }
-        };
-        let notification = request.id.is_none();
-        let response = server.handle_in(request, auth, &McpSession::Stdio).await;
-        if !notification {
-            write_response(output, response)?;
-        }
-        for notification in listener.drain() {
-            write_notification(output, notification)?;
+            LineRead::Line => {
+                let trimmed = buf.trim_ascii();
+                if trimmed.is_empty() {
+                    shrink_line_buf(&mut buf);
+                    continue;
+                }
+                // Bytes, not a `String`: invalid UTF-8 is a JSON-RPC parse
+                // error for this line, and the session keeps reading.
+                let request = match crate::protocol::parse_request(trimmed) {
+                    Ok(r) => r,
+                    Err(rejected) => {
+                        write_response(output, JsonRpcResponse::rejected(rejected))?;
+                        shrink_line_buf(&mut buf);
+                        continue;
+                    }
+                };
+                let notification = request.id.is_none();
+                let response = server.handle_in(request, auth, &McpSession::Stdio).await;
+                if !notification {
+                    write_response(output, response)?;
+                }
+                for notification in listener.drain() {
+                    write_notification(output, notification)?;
+                }
+                shrink_line_buf(&mut buf);
+            }
         }
     }
     Ok(())
@@ -220,5 +316,71 @@ mod tests {
         assert_eq!(answers[2]["method"], "notifications/resources/updated");
         assert_eq!(answers[2]["params"]["uri"], uri);
         assert!(answers[2].get("id").is_none());
+    }
+
+    #[tokio::test]
+    async fn an_oversized_line_is_rejected_and_the_next_line_still_runs() {
+        let (server, _store, _dir) = sqlite_server().await;
+        let mut input = vec![b'x'; MAX_STDIO_LINE_BYTES + 1];
+        input.push(b'\n');
+        input.extend(br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+        input.push(b'\n');
+        let mut output = Vec::new();
+        serve_lines(
+            &server,
+            &AuthContext::bypass(),
+            input.as_slice(),
+            &mut output,
+        )
+        .await
+        .unwrap();
+        let answers = answers(output);
+        assert_eq!(answers.len(), 2, "{answers:?}");
+        assert_eq!(answers[0]["id"], Value::Null);
+        assert_eq!(answers[0]["error"]["code"], -32600);
+        assert_eq!(answers[1]["id"], 1);
+        assert!(answers[1].get("error").is_none(), "{answers:?}");
+    }
+
+    #[tokio::test]
+    async fn invalid_utf8_is_a_parse_error_and_the_next_line_still_runs() {
+        let (server, _store, _dir) = sqlite_server().await;
+        let mut input = vec![0xff, b'\n'];
+        input.extend(br#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#);
+        input.push(b'\n');
+        let mut output = Vec::new();
+        serve_lines(
+            &server,
+            &AuthContext::bypass(),
+            input.as_slice(),
+            &mut output,
+        )
+        .await
+        .unwrap();
+        let answers = answers(output);
+        assert_eq!(answers.len(), 2, "{answers:?}");
+        assert_eq!(answers[0]["id"], Value::Null);
+        assert_eq!(answers[0]["error"]["code"], -32700);
+        assert_eq!(answers[1]["id"], 7);
+        assert!(answers[1].get("error").is_none(), "{answers:?}");
+    }
+
+    #[tokio::test]
+    async fn a_crlf_line_is_one_request() {
+        let (server, _store, _dir) = sqlite_server().await;
+        let input = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\r\n";
+        let mut output = Vec::new();
+        serve_lines(
+            &server,
+            &AuthContext::bypass(),
+            input.as_bytes(),
+            &mut output,
+        )
+        .await
+        .unwrap();
+        let answers = answers(output);
+        assert_eq!(answers.len(), 1, "{answers:?}");
+        assert_eq!(answers[0]["id"], 3);
+        assert!(answers[0].get("error").is_none(), "{answers:?}");
     }
 }

@@ -19,6 +19,10 @@ const SESSION_BUFFER: usize = 256;
 /// replay on reconnect. Bounded like the live buffer.
 const SESSION_LOG_CAP: usize = 256;
 
+/// The most replay bytes retained for one session. A single larger frame is
+/// still offered live, and is not kept in the log.
+const MAX_SESSION_LOG_BYTES: usize = 4 * 1024 * 1024;
+
 /// The most sessions held at once. Opening one more evicts the least recently
 /// touched, so an abandoned-session pile-up costs bounded memory and never
 /// turns a live client away.
@@ -32,6 +36,9 @@ struct SessionEntry {
     next_event_id: u64,
     /// Recent `(event_id, payload)` frames, for `Last-Event-ID` replay.
     log: VecDeque<(u64, String)>,
+    /// Sum of `log` payload lengths. Kept beside the deque so eviction does
+    /// not walk every frame.
+    log_bytes: usize,
 }
 
 #[derive(Clone)]
@@ -62,19 +69,14 @@ impl StreamableSessionRegistry {
         self.ttl
     }
 
-    async fn prune_expired(&self) {
-        let ttl = self.ttl;
-        let mut guard = self.sessions.lock().await;
-        guard.retain(|_, entry| entry.last_touch.elapsed() < ttl);
-    }
-
     /// Drop expired sessions and return how many remain. Expiry used to run
     /// only as a side effect of open / lookup / push, so a server that stopped
     /// receiving MCP traffic kept every dead session forever; the server's
     /// metrics tick now calls this, and reports the count.
     pub async fn reap(&self) -> usize {
-        self.prune_expired().await;
-        self.sessions.lock().await.len()
+        let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
+        sessions.len()
     }
 
     /// Open a new session and return the SSE consumer side. Each item is the
@@ -85,9 +87,9 @@ impl StreamableSessionRegistry {
         id: String,
         owner: Principal,
     ) -> tokio::sync::mpsc::Receiver<(u64, String)> {
-        self.prune_expired().await;
         let (tx, rx) = tokio::sync::mpsc::channel(SESSION_BUFFER);
         let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
         if sessions.len() >= MAX_SESSIONS {
             let stalest = sessions
                 .iter()
@@ -105,36 +107,37 @@ impl StreamableSessionRegistry {
                 last_touch: Instant::now(),
                 next_event_id: 0,
                 log: VecDeque::new(),
+                log_bytes: 0,
             },
         );
         rx
     }
 
     pub async fn touch(&self, id: &str) {
-        if let Some(entry) = self.sessions.lock().await.get_mut(id) {
+        let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
+        if let Some(entry) = sessions.get_mut(id) {
             entry.last_touch = Instant::now();
         }
     }
 
     /// Whether `id` is an open session that `owner` opened.
     pub async fn is_open_for(&self, id: &str, owner: &Principal) -> bool {
-        self.prune_expired().await;
-        self.sessions
-            .lock()
-            .await
-            .get(id)
-            .is_some_and(|entry| &entry.owner == owner)
+        let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
+        sessions.get(id).is_some_and(|entry| &entry.owner == owner)
     }
 
     /// The ids of every unexpired session.
     pub async fn open_ids(&self) -> HashSet<String> {
-        self.prune_expired().await;
-        self.sessions.lock().await.keys().cloned().collect()
+        let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
+        sessions.keys().cloned().collect()
     }
 
     pub async fn push(&self, id: &str, data: String) -> bool {
-        self.prune_expired().await;
         let mut guard = self.sessions.lock().await;
+        prune_locked(&mut guard, self.ttl);
         let Some(entry) = guard.get_mut(id) else {
             return false;
         };
@@ -143,9 +146,27 @@ impl StreamableSessionRegistry {
         // if the live consumer had already dropped.
         let event_id = entry.next_event_id;
         entry.next_event_id += 1;
-        entry.log.push_back((event_id, data.clone()));
-        while entry.log.len() > SESSION_LOG_CAP {
-            entry.log.pop_front();
+        if data.len() > MAX_SESSION_LOG_BYTES {
+            // One oversized frame would pin more than the budget by itself.
+            // Live delivery still happens below; replay does not keep it.
+            entry.log.clear();
+            entry.log_bytes = 0;
+        } else {
+            while entry.log.len() >= SESSION_LOG_CAP
+                || entry.log_bytes + data.len() > MAX_SESSION_LOG_BYTES
+            {
+                match entry.log.pop_front() {
+                    Some((_, old)) => {
+                        entry.log_bytes = entry.log_bytes.saturating_sub(old.len());
+                    }
+                    None => {
+                        entry.log_bytes = 0;
+                        break;
+                    }
+                }
+            }
+            entry.log_bytes += data.len();
+            entry.log.push_back((event_id, data.clone()));
         }
         // Non-blocking: we hold the registry lock, so never await on capacity.
         // A full buffer (slow client) or a closed receiver both fail the live
@@ -169,6 +190,7 @@ impl StreamableSessionRegistry {
     /// when nothing newer was retained.
     pub async fn replay_after(&self, id: &str, after: u64) -> Vec<(u64, String)> {
         let mut guard = self.sessions.lock().await;
+        prune_locked(&mut guard, self.ttl);
         let Some(entry) = guard.get_mut(id) else {
             return Vec::new();
         };
@@ -184,6 +206,7 @@ impl StreamableSessionRegistry {
     /// Close `id` if `owner` opened it; whether it did.
     pub async fn close_for(&self, id: &str, owner: &Principal) -> bool {
         let mut sessions = self.sessions.lock().await;
+        prune_locked(&mut sessions, self.ttl);
         if sessions.get(id).is_some_and(|entry| &entry.owner == owner) {
             sessions.remove(id);
             true
@@ -191,6 +214,10 @@ impl StreamableSessionRegistry {
             false
         }
     }
+}
+
+fn prune_locked(sessions: &mut HashMap<String, SessionEntry>, ttl: Duration) {
+    sessions.retain(|_, entry| entry.last_touch.elapsed() < ttl);
 }
 
 pub fn streamable_session_ttl() -> Duration {
@@ -271,5 +298,59 @@ mod tests {
         let _rx = reg.open("sess".to_string(), OWNER).await;
         tokio::time::sleep(Duration::from_millis(5)).await;
         assert!(!reg.is_open_for("sess", &OWNER).await);
+    }
+
+    async fn expired() -> StreamableSessionRegistry {
+        let reg = StreamableSessionRegistry::with_ttl(Duration::from_millis(1));
+        let _rx = reg.open("sess".to_string(), OWNER).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        reg
+    }
+
+    #[tokio::test]
+    async fn touch_replay_and_close_do_not_resurrect_an_expired_session() {
+        let reg = expired().await;
+        reg.touch("sess").await;
+        assert!(reg.replay_after("sess", 0).await.is_empty());
+        assert!(!reg.close_for("sess", &OWNER).await);
+        assert!(!reg.is_open_for("sess", &OWNER).await);
+        assert!(reg.open_ids().await.is_empty());
+        assert_eq!(reg.reap().await, 0);
+    }
+
+    #[tokio::test]
+    async fn the_replay_log_drops_frames_past_the_byte_budget() {
+        let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
+        let mut rx = reg.open("sess".to_string(), OWNER).await;
+        let chunk = "x".repeat(3 * 1024 * 1024);
+        assert!(reg.push("sess", "first".into()).await);
+        assert!(reg.push("sess", chunk.clone()).await);
+        assert!(reg.push("sess", chunk.clone()).await);
+        // ids 0, 1, 2. Two 3 MiB frames cannot share a 4 MiB log, so id 1 is
+        // evicted when id 2 is recorded. id 0 went with it.
+        let replay = reg.replay_after("sess", 0).await;
+        assert_eq!(
+            replay.len(),
+            1,
+            "{:?}",
+            replay.iter().map(|(id, _)| id).collect::<Vec<_>>()
+        );
+        assert_eq!(replay[0].0, 2);
+        assert_eq!(replay[0].1.len(), chunk.len());
+
+        let huge = "y".repeat(MAX_SESSION_LOG_BYTES + 1);
+        assert!(reg.push("sess", huge.clone()).await);
+        assert!(
+            reg.replay_after("sess", 0).await.is_empty(),
+            "a frame larger than the budget is not replayed"
+        );
+        let mut live = Vec::new();
+        while let Ok(frame) = rx.try_recv() {
+            live.push(frame);
+        }
+        assert!(
+            live.iter().any(|(id, body)| *id == 3 && body == &huge),
+            "the oversized frame is still delivered live"
+        );
     }
 }

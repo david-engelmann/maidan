@@ -213,9 +213,14 @@ fn sensitive(key: &str) -> bool {
         "credential",
         "passwd",
         "password",
+        "clientsecret",
+        "codeverifier",
         "privatekey",
         "secret",
+        "sessionid",
+        "signingkey",
         "token",
+        "webhooksecret",
     ]
     .iter()
     .any(|word| key.contains(word))
@@ -228,6 +233,18 @@ fn carries_credentials(tool: &str) -> bool {
     ["secret", "token", "ticket", "grant"]
         .iter()
         .any(|word| tool.contains(word))
+        || matches!(
+            tool,
+            // These mint or accept a credential and do not say so in the name:
+            // a slash/FSM signing secret, an approval confirmation link, or a
+            // signed workspace export.
+            "register_slash_command"
+                | "register_fsm_hook"
+                | "approval_decide"
+                | "export_workspace"
+                | "import_workspace"
+                | "verify_workspace_export"
+        )
 }
 
 #[cfg(any(test, feature = "frame-capture"))]
@@ -372,10 +389,60 @@ mod tests {
         }
     }
 
+    /// Method strings in `McpServer::dispatch`, taken from the source so a
+    /// newly handled method cannot be logged as `(other)` by accident.
+    /// `completion/complete`, `logging/setLevel`, and `roots/list` are not
+    /// among them: the server answers those with method-not-found.
+    fn dispatched_method_names() -> Vec<String> {
+        let src = include_str!("server.rs");
+        let dispatch = src.find("async fn dispatch(").expect("dispatch function");
+        let src = &src[dispatch..];
+        let start = src
+            .find("match request.method.as_str()")
+            .expect("dispatch match");
+        let src = &src[start..];
+        let end = src.find("other =>").expect("other arm");
+        let mut names = Vec::new();
+        let mut rest = &src[..end];
+        while let Some(i) = rest.find('"') {
+            rest = &rest[i + 1..];
+            let Some(j) = rest.find('"') else { break };
+            let name = &rest[..j];
+            // JSON object keys in the arms (`"tools"`, `"resources"`) are not
+            // methods. A dispatched method is `initialize`, `ping`, or a
+            // slash-separated protocol name.
+            if name == "initialize" || name == "ping" || name.contains('/') {
+                names.push(name.to_string());
+            }
+            rest = &rest[j + 1..];
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
     #[test]
     fn every_method_the_server_dispatches_is_logged_by_name() {
+        let dispatched = dispatched_method_names();
+        let mut logged: Vec<String> = METHODS.iter().map(|method| (*method).to_string()).collect();
+        logged.sort();
+        assert_eq!(
+            dispatched, logged,
+            "METHODS drifted from McpServer::dispatch"
+        );
         for method in METHODS {
             assert_eq!(line(method, &json!({}), &Ok(json!({}))).method, *method);
+        }
+        for unhandled in [
+            "completion/complete",
+            "logging/setLevel",
+            "roots/list",
+            "notifications/roots/list_changed",
+        ] {
+            assert_eq!(
+                line(unhandled, &json!({}), &Ok(json!({}))).method,
+                "(other)"
+            );
         }
     }
 
@@ -429,8 +496,52 @@ mod tests {
             "delegate_token",
             "create_share_ticket",
             "create_delegation_grant",
+            "register_slash_command",
+            "register_fsm_hook",
+            "approval_decide",
+            "export_workspace",
+            "import_workspace",
+            "verify_workspace_export",
         ] {
             assert!(carries_credentials(tool), "{tool}");
+        }
+    }
+
+    #[test]
+    fn a_confirmation_link_and_signing_material_stay_out_of_a_capture() {
+        let token = "confirm-token-9f3a";
+        let request = call(
+            "approval_decide",
+            json!({ "gate_id": "g", "decision": "accept" }),
+        );
+        let result = json!({
+            "content": [{
+                "type": "text",
+                "text": format!("{{\"confirmation_url\":\"https://maidan.example/c?token={token}\"}}")
+            }]
+        });
+        let (request, response) =
+            captured_frame(&request, &JsonRpcResponse::success(json!(1), result));
+        let text = format!("{request} {response}");
+        assert!(text.contains("withheld"), "{text}");
+        assert!(!text.contains(token), "{text}");
+
+        let request = call(
+            "post_message",
+            json!({
+                "body": "kept",
+                "signing_key": "sign-1",
+                "webhook_secret": "hook-1",
+                "client_secret": "client-1",
+                "code_verifier": "verifier-1",
+                "session_id": "sess-1"
+            }),
+        );
+        let (request, _) = captured_frame(&request, &JsonRpcResponse::success(json!(1), json!({})));
+        let text = request.to_string();
+        assert!(text.contains("kept"), "{text}");
+        for leaked in ["sign-1", "hook-1", "client-1", "verifier-1", "sess-1"] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
         }
     }
 }
