@@ -14,7 +14,11 @@
 # Prints (on `up`):
 #   export MAIDAN_PRIMARY_URL=postgres://postgres@localhost:<p>/postgres
 #   export MAIDAN_REPLICA_URL=postgres://postgres@localhost:<s>/postgres
-set -uo pipefail
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=loadgen-guards.sh
+source "$here/loadgen-guards.sh"
 
 NET=maidan-replica-net
 P=maidan-replica-primary
@@ -23,7 +27,9 @@ IMG=pgvector/pgvector:pg17
 PPORT="${MAIDAN_PRIMARY_PORT:-54321}"
 SPORT="${MAIDAN_REPLICA_PORT:-54322}"
 
-down() { docker rm -f "$P" "$S" >/dev/null 2>&1; docker network rm "$NET" >/dev/null 2>&1; }
+replica_validate_ports "$PPORT" "$SPORT"
+
+down() { docker rm -f "$P" "$S" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
 
 up() {
   down

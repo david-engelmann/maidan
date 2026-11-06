@@ -20,8 +20,8 @@
 #     MAIDAN_LOADGEN_IDS='<workspace>|<channel>|<thread>|<member>' \
 #     scripts/loadgen.sh
 #
-# Env knobs (all optional except IDS when targeting a URL):
-#   MAIDAN_LOADGEN_CONCURRENCY   worker tasks (default 8)
+# Env knobs (all optional except IDS + BEARER when targeting a URL):
+#   MAIDAN_LOADGEN_CONCURRENCY   worker tasks (default 8; max 256)
 #   MAIDAN_LOADGEN_OPS           iterations per worker when not timed (default 50)
 #   MAIDAN_LOADGEN_DURATION_SECS timed soak; overrides OPS when > 0 (default 0)
 #   MAIDAN_LOADGEN_URL           external base URL (default: in-process server)
@@ -29,7 +29,11 @@
 #   MAIDAN_LOADGEN_IDS           workspace|channel|thread|member for the external URL
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+here="$(cd "$(dirname "$0")" && pwd)"
+cd "$here/.."
+# shellcheck source=loadgen-guards.sh
+source "$here/loadgen-guards.sh"
+loadgen_validate_knobs
 
 echo "=== maidan loadgen ==="
 echo "concurrency=${MAIDAN_LOADGEN_CONCURRENCY:-8} ops=${MAIDAN_LOADGEN_OPS:-50} duration_secs=${MAIDAN_LOADGEN_DURATION_SECS:-0} url=${MAIDAN_LOADGEN_URL:-<in-process>}"
