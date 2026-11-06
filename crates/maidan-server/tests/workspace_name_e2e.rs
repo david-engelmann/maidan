@@ -155,6 +155,21 @@ async fn patch_names_a_workspace_and_the_session_returns_the_display_name() {
         .unwrap();
     assert_eq!(blank.status(), StatusCode::BAD_REQUEST);
 
+    let control = h
+        .client
+        .patch(h.url(&format!("/workspaces/{}", ws.id.0)))
+        .bearer_auth(&writer)
+        .json(&json!({ "name": "North\nRoom" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(control.status(), StatusCode::BAD_REQUEST);
+    let control_body = control.text().await.unwrap();
+    assert!(
+        control_body.contains("control"),
+        "a control character is the rename rule too: {control_body}"
+    );
+
     let long = "n".repeat(201);
     let too_long = h
         .client

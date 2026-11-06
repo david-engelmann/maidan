@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardApi, movesBoard, type Channel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { SELECT_CHANNEL_EVENT, pickChannel, readQuery } from "../core/boardQuery.ts";
 import { settleMembers } from "../core/threads.ts";
 import { liveBus } from "../core/bus.ts";
 import type { SessionState } from "../core/session.ts";
@@ -44,7 +45,17 @@ export function useBoard(session: SessionState, api: BoardApi) {
       try {
         const [channels, members] = await Promise.all([api.channels(workspace), api.members(workspace).catch(() => [] as Member[])]);
         const stored = typeof localStorage !== "undefined" ? localStorage.getItem(CHANNEL_KEY) : null;
-        const pick = channelId ?? (stored && channels.some((c) => c.id === stored) ? stored : (channels[0]?.id ?? null));
+        const fromLink = typeof window !== "undefined" ? readQuery(window.location.hash).channel : null;
+        const pick = pickChannel(channelId, channels, stored, fromLink);
+        // A link named this channel. Remember it, or the next plain visit
+        // would reopen whatever channel was stored before the link.
+        if (!channelId && fromLink && pick === fromLink) {
+          try {
+            localStorage.setItem(CHANNEL_KEY, pick);
+          } catch {
+            // A private window: the link still opens, it just is not remembered.
+          }
+        }
         const [threads, gates] = pick ? await Promise.all([api.threads(pick), api.gates(workspace)]) : [[], {}];
         const refusals = pick ? await api.refusals(workspace, pick, threads) : new Map<string, string>();
         if (mine !== gen.current) return;
@@ -89,12 +100,26 @@ export function useBoard(session: SessionState, api: BoardApi) {
 
   const selectChannel = useCallback(
     (id: string) => {
-      localStorage.setItem(CHANNEL_KEY, id);
+      try {
+        localStorage.setItem(CHANNEL_KEY, id);
+      } catch {
+        // As above: the channel still changes for this visit.
+      }
       seen.current = new Map();
       void load(id, false);
     },
     [load],
   );
+  // The palette asks for a channel while this screen is up. A hash change
+  // covers the board; Threads has no channel in its hash, so it listens.
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const id = e instanceof CustomEvent && typeof e.detail === "string" ? e.detail : "";
+      if (id) selectChannel(id);
+    };
+    window.addEventListener(SELECT_CHANNEL_EVENT, onPick);
+    return () => window.removeEventListener(SELECT_CHANNEL_EVENT, onPick);
+  }, [selectChannel]);
   const refresh = useCallback(() => load(channelId, true), [load, channelId]);
   return { data, selectChannel, refresh };
 }

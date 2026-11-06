@@ -246,12 +246,14 @@ async fn assert_signup(store: &dyn Store) {
             expires_at: Utc::now() + Duration::from_secs(600),
             invite_entry_id: Some(other.id),
             workspace_invite_id: None,
+            workspace_name: Some("North Room".into()),
         })
         .await
         .unwrap();
     let taken = store.take_oidc_pending("state-signup").await.unwrap();
     assert_eq!(taken.target, OidcPendingTarget::SignUp);
     assert_eq!(taken.invite_entry_id, Some(other.id));
+    assert_eq!(taken.workspace_name.as_deref(), Some("North Room"));
 }
 
 #[tokio::test]

@@ -443,8 +443,12 @@ pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
 /// What an OIDC session may do on the `/ui/api` read routes.
 pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, SEARCH_QUERY];
 
-/// What an OIDC session may do on the `/ui/api` write routes.
-const OIDC_WRITE_CAPABILITIES: &[&str] = &[
+/// What an OIDC session may do on the `/ui/api` write routes. A viewer is
+/// narrowed to [`OIDC_READ_CAPABILITIES`] by
+/// [`crate::session::SessionContext::auth_context`]. `GET /ui/api/me` reports
+/// this set so the console's capability card names what the session can do,
+/// not only the read routes that serve that GET.
+pub const OIDC_WRITE_CAPABILITIES: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
     MESSAGE_POST,

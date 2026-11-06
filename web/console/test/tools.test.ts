@@ -19,6 +19,10 @@ import {
   parseCaps,
   previewable,
   scheduleCadence,
+  channelFollowLabel,
+  channelsToFollow,
+  memberChoices,
+  memberLabel,
   showsOperator,
   slashRefusal,
 } from "../src/core/tools.ts";
@@ -199,6 +203,25 @@ test("a credential without federation:admin reads peers as not allowed, and a re
   assert.deepEqual(await ok.api.peers("w"), { allowed: true, value: [{ id: "p1", name: "east", base_url: "https://e.example" }] });
   await assert.rejects(tools([{ status: 500 }]).api.peers("w"));
   assert.match(PEERS_NEED, /federation:admin/);
+});
+
+test("member and channel pickers speak in names, and hide channels already followed", () => {
+  assert.equal(memberLabel({ id: "m1", name: "Rae Reviewer", handle: "rae" }), "Rae Reviewer (@rae)");
+  assert.equal(memberLabel({ id: "m2", name: "rae", handle: "@rae" }), "rae");
+  assert.equal(memberLabel({ id: "abcd1234ef", name: "  ", handle: "" }), "abcd1234");
+  assert.deepEqual(memberChoices([
+    { id: "b", name: "Deployer", handle: "deployer" },
+    { id: "a", name: "Ada", handle: "ada" },
+  ]), [
+    { id: "", label: "Anyone" },
+    { id: "a", label: "Ada (@ada)" },
+    { id: "b", label: "Deployer (@deployer)" },
+  ]);
+  const channels = [{ id: "c1", name: "general" }, { id: "c2", name: "ops" }, { id: "c3", name: "  " }];
+  assert.equal(channelFollowLabel("c1", channels), "#general");
+  assert.equal(channelFollowLabel("missing", channels), "missing");
+  assert.equal(channelFollowLabel("c3", channels), "c3");
+  assert.deepEqual(channelsToFollow(channels, ["c1", ""]).map((c) => c.id), ["c2"]);
 });
 
 test("operator and federation panels are offered only to a credential that holds them", () => {

@@ -794,4 +794,70 @@ mod tests {
             ["insiders.vscode.dev", "vscode.dev"]
         );
     }
+
+    /// The hosted Worker sets `MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1`. `1` and
+    /// `true` (any case, surrounding space) are on; `0`, `false` and empty
+    /// are off; anything else refuses boot. The only test in this crate that
+    /// reads the variable, so it cannot race another reader.
+    #[test]
+    fn one_and_true_turn_dynamic_registration_on() {
+        fn read(
+            flag: Option<&str>,
+            hosts: Option<&str>,
+        ) -> Result<Option<DynamicRegistration>, String> {
+            let previous_flag = std::env::var(DYNAMIC_REGISTRATION_VAR).ok();
+            let previous_hosts = std::env::var(DCR_REDIRECT_HOSTS_VAR).ok();
+            // SAFETY: no other test in this binary reads these variables, and
+            // the previous values are restored before this test returns.
+            unsafe {
+                match flag {
+                    Some(value) => std::env::set_var(DYNAMIC_REGISTRATION_VAR, value),
+                    None => std::env::remove_var(DYNAMIC_REGISTRATION_VAR),
+                }
+                match hosts {
+                    Some(value) => std::env::set_var(DCR_REDIRECT_HOSTS_VAR, value),
+                    None => std::env::remove_var(DCR_REDIRECT_HOSTS_VAR),
+                }
+            }
+            let read = DynamicRegistration::from_env();
+            // SAFETY: same as above; restore the process environment before returning.
+            unsafe {
+                match previous_flag {
+                    Some(value) => std::env::set_var(DYNAMIC_REGISTRATION_VAR, value),
+                    None => std::env::remove_var(DYNAMIC_REGISTRATION_VAR),
+                }
+                match previous_hosts {
+                    Some(value) => std::env::set_var(DCR_REDIRECT_HOSTS_VAR, value),
+                    None => std::env::remove_var(DCR_REDIRECT_HOSTS_VAR),
+                }
+            }
+            read
+        }
+
+        for on in ["1", "true", "TRUE", " True ", "1\n"] {
+            let config = read(Some(on), Some(" vscode.dev , insiders.vscode.dev "))
+                .unwrap_or_else(|err| panic!("{on}: {err}"));
+            let config = config.unwrap_or_else(|| panic!("{on} left registration off"));
+            assert_eq!(
+                config.redirect_hosts().collect::<Vec<_>>(),
+                ["insiders.vscode.dev", "vscode.dev"],
+                "{on}"
+            );
+        }
+        for off in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("0"),
+            Some("false"),
+            Some("FALSE"),
+        ] {
+            let config =
+                read(off, Some("vscode.dev")).unwrap_or_else(|err| panic!("{off:?}: {err}"));
+            assert!(config.is_none(), "{off:?} turned registration on");
+        }
+        let refused = read(Some("yes"), None).expect_err("yes is not a switch");
+        assert!(refused.contains("yes"), "{refused}");
+        assert!(read(Some("2"), None).is_err());
+    }
 }

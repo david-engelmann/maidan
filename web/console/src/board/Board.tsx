@@ -18,6 +18,7 @@ import { isTyping } from "../shell/commands.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { LoadError } from "../shell/LoadError";
 import { EmptyState } from "../shell/EmptyState";
+import { ChannelPick } from "../shell/ChannelPick.tsx";
 
 const QUERY_EVENT = "maidan:board-query";
 function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
@@ -86,9 +87,10 @@ export function Board() {
   const [query, setQuery] = useQuery();
   const openId = query.task;
   const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task, channel: task ? data.channelId : null });
-  // A task link from another channel switches to that channel once, if the
-  // reader can see it, so the drawer can open.
-  const linkedChannel = query.task ? query.channel : null;
+  // A link that names a channel (?channel=<id>, with or without a task)
+  // switches to it once the board can see it, so a shared task and a palette
+  // jump land on that channel.
+  const linkedChannel = query.channel;
   useEffect(() => {
     if (!linkedChannel || data.status !== "ready" || data.channelId === linkedChannel) return;
     if (data.channels.some((c) => c.id === linkedChannel)) selectChannel(linkedChannel);
@@ -200,20 +202,15 @@ export function Board() {
   return (
     <div className={opened ? "board drawer-open" : "board"}>
       <div className="board-bar">
-        <label className="channel-pick">
-          <span className="visually-hidden">Channel</span>
-          <span className="channel-hash" aria-hidden="true">#</span>
-          <select value={data.channelId ?? ""} onChange={(e) => {
-              // Choosing a channel closes a linked task, so the link stops pulling the board back.
-              setQuery({ ...readQuery(window.location.hash), task: null, channel: null });
-              selectChannel(e.target.value);
-            }} disabled={!data.channels.length}>
-            {data.channels.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <Icon name="chevron" />
-        </label>
+        <ChannelPick
+          channels={data.channels}
+          channelId={data.channelId}
+          onChange={(id) => {
+            // Choosing a channel closes a linked task, so the link stops pulling the board back.
+            setQuery({ ...readQuery(window.location.hash), task: null, channel: null });
+            selectChannel(id);
+          }}
+        />
         <div className="view-pick" role="group" aria-label="Board view">
           <button type="button" className="chip-btn" aria-pressed={view === "lanes"} onClick={() => setView("lanes")}>Lanes</button>
           <button type="button" className="chip-btn" aria-pressed={view === "agents"} onClick={() => setView("agents")}>By agent</button>
@@ -392,7 +389,7 @@ export function Board() {
                       initial={reduce ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
-                      transition={{ duration: 0.18 }}
+                      transition={reduce ? { duration: 0 } : { duration: 0.18 }}
                     >
                       <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} votes={votes.get(c.thread.id)} selected={openId === c.thread.id} onOpen={() => setOpenId(c.thread.id)} />
                     </motion.li>

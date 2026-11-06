@@ -1,7 +1,7 @@
 // The session store: discovery, the cookie session, and the token exchange.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SessionStore, grantCard, readDiscovery, readFrontDoorHint, type Fetch } from "../src/core/session.ts";
+import { SessionStore, capabilityCard, grantCard, readDiscovery, readFrontDoorHint, type Fetch } from "../src/core/session.ts";
 
 const BASE = "https://maidan.example";
 const json = (status: number, body: unknown) =>
@@ -102,6 +102,89 @@ test("the capability card splits the real grant from the vocabulary", () => {
   const card = grantCard({ capabilities: ["workspace:read", "message:post"], known: ["message:post", "token:admin", "workspace:read", "channel:admin"] });
   assert.deepEqual(card.can, ["message:post", "workspace:read"]);
   assert.deepEqual(card.cannot, ["channel:admin", "token:admin"]);
+});
+
+const KNOWN = [
+  "workspace:read",
+  "workspace:write",
+  "message:post",
+  "thread:transition",
+  "artifact:upload",
+  "event:subscribe",
+  "search:query",
+  "token:admin",
+  "federation:admin",
+  "operator:global",
+];
+
+const CONSOLE = ["workspace:read", "workspace:write", "message:post", "thread:transition", "artifact:upload", "event:subscribe", "search:query"];
+
+test("a signed-in session lists posting and moving tasks, and not authority it lacks", () => {
+  const card = capabilityCard("session", { capabilities: CONSOLE, known: KNOWN });
+  for (const cap of ["message:post", "thread:transition", "artifact:upload", "workspace:write"]) {
+    assert.ok(card.can.includes(cap), cap);
+    assert.equal(card.cannot.includes(cap), false);
+  }
+  for (const cap of ["federation:admin", "operator:global", "token:admin"]) {
+    assert.ok(card.cannot.includes(cap), cap);
+    assert.equal(card.can.includes(cap), false);
+  }
+});
+
+test("a session card does not invent actions the response left out, and drops authority a session cannot hold", () => {
+  const viewer = capabilityCard("session", {
+    capabilities: ["workspace:read", "event:subscribe", "search:query"],
+    known: KNOWN,
+  });
+  for (const cap of ["message:post", "thread:transition", "artifact:upload", "workspace:write"]) {
+    assert.equal(viewer.can.includes(cap), false, cap);
+    assert.ok(viewer.cannot.includes(cap), cap);
+  }
+  const poisoned = capabilityCard("session", {
+    capabilities: [...CONSOLE, "federation:admin", "operator:global"],
+    known: KNOWN,
+  });
+  assert.equal(poisoned.can.includes("federation:admin"), false);
+  assert.equal(poisoned.can.includes("operator:global"), false);
+  assert.ok(poisoned.cannot.includes("federation:admin"));
+  assert.ok(poisoned.cannot.includes("operator:global"));
+  assert.ok(poisoned.can.includes("message:post"));
+});
+
+test("a token's card is its grant, including authority a session cannot hold", () => {
+  const narrow = capabilityCard("bearer", { capabilities: ["workspace:read", "thread:transition"], known: KNOWN });
+  assert.deepEqual(narrow.can, ["thread:transition", "workspace:read"]);
+  assert.ok(narrow.cannot.includes("message:post"));
+  assert.ok(narrow.cannot.includes("federation:admin"));
+  const admin = capabilityCard("bearer", {
+    capabilities: ["workspace:read", "federation:admin", "operator:global"],
+    known: KNOWN,
+  });
+  assert.ok(admin.can.includes("federation:admin"));
+  assert.ok(admin.can.includes("operator:global"));
+  assert.equal(admin.cannot.includes("federation:admin"), false);
+  const delegated = capabilityCard("delegated", { capabilities: ["message:post"], known: KNOWN });
+  assert.deepEqual(delegated.can, ["message:post"]);
+  assert.ok(delegated.cannot.includes("thread:transition"));
+});
+
+test("a cookie session keeps the console grant /ui/api/me reports", async () => {
+  const fetchFn: Fetch = async (url) => {
+    if (url.endsWith("/auth/session")) return json(200, { member_id: "mem_1", token_id: null, workspace_id: "ws_1" });
+    if (url === `${BASE}/me`) return json(403, { detail: "This needs a bearer token" });
+    if (url === `${BASE}/ui/api/me`) {
+      return json(200, { member_id: "mem_1", workspace_id: "ws_1", is_bearer: false, capabilities: CONSOLE, known_capabilities: KNOWN });
+    }
+    return new Response("", { status: 404 });
+  };
+  const s = new SessionStore(BASE, fetchFn);
+  const st = await s.refresh();
+  assert.equal(st.mode, "session");
+  const card = capabilityCard(st.mode, st.grant ?? { capabilities: [], known: [] });
+  assert.ok(card.can.includes("message:post"));
+  assert.ok(card.can.includes("thread:transition"));
+  assert.ok(card.cannot.includes("federation:admin"));
+  assert.ok(card.cannot.includes("operator:global"));
 });
 
 test("the front door hint is read once and taken off the query", () => {

@@ -2,8 +2,10 @@ name: deploy demo
 
 # try.maidan.world, the public demo, where each visitor starts a sandbox of
 # their own (deploy/cloudflare/wrangler.demo.jsonc; docs/Deploy.md
-# "try.maidan.world"). Publishing a GitHub Release deploys it; a dispatch
-# deploys a named tag. Off until vars.DEMO_DOMAIN is 'true'.
+# "try.maidan.world"). release.yml dispatches this for the tag it just
+# published, and a dispatch deploys a named tag. The `release: published`
+# trigger does not fire for a release created with GITHUB_TOKEN, which is
+# how release.yml publishes. Off until vars.DEMO_DOMAIN is 'true'.
 #
 # No compile: demo/Dockerfile layers the release's own cosign-verified
 # maidan-server:<tag> (the stock build, no bootstrap routes) with bash and

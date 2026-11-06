@@ -7,7 +7,7 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build && node scripts/check-csp.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs test/*.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs test/*.test.ts && vitest run",
     "gen:api": "node scripts/gen-api-types.mjs",
     "check:spec": "node scripts/check-spec.mjs && tsc --noEmit -p tsconfig.json"
   },
@@ -18,15 +18,19 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "5.1.0",
     "eslint": "9.39.1",
     "eslint-plugin-react-hooks": "7.0.1",
     "globals": "16.5.0",
+    "happy-dom": "^21.0.4",
     "typescript": "5.9.3",
     "typescript-eslint": "8.46.2",
-    "vite": "^7.3.7"
+    "vite": "^7.3.7",
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "minimatch": "^11.0.3"
