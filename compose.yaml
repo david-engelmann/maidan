@@ -76,6 +76,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-server
     depends_on:
       postgres:
@@ -126,6 +130,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-a
     depends_on:
       postgres:
@@ -170,6 +178,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-b
     depends_on:
       postgres:
@@ -253,6 +265,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-r1
     depends_on:
       postgres:
@@ -297,6 +313,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-r2
     depends_on:
       postgres:
@@ -371,6 +391,10 @@ services:
       context: .
       dockerfile: crates/maidan-server/Dockerfile
     image: maidan-server:dev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     container_name: maidan-otlp
     depends_on:
       postgres:
