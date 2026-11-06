@@ -95,6 +95,14 @@ export class ClaimLostError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export class UnknownProblemError extends MaidanError {}
 
+/**
+ * A 2xx answer this client cannot read: cut short, not JSON, or missing what
+ * its model needs (a claim without a string `id` and `claim_lease_id`).
+ * `status` is the answer's. Whether the server acted is known only from that
+ * status; on a write it did.
+ */
+export class UnreadableResponseError extends MaidanError {}
+
 /** Problem `type` URI → error class, one per type the server documents. */
 export const PROBLEM_TYPES = Object.freeze({
   [`${PROBLEM_BASE}not-found`]: NotFoundError,
@@ -264,8 +272,8 @@ export class Client {
       context: (id, query) => this._req("GET", `/threads/${id}/context${qs(query)}`),
       transition: (id, body) => this._req("POST", `/threads/${id}`, body),
       setResult: (id, result, claimLeaseId) =>
-        this._req("PUT", `/threads/${id}/result`, { result, claim_lease_id: claimLeaseId }),
-      getResult: (id) => this._req("GET", `/threads/${id}/result`),
+        this._readableResult("PUT", `/threads/${id}/result`, { result, claim_lease_id: claimLeaseId }),
+      getResult: (id) => this._readableResult("GET", `/threads/${id}/result`),
     };
     this.messages = {
       list: (tid, query) => this._req("GET", `/threads/${tid}/messages${qs(query)}`),
@@ -279,15 +287,56 @@ export class Client {
   }
 
   /** POST /channels/{cid}/threads/claim-next — readiness/skill/lease-aware. */
-  claimNextThread(cid, body) {
-    return this._req("POST", `/channels/${cid}/threads/claim-next`, body || {});
+  async claimNextThread(cid, body) {
+    const path = `/channels/${cid}/threads/claim-next`;
+    const raw = await this._req("POST", path, body || {});
+    if (raw == null) return raw;
+    const id = raw && raw.id;
+    const lease = raw && raw.claim_lease_id;
+    if (
+      typeof raw !== "object" ||
+      typeof id !== "string" ||
+      id.length === 0 ||
+      typeof lease !== "string" ||
+      lease.length === 0
+    ) {
+      const held = typeof id === "string" && id.length > 0 ? ` thread ${id}` : "";
+      const heldLease = typeof lease === "string" && lease.length > 0 ? ` under lease ${lease}` : "";
+      throw new UnreadableResponseError(
+        200,
+        undefined,
+        `POST ${path}: HTTP 200 claim without a string id and claim_lease_id;${held}${heldLease} if one was taken it is held until its lease lapses`,
+      );
+    }
+    return raw;
   }
   /** POST /threads/{id}/claim/renew — holder-only lease heartbeat. */
-  renewClaim(id, claimLeaseId, leaseSecs = 300) {
-    return this._req("POST", `/threads/${id}/claim/renew`, {
+  async renewClaim(id, claimLeaseId, leaseSecs = 300) {
+    const path = `/threads/${id}/claim/renew`;
+    const raw = await this._req("POST", path, {
       claim_lease_id: claimLeaseId,
       lease_secs: leaseSecs,
     });
+    if (!raw || typeof raw.id !== "string" || raw.id.length === 0) {
+      throw new UnreadableResponseError(
+        200,
+        undefined,
+        `POST ${path}: HTTP 200 renewal without a string id`,
+      );
+    }
+    return raw;
+  }
+
+  async _readableResult(method, path, body) {
+    const raw = await this._req(method, path, body);
+    if (!raw || typeof raw.thread_id !== "string" || raw.thread_id.length === 0) {
+      throw new UnreadableResponseError(
+        200,
+        undefined,
+        `${method} ${path}: HTTP 200 result without a string thread_id`,
+      );
+    }
+    return raw;
   }
 
   async *_threadsAll(cid, pageSize) {
@@ -319,27 +368,55 @@ export class Client {
   /**
    * Send with retries. A write carries one `Idempotency-Key` across all its
    * attempts, so a retry after a lost response gets the first answer back
-   * instead of writing twice.
+   * instead of writing twice. The body is read inside the loop: a socket that
+   * dies mid-body, or a 2xx that is not JSON, is the same kind of lost answer.
+   * No answer after the last try raises {@link MaidanError} with status 0.
+   * @returns {Promise<{ status: number, headers: Headers, bytes: Uint8Array, ok: boolean }>}
    */
-  async _send(method, path, headers, body) {
+  async _send(method, path, headers, body, jsonAnswer = false) {
     const h = { authorization: `Bearer ${this.token}`, ...headers };
     if (WRITE_METHODS.has(method)) h["idempotency-key"] = newIdempotencyKey();
     for (let attempt = 0; ; attempt++) {
       let resp;
+      let bytes;
       try {
         resp = await this._fetch(`${this.baseUrl}${path}`, { method, headers: h, body });
+        bytes = new Uint8Array(await resp.arrayBuffer());
       } catch (err) {
-        if (attempt >= this.maxRetries) throw err;
+        if (attempt >= this.maxRetries) {
+          const e = new MaidanError(
+            0,
+            undefined,
+            `${method} ${path}: no answer after ${attempt + 1} tries: ${err && err.message ? err.message : err}`,
+          );
+          e.cause = err;
+          throw e;
+        }
         await this._sleep(retryDelayMs(attempt));
         continue;
       }
       this._captureRoomLsn(resp);
-      if (attempt < this.maxRetries && (await retryable(resp))) {
-        await resp.arrayBuffer().catch(() => undefined);
+      const text = new TextDecoder().decode(bytes);
+      const notJson =
+        jsonAnswer &&
+        resp.status >= 200 &&
+        resp.status < 300 &&
+        resp.status !== 204 &&
+        text.trim() !== "" &&
+        !parsesJson(text);
+      const again = attempt < this.maxRetries && (notJson || retryableStatus(resp.status, text));
+      if (again) {
         await this._sleep(retryDelayMs(attempt, resp.headers.get("retry-after")));
         continue;
       }
-      return resp;
+      if (notJson) {
+        throw new UnreadableResponseError(
+          resp.status,
+          undefined,
+          `${method} ${path}: HTTP ${resp.status} answer is not JSON: ${text.slice(0, 120)}`,
+        );
+      }
+      return { status: resp.status, headers: resp.headers, bytes, ok: resp.ok };
     }
   }
 
@@ -350,17 +427,17 @@ export class Client {
       headers["content-type"] = "application/json";
       payload = JSON.stringify(body);
     }
-    const resp = await this._send(method, path, headers, payload);
-    return this._handle(resp);
+    const answer = await this._send(method, path, headers, payload, true);
+    return this._handle(answer);
   }
 
   async _reqRaw(method, path, body) {
-    const resp = await this._send(method, path, {}, body);
+    const answer = await this._send(method, path, {}, body, method !== "GET");
     if (method === "GET") {
-      if (!resp.ok) await this._raise(resp);
-      return new Uint8Array(await resp.arrayBuffer());
+      if (!answer.ok) await this._raise(answer);
+      return answer.bytes;
     }
-    return this._handle(resp);
+    return this._handle(answer);
   }
 
   _captureRoomLsn(resp) {
@@ -368,23 +445,23 @@ export class Client {
     if (parsed !== undefined) this.lastRoomLsn = parsed;
   }
 
-  async _handle(resp) {
-    if (!resp.ok) await this._raise(resp);
-    if (resp.status === 204) return undefined;
-    const text = await resp.text();
+  _handle(answer) {
+    if (!answer.ok) this._raise(answer);
+    if (answer.status === 204) return undefined;
+    const text = new TextDecoder().decode(answer.bytes);
     return text ? JSON.parse(text) : undefined;
   }
 
-  async _raise(resp) {
+  _raise(answer) {
+    const text = new TextDecoder().decode(answer.bytes);
     let parsed;
-    const text = await resp.text().catch(() => "");
     try {
       parsed = text ? JSON.parse(text) : undefined;
     } catch {
       parsed = text;
     }
-    const err = problemError(resp.status, parsed);
-    const ra = resp.headers.get("retry-after");
+    const err = problemError(answer.status, parsed);
+    const ra = answer.headers.get("retry-after");
     if (ra && Number.isFinite(Number(ra))) err.retryAfter = Number(ra);
     throw err;
   }
@@ -507,11 +584,20 @@ export class Client {
   }
 }
 
-async function retryable(resp) {
-  if (RETRY_STATUSES.has(resp.status)) return true;
-  if (resp.status !== 409) return false;
+function parsesJson(text) {
   try {
-    const body = await resp.clone().json();
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function retryableStatus(status, text) {
+  if (RETRY_STATUSES.has(status)) return true;
+  if (status !== 409) return false;
+  try {
+    const body = JSON.parse(text);
     return body && body.type === IN_FLIGHT_TYPE;
   } catch {
     return false;
