@@ -37,6 +37,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -680,6 +681,35 @@ class McpClaimantUnderFaults(FaultCase):
         self.assert_one_line(code, lines)
         self.assertEqual(self.delivered, [])
         self.assert_one_claim_released()
+
+    def test_a_body_that_arrives_in_two_bursts_is_read_whole(self):
+        # A non-blocking drain used to treat "nothing ready yet" as end of file
+        # and return only the first burst.
+        body = b'{"ok":true,"pad":"' + (b"x" * 400) + b'"}'
+
+        class Burst(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body[:12])
+                self.wfile.flush()
+                time.sleep(0.05)
+                self.wfile.write(body[12:])
+                self.wfile.flush()
+
+            def log_message(self, _fmt, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Burst)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            got = claimant.read_until(resp, 2)
+        self.assertEqual(got, body)
 
     def test_a_drip_past_the_deadline_stops(self):
         self.plan({**self.tool("whoami"),

@@ -99,6 +99,22 @@ def retry_after_seconds(value, now=None):
     return min(60.0, max(0.0, when.timestamp() - clock))
 
 
+def _already_buffered(resp):
+    """Bytes urllib has already read off the socket, without reading more.
+
+    `peek(0)` returns that buffer and does not call the socket when it is
+    empty. `peek(1)` would, and a following non-blocking `read` can look like
+    end of file.
+    """
+    peek = getattr(getattr(resp, "fp", None), "peek", None)
+    if peek is None:
+        return b""
+    try:
+        return peek(0) or b""
+    except (OSError, ValueError):
+        return b""
+
+
 def _socket_of(resp):
     fp = getattr(resp, "fp", None)
     raw = getattr(fp, "raw", None)
@@ -121,20 +137,28 @@ def read_until(resp, timeout):
     parts = []
     sock = _socket_of(resp)
     # A single `read(65536)` waits out the whole content-length, and each
-    # socket recv gets a fresh timer. Reading one byte at a time is what lets
-    # the deadline shrink between the chunks a dripping peer sends.
+    # socket recv gets a fresh timer, so a dripping peer never trips it.
+    # Bytes already sitting in urllib's buffer are taken in one read.
+    # The socket is never put in non-blocking mode: a non-blocking read
+    # returns None, and HTTPResponse treats that as EOF, closes the
+    # connection, and the caller would keep a body that is only the first burst.
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError(f"no complete answer within {timeout}s")
-        pending = b""
-        peek = getattr(getattr(resp, "fp", None), "peek", None)
-        if peek is not None:
+        buffered = _already_buffered(resp)
+        if buffered:
             try:
-                pending = peek(1)
-            except (OSError, ValueError):
-                pending = b""
-        if not pending and sock is not None:
+                chunk = resp.read(min(len(buffered), 65536))
+            except socket.timeout as err:
+                raise TimeoutError(f"no complete answer within {timeout}s") from err
+            if chunk is None:
+                continue
+            if chunk == b"":
+                return b"".join(parts)
+            parts.append(chunk)
+            continue
+        if sock is not None:
             try:
                 live = sock.fileno() >= 0
             except OSError:
@@ -151,29 +175,19 @@ def read_until(resp, timeout):
                 if not ready:
                     raise TimeoutError(f"no complete answer within {timeout}s")
         try:
+            if sock is not None:
+                try:
+                    sock.settimeout(max(0.0, deadline - time.monotonic()))
+                except OSError:
+                    pass
             chunk = resp.read(1)
         except socket.timeout as err:
             raise TimeoutError(f"no complete answer within {timeout}s") from err
-        if not chunk:
+        if chunk is None:
+            continue
+        if chunk == b"":
             return b"".join(parts)
         parts.append(chunk)
-        # Drain what has already arrived, still under the same deadline.
-        if sock is not None:
-            try:
-                sock.settimeout(0)
-                while True:
-                    more = resp.read(65536)
-                    if not more:
-                        return b"".join(parts)
-                    parts.append(more)
-                    if len(more) < 65536:
-                        break
-            except (socket.timeout, BlockingIOError, OSError):
-                pass
-            try:
-                sock.settimeout(remaining)
-            except OSError:
-                pass
 
 
 def _problem_type(text):
@@ -437,7 +451,10 @@ def openrouter(path, key, body=None, timeout=600):
         raw = read_until(resp, timeout)
     finally:
         resp.close()
-    return json.loads(raw.decode("utf-8"))
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except ValueError:
+        raise Fatal(f"OpenRouter {path}: the answer was not JSON") from None
 
 
 def price_snapshot(model):
