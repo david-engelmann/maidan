@@ -31,6 +31,44 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPTS = ROOT / "listings" / "prompts.json"
 CATALOG = ROOT / "listings" / "docker" / "tools.json"
 
+_LISTING_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+_MAX_TIMEOUT = 600
+_MIN_TIMEOUT = 1
+_MAX_RUN = 4000
+_RUN_SAFE = re.compile(r"^[\w ./{}:@%+=,_-]+$")
+
+
+def validate_listing(listing: str, data: dict) -> str:
+    """Refuse unknown or oddly shaped listing ids before any prompt run."""
+    if not isinstance(listing, str) or not _LISTING_RE.match(listing):
+        raise ValueError("listing id is invalid")
+    if listing not in data.get("listings", {}):
+        raise ValueError(f"unknown listing: {listing}")
+    return listing
+
+
+def validate_timeout(timeout: int) -> int:
+    if isinstance(timeout, bool) or not isinstance(timeout, int):
+        raise ValueError("timeout must be an int")
+    if timeout < _MIN_TIMEOUT or timeout > _MAX_TIMEOUT:
+        raise ValueError(f"timeout must be {_MIN_TIMEOUT}..{_MAX_TIMEOUT}")
+    return timeout
+
+
+def validate_run_cmd(cmd: str) -> str:
+    """Refuse empty/oversized --run strings and shell expansion metacharacters."""
+    if not isinstance(cmd, str) or not cmd.strip():
+        raise ValueError("run command is empty")
+    if len(cmd) > _MAX_RUN:
+        raise ValueError("run command is too long")
+    forbidden = ("`", "$" + "(", "$" + "{", chr(10), chr(13), ";", "|", "&", ">", "<")
+    if any(token in cmd for token in forbidden):
+        raise ValueError("run command has unsafe shell metacharacters")
+    if not _RUN_SAFE.match(cmd.replace("{prompt}", "PROMPT")):
+        raise ValueError("run command has invalid characters")
+    return cmd
+
+
 
 def load() -> tuple[dict, set[str]]:
     data = json.loads(PROMPTS.read_text())
@@ -69,6 +107,9 @@ def cell(s: str) -> str:
 
 
 def run(data: dict, tools: set[str], listing: str, cmd: str, timeout: int) -> int:
+    listing = validate_listing(listing, data)
+    cmd = validate_run_cmd(cmd)
+    timeout = validate_timeout(timeout)
     print("| Prompt | Tools expected | Tools picked | Pass |")
     print("|---|---|---|---|")
     failed = 0
@@ -107,10 +148,16 @@ def main() -> int:
         return 1 if problems else 0
     if not args.listing:
         ap.error("--listing or --check is required")
-    if args.listing not in data["listings"]:
-        ap.error(f"unknown listing {args.listing}; known: {', '.join(sorted(data['listings']))}")
+    try:
+        listing = validate_listing(args.listing, data)
+        if args.run:
+            validate_run_cmd(args.run)
+        validate_timeout(args.timeout)
+    except ValueError as exc:
+        ap.error(str(exc))
     if args.run:
-        return run(data, tools, args.listing, args.run, args.timeout)
+        return run(data, tools, listing, args.run, args.timeout)
+    args.listing = listing
     for key in data["listings"][args.listing]:
         p = data["prompts"][key]
         print(f"{p['prompt']}\n  expect: {', '.join(p['expect'])}")

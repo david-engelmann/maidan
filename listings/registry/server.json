@@ -25,7 +25,7 @@
       "registryType": "oci",
       "transport": {
         "type": "streamable-http",
-        "url": "http://localhost:8080/mcp/streamable"
+        "url": "http://127.0.0.1:8080/mcp/streamable"
       },
       "version": "v432.0.0"
     }
