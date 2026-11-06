@@ -27,6 +27,8 @@ export function demoUnavailablePage() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f2eee6">
 <meta name="referrer" content="no-referrer">
 <title>Back in a moment · Maidan</title>
 <meta http-equiv="refresh" content="${seconds}">
@@ -35,8 +37,10 @@ export function demoUnavailablePage() {
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
-  <a class="brand" href="/">Maidan</a>
-  <a class="top-link" href="https://docs.maidan.world/">Docs</a>
+  <a class="brand" href="/" aria-label="Maidan home">Maidan</a>
+  <nav class="top-nav" aria-label="Demo">
+    <a class="top-link" href="https://docs.maidan.world/">Docs</a>
+  </nav>
 </header>
 <main id="main">
   <section>

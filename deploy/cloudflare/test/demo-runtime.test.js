@@ -189,3 +189,15 @@ test("the unavailable page is the same document the navigation fallback sends", 
   assert.match(html, /href="\/try\.css"/);
   assert.doesNotMatch(html, /site\.css/);
 });
+
+test("the demo unavailable page declares color scheme and a labeled home link", async () => {
+  const res = demoUnavailablePage();
+  const html = await res.text();
+  assert.match(html, /<meta name="color-scheme" content="light">/);
+  assert.match(html, /<meta name="theme-color" content="#f2eee6">/);
+  assert.match(html, /aria-label="Maidan home"/);
+  assert.match(html, /<nav class="top-nav" aria-label="Demo">/);
+  assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get("retry-after"), String(UNAVAILABLE_RETRY_SECS));
+});

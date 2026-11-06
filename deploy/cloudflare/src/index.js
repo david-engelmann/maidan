@@ -10,6 +10,7 @@
 import { env as workerEnv } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
+import { tooLarge } from "./body-limit.js";
 import {
   edgeRedirect,
   internalOutboundByHost,
@@ -96,6 +97,10 @@ export default {
     // A probe would wake a sleeping container only to be told 404.
     if (isScannerProbe(new URL(request.url).pathname)) {
       return withSecurityHeaders(new Response("not found\n", { status: 404 }));
+    }
+    // Oversized bodies are refused here so they never wake a sleeping container.
+    if (tooLarge(request)) {
+      return withSecurityHeaders(new Response("request too large\n", { status: 413 }));
     }
     // A client-sent X-Forwarded-For would let it pick the address it is rate
     // limited as; replace it with the address Cloudflare connected from.
