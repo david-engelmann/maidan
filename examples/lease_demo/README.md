@@ -12,7 +12,7 @@ the example calls the remaining documented REST lifecycle routes directly.
 
 ## Run it
 
-One command (boots a source-built server on SQLite, dev auth-off, runs the demo):
+One command (boots a source-built server on SQLite with authentication on, via `maidan init`, and runs the demo):
 
 ```sh
 scripts/lease-demo.sh          # needs cargo + python3 + node
@@ -22,9 +22,15 @@ Or against any running Maidan (the quickstart runs auth-on, so pass a token):
 
 ```sh
 export MAIDAN_URL=http://127.0.0.1:8080
-export MAIDAN_TOKEN=maid_...          # from `maidan init`; omit only for an auth-off dev server
+export MAIDAN_TOKEN=maid_...          # from `maidan init`; a workspace-scoped token is enough
 PYTHONPATH=sdk/python/src python3 examples/lease_demo/lease_demo.py
 ```
+
+`MAIDAN_WORKSPACE` is optional. When `MAIDAN_TOKEN` is scoped to one workspace and the
+variable is unset, the script reads `workspace_id` from `GET /me`. Pass it explicitly
+for a token that can see more than one workspace. Each run suffixes the member handles,
+the channel name, and the task titles, so the walkthrough can be repeated against an
+existing workspace without a name clash or a withheld duplicate task.
 
 ## What it proves
 

@@ -17,17 +17,47 @@ MAIDAN_URL targets a deployment other than localhost:8080.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import sys
+import urllib.parse
 import uuid
 
 import httpx
 
-BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
-TOKEN = os.environ.get("MAIDAN_TOKEN")
+BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080").strip().rstrip("/")
+TOKEN = os.environ.get("MAIDAN_TOKEN") or ""
 # Every A2A request names the protocol version it speaks (§3.6.2).
-HEADERS = {"A2A-Version": "1.0", "authorization": f"Bearer {TOKEN}"}
+HEADERS = {"A2A-Version": "1.0", "user-agent": "maidan-a2a-example/0.1"}
+if TOKEN:
+    HEADERS["authorization"] = f"Bearer {TOKEN}"
+
+
+def _loopback(host: str) -> bool:
+    host = host.strip().lower()
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def refuse_cleartext() -> None:
+    if not TOKEN or os.environ.get("MAIDAN_ALLOW_INSECURE_HTTP") == "1":
+        return
+    parsed = urllib.parse.urlparse(BASE)
+    if parsed.scheme != "http" or _loopback(parsed.hostname or ""):
+        return
+    print(
+        f"refusing to send MAIDAN_TOKEN over cleartext to {BASE}; "
+        "use https, or set MAIDAN_ALLOW_INSECURE_HTTP=1 for a trusted network",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 _failures: list[str] = []
 
@@ -40,7 +70,21 @@ def check(cond: bool, msg: str) -> None:
 
 def rpc(client: httpx.Client, method: str, params: dict | None = None) -> dict:
     body = {"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": method, "params": params or {}}
-    return client.post(f"{BASE}/a2a/v1/rpc", headers=HEADERS, json=body).json()
+    headers = {**HEADERS, "idempotency-key": str(uuid.uuid4())}
+    response = client.post(f"{BASE}/a2a/v1/rpc", headers=headers, json=body)
+    preview = response.text[:300]
+    if response.status_code >= 400:
+        print(f"POST /a2a/v1/rpc {method}: HTTP {response.status_code}: {preview}", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        parsed = response.json()
+    except json.JSONDecodeError:
+        print(f"POST /a2a/v1/rpc {method}: HTTP {response.status_code} was not JSON: {preview}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if not isinstance(parsed, dict):
+        print(f"POST /a2a/v1/rpc {method}: HTTP {response.status_code} was not an object: {preview}", file=sys.stderr)
+        raise SystemExit(1)
+    return parsed
 
 
 def message(text: str, context_id: str | None = None) -> dict:
@@ -51,6 +95,7 @@ def message(text: str, context_id: str | None = None) -> dict:
 
 
 def main() -> int:
+    refuse_cleartext()
     if not TOKEN:
         print("set MAIDAN_TOKEN to a token from `maidan init`", file=sys.stderr)
         return 2
@@ -86,7 +131,10 @@ def main() -> int:
         rest = client.get(f"{BASE}/a2a/v1/tasks/{task.get('id')}", headers=HEADERS)
         check(rest.status_code == 200 and rest.json().get("id") == task.get("id"), "GET /tasks/{id}")
         with client.stream(
-            "POST", f"{BASE}/a2a/v1/message:stream", headers=HEADERS, json=message("streamed", context)
+            "POST",
+            f"{BASE}/a2a/v1/message:stream",
+            headers={**HEADERS, "idempotency-key": str(uuid.uuid4())},
+            json=message("streamed", context),
         ) as stream:
             events = [
                 json.loads(line[5:]) for line in stream.iter_lines() if line.startswith("data:")

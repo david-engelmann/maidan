@@ -15,12 +15,30 @@
 set -euo pipefail
 
 BASE_URL="${MAIDAN_URL:-http://127.0.0.1:8080}"
+BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+BASE_URL="${BASE_URL%/}"
 TOKEN="${MAIDAN_TOKEN:-}"
 WORKSPACE_IN="${MAIDAN_WORKSPACE:-}"
 
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
+
+if [ -n "$TOKEN" ] && [ "${MAIDAN_ALLOW_INSECURE_HTTP:-}" != "1" ] && [[ "$BASE_URL" == http://* ]]; then
+  host="${BASE_URL#http://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+  host="${host#[}"
+  host="${host%]}"
+  case "$host" in
+    localhost|127.*|::1) ;;
+    *)
+      echo "refusing to send MAIDAN_TOKEN over cleartext to ${BASE_URL}; use https, or set MAIDAN_ALLOW_INSECURE_HTTP=1 for a trusted network" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if [ -z "$TOKEN" ] || [ -z "$WORKSPACE_IN" ]; then
   echo "MAIDAN_TOKEN and MAIDAN_WORKSPACE are required." >&2
@@ -30,21 +48,41 @@ fi
 AUTH=(-H "authorization: Bearer ${TOKEN}")
 echo "auth: bearer token (member-bound workers)"
 
+idem_key() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import uuid; print(uuid.uuid4())'
+  else
+    od -An -tx1 -N16 /dev/urandom | tr -d ' \n'
+  fi
+}
+
 post() {
   # post <path> <json-body>  -> response body. The ${AUTH[@]+…} guard keeps an empty
   # auth array from tripping `set -u` on bash 3.2 (macOS) in the insecure path.
-  curl -fsS -H 'content-type: application/json' ${AUTH[@]+"${AUTH[@]}"} -X POST "${BASE_URL}$1" --data "$2"
+  curl -fsS --max-time 30 -H 'content-type: application/json' -H "user-agent: maidan-quickstart/0.1" \
+    -H "idempotency-key: $(idem_key)" ${AUTH[@]+"${AUTH[@]}"} -X POST "${BASE_URL}$1" --data "$2"
 }
 get() {
-  curl -fsS ${AUTH[@]+"${AUTH[@]}"} "${BASE_URL}$1"
+  curl -fsS --max-time 30 -H "user-agent: maidan-quickstart/0.1" ${AUTH[@]+"${AUTH[@]}"} "${BASE_URL}$1"
 }
 post_as() {
-  curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $1" \
+  curl -fsS --max-time 30 -H 'content-type: application/json' -H "user-agent: maidan-quickstart/0.1" \
+    -H "idempotency-key: $(idem_key)" -H "authorization: Bearer $1" \
     -X POST "${BASE_URL}$2" --data "$3"
 }
 get_as() {
-  curl -fsS -H "authorization: Bearer $1" "${BASE_URL}$2"
+  curl -fsS --max-time 30 -H "user-agent: maidan-quickstart/0.1" -H "authorization: Bearer $1" "${BASE_URL}$2"
 }
+
+if command -v python3 >/dev/null 2>&1; then
+  run_id="$(python3 -c 'import uuid; print(uuid.uuid4().hex[:8])')"
+elif command -v uuidgen >/dev/null 2>&1; then
+  run_id="$(uuidgen | tr -d '-' | cut -c1-8)"
+else
+  run_id="$(od -An -tx1 -N4 /dev/urandom | tr -d ' \n')"
+fi
 
 echo "waiting for Maidan at ${BASE_URL} ..."
 for _ in $(seq 1 60); do
@@ -60,13 +98,13 @@ workspace="$WORKSPACE_IN"
 
 # The two agent members are seeded over the bootstrap route (open in both quickstart
 # modes: auth-disabled, or MAIDAN_BOOTSTRAP=1 with auth on).
-planner=$(post "/workspaces/${workspace}/members" '{"handle":"planner","kind":"agent"}' | jq -er '.id')
-reviewer=$(post "/workspaces/${workspace}/members" '{"handle":"reviewer","kind":"agent"}' | jq -er '.id')
+planner=$(post "/workspaces/${workspace}/members" "{\"handle\":\"planner-${run_id}\",\"kind\":\"agent\"}" | jq -er '.id')
+reviewer=$(post "/workspaces/${workspace}/members" "{\"handle\":\"reviewer-${run_id}\",\"kind\":\"agent\"}" | jq -er '.id')
 worker_caps='{"capabilities":["workspace:read","message:post"]}'
 planner_token=$(post "/workspaces/${workspace}/members/${planner}/tokens" "$worker_caps" | jq -er '.secret')
 reviewer_token=$(post "/workspaces/${workspace}/members/${reviewer}/tokens" "$worker_caps" | jq -er '.secret')
-channel=$(post "/workspaces/${workspace}/channels" '{"name":"coordination"}' | jq -er '.id')
-thread=$(post "/channels/${channel}/threads" '{"title":"launch-plan"}' | jq -er '.id')
+channel=$(post "/workspaces/${workspace}/channels" "{\"name\":\"coordination-${run_id}\"}" | jq -er '.id')
+thread=$(post "/channels/${channel}/threads" "{\"title\":\"launch-plan-${run_id}\"}" | jq -er '.id')
 
 # Agent A (planner) posts a request into the shared thread.
 post_as "$planner_token" "/threads/${thread}/messages" \
