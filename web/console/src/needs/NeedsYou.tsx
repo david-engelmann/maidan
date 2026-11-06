@@ -392,7 +392,8 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
       data-need-key={needKey(item)}
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}
+      transition={reduce ? { duration: 0 } : undefined}
+      exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}
     >
       <button type="button" className="need-pick" aria-current={selected ? "true" : undefined} onClick={onSelect} onFocus={onSelect}>
         <span className="need-pick-title">{title}</span>

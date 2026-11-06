@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fixtures } from "./_fixtures";
 import { openOnChannel, signInWithCookie } from "./_console";
+import { laidOutBox } from "./_layout";
 
 // Needs you on a wide screen: a queue on the left, the picked item's evidence
 // and actions on the right, and a and r acting on the picked item.
@@ -20,9 +21,9 @@ test("a wide screen reviews from a queue, and r sends back the picked item", asy
   await expect(picks.nth(1)).toHaveAttribute("aria-current", "true");
   const pane = page.locator(".need.selected .need-card");
   await expect(pane.locator(".need-title")).toHaveText(title);
-  const pickBox = await picks.nth(1).boundingBox();
-  const paneBox = await pane.boundingBox();
-  expect(paneBox!.x, "the detail sits to the right of the queue").toBeGreaterThan(pickBox!.x + pickBox!.width);
+  const pickBox = await laidOutBox(picks.nth(1));
+  const paneBox = await laidOutBox(pane);
+  expect(paneBox.x, "the detail sits to the right of the queue").toBeGreaterThan(pickBox.x + pickBox.width);
   await page.locator("body").press("r");
   await expect(pane.locator("textarea")).toBeFocused();
   await pane.getByRole("button", { name: "Cancel" }).click();
@@ -46,15 +47,15 @@ test("the wide pane is full height with the result inline and a footer that stay
   await expect(pane.locator(".rc-recent .rc-head")).toHaveText("Recent messages");
   await expect(pane.locator(".rc-result")).not.toContainText("Loading");
   await expect(pane.getByRole("link", { name: "Open full thread" })).toBeVisible();
-  const box = (await pane.boundingBox())!;
+  const box = await laidOutBox(pane);
   expect(box.height, "the pane fills the screen's height").toBeGreaterThan(800);
-  const foot = (await pane.locator(":scope > .need-actions").boundingBox())!;
+  const foot = await laidOutBox(pane.locator(":scope > .need-actions"));
   expect(foot.y + foot.height).toBeLessThanOrEqual(1000);
   // A queue title clamps to two lines and the waiting time sits on the right.
   const pick = page.locator(".need-pick").first();
   expect(await pick.locator(".need-pick-title").evaluate((e) => getComputedStyle(e).webkitLineClamp)).toBe("2");
-  const age = (await pick.locator(".need-pick-age").boundingBox())!;
-  const pb = (await pick.boundingBox())!;
+  const age = await laidOutBox(pick.locator(".need-pick-age"));
+  const pb = await laidOutBox(pick);
   expect(pb.x + pb.width - (age.x + age.width)).toBeLessThan(20);
   expect(await pick.locator(".need-pick-age").evaluate((e) => getComputedStyle(e).fontVariantNumeric)).toContain("tabular-nums");
 });

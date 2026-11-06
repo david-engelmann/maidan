@@ -7,7 +7,7 @@ import { controlBus, liveBus, liveStatus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
-import { MODE_WORD } from "../core/api.ts";
+import { MODE_LINE, MODE_WORD } from "../core/api.ts";
 import { readFrontDoorHint } from "../core/session.ts";
 import { readSignupCheck } from "../core/signup.ts";
 import { hasSupportPage, liveWord, shellTitle, supportHref } from "../core/firstRun.ts";
@@ -116,6 +116,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   // through before the token field, and no "Offline" for a server that is up.
   const signedOut = session.status === "signed-out";
   const word = liveWord(live.kind, signedOut);
+  // A browser session needs no badge. A pasted or delegated token does, and
+  // the phone header keeps that word on screen.
+  const modeLabel = session.status === "signed-in" && session.mode && session.mode !== "session" ? session.mode : null;
 
   return (
     <div className="shell">
@@ -148,17 +151,18 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <header className={scrolled ? "top scrolled" : "top"}>
         <h1>{shellTitle(signedOut, current.title)}</h1>
         <div className="top-actions">
-          {session.status === "signed-in" && session.mode && session.mode !== "session" ? (
-            <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
+          {modeLabel ? (
+            <span className="mode-chip" data-mode={modeLabel} title={MODE_LINE[modeLabel]}>{MODE_WORD[modeLabel]}</span>
           ) : null}
           {live.kind !== "connected" ? (
             <span className={`live live-${live.kind}`} role="status" title={`${word}${who ? ` · signed in as ${who}` : ""}`}>
               <span className="dot" aria-hidden="true" />
-              <span className="visually-hidden">{word}</span>
+              <span className="live-label">{word}</span>
             </span>
           ) : null}
           <button className="icon-btn" aria-label="Search and commands (⌘K)" onClick={() => setPaletteOpen(true)}>
             <Icon name="search" />
+            <span className="btn-label">Search</span>
           </button>
         </div>
       </header>
@@ -168,7 +172,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           key={route}
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
+          transition={reduce ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={shellTitle(signedOut, current.title)}
         >
           {session.status === "signed-out" || namingWorkspace ? <SignIn noWorkspace={hint === "no-workspace"} /> : route === "not-found" ? <NotFound /> : screens[route]}
