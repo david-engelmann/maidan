@@ -1,43 +1,147 @@
 :root {
-  --maidan-pine: #14532d;
-  --maidan-fern: #4ade80;
-  --maidan-ochre: #b45309;
-  --maidan-granite: #232327;
-  --maidan-marble: #f7f5f0;
+  --maidan-ink: #151411;
+  --maidan-paper: #f2eee6;
+  --maidan-card: #faf8f3;
+  --maidan-stone: #efe6d9;
+  --maidan-night: #121110;
+  --maidan-ink-warm: #e9e5dc;
+  --maidan-signal: #9a300c;
+  --maidan-signal-bright: #ff8560;
 }
 
-.light, .rust {
-  --links: var(--maidan-pine);
-  --sidebar-active: var(--maidan-pine);
+.light {
+  --bg: var(--maidan-paper);
+  --fg: var(--maidan-ink);
+  --sidebar-bg: var(--maidan-card);
+  --sidebar-fg: var(--maidan-ink);
+  --links: var(--maidan-signal);
+  --sidebar-active: var(--maidan-signal);
 }
 
-.ayu, .coal, .navy {
-  --links: var(--maidan-fern);
-  --sidebar-active: var(--maidan-fern);
+.rust {
+  --bg: #f6f1e8;
+  --fg: var(--maidan-ink);
+  --sidebar-bg: var(--maidan-stone);
+  --sidebar-fg: var(--maidan-ink);
+  --links: var(--maidan-signal);
+  --sidebar-active: var(--maidan-signal);
+}
+
+.ayu, .coal {
+  --bg: var(--maidan-night);
+  --fg: var(--maidan-ink-warm);
+  --sidebar-bg: #1a1917;
+  --sidebar-fg: var(--maidan-ink-warm);
+  --links: var(--maidan-signal-bright);
+  --sidebar-active: var(--maidan-signal-bright);
+}
+
+.navy {
+  --bg: #161923;
+  --fg: var(--maidan-ink-warm);
+  --sidebar-bg: #12151e;
+  --sidebar-fg: var(--maidan-ink-warm);
+  --links: var(--maidan-signal-bright);
+  --sidebar-active: var(--maidan-signal-bright);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+a {
+  color: var(--links);
+}
+
+#menu-bar {
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .menu-title {
-  color: var(--maidan-ochre);
+  color: var(--fg);
   font-weight: 700;
 }
 
-/* Docs keep their own themes. Titles take a serif so a long page still
-   has a display face. */
 .content h1 {
-  font-family: Palatino, "Palatino Linotype", Georgia, "Noto Serif", "Liberation Serif", serif;
-  letter-spacing: -0.02em;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
-/* The locked mark is monochrome/currentColor. Markdown emits it as an <img>,
-   so theme-aware filters keep the same asset legible without recolouring its
-   source or maintaining divergent logo files. */
 .light img[src$="maidan-mark.svg"],
 .rust img[src$="maidan-mark.svg"] {
-  filter: invert(27%) sepia(25%) saturate(1550%) hue-rotate(93deg) brightness(86%) contrast(94%);
+  filter: brightness(0);
 }
 
 .ayu img[src$="maidan-mark.svg"],
 .coal img[src$="maidan-mark.svg"],
 .navy img[src$="maidan-mark.svg"] {
-  filter: invert(78%) sepia(45%) saturate(682%) hue-rotate(84deg) brightness(98%) contrast(94%);
+  filter: invert(1) brightness(0.97);
+}
+
+#menu-bar .icon-button,
+#menu-bar a,
+.theme-popup .theme,
+.mobile-nav-chapters,
+.mobile-nav-chapters a,
+.clip-button,
+button.fa-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+a:hover,
+button:hover,
+summary:hover,
+#menu-bar .icon-button:hover,
+.theme-popup .theme:hover,
+.clip-button:hover {
+  outline: none;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+#menu-bar .icon-button:focus-visible,
+.theme-popup .theme:focus-visible,
+.clip-button:focus-visible,
+.fa-copy:focus-visible {
+  outline: 2px solid var(--links);
+  outline-offset: 2px;
+}
+
+.table-wrapper,
+.content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+pre,
+.mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid text {
+  fill: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
