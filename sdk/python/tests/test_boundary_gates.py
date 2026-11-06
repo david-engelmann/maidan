@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import pytest
 
 from maidan.cache import (
@@ -59,3 +60,9 @@ def test_blank_providers_and_prototype_path_keys_are_refused():
     assert got["tokens"]["cache_read"] == 0
     with pytest.raises(UsageError, match="evidence provider is required"):
         normalize_usage("openai-chat", {"model": "m", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}, evidence_provider="  ")
+
+
+def test_padded_cache_inputs_keep_original_bytes():
+    got = cache_key(" ws", "group ")
+    digest = hashlib.sha256(b" ws\ngroup ").hexdigest()
+    assert got == f"maidan-{digest[:32]}"

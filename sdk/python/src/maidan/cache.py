@@ -35,13 +35,16 @@ class CacheError(ValueError):
 
 
 def require_text(value: object, label: str) -> str:
-    """A required non-blank string; whitespace-only values are refused."""
+    """Validate a required non-blank string without changing it.
+
+    Callers keep the original value so cache keys and headers stay byte-stable
+    across SDKs.
+    """
     if not isinstance(value, str):
         raise CacheError(f"{label} is required")
-    text = value.strip()
-    if not text:
+    if not value.strip():
         raise CacheError(f"{label} is required")
-    return text
+    return value
 
 
 @dataclass(frozen=True)
