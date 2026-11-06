@@ -378,6 +378,16 @@ The Maintainer's digest of David's 2026-11-05 reading. These are suggestions, no
 | 5 | Claude Code status-line cost | **Maintainer's call, outside the repo** | It's a setting of each Claude Code session (`statusLine`), not Maidan code. The cloud seats run headless and pay nothing for it. Surfaced to David to turn off for idle background sessions. |
 | 6 | Short-lived OIDC credentials for deploys | **Later, partly blocked** | Cloudflare has no OIDC exchange from GitHub Actions to API tokens, so deploys keep scoped tokens in main-only environments (prod, demo, release). Revisit if Cloudflare ships federation. Meanwhile, rotate the deploy token on a schedule. |
 
+### Second batch (2026-11-06)
+
+| # | Item | Disposition | Why |
+|---|---|---|---|
+| 7 | Risk-tiered human approval; a bot's approval never counts as a person's; rethink after about 3 AI review rounds | **Partly done; Next for the round cap** | Gates already accept only a person's browser session or `approval:grant`, and nobody approves their own request. The workspace approval policy sets the risk at which a person is required. Missing: a per-thread cap on review rounds. After N send-backs (default 3), the thread goes to a person as "needs a decision" instead of back to the queue. |
+| 8 | Chorus (an open-source MCP coordination server with cross-model review) | **Later (docs)** | Compare it in [How it compares](Comparison.md) once its claim and review semantics are read from its source, not from a post. |
+| 9 | Shared agent sessions at scale, handed between people and agents | **No action** | Maidan's thread is the shared session: claims hand it between members, and a released or lapsed claim goes back to the queue. No new primitive is needed. |
+| 10 | One agent daemon across laptop, web and Slack | **No action** | That's the client's concern. Maidan already serves the same thread over MCP, the console and Slack. |
+| 11 | Stage artifacts (intent, spec, plan) with risk-based approvals | **Later** | A convention, not new storage. Stage artifacts become typed thread attributes or artifacts (`stage: intent|spec|plan`), and the approval policy can require a person at a stage's risk tier. Write it into the agent skills first; add server support only if the convention proves out. |
+
 ## Enhancement thread 2026-09-30: dispositions
 
 The 2026-09-30 entries (28–57) and the supersessions of 27, 28, 29 and 35.
