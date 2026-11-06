@@ -20,6 +20,16 @@ pub(crate) fn db_now() -> DateTime<Utc> {
     truncate_micros(Utc::now())
 }
 
+/// A send-back's `occurred_at`. When the clock has moved backward, the instant
+/// is still strictly after the last accepted review-round cap, so the next
+/// cycle counts the send-back.
+pub(crate) fn after_floor(now: DateTime<Utc>, floor: Option<DateTime<Utc>>) -> DateTime<Utc> {
+    match floor {
+        Some(floor) if now <= floor => floor + Duration::microseconds(1),
+        _ => now,
+    }
+}
+
 /// Drop the nanoseconds below one microsecond. Floor, not round: the value is
 /// already a valid microsecond instant, so neither backend adjusts it again.
 pub(crate) fn truncate_micros(instant: DateTime<Utc>) -> DateTime<Utc> {
@@ -31,7 +41,7 @@ pub(crate) fn truncate_micros(instant: DateTime<Utc>) -> DateTime<Utc> {
 mod tests {
     use chrono::{DateTime, TimeZone, Utc};
 
-    use super::truncate_micros;
+    use super::{after_floor, truncate_micros};
 
     #[test]
     fn a_timestamp_keeps_only_whole_microseconds() {
@@ -61,5 +71,24 @@ mod tests {
         let payload = serde_json::to_value(instant).expect("serialize");
         let back: DateTime<Utc> = serde_json::from_value(payload).expect("deserialize");
         assert_eq!(back, instant);
+    }
+
+    #[test]
+    fn a_send_back_stays_after_the_cap_when_the_clock_moves_backward() {
+        let floor = Utc
+            .timestamp_opt(1_700_000_100, 0)
+            .single()
+            .expect("in range");
+        let earlier = Utc
+            .timestamp_opt(1_700_000_000, 0)
+            .single()
+            .expect("in range");
+        assert_eq!(
+            after_floor(earlier, Some(floor)),
+            floor + chrono::Duration::microseconds(1)
+        );
+        let later = floor + chrono::Duration::seconds(1);
+        assert_eq!(after_floor(later, Some(floor)), later);
+        assert_eq!(after_floor(earlier, None), earlier);
     }
 }

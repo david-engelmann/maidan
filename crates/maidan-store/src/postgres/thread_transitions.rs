@@ -336,7 +336,21 @@ async fn land_in_tx(
     }
 
     let transition_id = Uuid::now_v7();
-    let now = Utc::now();
+    let now = if from_state == ThreadState::InReview && to_state == ThreadState::Open {
+        let floor: Option<chrono::DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT resolved_at FROM maidan_approval_gates
+             WHERE thread_id = $1 AND kind = 'review_round_cap' AND state = 'accepted'
+               AND resolved_at IS NOT NULL
+             ORDER BY resolved_at DESC
+             LIMIT 1",
+        )
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?;
+        crate::clock::after_floor(crate::clock::db_now(), floor)
+    } else {
+        Utc::now()
+    };
 
     sqlx::query(
         "INSERT INTO maidan_thread_transitions
@@ -674,6 +688,18 @@ pub async fn transition(
 ) -> Result<ThreadTransitionResult, StoreError> {
     let mut tx = pool.begin().await?;
     let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
+    if action == ThreadAction::RequestChanges {
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        super::reviews::escalate_round_cap(
+            &mut tx,
+            workspace_id,
+            channel_id,
+            thread_id,
+            actor_id,
+            None,
+        )
+        .await?;
+    }
     if result.to_state == ThreadState::Closed {
         // Recorded in the event log; this path publishes nothing, its own
         // state change included.
@@ -697,6 +723,19 @@ pub async fn transition_with_event(
     let (result, spawned) = transition_in_spawning(&mut tx, thread_id, actor_id, action).await?;
     let mut stored = vec![state_changed_in_tx(&mut tx, actor_id, &result).await?];
     stored.extend(spawned);
+    if action == ThreadAction::RequestChanges {
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        let (escalated, _) = super::reviews::escalate_round_cap(
+            &mut tx,
+            workspace_id,
+            channel_id,
+            thread_id,
+            actor_id,
+            None,
+        )
+        .await?;
+        stored.extend(escalated);
+    }
     if result.to_state == ThreadState::Closed {
         stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
     }

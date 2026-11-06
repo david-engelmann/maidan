@@ -398,11 +398,120 @@ async fn blank_note_prompt(store: &dyn Store) {
     );
 }
 
+/// A worker still holding its lease when the cap opens loses that lease, and
+/// neither a named claim nor an assignment can take the thread. A direct
+/// `request_changes` transition, not only `submit_review`, opens the gate.
+async fn held_lease_and_direct_send_back(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let worker = member(store, ws, "worker").await;
+    let reviewer = member(store, ws, "reviewer").await;
+    let human = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "person".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id;
+    let (thread, channel) = fresh(store, ws, 9).await;
+    store.set_review_rounds(thread, 0, Some(1)).await.unwrap();
+    let claimed = store
+        .claim_next_thread(channel, worker, Some(60), None)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_thread_result_claiming(thread, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .unwrap();
+    store
+        .transition_thread(thread, worker, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    let submission = store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::RequestChanges,
+            Some("stop"),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(submission.approval_gate.is_some());
+    let held = store.get_thread(thread).await.unwrap();
+    assert_eq!(held.assignee_id, None);
+    assert_eq!(held.claim_lease_id, None);
+    let refused = store.claim_thread(thread, worker).await.unwrap_err();
+    assert!(
+        refused.to_string().contains("review-round cap"),
+        "{refused}"
+    );
+    let refused = store.assign_thread(thread, worker).await.unwrap_err();
+    assert!(
+        refused.to_string().contains("review-round cap"),
+        "{refused}"
+    );
+    // The lease that was live at the send-back no longer renews.
+    let renew = store
+        .renew_claim(thread, worker, claimed.claim_lease_id.expect("lease"), 60)
+        .await;
+    assert!(renew.is_err(), "{renew:?}");
+
+    let (direct, direct_channel) = fresh(store, ws, 10).await;
+    store.set_review_rounds(direct, 0, Some(1)).await.unwrap();
+    let claimed = store
+        .claim_next_thread(direct_channel, worker, Some(60), None)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_thread_result_claiming(direct, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .unwrap();
+    store
+        .transition_thread(direct, worker, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store
+        .release_claim(direct, worker, claimed.claim_lease_id.unwrap())
+        .await
+        .unwrap();
+    store
+        .transition_thread(direct, reviewer, ThreadAction::RequestChanges)
+        .await
+        .unwrap();
+    let gates = store.list_pending_approval_gates(ws, 20).await.unwrap();
+    let gate = gates
+        .iter()
+        .find(|g| g.thread_id == Some(direct) && g.kind == ApprovalGateKind::ReviewRoundCap)
+        .expect("direct request_changes opens the cap");
+    store
+        .resolve_approval_gate(gate.id, human, ApprovalGateState::Declined, None)
+        .await
+        .unwrap()
+        .unwrap();
+    let refused = store.claim_thread(direct, worker).await.unwrap_err();
+    assert!(
+        refused.to_string().contains("review-round cap"),
+        "{refused}"
+    );
+}
+
 #[tokio::test]
 async fn review_round_cap_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
     blank_note_prompt(&store).await;
+    held_lease_and_direct_send_back(&store).await;
 }
 
 #[tokio::test]
@@ -438,4 +547,5 @@ async fn review_round_cap_postgres() {
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     blank_note_prompt(&store).await;
+    held_lease_and_direct_send_back(&store).await;
 }

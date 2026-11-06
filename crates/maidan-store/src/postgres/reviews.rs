@@ -65,8 +65,45 @@ pub async fn set_rounds(
     required_count: i64,
     max_rounds: Option<i64>,
 ) -> Result<ThreadReviewRequirement, StoreError> {
-    let mut conn = pool.acquire().await?;
-    set_requirement_on(&mut conn, thread_id, required_count, max_rounds).await
+    let mut tx = pool.begin().await?;
+    // Serialize with the audited setter, which locks the thread the same way.
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let requirement = set_requirement_on(&mut tx, thread_id, required_count, max_rounds).await?;
+    tx.commit().await?;
+    Ok(requirement)
+}
+
+/// An explicit claim or assignment is refused while a review-round cap is
+/// pending, or after one was declined or cancelled and parked the thread.
+/// `claim_next` already skips both; this is the same rule for a named claim.
+pub(crate) async fn refuse_round_cap_claim(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let pending: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM maidan_approval_gates
+         WHERE thread_id = $1 AND kind = 'review_round_cap' AND state = 'pending'
+         LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let parked: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM maidan_thread_unclaimable WHERE thread_id = $1 AND reason = $2 LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .bind(maidan_types::REVIEW_ROUND_HELD_REASON)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if pending.is_some() || parked.is_some() {
+        return Err(StoreError::Conflict(
+            maidan_types::REVIEW_ROUND_CLAIM_REFUSAL.into(),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) async fn set_requirement_on(
@@ -432,7 +469,7 @@ async fn round_standing(
     Ok((max_rounds, send_backs, pending.is_some()))
 }
 
-async fn escalate_round_cap(
+pub(crate) async fn escalate_round_cap(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     workspace_id: WorkspaceId,
     channel_id: maidan_types::ChannelId,
@@ -444,6 +481,18 @@ async fn escalate_round_cap(
     if max_rounds == 0 || pending || send_backs < max_rounds {
         return Ok((None, None));
     }
+    // The worker may still hold the lease that brought the thread to review.
+    // Drop it in this transaction so a renew or a result write cannot land
+    // while the person has not decided.
+    sqlx::query(
+        "UPDATE maidan_threads
+         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
+             claimed_at = NULL, work_started_at = NULL, updated_at = NOW()
+         WHERE id = $1",
+    )
+    .bind(thread_id.0)
+    .execute(&mut **tx)
+    .await?;
     let gate = super::approval_gates::open_review_round_cap(
         tx,
         workspace_id,

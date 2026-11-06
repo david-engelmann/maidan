@@ -158,8 +158,24 @@ pub async fn clear_review_requirement(
     thread_id: ThreadId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, crate::audit_scope::AuditOwner::Thread(thread_id), |tx| reviews::clear_requirement_on(&mut tx, thread_id).await?,
-        cleared => cleared.then_some(event))
+    let mut tx = pool.begin().await?;
+    // The audited setter locks the thread before it reads the cap. A clear
+    // that does not take the same lock can land between that read and write.
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let cleared = reviews::clear_requirement_on(&mut tx, thread_id).await?;
+    if cleared {
+        audit::append_scoped(
+            &mut tx,
+            crate::audit_scope::AuditOwner::Thread(thread_id),
+            event,
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(cleared)
 }
 
 pub async fn remove_reviewer(

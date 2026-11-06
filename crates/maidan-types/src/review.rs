@@ -34,6 +34,11 @@ pub const DEFAULT_MAX_REVIEW_ROUNDS: i64 = 3;
 pub const REVIEW_ROUND_HELD_REASON: &str =
     "A person declined another round of review, so this task stays off the queue.";
 
+/// Why an explicit claim or assignment is refused while a review-round cap
+/// holds the thread: a pending gate, or one a person declined or cancelled.
+pub const REVIEW_ROUND_CLAIM_REFUSAL: &str =
+    "a review-round cap is waiting on a person, or a person declined another round, so this task cannot be claimed or assigned";
+
 /// Whether setting the cap to `next` loosens the cap that is in force.
 /// Uncapped is `0`. Putting a cap on an uncapped thread is a tightening.
 /// Raising a positive cap, or setting it back to `0`, is a loosening.
