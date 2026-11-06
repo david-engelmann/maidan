@@ -3,7 +3,7 @@
 {{- if or (eq $size "") (eq $size "0") (eq $size "0Gi") (eq $size "0Mi") }}
 {{- fail "persistence.size must be a positive Kubernetes quantity (for example 10Gi)" }}
 {{- end }}
-{{- if not (regexMatch "^[1-9][0-9]*(\\.[0-9]+)?(E|P|T|G|M|K|Ei|Pi|Ti|Gi|Mi|Ki)?$" $size) }}
+{{- if not (regexMatch "^(0?\\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(\\.[0-9]+)?)(k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$" $size) }}
 {{- fail (printf "persistence.size %q is not a valid Kubernetes quantity" $size) }}
 {{- end }}
 apiVersion: v1

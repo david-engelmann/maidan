@@ -27,7 +27,8 @@ class HelmSecretConfigGates(unittest.TestCase):
     def test_secret_refuses_placeholders_and_short_kek(self) -> None:
         text = (CHART / "secret.yaml").read_text()
         self.assertIn('contains "CHANGE_ME" (toString $kek)', text)
-        self.assertIn("lt (len (toString $kek)) 32", text)
+        self.assertIn('regexMatch "^[0-9a-fA-F]{64}$"', text)
+        self.assertIn('regexMatch "^[A-Za-z0-9+/]{43}={0,2}$"', text)
         self.assertIn('contains "CHANGE_ME" (toString $v)', text)
         self.assertIn("contentKekPrevious still holds the placeholder CHANGE_ME", text)
 
@@ -41,7 +42,9 @@ class HelmSecretConfigGates(unittest.TestCase):
     def test_pvc_refuses_empty_or_invalid_size(self) -> None:
         text = (CHART / "pvc.yaml").read_text()
         self.assertIn('eq $size "0Gi"', text)
-        self.assertIn("regexMatch", text)
+        self.assertIn("(k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)", text)
+        self.assertIn("0?" + chr(92) + chr(92) + ".[0-9]*[1-9]", text)
+        self.assertNotIn("(E|P|T|G|M|K|Ei", text)
         self.assertIn("not a valid Kubernetes quantity", text)
 
     def test_templates_still_render_core_kinds(self) -> None:
