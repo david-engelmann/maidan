@@ -99,9 +99,19 @@ export function NeedsYou() {
     [store],
   );
   const { data, refresh } = useNeeds(session, api);
+  const room = session.status === "signed-in" ? `${session.workspaceId ?? ""}:${session.memberId ?? ""}` : "";
   // Read the signed link once, then drop it from the address bar so the
   // token does not linger in history or get shared by a copied URL.
+  // A link followed while this screen is already open arrives as a hashchange.
   const [link, setLink] = useState(() => parseConfirmLink(window.location.hash));
+  useEffect(() => {
+    const read = () => {
+      const next = parseConfirmLink(window.location.hash);
+      if (next) setLink(next);
+    };
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
   useEffect(() => {
     if (link) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/needs`);
   }, [link]);
@@ -127,6 +137,13 @@ export function NeedsYou() {
   const order = useMemo(() => groups.flatMap((g) => g.items.map(needKey)), [groups]);
   const [sel, setSel] = useState<string | null>(null);
   const [lastIdx, setLastIdx] = useState(0);
+  const [seenRoom, setSeenRoom] = useState(room);
+  if (seenRoom !== room) {
+    setSeenRoom(room);
+    setHeld(new Map());
+    setSel(null);
+    setLastIdx(0);
+  }
   const selected = sel !== null && order.includes(sel) ? sel : (order[Math.min(lastIdx, order.length - 1)] ?? null);
   const selIdx = selected ? order.indexOf(selected) : -1;
   if (selIdx >= 0 && selIdx !== lastIdx) setLastIdx(selIdx);
@@ -174,7 +191,7 @@ export function NeedsYou() {
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
   return (
-    <section className="needs" aria-labelledby="needs-title">
+    <div className="needs">
       {link ? <ConfirmPanel api={api} link={link} workspaceId={session.workspaceId} onDone={() => { setLink(null); void refresh(); }} /> : null}
       <h2 id="needs-title" className="visually-hidden" tabIndex={-1}>Needs you</h2>
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
@@ -224,7 +241,7 @@ export function NeedsYou() {
           </ul>
         </div>
       ))}
-    </section>
+    </div>
   );
 }
 
@@ -756,12 +773,12 @@ function EvidenceBlock({ read, items, retry }: { read: PacketRead | null; items:
     );
   const p = read.packet;
   return (
-    <section className="need-evidence" data-state="ready" aria-label="Evidence">
+    <div className="need-evidence" data-state="ready">
       <p className="ev-head">
         Evidence <code className="ev-root" title={p.evidence_root} data-root={p.evidence_root}>{shortHash(p.evidence_root)}</code>
       </p>
       {p.self_reported_only && (
-        <details className="ev-warn" role="note">
+        <details className="ev-warn">
           <summary><Icon name="caution" /><span>Self-reported only</span></summary>
           <p>All of this evidence comes from the task's own workers. Nobody else attached anything, and no automated check has verified it.</p>
         </details>
@@ -781,7 +798,7 @@ function EvidenceBlock({ read, items, retry }: { read: PacketRead | null; items:
       ) : (
         <p className="need-line warn">No evidence was handed over: no result and no linked artifacts.</p>
       )}
-    </section>
+    </div>
   );
 }
 

@@ -79,6 +79,13 @@ export function clearPaletteIndex(): void {
   cached = null;
 }
 
+const PALETTE_REFRESH_KINDS = new Set(["channel_created", "channel_updated", "member_joined", "member_updated", "thread_created", "thread_updated"]);
+
+/** A live event that changes what the palette lists: channels, people, or tasks. */
+export function paletteRefreshesOn(kind: string | undefined): boolean {
+  return kind != null && PALETTE_REFRESH_KINDS.has(kind);
+}
+
 function snippetTitle(hit: SearchHit): string {
   const text = (hit.snippet || hit.body || "").replace(/\s+/g, " ").trim();
   if (!text) return "Message";

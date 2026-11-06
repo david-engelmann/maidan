@@ -2,6 +2,7 @@
 // upload a file to get one, and link files to a task as its evidence.
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { BoardApi, type Thread } from "../core/board.ts";
+import { liveBus } from "../core/bus.ts";
 import { say, sayError } from "../core/notices.ts";
 import { formatBytes, isSha, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -49,8 +50,25 @@ export function Artifacts() {
   const [thread, setThread] = useState("");
   const [threadOn, setThreadOn] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const room = ws ?? "";
+  const [seenRoom, setSeenRoom] = useState(room);
+  if (seenRoom !== room) {
+    setSeenRoom(room);
+    setSha("");
+    setLooked(null);
+    setThread("");
+    setThreadOn(null);
+  }
   const meta = useLoad(looked, () => api.artifact(looked ?? ""));
   const linked = useLoad(threadOn, () => api.linked(threadOn ?? ""));
+  const reloadTasks = tasks.reload;
+  useEffect(() => {
+    if (!ws) return;
+    return liveBus.listen((m) => {
+      const kind = m.type === "event" ? m.frame.kind : undefined;
+      if (m.type === "resync" || kind === "thread_created" || kind === "thread_updated") void reloadTasks();
+    });
+  }, [ws, reloadTasks]);
   const choices = tasks.value ?? [];
   const known = choices.some((t) => t.id === thread);
   const openTask = (id: string) => {
@@ -83,7 +101,9 @@ export function Artifacts() {
     try {
       await api.eraseArtifact(s);
       say("File erased from the store");
-      setLooked("");
+      setLooked(null);
+      setSha("");
+      if (threadOn) await linked.reload();
     } catch (e) {
       sayError(e, "Could not erase that file");
     } finally {

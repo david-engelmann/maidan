@@ -53,7 +53,7 @@ export function AddAgent({ api, workspace, base, channelId, onAdded }: { api: Pe
               {s.href ? <a className="button steel" href={s.href}>{s.title}</a> : <span className="small">{s.title}</span>}
               <Copy text={s.text} />
             </div>
-            <div className="snippet-scroll"><pre className="snippet-body">{s.text}</pre></div>
+            <div className="snippet-scroll"><pre className="snippet-body" tabIndex={0}>{s.text}</pre></div>
           </div>
         ))}
       </div>
