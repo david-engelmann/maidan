@@ -62,10 +62,11 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   // "Someone" for a roster that has not answered yet. With no workspace there
   // is nothing to load, so the roster starts ready instead of stuck on "…".
   const workspaceId = session.workspaceId;
-  const [roster, setRoster] = useState<{ workspaceId: string | null; members: Map<string, Member>; ready: boolean }>({
-    ...freshRoster(workspaceId),
-    members: new Map(),
-  });
+  const [roster, setRoster] = useState(() => ({
+    workspaceId,
+    members: new Map<string, Member>(),
+    ready: !workspaceId,
+  }));
   const staleRoster = roster.workspaceId !== workspaceId;
   if (staleRoster) setRoster({ ...freshRoster(workspaceId), members: new Map() });
   const members = staleRoster ? new Map<string, Member>() : roster.members;
