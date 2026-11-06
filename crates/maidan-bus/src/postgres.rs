@@ -101,6 +101,8 @@ pub struct PostgresBus {
     notify_on_publish: bool,
     listener_health: Arc<ListenerHealth>,
     hydrate_stats: Arc<HydrateStats>,
+    #[allow(dead_code)]
+    tasks: Arc<crate::AbortOnDrop>,
 }
 
 impl PostgresBus {
@@ -118,6 +120,7 @@ impl PostgresBus {
         let tx = Arc::new(ShardedBroadcast::new(crate::broadcast_cap_from_env()));
         let listener_health = Arc::new(ListenerHealth::default());
         let hydrate_stats = Arc::new(HydrateStats::default());
+        let mut handles = Vec::new();
 
         if options.notify_on_publish {
             let listener_tx = tx.clone();
@@ -136,7 +139,7 @@ impl PostgresBus {
             // Seeded from the log head read after LISTEN is up, so only
             // events appended from here on are back-filled.
             let mut floor = NotifyFloor::start(log, listener_tx, stats.clone()).await?;
-            tokio::spawn(async move {
+            let listener_task = tokio::spawn(async move {
                 loop {
                     match listener.recv().await {
                         Ok(note) => {
@@ -167,7 +170,7 @@ impl PostgresBus {
                     }
                 }
             });
-            tokio::spawn(async move {
+            let probe_task = tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(PROBE_EVERY).await;
                     if !probe_health.is_degraded() {
@@ -183,6 +186,8 @@ impl PostgresBus {
                     }
                 }
             });
+            handles.push(listener_task.abort_handle());
+            handles.push(probe_task.abort_handle());
         }
 
         Ok(Self {
@@ -192,6 +197,7 @@ impl PostgresBus {
             notify_on_publish: options.notify_on_publish,
             listener_health,
             hydrate_stats,
+            tasks: crate::AbortOnDrop::new(handles),
         })
     }
 

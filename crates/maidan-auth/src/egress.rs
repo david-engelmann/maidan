@@ -70,6 +70,12 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
     // Public unicast allocations are within 2000::/3. Stay deliberately
     // conservative and exclude special-use tunnels and documentation blocks
     // inside that space as well.
+    // RFC 9637 `3fff::/20`: the first hextet is `3fff` and the next four bits are 0.
+    let documentation = segments[0] == 0x3fff && (segments[1] & 0xf000) == 0;
+    let amt = segments[0] == 0x2001 && segments[1] == 3;
+    let as112 = segments[0] == 0x2001 && segments[1] == 4 && segments[2] == 0x0112;
+    let drone = segments[0] == 0x2001 && (segments[1] & 0xfff0) == 0x0030;
+    let direct_as112 = segments[0] == 0x2620 && segments[1] == 0x004f && segments[2] == 0x8000;
     (segments[0] & 0xe000) == 0x2000
         && !(segments[0] == 0x2001
             && (segments[1] == 0
@@ -78,6 +84,11 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
                 || (segments[1] & 0xfff0) == 0x0010
                 || (segments[1] & 0xfff0) == 0x0020))
         && segments[0] != 0x2002
+        && !documentation
+        && !amt
+        && !as112
+        && !drone
+        && !direct_as112
 }
 
 const MAX_EGRESS_URL_LEN: usize = 2048;
@@ -132,7 +143,7 @@ pub const PRIVATE_EGRESS_HOSTS_ENV: &str = "MAIDAN_PRIVATE_EGRESS_HOSTS";
 /// would never match a URL's host and a partial match is not allowed.
 pub fn parse_private_egress_hosts(raw: &str) -> Vec<String> {
     raw.split(',')
-        .map(|entry| entry.trim().to_ascii_lowercase())
+        .map(|entry| entry.trim().trim_end_matches('.').to_ascii_lowercase())
         .filter(|entry| !entry.is_empty())
         .map(|entry| {
             entry
@@ -141,12 +152,7 @@ pub fn parse_private_egress_hosts(raw: &str) -> Vec<String> {
                 .map(str::to_string)
                 .unwrap_or(entry)
         })
-        .filter(|entry| {
-            entry.parse::<IpAddr>().is_ok()
-                || entry
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-        })
+        .filter(|entry| entry.parse::<IpAddr>().is_ok() || is_bare_name(entry))
         .collect()
 }
 
@@ -176,7 +182,10 @@ fn is_internal_name(host: &str) -> bool {
 
 fn is_bare_name(entry: &str) -> bool {
     entry.split('.').all(|label| {
-        !label.is_empty() && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        !label.is_empty()
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     })
 }
 
@@ -227,12 +236,44 @@ fn host_is_listed(url: &Url, hosts: &[String]) -> bool {
 /// Whether `ip` is link-local (IPv4 169.254/16, IPv6 fe80::/10, or an IPv4
 /// mapped link-local), which a listed private peer still may not resolve to.
 fn is_link_local(ip: IpAddr) -> bool {
-    match ip {
+    match peer_address(ip) {
         IpAddr::V4(ip) => ip.is_link_local(),
-        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
-            Some(mapped) => mapped.is_link_local(),
-            None => (ip.segments()[0] & 0xffc0) == 0xfe80,
-        },
+        IpAddr::V6(ip) => (ip.segments()[0] & 0xffc0) == 0xfe80,
+    }
+}
+
+/// IPv4 mapped and NAT64 addresses as the IPv4 they carry, otherwise `ip`.
+fn peer_address(ip: IpAddr) -> IpAddr {
+    let IpAddr::V6(v6) = ip else {
+        return ip;
+    };
+    if let Some(mapped) = v6.to_ipv4_mapped() {
+        return IpAddr::V4(mapped);
+    }
+    let segments = v6.segments();
+    let well_known = segments[0] == 0x0064
+        && segments[1] == 0xff9b
+        && segments[2] == 0
+        && segments[3] == 0
+        && segments[4] == 0
+        && segments[5] == 0;
+    let local = segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 1;
+    if well_known || local {
+        let embedded = ((segments[6] as u32) << 16) | u32::from(segments[7]);
+        return IpAddr::V4(Ipv4Addr::from(embedded));
+    }
+    ip
+}
+
+/// Addresses a listed peer may not be: unspecified, multicast, broadcast, and
+/// link-local, including those embedded in IPv4-mapped or NAT64 form.
+/// Loopback stays allowed: a listed host may resolve to it.
+fn is_disallowed_peer_ip(ip: IpAddr) -> bool {
+    match peer_address(ip) {
+        IpAddr::V4(ip) => {
+            ip.is_unspecified() || ip.is_broadcast() || ip.is_multicast() || ip.is_link_local()
+        }
+        IpAddr::V6(ip) => ip.is_unspecified() || ip.is_multicast() || is_link_local(IpAddr::V6(ip)),
     }
 }
 
@@ -284,16 +325,16 @@ fn validate_with(
         }
         Err(EgressTargetError::NonPublic) => {
             let url = validate_scheme_and_credentials(raw)?;
-            let literal_link_local = match url.host() {
-                Some(Host::Ipv4(ip)) => is_link_local(IpAddr::V4(ip)),
-                Some(Host::Ipv6(ip)) => is_link_local(IpAddr::V6(ip)),
+            let literal_disallowed = match url.host() {
+                Some(Host::Ipv4(ip)) => is_disallowed_peer_ip(IpAddr::V4(ip)),
+                Some(Host::Ipv6(ip)) => is_disallowed_peer_ip(IpAddr::V6(ip)),
                 _ => false,
             };
             let internal_name =
                 matches!(url.host(), Some(Host::Domain(host)) if is_internal_name(host));
             if internal_name && host_is_listed(&url, internal) {
                 Ok((url, PrivateAccess::Internal))
-            } else if host_is_listed(&url, hosts) && !literal_link_local {
+            } else if host_is_listed(&url, hosts) && !literal_disallowed {
                 Ok((url, PrivateAccess::ListedPeer))
             } else {
                 Err(EgressTargetError::NonPublic)
@@ -308,14 +349,7 @@ pub fn validate_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
         return validate_with(raw, &private_egress_hosts(), &internal_egress_hosts())
             .map(|(url, _)| url);
     }
-    let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
-    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
-        return Err(EgressTargetError::InvalidUrl);
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(EgressTargetError::Credentials);
-    }
-    Ok(url)
+    validate_scheme_and_credentials(raw)
 }
 
 /// Resolves `raw`, giving the DNS lookup [`EGRESS_RESOLUTION_TIMEOUT`]. A
@@ -374,7 +408,9 @@ fn ensure_allowed_addresses(
 ) -> Result<(), EgressTargetError> {
     let refused = match access {
         PrivateAccess::Everything | PrivateAccess::Internal => false,
-        PrivateAccess::ListedPeer => addresses.iter().any(|addr| is_link_local(addr.ip())),
+        PrivateAccess::ListedPeer => addresses
+            .iter()
+            .any(|addr| is_disallowed_peer_ip(addr.ip())),
         PrivateAccess::None => addresses.iter().any(|addr| !is_public_ip(addr.ip())),
     };
     if refused {
@@ -686,6 +722,77 @@ mod tests {
         assert!(ensure_allowed_addresses(&metadata, PrivateAccess::ListedPeer).is_err());
         assert!(ensure_allowed_addresses(&mapped, PrivateAccess::ListedPeer).is_err());
         assert!(ensure_allowed_addresses(&metadata, PrivateAccess::Everything).is_ok());
+        let loopback: [SocketAddr; 1] = ["127.0.0.1:80".parse().expect("loopback")];
+        assert!(ensure_allowed_addresses(&loopback, PrivateAccess::ListedPeer).is_ok());
+        let unspecified: [SocketAddr; 1] = ["0.0.0.0:80".parse().expect("unspecified")];
+        let broadcast: [SocketAddr; 1] = ["255.255.255.255:80".parse().expect("broadcast")];
+        let multicast: [SocketAddr; 1] = ["224.0.0.1:80".parse().expect("multicast")];
+        let nat64_meta: [SocketAddr; 1] =
+            ["[64:ff9b::a9fe:a9fe]:80".parse().expect("nat64 metadata")];
+        for refused in [unspecified, broadcast, multicast, nat64_meta] {
+            assert!(ensure_allowed_addresses(&refused, PrivateAccess::ListedPeer).is_err());
+        }
+    }
+
+    #[test]
+    fn special_purpose_ipv6_is_not_a_public_peer() {
+        for raw in [
+            "http://[3fff::1]/x",
+            "http://[2001:3::1]/x",
+            "http://[2001:4:112::1]/x",
+            "http://[2001:30::1]/x",
+            "http://[2620:4f:8000::1]/x",
+        ] {
+            assert!(
+                matches!(parse_egress_target(raw), Err(EgressTargetError::NonPublic)),
+                "opened {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_peer_names_are_dropped() {
+        assert_eq!(
+            hosts(".., .corp, -bad.corp, a..b, peer.internal., 10.1.2.3"),
+            vec!["peer.internal", "10.1.2.3"]
+        );
+    }
+
+    #[test]
+    fn a_listed_loopback_literal_stays_open_and_unspecified_stays_closed() {
+        let list = hosts("127.0.0.1,0.0.0.0,::");
+        assert_eq!(
+            validate_with_peers("http://127.0.0.1/x", &list)
+                .map(|(_, access)| access)
+                .ok(),
+            Some(PrivateAccess::ListedPeer)
+        );
+        assert!(matches!(
+            validate_with_peers("http://0.0.0.0/x", &list),
+            Err(EgressTargetError::NonPublic)
+        ));
+        assert!(matches!(
+            validate_with_peers("http://[::]/x", &list),
+            Err(EgressTargetError::NonPublic)
+        ));
+    }
+
+    #[test]
+    fn the_private_escape_hatch_still_bounds_the_url() {
+        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+        assert!(matches!(
+            validate_egress_target(&format!(
+                "http://10.0.0.5/{}",
+                "a".repeat(MAX_EGRESS_URL_LEN)
+            )),
+            Err(EgressTargetError::InvalidUrl)
+        ));
+        assert!(matches!(
+            validate_egress_target(" http://10.0.0.5/x"),
+            Err(EgressTargetError::InvalidUrl)
+        ));
+        assert!(validate_egress_target("http://10.0.0.5/x").is_ok());
+        unsafe { std::env::remove_var("MAIDAN_ALLOW_PRIVATE_EGRESS") };
     }
 
     #[test]

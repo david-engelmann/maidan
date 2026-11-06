@@ -18,6 +18,8 @@ use uuid::Uuid;
 type HmacSha256 = Hmac<Sha256>;
 
 const MAX_PAYLOAD_BYTES: usize = 4096;
+const MAX_ENCODED_PAYLOAD_BYTES: usize = MAX_PAYLOAD_BYTES.div_ceil(3) * 4;
+const MAC_HEX_LEN: usize = 64;
 
 /// The JSON body of a subscriber's first frame.
 #[derive(Debug, Clone, Deserialize)]
@@ -125,6 +127,12 @@ pub fn sign_resume_token(
     secret: &[u8],
     ttl_secs: u64,
 ) -> Result<String, SubscribeResumeError> {
+    if secret.is_empty() {
+        return Err(SubscribeResumeError::InvalidSignature);
+    }
+    if after_id < 0 {
+        return Err(SubscribeResumeError::Malformed);
+    }
     let exp = Utc::now()
         .timestamp()
         .saturating_add(i64::try_from(ttl_secs).unwrap_or(i64::MAX));
@@ -147,19 +155,28 @@ pub fn verify_resume_token(
     token: &str,
     secret: &[u8],
 ) -> Result<(EventFilter, i64), SubscribeResumeError> {
+    if secret.is_empty() {
+        return Err(SubscribeResumeError::InvalidSignature);
+    }
     let (encoded, mac_hex) = token
         .split_once('.')
         .ok_or(SubscribeResumeError::Malformed)?;
-    let json = URL_SAFE_NO_PAD
-        .decode(encoded.as_bytes())
-        .map_err(|_| SubscribeResumeError::Malformed)?;
-    if json.len() > MAX_PAYLOAD_BYTES {
+    if encoded.len() > MAX_ENCODED_PAYLOAD_BYTES {
         return Err(SubscribeResumeError::PayloadTooLarge);
+    }
+    if encoded.is_empty() || mac_hex.len() != MAC_HEX_LEN {
+        return Err(SubscribeResumeError::Malformed);
     }
     let expected = mac_for_payload(encoded.as_bytes(), secret);
     let actual = hex::decode(mac_hex).map_err(|_| SubscribeResumeError::Malformed)?;
     if actual.len() != expected.len() || !bool::from(actual.ct_eq(&expected)) {
         return Err(SubscribeResumeError::InvalidSignature);
+    }
+    let json = URL_SAFE_NO_PAD
+        .decode(encoded.as_bytes())
+        .map_err(|_| SubscribeResumeError::Malformed)?;
+    if json.len() > MAX_PAYLOAD_BYTES {
+        return Err(SubscribeResumeError::PayloadTooLarge);
     }
     let payload: ResumePayload =
         serde_json::from_slice(&json).map_err(|_| SubscribeResumeError::Malformed)?;
@@ -216,6 +233,38 @@ mod tests {
         let filter = EventFilter::workspace(WorkspaceId(uuid::Uuid::now_v7()));
         let signed = sign_resume_token(&filter, 1, SECRET, u64::MAX).unwrap();
         assert_eq!(verify_resume_token(&signed, SECRET).unwrap().1, 1);
+    }
+
+    #[test]
+    fn an_empty_secret_and_a_negative_cursor_are_refused() {
+        let filter = EventFilter::workspace(WorkspaceId(uuid::Uuid::now_v7()));
+        assert!(matches!(
+            sign_resume_token(&filter, 0, b"", 60),
+            Err(SubscribeResumeError::InvalidSignature)
+        ));
+        assert!(matches!(
+            verify_resume_token("abcd.abcd", b""),
+            Err(SubscribeResumeError::InvalidSignature)
+        ));
+        assert!(matches!(
+            sign_resume_token(&filter, -1, SECRET, 60),
+            Err(SubscribeResumeError::Malformed)
+        ));
+    }
+
+    #[test]
+    fn the_mac_is_checked_before_the_payload_is_decoded() {
+        let mac = "ab".repeat(MAC_HEX_LEN / 2);
+        let not_base64 = format!("!!!!.{mac}");
+        assert!(matches!(
+            verify_resume_token(&not_base64, SECRET),
+            Err(SubscribeResumeError::InvalidSignature)
+        ));
+        let huge = format!("{}.{}", "a".repeat(MAX_ENCODED_PAYLOAD_BYTES + 1), mac);
+        assert!(matches!(
+            verify_resume_token(&huge, SECRET),
+            Err(SubscribeResumeError::PayloadTooLarge)
+        ));
     }
 
     fn frame(json: serde_json::Value) -> SubscribeFrame {

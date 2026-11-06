@@ -82,7 +82,7 @@ impl InMemoryPresenceNotifier {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        let (tx, _) = broadcast::channel(capacity);
+        let (tx, _) = broadcast::channel(crate::bounded_broadcast_capacity(capacity));
         Self { tx }
     }
 }
@@ -110,6 +110,8 @@ impl PresenceNotifier for InMemoryPresenceNotifier {
 pub struct PostgresPresenceNotifier {
     pool: PgPool,
     local: broadcast::Sender<PresenceEvent>,
+    #[allow(dead_code)]
+    tasks: std::sync::Arc<crate::AbortOnDrop>,
 }
 
 impl PostgresPresenceNotifier {
@@ -120,7 +122,7 @@ impl PostgresPresenceNotifier {
         let listener_tx = tx.clone();
         let mut listener = PgListener::connect_with(&pool).await?;
         listener.listen(PRESENCE_CHANNEL).await?;
-        tokio::spawn(async move {
+        let listener_task = tokio::spawn(async move {
             loop {
                 match listener.recv().await {
                     Ok(note) => match serde_json::from_str::<PresenceEvent>(note.payload()) {
@@ -146,7 +148,11 @@ impl PostgresPresenceNotifier {
             }
         });
 
-        Ok(Self { pool, local: tx })
+        Ok(Self {
+            pool,
+            local: tx,
+            tasks: crate::AbortOnDrop::new(vec![listener_task.abort_handle()]),
+        })
     }
 
     pub fn channel() -> &'static str {
