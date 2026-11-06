@@ -27,3 +27,8 @@ test("People loads behind skeleton rows, like Board and Threads, not a bare word
 test("a Threads list that failed to load shows the retry card, not an empty state under it", () => {
   assert.match(src("threads/Threads.tsx"), /!list\.length \? \(\s*listError \? null :/);
 });
+
+test("the shared LoadError fills in a blank message before rendering the alert", () => {
+  assert.match(src("shell/LoadError.tsx"), /loadErrorMessage/);
+  assert.match(src("shell/emptyErrorChannel.ts"), /Could not load this screen\./);
+});

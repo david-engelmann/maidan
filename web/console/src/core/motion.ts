@@ -5,5 +5,10 @@ export function scrollBehavior(reduce: boolean): ScrollBehavior {
 
 /** The reader's reduced-motion setting at the moment of a scroll. */
 export function reducedMotion(): boolean {
-  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try {
+    return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    // Some test or embedded hosts throw from matchMedia; treat as no preference.
+    return false;
+  }
 }

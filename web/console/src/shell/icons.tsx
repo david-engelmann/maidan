@@ -17,9 +17,23 @@ const PATHS: Record<RouteId | "search" | "chevron" | "caution" | "check" | "more
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17v.5",
 };
 
-export function Icon({ name }: { name: RouteId | "search" | "chevron" | "caution" | "check" | "more" | "help" }) {
+export function Icon({
+  name,
+  label,
+}: {
+  name: RouteId | "search" | "chevron" | "caution" | "check" | "more" | "help";
+  /** When set, the icon is exposed to assistive tech instead of staying decorative. */
+  label?: string;
+}) {
+  const labelled = Boolean(label?.trim());
   return (
-    <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+    <svg
+      className="icon"
+      viewBox="0 0 24 24"
+      aria-hidden={labelled ? undefined : "true"}
+      role={labelled ? "img" : undefined}
+      aria-label={labelled ? label!.trim() : undefined}
+    >
       <path d={PATHS[name]} />
     </svg>
   );
@@ -29,14 +43,14 @@ export function Icon({ name }: { name: RouteId | "search" | "chevron" | "caution
 export function Mark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true" fill="currentColor">
-    <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" />
-    <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" />
-    <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" />
-    <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" />
-    <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" />
-    <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" />
-    <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" />
-    <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" />
+      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" />
+      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" />
+      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" />
+      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" />
+      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" />
+      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" />
+      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" />
+      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" />
     </svg>
   );
 }
