@@ -16,6 +16,13 @@ import re
 import sys
 
 from maidan_http import Maidan, MaidanError
+from recipe_bounds import (
+    validate_base_url,
+    validate_channel_name,
+    validate_id,
+    validate_init_path,
+    validate_role,
+)
 
 INIT_OUTPUT = pathlib.Path("/data/recipe/init.txt")
 CREDS = pathlib.Path("/creds/agent.json")
@@ -42,7 +49,7 @@ ROLES = {
 
 
 def admin_from_init() -> tuple[str, str]:
-    text = INIT_OUTPUT.read_text()
+    text = validate_init_path(INIT_OUTPUT).read_text()
     workspace = re.search(r"workspace:\s+\S+\s+\(([0-9a-f-]{36})\)", text)
     token = re.search(r"^\s+(maid_\S+)\s*$", text, re.MULTILINE)
     if not workspace or not token:
@@ -60,14 +67,18 @@ def find_or_create(admin: Maidan, list_path: str, key: str, value: str, body: di
 
 def main() -> int:
     role = sys.argv[1] if len(sys.argv) > 1 else ""
-    if role not in ROLES:
+    try:
+        role = validate_role(role, ROLES)
+    except ValueError:
         sys.exit(f"usage: provision.py {'|'.join(ROLES)}")
     if CREDS.exists():
         print(f"provision: {role} already provisioned")
         return 0
     spec = ROLES[role]
-    url = os.environ.get("MAIDAN_URL", "http://maidan:8080")
+    validate_channel_name(spec["channel"])
+    url = validate_base_url(os.environ.get("MAIDAN_URL", "http://maidan:8080"))
     workspace_id, admin_token = admin_from_init()
+    workspace_id = validate_id(workspace_id, "workspace_id")
     admin = Maidan(url, admin_token)
 
     channel = find_or_create(

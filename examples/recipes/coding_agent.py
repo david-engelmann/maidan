@@ -22,10 +22,16 @@ import tempfile
 import time
 
 from maidan_http import Claim, Maidan, claim_next, from_creds
+from recipe_bounds import (
+    validate_lease_secs,
+    validate_poll_secs,
+    validate_run_timeout_secs,
+    validate_shell_command,
+)
 
-LEASE_SECS = int(os.environ.get("LEASE_SECS", "120"))
-POLL_SECS = float(os.environ.get("POLL_SECS", "2"))
-RUN_TIMEOUT_SECS = int(os.environ.get("RUN_TIMEOUT_SECS", "1800"))
+LEASE_SECS = validate_lease_secs(int(os.environ.get("LEASE_SECS", "120")))
+POLL_SECS = validate_poll_secs(os.environ.get("POLL_SECS", "2"))
+RUN_TIMEOUT_SECS = validate_run_timeout_secs(os.environ.get("RUN_TIMEOUT_SECS", "1800"))
 
 
 def stand_in(task: str, out: pathlib.Path) -> tuple[int, str]:
@@ -46,7 +52,7 @@ def stand_in(task: str, out: pathlib.Path) -> tuple[int, str]:
 def run_agent(claim: Claim, task: str, work: pathlib.Path) -> tuple[int, str]:
     out = work / "out"
     out.mkdir()
-    command = os.environ.get("AGENT_COMMAND", "").strip()
+    command = validate_shell_command(os.environ.get("AGENT_COMMAND", ""), "AGENT_COMMAND")
     if not command:
         return stand_in(task, out)
     env = {

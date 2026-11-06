@@ -20,9 +20,10 @@ import sys
 import time
 
 from maidan_http import Claim, Maidan, claim_next, from_creds
+from recipe_bounds import validate_lease_secs, validate_poll_secs, validate_shell_command
 
-LEASE_SECS = int(os.environ.get("LEASE_SECS", "120"))
-POLL_SECS = float(os.environ.get("POLL_SECS", "3"))
+LEASE_SECS = validate_lease_secs(int(os.environ.get("LEASE_SECS", "120")))
+POLL_SECS = validate_poll_secs(os.environ.get("POLL_SECS", "3"))
 
 
 class LeaseLost(Exception):
@@ -46,7 +47,7 @@ def wait_for_answer(maidan: Maidan, claim: Claim, gate_id: str) -> dict:
 
 
 def deploy(task: str) -> tuple[int, str]:
-    command = os.environ.get("DEPLOY_COMMAND", "").strip()
+    command = validate_shell_command(os.environ.get("DEPLOY_COMMAND", ""), "DEPLOY_COMMAND")
     if not command:
         return 0, f"stand-in: would deploy now ({task}); set DEPLOY_COMMAND to run one"
     done = subprocess.run(
