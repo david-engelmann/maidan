@@ -7,6 +7,74 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [430.0.0] — 2026-11-06
+
+The first hour, smoothed.
+
+- **Console:** connecting is OAuth-first: paste one URL into Cursor, VS Code, Codex, Zed or Claude Code and sign in. Tokens are the fallback. Connect mints a worker token, sign-up names the workspace, the command palette searches the workspace, and activity and evidence rows carry names.
+- **Deploys:** OAuth registration takes effect on a running container, the demo deploys with each release and answers 503 while it starts, and the claimants recover from MCP and HTTP faults or stop cleanly.
+
+### Connect leads with OAuth, and one starter task
+
+- **Changed:** the console's Tools, then Connect panel and the board's first-run card say to paste `<origin>/mcp/streamable` into Cursor, VS Code, Codex, Zed or Claude Code and sign in when the browser opens. A token is the fallback, for scripts, your own loop and clients without OAuth: the token snippets sit in their own "Connect with a token" card, and "Add an agent" keeps its one-click Cursor and VS Code links.
+- **Changed:** `docs/Clients.md` says which clients sign in by their client metadata document (Claude Code, claude.ai, Codex, ChatGPT, Zed, VS Code) and which by registering themselves (Cursor, Gemini CLI), with an OAuth recipe first and the token recipe after it, and new recipes for VS Code, Codex and Zed.
+- **Changed:** the demo sandbox opens with the sign-up's "Say hello" task, the same title, description and opening message, instead of its own differently worded one.
+
+### The Python claimants recover from MCP faults or stop cleanly
+
+- **Added:** `scripts/mcp-fault-proxy.py`, a fault-injecting proxy for tests, in front of `/mcp/streamable` and the REST routes. A plan of rules, matched by request number, HTTP method, path, JSON-RPC method or tool, injects latency, a timeout, a dropped connection (before or after the upstream acted), a 500/502/503 with or without `Retry-After`, an answer cut short, a JSON-RPC error, or a result whose schema drifted (a field missing, added or of the wrong type).
+- **Added:** `scripts/test-mcp-fault-injection.py`, run in the `lint` job on every pull request, puts the seat runner, a claim loop on the Python SDK and the OpenRouter claimant's MCP client behind the proxy, one fault per test. Each must recover within its retries, or stop with one line, holding no claim it could release and never claiming or writing a result twice.
+- **Fixed:** The seat runner sends one `Idempotency-Key` across the tries of a claim, an acknowledge and a release, and retries claim-next and acknowledge (`maidan.claim_attempts`, default 3) on no answer, 408, 429, 5xx (honouring `Retry-After`, at most a minute) or a key in flight. A claim whose answer was lost was logged `claim_failed` and held for its whole lease; it is now answered again and worked.
+- **Fixed:** The seat runner counts an answer cut off mid-body as no answer. The `IncompleteRead` escaped, so a cut-short release skipped its retries and the run was logged as `error`. Its request timeout is now `maidan.timeout_secs` (default 60).
+- **Fixed:** A queue-depth answer without a whole-number `ready` is logged `queue_unreadable` with its detail. A missing `ready` read as an empty queue and a string ended the run in a traceback.
+- **Fixed:** The Python SDK retries an answer cut off mid-body, or a 2xx that is not JSON, under the same `Idempotency-Key`, where a caller retrying by hand claimed a second thread. No answer after the last try raises `MaidanError` with status 0, as `MaidanError` documents, not the bare `URLError`. A claim, renewal or result it cannot read raises the new `UnreadableResponseError`, a `MaidanError`, instead of a `ValueError`, and a claim whose `id` is not a string no longer passes through.
+- **Fixed:** The OpenRouter claimant turns no answer, a timeout, an answer cut short or one that is not JSON into one `claimant:` line, not a traceback. A renewal that got no answer ended the renewer thread without marking the claim lost, so the claimant went on to deliver on a lapsing lease. A claim or `whoami` answer missing its ids stops with one line instead of a `KeyError`.
+- **Fixed:** Two seat-runner tests sat inside `if __name__ == "__main__":` and never ran under `unittest discover`; they run now.
+
+### The console header stays readable on a phone, and reduced motion stays off
+
+- **Fixed:** At 390px the header shows Search as a word, the connection word when the console is not live, and a pasted or delegated token. Reduced motion now sets animation and transition to none and keeps scrolling instant, including a message jump and a Needs you row leaving.
+- **Fixed:** Playwright layout checks wait until a control has a box, and the Needs you focus check waits until the row has redrawn, so a phone-width reflow cannot read a missing box or a focus that has not landed.
+
+### The activity stream, task evidence and Needs you keep their words and focus
+
+- **Changed:** Activity names the task, the channel and who did it, and says what happened in a sentence.
+- **Changed:** A task's evidence opens from the workspace's tasks, and a linked file shows its name and size.
+- **Fixed:** Needs you keeps keyboard focus when a confirmation or a note opens and closes, when the next row is selected, and when the list refreshes.
+
+### Mint a worker token on the Connect page
+
+- **Added:** Connect offers one-click Cursor and VS Code install links that carry only the MCP URL, so the browser signs in with OAuth and no token is copied. Naming an agent on the same page mints a scoped `maidan.agent.worker` token once and fills in that client's setup, including one-click Cursor and VS Code links.
+- **Changed:** Connect no longer installs Cursor with the placeholder `REPLACE_WITH_MAIDAN_TOKEN`. Someone who already has a token opens the reference snippets and replaces that placeholder.
+
+### The console searches the workspace from the palette
+
+- **Added:** The command palette, signed in, finds channels, people, task titles and messages. A channel opens on the board, or selects in place on Threads. A person opens a direct message, and you opens People. A task or a message opens its thread.
+- **Changed:** A workspace with one channel shows that channel as a label, on the board and in Threads, instead of a menu with one option. Message search picks an author by name, and channel follows show `#name` and offer the channels not yet followed.
+
+### The Preferences card names what a signed-in session can do
+
+- **Fixed:** a person signed in to the console saw posting and moving tasks under Can't, because the card listed only the read routes. It now lists what that browser session can actually do in the console. A token still shows only its own grant, a viewer stays on the read routes, and a session still does not claim `federation:admin` or `operator:global`.
+
+### The try demo recycles with a deploy and says when it is starting
+
+- **Fixed:** the try.maidan.world container is recycled once when a deploy changes the environment it was started with, the same way the hosted server is. A second request during that start no longer destroys the container the first request just booted. The daily reset drops the in-memory record of the running container under the same lock, so the first visit after the reset starts cleanly on the environment this deploy is passing in.
+- **Fixed:** while the demo container is starting, restarting, or being replaced, a visitor gets a 503 with `Retry-After` instead of the runtime's error text. A browser opening a page sees a short note that loads only the try page's stylesheet; an API client gets the overloaded problem. A WebSocket upgrade still passes through.
+- **Fixed:** the try page no longer tells every 503 that the demo is full until its daily reset. That sentence is only the sandbox mint's daily cap. A 503 while the container is waking up, and any 503 from signing into the console, says the demo is starting or being updated and to try again in about 20 seconds.
+
+### Dynamic client registration reaches the hosted container
+
+- **Fixed:** the hosted Worker stringifies the environment it passes into the container, and recycles a running container when that environment changes. A container keeps the environment of the `start()` that created it, so after dynamic client registration was deployed, `dev.maidan.world` was still the new build with `MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1` set on the Worker and absent in the process: `GET /.well-known/oauth-authorization-server` omitted `registration_endpoint` and `POST /oauth/register` answered 404. `1` and `true` both turn registration on.
+- **Fixed:** a second request that arrives while a cold start or a recycle is still booting no longer destroys that container. The fingerprint is stored only once the container is running, and a start this instance already has in flight for the same environment is left alone.
+
+### A published release starts the demo deploy
+
+- **Fixed:** `release.yml` dispatches `deploy-demo.yml` and `clean-install.yml` after it publishes, the same way it already starts `deploy-prod.yml`. A release created with `GITHUB_TOKEN` does not trigger `release: published`, so try.maidan.world and the clean-machine install never ran on their own. The demo workflow still deploys only when `DEMO_DOMAIN` is `true`. A server release does not publish the SDKs, and the docs site still deploys on a push to `main`.
+
+### A workspace can be named when it is created at sign-up
+
+- **Added:** Sign-up takes an optional workspace name, on the console form and on `GET` and `POST /auth/oidc/signup`. Left blank, the workspace is still named after the person. A name longer than 200 characters, or one with a control character, is refused. A rename uses that same control-character rule.
+
 ## [429.0.0] — 2026-11-05
 
 The launch release: what a stranger meets on maidan.world.

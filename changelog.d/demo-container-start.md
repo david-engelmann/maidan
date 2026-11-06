@@ -1,5 +1,0 @@
-### The try demo recycles with a deploy and says when it is starting
-
-- **Fixed:** the try.maidan.world container is recycled once when a deploy changes the environment it was started with, the same way the hosted server is. A second request during that start no longer destroys the container the first request just booted. The daily reset drops the in-memory record of the running container under the same lock, so the first visit after the reset starts cleanly on the environment this deploy is passing in.
-- **Fixed:** while the demo container is starting, restarting, or being replaced, a visitor gets a 503 with `Retry-After` instead of the runtime's error text. A browser opening a page sees a short note that loads only the try page's stylesheet; an API client gets the overloaded problem. A WebSocket upgrade still passes through.
-- **Fixed:** the try page no longer tells every 503 that the demo is full until its daily reset. That sentence is only the sandbox mint's daily cap. A 503 while the container is waking up, and any 503 from signing into the console, says the demo is starting or being updated and to try again in about 20 seconds.
