@@ -267,6 +267,13 @@ impl EventHandler for BatchingEmbeddingHandler {
     }
 }
 
+fn batch_is_usable(vectors: &[Vec<f32>], n: usize, dim: usize) -> bool {
+    vectors.len() == n
+        && vectors
+            .iter()
+            .all(|vec| vec.len() == dim && vec.iter().all(|value| value.is_finite()))
+}
+
 async fn run_worker(
     mut rx: mpsc::Receiver<EmbedJob>,
     search: Arc<dyn Search>,
@@ -300,8 +307,10 @@ async fn run_worker(
                 provider_cl.embed_batch(&refs)
             })
             .await;
+            let expected_dim = provider.dimension();
             let err = match embed {
-                Ok(Ok(v)) => break Some(v),
+                Ok(Ok(v)) if batch_is_usable(&v, n, expected_dim) => break Some(v),
+                Ok(Ok(_)) => "embedding batch length, dimension, or value was unusable".to_string(),
                 Ok(Err(err)) => err.to_string(),
                 Err(join_err) => format!("embed task join failed: {join_err}"),
             };
@@ -351,5 +360,27 @@ async fn run_worker(
         if any_ok {
             clear_health(&health_error).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::batch_is_usable;
+
+    #[test]
+    fn a_batch_must_match_length_dimension_and_be_finite() {
+        assert!(batch_is_usable(&[vec![0.0, 1.0], vec![2.0, 3.0]], 2, 2));
+        assert!(!batch_is_usable(&[vec![0.0, 1.0]], 2, 2));
+        assert!(!batch_is_usable(&[vec![0.0], vec![1.0, 2.0]], 2, 2));
+        assert!(!batch_is_usable(
+            &[vec![f32::NAN, 1.0], vec![0.0, 1.0]],
+            2,
+            2
+        ));
+        assert!(!batch_is_usable(
+            &[vec![f32::INFINITY, 1.0], vec![0.0, 1.0]],
+            2,
+            2
+        ));
     }
 }

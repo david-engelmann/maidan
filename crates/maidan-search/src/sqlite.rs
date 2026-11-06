@@ -44,6 +44,9 @@ impl Search for SqliteSearch {
         if trimmed.is_empty() {
             return Err(SearchError::InvalidQuery("empty query".into()));
         }
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
         let fts_query = escape_fts5_query(trimmed);
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
@@ -81,6 +84,7 @@ impl Search for SqliteSearch {
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = ?
               AND m.tombstoned_at IS NULL
+              AND t.tombstoned_at IS NULL
               AND maidan_messages_fts MATCH ?
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
@@ -136,6 +140,10 @@ impl Search for SqliteSearch {
             INSERT INTO {table} (message_id, embedding, updated_at)
             SELECT id, ?, CURRENT_TIMESTAMP FROM maidan_messages
             WHERE id = ? AND tombstoned_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM maidan_threads t
+                WHERE t.id = maidan_messages.thread_id AND t.tombstoned_at IS NULL
+              )
             ON CONFLICT (message_id) DO UPDATE SET
                 embedding = excluded.embedding,
                 updated_at = CURRENT_TIMESTAMP
@@ -167,6 +175,9 @@ impl Search for SqliteSearch {
                 "expected {registered_dim}-dim vector for model {model}, got {}",
                 embedding.len()
             )));
+        }
+        if limit <= 0 {
+            return Ok(Vec::new());
         }
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
@@ -201,6 +212,7 @@ impl Search for SqliteSearch {
                 JOIN maidan_members mem ON mem.id = m.author_id
                 WHERE c.workspace_id = ?
                   AND m.tombstoned_at IS NULL
+              AND t.tombstoned_at IS NULL
                   AND (? IS NULL OR m.author_id = ?)
                   AND (? IS NULL OR t.channel_id = ?)
                   AND (? IS NULL OR mem.kind = ?)
@@ -263,6 +275,7 @@ impl Search for SqliteSearch {
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = ?
               AND m.tombstoned_at IS NULL
+              AND t.tombstoned_at IS NULL
               AND (? IS NULL OR m.author_id = ?)
               AND (? IS NULL OR t.channel_id = ?)
               AND (? IS NULL OR mem.kind = ?)
