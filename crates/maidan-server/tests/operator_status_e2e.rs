@@ -141,9 +141,30 @@ async fn operator_status_reports_phase_backfill_and_queues() {
         .to_str()
         .unwrap()
         .starts_with("text/html"));
+    assert_eq!(
+        page.headers()
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        maidan_server::status::html_csp()
+    );
+    assert_eq!(
+        page.headers().get("referrer-policy").unwrap().to_str().unwrap(),
+        "no-referrer"
+    );
+    assert_eq!(
+        page.headers()
+            .get("x-content-type-options")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "nosniff"
+    );
     let html = page.text().await.unwrap();
     assert!(html.contains("<th>Phase</th><td>draining</td>"), "{html}");
     assert!(html.contains("Search backfill"));
+    assert!(html.contains("<main>"), "{html}");
 
     server.abort();
 }
