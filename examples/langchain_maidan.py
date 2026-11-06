@@ -21,6 +21,10 @@ available if you widen HERO_TOOLS.
 import asyncio
 import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from example_client_bounds import validate_base_url, validate_token
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -65,14 +69,17 @@ def report(all_tools, tools) -> int:
 
 
 async def main() -> int:
-    base_url = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
+    try:
+        base_url = validate_base_url(os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080"))
+        token = validate_token(os.environ.get("MAIDAN_TOKEN", ""))
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
     connection: dict[str, object] = {
         "transport": "streamable_http",
         "url": f"{base_url}/mcp/streamable",
+        "headers": {"Authorization": f"Bearer {token}"},
     }
-    token = os.environ.get("MAIDAN_TOKEN")
-    if token:
-        connection["headers"] = {"Authorization": f"Bearer {token}"}
 
     client = MultiServerMCPClient({"maidan": connection})
     all_tools = await client.get_tools()

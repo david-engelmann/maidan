@@ -20,7 +20,15 @@ the token setup.
 import argparse
 import os
 import sys
-from urllib.parse import urlsplit
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from example_client_bounds import (
+    validate_base_url,
+    validate_channel_id,
+    validate_lease_secs,
+    validate_token,
+)
 
 from openhands.sdk.mcp import create_mcp_tools
 from openhands.sdk.mcp.config import coerce_mcp_config
@@ -72,14 +80,7 @@ steps exactly, using the Maidan tools.
 
 
 def maidan_url() -> str:
-    base = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080").rstrip("/")
-    parts = urlsplit(base)
-    # The token rides on every request, so plain http is for this machine only.
-    if parts.scheme == "http" and parts.hostname not in ("127.0.0.1", "localhost", "::1"):
-        sys.exit(f"refusing to send the token to {base} over plain http; use https or a loopback address")
-    if parts.scheme not in ("http", "https") or parts.username or parts.password:
-        sys.exit(f"MAIDAN_URL must be a plain http(s) URL, got {base}")
-    return base
+    return validate_base_url(os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080"))
 
 
 def mcp_config(base: str, token: str):
@@ -146,15 +147,22 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="connect and list tools, then exit; no model is called")
     args = parser.parse_args()
 
-    token = os.environ.get("MAIDAN_TOKEN")
-    if not token:
-        sys.exit("set MAIDAN_TOKEN to the agent's token")
-    config = mcp_config(maidan_url(), token)
+    try:
+        token = validate_token(os.environ.get("MAIDAN_TOKEN", ""))
+        lease = validate_lease_secs(args.lease_secs)
+        base = maidan_url()
+    except ValueError as error:
+        sys.exit(str(error))
+    config = mcp_config(base, token)
     if args.check:
         return check(config)
     if not args.channel:
         parser.error("--channel is required unless --check")
-    return work(config, args.channel, args.lease_secs)
+    try:
+        channel = validate_channel_id(args.channel)
+    except ValueError as error:
+        sys.exit(str(error))
+    return work(config, channel, lease)
 
 
 if __name__ == "__main__":
