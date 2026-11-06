@@ -22,10 +22,20 @@ cd "$(dirname "$0")/.."
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 port="${MAIDAN_MCP_PORT:-18091}"
+if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  echo "mcp-sdk-clients: refusing out-of-range port: $port" >&2
+  exit 1
+fi
 base="http://127.0.0.1:${port}"
 bin_dir="${MAIDAN_BIN_DIR:-}"
 clients=("$@")
 [[ ${#clients[@]} -gt 0 ]] || clients=(typescript python)
+for client in "${clients[@]}"; do
+  case "$client" in
+    typescript|python) ;;
+    *) echo "mcp-sdk-clients: unknown client: ${client} (typescript or python)" >&2; exit 2 ;;
+  esac
+done
 here="$(pwd)/scripts/mcp-sdk-clients"
 
 if [[ -z "$bin_dir" ]]; then

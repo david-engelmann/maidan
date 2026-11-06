@@ -76,3 +76,12 @@ test("the try page is answered before the container is reached, so visiting it n
   assert.equal(wrangler.assets?.binding, "ASSETS");
   assert.equal(wrangler.assets?.directory, "./try");
 });
+
+
+test("the docs worker is static assets only — no container and no wake cron", () => {
+  const docs = config("wrangler.docs.jsonc");
+  assert.equal(docs.containers, undefined, "docs must not run a container");
+  assert.equal(docs.triggers?.crons ?? undefined, undefined, "docs must not schedule a wake");
+  assert.ok(docs.assets?.directory, "docs must serve the mdBook assets");
+  assert.equal(docs.routes?.[0]?.pattern, "docs.maidan.world");
+});
