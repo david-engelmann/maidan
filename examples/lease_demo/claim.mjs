@@ -12,7 +12,9 @@ const channel = process.env.MAIDAN_CHANNEL;
 
 function loopback(hostname) {
   const host = (hostname || "").replace(/^\[|\]$/g, "").toLowerCase();
-  return host === "localhost" || host === "::1" || host.startsWith("127.");
+  if (host === "localhost" || host === "::1") return true;
+  const octets = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  return Boolean(octets && octets.slice(1).every((part) => Number(part) <= 255));
 }
 
 if (token && process.env.MAIDAN_ALLOW_INSECURE_HTTP !== "1") {

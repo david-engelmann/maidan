@@ -28,16 +28,24 @@ done
 if [ -n "$TOKEN" ] && [ "${MAIDAN_ALLOW_INSECURE_HTTP:-}" != "1" ] && [[ "$BASE_URL" == http://* ]]; then
   host="${BASE_URL#http://}"
   host="${host%%/*}"
-  host="${host%%:*}"
-  host="${host#[}"
-  host="${host%]}"
+  host="${host##*@}"
+  if [[ "$host" == \[* ]]; then
+    host="${host#\[}"
+    host="${host%%\]*}"
+  else
+    host="${host%%:*}"
+  fi
+  loopback=0
   case "$host" in
-    localhost|127.*|::1) ;;
-    *)
-      echo "refusing to send MAIDAN_TOKEN over cleartext to ${BASE_URL}; use https, or set MAIDAN_ALLOW_INSECURE_HTTP=1 for a trusted network" >&2
-      exit 2
-      ;;
+    localhost|::1) loopback=1 ;;
   esac
+  if [[ "$host" =~ ^127(\.[0-9]{1,3}){3}$ ]]; then
+    loopback=1
+  fi
+  if [ "$loopback" != "1" ]; then
+    echo "refusing to send MAIDAN_TOKEN over cleartext to ${BASE_URL}; use https, or set MAIDAN_ALLOW_INSECURE_HTTP=1 for a trusted network" >&2
+    exit 2
+  fi
 fi
 
 if [ -z "$TOKEN" ] || [ -z "$WORKSPACE_IN" ]; then
