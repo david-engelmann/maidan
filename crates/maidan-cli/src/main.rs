@@ -477,47 +477,65 @@ async fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> 
         .map_err(anyhow::Error::msg)
 }
 
-/// Highest id among message events the search projector cares about.
-/// `0` when the log has none. There is no max-of-kinds read, so this walks
-/// forward from the cursor one event at a time.
-async fn highest_search_event_id(store: &dyn Store) -> anyhow::Result<i64> {
-    let mut after = 0i64;
-    let mut highest = 0i64;
+/// Highest search-event id strictly after `start`. `Some(0)` means nothing
+/// newer needs projecting, so the caller must not wait for the old cursor.
+/// `None` means the deadline passed mid-walk. The deadline is checked before
+/// every query, and the caller polls the probe with no further reads.
+async fn highest_search_event_id(
+    store: &dyn Store,
+    start: i64,
+    deadline: tokio::time::Instant,
+) -> anyhow::Result<Option<i64>> {
+    let mut after = start;
+    let mut highest: Option<i64> = None;
     loop {
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
         match store
             .oldest_event_after_of_kinds(after, maidan_types::SEARCH_PROJECTOR_KINDS)
             .await
             .context("read search events")?
         {
             Some((id, _)) => {
-                highest = id;
+                highest = Some(id);
                 after = id;
             }
-            None => return Ok(highest),
+            None => return Ok(Some(highest.unwrap_or(0))),
         }
     }
 }
 
 /// `mcp-stdio` used to drop the indexer the moment stdin closed, which aborted
-/// an embed still in flight. Wait until the projector has handled every
-/// message event already in the log, or two seconds, whichever comes first.
+/// an embed still in flight. Wait until the projector has handled message
+/// events posted after the search cursor, or two seconds, whichever comes first.
 async fn wait_for_search_projection(
     store: &dyn Store,
     processed_log_id: &std::sync::atomic::AtomicI64,
 ) {
     use std::sync::atomic::Ordering;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    let start = processed_log_id.load(Ordering::Relaxed).max(
+        store
+            .tap_cursor(maidan_search::SEARCH_TAP_SURFACE)
+            .await
+            .unwrap_or(0),
+    );
+    let target = match highest_search_event_id(store, start, deadline).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            tracing::warn!("search event walk timed out before mcp-stdio exit");
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "could not read search events before mcp-stdio exit"
+            );
+            return;
+        }
+    };
     loop {
-        let target = match highest_search_event_id(store).await {
-            Ok(id) => id,
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    "could not read search events before mcp-stdio exit"
-                );
-                return;
-            }
-        };
         if processed_log_id.load(Ordering::Relaxed) >= target {
             return;
         }
