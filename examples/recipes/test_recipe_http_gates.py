@@ -54,6 +54,10 @@ class RecipeHttpGates(unittest.TestCase):
             validate_rest_path("../etc/passwd")
         with self.assertRaises(ValueError):
             validate_rest_path("//evil")
+        with self.assertRaises(ValueError):
+            validate_rest_path("/threads/%2e%2e/%2e%2e/admin")
+        with self.assertRaises(ValueError):
+            validate_rest_path("/threads/%2E%2E/secret")
         self.assertEqual(validate_lease_secs(120), 120)
         with self.assertRaises(ValueError):
             validate_lease_secs(0)

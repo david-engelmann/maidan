@@ -13,6 +13,7 @@ import pathlib
 import threading
 import urllib.error
 import urllib.request
+from urllib.parse import unquote
 from typing import Any
 
 MCP_PROTOCOL_VERSION = "2026-07-28"
@@ -81,10 +82,15 @@ def validate_rest_path(path: str) -> str:
         raise ValueError("path is too long")
     if not path.startswith("/") or path.startswith("//"):
         raise ValueError("path must be a single absolute REST path")
-    if "\\" in path or ".." in path or chr(0) in path:
+    if "\\" in path or chr(0) in path:
         raise ValueError("path must not traverse or escape")
     if not _PATH_RE.match(path):
         raise ValueError("path has invalid characters")
+    decoded = unquote(path)
+    if ".." in path or ".." in decoded or "\\" in decoded:
+        raise ValueError("path must not traverse or escape")
+    if not decoded.startswith("/") or decoded.startswith("//"):
+        raise ValueError("path must be a single absolute REST path")
     return path
 
 
