@@ -48,6 +48,7 @@ jobs:
       - name: the tag is a release tag
         working-directory: .
         run: |
+          [ -n "${TAG:-}" ] || { echo "TAG is empty" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
       - uses: actions/checkout@v4
         with:

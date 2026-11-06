@@ -11,9 +11,11 @@ ARG MAIDAN_VERSION
 LABEL org.opencontainers.image.title="Maidan CLI" \
       org.opencontainers.image.description="Operator CLI for Maidan" \
       org.opencontainers.image.source="https://github.com/david-engelmann/maidan" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${MAIDAN_VERSION}"
 
-COPY --chown=nonroot:nonroot maidan /usr/local/bin/maidan
+COPY --chown=nonroot:nonroot --chmod=0555 maidan /usr/local/bin/maidan
 
 USER nonroot:nonroot
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/maidan"]

@@ -93,7 +93,9 @@ LABEL io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan" \
       org.opencontainers.image.source="https://github.com/david-engelmann/maidan" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /
-COPY --from=builder /app/target/release/maidan-server /usr/local/bin/maidan-server
+COPY --from=builder --chmod=0555 /app/target/release/maidan-server /usr/local/bin/maidan-server
 USER nonroot:nonroot
+# Chainguard has no shell; SIGTERM is the only graceful stop the binary sees.
+STOPSIGNAL SIGTERM
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/maidan-server"]

@@ -46,6 +46,10 @@ jobs:
             tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
           fi
           case "$tag" in (*[!A-Za-z0-9._-]*|"") echo "bad tag: $tag" >&2; exit 1;; esac
+          # Clean-machine only installs a published release (vN.N.N), never a
+          # branch name or floating "latest" string that slipped past the charset check.
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "not a release tag: $tag" >&2; exit 1; }
           echo "MAIDAN_TAG=$tag" >> "$GITHUB_ENV"
       - name: fetch the install script at the tag (no checkout)
         run: |

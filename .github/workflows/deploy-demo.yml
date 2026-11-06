@@ -52,6 +52,7 @@ jobs:
       - name: the tag is a release tag
         working-directory: ${{ github.workspace }}
         run: |
+          [ -n "${TAG:-}" ] || { echo "TAG is empty" >&2; exit 1; }
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
       # Build from the tag's own Dockerfile, entrypoint and Worker.
       - uses: actions/checkout@v4
@@ -85,7 +86,10 @@ jobs:
             docker buildx imagetools inspect "$1" --raw \
               | jq -r '.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest'
           }
-          server="$SERVER@$(amd64 "$SERVER:$TAG")"
+          digest="$(amd64 "$SERVER:$TAG")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || { echo "no linux/amd64 digest for $SERVER:$TAG (got: ${digest:-empty})" >&2; exit 1; }
+          server="$SERVER@$digest"
           docker build --platform linux/amd64 \
             --build-arg SERVER_IMAGE="$server" \
             -f demo/Dockerfile -t "maidan-demo:$TAG" ../..
