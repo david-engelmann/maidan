@@ -17,14 +17,15 @@ from __future__ import annotations
 import os
 import sys
 
-from maidan_http import Maidan
+from maidan_http import Maidan, validate_base_url
 from provision import admin_from_init
 
 
 def main() -> int:
     action = "decline" if "--decline" in sys.argv else "accept"
     workspace_id, token = admin_from_init()
-    admin = Maidan(os.environ.get("MAIDAN_URL", "http://maidan:8080"), token)
+    url = validate_base_url(os.environ.get("MAIDAN_URL", "http://maidan:8080"))
+    admin = Maidan(url, token)
     pending = admin.call("GET", f"/workspaces/{workspace_id}/approval-gates")
     if not pending:
         print("approve: no pending gates")
