@@ -22,7 +22,9 @@ case "$lang" in
   typescript|python|go|rust) ;;
   *) echo "sdk-test: unsupported language: $lang (want typescript|python|go|rust)" >&2; exit 1 ;;
 esac
-if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+# Decimal only: reject leading zeros (octal) and overlong digit strings that
+# wrap under Bash arithmetic before the 1..65535 bounds can apply.
+if [[ ! "$port" =~ ^[1-9][0-9]{0,4}$ ]] || (( port < 1 || port > 65535 )); then
   echo "sdk-test: refusing out-of-range port: $port" >&2
   exit 1
 fi

@@ -113,6 +113,79 @@ class Gates(unittest.TestCase):
             self.assertIn("contents: read", r.stderr)
 
 
+    
+    def test_wrangler_minute_list_cron_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / "deploy/cloudflare/wrangler.jsonc"
+            p.write_text(re_sub_cron(p.read_text(), "0,30 9 * * *"))
+            r = _run(root)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("minute", r.stderr)
+
+    def test_wrangler_minute_range_cron_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / "deploy/cloudflare/wrangler.prod.jsonc"
+            p.write_text(re_sub_cron(p.read_text(), "0-5 9 * * *"))
+            r = _run(root)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("minute", r.stderr)
+
+    def test_wrangler_hour_range_cron_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / "deploy/cloudflare/wrangler.jsonc"
+            p.write_text(re_sub_cron(p.read_text(), "17 0-23 * * *"))
+            r = _run(root)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("hour", r.stderr)
+
+    def test_wrangler_step_minute_cron_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / "deploy/cloudflare/wrangler.prod.jsonc"
+            p.write_text(re_sub_cron(p.read_text(), "*/15 9 * * *"))
+            r = _run(root)
+            self.assertNotEqual(r.returncode, 0)
+
+    def test_checkout_with_name_before_uses_requires_persist_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / ".github/workflows/ci.yml"
+            text = p.read_text()
+            # Rewrite first checkout into name-before-uses form without persist-credentials.
+            text = text.replace(
+                "- uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n",
+                "- name: checkout\n        uses: actions/checkout@v4\n        with:\n          fetch-depth: 1\n",
+                1,
+            )
+            p.write_text(text)
+            r = _run(root)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("persist-credentials", r.stderr)
+
+    def test_permissions_contents_read_any_order_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _seed(root)
+            p = root / ".github/workflows/nightly.yml"
+            text = p.read_text()
+            text = text.replace(
+                "permissions:\n  contents: read\n",
+                "permissions:\n  actions: read\n  contents: read\n",
+                1,
+            )
+            p.write_text(text)
+            r = _run(root)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
     def test_sdk_test_without_port_guard_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
