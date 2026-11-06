@@ -28,6 +28,13 @@ cd "$(dirname "$0")/.."
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 port="${MAIDAN_MCP_PORT:-18090}"
+case "${port}" in
+  ''|*[!0-9]*) echo "MAIDAN_MCP_PORT must be an integer port" >&2; exit 2 ;;
+esac
+if [ "${port}" -lt 1 ] || [ "${port}" -gt 65535 ]; then
+  echo "MAIDAN_MCP_PORT must be between 1 and 65535" >&2
+  exit 2
+fi
 inspector="@modelcontextprotocol/inspector@${MAIDAN_INSPECTOR_VERSION:-2.7.0}"
 base="http://127.0.0.1:${port}"
 bin_dir="${MAIDAN_BIN_DIR:-}"

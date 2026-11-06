@@ -21,7 +21,14 @@
 set -euo pipefail
 
 LB_PORT="${MAIDAN_SCALE_LB_PORT:-8090}"
-LB="http://localhost:${LB_PORT}"
+case "${LB_PORT}" in
+  ''|*[!0-9]*) echo "MAIDAN_SCALE_LB_PORT must be an integer port" >&2; exit 2 ;;
+esac
+if [ "${LB_PORT}" -lt 1 ] || [ "${LB_PORT}" -gt 65535 ]; then
+  echo "MAIDAN_SCALE_LB_PORT must be between 1 and 65535" >&2
+  exit 2
+fi
+LB="http://127.0.0.1:${LB_PORT}"
 COMPOSE=(docker compose -f compose.yaml --profile scale)
 
 cleanup() {

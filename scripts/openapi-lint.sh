@@ -23,6 +23,13 @@ cd "$(dirname "$0")/.."
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 port="${MAIDAN_OPENAPI_PORT:-18091}"
+case "${port}" in
+  ''|*[!0-9]*) echo "MAIDAN_OPENAPI_PORT must be an integer port" >&2; exit 2 ;;
+esac
+if [ "${port}" -lt 1 ] || [ "${port}" -gt 65535 ]; then
+  echo "MAIDAN_OPENAPI_PORT must be between 1 and 65535" >&2
+  exit 2
+fi
 redocly="@redocly/cli@${MAIDAN_REDOCLY_VERSION:-2.54.3}"
 base="http://127.0.0.1:${port}"
 bin_dir="${MAIDAN_BIN_DIR:-}"

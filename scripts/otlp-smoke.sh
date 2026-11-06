@@ -11,6 +11,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PORT="${MAIDAN_OTLP_PORT:-8082}"
+case "${PORT}" in
+  ''|*[!0-9]*) echo "MAIDAN_OTLP_PORT must be an integer port" >&2; exit 2 ;;
+esac
+if [ "${PORT}" -lt 1 ] || [ "${PORT}" -gt 65535 ]; then
+  echo "MAIDAN_OTLP_PORT must be between 1 and 65535" >&2
+  exit 2
+fi
 SERVICE="maidan-otlp-smoke"
 COMPOSE=(docker compose --profile otlp)
 

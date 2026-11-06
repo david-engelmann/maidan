@@ -6,6 +6,22 @@ set -euo pipefail
 
 tag="${1:?usage: release-image-smoke.sh <tag> [repository-owner]}"
 owner="${2:-david-engelmann}"
+case "$tag" in
+  ''|latest|LATEST|*/*|*:*|*'['*|*']'*|*'{'*|*'}'*)
+    echo "release-image-smoke: tag must be an immutable release id (got: $tag)" >&2
+    exit 2
+    ;;
+esac
+case "$owner" in
+  ''|*/*|*[[:space:]]*|*'..'*)
+    echo "release-image-smoke: owner must be a single GitHub login (got: $owner)" >&2
+    exit 2
+    ;;
+esac
+if [[ ! "$tag" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "release-image-smoke: tag has illegal characters: $tag" >&2
+  exit 2
+fi
 run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-$$"
 run_suffix="${run_suffix//[^a-zA-Z0-9_.-]/-}"
 network="maidan-release-smoke-${run_suffix}"
