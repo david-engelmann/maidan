@@ -1,7 +1,9 @@
 // What a reviewer reads before deciding, inline in the review pane: the
 // result itself, a look inside each file, and the last few messages.
 import { useEffect, useMemo, useState } from "react";
+import { apiPath, type Credentials } from "../core/api.ts";
 import { BoardApi, type Member } from "../core/board.ts";
+import { authorLabel } from "../core/people.ts";
 import { ThreadsApi, type Message } from "../core/threads.ts";
 import { mediaEssence, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -56,7 +58,18 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   const [recent, setRecent] = useState<{ tid: string; rows: Message[]; error: string | null } | null>(null);
   // Bumped by Try again, so a failed read is never shown as an empty one.
   const [attempt, setAttempt] = useState(0);
-  const [members, setMembers] = useState<Map<string, Member>>(new Map());
+  // Reset when the workspace changes, during render, so an author is never
+  // "Someone" for a roster that has not answered yet.
+  const [roster, setRoster] = useState<{ workspaceId: string | null; members: Map<string, Member>; ready: boolean }>({
+    workspaceId: null,
+    members: new Map(),
+    ready: false,
+  });
+  const workspaceId = session.workspaceId;
+  const staleRoster = roster.workspaceId !== workspaceId;
+  if (staleRoster) setRoster({ workspaceId, members: new Map(), ready: !workspaceId });
+  const members = staleRoster ? new Map<string, Member>() : roster.members;
+  const membersReady = staleRoster ? !workspaceId : roster.ready;
 
   useEffect(() => {
     let live = true;
@@ -71,16 +84,21 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   }, [apis, tid, attempt]);
 
   useEffect(() => {
-    if (!session.workspaceId) return;
+    if (!workspaceId) return;
     let live = true;
-    void apis.board.members(session.workspaceId).then(
-      (ms) => live && setMembers(new Map(ms.map((m) => [m.id, m]))),
-      () => undefined,
+    void apis.board.members(workspaceId).then(
+      (ms) => {
+        if (!live) return;
+        setRoster({ workspaceId, members: new Map(ms.map((m) => [m.id, m])), ready: true });
+      },
+      () => {
+        if (live) setRoster((r) => (r.workspaceId === workspaceId ? { ...r, ready: true } : r));
+      },
     );
     return () => {
       live = false;
     };
-  }, [apis, session.workspaceId]);
+  }, [apis, workspaceId]);
 
   const res = result?.tid === tid ? result : null;
   const msgs = recent?.tid === tid ? recent.rows : null;
@@ -107,7 +125,7 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
           <h4 className="rc-head">Files</h4>
           <ul className="rc-file-list">
             {shas.map((sha) => (
-              <FilePreview key={sha} api={tools} sha={sha} />
+              <FilePreview key={sha} api={tools} sha={sha} creds={session.credentials} />
             ))}
           </ul>
         </section>
@@ -125,7 +143,7 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
             {msgs.map((m) => (
               <li key={m.id} className="rc-msg">
                 <p className="rc-msg-head">
-                  <span className="rc-author">{members.get(m.author_id)?.name ?? "Someone"}</span>
+                  <span className="rc-author">{authorLabel(membersReady, members.get(m.author_id)?.name)}</span>
                   <time dateTime={m.posted_at}>{when(m.posted_at)}</time>
                 </p>
                 <div className="rc-msg-body msg-body">
@@ -147,7 +165,7 @@ function when(iso: string): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function FilePreview({ api, sha }: { api: ToolsApi; sha: string }) {
+function FilePreview({ api, sha, creds }: { api: ToolsApi; sha: string; creds: Credentials }) {
   const [meta, setMeta] = useState<ArtifactMeta | null | undefined>(undefined);
   const [img, setImg] = useState<string | null>(null);
   const [head, setHead] = useState<string | null>(null);
@@ -186,7 +204,15 @@ function FilePreview({ api, sha }: { api: ToolsApi; sha: string }) {
   const name = meta?.filename || "Untitled file";
   return (
     <li className="rc-file" data-sha={sha}>
-      <p className="rc-file-name">{meta === undefined ? "Loading…" : name}</p>
+      <p className="rc-file-name">
+        {meta === undefined ? (
+          "Loading…"
+        ) : meta !== null ? (
+          <a className="msg-link" href={apiPath(creds, `/artifacts/${encodeURIComponent(sha)}`)} target="_blank" rel="noreferrer">{name}</a>
+        ) : (
+          name
+        )}
+      </p>
       {img && <img className="rc-thumb" src={img} alt={name} />}
       {missing && <p className="muted small">The file's contents could not be loaded.</p>}
       {head !== null && <pre className="rc-log msg-pre" tabIndex={0}><code>{head}</code></pre>}

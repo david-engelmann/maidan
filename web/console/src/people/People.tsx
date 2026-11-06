@@ -2,9 +2,9 @@
 // live, what each one holds, and a member's tokens. Swarm is the builder,
 // a steel tile that seats members in the four roles that close the loop,
 // and the footprint lists the workers share.
-import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Gate, type Thread } from "../core/board.ts";
-import { liveActions } from "../core/bus.ts";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { BoardApi, ago, chromeFor, leaseLeft, movesBoard, stateLabel, type Channel, type Gate, type Thread } from "../core/board.ts";
+import { liveActions, liveBus } from "../core/bus.ts";
 import {
   METER_LABELS,
   NO_SEATS,
@@ -12,11 +12,15 @@ import {
   ROLES,
   ROLE_NAME,
   PeopleApi,
+  channelTag,
   circuit,
   circuitStatus,
   filterRoster,
   holding,
+  lastActiveByMember,
+  lastActiveFact,
   loadSeats,
+  mergeChannelThreads,
   nextWell,
   roster,
   saveSeats,
@@ -25,6 +29,8 @@ import {
   WORKER_PRESET,
   tokenState,
   inviteState,
+  workOf,
+  workStamp,
   type Invite,
   type InviteRole,
   unseat,
@@ -35,9 +41,10 @@ import {
   type RosterRow,
   type Seats,
 } from "../core/people.ts";
+import { mapBounded } from "../core/taskSheet.ts";
 import { hasToken } from "../core/api.ts";
 import { say, sayError } from "../core/notices.ts";
-import { convHash } from "../core/threads.ts";
+import { ThreadsApi, convHash } from "../core/threads.ts";
 import { capsExceeding, parseCaps } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { SecretOnce } from "../tools/SecretOnce.tsx";
@@ -85,10 +92,16 @@ export function People() {
   const { tab, member } = useSub();
   const { data: people, reload: reloadPeople } = usePeople(session, deps.people);
   const { data: board } = useBoard(session, deps.board);
+  const workspaceId = session.status === "signed-in" ? session.workspaceId : null;
+  const work = useWorkspaceWork(workspaceId, deps.board);
   const presence = usePresence();
   const me = session.status === "signed-in" ? session.memberId : null;
-  const held = useMemo(() => holding(board.threads), [board.threads]);
+  // Until every channel has answered, the open channel is enough to name who holds what.
+  const source = work.status === "ready" ? work.threads : board.threads;
+  const held = useMemo(() => holding(source), [source]);
+  const active = useMemo(() => lastActiveByMember(source), [source]);
   const rows = useMemo(() => roster(people.value ?? [], presence, held, me), [people.value, presence, held, me]);
+  const workBoard: WorkBoard = { status: work.status, error: work.error, threads: work.threads, gates: board.gates, channelCount: work.channelCount };
 
 
   return (
@@ -98,7 +111,7 @@ export function People() {
         <a role="tab" aria-selected={tab === "swarm"} href="#/people/swarm">Swarm</a>
       </div>
       {tab === "people" ? (
-        <Roster loaded={people} onRetry={() => void reloadPeople()} rows={rows} open={member} api={deps.people} board={board} />
+        <Roster loaded={people} onRetry={() => void reloadPeople()} rows={rows} open={member} api={deps.people} board={workBoard} active={active} />
       ) : (
         <Swarm rows={rows} people={people.value ?? []} api={deps.people} workspace={session.status === "signed-in" ? session.workspaceId : null} presence={presence} />
       )}
@@ -106,44 +119,98 @@ export function People() {
   );
 }
 
-type BoardView = { status: string; error: string | null; threads: Thread[]; gates: Record<string, Gate> };
+type WorkThread = Thread & { channelName?: string };
+type WorkBoard = { status: string; error: string | null; threads: WorkThread[]; gates: Record<string, Gate>; channelCount: number };
+type WorkLoad = { status: "loading" | "ready" | "error"; error: string | null; threads: WorkThread[]; channelCount: number };
 
-const DONE = new Set(["closed", "archived"]);
-const stamp = (th: Thread) => th.last_progress_at ?? th.updated_at ?? th.work_started_at ?? "";
+const WORK_FETCH = 4;
 
-/** What a member is on now and what they closed lately, from the open channel's threads. */
-function workOf(id: string, threads: Thread[]): { now: Thread[]; recent: Thread[] } {
-  const mine = threads.filter((t) => t.assignee_id === id).sort((a, b) => stamp(b).localeCompare(stamp(a)));
-  return { now: mine.filter((t) => !DONE.has(t.state)), recent: mine.filter((t) => DONE.has(t.state)).slice(0, 5) };
+/** Every visible channel's tasks, so a member working elsewhere does not look idle. */
+function useWorkspaceWork(workspace: string | null, api: BoardApi): WorkLoad {
+  const [state, setState] = useState<WorkLoad & { workspace: string | null }>({ status: "loading", error: null, threads: [], channelCount: 0, workspace: null });
+  // A signed-out page has nothing to load. A new workspace drops the previous one before the read.
+  if (state.workspace !== workspace || (!workspace && state.status !== "ready")) {
+    setState({ status: workspace ? "loading" : "ready", error: null, threads: [], channelCount: 0, workspace });
+  }
+  const gen = useRef(0);
+  const load = useCallback(async (quiet: boolean) => {
+    if (!workspace) return;
+    const mine = ++gen.current;
+    if (!quiet) setState((s) => ({ ...s, status: "loading", error: null }));
+    try {
+      const channels = await api.channels(workspace);
+      let failed = 0;
+      const groups = await mapBounded(channels, WORK_FETCH, async (channel: Channel) => {
+        try {
+          return { channel, threads: await api.threads(channel.id) };
+        } catch {
+          failed += 1;
+          return { channel, threads: [] as Thread[] };
+        }
+      });
+      if (mine !== gen.current) return;
+      if (channels.length > 0 && failed === channels.length) {
+        setState((s) => (s.workspace === workspace ? { status: "error", error: "Could not load work", threads: [], channelCount: channels.length, workspace } : s));
+        return;
+      }
+      const threads = mergeChannelThreads(groups);
+      setState((s) => (s.workspace === workspace ? { status: "ready", error: null, threads, channelCount: channels.length, workspace } : s));
+    } catch (e) {
+      if (mine !== gen.current) return;
+      const message = e instanceof Error ? e.message : "Could not load work";
+      setState((s) => (s.workspace !== workspace || (quiet && s.status === "ready") ? s : { status: "error", error: message, threads: [], channelCount: 0, workspace }));
+    }
+  }, [workspace, api]);
+
+  useEffect(() => {
+    if (!workspace) return;
+    const t = setTimeout(() => void load(false), 0);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = liveBus.listen((m) => {
+      const kind = m.type === "event" ? (m.frame.kind ?? "") : "resync";
+      if (m.type !== "resync" && !movesBoard(kind) && !/thread|task/i.test(kind)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void load(true), 250);
+    });
+    return () => {
+      clearTimeout(t);
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [workspace, load]);
+  return state.workspace === workspace ? state : { status: workspace ? "loading" : "ready", error: null, threads: [], channelCount: 0 };
 }
 
-function WorkList({ rows, empty, gates }: { rows: Thread[]; empty: string; gates: Record<string, Gate> }) {
+function WorkList({ rows, empty, gates, channelCount }: { rows: WorkThread[]; empty: string; gates: Record<string, Gate>; channelCount: number }) {
   const now = useNow();
   if (!rows.length) return <p className="muted small">{empty}</p>;
   return (
     <ul className="work-list">
-      {rows.map((t) => (
-        <li key={t.id}>
-          <a href={convHash({ kind: "task", id: t.id })}>{t.title || "Untitled task"}</a>
-          <span className="muted small">{stateLabel(t, chromeFor(t, gates[t.id]))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
-        </li>
-      ))}
+      {rows.map((t) => {
+        const at = workStamp(t);
+        return (
+          <li key={t.id}>
+            <a href={convHash({ kind: "task", id: t.id })}>{t.title || "Untitled task"}</a>
+            <span className="muted small">{stateLabel(t, chromeFor(t, gates[t.id]))}{at ? ` · ${ago(at, now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}{channelTag(t.channelName, channelCount)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function Work({ id, board }: { id: string; board: BoardView }) {
-  const head = <h3 className="work-h">Work in this channel</h3>;
-  if (board.status === "error") return <section className="work" aria-label="Work">{head}<p className="muted small" role="alert">Could not load the board: {board.error ?? "try again"}</p></section>;
+function Work({ id, board }: { id: string; board: WorkBoard }) {
+  const head = <h3 className="work-h">Work</h3>;
+  if (board.status === "error") return <section className="work" aria-label="Work">{head}<p className="muted small" role="alert">Could not load work: {board.error ?? "try again"}</p></section>;
   if (board.status !== "ready") return <section className="work" aria-label="Work" aria-busy="true">{head}<div className="ghost-line" /><div className="ghost-line" /></section>;
   const { now, recent } = workOf(id, board.threads);
   return (
     <section className="work" aria-label="Work">
       {head}
       <h4 className="work-sub">Now</h4>
-      <WorkList rows={now} empty="Nothing claimed right now." gates={board.gates} />
+      <WorkList rows={now} empty="Nothing claimed right now." gates={board.gates} channelCount={board.channelCount} />
       <h4 className="work-sub">Recent results</h4>
-      <WorkList rows={recent} empty="Nothing finished yet." gates={board.gates} />
+      <WorkList rows={recent} empty="Nothing finished yet." gates={board.gates} channelCount={board.channelCount} />
     </section>
   );
 }
@@ -159,7 +226,7 @@ function Avatar({ person, presence, large }: { person: Person; presence?: Presen
   );
 }
 
-function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Person[]>; onRetry: () => void; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
+function Roster({ loaded, onRetry, rows, open, api, board, active }: { loaded: Loaded<Person[]>; onRetry: () => void; rows: RosterRow[]; open: string | null; api: PeopleApi; board: WorkBoard; active: Map<string, string> }) {
   const [query, setQuery] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const shown = filterRoster(rows, query);
@@ -217,7 +284,7 @@ function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Pe
       {open ? (
         <section className="member-detail card" aria-label="Member details">
           <a className="back" href="#/people">People</a>
-          {selected ? <MemberDetail key={selected.person.id} row={selected} api={api} board={board} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
+          {selected ? <MemberDetail key={selected.person.id} row={selected} api={api} board={board} lastActive={active.get(selected.person.id) ?? null} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
@@ -243,8 +310,9 @@ function useNow(): number {
   return now;
 }
 
-function MemberDetail({ row, api, board }: { row: RosterRow; api: PeopleApi; board: BoardView }) {
+function MemberDetail({ row, api, board, lastActive }: { row: RosterRow; api: PeopleApi; board: WorkBoard; lastActive: string | null }) {
   const { session, store } = useSession();
+  const threads = useMemo(() => new ThreadsApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
   const [version, setVersion] = useState(0);
   const tokens = useTokens(session, api, row.person.id, version);
   const now = useNow();
@@ -253,6 +321,7 @@ function MemberDetail({ row, api, board }: { row: RosterRow; api: PeopleApi; boa
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; op: "rotate" | "revoke" } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const canWrite = session.status === "signed-in" && hasToken(session.credentials);
   const pageToken = session.status === "signed-in" ? session.credentials.sessionTokenId ?? null : null;
@@ -273,6 +342,19 @@ function MemberDetail({ row, api, board }: { row: RosterRow; api: PeopleApi; boa
       setConfirm(null);
     }
   };
+  const openMessage = async () => {
+    if (opening || !workspace || !session.memberId) return;
+    setOpening(true);
+    try {
+      const dm = await threads.openDm(workspace, session.memberId, p.id);
+      window.location.hash = convHash({ kind: "dm", id: dm.id });
+    } catch (e) {
+      sayError(e, "Could not open a direct message");
+    } finally {
+      setOpening(false);
+    }
+  };
+  const activeFact = lastActiveFact(row.presence, lastActive);
   const tokenAct = (id: string, op: "rotate" | "revoke") => {
     if (!confirm || confirm.id !== id || confirm.op !== op) return setConfirm({ id, op });
     if (op === "revoke") void run(() => api.revoke(id), "Token revoked", "Could not revoke that token");
@@ -294,11 +376,18 @@ function MemberDetail({ row, api, board }: { row: RosterRow; api: PeopleApi; boa
           <p className="muted">{p.handle ? `@${p.handle} · ` : ""}{p.kind === "human" ? "Human" : "Agent"} · {PRESENCE_WORD[row.presence]}</p>
         </div>
       </div>
+      {!row.me && workspace ? (
+        <button type="button" className="button ghost" disabled={opening} onClick={() => void openMessage()}>{opening ? "Opening…" : "Message"}</button>
+      ) : null}
       <Work id={p.id} board={board} />
       <dl className="facts">
-        <div><dt>Member id</dt><dd className="mono-id">{p.id}</dd></div>
+        <div>
+          <dt>Last active</dt>
+          <dd>{activeFact.iso ? <time dateTime={activeFact.iso} title={new Date(activeFact.iso).toLocaleString()}>{ago(activeFact.iso, now)}</time> : activeFact.text}</dd>
+        </div>
         {p.createdAt ? <div><dt>Joined</dt><dd>{ago(p.createdAt, now)}</dd></div> : null}
         <div><dt>Holds</dt><dd>{row.task ? <a href={convHash({ kind: "task", id: row.task.id })}>{row.task.title || "untitled"}</a> : "Nothing right now"}</dd></div>
+        <div><dt>Member id</dt><dd className="mono-id">{p.id}</dd></div>
       </dl>
       <h3>Tokens</h3>
       {secret ? <SecretOnce title={secret.title} secret={secret.value} onDone={() => setSecret(null)} /> : null}

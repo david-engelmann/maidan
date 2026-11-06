@@ -87,6 +87,88 @@ function asPresence(v: unknown): Presence {
   return v === "away" ? "away" : v === "offline" ? "offline" : "online";
 }
 
+export type ActivityThread = Thread & {
+  author_id?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+};
+
+function later(prev: string | undefined, at: string | null | undefined): string | undefined {
+  if (!at || Number.isNaN(Date.parse(at))) return prev;
+  if (!prev || at > prev) return at;
+  return prev;
+}
+
+/**
+ * The latest moment each member shows up on a task: holding it, or having
+ * filed it (`created_by` / `author_id`).
+ */
+export function lastActiveByMember(threads: readonly ActivityThread[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const note = (id: string | null | undefined, at: string | null | undefined) => {
+    if (!id) return;
+    const next = later(out.get(id), at);
+    if (next) out.set(id, next);
+  };
+  for (const t of threads) {
+    const moved = t.updated_at ?? t.last_progress_at ?? t.work_started_at ?? t.created_at ?? null;
+    note(t.assignee_id, moved);
+    note(t.created_by, t.created_at ?? t.updated_at ?? null);
+    note(t.author_id, t.created_at ?? t.updated_at ?? null);
+  }
+  return out;
+}
+
+/** Online and away win over a timestamp. Otherwise the time, or a quiet empty. */
+export function lastActiveFact(presence: Presence, iso: string | null | undefined): { text: string | null; iso: string | null } {
+  if (presence === "online") return { text: "Online now", iso: null };
+  if (presence === "away") return { text: "Away", iso: null };
+  if (iso) return { text: null, iso };
+  return { text: "No activity yet", iso: null };
+}
+
+const DONE_STATES = new Set(["closed", "archived"]);
+
+/** The clock a piece of work is sorted and labelled by. */
+export function workStamp(th: Thread): string {
+  return th.last_progress_at ?? th.updated_at ?? th.work_started_at ?? "";
+}
+
+/** What a member is on now, and the latest tasks they finished. */
+export function workOf<T extends Thread>(id: string, threads: readonly T[]): { now: T[]; recent: T[] } {
+  const mine = threads.filter((t) => t.assignee_id === id).sort((a, b) => workStamp(b).localeCompare(workStamp(a)));
+  return { now: mine.filter((t) => !DONE_STATES.has(t.state)), recent: mine.filter((t) => DONE_STATES.has(t.state)).slice(0, 5) };
+}
+
+export type NamedChannel = { id: string; name: string };
+
+/** Threads from every channel, first copy kept, each tagged with its channel's name. */
+export function mergeChannelThreads<T extends { id: string }>(groups: ReadonlyArray<{ channel: NamedChannel; threads: readonly T[] }>): Array<T & { channelName: string }> {
+  const seen = new Set<string>();
+  const out: Array<T & { channelName: string }> = [];
+  for (const g of groups) {
+    for (const t of g.threads) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push({ ...t, channelName: g.channel.name });
+    }
+  }
+  return out;
+}
+
+/** `#name` when the workspace has more than one channel and this task's channel is known. */
+export function channelTag(name: string | null | undefined, channelCount: number): string {
+  const n = (name ?? "").trim();
+  if (!n || channelCount < 2) return "";
+  return ` · #${n}`;
+}
+
+/** A message author: a placeholder until the roster arrives, then the name or a fallback. */
+export function authorLabel(ready: boolean, name: string | null | undefined, fallback = "Someone"): string {
+  if (name) return name;
+  return ready ? fallback : "…";
+}
+
 /** What a member holds now: their running task first, else the latest open one. */
 export function holding(threads: Thread[]): Map<string, Thread> {
   const out = new Map<string, Thread>();
