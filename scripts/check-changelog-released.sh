@@ -34,6 +34,7 @@ while read -r candidate; do
   echo "changelog: [$candidate] is not tagged yet; checking the section below it"
 done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
 [[ -n "$version" ]] || { echo "changelog: no released section is tagged; nothing to compare"; exit 0; }
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "changelog: refusing non-semver version $version" >&2; exit 1; }
 tagged=$(mktemp); trap 'rm -f "$tagged"' EXIT
 git show "v$version:CHANGELOG.md" > "$tagged"
 added=$(comm -13 <(section_headings "$tagged" "$version" | sort) <(section_headings CHANGELOG.md "$version" | sort))

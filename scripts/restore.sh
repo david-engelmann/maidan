@@ -26,6 +26,8 @@ set -euo pipefail
 
 src="${1:?usage: restore.sh <backup-dir> [--force]}"
 force="${2:-}"
+gates="$(cd "$(dirname "$0")" && pwd)/backup_path_gates.py"
+src="$(python3 "$gates" restore-src "$src")"
 
 # SQLx percent-decodes the path in a sqlite: URL (so a file name can hold `?`
 # or `#`), and so must this, or the restore lands beside the file the server
@@ -106,6 +108,7 @@ esac
 
 if [[ -f "$src/artifacts.tar.gz" ]]; then
   root="${ARTIFACT_LOCALFS_ROOT:?artifacts.tar.gz present — set ARTIFACT_LOCALFS_ROOT to restore into}"
+  root="$(python3 "$gates" artifact-root "$root")"
   mkdir -p "$root"
   echo "restore: unpacking artifacts → $root"
   tar -xzf "$src/artifacts.tar.gz" -C "$root"

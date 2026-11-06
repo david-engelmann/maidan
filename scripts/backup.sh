@@ -50,6 +50,8 @@ percent_decode() {
 
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
 out="${1:-${BACKUP_DIR:-backups/$ts}}"
+gates="$(cd "$(dirname "$0")" && pwd)/backup_path_gates.py"
+out="$(python3 "$gates" backup-dir "$out")"
 mkdir -p "$out"
 
 case "$DATABASE_URL" in
@@ -80,6 +82,9 @@ esac
 
 if [[ "${ARTIFACT_BACKEND:-localfs}" == "localfs" ]]; then
   root="${ARTIFACT_LOCALFS_ROOT:-}"
+  if [[ -n "$root" ]]; then
+    root="$(python3 "$gates" artifact-root "$root")"
+  fi
   if [[ -n "$root" && -d "$root" ]]; then
     echo "backup: archiving artifacts ($root) → $out/artifacts.tar.gz"
     tar -czf "$out/artifacts.tar.gz" -C "$root" .
