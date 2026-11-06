@@ -38,7 +38,7 @@ fi
 # Only http(s) URLs without userinfo; a file: or credentialed URL would leak
 # the bearer into the wrong place or print secrets via curl's error path.
 case "$BASE_URL" in
-  http://*|https://*) ;;
+  [Hh][Tt][Tt][Pp]://*|[Hh][Tt][Tt][Pp][Ss]://*) ;;
   *) echo "MAIDAN_URL must be an http(s) URL" >&2; exit 2 ;;
 esac
 BASE_URL="${BASE_URL%/}"
@@ -46,7 +46,7 @@ python3 - "$BASE_URL" <<'PY' || exit 2
 import sys
 from urllib.parse import urlparse
 u = urlparse(sys.argv[1])
-if u.scheme not in ("http", "https") or u.username or u.password or not u.hostname:
+if u.scheme.lower() not in ("http", "https") or u.username or u.password or not u.hostname:
     print("MAIDAN_URL must be http(s) with a host and no userinfo", file=sys.stderr)
     sys.exit(1)
 if u.query or u.fragment:
@@ -54,7 +54,7 @@ if u.query or u.fragment:
     sys.exit(1)
 PY
 
-me=$(curl -fsS -H "authorization: Bearer ${MAIDAN_REVIEWER_TOKEN}" "${BASE_URL}/me") || {
+me=$(curl --globoff -fsS -H "authorization: Bearer ${MAIDAN_REVIEWER_TOKEN}" "${BASE_URL}/me") || {
   echo "FAIL: the reviewer token is refused by ${BASE_URL}/me (expired, revoked or wrong)" >&2
   exit 1
 }
@@ -63,7 +63,7 @@ member_id=$(printf '%s' "$me" | jq -er '.member_id')
 workspace_id=$(printf '%s' "$me" | jq -er '.workspace_id')
 [ -n "$token_id" ] || { echo "FAIL: the reviewer credential is a session, not a bearer token" >&2; exit 1; }
 
-tokens=$(curl -fsS -H "authorization: Bearer ${MAIDAN_ADMIN_TOKEN}" \
+tokens=$(curl --globoff -fsS -H "authorization: Bearer ${MAIDAN_ADMIN_TOKEN}" \
   "${BASE_URL}/workspaces/${workspace_id}/members/${member_id}/tokens") || {
   echo "could not list the reviewer's tokens with the admin token (needs token:admin in ${workspace_id})" >&2
   exit 2

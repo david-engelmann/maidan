@@ -35,7 +35,7 @@ for name in minio minio-client; do
   # refused before the pins are compared, or it would silently drop out of them.
   # Portable scan (no rg -P): list every cgr.dev/chainguard/<name> reference that
   # is not a full sha256 digest. Fail closed if the scanner itself errors.
-  loose="$(
+  if ! loose="$(
     NAME="$name" python3 - <<'PY'
 import os, re, sys
 from pathlib import Path
@@ -61,9 +61,7 @@ for root in roots:
                 bad.append(ref)
 sys.stdout.write("\n".join(bad))
 PY
-  )"
-  loose_rc=$?
-  if [[ "$loose_rc" -ne 0 ]]; then
+  )"; then
     echo "deploy contract: failed scanning cgr.dev/chainguard/${name} references" >&2
     exit 1
   fi

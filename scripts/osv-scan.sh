@@ -58,6 +58,12 @@ chmod +x "$scanner"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Run only a private copy so a shared TMPDIR/OSV_SCANNER path cannot be swapped
+# after the hash check (TOCTOU).
+install -m 700 -d "$work/bin"
+install -m 700 "$scanner" "$work/bin/osv-scanner"
+scanner="$work/bin/osv-scanner"
+verify_scanner "$scanner"
 
 # A dependency-free SDK has nothing to scan until it gains a dependency; then
 # it needs a lockfile, which the discovery below picks up.

@@ -36,7 +36,15 @@ else
   python3 -c "import yaml; yaml.safe_dump(yaml.safe_load(open('$RULES'))['spec'], open('$GEN', 'w'), sort_keys=False)"
 fi
 # Refuse an empty or non-groups extract so a bad CRD cannot pass check rules.
-python3 - <<PY
+# Prefer yq when that is how we extracted, so a yq-only runner does not need PyYAML.
+if command -v yq >/dev/null 2>&1; then
+  groups="$(yq '.groups | length' "$GEN" 2>/dev/null || echo 0)"
+  [[ "$groups" =~ ^[1-9][0-9]*$ ]] || {
+    echo "alert rules: extracted $GEN has no groups" >&2
+    exit 1
+  }
+else
+  python3 - <<PY
 import sys, yaml
 doc = yaml.safe_load(open("$GEN"))
 groups = (doc or {}).get("groups") if isinstance(doc, dict) else None
@@ -44,6 +52,7 @@ if not isinstance(groups, list) or not groups:
     print("alert rules: extracted $GEN has no groups", file=sys.stderr)
     sys.exit(1)
 PY
+fi
 
 promtool check rules "$GEN"
 
