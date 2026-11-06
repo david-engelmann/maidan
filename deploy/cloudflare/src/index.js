@@ -7,10 +7,12 @@
 // and artifacts (R2) live outside it, so a sleep or a restart loses nothing but
 // in-memory presence and live connections, which clients already reconnect.
 
+import { env as workerEnv } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
 import {
   edgeRedirect,
+  internalOutboundByHost,
   isPageNavigation,
   isSitePage,
   HOSTED_FOOTER_LINKS,
@@ -57,6 +59,20 @@ export class MaidanServer extends Container {
     });
   }
 }
+
+// The container's calls to an internal host (`MAIDAN_INTERNAL_HOSTS`) go to
+// our own Worker over its service binding; every other host keeps the
+// container's internet egress. The map is set at module scope because the
+// runtime's outbound proxy (`ContainerProxy`, exported below) reads it in its
+// own isolate, and through the static accessor, because a static class field
+// would shadow the accessor and register nothing. With no map the container is
+// not intercepted at all.
+const internalHosts = internalOutboundByHost(workerEnv.MAIDAN_INTERNAL_HOSTS, workerEnv);
+if (Object.keys(internalHosts).length > 0) {
+  MaidanServer.outboundByHost = internalHosts;
+}
+
+export { ContainerProxy } from "@cloudflare/containers";
 
 export default {
   async fetch(request, env) {

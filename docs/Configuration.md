@@ -264,6 +264,7 @@ See [OAuth](OAuth.md).
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_PRIVATE_EGRESS_HOSTS` | unset | Comma-separated host names or addresses of peers on a private network (a federation peer, an A2A push receiver, a webhook) that may resolve to private or loopback addresses. Exact matches only. A listed host that resolves to a link-local address is still refused, so cloud metadata stays closed. Works in production. |
+| `MAIDAN_INTERNAL_EGRESS_HOSTS` | unset | Comma-separated hostnames under `.internal`, such as `seats.internal`, that a webhook or other operator-supplied target may name over plain `http://`. Exact matches only; an entry not under `.internal` is ignored, and every unlisted `.internal` name is refused. The platform answers a listed name, so its address is not checked. On Cloudflare the Worker routes each name to a service binding: see [Internal hosts](Hosted%20Operations.md#internal-hosts). |
 | `MAIDAN_ALLOW_PRIVATE_EGRESS` | unset | Development only: allow every private and loopback target. Refused in production. |
 | `MAIDAN_SECRET_EGRESS_ALLOWLIST` | unset | The instance ceiling on hosts that may receive substituted `secret://` values. Set, a host outside it never receives a value and a workspace cannot add it. Unset, workspace lists alone decide. Set to the empty string, no host receives a value. See [Secret substitution](Production.md#secret-substitution-on-egress). |
 
@@ -271,7 +272,10 @@ Every operator-supplied target (webhook, automation, federation peer, A2A
 push, web push) is checked when it is registered and again at each delivery.
 A delivery resolves the name, refuses the whole answer if any address is
 private, link-local, loopback or reserved, pins the request to those
-addresses and never follows redirects.
+addresses and never follows redirects. Two lists are the exceptions: a host in
+`MAIDAN_PRIVATE_EGRESS_HOSTS` may resolve to a private or loopback address but
+never a link-local one, and the answer for a host in
+`MAIDAN_INTERNAL_EGRESS_HOSTS` is not checked at all.
 
 ## GitHub, Slack and Linear
 

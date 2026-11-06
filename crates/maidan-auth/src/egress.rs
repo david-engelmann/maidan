@@ -103,7 +103,8 @@ pub fn parse_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
     match url.host() {
         Some(Host::Domain(host))
             if host.eq_ignore_ascii_case("localhost")
-                || host.to_ascii_lowercase().ends_with(".localhost") =>
+                || host.to_ascii_lowercase().ends_with(".localhost")
+                || is_internal_name(host) =>
         {
             Err(EgressTargetError::NonPublic)
         }
@@ -159,6 +160,49 @@ pub fn private_egress_hosts() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The environment variable naming the `.internal` hosts this instance may
+/// send to: names its own platform answers, never the public internet.
+pub const INTERNAL_EGRESS_HOSTS_ENV: &str = "MAIDAN_INTERNAL_EGRESS_HOSTS";
+
+const INTERNAL_SUFFIX: &str = ".internal";
+
+/// Whether `host` is a name under `.internal`, the top-level domain ICANN
+/// reserved for private use: no public resolver answers for it, so all such a
+/// name can reach is what the instance's own network maps it to.
+fn is_internal_name(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    host.len() > INTERNAL_SUFFIX.len() && host.ends_with(INTERNAL_SUFFIX)
+}
+
+fn is_bare_name(entry: &str) -> bool {
+    entry.split('.').all(|label| {
+        !label.is_empty() && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
+}
+
+/// Parses a comma-separated list of `.internal` hostnames. Entries are
+/// trimmed, lowercased and stripped of a trailing dot; an entry that is not a
+/// bare name under `.internal` (an address, a scheme, a port, a path, a
+/// wildcard, any other domain) is dropped, so the list can never open a
+/// public or private address.
+pub fn parse_internal_egress_hosts(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|entry| entry.trim().trim_end_matches('.').to_ascii_lowercase())
+        .filter(|entry| is_internal_name(entry) && is_bare_name(entry))
+        .collect()
+}
+
+/// The `.internal` hosts this instance may send to
+/// (`MAIDAN_INTERNAL_EGRESS_HOSTS`). On Cloudflare Containers the Worker maps
+/// each to a service binding (`MAIDAN_INTERNAL_HOSTS`), so a webhook to
+/// `http://seats.internal/wake` reaches our own Worker without crossing the
+/// public internet. Exact names only; an unlisted `.internal` name is refused.
+pub fn internal_egress_hosts() -> Vec<String> {
+    std::env::var(INTERNAL_EGRESS_HOSTS_ENV)
+        .map(|raw| parse_internal_egress_hosts(&raw))
+        .unwrap_or_default()
+}
+
 fn url_host_key(url: &Url) -> Option<String> {
     match url.host()? {
         Host::Domain(host) => Some(host.trim_end_matches('.').to_ascii_lowercase()),
@@ -199,6 +243,10 @@ enum PrivateAccess {
     None,
     /// A listed peer: private addresses, but never link-local.
     ListedPeer,
+    /// A listed `.internal` host. The platform's network answers its name
+    /// with a placeholder address that routes to a service binding, so the
+    /// address is not judged; the name was.
+    Internal,
     /// The development escape hatch: anything.
     Everything,
 }
@@ -220,7 +268,11 @@ fn validate_scheme_and_credentials(raw: &str) -> Result<Url, EgressTargetError> 
     Ok(url)
 }
 
-fn validate_with(raw: &str, hosts: &[String]) -> Result<(Url, PrivateAccess), EgressTargetError> {
+fn validate_with(
+    raw: &str,
+    hosts: &[String],
+    internal: &[String],
+) -> Result<(Url, PrivateAccess), EgressTargetError> {
     match parse_egress_target(raw) {
         Ok(url) => {
             let access = if host_is_listed(&url, hosts) {
@@ -237,7 +289,11 @@ fn validate_with(raw: &str, hosts: &[String]) -> Result<(Url, PrivateAccess), Eg
                 Some(Host::Ipv6(ip)) => is_link_local(IpAddr::V6(ip)),
                 _ => false,
             };
-            if host_is_listed(&url, hosts) && !literal_link_local {
+            let internal_name =
+                matches!(url.host(), Some(Host::Domain(host)) if is_internal_name(host));
+            if internal_name && host_is_listed(&url, internal) {
+                Ok((url, PrivateAccess::Internal))
+            } else if host_is_listed(&url, hosts) && !literal_link_local {
                 Ok((url, PrivateAccess::ListedPeer))
             } else {
                 Err(EgressTargetError::NonPublic)
@@ -249,7 +305,8 @@ fn validate_with(raw: &str, hosts: &[String]) -> Result<(Url, PrivateAccess), Eg
 
 pub fn validate_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
     if !private_egress_explicitly_allowed() {
-        return validate_with(raw, &private_egress_hosts()).map(|(url, _)| url);
+        return validate_with(raw, &private_egress_hosts(), &internal_egress_hosts())
+            .map(|(url, _)| url);
     }
     let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
     if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
@@ -267,7 +324,7 @@ pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, Eg
     let (url, access) = if private_egress_explicitly_allowed() {
         (validate_egress_target(raw)?, PrivateAccess::Everything)
     } else {
-        validate_with(raw, &private_egress_hosts())?
+        validate_with(raw, &private_egress_hosts(), &internal_egress_hosts())?
     };
     let host = url
         .host_str()
@@ -316,7 +373,7 @@ fn ensure_allowed_addresses(
     access: PrivateAccess,
 ) -> Result<(), EgressTargetError> {
     let refused = match access {
-        PrivateAccess::Everything => false,
+        PrivateAccess::Everything | PrivateAccess::Internal => false,
         PrivateAccess::ListedPeer => addresses.iter().any(|addr| is_link_local(addr.ip())),
         PrivateAccess::None => addresses.iter().any(|addr| !is_public_ip(addr.ip())),
     };
@@ -360,6 +417,7 @@ mod tests {
             "http://[4000::1]/x",
             "http://localhost/x",
             "http://api.localhost/x",
+            "http://seats.internal/x",
         ] {
             assert!(parse_egress_target(raw).is_err(), "accepted {raw}");
         }
@@ -418,6 +476,137 @@ mod tests {
         parse_private_egress_hosts(raw)
     }
 
+    fn validate_with_peers(
+        raw: &str,
+        peers: &[String],
+    ) -> Result<(Url, PrivateAccess), EgressTargetError> {
+        validate_with(raw, peers, &[])
+    }
+
+    fn access(raw: &str, internal: &[String]) -> Result<PrivateAccess, EgressTargetError> {
+        validate_with(raw, &[], internal).map(|(_, access)| access)
+    }
+
+    #[test]
+    fn the_internal_list_keeps_only_bare_names_under_internal() {
+        assert_eq!(
+            parse_internal_egress_hosts(
+                " Seats.Internal. , control.internal, internal, .internal, 10.0.0.5, \
+                 http://a.internal, a.internal:80, *.internal, a..internal, example.com, \
+                 internal.example.com, a_b.internal, ,"
+            ),
+            vec!["seats.internal", "control.internal"]
+        );
+    }
+
+    #[test]
+    fn a_listed_internal_host_is_allowed_over_plain_http() {
+        let internal = parse_internal_egress_hosts("seats.internal");
+        for raw in [
+            "http://seats.internal/wake",
+            "http://SEATS.internal./wake?thread=1",
+            "https://seats.internal/wake",
+        ] {
+            assert_eq!(
+                access(raw, &internal).ok(),
+                Some(PrivateAccess::Internal),
+                "{raw}"
+            );
+        }
+        // The placeholder address the platform answers with is not judged.
+        let placeholder: [SocketAddr; 1] = ["169.254.0.7:80".parse().expect("placeholder")];
+        assert!(ensure_allowed_addresses(&placeholder, PrivateAccess::Internal).is_ok());
+        assert!(matches!(
+            access("http://u:p@seats.internal/wake", &internal),
+            Err(EgressTargetError::Credentials)
+        ));
+    }
+
+    #[test]
+    fn nothing_but_a_listed_internal_name_opens() {
+        let internal = parse_internal_egress_hosts("seats.internal");
+        // An unlisted `.internal` name, even one that ends like a listed one.
+        for raw in [
+            "http://control.internal/mcp",
+            "http://evil.seats.internal/wake",
+            "http://seats.internal.example.com/wake",
+        ] {
+            let result = access(raw, &internal);
+            if raw.ends_with(".com/wake") {
+                // Not under `.internal` at all: a public name, public answers only.
+                assert_eq!(result.ok(), Some(PrivateAccess::None), "{raw}");
+            } else {
+                assert!(
+                    matches!(result, Err(EgressTargetError::NonPublic)),
+                    "opened {raw}"
+                );
+            }
+        }
+        // With no list, every `.internal` name is refused, as `.localhost` is.
+        assert!(matches!(
+            access("http://seats.internal/wake", &[]),
+            Err(EgressTargetError::NonPublic)
+        ));
+        assert!(matches!(
+            parse_egress_target("http://seats.internal/wake"),
+            Err(EgressTargetError::NonPublic)
+        ));
+        // Plain http to a public host keeps today's rule: allowed, but with
+        // public-only addresses, never the internal pass.
+        assert_eq!(
+            access("http://example.com/hook", &internal).ok(),
+            Some(PrivateAccess::None)
+        );
+        // A private literal or loopback is not opened by the internal list.
+        for raw in [
+            "http://10.0.0.5/x",
+            "http://127.0.0.1/x",
+            "http://localhost/x",
+        ] {
+            assert!(
+                matches!(access(raw, &internal), Err(EgressTargetError::NonPublic)),
+                "{raw}"
+            );
+        }
+        // The peer list does not hand an internal name the unchecked pass.
+        let peers = hosts("seats.internal");
+        assert_eq!(
+            validate_with_peers("http://seats.internal/wake", &peers)
+                .map(|(_, a)| a)
+                .ok(),
+            Some(PrivateAccess::ListedPeer)
+        );
+    }
+
+    /// Webhook targets are per workspace, the list is per instance: every
+    /// workspace admin is held to the same exact names, and one workspace's
+    /// target never widens what another may register.
+    #[test]
+    fn every_workspace_is_held_to_the_same_internal_list() {
+        let internal = parse_internal_egress_hosts("seats.internal");
+        // What two workspaces' admins each try to register, in turn.
+        let workspace_a = [
+            ("http://seats.internal/wake", true),
+            ("http://admin.internal/x", false),
+        ];
+        let workspace_b = [
+            ("http://seats.internal/wake", true),
+            ("http://control.internal/x", false),
+            ("http://admin.internal/x", false),
+        ];
+        for (target, allowed) in workspace_a.into_iter().chain(workspace_b) {
+            let result = access(target, &internal);
+            if allowed {
+                assert_eq!(result.ok(), Some(PrivateAccess::Internal), "{target}");
+            } else {
+                assert!(
+                    matches!(result, Err(EgressTargetError::NonPublic)),
+                    "{target}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn the_peer_list_keeps_only_bare_hosts_and_literals() {
         assert_eq!(
@@ -430,19 +619,19 @@ mod tests {
     fn a_listed_peer_may_be_private_and_nothing_else_opens() {
         let list = hosts("peer.internal,10.0.0.5,fd00::7");
         assert_eq!(
-            validate_with("https://10.0.0.5/a2a", &list)
+            validate_with_peers("https://10.0.0.5/a2a", &list)
                 .map(|(_, a)| a)
                 .ok(),
             Some(PrivateAccess::ListedPeer)
         );
         assert_eq!(
-            validate_with("http://[fd00::7]:9000/x", &list)
+            validate_with_peers("http://[fd00::7]:9000/x", &list)
                 .map(|(_, a)| a)
                 .ok(),
             Some(PrivateAccess::ListedPeer)
         );
         assert_eq!(
-            validate_with("https://PEER.internal./x", &list)
+            validate_with_peers("https://PEER.internal./x", &list)
                 .map(|(_, a)| a)
                 .ok(),
             Some(PrivateAccess::ListedPeer)
@@ -453,7 +642,7 @@ mod tests {
             "http://localhost/x",
             "https://other.internal.peer.internal.evil/x",
         ] {
-            let result = validate_with(refused, &list);
+            let result = validate_with_peers(refused, &list);
             if refused.contains("evil") {
                 // A public-looking name is accepted at parse time but gets no
                 // private access, so its DNS answer must be public.
@@ -466,7 +655,7 @@ mod tests {
             }
         }
         assert!(matches!(
-            validate_with("https://u:p@10.0.0.5/x", &list),
+            validate_with_peers("https://u:p@10.0.0.5/x", &list),
             Err(EgressTargetError::Credentials)
         ));
     }
@@ -475,11 +664,11 @@ mod tests {
     fn a_listed_link_local_literal_stays_closed() {
         let list = hosts("169.254.169.254,fe80::1");
         assert!(matches!(
-            validate_with("http://169.254.169.254/latest/meta-data", &list),
+            validate_with_peers("http://169.254.169.254/latest/meta-data", &list),
             Err(EgressTargetError::NonPublic)
         ));
         assert!(matches!(
-            validate_with("http://[fe80::1]/x", &list),
+            validate_with_peers("http://[fe80::1]/x", &list),
             Err(EgressTargetError::NonPublic)
         ));
     }

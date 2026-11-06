@@ -20,6 +20,8 @@
 // the environment being applied, so it is left running. Once it has been
 // verified, later requests skip the lock.
 
+import { routedEgressHosts } from "./edge.js";
+
 export const ENV_FINGERPRINT_KEY = "containerEnvFingerprint";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
@@ -57,6 +59,7 @@ export const SERVER_ENV = [
   "MAIDAN_TURNSTILE_SITE_KEY",
   "MAIDAN_GITHUB_TOKEN",
   "MAIDAN_GITHUB_WRITE_REPOS",
+  "MAIDAN_INTERNAL_EGRESS_HOSTS",
   "MAIDAN_OPS_ALERT_CHANNEL",
   "MAIDAN_SLACK_BOT_TOKEN",
   "MAIDAN_VAPID_PRIVATE_KEY",
@@ -86,6 +89,13 @@ export function serverEnv(env) {
     const value = env?.[name];
     if (value === undefined || value === null) continue;
     passed[name] = envString(value);
+  }
+  // Only the internal names this Worker actually routes reach the server.
+  const routed = routedEgressHosts(env?.MAIDAN_INTERNAL_EGRESS_HOSTS, env?.MAIDAN_INTERNAL_HOSTS, env ?? {});
+  if (routed === undefined) {
+    delete passed.MAIDAN_INTERNAL_EGRESS_HOSTS;
+  } else {
+    passed.MAIDAN_INTERNAL_EGRESS_HOSTS = routed;
   }
   return { ...passed, ...FIXED_ENV };
 }

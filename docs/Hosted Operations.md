@@ -203,6 +203,57 @@ Its Worker secrets are `DATABASE_URL` (the `maidan-swarm` Neon project),
 a script outside the repository, and keeps a copy of the content key: losing
 it loses every message's words.
 
+### Internal hosts
+
+The server can send webhooks to our own Workers without either side having a
+public API. The swarm's control plane keeps its MCP and change API off the
+internet entirely, and a review seat
+woken by a webhook needs no queue-depth poll. The request goes from the
+container to the instance's Worker and on to the other Worker over a service
+binding, and never crosses the public internet.
+
+Three settings, all in the instance's Wrangler config:
+
+1. **A binding.** `services` names the Worker, and for a Worker that keeps its
+   API off its public `fetch`, the named `WorkerEntrypoint`:
+   `{ "binding": "CONTROL", "service": "<the control plane's Worker>", "entrypoint": "Internal" }`.
+2. **The outbound map.** `MAIDAN_INTERNAL_HOSTS` maps a hostname under
+   `.internal` to that binding (`seats.internal=SEATS`). The Worker intercepts
+   the container's plain-HTTP calls to each mapped name (`outboundByHost` in
+   `@cloudflare/containers`) and forwards them to `env[BINDING].fetch`. A
+   name not under `.internal`, or one whose binding the config does not
+   declare, is not mapped. Every other host keeps the container's own internet
+   egress, which the server needs for Neon, R2, GitHub and Slack.
+3. **The egress list.** `MAIDAN_INTERNAL_EGRESS_HOSTS` names, exactly, the
+   `.internal` hosts the server may send to (`seats.internal`). The egress
+   guard refuses every other `.internal` name when a webhook is registered and
+   again when it is delivered. It does not check a listed name's address,
+   because the container network answers the name with a placeholder that
+   routes to the Worker. Nothing else gets looser: plain HTTP to a public host
+   keeps the public-address rule, and private addresses still need
+   `MAIDAN_PRIVATE_EGRESS_HOSTS`. The Worker hands the server only the listed
+   names it also maps to a declared binding, so a name whose route is missing
+   is refused rather than sent to the internet.
+
+The list covers the whole instance, so on an instance with customer workspaces
+any workspace admin could point a webhook at a listed host. The receiving
+Worker must therefore check `X-Maidan-Signature` against the subscription's
+secret, as any webhook receiver must. Only the swarm sets these today.
+
+**On the swarm**, `wrangler.swarm.jsonc` binds `SEATS` to `maidan-wax-seats`
+and maps `seats.internal`. A webhook on ready threads wakes the seat Worker:
+
+```sh
+curl -X POST https://swarm.maidan.world/workspaces/$WS/webhooks \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"url":"http://seats.internal/wake","label":"wake the seats","event_kinds":["thread_ready"]}'
+```
+
+The control plane's line waits until its Worker exists. Then add
+the `CONTROL` binding above to `services`, `control.internal=CONTROL`
+to `MAIDAN_INTERNAL_HOSTS`, and `control.internal` to
+`MAIDAN_INTERNAL_EGRESS_HOSTS`. The prod and dev configs declare none of this.
+
 ## The first admin
 
 `maidan init` writes through the store, so it runs from any machine that can
