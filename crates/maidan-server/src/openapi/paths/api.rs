@@ -3109,7 +3109,7 @@ pub fn get_workspace_review_children() {}
     ))]
 pub fn set_workspace_review_children() {}
 
-/// The task attributes no two open threads in the workspace may share a value of
+/// The task attribute key sets no two open threads in the workspace may share values for
 #[utoipa::path(get, path = "/workspaces/{id}/unique-thread-attributes", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
@@ -3120,7 +3120,7 @@ pub fn set_workspace_review_children() {}
     ))]
 pub fn get_workspace_unique_thread_attributes() {}
 
-/// Replace the task attributes no two open threads in the workspace may share a value of
+/// Replace the task attribute key sets no two open threads in the workspace may share values for
 #[utoipa::path(put, path = "/workspaces/{id}/unique-thread-attributes", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     request_body = WorkspaceUniqueThreadAttributes,

@@ -455,16 +455,18 @@ pub(crate) async fn disclose_holder(
     auth: &AuthContext,
     err: maidan_store::StoreError,
 ) -> ApiError {
-    let maidan_store::StoreError::AttributeHeld { holder, .. } = &err else {
+    let maidan_store::StoreError::AttributeHeld { held, holder } = &err else {
         return err.into();
     };
     let holder = *holder;
+    let key_set = held.iter().map(|(key, _)| *key).collect();
     let readable = matches!(
         maidan_auth::can_access_thread(state.store.as_ref(), auth, holder).await,
         Ok(true)
     );
     ApiError::AttributeHeld {
         detail: err.to_string(),
+        key_set,
         holder: readable.then_some(holder),
     }
 }

@@ -191,6 +191,8 @@ type TaskAttributes struct {
 	ReviewFamily *string `json:"review_family,omitempty"`
 	// AuthorFamily is the provider family that wrote the change a review task reviews.
 	AuthorFamily *string `json:"author_family,omitempty"`
+	// Repo is the repository the task changes, as owner/name.
+	Repo *string `json:"repo,omitempty"`
 }
 
 // StrongRef is a content-addressed pin (maidan:event/{id} plus its hash).

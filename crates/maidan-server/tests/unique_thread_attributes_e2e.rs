@@ -144,7 +144,7 @@ async fn keep_tickets_unique(base: &str, room: &Room) {
         base,
         &room.admin,
         room.ws,
-        Some(json!({ "keys": ["linear_issue"] })),
+        Some(json!({ "unique": [["linear_issue"]] })),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -206,9 +206,10 @@ fn tool_result(response: &Value) -> Value {
     serde_json::from_str(text).unwrap()
 }
 
-/// A REST 409 `conflict` for a held ticket.
+/// A REST 409 `conflict` for a held ticket, under the key set `[linear_issue]`.
 fn assert_held(status: StatusCode, body: &Value) {
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["key_set"], json!(["linear_issue"]), "{body}");
     assert_eq!(
         body["type"], "https://maidan.world/problems/conflict",
         "{body}"
@@ -224,6 +225,11 @@ fn assert_tool_held(response: &Value) {
     assert_eq!(response["error"]["code"], -32011, "{response}");
     assert_eq!(response["error"]["data"]["status"], 409, "{response}");
     assert_eq!(
+        response["error"]["data"]["key_set"],
+        json!(["linear_issue"]),
+        "{response}"
+    );
+    assert_eq!(
         response["error"]["data"]["type"], "https://maidan.world/problems/conflict",
         "{response}"
     );
@@ -236,19 +242,19 @@ async fn a_workspace_admin_sets_the_unique_attributes_and_the_change_is_audited(
 
     let (status, unset) = policy(&base, &room.token, room.ws, None).await;
     assert_eq!(status, StatusCode::OK, "a member may read it");
-    assert_eq!(unset, json!({ "keys": [] }));
-    let tickets = json!({ "keys": ["linear_issue", "linear_issue"] });
+    assert_eq!(unset, json!({ "unique": [] }));
+    let tickets = json!({ "unique": [["repo", "linear_issue", "repo"], ["linear_issue"]] });
     let (status, _) = policy(&base, &room.token, room.ws, Some(tickets.clone())).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "it is an admin's call");
     let (status, set) = policy(&base, &room.admin, room.ws, Some(tickets)).await;
     assert_eq!(status, StatusCode::OK, "{set}");
     assert_eq!(
         set,
-        json!({ "keys": ["linear_issue"] }),
-        "stored without repeats"
+        json!({ "unique": [["linear_issue"], ["linear_issue", "repo"]] }),
+        "stored sorted, without repeats"
     );
     let (_, read) = policy(&base, &room.token, room.ws, None).await;
-    assert_eq!(read, json!({ "keys": ["linear_issue"] }));
+    assert_eq!(read, set);
     let audit = store
         .list_audit_for_workspace(room.ws, 50)
         .await
@@ -256,20 +262,18 @@ async fn a_workspace_admin_sets_the_unique_attributes_and_the_change_is_audited(
         .into_iter()
         .find(|row| row.action == "workspace.unique_thread_attributes.set")
         .expect("the change is audited");
-    assert_eq!(audit.metadata, json!({ "keys": ["linear_issue"] }));
+    assert_eq!(audit.metadata, set);
     for bad in [
-        json!({ "keys": ["kind"] }),
-        json!({ "key": ["linear_issue"] }),
+        json!({ "unique": [["kind"]] }),
+        json!({ "unique": ["linear_issue"] }),
+        json!({ "unique": [[]] }),
+        json!({ "keys": [["linear_issue"]] }),
     ] {
         let (status, body) = policy(&base, &room.admin, room.ws, Some(bad)).await;
         assert!(status.is_client_error(), "refused: {status} {body}");
     }
     let (_, read) = policy(&base, &room.token, room.ws, None).await;
-    assert_eq!(
-        read,
-        json!({ "keys": ["linear_issue"] }),
-        "a refused PUT changes nothing"
-    );
+    assert_eq!(read, set, "a refused PUT changes nothing");
 }
 
 #[tokio::test]
@@ -281,10 +285,10 @@ async fn another_workspace_cannot_read_or_set_the_unique_attributes() {
     let (_, attacker_own) = policy(&base, &attacker.admin, attacker.ws, None).await;
     assert_eq!(
         attacker_own,
-        json!({ "keys": [] }),
+        json!({ "unique": [] }),
         "the setting stays in its workspace"
     );
-    for put in [None, Some(json!({ "keys": [] }))] {
+    for put in [None, Some(json!({ "unique": [] }))] {
         let (status, body) = policy(&base, &attacker.admin, victim.ws, put).await;
         assert!(
             status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
@@ -294,7 +298,7 @@ async fn another_workspace_cannot_read_or_set_the_unique_attributes() {
     let (_, read) = policy(&base, &victim.admin, victim.ws, None).await;
     assert_eq!(
         read,
-        json!({ "keys": ["linear_issue"] }),
+        json!({ "unique": [["linear_issue"]] }),
         "the victim's setting holds"
     );
 
@@ -461,4 +465,107 @@ async fn a_holder_the_caller_cannot_read_is_not_named() {
     let (status, refused) = set_attributes(&base, &room.token, &other, ticket).await;
     assert_held(status, &refused);
     assert!(refused.get("holder_thread_id").is_none(), "{refused}");
+}
+
+#[tokio::test]
+async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "per-repo").await;
+    let (status, body) = policy(
+        &base,
+        &room.admin,
+        room.ws,
+        Some(json!({ "unique": [["linear_issue", "repo"]] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let half = |repo: &str| json!({ "linear_issue": "ENG-6598", "repo": repo });
+
+    let (status, wax) = create_thread(
+        &base,
+        &room.token,
+        room.channel,
+        json!({ "title": "wax half", "attributes": half("https://github.com/Example/Wax") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{wax}");
+    assert_eq!(
+        wax["attributes"]["repo"], "example/wax",
+        "stored as owner/name"
+    );
+    let (status, bgv3) = create_thread(
+        &base,
+        &room.token,
+        room.channel,
+        json!({ "title": "bgv3 half", "attributes": half("example/bgv3") }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "the other repository's half: {bgv3}"
+    );
+
+    // Same ticket, same repository: refused, naming the set and the holder.
+    let (status, refused) = create_thread(
+        &base,
+        &room.token,
+        room.channel,
+        json!({ "title": "second wax owner", "attributes": half("example/wax") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["type"], "https://maidan.world/problems/conflict");
+    assert_eq!(
+        refused["key_set"],
+        json!(["linear_issue", "repo"]),
+        "{refused}"
+    );
+    assert_eq!(refused["holder_thread_id"], wax["id"], "{refused}");
+    let refused = tool(
+        &base,
+        &room.token,
+        "set_thread_attributes",
+        json!({
+            "thread_id": bgv3["id"],
+            "kind": "change",
+            "linear_issue": "ENG-6598",
+            "repo": "example/wax"
+        }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32011, "{refused}");
+    assert_eq!(
+        refused["error"]["data"]["key_set"],
+        json!(["linear_issue", "repo"]),
+        "{refused}"
+    );
+    assert_eq!(
+        refused["error"]["data"]["holder_thread_id"], wax["id"],
+        "{refused}"
+    );
+
+    // A thread missing `repo` is not held to the set.
+    let (status, body) = create_thread(
+        &base,
+        &room.token,
+        room.channel,
+        json!({ "title": "no repo", "attributes": { "linear_issue": "ENG-6598" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let made = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "create_thread",
+            json!({
+                "channel_id": room.channel.0,
+                "title": "mcp half",
+                "attributes": { "kind": "change", "linear_issue": "ENG-6598", "repo": "example/api" }
+            }),
+        )
+        .await,
+    );
+    assert_eq!(made["attributes"]["repo"], "example/api");
 }

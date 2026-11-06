@@ -210,29 +210,29 @@ pub struct WorkspaceReviewChildren {
     pub review_children: ReviewChildren,
 }
 
-/// A task attribute a workspace can keep unique among its open threads.
+/// A task attribute a workspace can name in a unique key set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum UniqueAttributeKey {
-    /// The Linear issue a task is for: one open thread per ticket.
+    /// The Linear issue a task is for.
     LinearIssue,
+    /// The repository a task changes.
+    Repo,
 }
 
 impl UniqueAttributeKey {
-    /// Every key, in the order a write checks them. The order is fixed so
-    /// two writers naming several keys take their locks in the same order.
-    pub const ALL: [Self; 1] = [Self::LinearIssue];
-
     pub fn as_str(self) -> &'static str {
         match self {
             Self::LinearIssue => "linear_issue",
+            Self::Repo => "repo",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "linear_issue" => Some(Self::LinearIssue),
+            "repo" => Some(Self::Repo),
             _ => None,
         }
     }
@@ -242,55 +242,100 @@ impl UniqueAttributeKey {
     pub fn column(self) -> &'static str {
         match self {
             Self::LinearIssue => "linear_issue",
+            Self::Repo => "repo",
         }
     }
 
-    /// The value `attributes` gives this key, or `None` when it gives none:
-    /// an unset attribute never conflicts.
+    /// The value `attributes` gives this key, or `None` when it gives none.
     pub fn value_of(self, attributes: &TaskAttributes) -> Option<&str> {
         match self {
             Self::LinearIssue => attributes.linear_issue.as_deref(),
+            Self::Repo => attributes.repo.as_deref(),
         }
+    }
+
+    /// The values `attributes` gives every key of `set`, in the set's order,
+    /// or `None` when it lacks one: a thread missing a key of a set is not
+    /// constrained by that set.
+    pub fn values_of<'a>(set: &[Self], attributes: &'a TaskAttributes) -> Option<Vec<&'a str>> {
+        set.iter().map(|key| key.value_of(attributes)).collect()
     }
 }
 
+/// A held key set and its values, as a refusal names them:
+/// `linear_issue ENG-6598, repo example/wax`.
+pub fn describe_held(held: &[(UniqueAttributeKey, String)]) -> String {
+    held.iter()
+        .map(|(key, value)| format!("{} {value}", key.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// A workspace's unique thread attributes, read and set by
-/// `/workspaces/{id}/unique-thread-attributes`: no two open threads in the
-/// workspace may hold the same value of any key listed. Empty by default.
+/// `/workspaces/{id}/unique-thread-attributes`. Each entry of `unique` is a
+/// key set: no two open threads in the workspace that both give every key of
+/// a set may give the same values for all of them. Empty by default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceUniqueThreadAttributes {
-    /// The attribute keys held unique, such as `linear_issue`.
-    pub keys: Vec<UniqueAttributeKey>,
+    /// The key sets held unique, such as `[["linear_issue", "repo"]]`: one
+    /// open thread per ticket in each repository.
+    pub unique: Vec<Vec<UniqueAttributeKey>>,
 }
 
 impl WorkspaceUniqueThreadAttributes {
-    /// The keys sorted and without repeats, as they are stored.
+    /// Refuse an empty key set, which would make every thread a holder of
+    /// every other's empty tuple.
+    pub fn validated(self) -> Result<Self, String> {
+        if self.unique.iter().any(Vec::is_empty) {
+            return Err("a unique key set names at least one key".into());
+        }
+        Ok(self.normalized())
+    }
+
+    /// Each set sorted and without repeats, empty sets dropped, and the sets
+    /// sorted and without repeats, as they are stored. The fixed order also
+    /// makes two writers checking several sets take their locks in the same
+    /// order.
     pub fn normalized(mut self) -> Self {
-        self.keys.sort();
-        self.keys.dedup();
+        for set in &mut self.unique {
+            set.sort();
+            set.dedup();
+        }
+        self.unique.retain(|set| !set.is_empty());
+        self.unique.sort();
+        self.unique.dedup();
         self
     }
 
-    /// Read the stored form: a JSON array of key names. A name this build
-    /// does not know is skipped rather than failing every thread write.
+    /// Read the stored form: a JSON array of arrays of key names. A set
+    /// naming a key this build does not know is skipped, rather than failing
+    /// every thread write or holding a narrower set than was asked for.
     pub fn from_stored(stored: &str) -> Self {
-        let names: Vec<String> = serde_json::from_str(stored).unwrap_or_default();
+        let sets: Vec<Vec<String>> = serde_json::from_str(stored).unwrap_or_default();
         Self {
-            keys: names
+            unique: sets
                 .iter()
-                .map(String::as_str)
-                .filter_map(UniqueAttributeKey::parse)
+                .filter_map(|set| {
+                    set.iter()
+                        .map(String::as_str)
+                        .map(UniqueAttributeKey::parse)
+                        .collect::<Option<Vec<_>>>()
+                })
                 .collect(),
         }
         .normalized()
     }
 
-    /// The stored form: a JSON array of key names.
+    /// The stored form: a JSON array of arrays of key names.
     pub fn to_stored(&self) -> String {
-        let names: Vec<&str> = self.keys.iter().map(|key| key.as_str()).collect();
-        serde_json::Value::from(names).to_string()
+        let sets: Vec<Vec<&str>> = self
+            .unique
+            .iter()
+            .map(|set| set.iter().map(|key| key.as_str()).collect())
+            .collect();
+        serde_json::json!(sets).to_string()
     }
 }
 
@@ -389,6 +434,12 @@ pub struct TaskAttributes {
     /// lift it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_family: Option<String>,
+    /// The repository the task changes, as `owner/name` (a GitHub URL is
+    /// read as its `owner/name`). With `linear_issue` it names the half of a
+    /// ticket a thread owns, where one ticket has a pull request in each of
+    /// several repositories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 impl TaskAttributes {
@@ -405,6 +456,10 @@ impl TaskAttributes {
                 "linear_issue `{key}` is not an issue key such as ENG-123"
             ));
         }
+        self.repo = match self.repo.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(repo) => Some(crate::normalize_repo(repo).map_err(|e| format!("repo: {e}"))?),
+        };
         self.author_family = self
             .author_family
             .map(|family| family.trim().to_ascii_lowercase())
@@ -445,17 +500,24 @@ impl TaskAttributes {
 mod unique_attribute_tests {
     use super::*;
 
+    use super::UniqueAttributeKey::{LinearIssue, Repo};
+
     #[test]
-    fn the_unique_keys_round_trip_through_their_stored_form() {
+    fn the_unique_key_sets_round_trip_through_their_stored_form() {
         let set = WorkspaceUniqueThreadAttributes {
-            keys: vec![
-                UniqueAttributeKey::LinearIssue,
-                UniqueAttributeKey::LinearIssue,
+            unique: vec![
+                vec![Repo, LinearIssue, Repo],
+                vec![LinearIssue],
+                vec![LinearIssue],
             ],
         }
-        .normalized();
-        assert_eq!(set.keys, vec![UniqueAttributeKey::LinearIssue]);
-        assert_eq!(set.to_stored(), r#"["linear_issue"]"#);
+        .validated()
+        .unwrap();
+        assert_eq!(set.unique, vec![vec![LinearIssue], vec![LinearIssue, Repo]]);
+        assert_eq!(
+            set.to_stored(),
+            r#"[["linear_issue"],["linear_issue","repo"]]"#
+        );
         assert_eq!(
             WorkspaceUniqueThreadAttributes::from_stored(&set.to_stored()),
             set
@@ -464,38 +526,87 @@ mod unique_attribute_tests {
             WorkspaceUniqueThreadAttributes::from_stored("[]"),
             WorkspaceUniqueThreadAttributes::default()
         );
-        // A name a later build added reads as absent, not as a broken row.
+        // A set naming a key a later build added is skipped whole.
         assert_eq!(
-            WorkspaceUniqueThreadAttributes::from_stored(r#"["linear_issue","later_key"]"#).keys,
-            vec![UniqueAttributeKey::LinearIssue]
+            WorkspaceUniqueThreadAttributes::from_stored(
+                r#"[["linear_issue","later_key"],["linear_issue","repo"]]"#
+            )
+            .unique,
+            vec![vec![LinearIssue, Repo]]
         );
+        assert!(WorkspaceUniqueThreadAttributes {
+            unique: vec![vec![]]
+        }
+        .validated()
+        .is_err());
     }
 
     #[test]
-    fn a_unique_key_names_a_known_attribute_and_nothing_else() {
+    fn a_unique_key_set_names_known_attributes_and_nothing_else() {
         let body: WorkspaceUniqueThreadAttributes =
-            serde_json::from_str(r#"{"keys":["linear_issue"]}"#).unwrap();
-        assert_eq!(body.keys, vec![UniqueAttributeKey::LinearIssue]);
-        assert!(
-            serde_json::from_str::<WorkspaceUniqueThreadAttributes>(r#"{"keys":["kind"]}"#)
-                .is_err()
-        );
-        assert!(serde_json::from_str::<WorkspaceUniqueThreadAttributes>(r#"{"key":[]}"#).is_err());
-        for key in UniqueAttributeKey::ALL {
+            serde_json::from_str(r#"{"unique":[["linear_issue","repo"]]}"#).unwrap();
+        assert_eq!(body.unique, vec![vec![LinearIssue, Repo]]);
+        for bad in [
+            r#"{"unique":[["kind"]]}"#,
+            r#"{"unique":["linear_issue"]}"#,
+            r#"{"keys":[["linear_issue"]]}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<WorkspaceUniqueThreadAttributes>(bad).is_err(),
+                "{bad}"
+            );
+        }
+        for key in [LinearIssue, Repo] {
             assert_eq!(UniqueAttributeKey::parse(key.as_str()), Some(key));
         }
-        let attributes = TaskAttributes {
+    }
+
+    #[test]
+    fn a_thread_is_held_to_a_set_only_when_it_gives_every_key() {
+        let both = TaskAttributes {
+            linear_issue: Some("ENG-6598".into()),
+            repo: Some("https://github.com/Example/Wax.git".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .unwrap();
+        assert_eq!(both.repo.as_deref(), Some("example/wax"));
+        assert_eq!(
+            UniqueAttributeKey::values_of(&[LinearIssue, Repo], &both),
+            Some(vec!["ENG-6598", "example/wax"])
+        );
+        let ticket_only = TaskAttributes {
             linear_issue: Some("ENG-6598".into()),
             ..TaskAttributes::default()
         };
         assert_eq!(
-            UniqueAttributeKey::LinearIssue.value_of(&attributes),
-            Some("ENG-6598")
-        );
-        assert_eq!(
-            UniqueAttributeKey::LinearIssue.value_of(&TaskAttributes::default()),
+            UniqueAttributeKey::values_of(&[LinearIssue, Repo], &ticket_only),
             None
         );
+        assert_eq!(
+            UniqueAttributeKey::values_of(&[LinearIssue], &ticket_only),
+            Some(vec!["ENG-6598"])
+        );
+        assert_eq!(
+            describe_held(&[
+                (LinearIssue, "ENG-6598".into()),
+                (Repo, "example/wax".into())
+            ]),
+            "linear_issue ENG-6598, repo example/wax"
+        );
+        let blank = TaskAttributes {
+            repo: Some("  ".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .unwrap();
+        assert_eq!(blank.repo, None);
+        assert!(TaskAttributes {
+            repo: Some("not a repo".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .is_err());
     }
 }
 

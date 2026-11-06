@@ -648,6 +648,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
           "type": "string"
         },
+        "repo": {
+          "description": "the repository the task changes, as owner/name (a GitHub URL is read as its owner/name); with linear_issue it says which half of a ticket the thread owns, where a workspace keeps [linear_issue, repo] unique",
+          "type": "string"
+        },
         "size": {
           "enum": [
             "S",
@@ -2672,6 +2676,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "linear_issue": {
       "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
+      "type": "string"
+    },
+    "repo": {
+      "description": "the repository the task changes, as owner/name (a GitHub URL is read as its owner/name); with linear_issue it says which half of a ticket the thread owns, where a workspace keeps [linear_issue, repo] unique",
       "type": "string"
     },
     "size": {

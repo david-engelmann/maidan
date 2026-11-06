@@ -51,6 +51,7 @@ pub enum McpError {
     #[error("{message}")]
     AttributeHeld {
         message: String,
+        key_set: Vec<maidan_types::UniqueAttributeKey>,
         holder: Option<maidan_types::ThreadId>,
     },
 }
@@ -121,10 +122,13 @@ impl McpError {
                 message: self.to_string(),
                 data: Some(serde_json::json!({ "children": children })),
             },
-            Self::AttributeHeld { holder, .. } => {
+            Self::AttributeHeld {
+                key_set, holder, ..
+            } => {
                 let mut data = serde_json::json!({
                     "status": 409,
                     "type": "https://maidan.world/problems/conflict",
+                    "key_set": key_set,
                 });
                 if let (Some(holder), Some(fields)) = (holder, data.as_object_mut()) {
                     fields.insert("holder_thread_id".into(), serde_json::json!(holder.0));
@@ -190,7 +194,8 @@ impl From<maidan_store::StoreError> for McpError {
             maidan_store::StoreError::OverAllowance(meter) => Self::OverAllowance(meter),
             // Named only by a tool that has checked the caller may read the
             // holder (`tools::thread::disclose_holder`).
-            err @ maidan_store::StoreError::AttributeHeld { .. } => Self::AttributeHeld {
+            maidan_store::StoreError::AttributeHeld { ref held, .. } => Self::AttributeHeld {
+                key_set: held.iter().map(|(key, _)| *key).collect(),
                 message: err.to_string(),
                 holder: None,
             },

@@ -1,10 +1,12 @@
-//! Unique thread attributes on both backends: a workspace that keeps
-//! `linear_issue` unique refuses a second open thread on the same ticket, at
-//! create and at a later attribute set, naming the holder; a closed or
-//! archived holder no longer blocks; another workspace, and a key the
-//! workspace does not list, are untouched; and concurrent writers of one
-//! ticket leave exactly one winner. Postgres runs under testcontainers
-//! (skipped without Docker).
+//! Unique thread attributes on both backends. A workspace that keeps the key
+//! set `[linear_issue]` unique refuses a second open thread on the same
+//! ticket, at create and at a later attribute set, naming the holder; one
+//! that keeps `[linear_issue, repo]` unique allows a ticket's halves in two
+//! repositories, refuses two in one, and leaves a thread missing `repo`
+//! unconstrained. A closed or archived holder no longer blocks; another
+//! workspace, and a key the workspace does not list, are untouched; and
+//! concurrent writers of one tuple leave exactly one winner. Postgres runs
+//! under testcontainers (skipped without Docker).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,18 +54,32 @@ async fn room(store: &dyn Store, name: &str) -> Room {
     }
 }
 
-async fn keep_unique(store: &dyn Store, ws: WorkspaceId, keys: Vec<UniqueAttributeKey>) {
+use maidan_types::UniqueAttributeKey::{LinearIssue, Repo};
+
+/// One open thread per ticket.
+fn tickets() -> Vec<Vec<UniqueAttributeKey>> {
+    vec![vec![LinearIssue]]
+}
+
+/// One open thread per ticket in each repository.
+fn tickets_per_repo() -> Vec<Vec<UniqueAttributeKey>> {
+    vec![vec![LinearIssue, Repo]]
+}
+
+async fn keep_unique(store: &dyn Store, ws: WorkspaceId, unique: Vec<Vec<UniqueAttributeKey>>) {
     store
         .set_workspace_unique_thread_attributes(
             ws,
-            WorkspaceUniqueThreadAttributes { keys: keys.clone() },
+            WorkspaceUniqueThreadAttributes {
+                unique: unique.clone(),
+            },
             NewAuditEvent {
                 scope: AuditScope::Workspace(ws),
                 actor_id: None,
                 action: "workspace.unique_thread_attributes.set".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(ws.0),
-                metadata: serde_json::json!({ "keys": keys }),
+                metadata: serde_json::json!({ "unique": unique }),
             },
         )
         .await
@@ -100,14 +116,27 @@ async fn create(
         .map(|(thread, _)| thread)
 }
 
-fn held_by(err: StoreError) -> ThreadId {
+fn ticket_in(issue: &str, repo: &str) -> TaskAttributes {
+    TaskAttributes {
+        repo: Some(repo.into()),
+        ..ticket(issue)
+    }
+}
+
+/// The holder a refusal names, checking the key set it was held under.
+fn held_under(err: StoreError, set: &[UniqueAttributeKey]) -> ThreadId {
     match err {
-        StoreError::AttributeHeld { key, holder, .. } => {
-            assert_eq!(key, UniqueAttributeKey::LinearIssue);
+        StoreError::AttributeHeld { held, holder } => {
+            let keys: Vec<_> = held.iter().map(|(key, _)| *key).collect();
+            assert_eq!(keys, set);
             holder
         }
         other => panic!("expected AttributeHeld, got {other:?}"),
     }
+}
+
+fn held_by(err: StoreError) -> ThreadId {
+    held_under(err, &[LinearIssue])
 }
 
 async fn close(store: &dyn Store, thread: ThreadId, actor: MemberId) {
@@ -127,44 +156,153 @@ async fn the_setting_reads_back_as_set_and_clears(store: Arc<dyn Store>) {
         let store = store.clone();
         async move { store.workspace_unique_thread_attributes(ws).await }
     };
-    assert_eq!(
-        read(room.ws).await.unwrap().keys,
-        Vec::<UniqueAttributeKey>::new()
-    );
+    let none: Vec<Vec<UniqueAttributeKey>> = Vec::new();
+    assert_eq!(read(room.ws).await.unwrap().unique, none);
     keep_unique(
         store.as_ref(),
         room.ws,
         vec![
-            UniqueAttributeKey::LinearIssue,
-            UniqueAttributeKey::LinearIssue,
+            vec![Repo, LinearIssue],
+            vec![LinearIssue],
+            vec![LinearIssue, Repo],
         ],
     )
     .await;
     assert_eq!(
-        read(room.ws).await.unwrap().keys,
-        vec![UniqueAttributeKey::LinearIssue]
+        read(room.ws).await.unwrap().unique,
+        vec![vec![LinearIssue], vec![LinearIssue, Repo]]
     );
     keep_unique(store.as_ref(), room.ws, vec![]).await;
-    assert_eq!(
-        read(room.ws).await.unwrap().keys,
-        Vec::<UniqueAttributeKey>::new()
-    );
+    assert_eq!(read(room.ws).await.unwrap().unique, none);
     assert!(matches!(
         read(WorkspaceId::new()).await,
         Err(StoreError::NotFound)
     ));
 }
 
+/// With `[linear_issue, repo]` kept unique, a ticket's halves in two
+/// repositories are allowed, a second thread on the same ticket and
+/// repository is refused naming the set and the holder, at create and at a
+/// later set, and a thread missing `repo` is not held to the set at all.
+async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "per-repo").await;
+    keep_unique(store.as_ref(), room.ws, tickets_per_repo()).await;
+    let wax = create(
+        store.as_ref(),
+        room.channel,
+        "wax half",
+        Some(ticket_in("ENG-6598", "https://github.com/Example/Wax")),
+    )
+    .await
+    .unwrap();
+    create(
+        store.as_ref(),
+        room.channel,
+        "bgv3 half",
+        Some(ticket_in("ENG-6598", "example/bgv3")),
+    )
+    .await
+    .expect("the same ticket in another repository");
+    let refused = create(
+        store.as_ref(),
+        room.channel,
+        "second wax owner",
+        Some(ticket_in("ENG-6598", "example/wax")),
+    )
+    .await
+    .expect_err("the same ticket in the same repository");
+    assert!(
+        refused
+            .to_string()
+            .contains("linear_issue ENG-6598, repo example/wax"),
+        "{refused}"
+    );
+    assert_eq!(held_under(refused, &[LinearIssue, Repo]), wax.id);
+
+    // Missing `repo`, a thread is not held to the set, either way round.
+    for title in ["no repo", "no repo again"] {
+        create(
+            store.as_ref(),
+            room.channel,
+            title,
+            Some(ticket("ENG-6598")),
+        )
+        .await
+        .expect("a thread without repo is not constrained");
+    }
+    create(
+        store.as_ref(),
+        room.channel,
+        "repo only",
+        Some(TaskAttributes {
+            repo: Some("example/wax".into()),
+            ..TaskAttributes::default()
+        }),
+    )
+    .await
+    .expect("a thread without a ticket is not constrained");
+
+    // A later set naming the held pair is refused; naming a free pair is not.
+    let later = create(store.as_ref(), room.channel, "later", None)
+        .await
+        .unwrap();
+    let refused = store
+        .set_thread_attributes(later.id, ticket_in("ENG-6598", "example/wax"))
+        .await
+        .expect_err("the pair is held");
+    assert_eq!(held_under(refused, &[LinearIssue, Repo]), wax.id);
+    store
+        .set_thread_attributes(later.id, ticket_in("ENG-6598", "example/api"))
+        .await
+        .expect("a third repository is free");
+
+    // Closing the holder frees the pair.
+    close(store.as_ref(), wax.id, room.worker).await;
+    create(
+        store.as_ref(),
+        room.channel,
+        "rework",
+        Some(ticket_in("ENG-6598", "example/wax")),
+    )
+    .await
+    .expect("a closed holder holds nothing");
+
+    // Concurrent writers of one pair leave exactly one winner.
+    let creates = (0..6).map(|n| {
+        let store = store.clone();
+        let channel = room.channel;
+        tokio::spawn(async move {
+            create(
+                store.as_ref(),
+                channel,
+                &format!("pair racer {n}"),
+                Some(ticket_in("ENG-7000", "example/wax")),
+            )
+            .await
+        })
+    });
+    let outcomes: Vec<_> = futures::future::join_all(creates)
+        .await
+        .into_iter()
+        .map(|joined| joined.unwrap())
+        .collect();
+    assert_eq!(
+        outcomes.iter().filter(|o| o.is_ok()).count(),
+        1,
+        "{outcomes:?}"
+    );
+    for outcome in outcomes {
+        if let Err(err) = outcome {
+            held_under(err, &[LinearIssue, Repo]);
+        }
+    }
+}
+
 /// A second open thread on a held ticket is refused, names the holder, and
 /// creates nothing.
 async fn a_held_ticket_refuses_a_second_thread_and_names_the_holder(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "held").await;
-    keep_unique(
-        store.as_ref(),
-        room.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), room.ws, tickets()).await;
     let first = create(
         store.as_ref(),
         room.channel,
@@ -217,12 +355,7 @@ async fn a_held_ticket_refuses_a_second_thread_and_names_the_holder(store: Arc<d
 /// reworked.
 async fn a_closed_or_archived_holder_no_longer_blocks(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "closed").await;
-    keep_unique(
-        store.as_ref(),
-        room.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), room.ws, tickets()).await;
     let first = create(store.as_ref(), room.channel, "first", Some(ticket("ENG-2")))
         .await
         .unwrap();
@@ -256,18 +389,8 @@ async fn another_workspace_is_not_affected(store: Arc<dyn Store>) {
     let mine = room(store.as_ref(), "mine").await;
     let theirs = room(store.as_ref(), "theirs").await;
     let lax = room(store.as_ref(), "lax").await;
-    keep_unique(
-        store.as_ref(),
-        mine.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
-    keep_unique(
-        store.as_ref(),
-        theirs.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), mine.ws, tickets()).await;
+    keep_unique(store.as_ref(), theirs.ws, tickets()).await;
     create(store.as_ref(), mine.channel, "mine", Some(ticket("ENG-3")))
         .await
         .unwrap();
@@ -291,12 +414,7 @@ async fn another_workspace_is_not_affected(store: Arc<dyn Store>) {
 /// is fine; and a closed thread may be given any ticket.
 async fn setting_attributes_later_is_checked(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "later").await;
-    keep_unique(
-        store.as_ref(),
-        room.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), room.ws, tickets()).await;
     let holder = create(
         store.as_ref(),
         room.channel,
@@ -349,12 +467,7 @@ async fn setting_attributes_later_is_checked(store: Arc<dyn Store>) {
 /// concurrent sets.
 async fn concurrent_writers_leave_exactly_one_winner(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "race").await;
-    keep_unique(
-        store.as_ref(),
-        room.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), room.ws, tickets()).await;
     let creates = (0..8).map(|n| {
         let store = store.clone();
         let channel = room.channel;
@@ -430,12 +543,7 @@ async fn a_key_not_in_the_list_is_unaffected(store: Arc<dyn Store>) {
         .await
         .expect("nothing is kept unique yet");
     }
-    keep_unique(
-        store.as_ref(),
-        room.ws,
-        vec![UniqueAttributeKey::LinearIssue],
-    )
-    .await;
+    keep_unique(store.as_ref(), room.ws, tickets()).await;
     create(store.as_ref(), room.channel, "c", Some(same_lane("ENG-9")))
         .await
         .expect("the same engine, lane and acceptance on another ticket");
@@ -515,6 +623,7 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
 on_both_backends!(
     the_setting_reads_back_as_set_and_clears,
     a_held_ticket_refuses_a_second_thread_and_names_the_holder,
+    a_ticket_is_held_per_repository,
     a_closed_or_archived_holder_no_longer_blocks,
     another_workspace_is_not_affected,
     setting_attributes_later_is_checked,

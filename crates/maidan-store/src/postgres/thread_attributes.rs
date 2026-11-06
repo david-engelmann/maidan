@@ -4,8 +4,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskLane, TaskSize, TaskTier, ThreadId,
-    UniqueAttributeKey, WorkspaceId, WorkspaceUniqueThreadAttributes,
+    describe_held, NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskLane, TaskSize,
+    TaskTier, ThreadId, UniqueAttributeKey, WorkspaceId, WorkspaceUniqueThreadAttributes,
 };
 use sqlx::{PgPool, Row};
 
@@ -21,8 +21,8 @@ pub(crate) async fn insert_on(
 ) -> Result<(), StoreError> {
     refuse_held_on(conn, thread_id, attributes).await?;
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at, repo)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7, $12)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -35,16 +35,18 @@ pub(crate) async fn insert_on(
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
     .bind(attributes.author_family.as_deref())
+    .bind(attributes.repo.as_deref())
     .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
-/// Refuse `attributes` for `thread_id` when its workspace keeps one of them
-/// unique and another open thread there already holds the same value.
+/// Refuse `attributes` for `thread_id` when, for one of its workspace's unique
+/// key sets, the thread gives every key and another open thread there gives
+/// the same values for all of them.
 ///
 /// Race-safe on the caller's transaction: before reading for a holder it
-/// takes a transaction-scoped advisory lock on (workspace, key, value), so
+/// takes a transaction-scoped advisory lock on (workspace, key set, values), so
 /// two writers of one value run one after the other, and under READ
 /// COMMITTED the second one's read sees the first one's committed thread.
 /// A unique index cannot say this rule: whether a value is unique depends
@@ -56,11 +58,7 @@ pub(crate) async fn refuse_held_on(
     thread_id: ThreadId,
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
-    let given: Vec<(UniqueAttributeKey, &str)> = UniqueAttributeKey::ALL
-        .into_iter()
-        .filter_map(|key| key.value_of(attributes).map(|value| (key, value)))
-        .collect();
-    if given.is_empty() {
+    if attributes.linear_issue.is_none() && attributes.repo.is_none() {
         return Ok(());
     }
     // A closed, archived or erased thread holds nothing, so setting
@@ -80,37 +78,49 @@ pub(crate) async fn refuse_held_on(
     };
     let workspace_id: uuid::Uuid = row.try_get("workspace_id")?;
     let stored: String = row.try_get("unique_thread_attributes")?;
-    let unique = WorkspaceUniqueThreadAttributes::from_stored(&stored);
-    for (key, value) in given {
-        if !unique.keys.contains(&key) {
+    // The sets come back sorted, so writers checking several take their
+    // locks in one order.
+    for set in WorkspaceUniqueThreadAttributes::from_stored(&stored).unique {
+        // A thread that lacks a key of the set is not held to it.
+        let Some(values) = UniqueAttributeKey::values_of(&set, attributes) else {
             continue;
-        }
+        };
+        let held: Vec<(UniqueAttributeKey, String)> = set
+            .iter()
+            .copied()
+            .zip(values.iter().map(|value| value.to_string()))
+            .collect();
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 2203))")
             .bind(format!(
-                "maidan.unique-attribute:{workspace_id}:{}:{value}",
-                key.as_str()
+                "maidan.unique-attribute:{workspace_id}\n{}",
+                describe_held(&held)
             ))
             .execute(&mut *conn)
             .await?;
-        let holder: Option<uuid::Uuid> = sqlx::query_scalar(&format!(
+        let matches: Vec<String> = set
+            .iter()
+            .enumerate()
+            .map(|(n, key)| format!("a.{} = ${}", key.column(), n + 2))
+            .collect();
+        let sql = format!(
             "SELECT t.id FROM maidan_threads t
              JOIN maidan_channels c ON c.id = t.channel_id
              JOIN maidan_thread_attributes a ON a.thread_id = t.id
-             WHERE c.workspace_id = $1 AND a.{column} = $2 AND t.id <> $3
+             WHERE c.workspace_id = $1 AND {} AND t.id <> ${}
                AND t.state NOT IN ('closed', 'archived') AND t.tombstoned_at IS NULL
              ORDER BY t.created_at, t.id
              LIMIT 1",
-            column = key.column(),
-        ))
-        .bind(workspace_id)
-        .bind(value)
-        .bind(thread_id.0)
-        .fetch_optional(&mut *conn)
-        .await?;
+            matches.join(" AND "),
+            set.len() + 2,
+        );
+        let mut query = sqlx::query_scalar::<_, uuid::Uuid>(&sql).bind(workspace_id);
+        for value in &values {
+            query = query.bind(*value);
+        }
+        let holder = query.bind(thread_id.0).fetch_optional(&mut *conn).await?;
         if let Some(holder) = holder {
             return Err(StoreError::AttributeHeld {
-                key,
-                value: value.to_string(),
+                held,
                 holder: ThreadId(holder),
             });
         }
@@ -289,7 +299,7 @@ pub(crate) async fn get_on(
     thread_id: ThreadId,
 ) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family, author_family FROM maidan_thread_attributes WHERE thread_id = $1",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family, author_family, repo FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
     .fetch_optional(&mut *conn)
@@ -317,6 +327,7 @@ pub(crate) async fn get_on(
             .and_then(|lane| TaskLane::parse(&lane)),
         review_family: row.try_get("review_family")?,
         author_family: row.try_get("author_family")?,
+        repo: row.try_get("repo")?,
     })
 }
 
@@ -355,6 +366,7 @@ pub(crate) fn search_row_attributes(
             .and_then(|lane| TaskLane::parse(&lane)),
         review_family: row.try_get("review_family")?,
         author_family: row.try_get("author_family")?,
+        repo: row.try_get("repo")?,
     })
 }
 
@@ -392,8 +404,8 @@ pub async fn set(
         }
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at, repo)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7, $12)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -404,6 +416,7 @@ pub async fn set(
              tier = excluded.tier,
              lane = excluded.lane,
              author_family = COALESCE(maidan_thread_attributes.author_family, excluded.author_family),
+             repo = excluded.repo,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -417,6 +430,7 @@ pub async fn set(
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
     .bind(attributes.author_family.as_deref())
+    .bind(attributes.repo.as_deref())
     .execute(&mut *tx)
     .await?;
     refuse_held_on(&mut tx, thread_id, &attributes).await?;

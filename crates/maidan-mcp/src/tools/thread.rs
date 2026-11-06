@@ -273,16 +273,18 @@ pub(super) async fn disclose_holder(
     auth: &AuthContext,
     err: maidan_store::StoreError,
 ) -> McpError {
-    let maidan_store::StoreError::AttributeHeld { holder, .. } = &err else {
+    let maidan_store::StoreError::AttributeHeld { held, holder } = &err else {
         return err.into();
     };
     let holder = *holder;
+    let key_set = held.iter().map(|(key, _)| *key).collect();
     let readable = matches!(
         maidan_auth::can_access_thread(store, auth, holder).await,
         Ok(true)
     );
     McpError::AttributeHeld {
         message: err.to_string(),
+        key_set,
         holder: readable.then_some(holder),
     }
 }
@@ -1612,6 +1614,8 @@ struct SetThreadAttributesArgs {
     lane: Option<maidan_types::TaskLane>,
     #[serde(default)]
     author_family: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1638,6 +1642,7 @@ pub(super) async fn set_thread_attributes(
                 lane: a.lane,
                 review_family: None,
                 author_family: a.author_family,
+                repo: a.repo,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,

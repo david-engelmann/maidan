@@ -7225,10 +7225,20 @@
             "type": "string"
           },
           "holder_thread_id": {
-            "description": "On a `conflict` 409 refusing a value the workspace keeps unique among\nits open threads: the open thread that holds it, when the caller may\nread that thread.",
+            "description": "On a `conflict` 409 refusing values the workspace keeps unique among\nits open threads: the open thread that holds them, when the caller may\nread that thread.",
             "format": "uuid",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "key_set": {
+            "description": "On a `conflict` 409 refusing values the workspace keeps unique among\nits open threads: the unique key set they were held under.",
+            "items": {
+              "$ref": "#/components/schemas/UniqueAttributeKey"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -10342,6 +10352,13 @@
               "null"
             ]
           },
+          "repo": {
+            "description": "The repository the task changes, as `owner/name` (a GitHub URL is\nread as its `owner/name`). With `linear_issue` it names the half of a\nticket a thread owns, where one ticket has a pull request in each of\nseveral repositories.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "review_family": {
             "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
             "type": [
@@ -12285,9 +12302,10 @@
         "type": "object"
       },
       "UniqueAttributeKey": {
-        "description": "A task attribute a workspace can keep unique among its open threads.",
+        "description": "A task attribute a workspace can name in a unique key set.",
         "enum": [
-          "linear_issue"
+          "linear_issue",
+          "repo"
         ],
         "type": "string"
       },
@@ -13491,18 +13509,21 @@
       },
       "WorkspaceUniqueThreadAttributes": {
         "additionalProperties": false,
-        "description": "A workspace's unique thread attributes, read and set by\n`/workspaces/{id}/unique-thread-attributes`: no two open threads in the\nworkspace may hold the same value of any key listed. Empty by default.",
+        "description": "A workspace's unique thread attributes, read and set by\n`/workspaces/{id}/unique-thread-attributes`. Each entry of `unique` is a\nkey set: no two open threads in the workspace that both give every key of\na set may give the same values for all of them. Empty by default.",
         "properties": {
-          "keys": {
-            "description": "The attribute keys held unique, such as `linear_issue`.",
+          "unique": {
+            "description": "The key sets held unique, such as `[[\"linear_issue\", \"repo\"]]`: one\nopen thread per ticket in each repository.",
             "items": {
-              "$ref": "#/components/schemas/UniqueAttributeKey"
+              "items": {
+                "$ref": "#/components/schemas/UniqueAttributeKey"
+              },
+              "type": "array"
             },
             "type": "array"
           }
         },
         "required": [
-          "keys"
+          "unique"
         ],
         "type": "object"
       },
@@ -37302,7 +37323,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "The task attributes no two open threads in the workspace may share a value of",
+        "summary": "The task attribute key sets no two open threads in the workspace may share values for",
         "tags": [
           "workspaces"
         ]
@@ -37392,7 +37413,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Replace the task attributes no two open threads in the workspace may share a value of",
+        "summary": "Replace the task attribute key sets no two open threads in the workspace may share values for",
         "tags": [
           "workspaces"
         ]

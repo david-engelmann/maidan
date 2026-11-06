@@ -29,18 +29,18 @@ pub enum StoreError {
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
-    /// A thread write refused because another open thread in the workspace
-    /// already holds this value of an attribute the workspace keeps unique.
-    /// Nothing was written. REST 409 `conflict` and MCP the same, naming
-    /// `holder` only to a caller who may read it, so the refusal never
+    /// A thread write refused because, for one of the workspace's unique key
+    /// sets, another open thread already gives the same values for every key
+    /// of the set. Nothing was written. `held` is the set with this write's
+    /// values, in the set's order. REST 409 `conflict` and MCP the same,
+    /// naming `holder` only to a caller who may read it, so the refusal never
     /// discloses a thread in a channel the caller cannot see.
     #[error(
-        "{} {value} is already held by an open thread in this workspace; nothing was written. Work in that thread, or close it first",
-        .key.as_str()
+        "{} is already held by an open thread in this workspace; nothing was written. Work in that thread, or close it first",
+        maidan_types::describe_held(.held)
     )]
     AttributeHeld {
-        key: maidan_types::UniqueAttributeKey,
-        value: String,
+        held: Vec<(maidan_types::UniqueAttributeKey, String)>,
         holder: maidan_types::ThreadId,
     },
 

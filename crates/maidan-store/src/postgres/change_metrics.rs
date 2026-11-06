@@ -1377,6 +1377,7 @@ fn pull_from(
                 .and_then(|lane| maidan_types::TaskLane::parse(&lane)),
             review_family: None,
             author_family: None,
+            repo: None,
         },
     }
 }
