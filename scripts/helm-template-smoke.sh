@@ -4,6 +4,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 chart="${root}/helm/maidan"
 stack="${root}/helm/maidan-stack"
 if ! command -v helm >/dev/null 2>&1; then
+  if [[ "${CI:-}" == "true" || -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "helm not installed; refusing to skip template smoke under CI" >&2
+    exit 1
+  fi
   echo "helm not installed; skipping template smoke" >&2
   exit 0
 fi

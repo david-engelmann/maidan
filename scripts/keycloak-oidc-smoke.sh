@@ -14,7 +14,32 @@
 # Keycloak's own login form.
 set -euo pipefail
 
+# Refuse non-http(s) or credentialed base URLs before any curl (avoids file: and
+# userinfo leaking bearers into the wrong place).
+require_http_url() {
+  local name="$1" value="$2"
+  case "$value" in
+    http://*|https://*) ;;
+    *) echo "$name must be an http(s) URL" >&2; exit 2 ;;
+  esac
+  value="${value%/}"
+  NAME="$name" VALUE="$value" python3 - <<'PY' || exit 2
+import os, sys
+from urllib.parse import urlparse
+name = os.environ["NAME"]
+u = urlparse(os.environ["VALUE"])
+if u.scheme not in ("http", "https") or u.username or u.password or not u.hostname:
+    print(f"{name} must be http(s) with a host and no userinfo", file=sys.stderr)
+    sys.exit(1)
+if u.query or u.fragment:
+    print(f"{name} must not carry a query or fragment", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 BASE="${MAIDAN_URL:-http://127.0.0.1:8080}"
+BASE="${BASE%/}"
+require_http_url MAIDAN_URL "$BASE"
 : "${MAIDAN_WORKSPACE:?set MAIDAN_WORKSPACE to the workspace id}"
 : "${KC_USERNAME:?set KC_USERNAME to the Keycloak user}"
 : "${KC_PASSWORD:?set KC_PASSWORD to the password of that user}"

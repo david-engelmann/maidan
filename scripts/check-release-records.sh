@@ -65,7 +65,15 @@ done
 # release. A release tag's own tree still pins the release before it (the pin
 # can only move once the tag's tarballs exist), so cloning a tag runs an older
 # binary than its scripts expect.
-readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' README.md || true)"
+set +e
+readme_clones="$(grep -E '^[[:space:]]*git clone .*github\.com/david-engelmann/maidan' README.md)"
+grc=$?
+set -e
+if [ "$grc" -gt 1 ]; then
+  echo "release records: grep failed ($grc) reading README clone lines" >&2
+  exit 1
+fi
+
 [[ -n "$readme_clones" ]] || die "could not find the README quickstart's git clone"
 # Allow only the default-branch form, so no clone option (--branch, -b,
 # --revision, …) can select a tag.
@@ -76,11 +84,27 @@ done <<<"$readme_clones"
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
   die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
 
-if rg -n 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md >/dev/null; then
+set +e
+grep -nE 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md >/dev/null
+grc=$?
+set -e
+if [ "$grc" -gt 1 ]; then
+  echo "release records: grep failed ($grc) scanning README for :latest" >&2
+  exit 1
+fi
+if [ "$grc" -eq 0 ]; then
   die "README executable examples must use an immutable version tag, not :latest"
 fi
 
 heading_count=0
+set +e
+cap_headings=$(grep -E '^## (\[?v[0-9]|Cluster [0-9])' docs/Capabilities.md)
+cap_rc=$?
+set -e
+if [ "$cap_rc" -gt 1 ]; then
+  echo "release records: grep failed ($cap_rc) reading Capabilities headings" >&2
+  exit 1
+fi
 while IFS= read -r heading; do
   if [[ "$heading" =~ ^##\ \[v([0-9]+\.[0-9]+\.[0-9]+)\]\(https://github\.com/david-engelmann/maidan/releases/tag/v([0-9]+\.[0-9]+\.[0-9]+)\) ]]; then
     record_version="${BASH_REMATCH[1]}"
@@ -105,11 +129,11 @@ while IFS= read -r heading; do
     die "non-canonical capability heading: $heading"
   fi
   heading_count=$((heading_count + 1))
-done < <(rg '^## (\[?v[0-9]|Cluster [0-9])' docs/Capabilities.md)
+done <<< "$cap_headings"
 [[ "$heading_count" -gt 0 ]] || die "no capability records found"
 
 while IFS= read -r tag; do
-  rg -F "releases/tag/$tag)" docs/Capabilities.md >/dev/null || \
+  grep -F "releases/tag/$tag)" docs/Capabilities.md >/dev/null || \
     die "published tag $tag is not searchable in docs/Capabilities.md"
 done < <(git tag --list 'v*.*.*')
 
@@ -119,7 +143,7 @@ while IFS= read -r linked_tag; do
       die "release stream links absent tag $linked_tag"
   fi
 done < <(
-  rg -o 'https://github\.com/david-engelmann/maidan/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' docs/Capabilities.md |
+  grep -oE 'https://github\.com/david-engelmann/maidan/releases/tag/v[0-9]+\.[0-9]+\.[0-9]+' docs/Capabilities.md |
     sed 's|.*/||' |
     sort -u
 )

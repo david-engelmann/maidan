@@ -3,10 +3,37 @@
 # ingests it via the registered peer (remote_workspace_id points at A's workspace).
 set -euo pipefail
 
+# Refuse non-http(s) or credentialed base URLs before any curl (avoids file: and
+# userinfo leaking bearers into the wrong place).
+require_http_url() {
+  local name="$1" value="$2"
+  case "$value" in
+    http://*|https://*) ;;
+    *) echo "$name must be an http(s) URL" >&2; exit 2 ;;
+  esac
+  value="${value%/}"
+  NAME="$name" VALUE="$value" python3 - <<'PY' || exit 2
+import os, sys
+from urllib.parse import urlparse
+name = os.environ["NAME"]
+u = urlparse(os.environ["VALUE"])
+if u.scheme not in ("http", "https") or u.username or u.password or not u.hostname:
+    print(f"{name} must be http(s) with a host and no userinfo", file=sys.stderr)
+    sys.exit(1)
+if u.query or u.fragment:
+    print(f"{name} must not carry a query or fragment", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 MAIDAN_A_URL="${MAIDAN_A_URL:-http://localhost:8080}"
 MAIDAN_B_URL="${MAIDAN_B_URL:-http://localhost:8081}"
 # URL stored on the peer for the poll worker (container network); defaults to MAIDAN_A_URL for local curl-only runs.
 MAIDAN_A_PEER_URL="${MAIDAN_A_PEER_URL:-${MAIDAN_A_URL}}"
+
+require_http_url MAIDAN_A_URL "$MAIDAN_A_URL"
+require_http_url MAIDAN_B_URL "$MAIDAN_B_URL"
+require_http_url MAIDAN_A_PEER_URL "$MAIDAN_A_PEER_URL"
 POLL_WAIT_SECS="${FEDERATION_PULL_WAIT_SECS:-45}"
 
 wait_health() {
