@@ -48,15 +48,24 @@ test("single-quoted paths and the /tools and /ui/api roots are checked too", () 
   assert.deepEqual(callsIn("return this.get(`/ui/api/messages/${m}/votes`);"), [{ line: 1, method: "GET", path: "/ui/api/messages/{}/votes" }]);
 });
 
-test("paths with empty or parent segments are not console API calls", () => {
+test("paths with empty or parent segments are unsafe and reported by check", () => {
   assert.equal(isSafeApiPath("/threads/{}"), true);
   assert.equal(isSafeApiPath("/threads/../members"), false);
   assert.equal(isSafeApiPath("/threads//id"), false);
+  assert.equal(isSafeApiPath("/threads/{}/"), false);
   assert.equal(isSafeApiPath("threads/x"), false);
   assert.equal(isSafeApiPath("/threads/{}?x=1"), false);
-  assert.deepEqual(callsIn('await this.send("GET", `/threads/${id}/../members`);'), []);
-  assert.deepEqual(callsIn('await this.send("GET", `/threads//${id}`);'), []);
+  assert.deepEqual(callsIn('await this.send("GET", `/threads/${id}/../members`);'), [{ line: 1, method: "GET", path: "/threads/{}/../members" }]);
+  assert.deepEqual(callsIn('await this.send("GET", `/threads//${id}`);'), [{ line: 1, method: "GET", path: "/threads//{}" }]);
   assert.ok(!matches(spec, "GET", "/threads/../members"));
   assert.ok(!matches(spec, "GET", "/threads//id"));
   assert.ok(!matches(spec, "", "/threads/{}"));
+  assert.deepEqual(
+    check(spec, ["a.ts"], () => 'this.get(`/threads/${t}/../nope`)'),
+    ["a.ts:1: GET /threads/{}/../nope is not a safe API path"],
+  );
+  assert.deepEqual(
+    check(spec, ["b.ts"], () => 'this.get(`/threads/${t}/`)'),
+    ["b.ts:1: GET /threads/{}/ is not a safe API path"],
+  );
 });

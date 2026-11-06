@@ -41,7 +41,6 @@ export function callsIn(text) {
       const raw = m[1] ?? m[2] ?? m[3];
       if (!API_ROOTS.test(raw)) continue;
       const path = raw.split("?")[0].replace(/\$\{[^}]*\}/g, "{}");
-      if (!isSafeApiPath(path)) continue;
       for (const method of new Set(methods)) out.push({ line: i + 1, method, path });
     }
   });
@@ -67,6 +66,10 @@ export function check(spec, srcFiles, read) {
   const errors = [];
   for (const f of srcFiles) for (const c of callsIn(read(f))) {
     const id = `${c.method} ${c.path}`;
+    if (!isSafeApiPath(c.path)) {
+      errors.push(`${f}:${c.line}: ${id} is not a safe API path`);
+      continue;
+    }
     if (!matches(spec, c.method, c.path) && !PENDING.has(id)) errors.push(`${f}:${c.line}: ${id} is not in the spec`);
   }
   return errors;
