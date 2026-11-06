@@ -35,9 +35,9 @@ const QUOTE = /^[ \t]*> ?(.*)$/;
 // Same shape as before: the last character cannot be sentence punctuation, and
 // a later pass restores a `)` the URL itself opened.
 const URL = /https?:\/\/[^\s<>\x22\x27\x60]+[^\s<>\x22\x27\x60.,;:!?)\]]/;
-// The route name ends on a boundary, so #/needsX stays text while #/needs and
-// #/board?channel=ch_1 still link.
-const HASH = /^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?=$|[/?\s.,;:!?)\]])(?:[/?][^\s<>()[\]\x22\x27]*)?/;
+// The route name ends on a boundary. Punctuation counts only at the end of
+// the text or before a space, so #/board.txt stays text while #/board. links.
+const HASH = /^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?=$|[/?\s]|[.,;:!?)\]]+(?=$|\s))(?:[/?][^\s<>()[\]\x22\x27]*)?/;
 
 type Fence = { mark: string; len: number; lang: string };
 
@@ -78,7 +78,7 @@ function takeUrl(text: string, at: number): { href: string; length: number } | n
 }
 
 function takeHash(text: string, at: number): { href: string; length: number } | null {
-  if (at > 0 && !/[\s(]/.test(text[at - 1])) return null;
+  if (at > 0 && !/[\s([\]]/.test(text[at - 1])) return null;
   const m = HASH.exec(text.slice(at));
   if (!m) return null;
   const href = m[0].replace(/[.,;:!?)]+$/, "");
