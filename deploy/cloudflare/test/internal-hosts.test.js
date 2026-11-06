@@ -12,19 +12,19 @@ const binding = (name) => ({
 });
 
 test("only .internal hosts with a declared binding are mapped", () => {
-  const env = { SEATS: binding("seats"), SOUNDCHECK: binding("soundcheck"), MAIDAN: {} };
+  const env = { SEATS: binding("seats"), CONTROL: binding("control"), MAIDAN: {} };
   assert.deepEqual(
     parseInternalHosts(
-      " Seats.Internal. = SEATS , soundcheck.internal=SOUNDCHECK, github.com=SEATS, " +
+      " Seats.Internal. = SEATS , control.internal=CONTROL, github.com=SEATS, " +
         "missing.internal=NOPE, durable.internal=MAIDAN, internal=SEATS, .internal=SEATS, " +
         "a..internal=SEATS, *.internal=SEATS, a.internal:80=SEATS, x.internal=SE-ATS, " +
-        "y.internal=SEATS=SOUNDCHECK, internal.example.com=SEATS, seats.internal=SOUNDCHECK, " +
+        "y.internal=SEATS=CONTROL, internal.example.com=SEATS, seats.internal=CONTROL, " +
         "bare.internal, ,",
       env,
     ),
     [
       ["seats.internal", "SEATS"],
-      ["soundcheck.internal", "SOUNDCHECK"],
+      ["control.internal", "CONTROL"],
     ],
   );
   assert.deepEqual(parseInternalHosts(undefined, env), []);
@@ -33,10 +33,10 @@ test("only .internal hosts with a declared binding are mapped", () => {
 
 test("a mapped host is forwarded to its binding, and nothing else is intercepted", async () => {
   const env = { SEATS: binding("seats") };
-  const handlers = internalOutboundByHost("seats.internal=SEATS,soundcheck.internal=SOUNDCHECK", env);
+  const handlers = internalOutboundByHost("seats.internal=SEATS,control.internal=CONTROL", env);
   // An unmapped host gets no handler, so the container's own egress serves it.
   assert.deepEqual(Object.keys(handlers), ["seats.internal"]);
-  for (const host of ["soundcheck.internal", "api.github.com", "slack.com", "maidan.r2.cloudflarestorage.com"]) {
+  for (const host of ["control.internal", "api.github.com", "slack.com", "maidan.r2.cloudflarestorage.com"]) {
     assert.equal(handlers[host], undefined, host);
   }
   const request = new Request("http://seats.internal/wake", { method: "POST", body: "{}" });

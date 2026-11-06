@@ -31,10 +31,10 @@
   },
   // Internal hosts (docs/Hosted Operations.md): the container's webhooks to
   // `http://seats.internal/...` reach the review-seat Worker over this binding,
-  // never the public internet. Soundcheck's control plane joins once its
+  // never the public internet. The swarm's control plane joins once its
   // Worker exists, with its API only on a named entrypoint:
-  //   { "binding": "SOUNDCHECK", "service": "soundcheck-control", "entrypoint": "Internal" }
-  // and `soundcheck.internal=SOUNDCHECK` / `soundcheck.internal` added to the
+  //   { "binding": "CONTROL", "service": "<the control plane's Worker>", "entrypoint": "Internal" }
+  // and `control.internal=CONTROL` / `control.internal` added to the
   // two vars below.
   "services": [{ "binding": "SEATS", "service": "maidan-wax-seats" }],
   "vars": {

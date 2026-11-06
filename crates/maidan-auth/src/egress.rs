@@ -491,11 +491,11 @@ mod tests {
     fn the_internal_list_keeps_only_bare_names_under_internal() {
         assert_eq!(
             parse_internal_egress_hosts(
-                " Seats.Internal. , soundcheck.internal, internal, .internal, 10.0.0.5, \
+                " Seats.Internal. , control.internal, internal, .internal, 10.0.0.5, \
                  http://a.internal, a.internal:80, *.internal, a..internal, example.com, \
                  internal.example.com, a_b.internal, ,"
             ),
-            vec!["seats.internal", "soundcheck.internal"]
+            vec!["seats.internal", "control.internal"]
         );
     }
 
@@ -527,7 +527,7 @@ mod tests {
         let internal = parse_internal_egress_hosts("seats.internal");
         // An unlisted `.internal` name, even one that ends like a listed one.
         for raw in [
-            "http://soundcheck.internal/mcp",
+            "http://control.internal/mcp",
             "http://evil.seats.internal/wake",
             "http://seats.internal.example.com/wake",
         ] {
@@ -591,7 +591,7 @@ mod tests {
         ];
         let workspace_b = [
             ("http://seats.internal/wake", true),
-            ("http://soundcheck.internal/x", false),
+            ("http://control.internal/x", false),
             ("http://admin.internal/x", false),
         ];
         for (target, allowed) in workspace_a.into_iter().chain(workspace_b) {

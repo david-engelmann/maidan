@@ -201,7 +201,8 @@ it loses every message's words.
 ### Internal hosts
 
 The server can send webhooks to our own Workers without either side having a
-public API. Soundcheck's MCP and change API are never public, and a review seat
+public API. The swarm's control plane keeps its MCP and change API off the
+internet entirely, and a review seat
 woken by a webhook needs no queue-depth poll. The request goes from the
 container to the instance's Worker and on to the other Worker over a service
 binding, and never crosses the public internet.
@@ -210,7 +211,7 @@ Three settings, all in the instance's Wrangler config:
 
 1. **A binding.** `services` names the Worker, and for a Worker that keeps its
    API off its public `fetch`, the named `WorkerEntrypoint`:
-   `{ "binding": "SOUNDCHECK", "service": "soundcheck-control", "entrypoint": "Internal" }`.
+   `{ "binding": "CONTROL", "service": "<the control plane's Worker>", "entrypoint": "Internal" }`.
 2. **The outbound map.** `MAIDAN_INTERNAL_HOSTS` maps a hostname under
    `.internal` to that binding (`seats.internal=SEATS`). The Worker intercepts
    the container's plain-HTTP calls to each mapped name (`outboundByHost` in
@@ -241,9 +242,9 @@ curl -X POST https://swarm.maidan.world/workspaces/$WS/webhooks \
   -d '{"url":"http://seats.internal/wake","label":"wake the seats","event_kinds":["thread_ready"]}'
 ```
 
-Soundcheck's line waits until its `soundcheck-control` Worker exists. Then add
-the `SOUNDCHECK` binding above to `services`, `soundcheck.internal=SOUNDCHECK`
-to `MAIDAN_INTERNAL_HOSTS`, and `soundcheck.internal` to
+The control plane's line waits until its Worker exists. Then add
+the `CONTROL` binding above to `services`, `control.internal=CONTROL`
+to `MAIDAN_INTERNAL_HOSTS`, and `control.internal` to
 `MAIDAN_INTERNAL_EGRESS_HOSTS`. The prod and dev configs declare none of this.
 
 ## The first admin
