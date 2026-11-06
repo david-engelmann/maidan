@@ -15,7 +15,9 @@ export class UsageError extends Error {
 function at(obj, path) {
   let v = obj;
   for (const key of path.split(".")) {
+    if (key === "__proto__" || key === "prototype" || key === "constructor") return undefined;
     if (v === null || typeof v !== "object") return undefined;
+    if (!Object.prototype.hasOwnProperty.call(v, key)) return undefined;
     v = v[key];
   }
   return v;
@@ -237,6 +239,10 @@ export const USAGE_PROVIDERS = Object.freeze(Object.keys(READERS));
  * other call, as the server refuses it.
  */
 export function normalizeUsage(provider, response, options = {}) {
+  if (typeof provider !== "string" || !provider.trim()) {
+    throw new UsageError("provider is required");
+  }
+  provider = provider.trim();
   const reader = READERS[provider];
   if (!reader) throw new UsageError(`unknown provider ${provider}`);
   if (response === null || typeof response !== "object" || Array.isArray(response)) {
@@ -245,7 +251,12 @@ export function normalizeUsage(provider, response, options = {}) {
   const got = reader.read(response);
   const model = (options.model ?? got.model ?? "").trim();
   if (!model) throw new UsageError("model is required: the response names none, so pass options.model");
-  const evidence = { provider: options.provider ?? reader.name };
+  let evidenceProvider = options.provider ?? reader.name;
+  if (typeof evidenceProvider !== "string" || !evidenceProvider.trim()) {
+    throw new UsageError("evidence provider is required");
+  }
+  evidenceProvider = evidenceProvider.trim();
+  const evidence = { provider: evidenceProvider };
   if (got.serviceTier) evidence.service_tier = got.serviceTier;
   if (got.cacheMissReason) evidence.cache_miss_reason = got.cacheMissReason;
   if (options.batch) evidence.batch = true;

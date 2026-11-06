@@ -74,3 +74,25 @@ test("the evidence provider can be overridden for a hosted shape", () => {
   const got = normalizeUsage("openai-chat", response, { provider: "azure.ai.openai" });
   assert.equal(got.evidence.provider, "azure.ai.openai");
 });
+
+test("blank providers and prototype-polluted usage paths are refused", () => {
+  assert.throws(() => normalizeUsage("  ", { model: "m", usage: {} }), /provider is required/);
+  assert.throws(() => normalizeUsage(null, { model: "m", usage: {} }), /provider is required/);
+  const polluted = { model: "m", usage: JSON.parse('{"prompt_tokens": 3, "completion_tokens": 1}') };
+  Object.setPrototypeOf(polluted.usage, { cached_tokens: 99 });
+  // Own-property walk ignores inherited decoys on nested detail objects.
+  const nested = {
+    model: "m",
+    usage: {
+      prompt_tokens: 3,
+      completion_tokens: 1,
+      prompt_tokens_details: Object.assign(Object.create({ cached_tokens: 99 }), {}),
+    },
+  };
+  const got = normalizeUsage("openai-chat", nested);
+  assert.equal(got.tokens.cache_read, 0);
+  assert.throws(
+    () => normalizeUsage("openai-chat", { model: "m", usage: { prompt_tokens: 1, completion_tokens: 0 } }, { provider: "  " }),
+    /evidence provider is required/,
+  );
+});

@@ -13,10 +13,17 @@ export function cspViolations(html) {
     const body = (m[2] ?? "").trim();
     if (!/\bsrc\s*=/i.test(attrs)) found.push("inline <script> without src");
     else if (body) found.push("<script src> with an inline body");
+    const src = /\bsrc\s*=\s*(["']?)([^\s>"']+)\1/i.exec(attrs)?.[2] ?? "";
+    if (/^data:/i.test(src)) found.push("data: script URL");
   }
   if (/<style\b/i.test(html)) found.push("<style> element");
+  if (/\sstyle\s*=/i.test(html)) found.push("inline style attribute");
   if (/\son[a-z]+\s*=/i.test(html)) found.push("inline event handler attribute");
   if (/javascript:/i.test(html)) found.push("javascript: URL");
+  if (/\bsrcdoc\s*=/i.test(html)) found.push("iframe srcdoc attribute");
+  if (/<(?:link|script|img|iframe)\b[^>]*\b(?:href|src)\s*=\s*(["']?)data:/i.test(html)) {
+    if (!found.includes("data: script URL")) found.push("data: URL in src/href");
+  }
   return found;
 }
 

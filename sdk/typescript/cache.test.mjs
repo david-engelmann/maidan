@@ -82,3 +82,16 @@ test("the cache salt is shared inside a workspace and differs across workspaces 
   assert.notEqual(salts[0], salts[2], "two keys give one salt");
   for (const s of salts) assert.equal(s.length, 43);
 });
+
+test("blank or non-string cache inputs are refused", async () => {
+  for (const bad of ["", "   ", null, undefined, 12]) {
+    await assert.rejects(() => cacheKey(bad, "g"), CacheError);
+    await assert.rejects(() => cacheKey("ws", bad), CacheError);
+  }
+  expectError(() => cachedPrefix(" anthropic ", null), "prefix text must be a string");
+  expectError(() => cachedPrefix("   ", "hi"), "provider is required");
+  expectError(() => cacheKeyFields("openai-chat", "  "), "cache key is required");
+  expectError(() => gatewaySession("openrouter", "\t"), "thread id is required");
+  expectError(() => routingHints("dynamo", "  "), "thread id is required");
+  await assert.rejects(() => cacheSalt("  ", "k".repeat(32)), CacheError);
+});

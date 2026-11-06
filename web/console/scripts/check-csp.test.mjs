@@ -28,3 +28,10 @@ test("every chunk the entry imports must be preloaded", () => {
   assert.deepEqual(missingPreloads(html, entry, "/x/"), ["extra.js"]);
   assert.deepEqual(missingPreloads(html + '<link rel="modulepreload" href="/x/extra.js">', entry, "/x/"), []);
 });
+
+test("data: script URLs, inline style attributes, and srcdoc fail", () => {
+  assert.deepEqual(cspViolations('<script src="data:text/javascript,alert(1)"></script>'), ["data: script URL"]);
+  assert.deepEqual(cspViolations('<div style="color:red">'), ["inline style attribute"]);
+  assert.deepEqual(cspViolations('<iframe srcdoc="<b>x</b>">'), ["iframe srcdoc attribute"]);
+  assert.ok(cspViolations('<link rel="stylesheet" href="data:text/css,body{}">').includes("data: URL in src/href"));
+});

@@ -10,6 +10,14 @@ export class CacheError extends Error {
   }
 }
 
+/** A required non-blank string; whitespace-only values are refused. */
+export function requireText(value, label) {
+  if (typeof value !== "string") throw new CacheError(`${label} is required`);
+  const t = value.trim();
+  if (!t) throw new CacheError(`${label} is required`);
+  return t;
+}
+
 async function sha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
   const subtle = globalThis.crypto?.subtle ?? (await import("node:crypto")).webcrypto.subtle;
@@ -33,6 +41,8 @@ const TTLS = new Set(["5m", "1h"]);
  * only put first.
  */
 export function cachedPrefix(provider, text, options = {}) {
+  provider = requireText(provider, "provider");
+  if (typeof text !== "string") throw new CacheError("prefix text must be a string");
   const { ttl } = options;
   if (ttl !== undefined && !TTLS.has(ttl)) throw new CacheError("ttl must be 5m or 1h");
   if (ttl !== undefined && provider !== "anthropic" && provider !== "bedrock-converse") {
@@ -69,12 +79,15 @@ export function cachedPrefix(provider, text, options = {}) {
  * two keys, and the key reveals neither.
  */
 export async function cacheKey(workspaceId, group) {
-  if (!workspaceId || !group) throw new CacheError("workspace id and group are required");
+  workspaceId = requireText(workspaceId, "workspace id");
+  group = requireText(group, "group");
   return `maidan-${(await sha256Hex(`${workspaceId}\n${group}`)).slice(0, 32)}`;
 }
 
 /** Where `key` goes for a provider that takes one; `{}` for one that does not. */
 export function cacheKeyFields(provider, key) {
+  provider = requireText(provider, "provider");
+  key = requireText(key, "cache key");
   switch (provider) {
     case "openai-responses":
     case "openai-chat":
@@ -105,7 +118,8 @@ const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
  * thread's outcome. Helicone takes an optional `path` and `name`.
  */
 export function gatewaySession(gateway, threadId, options = {}) {
-  if (!threadId) throw new CacheError("thread id is required");
+  gateway = requireText(gateway, "gateway");
+  threadId = requireText(threadId, "thread id");
   switch (gateway) {
     case "openrouter":
       return { body: { session_id: threadId } };
@@ -152,8 +166,12 @@ const ONE_KEY_ROUTERS = {
  * no router accepts a prefix hash from a client.
  */
 export function routingHints(router, threadId, options = {}) {
-  if (!threadId) throw new CacheError("thread id is required");
-  const parent = options.parentThreadId || undefined;
+  router = requireText(router, "router");
+  threadId = requireText(threadId, "thread id");
+  const parentRaw = options.parentThreadId;
+  const parent = parentRaw === undefined || parentRaw === null || parentRaw === ""
+    ? undefined
+    : requireText(parentRaw, "parent thread id");
   const spec = Object.hasOwn(ONE_KEY_ROUTERS, router) ? ONE_KEY_ROUTERS[router] : undefined;
   if (!spec) throw new CacheError(`unknown router ${router}`);
   const key = parent ?? threadId;
@@ -176,7 +194,7 @@ export const MIN_SALT_KEY_BYTES = 32;
  * never from an end client. It is a cache partition, not an auth token.
  */
 export async function cacheSalt(workspaceId, saltKey) {
-  if (!workspaceId) throw new CacheError("workspace id is required");
+  workspaceId = requireText(workspaceId, "workspace id");
   const key = typeof saltKey === "string" ? new TextEncoder().encode(saltKey) : saltKey;
   if (!(key instanceof Uint8Array) || key.length < MIN_SALT_KEY_BYTES) {
     throw new CacheError(`salt key must be at least ${MIN_SALT_KEY_BYTES} bytes`);
