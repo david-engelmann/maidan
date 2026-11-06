@@ -128,7 +128,8 @@ pub async fn create_webhook(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    validate_webhook_url(&body.url)?;
+    let trimmed_url = body.url.trim();
+    validate_webhook_url(trimmed_url)?;
     let event_kinds = parse_event_kinds(&body.event_kinds)?;
 
     let secret = TokenSecret::generate();
@@ -142,7 +143,7 @@ pub async fn create_webhook(
         .store
         .create_webhook_subscription(NewWebhookSubscription {
             workspace_id,
-            url: body.url.trim().to_string(),
+            url: trimmed_url.to_string(),
             label: body.label,
             event_kinds,
             secret_ciphertext,
@@ -326,18 +327,23 @@ pub fn delivery_backoff(attempts: i32) -> chrono::Duration {
     chrono::Duration::seconds(secs)
 }
 
+/// Max delivery attempts before quarantine. Clamped to `1..=100` so a huge
+/// env value cannot wrap when cast to `i32` for the store comparison.
 pub fn max_attempts_from_env() -> u32 {
     std::env::var("MAIDAN_WEBHOOK_MAX_ATTEMPTS")
         .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&n| n > 0)
+        .and_then(|s| s.trim().parse().ok())
+        .map(|n: u32| n.clamp(1, 100))
         .unwrap_or(16)
 }
 
+/// Delivery poll interval. Clamped to `10..=300_000` so `0` cannot busy-spin
+/// and an absurd value cannot stall the poller for minutes between batches.
 pub fn poll_interval_ms_from_env() -> u64 {
     std::env::var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| s.trim().parse().ok())
+        .map(|n: u64| n.clamp(10, 300_000))
         .unwrap_or(50)
 }
 
@@ -376,6 +382,35 @@ mod payload_tests {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WebhookDeliverySummary {
     pub delivered: bool,
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn max_attempts_clamps_and_trims() {
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_MAX_ATTEMPTS", "0") };
+        assert_eq!(max_attempts_from_env(), 1);
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_MAX_ATTEMPTS", " 8 ") };
+        assert_eq!(max_attempts_from_env(), 8);
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_MAX_ATTEMPTS", "999999") };
+        assert_eq!(max_attempts_from_env(), 100);
+        unsafe { std::env::remove_var("MAIDAN_WEBHOOK_MAX_ATTEMPTS") };
+        assert_eq!(max_attempts_from_env(), 16);
+    }
+
+    #[test]
+    fn poll_interval_ms_clamps_busy_spin_and_huge_values() {
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS", "0") };
+        assert_eq!(poll_interval_ms_from_env(), 10);
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS", " 75 ") };
+        assert_eq!(poll_interval_ms_from_env(), 75);
+        unsafe { std::env::set_var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS", "9999999") };
+        assert_eq!(poll_interval_ms_from_env(), 300_000);
+        unsafe { std::env::remove_var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS") };
+        assert_eq!(poll_interval_ms_from_env(), 50);
+    }
 }
 
 #[cfg(test)]

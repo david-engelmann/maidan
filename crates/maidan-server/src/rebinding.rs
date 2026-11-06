@@ -26,10 +26,11 @@
 
 use axum::{
     extract::{Request, State},
-    http::{header, HeaderMap, Method},
+    http::{header, HeaderMap, HeaderValue, Method},
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use std::net::Ipv6Addr;
 
 use crate::{error::ApiError, AppState};
 
@@ -43,6 +44,10 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
 }
 
 /// Whether the request would be served without a credential.
+///
+/// Uses [`crate::auth::bearer_from_headers`] so an empty or non-Bearer
+/// `Authorization` (which still makes `contains_key` true) cannot skip the
+/// rebinding judge on the anonymous MCP reader path.
 fn rides_an_open_mode(state: &AppState, req: &Request) -> bool {
     if state.auth_disabled {
         return true;
@@ -50,16 +55,24 @@ fn rides_an_open_mode(state: &AppState, req: &Request) -> bool {
     state.dev_anonymous_reader.is_some()
         && req.method() == Method::POST
         && crate::rate_limit::is_mcp_jsonrpc_path(req.uri().path())
-        && !req.headers().contains_key(header::AUTHORIZATION)
+        && crate::auth::bearer_from_headers(req.headers()).is_none()
 }
 
 /// `Err` with the reason a credential-less request is refused.
 pub(crate) fn judge(allowed_hosts: &[String], headers: &HeaderMap) -> Result<(), &'static str> {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or_default();
-    let name = host_name(host).trim_end_matches('.').to_ascii_lowercase();
+    // Duplicate Host headers are ambiguous; refuse rather than pick one.
+    let host_values: Vec<&HeaderValue> = headers.get_all(header::HOST).iter().collect();
+    if host_values.len() > 1 {
+        return Err("a request with no credential must carry a single Host header");
+    }
+    let host_raw = match host_values.first() {
+        None => "",
+        Some(value) => value
+            .to_str()
+            .map_err(|_| "a request with no credential must carry a UTF-8 Host header")?,
+    };
+    let (name, host_port) = parse_host_authority(host_raw)
+        .ok_or("a request with no credential must carry a well-formed Host header")?;
     let named = name.is_empty()
         || !name.contains('.')
         || is_loopback_name(&name)
@@ -70,17 +83,38 @@ pub(crate) fn judge(allowed_hosts: &[String], headers: &HeaderMap) -> Result<(),
             "a request with no credential must name this server: a loopback name, a name without a dot, an IP address, or a host in MAIDAN_ALLOWED_HOSTS",
         );
     }
-    if let Some(origin) = headers.get(header::ORIGIN) {
-        let authority = origin
+    for origin in headers.get_all(header::ORIGIN) {
+        let origin_str = origin
             .to_str()
-            .ok()
-            .and_then(|o| o.split_once("://"))
-            .map(|(_, authority)| authority);
-        if !authority.is_some_and(|a| a.eq_ignore_ascii_case(host)) {
+            .map_err(|_| "a request from another origin needs a credential")?;
+        let Some((origin_name, origin_port)) = parse_origin_authority(origin_str) else {
+            return Err("a request from another origin needs a credential");
+        };
+        if !origin_matches_host(&name, host_port, &origin_name, origin_port) {
             return Err("a request from another origin needs a credential");
         }
     }
     Ok(())
+}
+
+fn origin_matches_host(
+    host_name: &str,
+    host_port: Option<u16>,
+    origin_name: &str,
+    origin_port: Option<u16>,
+) -> bool {
+    if host_name != origin_name {
+        return false;
+    }
+    match (host_port, origin_port) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a == b,
+        // A Host without an explicit port matches an Origin that also omitted
+        // the port (already handled) or — for string-equality compatibility
+        // with historical callers — when the Origin authority carried no port
+        // component either. Mixed explicit/default is a mismatch.
+        (None, Some(_)) | (Some(_), None) => false,
+    }
 }
 
 /// The names `MAIDAN_ALLOWED_HOSTS` lists (comma-separated, without ports),
@@ -92,14 +126,62 @@ pub fn allowed_hosts_from(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// `host[:port]` or `[v6][:port]`, without the port.
-fn host_name(authority: &str) -> &str {
-    if let Some(rest) = authority.strip_prefix('[') {
-        return rest.split_once(']').map_or(rest, |(name, _)| name);
+/// Parse `Host` into a normalized (no trailing dot, lowercased) name and an
+/// optional port. Rejects bracketed IPv6 with a trailing hostname suffix
+/// (`[::1].evil.example.com`), multiple colons outside brackets, and
+/// non-numeric ports.
+fn parse_host_authority(authority: &str) -> Option<(String, Option<u16>)> {
+    if authority.is_empty() {
+        return Some((String::new(), None));
     }
-    authority
-        .rsplit_once(':')
-        .map_or(authority, |(name, _)| name)
+    let (name, port) = split_host_port(authority)?;
+    let name = name.trim_end_matches('.').to_ascii_lowercase();
+    Some((name, port))
+}
+
+fn split_host_port(authority: &str) -> Option<(&str, Option<u16>)> {
+    if let Some(rest) = authority.strip_prefix('[') {
+        let (addr, suffix) = rest.split_once(']')?;
+        // Bracketed content must be a real IPv6 address.
+        addr.parse::<Ipv6Addr>().ok()?;
+        if suffix.is_empty() {
+            return Some((addr, None));
+        }
+        let port = suffix.strip_prefix(':')?;
+        // Reject `[::1].evil…` and `[::1]:` / non-u16 ports.
+        if port.is_empty() || port.contains(':') {
+            return None;
+        }
+        let port: u16 = port.parse().ok()?;
+        return Some((addr, Some(port)));
+    }
+    match authority.rsplit_once(':') {
+        Some((name, port)) if !name.is_empty() && !name.contains(':') => {
+            if port.is_empty() {
+                return None;
+            }
+            let port: u16 = port.parse().ok()?;
+            Some((name, Some(port)))
+        }
+        // No port, or bare IPv6 without brackets (reject — ambiguous).
+        None => {
+            if authority.contains(':') {
+                return None;
+            }
+            Some((authority, None))
+        }
+        Some(_) => None,
+    }
+}
+
+fn parse_origin_authority(origin: &str) -> Option<(String, Option<u16>)> {
+    let (_, authority) = origin.split_once("://")?;
+    // Drop any path/userinfo that a non-browser might send.
+    let authority = authority.split_once('/').map_or(authority, |(a, _)| a);
+    if authority.is_empty() {
+        return None;
+    }
+    parse_host_authority(authority)
 }
 
 fn is_loopback_name(name: &str) -> bool {
@@ -178,5 +260,74 @@ mod tests {
             &headers("maidan.example.com", Some("https://maidan.example.com"))
         )
         .is_ok());
+    }
+
+    #[test]
+    fn trailing_dot_hosts_normalize_for_origin_and_allowlist() {
+        let allowed = allowed_hosts_from("app.example.com.");
+        assert!(judge(
+            &allowed,
+            &headers("app.example.com.", Some("https://app.example.com"))
+        )
+        .is_ok());
+        assert!(judge(
+            &allowed,
+            &headers("app.example.com", Some("https://app.example.com."))
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn bracketed_ipv6_rejects_hostname_suffix_and_bad_ports() {
+        assert!(parse_host_authority("[::1].evil.example.com:8080").is_none());
+        assert!(parse_host_authority("[::1]:").is_none());
+        assert!(parse_host_authority("[::1]:65536").is_none());
+        assert!(parse_host_authority("[gggg::1]:8080").is_none());
+        assert_eq!(
+            parse_host_authority("[::1]:8080"),
+            Some(("::1".into(), Some(8080)))
+        );
+    }
+
+    #[test]
+    fn duplicate_or_non_utf8_host_is_refused() {
+        let mut dup = HeaderMap::new();
+        dup.append(header::HOST, HeaderValue::from_static("localhost"));
+        dup.append(header::HOST, HeaderValue::from_static("evil.example.com"));
+        assert!(judge(&[], &dup).is_err());
+
+        let mut bad = HeaderMap::new();
+        bad.insert(
+            header::HOST,
+            HeaderValue::from_bytes(b"local\xffhost").unwrap(),
+        );
+        assert!(judge(&[], &bad).is_err());
+    }
+
+    #[test]
+    fn every_origin_header_must_match_host() {
+        let allowed = allowed_hosts_from("maidan.example.com");
+        let mut headers = headers("maidan.example.com", Some("https://maidan.example.com"));
+        headers.append(
+            header::ORIGIN,
+            HeaderValue::from_static("https://evil.example.com"),
+        );
+        assert!(judge(&allowed, &headers).is_err());
+    }
+
+    #[test]
+    fn empty_authorization_still_rides_open_mode_check_via_bearer_parser() {
+        // `Authorization: ` / non-Bearer must parse as no bearer so the
+        // anonymous MCP path is still judged for rebinding.
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static(""));
+        assert!(crate::auth::bearer_from_headers(&headers).is_none());
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Basic x"));
+        assert!(crate::auth::bearer_from_headers(&headers).is_none());
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer tok"),
+        );
+        assert_eq!(crate::auth::bearer_from_headers(&headers), Some("tok"));
     }
 }

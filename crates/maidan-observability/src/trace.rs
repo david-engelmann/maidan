@@ -15,6 +15,10 @@ pub fn adopt_remote_parent(span: &tracing::Span, parent: &TraceContext) {
         };
         use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+        let tracestate = parent
+            .tracestate()
+            .and_then(|raw| raw.parse::<TraceState>().ok())
+            .unwrap_or_default();
         let remote = SpanContext::new(
             TraceId::from_bytes(*parent.trace_id()),
             SpanId::from_bytes(*parent.span_id()),
@@ -24,7 +28,7 @@ pub fn adopt_remote_parent(span: &tracing::Span, parent: &TraceContext) {
                 TraceFlags::default()
             },
             true,
-            TraceState::default(),
+            tracestate,
         );
         let context = opentelemetry::Context::new().with_remote_span_context(remote);
         let _ = span.set_parent(context);
@@ -59,5 +63,25 @@ pub fn recorded_span(tracestate: Option<String>) -> Option<TraceContext> {
     {
         let _ = tracestate;
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maidan_types::TraceContext;
+
+    #[test]
+    fn adopt_remote_parent_is_callable_without_panic() {
+        let parent = TraceContext::parse(
+            "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+            Some("vendor=one"),
+        )
+        .expect("parent");
+        let span = tracing::info_span!("child");
+        adopt_remote_parent(&span, &parent);
+        // With otel on, tracestate is forwarded into the remote SpanContext;
+        // with otel off this is a no-op. Either way it must not panic.
+        let _ = recorded_span(parent.tracestate().map(str::to_string));
     }
 }

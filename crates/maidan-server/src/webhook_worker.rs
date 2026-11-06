@@ -245,21 +245,72 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
         .await
         .map_err(|e| e.to_string())?;
     for delivery in pending {
-        let sub = state
+        let sub = match state
             .store
             .get_webhook_subscription(delivery.subscription_id)
             .await
-            .map_err(|e| e.to_string())?;
+        {
+            Ok(sub) => sub,
+            Err(maidan_store::StoreError::NotFound) => {
+                // A deleted subscription must not abort the whole batch via `?`,
+                // and must not keep retrying forever: drop any cached secret and
+                // quarantine this row.
+                crate::webhooks::forget_webhook_secret(
+                    &state.webhooks.secrets,
+                    delivery.subscription_id,
+                );
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                warn!(
+                    delivery_id = delivery.id,
+                    webhook = %delivery.subscription_id,
+                    "quarantined delivery for deleted webhook subscription"
+                );
+                continue;
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        if sub.subscription.revoked_at.is_some() {
+            // Revoked webhooks must never receive queued retries, and must not
+            // re-populate `state.webhooks.secrets` via `resolve_webhook_secret`.
+            crate::webhooks::forget_webhook_secret(
+                &state.webhooks.secrets,
+                delivery.subscription_id,
+            );
+            let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+            warn!(
+                delivery_id = delivery.id,
+                webhook = %delivery.subscription_id,
+                "quarantined delivery for revoked webhook"
+            );
+            continue;
+        }
         let Some(secret) = resolve_webhook_secret(
             &state.webhooks,
             delivery.subscription_id,
             &sub.secret_ciphertext,
         ) else {
+            // Missing/undecryptable secret used to `continue` with attempts=0,
+            // starving the 64-row batch forever. Record a failed attempt and
+            // quarantine once the ceiling is hit.
+            let err = "missing or undecryptable webhook secret";
             warn!(
                 delivery_id = delivery.id,
                 webhook = %delivery.subscription_id,
-                "skipping delivery: no webhook secret"
+                "{err}"
             );
+            let next = chrono::Utc::now() + delivery_backoff(delivery.attempts);
+            let attempts = state
+                .store
+                .record_webhook_delivery_attempt(delivery.id, err, next)
+                .await
+                .map_err(|e| e.to_string())?;
+            if attempts >= max_attempts as i32 {
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                warn!(
+                    delivery_id = delivery.id,
+                    attempts, max_attempts, "webhook delivery quarantined (undecryptable secret)"
+                );
+            }
             continue;
         };
         let workspace_id = sub.subscription.workspace_id;
@@ -352,4 +403,44 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod delivery_gate_tests {
+    /// Pure mirror of the stop-before-HTTP gates in [`super::poll_deliveries`]:
+    /// a missing subscription, a revoked subscription, or a missing secret must
+    /// never reach `deliver_http` / `resolve` that would re-cache a secret.
+    #[derive(Debug, PartialEq, Eq)]
+    enum Gate {
+        QuarantineDeleted,
+        QuarantineRevoked,
+        AdvanceMissingSecret,
+        Deliver,
+    }
+
+    fn gate(subscription_found: bool, revoked: bool, secret_ok: bool) -> Gate {
+        if !subscription_found {
+            return Gate::QuarantineDeleted;
+        }
+        if revoked {
+            return Gate::QuarantineRevoked;
+        }
+        if !secret_ok {
+            return Gate::AdvanceMissingSecret;
+        }
+        Gate::Deliver
+    }
+
+    #[test]
+    fn deleted_or_revoked_webhooks_never_fire_http() {
+        assert_eq!(gate(false, false, true), Gate::QuarantineDeleted);
+        assert_eq!(gate(true, true, true), Gate::QuarantineRevoked);
+        assert_eq!(gate(true, true, false), Gate::QuarantineRevoked);
+    }
+
+    #[test]
+    fn undecryptable_secret_advances_instead_of_stalling() {
+        assert_eq!(gate(true, false, false), Gate::AdvanceMissingSecret);
+        assert_eq!(gate(true, false, true), Gate::Deliver);
+    }
 }

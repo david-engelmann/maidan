@@ -8,6 +8,13 @@ use chacha20poly1305::{
 use thiserror::Error;
 
 const NONCE_LEN: usize = 12;
+/// ChaCha20-Poly1305 always appends a 16-byte Poly1305 tag.
+const TAG_LEN: usize = 16;
+/// Plaintext ceiling for a peer/webhook secret at encrypt time.
+const MAX_SECRET_PLAINTEXT_BYTES: usize = 32_768;
+/// Base64-encoded ciphertext ceiling before decode (covers nonce+ct+tag for
+/// the plaintext ceiling, with headroom for encoding expansion).
+const MAX_SECRET_CIPHERTEXT_B64_LEN: usize = 65_536;
 
 #[derive(Debug, Error)]
 pub enum PeerSecretError {
@@ -32,6 +39,9 @@ fn parse_key_bytes(raw: &str) -> Result<[u8; 32], PeerSecretError> {
 }
 
 pub fn encrypt_peer_secret(plaintext: &str, key: &[u8; 32]) -> Result<String, PeerSecretError> {
+    if plaintext.len() > MAX_SECRET_PLAINTEXT_BYTES {
+        return Err(PeerSecretError::InvalidCiphertext);
+    }
     let cipher = ChaCha20Poly1305::new_from_slice(key).map_err(|_| PeerSecretError::InvalidKey)?;
     let mut nonce_bytes = [0u8; NONCE_LEN];
     chacha20poly1305::aead::rand_core::RngCore::fill_bytes(&mut OsRng, &mut nonce_bytes);
@@ -74,16 +84,50 @@ fn parse_decrypt_keys(raw: &str) -> Result<Vec<[u8; 32]>, PeerSecretError> {
         .collect()
 }
 
+/// Decode and frame-check once. `InvalidCiphertext` fails before any key is tried.
+fn decode_secret_blob(encoded: &str) -> Result<Vec<u8>, PeerSecretError> {
+    let trimmed = encoded.trim();
+    if trimmed.len() > MAX_SECRET_CIPHERTEXT_B64_LEN {
+        return Err(PeerSecretError::InvalidCiphertext);
+    }
+    let blob = STANDARD
+        .decode(trimmed)
+        .map_err(|_| PeerSecretError::InvalidCiphertext)?;
+    // Nonce + Poly1305 tag is the minimum AEAD framing; a shorter blob can
+    // never authenticate.
+    if blob.len() < NONCE_LEN + TAG_LEN {
+        return Err(PeerSecretError::InvalidCiphertext);
+    }
+    Ok(blob)
+}
+
+fn decrypt_blob(blob: &[u8], key: &[u8; 32]) -> Result<String, PeerSecretError> {
+    let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
+    let cipher = ChaCha20Poly1305::new_from_slice(key).map_err(|_| PeerSecretError::InvalidKey)?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let plain = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| PeerSecretError::DecryptFailed)?;
+    String::from_utf8(plain).map_err(|_| PeerSecretError::DecryptFailed)
+}
+
 /// Try `keys` in order; return the first successful decrypt. AEAD authentication
 /// makes trying the wrong key safe — it fails cleanly rather than returning
 /// garbage — so a keyring can attempt several keys without corruption.
+/// Framing is validated once up front so `InvalidCiphertext` never walks the
+/// keyring (and an empty keyring returns [`PeerSecretError::DecryptFailed`]
+/// after that framing check).
 pub fn decrypt_peer_secret_multi(
     encoded: &str,
     keys: &[[u8; 32]],
 ) -> Result<String, PeerSecretError> {
+    let blob = decode_secret_blob(encoded)?;
+    if keys.is_empty() {
+        return Err(PeerSecretError::DecryptFailed);
+    }
     let mut last = PeerSecretError::DecryptFailed;
     for key in keys {
-        match decrypt_peer_secret(encoded, key) {
+        match decrypt_blob(&blob, key) {
             Ok(plain) => return Ok(plain),
             Err(err) => last = err,
         }
@@ -98,11 +142,19 @@ pub fn decrypt_peer_secret_rotating(
     encoded: &str,
     primary: &[u8; 32],
 ) -> Result<String, PeerSecretError> {
-    match decrypt_peer_secret(encoded, primary) {
+    let blob = decode_secret_blob(encoded)?;
+    match decrypt_blob(&blob, primary) {
         Ok(plain) => Ok(plain),
         Err(primary_err) => match DECRYPT_FALLBACK_KEYS.get() {
             Some(fallbacks) if !fallbacks.is_empty() => {
-                decrypt_peer_secret_multi(encoded, fallbacks)
+                let mut last = primary_err;
+                for key in fallbacks {
+                    match decrypt_blob(&blob, key) {
+                        Ok(plain) => return Ok(plain),
+                        Err(err) => last = err,
+                    }
+                }
+                Err(last)
             }
             _ => Err(primary_err),
         },
@@ -110,19 +162,8 @@ pub fn decrypt_peer_secret_rotating(
 }
 
 pub fn decrypt_peer_secret(encoded: &str, key: &[u8; 32]) -> Result<String, PeerSecretError> {
-    let blob = STANDARD
-        .decode(encoded.trim())
-        .map_err(|_| PeerSecretError::InvalidCiphertext)?;
-    if blob.len() <= NONCE_LEN {
-        return Err(PeerSecretError::InvalidCiphertext);
-    }
-    let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
-    let cipher = ChaCha20Poly1305::new_from_slice(key).map_err(|_| PeerSecretError::InvalidKey)?;
-    let nonce = Nonce::from_slice(nonce_bytes);
-    let plain = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| PeerSecretError::DecryptFailed)?;
-    String::from_utf8(plain).map_err(|_| PeerSecretError::DecryptFailed)
+    let blob = decode_secret_blob(encoded)?;
+    decrypt_blob(&blob, key)
 }
 
 #[cfg(test)]
@@ -159,15 +200,15 @@ mod tests {
         let good = [0x33; 32];
         let wrong = [0x44; 32];
         let ct = encrypt_peer_secret("rotate-me", &good).expect("encrypt");
-        // A ciphertext made with `good` decrypts when `good` is anywhere in the
-        // keyring (here, after a wrong key) — the rotation case.
         assert_eq!(
             decrypt_peer_secret_multi(&ct, &[wrong, good]).expect("multi"),
             "rotate-me"
         );
-        // No matching key fails cleanly.
         assert!(decrypt_peer_secret_multi(&ct, &[wrong]).is_err());
-        assert!(decrypt_peer_secret_multi(&ct, &[]).is_err());
+        assert!(matches!(
+            decrypt_peer_secret_multi(&ct, &[]),
+            Err(PeerSecretError::DecryptFailed)
+        ));
     }
 
     #[test]
@@ -177,7 +218,53 @@ mod tests {
         let keys = parse_decrypt_keys(&format!(" {hex}, {b64} ")).expect("keys");
         assert_eq!(keys, vec![[0xcd; 32], [0xef; 32]]);
         assert!(parse_decrypt_keys("").expect("empty").is_empty());
-        // A malformed entry is a hard error (don't silently drop an old key).
         assert!(parse_decrypt_keys(&format!("{hex},not-a-key")).is_err());
+    }
+
+    #[test]
+    fn oversized_plaintext_is_rejected() {
+        let huge = "x".repeat(MAX_SECRET_PLAINTEXT_BYTES + 1);
+        assert!(matches!(
+            encrypt_peer_secret(&huge, &test_key()),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
+    }
+
+    #[test]
+    fn oversized_ciphertext_b64_is_rejected_before_decode() {
+        let huge = "A".repeat(MAX_SECRET_CIPHERTEXT_B64_LEN + 1);
+        assert!(matches!(
+            decrypt_peer_secret(&huge, &test_key()),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
+        assert!(matches!(
+            decrypt_peer_secret_multi(&huge, &[test_key()]),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
+    }
+
+    #[test]
+    fn short_blob_under_nonce_plus_tag_is_rejected() {
+        // 27 bytes < 28 (nonce+tag); base64 of 27 zero bytes.
+        let short = STANDARD.encode([0u8; NONCE_LEN + TAG_LEN - 1]);
+        assert!(matches!(
+            decrypt_peer_secret(&short, &test_key()),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
+    }
+
+    #[test]
+    fn invalid_ciphertext_short_circuits_rotation_without_trying_keys() {
+        let junk = "!!!not-base64!!!";
+        // Empty keyring still surfaces InvalidCiphertext (framing), not DecryptFailed.
+        assert!(matches!(
+            decrypt_peer_secret_multi(junk, &[]),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
+        let wrong = [0x55; 32];
+        assert!(matches!(
+            decrypt_peer_secret_multi(junk, &[wrong, test_key()]),
+            Err(PeerSecretError::InvalidCiphertext)
+        ));
     }
 }

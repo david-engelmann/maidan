@@ -13,14 +13,30 @@ fn request_id_header() -> HeaderName {
     HeaderName::from_static("x-request-id")
 }
 
+/// Accept only a trimmed inbound id of 1..=128 safe ASCII characters. Anything
+/// else (absent, blank, overlong, control/whitespace, log-injection) is replaced
+/// with a fresh UUIDv7 so response headers and traces stay printable.
+pub(crate) fn sanitize_request_id(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 128 {
+        return None;
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/'))
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
 pub async fn middleware(mut req: Request, next: Next) -> Response {
     let header = request_id_header();
     let id = req
         .headers()
         .get(&header)
         .and_then(|v| v.to_str().ok())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+        .and_then(sanitize_request_id)
         .unwrap_or_else(|| Uuid::now_v7().to_string());
 
     req.extensions_mut().insert(RequestId(id.clone()));
@@ -35,3 +51,27 @@ pub async fn middleware(mut req: Request, next: Next) -> Response {
 
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_trimmed_safe_ids() {
+        assert_eq!(
+            sanitize_request_id("  abc-123_./:x  ").as_deref(),
+            Some("abc-123_./:x")
+        );
+    }
+
+    #[test]
+    fn rejects_blank_overlong_and_unsafe() {
+        assert!(sanitize_request_id("").is_none());
+        assert!(sanitize_request_id("   ").is_none());
+        assert!(sanitize_request_id(&"a".repeat(129)).is_none());
+        assert!(sanitize_request_id("has space").is_none());
+        assert!(sanitize_request_id("bad\ninject").is_none());
+        assert!(sanitize_request_id("emoji-😀").is_none());
+        assert!(sanitize_request_id("tab\there").is_none());
+    }
+}

@@ -35,16 +35,23 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<
 }
 
 pub fn federation_disabled_from_env() -> bool {
-    matches!(
-        std::env::var("FEDERATION_DISABLED").as_deref(),
-        Ok("1") | Ok("true") | Ok("TRUE")
-    )
+    std::env::var("FEDERATION_DISABLED")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
+/// Poll interval for the outbound federation worker. Clamped to `1..=86_400`
+/// so a `0` (or negative parse falling through) cannot busy-spin.
 pub fn poll_interval_secs_from_env() -> u64 {
     std::env::var("FEDERATION_POLL_INTERVAL_SECS")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| s.trim().parse().ok())
+        .map(|n: u64| n.clamp(1, 86_400))
         .unwrap_or(30)
 }
 
@@ -175,49 +182,69 @@ pub(crate) async fn ingest_envelope(
     // Hash check before parse: a rewritten payload is a chain break (409),
     // not a 400 from serde. The origin link is verified without trusting
     // the sender's Event interpretation.
+    let link = envelope.event.link();
     let previous = state.store.last_federated_verified_link(peer.id).await?;
-    if let Err(reason) = verify_peer_link(
-        &envelope.event.link(),
-        &envelope.event.payload,
-        previous.as_ref(),
-    ) {
+    // Idempotent replay after an earlier verified envelope in this batch
+    // (typically `SkippedNotFederatable`): `previous` already *is* this link,
+    // so a strict `verify_peer_link(..., Some(previous))` would 409 with
+    // `PrevHashMismatch` and wedge retries. Re-check the payload hash only.
+    let already_verified = previous.as_ref().is_some_and(|prev| {
+        prev.id == link.id
+            && prev.content_hash == link.content_hash
+            && prev.prev_hash == link.prev_hash
+    });
+    if already_verified {
+        if let Err(reason) = verify_peer_link(&link, &envelope.event.payload, None) {
+            return Err(ApiError::EventLogBroken {
+                break_at: Some(envelope.event.id),
+                reason,
+            });
+        }
+    } else if let Err(reason) = verify_peer_link(&link, &envelope.event.payload, previous.as_ref())
+    {
         return Err(ApiError::EventLogBroken {
             break_at: Some(envelope.event.id),
             reason,
         });
     }
-    // The link verified, so the chain has advanced past this event — record
-    // that
-    // *before* any policy decision. The origin chain covers every
-    // event in the peer's workspace, but federation only accepts the
-    // `federatable()` allowlist, so a refused event still sits between two
-    // accepted ones. Recording the link only on the ingest path left the
-    // pointer behind the refusal, and every later envelope then failed
-    // `PrevHashMismatch` forever.
-    state
-        .store
-        .record_federated_verified_link(peer.id, &envelope.event.link())
-        .await?;
 
+    // Parse *before* mutating the verified-link pointer so a 400 from an
+    // unreadable payload cannot advance the chain past an event that was
+    // never kept (and so cannot be skipped as a duplicate on retry).
     let mut event = event_from_stored(&envelope.event)?;
     // Only accept event kinds a peer is allowed to push (allowlist-by-default;
     // artifact-existence claims are rejected since blob bytes aren't
     // federated).
     if !event.kind().federatable() {
+        // The origin chain covers every event in the peer's workspace, but
+        // federation only accepts the `federatable()` allowlist, so a refused
+        // event still sits between two accepted ones. Record the verified
+        // link here (after a successful parse) so later envelopes do not
+        // `PrevHashMismatch` forever — but never before parse/`publish`.
+        if !already_verified {
+            state
+                .store
+                .record_federated_verified_link(peer.id, &link)
+                .await?;
+        }
         return Ok(IngestOutcome::SkippedNotFederatable);
     }
     event = remap_event_workspace(event, peer.workspace_id)?;
     let Some(log_id) = publish_federated(state, event, peer.id).await else {
+        // Leave `last_federated_verified_link` untouched so a transient 500
+        // from publish cannot advance the chain while `federated_ingest_exists`
+        // is still false.
         return Err(ApiError::Internal("event log append failed".into()));
     };
+    if !already_verified {
+        state
+            .store
+            .record_federated_verified_link(peer.id, &link)
+            .await?;
+    }
     let recorded = state
         .store
-        .try_record_federated_ingest(
-            peer.id,
-            envelope.remote_event_id,
-            log_id,
-            &envelope.event.link(),
-        )
+        .try_record_federated_ingest(peer.id, envelope.remote_event_id, log_id, &link)
         .await?;
     if !recorded {
         return Ok(IngestOutcome::SkippedDuplicate);
@@ -1331,5 +1358,71 @@ mod remap_tests {
             }
             other => panic!("expected MemberJoined, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn channel_created_remap_rescopes_nested_workspace() {
+        use maidan_types::Channel;
+        let remote = WorkspaceId(uuid::Uuid::from_u128(1));
+        let local = WorkspaceId(uuid::Uuid::from_u128(2));
+        let now = chrono::Utc::now();
+        let channel = Channel {
+            id: maidan_types::ChannelId(uuid::Uuid::from_u128(4)),
+            workspace_id: remote,
+            name: "general".into(),
+            topic: None,
+            private: false,
+            created_at: now,
+            updated_at: now,
+            tombstoned_at: None,
+        };
+        let event = Event::ChannelCreated {
+            occurred_at: now,
+            workspace_id: remote,
+            channel,
+        };
+        match remap_event_workspace(event, local).expect("federatable channel event") {
+            Event::ChannelCreated {
+                workspace_id,
+                channel,
+                ..
+            } => {
+                assert_eq!(workspace_id, local);
+                assert_eq!(channel.workspace_id, local);
+            }
+            other => panic!("expected ChannelCreated, got {other:?}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn federation_disabled_accepts_truthy_trimmed_case_insensitive() {
+        // SAFETY: test-only env mutation; serialized by the process-global env lock
+        // on platforms that have one, and these keys are read only through std.
+        for v in ["1", "true", "TRUE", " Yes ", "on", "ON"] {
+            unsafe { std::env::set_var("FEDERATION_DISABLED", v) };
+            assert!(federation_disabled_from_env(), "{v:?}");
+        }
+        for v in ["0", "false", "off", "", "no", "2"] {
+            unsafe { std::env::set_var("FEDERATION_DISABLED", v) };
+            assert!(!federation_disabled_from_env(), "{v:?}");
+        }
+        unsafe { std::env::remove_var("FEDERATION_DISABLED") };
+    }
+
+    #[test]
+    fn poll_interval_clamps_to_one_day_and_rejects_busy_spin() {
+        unsafe { std::env::set_var("FEDERATION_POLL_INTERVAL_SECS", "0") };
+        assert_eq!(poll_interval_secs_from_env(), 1);
+        unsafe { std::env::set_var("FEDERATION_POLL_INTERVAL_SECS", " 45 ") };
+        assert_eq!(poll_interval_secs_from_env(), 45);
+        unsafe { std::env::set_var("FEDERATION_POLL_INTERVAL_SECS", "999999") };
+        assert_eq!(poll_interval_secs_from_env(), 86_400);
+        unsafe { std::env::remove_var("FEDERATION_POLL_INTERVAL_SECS") };
+        assert_eq!(poll_interval_secs_from_env(), 30);
     }
 }

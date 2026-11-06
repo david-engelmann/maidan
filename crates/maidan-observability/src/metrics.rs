@@ -58,20 +58,25 @@ fn resolve_metrics_endpoint(
     metrics_enabled: bool,
     otlp_endpoint: Option<String>,
 ) -> Option<String> {
-    if let Some(dedicated) = dedicated.filter(|s| !s.trim().is_empty()) {
+    if let Some(dedicated) = dedicated
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
         return Some(dedicated);
     }
     if !metrics_enabled {
         return None;
     }
-    otlp_endpoint.filter(|s| !s.trim().is_empty())
+    otlp_endpoint
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Pure parse of the metrics push interval (see [`otlp_metrics_interval_from_env`]):
 /// a positive integer number of seconds, else the 15s default.
 fn parse_metrics_interval(raw: Option<String>) -> Duration {
-    raw.and_then(|s| s.parse().ok())
-        .filter(|&secs| secs > 0)
+    raw.and_then(|s| s.trim().parse().ok())
+        .map(|secs: u64| secs.clamp(1, 86_400))
         .map(Duration::from_secs)
         .unwrap_or(Duration::from_secs(15))
 }
@@ -137,10 +142,18 @@ mod tests {
             parse_metrics_interval(Some("5".into())),
             Duration::from_secs(5)
         );
-        // Non-positive, unparseable, and unset all fall back to 15s.
+        assert_eq!(
+            parse_metrics_interval(Some(" 5 ".into())),
+            Duration::from_secs(5)
+        );
+        // Zero and huge values clamp into 1..=86400; unparseable/unset → 15s.
         assert_eq!(
             parse_metrics_interval(Some("0".into())),
-            Duration::from_secs(15)
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            parse_metrics_interval(Some("999999".into())),
+            Duration::from_secs(86_400)
         );
         assert_eq!(
             parse_metrics_interval(Some("nope".into())),

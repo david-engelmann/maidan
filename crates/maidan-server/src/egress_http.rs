@@ -25,6 +25,11 @@ pub fn bounded() -> ClientBuilder {
 /// up after [`maidan_auth::EGRESS_RESOLUTION_TIMEOUT`], before this client
 /// exists; connecting then gives up after [`EGRESS_CONNECT_TIMEOUT`], and the
 /// whole request after [`EGRESS_TIMEOUT`].
+///
+/// When the URL's host string differs from the normalized [`maidan_auth::EgressTarget::host`]
+/// (for example a trailing-dot FQDN where the target stripped `.`), both names
+/// are pinned in the DNS override map so `reqwest` cannot fall back to a second
+/// unvalidated lookup.
 pub async fn client_for(raw: &str) -> Result<(Client, Url), String> {
     let target = maidan_auth::resolve_egress_target(raw)
         .await
@@ -36,6 +41,16 @@ pub async fn client_for(raw: &str) -> Result<(Client, Url), String> {
         .is_some_and(|host| matches!(host, url::Host::Domain(_)))
     {
         builder = builder.resolve_to_addrs(&target.host, &target.addresses);
+        if let Some(url_host) = target.url.host_str() {
+            let url_host_norm = url_host.trim_end_matches('.').to_ascii_lowercase();
+            if url_host != target.host && url_host_norm == target.host {
+                // Trailing-dot (or case) form present in the URL but stripped in
+                // `target.host` — pin both so the client never misses the map.
+                builder = builder.resolve_to_addrs(url_host, &target.addresses);
+            } else if url_host != target.host {
+                builder = builder.resolve_to_addrs(url_host, &target.addresses);
+            }
+        }
     }
     let client = builder.build().map_err(|error| error.to_string())?;
     Ok((client, target.url))

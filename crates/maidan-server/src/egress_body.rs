@@ -384,6 +384,29 @@ pub fn truncate_with_tail(body: &str, max: usize, tail: Option<&str>) -> String 
     format!("{}{TRUNCATION_NOTICE}{tail}", kept[..cut].trim_end())
 }
 
+/// [`truncate_with_tail`], then pull the cut back if it would land inside an
+/// HTML entity (`&…;`) so Slack cannot re-expand a truncated `&lt;` into `<`.
+fn truncate_with_tail_avoiding_entities(body: &str, max: usize, tail: Option<&str>) -> String {
+    let mut out = truncate_with_tail(body, max, tail);
+    let tail_len = tail.map(|t| t.len()).unwrap_or(0);
+    if tail_len > 0 && out.ends_with(tail.unwrap()) {
+        let head_end = out.len() - tail_len;
+        let head = &out[..head_end];
+        if let Some(amp) = head.rfind('&') {
+            let after = &head[amp + 1..];
+            if !after.is_empty()
+                && after.len() < 16
+                && after.chars().all(|c| c.is_ascii_alphanumeric() || c == '#')
+                && !after.contains(';')
+            {
+                // Dangling entity opener — drop it and everything after amp in the head.
+                out = format!("{}{}", &head[..amp], tail.unwrap());
+            }
+        }
+    }
+    out
+}
+
 /// Project GFM onto Slack mrkdwn — **narrowly**, see the module docs.
 ///
 /// Converts what Slack renders *wrongly*:
@@ -509,9 +532,15 @@ fn collapse_bold(line: &str) -> String {
 /// working one is a ping.
 fn safe_backlink(url: &str) -> Option<&str> {
     let ok_scheme = url.starts_with("https://") || url.starts_with("http://");
-    let clean = !url
-        .chars()
-        .any(|c| c.is_whitespace() || c.is_control() || "()<>\"`\\".contains(c));
+    // `|` is forbidden too: Slack mrkdwn uses `<url|label>`, so a pipe in the
+    // URL would close the link target early and let the rest of the URL render
+    // as live markup.
+    let clean = !url.chars().any(|c| {
+        c.is_whitespace()
+            || c.is_control()
+            || matches!(c, '(' | ')' | '<' | '>' | '|' | '"' | '`')
+            || c == '\\'
+    });
     (ok_scheme && clean).then_some(url)
 }
 
@@ -576,10 +605,13 @@ pub fn slack_message_body(summary: &str, digest: &[String], backlink: Option<&st
         body.push('\n');
         body.push_str(&gfm_to_mrkdwn(line.trim()));
     }
-    if let Some(url) = backlink {
-        body.push_str(&format!("\n<{url}|View in the producer>"));
-    }
-    neutralize_slack_mentions(&body)
+    let safe = neutralize_slack_mentions(&body);
+    let tail = backlink
+        .and_then(safe_backlink)
+        .map(|url| format!("\n<{url}|View in the producer>"));
+    // Fit under Slack's practical limit while keeping the backlink tail and
+    // never splitting an HTML entity introduced by mention defusal (`&lt;`).
+    truncate_with_tail_avoiding_entities(&safe, SLACK_BODY_MAX_CHARS, tail.as_deref())
 }
 
 #[cfg(test)]
@@ -829,6 +861,41 @@ mod tests {
     fn the_slack_body_defuses_a_broadcast_smuggled_through_the_summary() {
         let out = slack_message_body("<!channel> ship it", &[], None);
         assert_eq!(out, "&lt;!channel> ship it");
+    }
+
+    #[test]
+    fn slack_backlink_rejects_pipe_and_angle_injection() {
+        let out = slack_message_body("ship it", &[], Some("https://x.test/a|b><!channel>"));
+        assert!(
+            !out.contains("|View in the producer>"),
+            "unsafe backlink must be dropped, not injected: {out}"
+        );
+        assert!(
+            !out.contains("<!channel>"),
+            "raw broadcast must not survive: {out}"
+        );
+    }
+
+    #[test]
+    fn slack_body_respects_max_and_keeps_safe_backlink() {
+        let body = "a".repeat(SLACK_BODY_MAX_CHARS + 500);
+        let out = slack_message_body(&body, &[], Some("https://producer.example.test/r/1"));
+        assert!(out.chars().count() <= SLACK_BODY_MAX_CHARS);
+        assert!(
+            out.ends_with("\n<https://producer.example.test/r/1|View in the producer>"),
+            "backlink tail must survive truncation"
+        );
+    }
+
+    #[test]
+    fn slack_truncation_does_not_split_html_entities() {
+        let prefix = "x".repeat(SLACK_BODY_MAX_CHARS - 20);
+        let out = slack_message_body(&format!("{prefix}<!channel>"), &[], None);
+        assert!(out.chars().count() <= SLACK_BODY_MAX_CHARS);
+        assert!(
+            !out.ends_with("&lt") && !out.ends_with("&l") && !out.ends_with('&'),
+            "must not end on a dangling entity opener: {out:?}"
+        );
     }
 
     #[test]

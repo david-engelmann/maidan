@@ -34,17 +34,18 @@ pub fn parse_allowlist(raw: &str) -> Vec<String> {
     raw.split([',', ' ', '\t', '\n'])
         .map(str::trim)
         .filter(|h| !h.is_empty())
-        .map(str::to_ascii_lowercase)
+        .map(|h| h.trim_end_matches('.').to_ascii_lowercase())
         .collect()
 }
 
 /// The lowercase host an egress URL would be sent to, when the egress guard
-/// would send to it at all.
+/// would send to it at all. Trailing dots are stripped so an FQDN matches the
+/// allowlist form operators type without one.
 pub fn host_of(url: &str) -> Option<String> {
     maidan_auth::validate_egress_target(url)
         .ok()?
         .host_str()
-        .map(str::to_ascii_lowercase)
+        .map(|h| h.trim_end_matches('.').to_ascii_lowercase())
 }
 
 /// Whether `workspace_id` may send its secret values to `url`'s host: the
@@ -145,7 +146,7 @@ mod tests {
     #[test]
     fn parses_and_lowercases_the_allowlist() {
         assert_eq!(
-            parse_allowlist("Example.com, api.internal\n hooks.slack.com"),
+            parse_allowlist("Example.com, api.internal\n hooks.slack.com."),
             vec!["example.com", "api.internal", "hooks.slack.com"]
         );
         assert!(parse_allowlist("  , ,").is_empty());
@@ -160,6 +161,10 @@ mod tests {
         assert_eq!(host_of("http://user:pw@host.internal:8443/x"), None);
         assert_eq!(
             host_of("https://plain.host"),
+            Some("plain.host".to_string())
+        );
+        assert_eq!(
+            host_of("https://plain.host./path"),
             Some("plain.host".to_string())
         );
         assert_eq!(host_of("not a url"), None);

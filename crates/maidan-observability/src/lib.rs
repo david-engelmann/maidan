@@ -67,9 +67,13 @@ impl Config {
         );
         let otlp_endpoint = std::env::var("OTLP_ENDPOINT")
             .ok()
-            .filter(|s| !s.trim().is_empty());
-        let service_name =
-            std::env::var("OTLP_SERVICE_NAME").unwrap_or_else(|_| "maidan-server".to_string());
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let service_name = std::env::var("OTLP_SERVICE_NAME")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "maidan-server".to_string());
         Self {
             log_filter,
             log_format,
@@ -98,6 +102,14 @@ pub struct Guard {
 }
 
 impl Guard {
+    /// Attach a metrics push guard so [`Guard::shutdown`] tears it down with
+    /// the tracer provider.
+    #[cfg(feature = "otel")]
+    pub fn with_meter(mut self, meter: metrics::MeterGuard) -> Self {
+        self.meter_provider = Some(meter);
+        self
+    }
+
     pub fn shutdown(self) {
         #[cfg(feature = "otel")]
         {
@@ -207,5 +219,27 @@ mod tests {
         assert_eq!(parse_log_format("plain"), LogFormat::Plain);
         assert_eq!(parse_log_format(""), LogFormat::Plain);
         assert_eq!(parse_log_format("text"), LogFormat::Plain);
+    }
+
+    #[test]
+    fn otlp_endpoint_and_service_name_trim_blank_to_defaults() {
+        unsafe {
+            std::env::set_var("OTLP_ENDPOINT", "  ");
+            std::env::set_var("OTLP_SERVICE_NAME", "  ");
+        }
+        let cfg = Config::from_env();
+        assert!(cfg.otlp_endpoint.is_none());
+        assert_eq!(cfg.service_name, "maidan-server");
+        unsafe {
+            std::env::set_var("OTLP_ENDPOINT", " http://otel:4317 ");
+            std::env::set_var("OTLP_SERVICE_NAME", " my-svc ");
+        }
+        let cfg = Config::from_env();
+        assert_eq!(cfg.otlp_endpoint.as_deref(), Some("http://otel:4317"));
+        assert_eq!(cfg.service_name, "my-svc");
+        unsafe {
+            std::env::remove_var("OTLP_ENDPOINT");
+            std::env::remove_var("OTLP_SERVICE_NAME");
+        }
     }
 }
