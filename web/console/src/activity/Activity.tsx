@@ -1,5 +1,6 @@
 // Activity: a live stream of the workspace's events, newest first.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ApiError } from "../core/api.ts";
 import { ago, BoardApi, type Channel, type Member, type Thread } from "../core/board.ts";
 import { liveBus } from "../core/bus.ts";
 import {
@@ -77,11 +78,18 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   // Try again re-runs the read; a healthy socket sends no resync to do it.
   const [tries, setTries] = useState(0);
   const rowsRef = useRef(rows);
-  rowsRef.current = rows;
+  useLayoutEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
   const gone = useRef(false);
-  // One lookup per unknown thread, including a miss, so a DM or a new task resolves once.
+  // One lookup per unknown thread. A miss is a real absence; a blip may try once more.
   const inflight = useRef(new Set<string>());
   const missed = useRef(new Set<string>());
+  const failed = useRef(new Map<string, number>());
+  const reload = useCallback(() => {
+    missed.current.clear();
+    failed.current.clear();
+  }, []);
   useEffect(() => {
     gone.current = false;
     return () => {
@@ -106,7 +114,10 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
     if (!paused) void pull();
     const off = liveBus.listen((m) => {
       if (cancelled) return;
-      if (m.type === "resync") return void (paused ? undefined : pull());
+      if (m.type === "resync") {
+        reload();
+        return void (paused ? undefined : pull());
+      }
       const row = toActivity(m.frame);
       if (!row) return;
       if (paused) setHeld((h) => mergeActivity(h, [row]));
@@ -116,7 +127,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
       cancelled = true;
       off();
     };
-  }, [api, ws, paused, tries]);
+  }, [api, ws, paused, tries, reload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,10 +172,19 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
         const t = await threads.thread(id);
         const title = t.title?.trim() || "";
         if (gone.current) return;
-        if (title) setDir((d) => (d.threads.get(id) === title ? d : { ...d, threads: new Map(d.threads).set(id, title) }));
-        else missed.current.add(id);
-      } catch {
-        if (!gone.current) missed.current.add(id);
+        if (title) {
+          failed.current.delete(id);
+          setDir((d) => (d.threads.get(id) === title ? d : { ...d, threads: new Map(d.threads).set(id, title) }));
+        } else missed.current.add(id);
+      } catch (err) {
+        if (gone.current) return;
+        if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+          missed.current.add(id);
+          return;
+        }
+        const n = (failed.current.get(id) ?? 0) + 1;
+        failed.current.set(id, n);
+        if (n >= 2) missed.current.add(id);
       } finally {
         inflight.current.delete(id);
       }
@@ -220,7 +240,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
         )}
       </header>
       {error && rows.length === 0 ? (
-        <LoadError message={error} onRetry={() => setTries((n) => n + 1)} />
+        <LoadError message={error} onRetry={() => { reload(); setTries((n) => n + 1); }} />
       ) : error ? (
         <p className="muted" role="alert">{error}</p>
       ) : null}
