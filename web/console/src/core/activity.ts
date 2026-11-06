@@ -113,8 +113,45 @@ export function groupOf(kind: string): Exclude<ActivityGroup, "all"> | null {
   return null;
 }
 
-export function filterActivity(rows: ActivityRow[], group: ActivityGroup): ActivityRow[] {
-  return group === "all" ? rows : rows.filter((r) => groupOf(r.kind) === group);
+export function filterActivity(rows: readonly ActivityRow[], filter: ActivityGroup, query = "", channelId = "", dir: ActivityDirectory = EMPTY_DIRECTORY): ActivityRow[] {
+  const q = query.trim().toLowerCase();
+  return rows.filter((r) => {
+    if (filter !== "all" && groupOf(r.kind) !== filter) return false;
+    if (channelId && r.channelId !== channelId) return false;
+    if (!q) return true;
+    const who = actorText(r, dir) ?? "";
+    const hay = [describeActivity(r), threadText(r, dir), channelText(r, dir) ?? "", who, r.actorId ?? "", r.kind, `#${r.id}`].join("\n").toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+/** Channels named by the directory, plus any channel a row mentions, as #name. */
+export function activityChannels(rows: readonly ActivityRow[], dir: ActivityDirectory): Array<{ id: string; label: string }> {
+  const ids = new Set<string>();
+  for (const id of dir.channels.keys()) ids.add(id);
+  for (const r of rows) if (r.channelId) ids.add(r.channelId);
+  const out = [...ids].map((id) => {
+    const fromDir = (dir.channels.get(id) ?? "").trim().replace(/^#/, "");
+    const fromRow = rows.find((r) => r.channelId === id)?.channelName?.trim().replace(/^#/, "") ?? "";
+    const name = fromDir || fromRow;
+    return { id, label: name ? `#${name}` : `#${id.slice(0, 8)}` };
+  });
+  return out.sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+}
+
+/**
+ * The directory after a workspace read. `previous` is only the directory of
+ * the workspace already on screen: a new workspace passes null, so the last
+ * room's thread titles cannot ride along.
+ */
+export function directoryAfterLoad(
+  previous: ActivityDirectory | null,
+  loaded: ActivityDirectory,
+  rows: readonly ActivityRow[],
+): ActivityDirectory {
+  const threads = new Map(loaded.threads);
+  if (previous) for (const [id, title] of previous.threads) if (!threads.has(id)) threads.set(id, title);
+  return absorbPayloadNames({ threads, channels: new Map(loaded.channels), actors: new Map(loaded.actors) }, rows);
 }
 
 /**
@@ -218,7 +255,7 @@ export function actorText(row: Pick<ActivityRow, "actorId" | "actorName" | "acto
  * Fold titles, channel names and actor names carried on the events into the
  * directory, without overwriting a name the workspace list already resolved.
  */
-export function absorbPayloadNames(dir: ActivityDirectory, rows: ActivityRow[]): ActivityDirectory {
+export function absorbPayloadNames(dir: ActivityDirectory, rows: readonly ActivityRow[]): ActivityDirectory {
   const threads = new Map(dir.threads);
   const channels = new Map(dir.channels);
   const actors = new Map(dir.actors);

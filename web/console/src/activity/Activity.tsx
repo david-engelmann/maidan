@@ -5,10 +5,12 @@ import { liveBus } from "../core/bus.ts";
 import {
   ACTIVITY_GROUPS,
   absorbPayloadNames,
+  activityChannels,
   actorText,
   actorWords,
   channelText,
   describeActivity,
+  directoryAfterLoad,
   EMPTY_DIRECTORY,
   filterActivity,
   mergeActivity,
@@ -18,11 +20,13 @@ import {
   type ActivityGroup,
   type ActivityRow,
 } from "../core/activity.ts";
+import type { SessionStore } from "../core/session.ts";
 import { ThreadsApi } from "../core/threads.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { EmptyState } from "../shell/EmptyState";
 import { LoadError } from "../shell/LoadError.tsx";
+import "./activity.css";
 
 const NONE: ActivityRow[] = [];
 
@@ -43,14 +47,30 @@ async function mapLimited<T, R>(items: T[], n: number, f: (t: T) => Promise<R>):
 
 export function Activity() {
   const { session, store } = useSession();
+  const ws = session.status === "signed-in" ? session.workspaceId : null;
+  if (!ws) {
+    return (
+      <section className="activity" aria-labelledby="activity-title">
+        <header className="activity-head">
+          <h1 id="activity-title">Activity</h1>
+        </header>
+        <EmptyState title="Not signed in" body="Sign in to see activity." />
+      </section>
+    );
+  }
+  return <ActivityFeed key={ws} ws={ws} store={store} />;
+}
+
+function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   const api = useToolsApi();
   const board = useMemo(() => new BoardApi((u, i) => fetch(u, i), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
   const threads = useMemo(() => new ThreadsApi((u, i) => fetch(u, i), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
-  const ws = session.status === "signed-in" ? session.workspaceId : null;
   const [rows, setRows] = useState<ActivityRow[]>(NONE);
   const [dir, setDir] = useState<ActivityDirectory>(EMPTY_DIRECTORY);
   const [error, setError] = useState<string | null>(null);
-  const [group, setGroup] = useState<ActivityGroup>("all");
+  const [filter, setFilter] = useState<ActivityGroup>("all");
+  const [query, setQuery] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [paused, setPaused] = useState(false);
   const [held, setHeld] = useState<ActivityRow[]>(NONE);
   const [now, setNow] = useState(() => Date.now());
@@ -58,57 +78,55 @@ export function Activity() {
   const [tries, setTries] = useState(0);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
-  const wsRef = useRef(ws);
-  wsRef.current = ws;
-  const mounted = useRef(true);
+  const gone = useRef(false);
   // One lookup per unknown thread, including a miss, so a DM or a new task resolves once.
   const inflight = useRef(new Set<string>());
   const missed = useRef(new Set<string>());
-
   useEffect(() => {
-    mounted.current = true;
+    gone.current = false;
     return () => {
-      mounted.current = false;
+      gone.current = true;
     };
   }, []);
 
   useEffect(() => {
-    if (!ws) return;
-    let live = true;
-    const read = () =>
+    let cancelled = false;
+    const pull = () =>
       api.recentEvents(ws).then(
         (raw) => {
-          if (!live) return;
+          if (cancelled) return;
           setRows((cur) => mergeActivity(cur, raw.map(toActivity).filter((r): r is ActivityRow => r !== null)));
           setError(null);
         },
-        () => live && setError("Could not load recent events."),
+        () => {
+          if (!cancelled) setError("Could not load recent events.");
+        },
       );
     // Paused, the list holds still: no REST merge until Resume re-runs this.
-    if (!paused) void read();
+    if (!paused) void pull();
     const off = liveBus.listen((m) => {
-      if (m.type === "resync") return void (paused ? undefined : read());
+      if (cancelled) return;
+      if (m.type === "resync") return void (paused ? undefined : pull());
       const row = toActivity(m.frame);
       if (!row) return;
       if (paused) setHeld((h) => mergeActivity(h, [row]));
       else setRows((cur) => mergeActivity(cur, [row]));
     });
     return () => {
-      live = false;
+      cancelled = true;
       off();
     };
   }, [api, ws, paused, tries]);
 
   useEffect(() => {
-    if (!ws) return;
-    let live = true;
+    let cancelled = false;
     void (async () => {
       const [channels, members] = await Promise.all([
         board.channels(ws).catch(() => [] as Channel[]),
         board.members(ws).catch(() => [] as Member[]),
       ]);
       const batches = await mapLimited(channels, 4, (c) => board.threads(c.id).catch(() => [] as Thread[]));
-      if (!live) return;
+      if (cancelled) return;
       const loadedThreads = new Map<string, string>();
       const loadedChannels = new Map<string, string>();
       const loadedActors = new Map<string, string>();
@@ -118,15 +136,10 @@ export function Activity() {
         const label = actorWords(m);
         if (label) loadedActors.set(m.id, label);
       }
-      setDir((prev) => {
-        const threadNames = new Map(loadedThreads);
-        // A DM or a task created after this read keeps the title it already resolved.
-        for (const [id, title] of prev.threads) if (!threadNames.has(id)) threadNames.set(id, title);
-        return absorbPayloadNames({ threads: threadNames, channels: loadedChannels, actors: loadedActors }, rowsRef.current);
-      });
+      setDir((prev) => directoryAfterLoad(prev, { threads: loadedThreads, channels: loadedChannels, actors: loadedActors }, rowsRef.current));
     })();
     return () => {
-      live = false;
+      cancelled = true;
     };
   }, [board, ws]);
 
@@ -135,30 +148,28 @@ export function Activity() {
   }, [rows]);
 
   useEffect(() => {
-    if (!ws) return;
     const ids = [...new Set(rows.map((r) => r.threadId).filter((id): id is string => !!id))].filter(
       (id) => !dir.threads.has(id) && !rows.some((r) => r.threadId === id && !!r.title?.trim()) && !missed.current.has(id) && !inflight.current.has(id),
     );
     if (!ids.length) return;
-    const workspace = ws;
     for (const id of ids) inflight.current.add(id);
     // Leaving the reads running when this effect re-runs is what keeps the memo:
-    // a cleanup that abandoned them would fetch the same thread again.
+    // a cleanup that abandoned them would fetch the same thread again. Unmount
+    // still drops the answer, so it cannot land in the next workspace.
     void mapLimited(ids, 4, async (id) => {
       try {
         const t = await threads.thread(id);
         const title = t.title?.trim() || "";
-        // A workspace switch must not file this title under the new room.
-        if (!mounted.current || wsRef.current !== workspace) return;
+        if (gone.current) return;
         if (title) setDir((d) => (d.threads.get(id) === title ? d : { ...d, threads: new Map(d.threads).set(id, title) }));
         else missed.current.add(id);
       } catch {
-        if (mounted.current && wsRef.current === workspace) missed.current.add(id);
+        if (!gone.current) missed.current.add(id);
       } finally {
         inflight.current.delete(id);
       }
     });
-  }, [rows, dir, ws, threads]);
+  }, [rows, dir, threads]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -170,19 +181,38 @@ export function Activity() {
     setHeld(NONE);
     setPaused(false);
   };
+  const clearFilters = () => {
+    setFilter("all");
+    setChannelId("");
+    setQuery("");
+  };
 
-  const shown = filterActivity(rows, group);
+  const channels = useMemo(() => activityChannels(rows, dir), [rows, dir]);
+  const shown = useMemo(() => filterActivity(rows, filter, query, channelId, dir), [rows, filter, query, channelId, dir]);
   return (
     <section className="activity" aria-labelledby="activity-title">
       <header className="activity-head">
         <h1 id="activity-title">Activity</h1>
         <div className="seg" role="group" aria-label="Show">
           {ACTIVITY_GROUPS.map((g) => (
-            <button key={g.id} className={g.id === group ? "on" : ""} aria-pressed={g.id === group} onClick={() => setGroup(g.id)}>
+            <button key={g.id} type="button" className={g.id === filter ? "on" : ""} aria-pressed={g.id === filter} onClick={() => setFilter(g.id)}>
               {g.title}
             </button>
           ))}
         </div>
+        <label className="field">
+          <span className="visually-hidden">Filter activity</span>
+          <input type="search" aria-label="Filter activity" placeholder="Filter by task, person, or event…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </label>
+        {channels.length > 0 ? (
+          <label className="field">
+            <span className="visually-hidden">Channel</span>
+            <select aria-label="Channel" value={channelId} onChange={(e) => setChannelId(e.target.value)}>
+              <option value="">All channels</option>
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        ) : null}
         {paused ? (
           <button type="button" className="button ghost" onClick={resume}>Resume{held.length ? ` (${held.length} new)` : ""}</button>
         ) : (
@@ -194,8 +224,14 @@ export function Activity() {
       ) : error ? (
         <p className="muted" role="alert">{error}</p>
       ) : null}
-      {error && rows.length === 0 ? null : shown.length === 0 ? (
-        <EmptyState title={ws ? "No events yet" : "Not signed in"} body={ws ? "Tasks, messages and reviews show here as they happen." : "Sign in to see activity."} />
+      {error && rows.length === 0 ? null : rows.length === 0 ? (
+        <EmptyState title="Nothing has happened yet" body="Tasks, messages and reviews show here as they happen." />
+      ) : shown.length === 0 ? (
+        <EmptyState
+          title="No matching events"
+          body="Nothing in this view matches the category, channel, or search."
+          action={<button type="button" className="btn" onClick={clearFilters}>Show all events</button>}
+        />
       ) : (
         <ol className="activity-list" aria-live={paused ? "off" : "polite"}>
           {shown.map((r) => {
@@ -206,7 +242,7 @@ export function Activity() {
                 <span className="mono-id">#{r.id}</span>
                 <span className="grow">{describeActivity(r)}</span>
                 {r.threadId ? <a href={`#/threads/t/${encodeURIComponent(r.threadId)}`}>{threadText(r, dir)}</a> : null}
-                {channel ? <span className="muted small">{channel}</span> : null}
+                {r.channelId && channel ? <a className="activity-channel muted small" href={`#/board?channel=${encodeURIComponent(r.channelId)}`}>{channel}</a> : null}
                 {who ? <span className="muted small">by {who}</span> : null}
                 {r.at && <time className="muted small" dateTime={r.at}>{ago(r.at, now)}</time>}
               </li>
