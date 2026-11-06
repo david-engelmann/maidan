@@ -122,13 +122,16 @@ The Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 secret and the OIDC secret are prod's own. The R2 keys should be a token scoped
 to `maidan-artifacts-prod` alone.
 
-`FEDERATION_ENCRYPTION_KEY` (32 random bytes, hex) encrypts webhook secrets, federation peer tokens, A2A push credentials and workspace secrets at rest. Without it, creating any of them answers 500. Keep it: rotating it needs `FEDERATION_DECRYPT_KEYS`.
+`FEDERATION_ENCRYPTION_KEY` (32 random bytes, hex) encrypts webhook secrets, federation peer tokens, A2A push credentials and workspace secrets at rest. Without it, creating any of them answers 500. Keep it. To rotate it, set the new value as `FEDERATION_ENCRYPTION_KEY` and the old value as `FEDERATION_DECRYPT_KEYS` (comma-separated if more than one old key). The Worker forwards both.
 
 `MAIDAN_EXPORT_SIGNING_KEY` (32 random bytes, hex) signs workspace exports.
 Without it `GET /workspaces/{id}/export` refuses, and the support page's
 export promise fails. `openssl rand -hex 32 | npx wrangler secret put
-MAIDAN_EXPORT_SIGNING_KEY -c wrangler.prod.jsonc` sets it without printing it;
-keep it stable afterwards, since bundles are verified against its public key.
+MAIDAN_EXPORT_SIGNING_KEY -c wrangler.prod.jsonc` sets it without printing it.
+To rotate it, put the previous public key in `MAIDAN_EXPORT_VERIFY_KEYS` so
+bundles signed by the old key still verify. `MAIDAN_CONTENT_KEK_PREVIOUS`
+does the same for message text when `MAIDAN_CONTENT_KEK` changes. The Worker
+forwards those companions.
 
 Web push takes three more, `MAIDAN_VAPID_PRIVATE_KEY`,
 `MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` (an `https:` contact);
@@ -168,10 +171,18 @@ Its secrets are set once and kept across deploys:
 ```sh
 cd deploy/cloudflare
 for name in DATABASE_URL MAIDAN_CONTENT_KEK MAIDAN_SESSION_SECRET \
+            FEDERATION_ENCRYPTION_KEY MAIDAN_EXPORT_SIGNING_KEY \
             S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
   npx wrangler secret put "$name"
 done
 ```
+
+`FEDERATION_ENCRYPTION_KEY` is what lets this instance register a webhook, a
+federation peer, a workspace secret, or an A2A push config. Without it those
+calls answer 500. `MAIDAN_EXPORT_SIGNING_KEY` signs `GET /workspaces/{id}/export`.
+When either key, or `MAIDAN_CONTENT_KEK`, is rotated, set the previous value
+too: `FEDERATION_DECRYPT_KEYS`, `MAIDAN_EXPORT_VERIFY_KEYS` (the old public
+key), and `MAIDAN_CONTENT_KEK_PREVIOUS`. The Worker forwards all three.
 
 The Worker passes only the names it lists in `src/server-env.js` to the container,
 plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
@@ -199,11 +210,16 @@ DEPLOY_CONFIG=wrangler.swarm.jsonc DEPLOY_ORIGIN=https://swarm.maidan.world ./de
 ```
 
 Its Worker secrets are `DATABASE_URL` (the `maidan-swarm` Neon project),
-`MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET` and the `S3_*` keys for
-`maidan-artifacts-swarm`, plus `MAIDAN_GITHUB_TOKEN` and
-`MAIDAN_GITHUB_WRITE_REPOS` for result delivery. The maintainer sets them with
-a script outside the repository, and keeps a copy of the content key: losing
-it loses every message's words.
+`MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `FEDERATION_ENCRYPTION_KEY`,
+`MAIDAN_EXPORT_SIGNING_KEY`, and the `S3_*` keys for `maidan-artifacts-swarm`,
+plus `MAIDAN_GITHUB_TOKEN` and `MAIDAN_GITHUB_WRITE_REPOS` for result delivery.
+`FEDERATION_ENCRYPTION_KEY` is required for the webhook below: without it
+`POST /workspaces/{id}/webhooks` answers 500. Rotating the federation key, the
+content key, or the export key also sets `FEDERATION_DECRYPT_KEYS`,
+`MAIDAN_CONTENT_KEK_PREVIOUS`, or `MAIDAN_EXPORT_VERIFY_KEYS`. The Worker
+forwards those. The maintainer sets the secrets with a script outside the
+repository, and keeps a copy of the content key: losing it loses every
+message's words.
 
 ### Internal hosts
 

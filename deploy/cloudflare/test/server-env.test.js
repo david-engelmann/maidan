@@ -61,6 +61,88 @@ test("an unset registration switch is absent, and a fixed setting wins over a bi
   assert.ok(SERVER_ENV.includes("MAIDAN_OAUTH_DCR_REDIRECT_HOSTS"));
 });
 
+test("SERVER_ENV is sorted, unique, and forwards rotation keys and integration secrets", () => {
+  const sorted = [...SERVER_ENV].sort();
+  assert.deepEqual(SERVER_ENV, sorted);
+  assert.equal(new Set(SERVER_ENV).size, SERVER_ENV.length);
+  for (const name of [
+    "FEDERATION_DECRYPT_KEYS",
+    "FEDERATION_ENCRYPTION_KEY",
+    "MAIDAN_CONTENT_KEK",
+    "MAIDAN_CONTENT_KEK_PREVIOUS",
+    "MAIDAN_EXPORT_SIGNING_KEY",
+    "MAIDAN_EXPORT_VERIFY_KEYS",
+    "MAIDAN_SLACK_BOT_TOKEN",
+    "MAIDAN_SLACK_SIGNING_SECRET",
+    "MAIDAN_SUBSCRIBE_RESUME_SECRET",
+    "MAIDAN_SESSION_SECRET",
+    "MAIDAN_GITHUB_WEBHOOK_SECRET",
+    "MAIDAN_SMTP_PASSWORD",
+  ]) {
+    assert.ok(SERVER_ENV.includes(name), name);
+  }
+  assert.ok(SERVER_ENV.every((name) => !name.endsWith("_FILE")));
+});
+
+test("every wrangler var is forwarded or is the internal-host map", () => {
+  for (const file of ["wrangler.jsonc", "wrangler.prod.jsonc", "wrangler.swarm.jsonc"]) {
+    for (const name of Object.keys(config(file).vars)) {
+      const kept = SERVER_ENV.includes(name) || name === "MAIDAN_INTERNAL_HOSTS";
+      assert.ok(kept, `${file} drops ${name}`);
+    }
+  }
+  const swarmFile = config("wrangler.swarm.jsonc");
+  const bindings = Object.fromEntries(
+    (swarmFile.services ?? []).map((service) => [service.binding, { fetch() {} }]),
+  );
+  const swarm = serverEnv({ ...swarmFile.vars, ...bindings });
+  assert.equal(swarm.MAIDAN_INTERNAL_EGRESS_HOSTS, "seats.internal");
+  assert.equal(swarm.MAIDAN_INTERNAL_HOSTS, undefined);
+  assert.equal(swarm.SEATS, undefined);
+});
+
+test("insecure and demo switches on the binding never reach the container", () => {
+  const env = serverEnv({
+    MAIDAN_ALLOW_INSECURE_DEV_KEK: "1",
+    MAIDAN_ALLOW_INSECURE_NO_AUTH: "1",
+    MAIDAN_ALLOW_PRIVATE_EGRESS: "1",
+    MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE: "1",
+    MAIDAN_OIDC_MOCK: "1",
+    MAIDAN_OPS_FAULT: "1",
+    MAIDAN_BOOTSTRAP: "1",
+    MAIDAN_DEMO_SANDBOX: "1",
+    MAIDAN_DEMO_INSTANCE: "1",
+    MAIDAN_CONTENT_KEK_FILE: "/secrets/kek",
+    MAIDAN_SESSION_SECRET: "session-secret-at-least-32-bytes!!",
+    FEDERATION_DECRYPT_KEYS: "aa",
+    MAIDAN_CONTENT_KEK_PREVIOUS: "bb",
+    MAIDAN_EXPORT_VERIFY_KEYS: "cc",
+    MAIDAN_SLACK_SIGNING_SECRET: "slack",
+    MAIDAN_SUBSCRIBE_RESUME_SECRET: "resume-secret-at-least-32-bytes!!",
+  });
+  for (const name of [
+    "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+    "MAIDAN_ALLOW_INSECURE_NO_AUTH",
+    "MAIDAN_ALLOW_PRIVATE_EGRESS",
+    "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
+    "MAIDAN_OIDC_MOCK",
+    "MAIDAN_OPS_FAULT",
+    "MAIDAN_BOOTSTRAP",
+    "MAIDAN_DEMO_SANDBOX",
+    "MAIDAN_DEMO_INSTANCE",
+    "MAIDAN_CONTENT_KEK_FILE",
+  ]) {
+    assert.equal(env[name], undefined, name);
+  }
+  assert.equal(env.MAIDAN_SESSION_SECRET, "session-secret-at-least-32-bytes!!");
+  assert.equal(env.FEDERATION_DECRYPT_KEYS, "aa");
+  assert.equal(env.MAIDAN_CONTENT_KEK_PREVIOUS, "bb");
+  assert.equal(env.MAIDAN_EXPORT_VERIFY_KEYS, "cc");
+  assert.equal(env.MAIDAN_SLACK_SIGNING_SECRET, "slack");
+  assert.equal(env.MAIDAN_SUBSCRIBE_RESUME_SECRET, "resume-secret-at-least-32-bytes!!");
+  assert.equal(env.MAIDAN_ENV, "production");
+});
+
 test("a running container whose start predates the current environment is recycled", async () => {
   const before = await envFingerprint(serverEnv({ MAIDAN_PUBLIC_ORIGIN: "https://dev.maidan.world" }));
   const after = await envFingerprint(

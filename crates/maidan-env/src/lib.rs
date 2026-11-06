@@ -581,4 +581,697 @@ mod tests {
         let unknown = unknown_vars(file_vars, false);
         assert!(unknown.is_empty(), "{unknown:?}");
     }
+
+    /// The Worker that starts the hosted container is a second list of
+    /// environment names. A name it forwards must be one the server reads,
+    /// and a secret the server reads must be one the Worker can forward.
+    /// A new variable fails here until someone decides which list it is on.
+    #[test]
+    fn the_hosted_worker_and_the_server_agree_on_environment_names() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/cloudflare");
+        let server_env_js = std::fs::read_to_string(root.join("src/server-env.js")).unwrap();
+        let demo_js = std::fs::read_to_string(root.join("src/demo-config.js")).unwrap();
+        let forwarded = js_string_array(&server_env_js, "export const SERVER_ENV");
+        let fixed = js_object_keys(&server_env_js, "const FIXED_ENV");
+        let demo = js_object_keys(&demo_js, "export const DEMO_SERVER_ENV");
+        let mut wrangler_vars = Vec::new();
+        for entry in std::fs::read_dir(&root).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with("wrangler") && name.ends_with(".jsonc") {
+                wrangler_vars.extend(jsonc_var_keys(&path));
+            }
+        }
+
+        let known_non_maidan = [
+            "ARTIFACT_BACKEND",
+            "ARTIFACT_LOCALFS_ROOT",
+            "DATABASE_URL",
+            "FEDERATION_DECRYPT_KEYS",
+            "FEDERATION_ENCRYPTION_KEY",
+            "S3_ACCESS_KEY_ID",
+            "S3_BUCKET",
+            "S3_ENDPOINT",
+            "S3_REGION",
+            "S3_SECRET_ACCESS_KEY",
+        ];
+        let mut worker_names = forwarded.clone();
+        worker_names.extend(fixed.iter().cloned());
+        worker_names.extend(demo.iter().cloned());
+        worker_names.extend(wrangler_vars.iter().cloned());
+        worker_names.sort();
+        worker_names.dedup();
+        let mut unknown_to_server = Vec::new();
+        for name in &worker_names {
+            if name == "MAIDAN_INTERNAL_HOSTS" {
+                assert!(TOLERATED_ENV.contains(&name.as_str()));
+                continue;
+            }
+            let known =
+                SERVER_ENV.contains(&name.as_str()) || known_non_maidan.contains(&name.as_str());
+            if !known {
+                unknown_to_server.push(name.clone());
+            }
+        }
+        assert!(
+            unknown_to_server.is_empty(),
+            "the Worker names a variable the server does not read: {unknown_to_server:?}"
+        );
+        let maidan_names: Vec<String> = worker_names
+            .iter()
+            .filter(|name| name.starts_with("MAIDAN_") && name.as_str() != "MAIDAN_INTERNAL_HOSTS")
+            .cloned()
+            .collect();
+        let unknown = unknown_vars(maidan_names, false);
+        assert!(unknown.is_empty(), "{unknown:?}");
+
+        let mut missing_secrets: Vec<&str> = SECRET_FILE_ENV
+            .iter()
+            .map(|(name, _)| *name)
+            .chain([
+                "FEDERATION_DECRYPT_KEYS",
+                "MAIDAN_CONTENT_KEK_PREVIOUS",
+                "MAIDAN_EXPORT_VERIFY_KEYS",
+            ])
+            .filter(|name| !forwarded.iter().any(|got| got == name))
+            .collect();
+        missing_secrets.sort_unstable();
+        missing_secrets.dedup();
+        assert!(
+            missing_secrets.is_empty(),
+            "the Worker drops a secret the hosted server needs: {missing_secrets:?}"
+        );
+
+        let insecure = [
+            "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
+            "MAIDAN_ALLOW_PRIVATE_EGRESS",
+            "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
+            "MAIDAN_OIDC_MOCK",
+            "MAIDAN_OPS_FAULT",
+            "MAIDAN_BOOTSTRAP",
+        ];
+        for name in insecure {
+            assert!(
+                !forwarded.iter().any(|got| got == name) && !fixed.iter().any(|got| got == name),
+                "{name} must not be forwarded to a hosted container"
+            );
+        }
+
+        let mut unaccounted = Vec::new();
+        for name in SERVER_ENV {
+            if forwarded.iter().any(|got| got == name) || fixed.iter().any(|got| got == name) {
+                continue;
+            }
+            if name.ends_with("_FILE")
+                || SELF_HOSTED_OR_NON_PROD_WORKER_ENV
+                    .iter()
+                    .any(|(skipped, _)| *skipped == *name)
+            {
+                continue;
+            }
+            unaccounted.push(*name);
+        }
+        assert!(
+            unaccounted.is_empty(),
+            "decide whether the Worker forwards these, or record why it does not: {unaccounted:?}"
+        );
+        let listed: Vec<&str> = SELF_HOSTED_OR_NON_PROD_WORKER_ENV
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        let mut sorted = listed.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(listed, sorted, "keep the skip list alphabetical and unique");
+        for (name, reason) in SELF_HOSTED_OR_NON_PROD_WORKER_ENV {
+            assert!(!reason.is_empty(), "{name}");
+            assert!(SERVER_ENV.contains(name), "{name} is not a server variable");
+            assert!(
+                !forwarded.iter().any(|got| got == name) && !fixed.iter().any(|got| got == name),
+                "{name} is forwarded, so it does not belong on the skip list"
+            );
+        }
+    }
+
+    /// Server variables the hosted Worker does not forward. A new name is
+    /// absent until someone adds it to `server-env.js` or records why it stays
+    /// off the hosted container.
+    const SELF_HOSTED_OR_NON_PROD_WORKER_ENV: &[(&str, &str)] = &[
+        (
+            "MAIDAN_A2A_GRPC_ADDR",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_A2A_GRPC_PLAINTEXT",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_A2A_GRPC_PUBLIC_ADDR",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_A2A_PUBLIC_ORIGIN",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_AGENT_ADD_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_ALLOWED_HOSTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_ALLOW_PRIVATE_EGRESS",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_ALLOW_UNKNOWN_ENV",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_ARTIFACT_MAX_BODY_BYTES",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_AUTOMATION_MAX_ATTEMPTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_AUTOMATION_POLL_INTERVAL_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_BOOTSTRAP",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_BUS_BROADCAST_CAP",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CHAIN_VERIFY_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CHANGE_SWEEP_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CLAIM_ACK_TIMEOUT_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CLAIM_DEFAULT_LEASE_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CLAIM_LAPSE_WARN_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CLAIM_REAP_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_COOKIE_SECURE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_ACQUIRE_TIMEOUT_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_BUSY_TIMEOUT_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_LOCK_TIMEOUT_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_MAX_CONNECTIONS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DB_STATEMENT_TIMEOUT_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DELIVERY_RECONCILE_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_DELIVERY_STABILITY_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        ("MAIDAN_DEMO_INSTANCE", "try.maidan.world only"),
+        ("MAIDAN_DEMO_SANDBOX", "try.maidan.world only"),
+        ("MAIDAN_DEMO_SANDBOX_MAX", "try.maidan.world only"),
+        (
+            "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX",
+            "try.maidan.world only",
+        ),
+        (
+            "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
+            "try.maidan.world only",
+        ),
+        (
+            "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_DIGEST_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_EGRESS_WORKER_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_EMAIL_PRESENCE_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_EMBED_REPAIR_BATCH",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_EMBED_REPAIR_INTERVAL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_HNSW_EF_CONSTRUCTION",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_HNSW_EF_SEARCH",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_HNSW_M",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_HUMAN_TIMEOUT_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_INDEXER_BATCH_SIZE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_INDEXER_QUEUE_CAPACITY",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_INDEXER_RETRIES",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_INDEXER_RETRY_BASE_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_BASE_URL",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_GREEN_MIN_CONFIDENCE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_LAND_GATE_ENABLED",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_MODEL",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_RED_MIN_CONFIDENCE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_JEV_TIMEOUT_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_KMS_INSTANCE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        ("MAIDAN_LOG", "self-hosted bind, custody, or sweep tuning"),
+        (
+            "MAIDAN_MAIL_WORKER_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MARK_READY_APP_ID",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MARK_READY_BASES",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MAX_BODY_BYTES",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_MAX_CONCURRENT_REQUESTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MAX_WS_CONNECTIONS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MERGE_QUEUE_LABELS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OAUTH_CLIENTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OAUTH_IP_RATE_LIMIT_MAX",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OAUTH_REGISTER_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_AUTO_MINT",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_AUTO_PROVISION",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_FIRST_ADMIN",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_MOCK",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_OIDC_PENDING_TTL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OIDC_SCOPES",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OPS_FAULT",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_OUTBOX_MAX_ATTEMPTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OUTBOX_POLL_INTERVAL_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OUTBOX_RELAY",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_OUTBOX_RELAY_MODE",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_PRESENCE_HEARTBEAT_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_PRESENCE_TTL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_PRIVATE_EGRESS_HOSTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RATE_LIMIT_MAX",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_RATE_LIMIT_WINDOW_SECS",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_RETENTION_AUDIT_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_BATCH",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_DELIVERIES_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_EVENTS_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_MEDIA_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_MESSAGES_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_NOTIFICATIONS_DAYS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_RETENTION_SWEEP_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SCHEDULER_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SESSION_TTL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SHUTDOWN_DRAIN_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SIGNUP_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_STALE_BASE_COMMITS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_STALL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_SUBSCRIBE_RESUME_TTL_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_USAGE_METER_FLUSH_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WAIT_SWEEP_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WEBHOOK_MAX_ATTEMPTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WEBHOOK_POLL_INTERVAL_MS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WEBPUSH_LIVE_WINDOW_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WEBPUSH_WORKER_TICK_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WORKSPACE_KEY_CUSTODY",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+        (
+            "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
+            "try.maidan.world sets this; the other hosted instances keep the default",
+        ),
+    ];
+
+    fn js_string_array(src: &str, marker: &str) -> Vec<String> {
+        let at = src
+            .find(marker)
+            .unwrap_or_else(|| panic!("missing {marker}"));
+        let body = &src[at..];
+        let start = body.find('[').unwrap();
+        let end = body[start..].find(']').unwrap();
+        quoted(&body[start..start + end])
+    }
+
+    fn js_object_keys(src: &str, marker: &str) -> Vec<String> {
+        let at = src
+            .find(marker)
+            .unwrap_or_else(|| panic!("missing {marker}"));
+        let body = &src[at..];
+        let start = body.find('{').unwrap();
+        let mut depth = 0;
+        let mut end = start;
+        for (i, ch) in body[start..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let object = &body[start..=end];
+        let mut keys = Vec::new();
+        for line in object.lines() {
+            let line = line.trim().trim_start_matches("//");
+            let line = line.trim();
+            if let Some(key) = line.split(':').next() {
+                let key = key.trim().trim_matches('"').trim_matches('\'');
+                if key
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                    && !key.is_empty()
+                {
+                    keys.push(key.to_string());
+                }
+            }
+        }
+        keys
+    }
+
+    fn quoted(src: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let bytes = src.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'"' {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j] != b'"' {
+                    j += 1;
+                }
+                if j < bytes.len() {
+                    out.push(src[i + 1..j].to_string());
+                    i = j;
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    fn jsonc_var_keys(path: &std::path::Path) -> Vec<String> {
+        let raw = std::fs::read_to_string(path).unwrap();
+        let stripped: String = raw
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !stripped.contains("\"vars\"") {
+            return Vec::new();
+        }
+        js_object_keys(&stripped, "\"vars\"")
+    }
 }
