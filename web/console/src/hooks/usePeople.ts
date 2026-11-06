@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { controlBus, liveBus } from "../core/bus.ts";
 import { PeopleApi, applyPresence, type Claim, type Deferred, type Pause, type Person, type Presence, type Slot, type Token, type Usage } from "../core/people.ts";
 import type { SessionState } from "../core/session.ts";
@@ -10,10 +10,32 @@ function message(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-/** Who is live: the last snapshot, then each presence frame. */
+function presenceNow(): Map<string, Presence> {
+  return controlBus.last ? (applyPresence(new Map(), controlBus.last) ?? new Map()) : new Map();
+}
+
+/** A roster reload. Joining and leaving count, not only a rename. */
+export function rosterReloadsOn(kind: string | undefined): boolean {
+  return kind === "member_created" || kind === "member_updated" || kind === "member_joined" || kind === "member_removed";
+}
+
+/** The footprint poll runs only while a workspace is signed in. */
+export function swarmPolls(workspace: string | null): boolean {
+  return workspace !== null;
+}
+
+/** Who is live: the last snapshot, then each presence frame. A clear drops the previous room. */
 export function usePresence(): Map<string, Presence> {
-  const [map, setMap] = useState<Map<string, Presence>>(() => (controlBus.last ? (applyPresence(new Map(), controlBus.last) ?? new Map()) : new Map()));
-  useEffect(() => controlBus.listen((frame) => setMap((prev) => applyPresence(prev, frame) ?? prev)), []);
+  // Mount reads the snapshot that is already here. A later clear drops it.
+  const [map, setMap] = useState<Map<string, Presence>>(presenceNow);
+  useEffect(() => {
+    const off = controlBus.listen((frame) => setMap((prev) => applyPresence(prev, frame) ?? prev));
+    const reset = controlBus.onClear(() => setMap(new Map()));
+    return () => {
+      off();
+      reset();
+    };
+  }, []);
   return map;
 }
 
@@ -21,7 +43,15 @@ export function usePresence(): Map<string, Presence> {
 export function usePeople(session: SessionState, api: PeopleApi) {
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const [data, setData] = useState<Loaded<Person[]>>(LOADING);
+  const [room, setRoom] = useState(workspace);
   const gen = useRef(0);
+  if (room !== workspace) {
+    setRoom(workspace);
+    setData(LOADING);
+  }
+  useLayoutEffect(() => {
+    gen.current += 1;
+  }, [workspace]);
   const load = useCallback(async () => {
     if (!workspace) return;
     const mine = ++gen.current;
@@ -35,15 +65,17 @@ export function usePeople(session: SessionState, api: PeopleApi) {
     }
   }, [workspace, api]);
   useEffect(() => {
+    if (!workspace) return;
     const t = setTimeout(() => void load(), 0);
     const off = liveBus.listen((m) => {
-      if (m.type === "resync" || m.frame.kind === "member_created" || m.frame.kind === "member_updated") void load();
+      const kind = m.type === "event" ? m.frame.kind : undefined;
+      if (m.type === "resync" || rosterReloadsOn(kind)) void load();
     });
     return () => {
       clearTimeout(t);
       off();
     };
-  }, [load]);
+  }, [load, workspace]);
   return { data, reload: load };
 }
 
@@ -74,7 +106,15 @@ export const SWARM_REFRESH_MS = 30000;
 export function useSwarm(session: SessionState, api: PeopleApi) {
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const [data, setData] = useState<SwarmData>(SWARM_EMPTY);
+  const [room, setRoom] = useState(workspace);
   const gen = useRef(0);
+  if (room !== workspace) {
+    setRoom(workspace);
+    setData(SWARM_EMPTY);
+  }
+  useLayoutEffect(() => {
+    gen.current += 1;
+  }, [workspace]);
   const load = useCallback(async () => {
     if (!workspace) return;
     const mine = ++gen.current;
@@ -95,6 +135,7 @@ export function useSwarm(session: SessionState, api: PeopleApi) {
     ]);
   }, [workspace, api]);
   useEffect(() => {
+    if (!swarmPolls(workspace)) return;
     const t = setTimeout(() => void load(), 0);
     const every = setInterval(() => void load(), SWARM_REFRESH_MS);
     let soon: ReturnType<typeof setTimeout> | null = null;
@@ -110,7 +151,7 @@ export function useSwarm(session: SessionState, api: PeopleApi) {
       if (soon) clearTimeout(soon);
       off();
     };
-  }, [load]);
+  }, [load, workspace]);
   const pause = useCallback(
     async (repo: string, reason: string) => {
       if (!workspace) return;

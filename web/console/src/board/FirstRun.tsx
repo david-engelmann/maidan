@@ -22,15 +22,15 @@ export function FirstRun({ base, workspace, api, channel, channelId, onNewTask, 
           <p className="muted">Paste this into {OAUTH_CLIENTS} and sign in when the browser opens. No token to copy.</p>
           <div className="snippet">
             <div className="snippet-head"><span className="small">MCP URL</span><Copy text={url} /></div>
-            <div className="snippet-scroll"><pre className="snippet-body">{url}</pre></div>
+            <div className="snippet-scroll"><pre className="snippet-body" tabIndex={0}>{url}</pre></div>
           </div>
           <div className="snippet">
             <div className="snippet-head"><span className="small">Claude Code, in a terminal</span><Copy text={command} /></div>
-            <div className="snippet-scroll"><pre className="snippet-body">{command}</pre></div>
+            <div className="snippet-scroll"><pre className="snippet-body" tabIndex={0}>{command}</pre></div>
           </div>
           <p className="muted small">{TOKEN_FALLBACK} Add the agent here instead: it gets its own token, never yours, and the setup for its client comes ready to paste.</p>
           {api && workspace ? (
-            <AddAgent api={api} workspace={workspace} base={base} channelId={channelId} />
+            <AddAgent key={workspace} api={api} workspace={workspace} base={base} channelId={channelId} />
           ) : (
             <p className="muted">Sign in to add one.</p>
           )}
