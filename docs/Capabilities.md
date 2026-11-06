@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v432.0.0](https://github.com/david-engelmann/maidan/releases/tag/v432.0.0) — webhooks on the hosted service
+
+The Cloudflare Worker passes `FEDERATION_ENCRYPTION_KEY`, so creating a webhook, peer, push config or workspace secret on maidan.world no longer answers 500. `CHANGELOG.md` under `[432.0.0]` has every entry.
+
 ## [v431.0.0](https://github.com/david-engelmann/maidan/releases/tag/v431.0.0) — internal hosts
 
 `MAIDAN_INTERNAL_HOSTS` maps `.internal` names to service bindings in the Worker, and `MAIDAN_INTERNAL_EGRESS_HOSTS` lets the server deliver webhooks to exactly those names. Every other `.internal` name is refused. `CHANGELOG.md` under `[431.0.0]` has every entry.
