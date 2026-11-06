@@ -322,7 +322,6 @@ impl Search for PostgresSearch {
                 SELECT 1 FROM maidan_threads th
                 WHERE th.id = m.thread_id AND th.tombstoned_at IS NULL
               )
-              AND t.tombstoned_at IS NULL
             FOR SHARE OF m
             ON CONFLICT (message_id) DO UPDATE
                 SET embedding = EXCLUDED.embedding,
