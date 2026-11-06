@@ -5,7 +5,6 @@
 // account-registry copy of ghcr.io/david-engelmann/maidan-server:<tag>.
 // Secrets (DATABASE_URL, MAIDAN_CONTENT_KEK, MAIDAN_SESSION_SECRET,
 // MAIDAN_OIDC_CLIENT_SECRET, S3_*) are Worker secrets, never here.
-// Fleet cost/security invariants: scripts/check-wrangler-fleet-gates.sh
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-prod",

@@ -4,7 +4,6 @@
 // .github/workflows/deploy-demo.yml deploys each release: it builds
 // demo/Dockerfile on the release's signed maidan-server:<tag> image and swaps
 // in the image.
-// Fleet cost/security invariants: scripts/check-wrangler-fleet-gates.sh
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-demo",

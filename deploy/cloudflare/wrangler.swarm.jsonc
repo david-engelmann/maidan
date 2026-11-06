@@ -8,7 +8,6 @@
 // reaches the console by pasting a token. Secrets (DATABASE_URL,
 // MAIDAN_CONTENT_KEK, MAIDAN_SESSION_SECRET, S3_*, MAIDAN_GITHUB_*) are Worker
 // secrets, never here.
-// Fleet cost/security invariants: scripts/check-wrangler-fleet-gates.sh
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-swarm",

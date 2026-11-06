@@ -3,7 +3,6 @@
 // `main` once the repository variable DOCS_DOMAIN is "true", which is set
 // after the docs.maidan.world DNS record exists. The runbook is
 // docs/Hosted Operations.md, "The docs site".
-// Fleet cost/security invariants: scripts/check-wrangler-fleet-gates.sh
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-docs",
