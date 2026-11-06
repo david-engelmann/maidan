@@ -13,7 +13,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures::StreamExt;
-use maidan_a2a::{A2aClient, Message, Part, Role, SendMessageRequest, SendMessageResponse};
+use maidan_a2a::{
+    A2aClient, A2aClientError, Message, Part, Role, SendMessageRequest, SendMessageResponse,
+    StreamResponse,
+};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_bus::InMemoryBus;
@@ -25,6 +28,7 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const ALL_CAPS: &[&str] = &[
     capability::WORKSPACE_READ,
@@ -330,7 +334,10 @@ async fn sse(resp: reqwest::Response) -> Vec<Value> {
 #[tokio::test]
 async fn a_conversation_is_a_thread_the_caller_authors() {
     let h = spawn().await;
-    let a2a = A2aClient::new(&h.base).unwrap().with_bearer(&h.token);
+    let a2a = A2aClient::new(&h.base)
+        .unwrap()
+        .with_bearer(&h.token)
+        .unwrap();
 
     // No contextId: a new thread in the workspace's `a2a` channel.
     let sent = a2a
@@ -1535,4 +1542,163 @@ async fn the_agent_card_is_cacheable_and_declares_auth() {
         .await
         .unwrap();
     assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+}
+
+fn sample_message(text: &str) -> SendMessageRequest {
+    SendMessageRequest {
+        message: Message {
+            message_id: "m-live".into(),
+            context_id: None,
+            task_id: None,
+            role: Role::User,
+            parts: vec![Part::text(text)],
+            metadata: None,
+            extensions: vec![],
+            reference_task_ids: vec![],
+        },
+        configuration: None,
+        metadata: None,
+    }
+}
+
+async fn accept_http() -> (tokio::net::TcpListener, String) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    (listener, format!("http://{addr}"))
+}
+
+async fn read_http_request(sock: &mut tokio::net::TcpStream) -> (String, Vec<u8>) {
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 2048];
+    let header_end = loop {
+        let n = sock.read(&mut tmp).await.unwrap();
+        assert!(n > 0, "client closed before the request");
+        buf.extend_from_slice(&tmp[..n]);
+        if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            break pos + 4;
+        }
+    };
+    let headers = String::from_utf8_lossy(&buf[..header_end]).into_owned();
+    let length = headers.lines().find_map(|line| {
+        line.to_ascii_lowercase()
+            .strip_prefix("content-length:")
+            .and_then(|v| v.trim().parse::<usize>().ok())
+    });
+    if let Some(length) = length {
+        while buf.len() - header_end < length {
+            let n = sock.read(&mut tmp).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+        }
+    }
+    let body = buf[header_end..].to_vec();
+    (headers, body)
+}
+
+async fn write_drip(sock: &mut tokio::net::TcpStream, bytes: &[u8]) {
+    sock.set_nodelay(true).unwrap();
+    for byte in bytes {
+        sock.write_all(&[*byte]).await.unwrap();
+        tokio::task::yield_now().await;
+    }
+    let _ = sock.shutdown().await;
+}
+
+#[tokio::test]
+async fn streaming_client_reassembles_split_utf8_and_crlf_frames() {
+    let (listener, base) = accept_http().await;
+    let phrase = "café — 😀";
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let (headers, body) = read_http_request(&mut sock).await;
+        assert!(
+            headers
+                .to_ascii_lowercase()
+                .contains("user-agent: maidan-a2a/"),
+            "{headers}"
+        );
+        let request: Value = serde_json::from_slice(&body).unwrap();
+        let id = request["id"].clone();
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "message": {
+                    "messageId": "m-stream",
+                    "role": "ROLE_USER",
+                    "parts": [{ "text": phrase }]
+                }
+            }
+        });
+        let event = payload.to_string();
+        let frame = format!(": keep-alive\r\ndata: {event}\r\n\r\n");
+        let raw = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{frame}"
+        );
+        write_drip(&mut sock, raw.as_bytes()).await;
+    });
+
+    let events = A2aClient::new(&base)
+        .unwrap()
+        .send_streaming_message(sample_message("hello"))
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1, "{events:?}");
+    let StreamResponse::Message(message) = &events[0] else {
+        panic!("expected a message event: {events:?}");
+    };
+    let Part { content, .. } = &message.parts[0];
+    let maidan_a2a::PartContent::Text(text) = content else {
+        panic!("expected text");
+    };
+    assert_eq!(text, phrase);
+}
+
+#[tokio::test]
+async fn client_reports_error_bodies_and_does_not_follow_redirects() {
+    let (denied, denied_base) = accept_http().await;
+    tokio::spawn(async move {
+        let (mut sock, _) = denied.accept().await.unwrap();
+        let _ = read_http_request(&mut sock).await;
+        let body = b"nope token";
+        let raw = format!(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        sock.write_all(raw.as_bytes()).await.unwrap();
+        sock.write_all(body).await.unwrap();
+    });
+    let err = A2aClient::new(&denied_base)
+        .unwrap()
+        .send_message(sample_message("x"))
+        .await
+        .unwrap_err();
+    let text = err.to_string();
+    assert!(
+        text.contains("401") && text.contains("nope token"),
+        "{text}"
+    );
+    assert!(matches!(err, A2aClientError::Http(_)));
+
+    let (redirect, redirect_base) = accept_http().await;
+    tokio::spawn(async move {
+        let (mut sock, _) = redirect.accept().await.unwrap();
+        let _ = read_http_request(&mut sock).await;
+        let body = b"go away";
+        let raw = format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://example.com/a2a/v1/rpc\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        sock.write_all(raw.as_bytes()).await.unwrap();
+        sock.write_all(body).await.unwrap();
+    });
+    let err = A2aClient::new(&redirect_base)
+        .unwrap()
+        .send_message(sample_message("x"))
+        .await
+        .unwrap_err();
+    let text = err.to_string();
+    assert!(text.contains("302") && text.contains("go away"), "{text}");
 }

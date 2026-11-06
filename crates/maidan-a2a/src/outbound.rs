@@ -44,10 +44,7 @@ impl Outbound {
             return Err(FederationError::Unauthorized);
         }
         if !response.status().is_success() {
-            return Err(FederationError::Transport(format!(
-                "remote list_events returned {}",
-                response.status()
-            )));
+            return Err(transport_status(response, "list_events").await);
         }
 
         response
@@ -78,12 +75,22 @@ impl Outbound {
             return Err(FederationError::Unauthorized);
         }
         if !response.status().is_success() {
-            return Err(FederationError::Transport(format!(
-                "remote ingest returned {}",
-                response.status()
-            )));
+            return Err(transport_status(response, "ingest").await);
         }
         Ok(())
+    }
+}
+
+async fn transport_status(response: reqwest::Response, what: &str) -> FederationError {
+    let status = response.status();
+    let bytes = response.bytes().await.unwrap_or_default();
+    let end = bytes.len().min(512);
+    let snippet = String::from_utf8_lossy(&bytes[..end]);
+    let snippet = snippet.trim();
+    if snippet.is_empty() {
+        FederationError::Transport(format!("remote {what} returned {status}"))
+    } else {
+        FederationError::Transport(format!("remote {what} returned {status}: {snippet}"))
     }
 }
 

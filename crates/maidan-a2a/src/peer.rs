@@ -62,7 +62,8 @@ pub fn validate_peer_name(name: &str) -> Result<(), FederationError> {
     Ok(())
 }
 
-/// `base_url` must be an absolute `http` or `https` URL without a trailing slash.
+/// `base_url` must be an absolute `http` or `https` URL without a trailing
+/// slash, userinfo, query, or fragment, and it must name a host.
 pub fn validate_base_url(base_url: &str) -> Result<(), FederationError> {
     let trimmed = base_url.trim();
     if trimmed.is_empty() {
@@ -75,18 +76,69 @@ pub fn validate_base_url(base_url: &str) -> Result<(), FederationError> {
             "base_url must not end with '/'".into(),
         ));
     }
-    let scheme_ok = trimmed.starts_with("https://") || trimmed.starts_with("http://");
-    if !scheme_ok {
-        return Err(FederationError::InvalidInput(
-            "base_url must start with http:// or https://".into(),
-        ));
-    }
     if trimmed.contains(char::is_whitespace) {
         return Err(FederationError::InvalidInput(
             "base_url must not contain whitespace".into(),
         ));
     }
+    // The URL parser rewrites `https:///missing-host` into a host named
+    // `missing-host`. An empty authority is rejected before that rewrite.
+    if raw_host(trimmed).is_none() {
+        return Err(FederationError::InvalidInput(
+            "base_url must name a host".into(),
+        ));
+    }
+    let url = reqwest::Url::parse(trimmed)
+        .map_err(|e| FederationError::InvalidInput(format!("base_url is not a valid URL: {e}")))?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(FederationError::InvalidInput(
+            "base_url must start with http:// or https://".into(),
+        ));
+    }
+    if url.host_str().map(str::is_empty).unwrap_or(true) {
+        return Err(FederationError::InvalidInput(
+            "base_url must name a host".into(),
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(FederationError::InvalidInput(
+            "base_url must not include userinfo".into(),
+        ));
+    }
+    if url.query().is_some() {
+        return Err(FederationError::InvalidInput(
+            "base_url must not include a query".into(),
+        ));
+    }
+    if url.fragment().is_some() {
+        return Err(FederationError::InvalidInput(
+            "base_url must not include a fragment".into(),
+        ));
+    }
     Ok(())
+}
+
+/// Host from the authority, before a parser repairs an empty one.
+fn raw_host(url: &str) -> Option<&str> {
+    let (_, after) = url.split_once("://")?;
+    let authority = after.split(['/', '?', '#']).next().unwrap_or("");
+    let hostport = authority
+        .rsplit_once('@')
+        .map(|(_, hostport)| hostport)
+        .unwrap_or(authority);
+    let host = if let Some(rest) = hostport.strip_prefix('[') {
+        rest.split_once(']')?.0
+    } else {
+        hostport
+            .split_once(':')
+            .map(|(host, _)| host)
+            .unwrap_or(hostport)
+    };
+    if host.is_empty() {
+        None
+    } else {
+        Some(host)
+    }
 }
 
 #[cfg(test)]
@@ -107,6 +159,27 @@ mod tests {
     #[test]
     fn rejects_relative_base_url() {
         validate_base_url("/relative").expect_err("relative");
+    }
+
+    #[test]
+    fn base_url_rejects_a_missing_host_userinfo_query_fragment_and_a_bad_port() {
+        for url in [
+            "https:///missing-host",
+            "https://:8080",
+            "https://user:pass@peer.example",
+            "https://peer.example?x=1",
+            "https://peer.example#frag",
+            "https://peer.example:99999",
+        ] {
+            validate_base_url(url).expect_err(url);
+        }
+    }
+
+    #[test]
+    fn base_url_accepts_a_port_a_path_prefix_and_ipv6() {
+        validate_base_url("http://peer.example:8080/prefix").expect("prefix");
+        validate_base_url("https://[::1]:8443").expect("ipv6");
+        validate_base_url("https://[2001:db8::1]").expect("public ipv6");
     }
 
     #[test]
