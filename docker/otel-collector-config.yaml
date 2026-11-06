@@ -7,10 +7,19 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 4
 
 exporters:
   debug:
     verbosity: detailed
+
+processors:
+  # Bound resident memory so a noisy span flood cannot OOM the compose host.
+  # check_interval is short because this collector only lives for smoke runs.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
 
 service:
   telemetry:
@@ -19,7 +28,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [memory_limiter]
       exporters: [debug]
     metrics:
       receivers: [otlp]
+      processors: [memory_limiter]
       exporters: [debug]

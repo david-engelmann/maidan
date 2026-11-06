@@ -18,4 +18,10 @@ RUN apt-get update \
 
 # The WAL archive mount point (compose.pitr.yaml), owned by postgres so a fresh
 # named volume mounted here inherits ownership and archive_command can write.
-RUN mkdir -p /archive && chown postgres:postgres /archive
+# Mode 0700 keeps other container users from reading archived WAL segments.
+# Wipe any upstream initdb.d crumbs so a FROM bump cannot reintroduce bundled
+# schema SQL that would diverge from the server migrator.
+RUN mkdir -p /archive \
+ && chown postgres:postgres /archive \
+ && chmod 700 /archive \
+ && rm -rf /docker-entrypoint-initdb.d/*
