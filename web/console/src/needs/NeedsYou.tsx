@@ -3,7 +3,7 @@
 // a swipe left the no; both stop at a confirm or a note, and every swipe has
 // a button that does the same thing.
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   NOTE_ASK,
   NeedsApi,
@@ -42,6 +42,45 @@ function notShortcut(e: KeyboardEvent): boolean {
 }
 
 const SWIPE = 96;
+
+/** The need control that last had focus, so a redraw can put it back. */
+type NeedSpot = { key: string; control: string; el: HTMLElement | null; armed: boolean };
+let needSpot: NeedSpot | null = null;
+
+function focusLost(): boolean {
+  const active = document.activeElement;
+  return !active || active === document.body || active === document.documentElement;
+}
+
+function rememberNeedFocus(event: FocusEvent): void {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) return;
+  const controlEl = target.closest<HTMLElement>("[data-need-control]");
+  const key = controlEl?.closest("[data-need-key]")?.getAttribute("data-need-key");
+  const control = controlEl?.getAttribute("data-need-control");
+  if (key && control && controlEl) {
+    needSpot = { key, control, el: controlEl, armed: true };
+    return;
+  }
+  // Body receives focus when the focused control unmounts. If that control is
+  // still in the document, the person left it on purpose.
+  if (target === document.body || target === document.documentElement) {
+    if (needSpot?.el?.isConnected) needSpot = { ...needSpot, armed: false };
+    return;
+  }
+  if (!target.closest("[data-need-key]")) needSpot = needSpot ? { ...needSpot, armed: false } : null;
+}
+
+function focusCaughtUp(): void {
+  const main = document.getElementById("main");
+  const title = document.getElementById("needs-title");
+  const target = main instanceof HTMLElement ? main : title;
+  if (target instanceof HTMLElement) target.focus();
+}
+
+function focusables(root: ParentNode): HTMLButtonElement[] {
+  return [...root.querySelectorAll<HTMLButtonElement>(".need-actions button")].filter((b) => !b.disabled);
+}
 
 function clock(ms: number): string {
   const d = new Date(ms);
@@ -98,14 +137,27 @@ export function NeedsYou() {
     li?.scrollIntoView?.({ block: "nearest" });
   }, []);
   // After an answer, move on to the next item, or the one above at the end.
+  // Only when focus was in the row that was answered, or has already fallen away.
   const advance = useCallback(
     (key: string) => {
       const i = order.indexOf(key);
       const next = order[i + 1] ?? order[i - 1];
+      const active = document.activeElement;
+      const row = document.querySelector(`[data-need-key="${CSS.escape(key)}"]`);
+      const inside = !!row && active instanceof Node && row.contains(active);
+      if (!inside && !focusLost()) return;
       if (next && next !== key) pick(next);
+      else if (focusLost()) row?.querySelector<HTMLElement>(".need-pick")?.focus();
     },
     [order, pick],
   );
+  useEffect(() => {
+    document.addEventListener("focusin", rememberNeedFocus);
+    return () => {
+      document.removeEventListener("focusin", rememberNeedFocus);
+      needSpot = null;
+    };
+  }, []);
   // j and k walk the queue; the review pane follows.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -124,7 +176,7 @@ export function NeedsYou() {
   return (
     <section className="needs" aria-labelledby="needs-title">
       {link ? <ConfirmPanel api={api} link={link} workspaceId={session.workspaceId} onDone={() => { setLink(null); void refresh(); }} /> : null}
-      <h2 id="needs-title" className="visually-hidden">Needs you</h2>
+      <h2 id="needs-title" className="visually-hidden" tabIndex={-1}>Needs you</h2>
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
       {data.staleSince !== null && (
         <p className="needs-stale" role="status">
@@ -238,6 +290,8 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   const isReview = item.kind === "review_request" || item.kind === "unassigned_review";
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const rowRef = useRef<HTMLLIElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const pendingRestore = useRef(false);
 
   // A review can only be approved against the evidence it was handed, and
   // the person approving sees that evidence first.
@@ -268,10 +322,6 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
 
   const root = packet?.state === "ready" ? packet.packet.evidence_root : null;
 
-  useEffect(() => {
-    if (state.phase === "note") noteRef.current?.focus();
-  }, [state.phase]);
-
   // A finished row leaves on its own; one that can still close the task waits.
   useEffect(() => {
     if (state.phase !== "done" || state.closable || state.pending) return;
@@ -282,9 +332,10 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
     return () => clearTimeout(t);
   }, [state, hold, item, onSettled]);
 
-  // Once answered, the pane moves on to the next item.
+  // Once answered, the pane moves on to the next item, before paint, so focus
+  // never settles on the document body when the confirm controls unmount.
   const answered = state.phase === "done" && !state.closable && !state.pending;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (answered && selected) onAdvance();
   }, [answered]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -335,20 +386,107 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   );
 
   const start = useCallback(
-    (ask: Ask) => {
+    (ask: Ask, from?: HTMLElement | null) => {
       if (busy) return;
+      const root = rowRef.current;
+      const clicked = from && from.getAttribute("data-need-control") && from.getAttribute("data-need-control") !== "pick" ? from : null;
+      const askBtn = root?.querySelector<HTMLElement>(`[data-need-control="${CSS.escape(ask)}"]`);
+      const active = document.activeElement;
+      const activeBtn = active instanceof HTMLElement && root?.contains(active) ? active : null;
+      triggerRef.current = clicked ?? askBtn ?? activeBtn;
       if (ask === "approve_note" || ask === "request_changes" || ask === "decline") setState({ phase: "note", ask });
       else setState({ phase: "confirm", ask });
     },
     [busy],
   );
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
+    pendingRestore.current = true;
     setState({ phase: "idle" });
     setNote("");
     hold(item, false);
-    rowRef.current?.querySelector<HTMLButtonElement>(".need-actions button")?.focus();
-  };
+  }, [hold, item]);
+
+  const restoreTrigger = useCallback(() => {
+    const root = rowRef.current;
+    if (!root) return;
+    const trigger = triggerRef.current;
+    if (trigger?.isConnected && !(trigger instanceof HTMLButtonElement && trigger.disabled)) {
+      trigger.focus();
+      if (document.activeElement === trigger) return;
+    }
+    const btn = focusables(root)[0] ?? root.querySelector<HTMLElement>(".need-pick");
+    btn?.focus();
+  }, []);
+
+  // Confirm and note replace the action row. Put focus on the new primary
+  // control, and on Cancel or Escape put it back on the button that opened it.
+  // A later render (a refresh, or evidence arriving) that drops focus restores
+  // the same control.
+  useLayoutEffect(() => {
+    const root = rowRef.current;
+    if (!root) return;
+    if (pendingRestore.current && state.phase === "idle") {
+      pendingRestore.current = false;
+      restoreTrigger();
+      return;
+    }
+    if (!focusLost()) return;
+    if (state.phase === "confirm") {
+      root.querySelector<HTMLElement>(".need-confirm .btn.go")?.focus();
+      return;
+    }
+    if (state.phase === "note") {
+      noteRef.current?.focus();
+      return;
+    }
+    if (state.phase === "error") {
+      root.querySelector<HTMLElement>(".need-error button")?.focus();
+      return;
+    }
+    if (state.phase !== "idle") return;
+    const spot = needSpot;
+    const key = needKey(item);
+    if (!spot?.armed || spot.key !== key) return;
+    root.querySelector<HTMLElement>(`[data-need-control="${CSS.escape(spot.control)}"]`)?.focus();
+  });
+
+  // When this row leaves and focus was inside it, follow the selection, or
+  // the caught-up message when it was the last row. A microtask lets a strict
+  // remount put the row back before we move.
+  useLayoutEffect(() => {
+    const key = needKey(item);
+    return () => {
+      queueMicrotask(() => {
+        const spot = needSpot;
+        if (!spot?.armed || spot.key !== key || !focusLost()) return;
+        if (document.querySelector(`[data-need-key="${CSS.escape(key)}"]`)) return;
+        const selectedPick = document.querySelector<HTMLElement>(".need.selected .need-pick");
+        const selectedKey = selectedPick?.closest("[data-need-key]")?.getAttribute("data-need-key");
+        if (selectedPick && selectedKey && selectedKey !== key) {
+          selectedPick.focus();
+          return;
+        }
+        const next = [...document.querySelectorAll<HTMLElement>(".need-pick")].find((el) => el.closest("[data-need-key]")?.getAttribute("data-need-key") !== key);
+        if (next) {
+          next.focus();
+          return;
+        }
+        if (document.querySelector(".needs-empty")) focusCaughtUp();
+      });
+    };
+  }, [item]);
+
+  useEffect(() => {
+    if (state.phase !== "confirm" && state.phase !== "note") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      cancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.phase, cancel]);
 
   // The yes and the no a swipe stands for, when the row has them.
   const yes: Ask | null =
@@ -395,7 +533,7 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
       transition={reduce ? { duration: 0 } : undefined}
       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}
     >
-      <button type="button" className="need-pick" aria-current={selected ? "true" : undefined} onClick={onSelect} onFocus={onSelect}>
+      <button type="button" className="need-pick" data-need-control="pick" aria-current={selected ? "true" : undefined} onClick={onSelect} onFocus={onSelect}>
         <span className="need-pick-title">{title}</span>
         <span className={`need-pick-age ${item.overdue ? "overdue" : ""}`}>{waitingFor(item.age_secs)}</span>
         <span className={`need-pick-kind kind-${item.kind}`}>{label}</span>
@@ -434,7 +572,7 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
               <p>{CONFIRM[state.ask]}</p>
               <div className="need-actions">
                 <button type="button" className="btn" onClick={cancel}>Cancel</button>
-                <button type="button" className="btn go" autoFocus onClick={() => void run(state.ask, "")}>
+                <button type="button" className="btn go" data-need-control="confirm-go" onClick={() => void run(state.ask, "")}>
                   {state.ask === "unblock" ? "Unblock" : state.ask === "close" ? "Close task" : "Approve"}
                 </button>
               </div>
@@ -483,27 +621,27 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
           <div className="need-actions">
             {isReview && !ownerOnly && (
               <>
-                <button type="button" className="btn text" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
-                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
-                <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" disabled={!root || !items} onClick={() => start("approve")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
+                <button type="button" className="btn text" data-need-control="approve_note" disabled={!root || !items} onClick={(e) => start("approve_note", e.currentTarget)}>Add a note</button>
+                <button type="button" className="btn" data-need-control="request_changes" aria-keyshortcuts="r" title="Send back (R)" onClick={(e) => start("request_changes", e.currentTarget)}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                <button type="button" className="btn go" data-need-control="approve" aria-keyshortcuts="a" title="Approve (A)" disabled={!root || !items} onClick={(e) => start("approve", e.currentTarget)}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
               </>
             )}
             {ownerOnly && (
               <>
-                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
-                {owner.required === 0 && <button type="button" className="btn go" onClick={() => start("close")}>Close without review</button>}
+                <button type="button" className="btn" data-need-control="request_changes" aria-keyshortcuts="r" title="Send back (R)" onClick={(e) => start("request_changes", e.currentTarget)}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                {owner.required === 0 && <button type="button" className="btn go" data-need-control="close" onClick={(e) => start("close", e.currentTarget)}>Close without review</button>}
               </>
             )}
             {item.kind === "open_gate" &&
               (gate ? (
                 <>
-                  <button type="button" className="btn stop" aria-keyshortcuts="r" title="Decline (R)" onClick={() => start("decline")}>Decline<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
-                  <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" onClick={() => start("accept")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
+                  <button type="button" className="btn stop" data-need-control="decline" aria-keyshortcuts="r" title="Decline (R)" onClick={(e) => start("decline", e.currentTarget)}>Decline<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                  <button type="button" className="btn go" data-need-control="accept" aria-keyshortcuts="a" title="Approve (A)" onClick={(e) => start("accept", e.currentTarget)}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
                 </>
               ) : tid ? (
                 <a className="btn" href={convHash({ kind: "task", id: tid })}>Open the thread</a>
               ) : null)}
-            {item.kind === "blocked" && <button type="button" className="btn go" onClick={() => start("unblock")}>Unblock</button>}
+            {item.kind === "blocked" && <button type="button" className="btn go" data-need-control="unblock" onClick={(e) => start("unblock", e.currentTarget)}>Unblock</button>}
             {item.kind === "question" && tid && (
               <a className="btn go" href={convHash({ kind: "task", id: tid })}>Answer in the thread</a>
             )}
