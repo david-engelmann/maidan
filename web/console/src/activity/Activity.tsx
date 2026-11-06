@@ -51,12 +51,12 @@ export function Activity() {
   const ws = session.status === "signed-in" ? session.workspaceId : null;
   if (!ws) {
     return (
-      <section className="activity" aria-labelledby="activity-title">
+      <div className="activity">
         <header className="activity-head">
           <h1 id="activity-title">Activity</h1>
         </header>
         <EmptyState title="Not signed in" body="Sign in to see activity." />
-      </section>
+      </div>
     );
   }
   return <ActivityFeed key={ws} ws={ws} store={store} />;
@@ -210,7 +210,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   const channels = useMemo(() => activityChannels(rows, dir), [rows, dir]);
   const shown = useMemo(() => filterActivity(rows, filter, query, channelId, dir), [rows, filter, query, channelId, dir]);
   return (
-    <section className="activity" aria-labelledby="activity-title">
+    <div className="activity">
       <header className="activity-head">
         <h1 id="activity-title">Activity</h1>
         <div className="seg" role="group" aria-label="Show">
@@ -270,6 +270,6 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
           })}
         </ol>
       )}
-    </section>
+    </div>
   );
 }

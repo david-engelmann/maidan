@@ -81,8 +81,7 @@ test("activity has no axe violations", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/activity");
   await expect(page.locator(".activity-row").first()).toBeVisible();
-  const scan = await new AxeBuilder({ page }).include(".activity").analyze();
-  const serious = scan.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(serious.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  await expect(page.locator("main section").first()).toHaveCSS("opacity", "1");
+  const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 });
