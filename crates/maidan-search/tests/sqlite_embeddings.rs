@@ -63,3 +63,51 @@ async fn semantic_search_orders_by_cosine_distance_on_sqlite() {
     assert!((hits[0].score - 1.0).abs() < 1e-6);
     assert!((hits[0].rank - 1.0).abs() < 1e-6);
 }
+
+#[tokio::test]
+async fn non_positive_limit_and_a_tombstoned_thread_return_no_hits() {
+    let pool = sqlite_pool_options()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search = SqliteSearch::new(pool.clone());
+    let fx = common::seed(&*store).await;
+    let filters = SearchFilters::default();
+    assert!(search
+        .search_messages(fx.workspace_id, "", 5, &filters)
+        .await
+        .is_err());
+    assert!(search
+        .search_messages(fx.workspace_id, "rust", 0, &filters)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(search
+        .search_messages(fx.workspace_id, "rust", -1, &filters)
+        .await
+        .unwrap()
+        .is_empty());
+    let hits = search
+        .search_messages(fx.workspace_id, "rust", 5, &filters)
+        .await
+        .unwrap();
+    assert!(!hits.is_empty());
+    let thread = hits[0].thread_id;
+    sqlx::query("UPDATE maidan_threads SET tombstoned_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(thread.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after = search
+        .search_messages(fx.workspace_id, "rust", 5, &filters)
+        .await
+        .unwrap();
+    assert!(after.iter().all(|hit| hit.thread_id != thread));
+}

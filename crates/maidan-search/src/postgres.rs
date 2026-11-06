@@ -192,6 +192,9 @@ impl Search for PostgresSearch {
         if query.trim().is_empty() {
             return Err(SearchError::InvalidQuery("empty query".into()));
         }
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
 
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
@@ -241,6 +244,7 @@ impl Search for PostgresSearch {
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = $1
               AND m.tombstoned_at IS NULL
+              AND t.tombstoned_at IS NULL
               AND m.search_vec @@ (SELECT query FROM q)
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
@@ -314,6 +318,11 @@ impl Search for PostgresSearch {
             INSERT INTO {table} (message_id, embedding, updated_at)
             SELECT m.id, $2, NOW() FROM maidan_messages m
             WHERE m.id = $1 AND m.tombstoned_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM maidan_threads th
+                WHERE th.id = m.thread_id AND th.tombstoned_at IS NULL
+              )
+              AND t.tombstoned_at IS NULL
             FOR SHARE OF m
             ON CONFLICT (message_id) DO UPDATE
                 SET embedding = EXCLUDED.embedding,
@@ -351,6 +360,9 @@ impl Search for PostgresSearch {
                 embedding.len()
             )));
         }
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
         let vector = Vector::from(embedding.to_vec());
         let author_id = filters.author_id.map(|id| id.0);
         let channel_id = filters.channel_id.map(|id| id.0);
@@ -383,6 +395,7 @@ impl Search for PostgresSearch {
             JOIN maidan_members mem ON mem.id = m.author_id
             WHERE c.workspace_id = $1
               AND m.tombstoned_at IS NULL
+              AND t.tombstoned_at IS NULL
               AND ($4::uuid IS NULL OR m.author_id = $4)
               AND ($5::uuid IS NULL OR t.channel_id = $5)
               AND ($6::text IS NULL OR mem.kind = $6)

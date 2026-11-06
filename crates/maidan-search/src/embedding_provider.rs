@@ -149,9 +149,18 @@ impl OpenAiCompatibleProvider {
         configured_dim: Option<usize>,
         timeout_secs: u64,
     ) -> Result<Self, EmbeddingProviderError> {
+        if timeout_secs == 0 {
+            return Err(EmbeddingProviderError::InvalidConfig(
+                "embedding timeout must be greater than 0".into(),
+            ));
+        }
+        let api_key = normalize_api_key(api_key);
+        validate_endpoint(&endpoint, api_key.is_some())?;
         let client = off_runtime(|| {
             Client::builder()
                 .timeout(Duration::from_secs(timeout_secs))
+                .connect_timeout(Duration::from_secs(timeout_secs.min(10)))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
         })
         .map_err(|e| EmbeddingProviderError::InvalidConfig(e.to_string()))?;
@@ -187,11 +196,21 @@ impl OpenAiCompatibleProvider {
             req = req.bearer_auth(token);
         }
         off_runtime(move || {
-            req.send()
-                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-                .error_for_status()
-                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-                .json()
+            use std::io::Read;
+            let resp = req
+                .send()
+                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let mut buf = Vec::new();
+                let _ = resp.take(512).read_to_end(&mut buf);
+                let snippet = String::from_utf8_lossy(&buf);
+                return Err(EmbeddingProviderError::Remote(format!(
+                    "HTTP {status}: {}",
+                    snippet.trim()
+                )));
+            }
+            resp.json()
                 .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))
         })
     }
@@ -298,18 +317,81 @@ fn parse_embeddings_batch(
             resp.data.len()
         )));
     }
-    resp.data.sort_by_key(|d| d.index);
+    let omitted_index = resp.data.iter().all(|item| item.index == 0);
+    if !omitted_index {
+        resp.data.sort_by_key(|item| item.index);
+        for (expected_idx, item) in resp.data.iter().enumerate() {
+            if item.index != expected_idx as i64 {
+                return Err(EmbeddingProviderError::Remote(format!(
+                    "embedding index {}, expected {expected_idx}",
+                    item.index
+                )));
+            }
+        }
+    }
     let mut out = Vec::with_capacity(expected);
     for item in resp.data {
-        if item.embedding.len() != dimension {
+        if item.embedding.len() != dimension
+            || item.embedding.iter().any(|value| !value.is_finite())
+        {
             return Err(EmbeddingProviderError::Remote(format!(
-                "expected {dimension}-dim embedding, got {}",
+                "expected {dimension} finite floats, got {}",
                 item.embedding.len()
             )));
         }
         out.push(item.embedding);
     }
     Ok(out)
+}
+
+fn normalize_api_key(api_key: Option<String>) -> Option<String> {
+    api_key.and_then(|key| {
+        let trimmed = key.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+/// `endpoint` may carry a query (`?api-version=`). It may not name an empty
+/// host, carry userinfo or a fragment, or send a key over cleartext off-box.
+fn validate_endpoint(endpoint: &str, has_api_key: bool) -> Result<(), EmbeddingProviderError> {
+    let url = reqwest::Url::parse(endpoint).map_err(|e| {
+        EmbeddingProviderError::InvalidConfig(format!("embedding endpoint is not a URL: {e}"))
+    })?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(EmbeddingProviderError::InvalidConfig(
+            "embedding endpoint must use http or https".into(),
+        ));
+    }
+    let host = url.host_str().unwrap_or("");
+    if host.is_empty() || endpoint.contains(":///") {
+        return Err(EmbeddingProviderError::InvalidConfig(
+            "embedding endpoint must name a host".into(),
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return Err(EmbeddingProviderError::InvalidConfig(
+            "embedding endpoint must not include userinfo or a fragment".into(),
+        ));
+    }
+    if has_api_key && url.scheme() == "http" && !embedding_host_is_loopback(host) {
+        return Err(EmbeddingProviderError::InvalidConfig(
+            "refusing to send an embedding API key over cleartext".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn embedding_host_is_loopback(host: &str) -> bool {
+    let host = host.trim_matches(['[', ']']);
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Resolve a provider by name.
@@ -381,6 +463,81 @@ mod tests {
         assert_eq!(out[0][0], 0.0);
         assert_eq!(out[1][0], 0.1);
         assert_eq!(out[2][0], 0.2);
+    }
+
+    #[test]
+    fn parse_batch_keeps_omitted_indexes_and_rejects_bad_ones() {
+        let omitted = OpenAiEmbeddingsResponse {
+            data: vec![item(0, 0.2, 2), item(0, 0.4, 2)],
+        };
+        let out = parse_embeddings_batch(omitted, 2, 2).expect("omitted index keeps order");
+        assert_eq!(out[0][0], 0.2);
+        assert_eq!(out[1][0], 0.4);
+
+        let duplicate = OpenAiEmbeddingsResponse {
+            data: vec![item(1, 0.0, 2), item(1, 0.1, 2)],
+        };
+        assert!(parse_embeddings_batch(duplicate, 2, 2).is_err());
+        let gap = OpenAiEmbeddingsResponse {
+            data: vec![item(0, 0.0, 2), item(2, 0.1, 2)],
+        };
+        assert!(parse_embeddings_batch(gap, 2, 2).is_err());
+        let negative = OpenAiEmbeddingsResponse {
+            data: vec![item(-1, 0.0, 2), item(0, 0.1, 2)],
+        };
+        assert!(parse_embeddings_batch(negative, 2, 2).is_err());
+        let nan = OpenAiEmbeddingsResponse {
+            data: vec![OpenAiEmbeddingItem {
+                index: 0,
+                embedding: vec![f32::NAN],
+            }],
+        };
+        assert!(parse_embeddings_batch(nan, 1, 1).is_err());
+    }
+
+    #[test]
+    fn openai_provider_rejects_a_bad_endpoint_timeout_and_cleartext_key() {
+        let model = "m".to_string();
+        assert!(OpenAiCompatibleProvider::new(
+            "https:///missing".into(),
+            model.clone(),
+            None,
+            Some(4),
+            5
+        )
+        .is_err());
+        assert!(OpenAiCompatibleProvider::new(
+            "http://example.com/v1".into(),
+            model.clone(),
+            Some("secret".into()),
+            Some(4),
+            5
+        )
+        .is_err());
+        assert!(OpenAiCompatibleProvider::new(
+            "https://example.com/v1".into(),
+            model.clone(),
+            Some("secret".into()),
+            Some(4),
+            0
+        )
+        .is_err());
+        assert!(OpenAiCompatibleProvider::new(
+            "https://example.com/v1?api-version=2024".into(),
+            model.clone(),
+            Some("  ".into()),
+            Some(4),
+            5
+        )
+        .is_ok());
+        assert!(OpenAiCompatibleProvider::new(
+            "http://127.0.0.1/v1".into(),
+            model,
+            Some("secret".into()),
+            Some(4),
+            5
+        )
+        .is_ok());
     }
 
     #[test]

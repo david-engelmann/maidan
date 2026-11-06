@@ -76,6 +76,9 @@ pub async fn embed_missing_postgres(
     limit: i64,
     meters: Option<&UsageMeterBuffer>,
 ) -> Result<ReindexReport, SearchError> {
+    if limit <= 0 {
+        return Ok(ReindexReport::default());
+    }
     let Some((table, _)) =
         embedding_tables::resolve_table_postgres(pool, provider.model_name()).await?
     else {
@@ -99,6 +102,9 @@ pub async fn embed_missing_postgres(
     if !held {
         return Ok(ReindexReport::default());
     }
+    // Session locks survive a cancelled await if the connection goes back
+    // into the pool still holding them. The guard closes the socket instead.
+    let guard = AdvisoryLockGuard { conn: Some(lock) };
     let sql = format!(
         r#"
         SELECT m.id, m.body, c.workspace_id
@@ -107,6 +113,7 @@ pub async fn embed_missing_postgres(
         JOIN maidan_channels c ON c.id = t.channel_id
         LEFT JOIN {table} e ON e.message_id = m.id
         WHERE e.message_id IS NULL AND m.tombstoned_at IS NULL
+          AND t.tombstoned_at IS NULL
           AND NOT (c.workspace_id = ANY($2))
         ORDER BY m.posted_at DESC
         LIMIT $1
@@ -137,11 +144,41 @@ pub async fn embed_missing_postgres(
         }
         Err(err) => Err(err.into()),
     };
-    sqlx::query("SELECT pg_advisory_unlock($1)")
-        .bind(EMBED_REPAIR_LOCK)
-        .execute(&mut *lock)
-        .await?;
+    guard.unlock().await?;
     report
+}
+
+/// Holds a Postgres connection that owns `pg_try_advisory_lock`. Unlock
+/// returns it to the pool. Drop, including task cancellation, detaches it
+/// so the lock dies with the socket instead of sticking to a pooled conn.
+struct AdvisoryLockGuard {
+    conn: Option<sqlx::pool::PoolConnection<sqlx::Postgres>>,
+}
+
+impl AdvisoryLockGuard {
+    async fn unlock(mut self) -> Result<(), sqlx::Error> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Ok(());
+        };
+        let unlocked: bool = sqlx::query_scalar("SELECT pg_advisory_unlock($1)")
+            .bind(EMBED_REPAIR_LOCK)
+            .fetch_one(&mut **conn)
+            .await?;
+        if unlocked {
+            // PoolConnection's Drop returns a lock-free connection.
+            let _ = self.conn.take();
+        }
+        Ok(())
+    }
+}
+
+impl Drop for AdvisoryLockGuard {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            let raw = conn.detach();
+            drop(raw);
+        }
+    }
 }
 
 /// Backfill embeds in batches via [`EmbeddingProvider::embed_batch`] so a
@@ -216,6 +253,7 @@ async fn fetch_messages_postgres(
         JOIN maidan_threads t ON t.id = m.thread_id
         JOIN maidan_channels c ON c.id = t.channel_id
         WHERE m.tombstoned_at IS NULL
+          AND t.tombstoned_at IS NULL
           AND ($1::uuid IS NULL OR c.workspace_id = $1)
         ORDER BY m.posted_at
         "#,
@@ -245,6 +283,7 @@ async fn fetch_messages_sqlite(
         JOIN maidan_threads t ON t.id = m.thread_id
         JOIN maidan_channels c ON c.id = t.channel_id
         WHERE m.tombstoned_at IS NULL
+          AND t.tombstoned_at IS NULL
           AND (? IS NULL OR c.workspace_id = ?)
         ORDER BY m.posted_at
         "#,
