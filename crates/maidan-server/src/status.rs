@@ -210,25 +210,25 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn row(label: &str, value: &str) -> String {
-    let class = if value.starts_with("failing:") {
-        " class=\"fail\""
-    } else if label == "Phase" {
-        " class=\"phase\""
-    } else {
-        ""
+fn row(label: &str, value: &str, class: Option<&str>) -> String {
+    let class = match class {
+        Some(class) => format!(" class=\"{class}\""),
+        None => String::new(),
     };
     format!("<tr{class}><th>{}</th><td>{}</td></tr>", esc(label), esc(value))
 }
 
 fn render(s: &OperatorStatus) -> String {
-    let mut rows = vec![row("Version", s.version), row("Phase", s.phase)];
+    let mut rows = vec![
+        row("Version", s.version, None),
+        row("Phase", s.phase, Some("phase")),
+    ];
     for c in &s.checks {
         let value = match &c.error {
             None => "ok".to_string(),
             Some(err) => format!("failing: {err}"),
         };
-        rows.push(row(c.name, &value));
+        rows.push(row(c.name, &value, (!c.ok).then_some("fail")));
     }
     rows.push(row(
         "Search backfill",
@@ -239,6 +239,7 @@ fn render(s: &OperatorStatus) -> String {
             s.search.event_log_head,
             s.search.behind
         ),
+        None,
     ));
     rows.push(row(
         "Replica lag",
@@ -246,6 +247,7 @@ fn render(s: &OperatorStatus) -> String {
             Some(r) => format!("{} bytes", r.lag_bytes),
             None => "no replica".to_string(),
         },
+        None,
     ));
     let q = &s.queues;
     rows.push(row(
@@ -254,15 +256,18 @@ fn render(s: &OperatorStatus) -> String {
             "{} / {} ({} failed)",
             q.indexer_depth, q.indexer_capacity, q.indexer_failed_total
         ),
+        None,
     ));
     rows.push(row(
         "WebSocket connections",
         &format!("{} / {}", q.ws_connections, q.ws_connections_max),
+        None,
     ));
     if let (Some(pending), Some(quarantined)) = (q.outbox_pending, q.outbox_quarantined) {
         rows.push(row(
             "Outbox",
             &format!("{pending} pending, {quarantined} quarantined"),
+            None,
         ));
     }
     format!(
@@ -310,6 +315,39 @@ mod tests {
         assert!(page.contains("50% (5 of 10 events, 5 behind)"));
         assert!(page.contains("<th>Phase</th><td>degraded</td>"));
         assert!(page.contains("<main>"));
+        assert!(page.contains("class=\"fail\""));
+    }
+
+    #[test]
+    fn a_version_named_failing_is_not_painted_as_a_failed_check() {
+        let page = render(&OperatorStatus {
+            version: "failing:canary",
+            phase: "serving",
+            checks: vec![StatusCheck {
+                name: "db",
+                ok: true,
+                error: None,
+            }],
+            search: SearchProgress {
+                event_log_head: 0,
+                tap_cursor: 0,
+                behind: 0,
+                backfill_percent: 100.0,
+            },
+            replica: None,
+            queues: QueueStatus {
+                indexer_depth: 0,
+                indexer_capacity: 1,
+                indexer_failed_total: 0,
+                ws_connections: 0,
+                ws_connections_max: 1,
+                outbox_pending: None,
+                outbox_quarantined: None,
+            },
+        });
+        assert!(page.contains("<tr><th>Version</th><td>failing:canary</td></tr>"));
+        assert!(!page.contains("class=\"fail\""));
+        assert!(page.contains("<tr class=\"phase\"><th>Phase</th><td>serving</td></tr>"));
     }
 
     #[test]

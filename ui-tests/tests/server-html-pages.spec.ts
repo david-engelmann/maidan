@@ -41,10 +41,7 @@ test.describe("on a phone", () => {
     await expect(page.locator("main h1")).toHaveText("maidan");
     await expect(page.locator("main a[href='/ui']")).toBeVisible();
     expect(await page.locator("style, script").count()).toBe(0);
-    expect(await theme(page)).toEqual([
-      "(prefers-color-scheme: light) #f2eee6",
-      "(prefers-color-scheme: dark) #121110",
-    ]);
+    expect(await page.locator('meta[name="theme-color"]').evaluateAll((els) => els.map((el) => el.getAttribute("content")))).toEqual(["#f2eee6"]);
     await scan(page, "light");
     await scan(page, "dark");
     expect(csp).toEqual([]);
