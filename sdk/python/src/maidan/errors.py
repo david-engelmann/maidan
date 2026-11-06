@@ -49,7 +49,9 @@ class MaidanError(Exception):
             return False
         if self.problem is not None and self.problem.get("must_refetch") is True:
             return True
-        return self.type in (f"{PROBLEM_BASE}cursor-too-old", "cursor_too_old")
+        if self.type in (f"{PROBLEM_BASE}cursor-too-old", "cursor_too_old"):
+            return True
+        return isinstance(self.type, str) and self.type.endswith("/problems/cursor-too-old")
 
     @property
     def is_forbidden(self) -> bool:  # 403 (missing capability / channel access)
@@ -192,5 +194,10 @@ PROBLEM_TYPES: Dict[str, Type[MaidanError]] = {
 def problem_error(status: int, body: Any) -> MaidanError:
     """The error for a failed response: the class its problem ``type`` names."""
     type_ = body.get("type") if isinstance(body, dict) else None
-    cls = PROBLEM_TYPES.get(type_, UnknownProblemError) if isinstance(type_, str) else UnknownProblemError
+    cls: Type[MaidanError] = UnknownProblemError
+    if isinstance(type_, str):
+        found = PROBLEM_TYPES.get(type_)
+        if found is None and "/problems/" in type_:
+            found = PROBLEM_TYPES.get(PROBLEM_BASE + type_.rsplit("/problems/", 1)[1])
+        cls = found if found is not None else UnknownProblemError
     return cls(status, body)

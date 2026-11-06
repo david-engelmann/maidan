@@ -1,7 +1,9 @@
 """Unit tests for retries, idempotency keys and auto-paging (no running server)."""
 
+import email.utils
 import io
 import json
+import time
 import urllib.error
 from email.message import Message
 
@@ -135,6 +137,19 @@ def test_retry_delay():
     assert retry_delay(0, None, lambda: 1) == 0.5
     assert retry_delay(10, None, lambda: 1) == 8.0
     assert retry_delay(0, "120") == 60.0
+    assert retry_delay(0, "nan", lambda: 0) == 0.25
+    assert retry_delay(0, "inf", lambda: 0) == 0.25
+    assert retry_delay(0, "-3", lambda: 0) == 0.25
+    when = email.utils.formatdate(time.time() + 5, usegmt=True)
+    waited = retry_delay(0, when, lambda: 0)
+    assert 0 < waited <= 60
+
+
+def test_a_self_hosted_in_flight_type_is_retried():
+    kind = "https://maidan.internal/problems/idempotency-key-in-flight"
+    c, calls, _ = fake([(409, {"type": kind}), (201, channel("c"))])
+    assert c.channels.create("w", "n").id == "c"
+    assert len(calls) == 2
 
 
 def test_threads_list_all_pages_by_cursor():
