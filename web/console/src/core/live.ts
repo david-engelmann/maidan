@@ -96,17 +96,20 @@ export class LiveConnection {
   private listeners = new Set<() => void>();
   private opts: LiveOptions;
   private readonly clock: Clock;
+  /** Workspace that issued the stored resume token. A token from another workspace must not be replayed. */
+  private readonly resumeWorkspaceKey: string;
   afterId = 0;
   resumeToken: string | null;
 
   constructor(opts: LiveOptions) {
     this.opts = opts;
     this.clock = opts.clock ?? realClock;
+    this.resumeWorkspaceKey = `${opts.resumeKey}:workspace`;
     this.resumeToken = opts.storage.getItem(opts.resumeKey);
   }
 
-  /** Swap the callbacks and credential readers (each render's latest). */
-  update(patch: Partial<Pick<LiveOptions, "token" | "memberId" | "onEvent" | "onControl" | "onPoll" | "onRecovered">>): void {
+  /** Swap the socket url, callbacks and credential readers (each render's latest). */
+  update(patch: Partial<Pick<LiveOptions, "url" | "token" | "memberId" | "onEvent" | "onControl" | "onPoll" | "onRecovered">>): void {
     this.opts = { ...this.opts, ...patch };
   }
 
@@ -136,6 +139,14 @@ export class LiveConnection {
   }
 
   connect(filter: LiveFilter): void {
+    const storedWs = this.opts.storage.getItem(this.resumeWorkspaceKey);
+    const otherWorkspace = (this.filter !== null && this.filter.workspace_id !== filter.workspace_id) || (storedWs !== null && storedWs !== filter.workspace_id);
+    if (otherWorkspace) {
+      // The stored cursor belongs to a different workspace. Replaying it there
+      // is a mismatch the server closes with 1008.
+      this.forgetResume();
+      this.retries = 0;
+    }
     this.filter = filter;
     // Wanted from the first attempt, not from the ack: a drop before the ack
     // is retried like any other.
@@ -165,6 +176,7 @@ export class LiveConnection {
     this.resumeToken = null;
     this.afterId = 0;
     this.opts.storage.removeItem(this.opts.resumeKey);
+    this.opts.storage.removeItem(this.resumeWorkspaceKey);
   }
 
   sendPresence(status: "online" | "away" | "offline"): boolean {
@@ -222,6 +234,7 @@ export class LiveConnection {
         if (typeof frame.resume_token === "string" && frame.resume_token) {
           this.resumeToken = frame.resume_token;
           this.opts.storage.setItem(this.opts.resumeKey, frame.resume_token);
+          if (this.filter?.workspace_id) this.opts.storage.setItem(this.resumeWorkspaceKey, this.filter.workspace_id);
         }
         this.setStatus({ kind: "connected" });
         // Back after a drop: reconcile what the replay may not cover.
