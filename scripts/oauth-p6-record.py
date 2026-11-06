@@ -407,12 +407,70 @@ def finish(report: Report, record: dict, out: str | None) -> int:
     record["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     record["passed"] = report.ok
     record["checks"] = [c.__dict__ for c in report.checks]
+    # Defense in depth: never serialize raw secrets if a caller stuffed them in.
+    banned = {"access_token", "refresh_token", "id_token", "code", "password", "client_secret"}
+    for key in list(record):
+        if key in banned or (key.endswith("_token") and not key.endswith("_sha256")):
+            record.pop(key, None)
     path = out or f"oauth-p6-record-{dt.datetime.now(dt.timezone.utc):%Y-%m-%d}.json"
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(record, fh, indent=2)
         fh.write("\n")
     print(f"\n{'PASSED' if report.ok else 'FAILED'}: record written to {path}")
     return 0 if report.ok else 1
+
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    """Fail closed on unsafe recorder inputs before any network I/O."""
+    origin = urllib.parse.urlsplit(args.origin)
+    if origin.scheme != "https":
+        raise SystemExit("oauth-p6-record: --origin must be https (public instance only)")
+    if origin.username or origin.password or "@" in (origin.netloc or ""):
+        raise SystemExit("oauth-p6-record: --origin must not carry userinfo")
+    if not origin.hostname or "." not in origin.hostname:
+        raise SystemExit("oauth-p6-record: --origin hostname looks incomplete")
+    if origin.query or origin.fragment:
+        raise SystemExit("oauth-p6-record: --origin must not carry a query or fragment")
+    if origin.path not in ("", "/"):
+        raise SystemExit("oauth-p6-record: --origin must be an origin (no path)")
+
+    client = args.client_id.strip()
+    if not client or len(client) > 512:
+        raise SystemExit("oauth-p6-record: --client-id must be 1..512 characters")
+    if client.startswith("http://"):
+        raise SystemExit("oauth-p6-record: --client-id URL must be https (or a pre-registered id)")
+    if client.startswith("https://"):
+        cu = urllib.parse.urlsplit(client)
+        if cu.username or cu.password or not cu.hostname:
+            raise SystemExit("oauth-p6-record: --client-id URL is malformed")
+    elif not re.fullmatch(r"[A-Za-z0-9._~-]{8,128}", client):
+        raise SystemExit("oauth-p6-record: --client-id must be an https URL or a pre-registered id")
+
+    redirect = urllib.parse.urlsplit(args.redirect_uri)
+    host_ok = redirect.hostname in ("127.0.0.1", "localhost", "::1")
+    if redirect.scheme != "http" or not host_ok or not redirect.port:
+        raise SystemExit("oauth-p6-record: --redirect-uri must be loopback http with a port")
+    if (not redirect.path.startswith("/")) or (".." in redirect.path.split("/")):
+        raise SystemExit("oauth-p6-record: --redirect-uri path must be absolute without ..")
+    if redirect.query or redirect.fragment:
+        raise SystemExit("oauth-p6-record: --redirect-uri must not carry a query or fragment")
+
+    if args.commit is not None:
+        if not re.fullmatch(r"[0-9a-f]{7,40}", args.commit):
+            raise SystemExit("oauth-p6-record: --commit must be a 7..40 hex SHA")
+
+    if args.scope is not None:
+        if (not args.scope) or len(args.scope) > 256 or ("\n" in args.scope) or ("\r" in args.scope):
+            raise SystemExit("oauth-p6-record: --scope must be 1..256 printable characters")
+
+    if args.out is not None:
+        import os
+        out = args.out
+        if out != os.path.basename(out) or out in (".", "..") or "/" in out or "\\" in out:
+            raise SystemExit("oauth-p6-record: --out must be a basename in the current directory")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", out):
+            raise SystemExit("oauth-p6-record: --out basename has illegal characters")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -425,11 +483,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args(argv)
-    if not urllib.parse.urlsplit(args.origin).scheme == "https":
-        parser.error("--origin must be https: P6 runs against a public instance")
-    redirect = urllib.parse.urlsplit(args.redirect_uri)
-    if redirect.scheme != "http" or redirect.hostname not in ("127.0.0.1", "localhost") or not redirect.port:
-        parser.error("--redirect-uri must be a loopback http URL with a port")
+    try:
+        validate_args(args)
+    except SystemExit as exc:
+        msg = str(exc)
+        if msg.startswith("oauth-p6-record: "):
+            msg = msg[len("oauth-p6-record: "):]
+        parser.error(msg)
     return run(args)
 
 

@@ -157,5 +157,104 @@ class Arguments(Quiet):
                 p6.main(argv)
 
 
+
+
+    def test_userinfo_origin_is_refused(self):
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://user:pass@maidan.world",
+                "--client-id", "https://client.example/oauth/client.json",
+                "--no-browser",
+            ])
+
+    def test_origin_with_path_is_refused(self):
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://maidan.world/mcp",
+                "--client-id", "https://client.example/oauth/client.json",
+                "--no-browser",
+            ])
+
+    def test_bad_commit_and_out_path_are_refused(self):
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://maidan.world",
+                "--client-id", "https://client.example/oauth/client.json",
+                "--commit", "NOTHEX",
+                "--no-browser",
+            ])
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://maidan.world",
+                "--client-id", "https://client.example/oauth/client.json",
+                "--out", "../escape.json",
+                "--no-browser",
+            ])
+
+    def test_http_client_id_and_non_loopback_redirect_are_refused(self):
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://maidan.world",
+                "--client-id", "http://client.example/oauth/client.json",
+                "--no-browser",
+            ])
+        with self.assertRaises(SystemExit):
+            p6.main([
+                "--origin", "https://maidan.world",
+                "--client-id", "https://client.example/oauth/client.json",
+                "--redirect-uri", "http://example.com:33418/callback",
+                "--no-browser",
+            ])
+
+    def test_finish_strips_raw_tokens_from_the_record(self):
+        import tempfile, json
+        from pathlib import Path as P
+        report = p6.Report()
+        report.add("x", "y", True)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = P(tmp) / "rec.json"
+            record = {
+                "origin": "https://maidan.world",
+                "access_token": "secret-access",
+                "refresh_token": "secret-refresh",
+                "access_token_sha256": "abc",
+                "code": "authcode",
+            }
+            rc = p6.finish(report, record, str(out))
+            self.assertEqual(rc, 0)
+            data = json.loads(out.read_text())
+            self.assertNotIn("access_token", data)
+            self.assertNotIn("refresh_token", data)
+            self.assertNotIn("code", data)
+            self.assertEqual(data["access_token_sha256"], "abc")
+
+
+class ValidateArgs(unittest.TestCase):
+    def _ns(self, **kwargs):
+        import argparse
+        defaults = dict(
+            origin="https://maidan.world",
+            client_id="https://client.example/oauth/client.json",
+            redirect_uri="http://127.0.0.1:33418/callback",
+            scope=None,
+            commit=None,
+            out=None,
+            no_browser=True,
+        )
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_accepts_loopback_ipv6_redirect_and_hex_commit(self):
+        p6.validate_args(self._ns(
+            redirect_uri="http://[::1]:33418/callback",
+            commit="d89fee0e121bca5c802f3245b7bba5814e4b4e04",
+            out="oauth-p6-record-test.json",
+            scope="mcp",
+        ))
+
+    def test_rejects_scope_with_newline(self):
+        with self.assertRaises(SystemExit):
+            p6.validate_args(self._ns(scope="mcp" + chr(10) + "admin"))
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
