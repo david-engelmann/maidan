@@ -1,4 +1,11 @@
 {{- if .Values.persistence.enabled }}
+{{- $size := toString .Values.persistence.size }}
+{{- if or (eq $size "") (eq $size "0") (eq $size "0Gi") (eq $size "0Mi") }}
+{{- fail "persistence.size must be a positive Kubernetes quantity (for example 10Gi)" }}
+{{- end }}
+{{- if not (regexMatch "^[1-9][0-9]*(\\.[0-9]+)?(E|P|T|G|M|K|Ei|Pi|Ti|Gi|Mi|Ki)?$" $size) }}
+{{- fail (printf "persistence.size %q is not a valid Kubernetes quantity" $size) }}
+{{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -10,5 +17,5 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.persistence.size }}
+      storage: {{ $size }}
 {{- end }}

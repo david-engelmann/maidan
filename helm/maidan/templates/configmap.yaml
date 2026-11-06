@@ -6,6 +6,14 @@ metadata:
     {{- include "maidan.labels" . | nindent 4 }}
 data:
   {{- /* Through tpl, so a value can name the release: the stack's S3_ENDPOINT. */}}
+  {{- /* Secret-shaped keys belong in a Secret / secretFiles mount, never here:
+       ConfigMap values show in `kubectl describe` and are not rotated like secrets. */}}
   {{- range $k, $v := .Values.config }}
+  {{- if or (eq $k "DATABASE_URL") (eq $k "MAIDAN_DB_REPLICA_URL") (eq $k "MAIDAN_RATE_LIMIT_REDIS_URL") (hasSuffix "_PASSWORD" $k) (hasSuffix "_SECRET" $k) (hasSuffix "_TOKEN" $k) (hasSuffix "_PRIVATE_KEY" $k) (hasSuffix "_API_KEY" $k) (hasSuffix "_ACCESS_KEY" $k) (hasSuffix "_ACCESS_KEY_ID" $k) (eq $k "S3_SECRET_ACCESS_KEY") (eq $k "MAIDAN_CONTENT_KEK") (eq $k "MAIDAN_CONTENT_KEK_PREVIOUS") (eq $k "FEDERATION_ENCRYPTION_KEY") (eq $k "FEDERATION_DECRYPT_KEYS") }}
+  {{- fail (printf "config.%s looks like a secret: put it in secrets / existingSecret / secretFiles, not config" $k) }}
+  {{- end }}
+  {{- if contains "CHANGE_ME" (toString $v) }}
+  {{- fail (printf "config.%s still holds the placeholder CHANGE_ME" $k) }}
+  {{- end }}
   {{ $k }}: {{ tpl (toString $v) $ | quote }}
   {{- end }}

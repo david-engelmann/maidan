@@ -1,4 +1,19 @@
 {{- if .Values.autoscaling.enabled }}
+{{- $min := int .Values.autoscaling.minReplicas }}
+{{- $max := int .Values.autoscaling.maxReplicas }}
+{{- if lt $min 1 }}
+{{- fail "autoscaling.minReplicas must be >= 1" }}
+{{- end }}
+{{- if lt $max $min }}
+{{- fail (printf "autoscaling.maxReplicas (%d) must be >= minReplicas (%d)" $max $min) }}
+{{- end }}
+{{- if gt $max 100 }}
+{{- fail "autoscaling.maxReplicas must be <= 100" }}
+{{- end }}
+{{- $cpu := int .Values.autoscaling.targetCPUUtilizationPercentage }}
+{{- if or (lt $cpu 1) (gt $cpu 100) }}
+{{- fail "autoscaling.targetCPUUtilizationPercentage must be 1..100" }}
+{{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -10,13 +25,13 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "maidan.fullname" . }}
-  minReplicas: {{ .Values.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  minReplicas: {{ $min }}
+  maxReplicas: {{ $max }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ $cpu }}
 {{- end }}
