@@ -2837,7 +2837,7 @@ pub fn clear_task_duplicate() {}
 ///
 /// Equality filters over the threads' task attributes, combined with AND:
 /// `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,
-/// `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and
+/// `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, `attr.repo`, and
 /// `ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to
 /// that thread. `engine`, `tier` and `lane` are also accepted bare. A
 /// thread with no stored attributes matches the defaults it reads with

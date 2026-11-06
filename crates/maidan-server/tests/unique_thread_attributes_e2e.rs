@@ -568,4 +568,59 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         .await,
     );
     assert_eq!(made["attributes"]["repo"], "example/api");
+
+    // A red-team review on the same ticket and repository is not a change:
+    // it never conflicts with the change that holds the pair.
+    let (status, review) = create_thread(
+        &base,
+        &room.token,
+        room.channel,
+        json!({
+            "title": "red-team the wax half",
+            "attributes": { "kind": "review", "linear_issue": "ENG-6598", "repo": "example/wax" }
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "a review never conflicts: {review}"
+    );
+
+    // Find-by-attribute filters on repo, read as owner/name.
+    let found: Value = reqwest::Client::new()
+        .get(format!(
+            "{base}/workspaces/{}/threads?attr.repo=https://github.com/Example/Wax",
+            room.ws.0
+        ))
+        .bearer_auth(&room.token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mut ids: Vec<&str> = found
+        .as_array()
+        .unwrap_or_else(|| panic!("a list: {found}"))
+        .iter()
+        .map(|thread| {
+            assert_eq!(thread["attributes"]["repo"], "example/wax", "{thread}");
+            thread["id"].as_str().unwrap()
+        })
+        .collect();
+    ids.sort_unstable();
+    let mut want = vec![wax["id"].as_str().unwrap(), review["id"].as_str().unwrap()];
+    want.sort_unstable();
+    assert_eq!(ids, want);
+    let refused = reqwest::Client::new()
+        .get(format!(
+            "{base}/workspaces/{}/threads?attr.repo=not%20a%20repo",
+            room.ws.0
+        ))
+        .bearer_auth(&room.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
 }

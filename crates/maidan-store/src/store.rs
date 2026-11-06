@@ -125,8 +125,8 @@ impl ThreadPageQuery {
 /// combine with AND. Matching follows how the attributes read: a thread
 /// with no attributes row reads as the defaults, so `kind` matches the
 /// default `change` and `threat_model` matches `false` for such a thread,
-/// while the optional fields (`engine`, `size`, `linear_issue`, `tier`,
-/// `lane`, `review_family`) match only a stored value — an unset tier is
+/// while the optional fields (`engine`, `size`, `linear_issue`, `repo`,
+/// `tier`, `lane`, `review_family`) match only a stored value — an unset tier is
 /// not `B` here, whatever the metrics count it as, because the stored
 /// value is what was said. `ref.<relation>` keeps the threads that hold a
 /// reference with that relation (its wire name: `twin_of`, `duplicates`,
@@ -142,6 +142,8 @@ pub struct ThreadAttributeFilter {
     pub threat_model: Option<bool>,
     pub size: Option<TaskSize>,
     pub linear_issue: Option<String>,
+    /// `owner/name`, lowercase, as the attribute is stored.
+    pub repo: Option<String>,
     pub tier: Option<TaskTier>,
     pub lane: Option<TaskLane>,
     pub review_family: Option<String>,
@@ -191,6 +193,12 @@ impl ThreadAttributeFilter {
                     }
                     filter.linear_issue = Some(value);
                 }
+                "repo" => {
+                    filter.repo = Some(
+                        maidan_types::normalize_repo(&value)
+                            .map_err(|_| bad("a repository such as owner/name"))?,
+                    );
+                }
                 "tier" => {
                     filter.tier =
                         Some(TaskTier::parse(&value).ok_or_else(|| bad("a task tier (A or B)"))?);
@@ -221,7 +229,7 @@ impl ThreadAttributeFilter {
                 _ => {
                     return Err(format!(
                         "unknown attribute filter {key:?}: filter on kind, engine, \
-                         threat_model, size, linear_issue, tier, lane, review_family or ref.<relation>"
+                         threat_model, size, linear_issue, repo, tier, lane, review_family or ref.<relation>"
                     ));
                 }
             }

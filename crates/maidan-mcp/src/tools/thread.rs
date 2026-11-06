@@ -150,7 +150,7 @@ struct FindThreadsArgs {
     #[serde(default)]
     workspace_id: Option<uuid::Uuid>,
     /// Attribute equality filters by field name: kind, engine,
-    /// threat_model, size, linear_issue, tier, lane and review_family.
+    /// threat_model, size, linear_issue, repo, tier, lane and review_family.
     /// Values are the fields' wire forms (`"pi"`, `"A"`, `"true"`).
     #[serde(default)]
     attr: Option<std::collections::BTreeMap<String, Value>>,

@@ -536,14 +536,20 @@ ticket carries `linear_issue` and `repo`:
 
 `repo` is `owner/name` (a GitHub URL is read as its `owner/name`, and any case
 is folded). A thread missing either attribute is not held to the rule, so a
-router that leaves out `repo` gets no protection.
+router that leaves out `repo` gets no protection. Find-by-attribute filters on
+it too: `GET /workspaces/{id}/threads?attr.repo=example/wax`, or MCP
+`find_threads` with `attr.repo`.
 
 **The setting.** `PUT /workspaces/{id}/unique-thread-attributes` with
 `{"unique": [["linear_issue", "repo"]]}` (`token:admin`, audited as
 `workspace.unique_thread_attributes.set`) lists key sets. Each set is unique as
 a tuple among the workspace's **open** threads: no two open threads that both
 give every key of the set may give the same values for all of them. A thread
-that lacks any key of a set is not checked against that set. A single-key set
+that lacks any key of a set is not checked against that set. Only threads of
+`kind: change` are held to the sets: a change is the work that owns a ticket.
+A review or plan thread on the same ticket and repository never conflicts and
+never holds a tuple. That covers a red-team review, which carries the ticket
+and the repository of the change it reviews. A single-key set
 works too: `[["linear_issue"]]` is one open thread per ticket whatever the
 repository. `{"unique": []}`, the default, keeps nothing unique, an empty set
 is refused, and `GET` reads the setting (`workspace:read`). Today the keys are

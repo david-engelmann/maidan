@@ -242,6 +242,77 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
     .await
     .expect("a thread without a ticket is not constrained");
 
+    // A review (or a plan) on the held pair is not a change: it never
+    // conflicts, and it holds nothing a later change could conflict with.
+    for kind in [TaskKind::Review, TaskKind::Plan] {
+        create(
+            store.as_ref(),
+            room.channel,
+            "red-team",
+            Some(TaskAttributes {
+                kind,
+                ..ticket_in("ENG-6598", "example/wax")
+            }),
+        )
+        .await
+        .expect("only changes are held to the set");
+    }
+    let review_first = create(
+        store.as_ref(),
+        room.channel,
+        "review first",
+        Some(TaskAttributes {
+            kind: TaskKind::Review,
+            ..ticket_in("ENG-8000", "example/wax")
+        }),
+    )
+    .await
+    .unwrap();
+    let change = create(
+        store.as_ref(),
+        room.channel,
+        "change after its review",
+        Some(ticket_in("ENG-8000", "example/wax")),
+    )
+    .await
+    .expect("an open review holds nothing");
+    assert_ne!(change.id, review_first.id);
+
+    // Find-by-attribute filters on repo, read as owner/name.
+    let filter = maidan_store::store::ThreadAttributeFilter::from_pairs([
+        (
+            "repo".to_string(),
+            "https://github.com/Example/Wax".to_string(),
+        ),
+        ("kind".to_string(), "change".to_string()),
+    ])
+    .unwrap();
+    let found = store
+        .find_threads_for_workspace(
+            room.ws,
+            maidan_store::store::WorkspaceThreadSearch {
+                filter,
+                limit: 50,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let titles: Vec<_> = found
+        .iter()
+        .map(|t| t.title.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        titles,
+        vec!["wax half", "repo only", "change after its review"],
+        "the changes in example/wax, oldest first"
+    );
+    assert!(maidan_store::store::ThreadAttributeFilter::from_pairs([(
+        "repo".to_string(),
+        "not a repo".to_string()
+    )])
+    .is_err());
+
     // A later set naming the held pair is refused; naming a free pair is not.
     let later = create(store.as_ref(), room.channel, "later", None)
         .await

@@ -52,7 +52,12 @@ pub(crate) async fn refuse_held_on(
     thread_id: ThreadId,
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
-    if attributes.linear_issue.is_none() && attributes.repo.is_none() {
+    // Only a change owns its ticket: a review or a plan carrying the same
+    // ticket and repository (a red-team review of the change, a planner's
+    // parent) never conflicts, and is never a holder either.
+    if attributes.kind != TaskKind::Change
+        || (attributes.linear_issue.is_none() && attributes.repo.is_none())
+    {
         return Ok(());
     }
     // A closed, archived or erased thread holds nothing, so setting
@@ -92,7 +97,7 @@ pub(crate) async fn refuse_held_on(
             "SELECT t.id FROM maidan_threads t
              JOIN maidan_channels c ON c.id = t.channel_id
              JOIN maidan_thread_attributes a ON a.thread_id = t.id
-             WHERE c.workspace_id = ? AND {} AND t.id <> ?
+             WHERE a.kind = 'change' AND c.workspace_id = ? AND {} AND t.id <> ?
                AND t.state NOT IN ('closed', 'archived') AND t.tombstoned_at IS NULL
              ORDER BY t.created_at, t.id
              LIMIT 1",

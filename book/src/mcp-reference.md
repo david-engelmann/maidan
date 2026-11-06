@@ -3405,7 +3405,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `find_threads`
 
-**Find threads.** Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing (an unused relation is an empty result too). Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order; a cursor that is not a thread you can read in your workspace is refused); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.
+**Find threads.** Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, repo, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing (an unused relation is an empty result too). Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order; a cursor that is not a thread you can read in your workspace is refused); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.
 
 **Capability:** `workspace:read`
 
@@ -3415,7 +3415,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "attr": {
-      "description": "Attribute equality filters by field name: kind, engine, threat_model, size, linear_issue, tier, lane, review_family. Values are the fields' wire forms.",
+      "description": "Attribute equality filters by field name: kind, engine, threat_model, size, linear_issue, repo, tier, lane, review_family. Values are the fields' wire forms.",
       "type": "object"
     },
     "cursor": {
