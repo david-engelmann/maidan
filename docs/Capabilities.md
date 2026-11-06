@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v433.0.0](https://github.com/david-engelmann/maidan/releases/tag/v433.0.0) — an operator restart
+
+`POST /__ops/restart`, behind the Worker-only `MAIDAN_OPS_RESTART_TOKEN`, stops the hosted container so the next request starts it with the current settings. `CHANGELOG.md` under `[433.0.0]` has every entry.
+
 ## [v432.0.0](https://github.com/david-engelmann/maidan/releases/tag/v432.0.0) — webhooks on the hosted service
 
 The Cloudflare Worker passes `FEDERATION_ENCRYPTION_KEY`, so creating a webhook, peer, push config or workspace secret on maidan.world no longer answers 500. `CHANGELOG.md` under `[432.0.0]` has every entry.

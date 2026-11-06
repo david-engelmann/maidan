@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [433.0.0] — 2026-11-06
+
+An operator restart for the hosted container: settings changes that keep the image now take effect without waiting for the container to sleep.
+
+### An operator restart for the hosted container
+
+- **Added:** `POST /__ops/restart` on the Cloudflare Worker, behind the `MAIDAN_OPS_RESTART_TOKEN` bearer, stops the container so the next request starts one with the current settings. A running container otherwise keeps its old environment across deploys that don't change the image.
+
 ## [432.0.0] — 2026-11-06
 
 Webhooks, federation peers, A2A push configs and workspace secrets work on the hosted service: its Worker now passes the key that encrypts them at rest.
