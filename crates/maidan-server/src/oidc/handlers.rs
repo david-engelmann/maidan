@@ -131,6 +131,7 @@ pub async fn login(
             expires_at,
             invite_entry_id: None,
             workspace_invite_id: None,
+            workspace_name: None,
         })
         .await?;
 
@@ -191,7 +192,7 @@ pub async fn signup(
     headers: HeaderMap,
     ApiQuery(q): ApiQuery<crate::dto::OidcSignupQuery>,
 ) -> Result<Response, ApiError> {
-    start_signup(&state, &headers, q, None).await
+    start_signup(&state, &headers, q, None, false).await
 }
 
 /// `POST /auth/oidc/signup` — the same start, with the Turnstile token in a
@@ -205,8 +206,9 @@ pub async fn signup_form(
     let q = crate::dto::OidcSignupQuery {
         invite: form.invite,
         return_to: form.return_to,
+        workspace_name: form.workspace_name,
     };
-    let mut res = start_signup(&state, &headers, q, form.turnstile.as_deref()).await?;
+    let mut res = start_signup(&state, &headers, q, form.turnstile.as_deref(), true).await?;
     if res.status().is_redirection() {
         *res.status_mut() = axum::http::StatusCode::SEE_OTHER;
     }
@@ -214,12 +216,14 @@ pub async fn signup_form(
 }
 
 /// Start a sign-up. Only the form POST carries a Turnstile token; a token
-/// in the GET query is not read.
+/// in the GET query is not read. `from_form` is the console's POST: a
+/// browser GET is sent to that form first so the workspace can be named.
 async fn start_signup(
     state: &AppState,
     headers: &HeaderMap,
     q: crate::dto::OidcSignupQuery,
     turnstile_token: Option<&str>,
+    from_form: bool,
 ) -> Result<Response, ApiError> {
     let oidc = state
         .oidc
@@ -235,6 +239,32 @@ async fn start_signup(
         return Err(ApiError::NotFound);
     }
 
+    // No invite, and the instance does not accept a domain or an open
+    // sign-up: say so before drawing the form, which could not succeed.
+    if !workspace_invite
+        && q.invite.is_none()
+        && oidc.settings.signup_email_domains.is_empty()
+        && !oidc.settings.signup_open
+    {
+        return Err(ApiError::Forbidden("sign-up is by invite".into()));
+    }
+
+    // A name is only for a workspace this sign-up creates. Joining one by
+    // invite ignores it. Checked before the provider round trip, and before
+    // a browser is sent to the form, so a bad name is a 400.
+    let workspace_name = if workspace_invite {
+        None
+    } else {
+        crate::routes::signup_workspace_name(q.workspace_name.as_deref())?
+    };
+
+    // A browser that arrived by the invite link names the workspace on the
+    // console, then posts the form. An API caller has no page and starts
+    // here; a blank name is filled in at the callback.
+    if !from_form && !workspace_invite && accepts_html(headers) {
+        return Ok(Redirect::to(&signup_check_path(&q, workspace_name.as_deref())).into_response());
+    }
+
     // The check runs before the invite is looked up, so a caller who has
     // not passed it learns nothing about which invites exist (#1631).
     if let Some(turnstile) = state.turnstile.as_deref() {
@@ -243,7 +273,9 @@ async fn start_signup(
         // solved anything yet: send it to the console's check, which comes
         // back with a token. Any other caller is refused outright.
         if token.is_empty() && accepts_html(headers) {
-            return Ok(Redirect::to(&signup_check_path(&q)).into_response());
+            return Ok(
+                Redirect::to(&signup_check_path(&q, workspace_name.as_deref())).into_response(),
+            );
         }
         crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;
     }
@@ -304,6 +336,7 @@ async fn start_signup(
             expires_at,
             invite_entry_id,
             workspace_invite_id: None,
+            workspace_name,
         })
         .await?;
 
@@ -318,9 +351,10 @@ fn accepts_html(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.contains("text/html"))
 }
 
-/// The console page that renders the sign-up check and then starts the
-/// sign-up again with the token, carrying the invite and return path.
-fn signup_check_path(q: &crate::dto::OidcSignupQuery) -> String {
+/// The console page that renders the sign-up form (and the Turnstile
+/// check, when the instance runs one) and posts back here. The invite,
+/// return path and chosen name ride on the query so a refresh keeps them.
+fn signup_check_path(q: &crate::dto::OidcSignupQuery, workspace_name: Option<&str>) -> String {
     let mut path = "/ui/?signup_check=1".to_string();
     if let Some(invite) = q.invite.as_deref() {
         path.push_str("&invite=");
@@ -329,6 +363,10 @@ fn signup_check_path(q: &crate::dto::OidcSignupQuery) -> String {
     if let Some(return_to) = q.return_to.as_deref() {
         path.push_str("&return_to=");
         path.push_str(&urlencoding::encode(return_to));
+    }
+    if let Some(name) = workspace_name {
+        path.push_str("&workspace_name=");
+        path.push_str(&urlencoding::encode(name));
     }
     path
 }
@@ -422,7 +460,12 @@ async fn complete_signup(
         .await?;
 
     let handle = crate::oidc::member::handle_from_claims(&subject, Some(&email));
-    let workspace_name = format!("{handle}'s workspace");
+    // Chosen at the start, when the handle did not exist yet. Blank then
+    // is still blank: the workspace takes the handle's name.
+    let workspace_name = match pending.workspace_name.as_deref() {
+        Some(name) => crate::routes::normalize_workspace_name(name)?,
+        None => format!("{handle}'s workspace"),
+    };
     let session_expires_at = Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64);
     let outcome = state
         .store

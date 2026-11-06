@@ -58,6 +58,16 @@ export function cursorDeeplink(base: string, encode: (s: string) => string = bto
   return `cursor://anysphere.cursor-deeplink/mcp/install?name=maidan&config=${encodeURIComponent(encode(JSON.stringify(server(base))))}`;
 }
 
+/** Cursor's install link for OAuth: the URL only, so the browser signs the person in. */
+export function cursorOAuthDeeplink(base: string, encode: (s: string) => string = btoa): string {
+  return `cursor://anysphere.cursor-deeplink/mcp/install?name=maidan&config=${encodeURIComponent(encode(JSON.stringify({ url: mcpUrl(base) })))}`;
+}
+
+/** VS Code's install link for OAuth: the URL only, so the browser signs the person in. */
+export function vscodeOAuthDeeplink(base: string): string {
+  return `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "maidan", type: "http", url: mcpUrl(base) }))}`;
+}
+
 export function llmsTxt(base: string): string {
   return `${base.replace(/\/$/, "")}/llms.txt`;
 }

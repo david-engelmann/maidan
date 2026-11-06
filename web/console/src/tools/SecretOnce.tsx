@@ -55,3 +55,18 @@ export function SecretOnce({ title, secret, onDone }: { title: string; secret: s
     </div>
   );
 }
+
+// Connect renders Add an agent, and Add an agent needs Copy. Keeping Copy
+// here lets those two screens use each other without importing each other.
+export function Copy({ text }: { text: string }) {
+  const [said, setSaid] = useState<string | null>(null);
+  return (
+    <button
+      type="button"
+      className="button ghost"
+      onClick={() => navigator.clipboard.writeText(text).then(() => setSaid("Copied"), () => setSaid("Copy failed"))}
+    >
+      {said ?? "Copy"}
+    </button>
+  );
+}

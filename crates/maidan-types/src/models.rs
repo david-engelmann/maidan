@@ -3613,6 +3613,10 @@ pub struct OidcPendingAuth {
     /// The workspace invite this sign-in accepts. Set only on a `Workspace`
     /// row started with `?invite=`; the callback accepts it in one commit.
     pub workspace_invite_id: Option<crate::WorkspaceInviteId>,
+    /// The display name chosen before the provider round trip, on a sign-up
+    /// only. The handle the default name needs is not known until the
+    /// callback, so a blank choice is stored as `None` and filled in then.
+    pub workspace_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -3627,6 +3631,8 @@ pub struct NewOidcPendingAuth {
     pub invite_entry_id: Option<WaitlistEntryId>,
     /// See [`OidcPendingAuth::workspace_invite_id`].
     pub workspace_invite_id: Option<crate::WorkspaceInviteId>,
+    /// See [`OidcPendingAuth::workspace_name`].
+    pub workspace_name: Option<String>,
 }
 
 /// Where a waitlist entry stands. `waiting` until an operator invites it,

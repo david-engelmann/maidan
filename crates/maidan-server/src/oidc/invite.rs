@@ -65,6 +65,7 @@ pub(super) async fn start(
             expires_at,
             invite_entry_id: None,
             workspace_invite_id: Some(invite.id),
+            workspace_name: None,
         })
         .await?;
     authorize_redirect(oidc, state_token, nonce, &pkce_verifier)

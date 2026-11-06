@@ -37,8 +37,9 @@ test("every file the page loads is served by the Worker, not the container", () 
   for (const ref of [...page.matchAll(/(?:href|src)="(\/[^"]*)"/g)].map((m) => m[1])) {
     assert.ok(TRY_PATHS.has(ref), `${ref} is not in TRY_PATHS`);
   }
-  for (const ref of [...script.matchAll(/from "(\/[^"]+)"/g)].map((m) => m[1])) {
-    assert.ok(TRY_PATHS.has(ref), `${ref} is not in TRY_PATHS`);
+  for (const ref of [...script.matchAll(/from "([^"]+)"/g)].map((m) => m[1])) {
+    const path = ref.startsWith("/") ? ref : `/${ref.replace(/^\.\//, "")}`;
+    assert.ok(TRY_PATHS.has(path), `${ref} is not in TRY_PATHS`);
   }
   const css = readFileSync(new URL("../try/try.css", import.meta.url), "utf8");
   for (const ref of [...css.matchAll(/url\("(\/[^"]+)"\)/g)].map((m) => m[1])) {

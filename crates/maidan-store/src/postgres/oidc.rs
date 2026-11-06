@@ -145,8 +145,8 @@ pub async fn list_subject_workspaces(
 pub async fn insert_pending(pool: &PgPool, new: NewOidcPendingAuth) -> Result<(), StoreError> {
     sqlx::query(
         "INSERT INTO maidan_oidc_pending
-            (state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            (state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, workspace_name, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&new.state)
     .bind(new.target.kind())
@@ -156,6 +156,7 @@ pub async fn insert_pending(pool: &PgPool, new: NewOidcPendingAuth) -> Result<()
     .bind(new.return_to.as_deref())
     .bind(new.invite_entry_id.map(|id| id.0))
     .bind(new.workspace_invite_id.map(|id| id.0))
+    .bind(new.workspace_name.as_deref())
     .bind(new.expires_at)
     .execute(pool)
     .await?;
@@ -166,7 +167,7 @@ pub async fn take_pending(pool: &PgPool, state: &str) -> Result<OidcPendingAuth,
     let row = sqlx::query(
         "DELETE FROM maidan_oidc_pending
          WHERE state = $1 AND expires_at > NOW()
-         RETURNING state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, expires_at",
+         RETURNING state, kind, workspace_id, nonce, pkce_verifier, return_to, invite_entry_id, workspace_invite_id, workspace_name, expires_at",
     )
     .bind(state)
     .fetch_optional(pool)
@@ -185,6 +186,7 @@ pub async fn take_pending(pool: &PgPool, state: &str) -> Result<OidcPendingAuth,
         workspace_invite_id: row
             .get::<Option<Uuid>, _>("workspace_invite_id")
             .map(maidan_types::WorkspaceInviteId),
+        workspace_name: row.get("workspace_name"),
     })
 }
 

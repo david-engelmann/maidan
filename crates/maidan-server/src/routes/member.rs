@@ -18,22 +18,41 @@ use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::session::SessionContext;
 use crate::state::AppState;
 
-/// `GET /me` — the caller's own identity. Reflects the request's auth
-/// (member/workspace/capabilities), so an agent handed only a base URL + token
-/// can discover which member the server will attribute writes to.
-/// `workspace:read`.
-pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<WhoAmI>> {
+/// `GET /me` — the caller's own identity, so an agent handed only a base URL
+/// and a token can discover which member the server will attribute writes to.
+/// `workspace:read`. A bearer's capabilities are that token's grant. An OIDC
+/// browser session's are what the console can do with the session, not only
+/// the read router this GET is mounted on.
+pub async fn get_me(
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+) -> ApiResult<Json<WhoAmI>> {
     cap(&auth, WORKSPACE_READ)?;
+    // This route sits on the read router, so an OIDC session's request
+    // authority is only the read set. The same session posts, edits, uploads
+    // and moves tasks on the write routes, and a viewer invite stays on the
+    // read set. The card has to name that, or a signed-in person reads "Can't"
+    // for work the console does. A session made from a token keeps that
+    // token's grant: `auth_context` ignores the console set when a token is
+    // present. A bearer has no session, so the grant is the token's own.
+    let reported = match &session {
+        Some(Extension(session)) => session
+            .auth_context(crate::auth::OIDC_WRITE_CAPABILITIES)
+            .capabilities()
+            .to_vec(),
+        None => auth.capabilities().to_vec(),
+    };
+    let capability_sets = maidan_auth::held_sets(&reported);
     Ok(Json(WhoAmI {
         actor_id: auth.actor_id.0,
         member_id: auth.member_id.0,
         delegation_grant_id: auth.delegation_grant_id.map(|id| id.0),
         workspace_id: auth.workspace_id.0,
-        capabilities: auth.capabilities().to_vec(),
+        capabilities: reported,
         is_bearer: auth.token_id.is_some(),
         token_id: auth.token_id.map(|id| id.0),
         known_capabilities: maidan_auth::capability::all(),
-        capability_sets: maidan_auth::held_sets(auth.capabilities()),
+        capability_sets,
     }))
 }
 

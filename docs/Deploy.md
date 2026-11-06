@@ -230,8 +230,11 @@ off, and `scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if
 release.yml stops passing `MAIDAN_ENABLE_BOOTSTRAP=0` to a stock leg, or tags
 the demo image `latest`.
 
-**Deploy.** `.github/workflows/deploy-demo.yml` runs on a published release, or
-on a dispatch with a tag. It does nothing unless the repository variable
+**Deploy.** `.github/workflows/deploy-demo.yml` runs when `release.yml`
+dispatches it for the tag it just published, or on a dispatch with a tag.
+A release created with the workflow's `GITHUB_TOKEN` does not trigger
+`release: published`, so that event never starts this workflow on its own.
+It does nothing unless the repository variable
 `DEMO_DOMAIN` is `true`. It checks that the tag is on `main` and cosign-verifies
 `maidan-server:<tag>`. It then builds `deploy/cloudflare/demo/Dockerfile`,
 which copies the binary by digest onto Debian with bash and openssl and

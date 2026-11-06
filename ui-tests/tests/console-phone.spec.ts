@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
 import { openOnChannel, signInWithCookie } from "./_console";
+import { laidOutBox } from "./_layout";
 
 const fx = fixtures();
 
@@ -49,7 +50,16 @@ test.describe("on a phone", () => {
     await openOnChannel(page, fx.board_channel_id, "#/needs");
     const rows = page.locator(".need-actions");
     test.skip((await rows.count()) === 0, "nothing waiting in this seed");
-    const tops = await rows.first().locator(".btn").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    expect(new Set(tops).size).toBe(1);
+    const actions = rows.first().locator(".btn");
+    await laidOutBox(actions.first());
+    await expect.poll(async () => {
+      const tops = await actions.evaluateAll((els) =>
+        els.map((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 ? Math.round(r.top) : null;
+        }),
+      );
+      return tops.length > 0 && tops.every((t) => t !== null) && new Set(tops).size === 1;
+    }).toBe(true);
   });
 });

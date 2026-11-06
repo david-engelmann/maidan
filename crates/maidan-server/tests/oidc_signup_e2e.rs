@@ -225,6 +225,44 @@ impl Env {
             .await
             .unwrap()
     }
+
+    /// Follow a sign-up start (the form's 303 or the API's 307) through the
+    /// mock provider and return the callback response.
+    async fn finish_signup(
+        &self,
+        start: reqwest::Response,
+        subject: &str,
+        email: &str,
+    ) -> reqwest::Response {
+        assert!(
+            start.status().is_redirection(),
+            "signup start {}",
+            start.status()
+        );
+        let location = start.headers()[reqwest::header::LOCATION]
+            .to_str()
+            .unwrap()
+            .replace("mock_sub=mock-user", &format!("mock_sub={subject}"))
+            .replace(
+                "mock_email=human@example.com",
+                &format!("mock_email={email}"),
+            );
+        self.client
+            .get(format!("{}{location}", self.base))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn workspace_name_for(&self, subject: &str) -> String {
+        let rows = self
+            .store
+            .list_subject_workspaces(ISSUER, subject, 10)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "{subject} should have one workspace");
+        rows[0].workspace_name.clone()
+    }
 }
 
 fn session_cookie(res: &reqwest::Response) -> String {
@@ -518,6 +556,110 @@ async fn a_listed_domain_signs_up_without_an_invite() {
         )
         .await;
     assert_eq!(callback.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_sign_up_names_its_workspace_and_a_blank_or_bad_name_follows_the_rule() {
+    let env = spawn(true, vec!["example.org".to_string()]).await;
+
+    // A browser is shown the form before any workspace exists, keeping a
+    // name it already sent so the field can be pre-filled.
+    let browser = env
+        .client
+        .get(format!("{}/auth/oidc/signup", env.base))
+        .header(reqwest::header::ACCEPT, "text/html")
+        .query(&[("workspace_name", "North Room")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(browser.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        browser.headers()[reqwest::header::LOCATION]
+            .to_str()
+            .unwrap(),
+        "/ui/?signup_check=1&workspace_name=North%20Room"
+    );
+    assert_eq!(env.store.count_workspaces().await.unwrap(), 0);
+
+    // The form posts the name. Surrounding space is not part of it.
+    let posted = env
+        .client
+        .post(format!("{}/auth/oidc/signup", env.base))
+        .form(&[("workspace_name", "  North Room  "), ("return_to", "/ui/")])
+        .send()
+        .await
+        .unwrap();
+    let posted = env
+        .finish_signup(posted, "sub-ada", "ada@example.org")
+        .await;
+    assert_eq!(posted.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(env.workspace_name_for("sub-ada").await, "North Room");
+
+    // The field left blank, as the form sends it, uses the handle.
+    let blank = env
+        .client
+        .post(format!("{}/auth/oidc/signup", env.base))
+        .form(&[("workspace_name", "   ")])
+        .send()
+        .await
+        .unwrap();
+    let blank = env
+        .finish_signup(blank, "sub-grace", "grace@example.org")
+        .await;
+    assert_eq!(blank.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(
+        env.workspace_name_for("sub-grace").await,
+        "grace's workspace"
+    );
+
+    // An API caller that omits the field is unchanged.
+    let omitted = env
+        .signup_roundtrip(
+            format!("{}/auth/oidc/signup", env.base),
+            "sub-linus",
+            "linus@example.org",
+        )
+        .await;
+    assert_eq!(omitted.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(
+        env.workspace_name_for("sub-linus").await,
+        "linus's workspace"
+    );
+
+    let before = env.store.count_workspaces().await.unwrap();
+    let over = "n".repeat(201);
+    let too_long = env
+        .client
+        .post(format!("{}/auth/oidc/signup", env.base))
+        .form(&[("workspace_name", over.as_str())])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
+    let too_long_body = too_long.text().await.unwrap();
+    assert!(too_long_body.contains("200"), "{too_long_body}");
+
+    let control = env
+        .client
+        .get(format!("{}/auth/oidc/signup", env.base))
+        .query(&[("workspace_name", "North\nRoom")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(control.status(), StatusCode::BAD_REQUEST);
+    let control_body = control.text().await.unwrap();
+    assert!(control_body.contains("control"), "{control_body}");
+    // A browser is not shown the form for a name the server will refuse.
+    let control_page = env
+        .client
+        .get(format!("{}/auth/oidc/signup", env.base))
+        .header(reqwest::header::ACCEPT, "text/html")
+        .query(&[("workspace_name", "North\nRoom")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(control_page.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(env.store.count_workspaces().await.unwrap(), before);
 }
 
 #[tokio::test]

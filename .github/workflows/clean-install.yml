@@ -3,8 +3,11 @@ name: clean-machine install
 # Next 14's clean-machine install, on a fresh runner against what a release
 # publishes: no checkout, no Rust toolchain, no source build. The runner fetches
 # scripts/clean-machine-install.sh at the release tag and runs it with STRICT=1,
-# so a quickstart pinned to a different release fails. Report-only: it is not a
-# required check, and it never runs on pull requests.
+# so a quickstart pinned to a different release fails. release.yml dispatches
+# this for the tag it just published: a release created with GITHUB_TOKEN does
+# not trigger `release: published`. The weekly cron is the backstop for an
+# asset that goes missing later. Report-only: it is not a required check, and
+# it never runs on pull requests.
 
 on:
   release:
