@@ -3109,6 +3109,30 @@ pub fn get_workspace_review_children() {}
     ))]
 pub fn set_workspace_review_children() {}
 
+/// The task attributes no two open threads in the workspace may share a value of
+#[utoipa::path(get, path = "/workspaces/{id}/unique-thread-attributes", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceUniqueThreadAttributes),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_unique_thread_attributes() {}
+
+/// Replace the task attributes no two open threads in the workspace may share a value of
+#[utoipa::path(put, path = "/workspaces/{id}/unique-thread-attributes", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = WorkspaceUniqueThreadAttributes,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceUniqueThreadAttributes),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_workspace_unique_thread_attributes() {}
+
 /// Remove a slot's capacity
 #[utoipa::path(delete, path = "/workspaces/{id}/slots", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SlotQuery),

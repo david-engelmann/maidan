@@ -264,6 +264,29 @@ struct CreateThreadArgs {
     priority: Option<i64>,
 }
 
+/// The refusal for a thread write the store turned down because another open
+/// thread holds a value the workspace keeps unique, naming that thread only
+/// when the caller may read it, as the REST 409 does. Any other error
+/// converts as usual.
+pub(super) async fn disclose_holder(
+    store: &dyn Store,
+    auth: &AuthContext,
+    err: maidan_store::StoreError,
+) -> McpError {
+    let maidan_store::StoreError::AttributeHeld { holder, .. } = &err else {
+        return err.into();
+    };
+    let holder = *holder;
+    let readable = matches!(
+        maidan_auth::can_access_thread(store, auth, holder).await,
+        Ok(true)
+    );
+    McpError::AttributeHeld {
+        message: err.to_string(),
+        holder: readable.then_some(holder),
+    }
+}
+
 /// Create a thread. `workspace:write` plus channel access, same as
 /// `POST /channels/:cid/threads`. The store enforces parent placement and the
 /// spawn budget; a refused spawn is recorded as `ThreadSpawnDenied`.
@@ -305,6 +328,12 @@ pub(super) async fn create_thread(
             a.priority,
         )
         .await;
+    let created = match created {
+        Err(err @ maidan_store::StoreError::AttributeHeld { .. }) => {
+            return Err(disclose_holder(server.store.as_ref(), auth, err).await);
+        }
+        created => created,
+    };
     let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
     // With no engine given, the workspace's default engine may have routed
     // the thread, so the attributes it reads with are read back.
@@ -1591,10 +1620,11 @@ struct SetThreadAttributesArgs {
 /// `PUT /threads/:id/attributes`.
 pub(super) async fn set_thread_attributes(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetThreadAttributesArgs = crate::tools::parse_args(args)?;
-    let stored = store
+    let set = store
         .set_thread_attributes(
             ThreadId(a.thread_id),
             maidan_types::TaskAttributes {
@@ -1612,7 +1642,11 @@ pub(super) async fn set_thread_attributes(
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,
         )
-        .await?;
+        .await;
+    let stored = match set {
+        Ok(stored) => stored,
+        Err(err) => return Err(disclose_holder(store.as_ref(), auth, err).await),
+    };
     Ok(content_json(&stored))
 }
 

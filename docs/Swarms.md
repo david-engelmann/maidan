@@ -514,6 +514,53 @@ What the rule does not cover:
   restore a review already held by a member of the author's family; import
   checks only that the holder belongs to the imported workspace.
 
+### One owner per ticket
+
+A ticket should have one owner at a time. When the router stamps a thread
+with its Linear issue (`"linear_issue": "ENG-1234"`), nothing else stops a
+second path from opening another thread on the same ticket: ENG-6598 got a
+hosted Pi draft and a laptop session pull request at once. A workspace can
+make that a refusal. `PUT /workspaces/{id}/unique-thread-attributes` with
+`{"keys": ["linear_issue"]}` (`token:admin`, audited as
+`workspace.unique_thread_attributes.set`) keeps the listed attributes unique
+among the workspace's **open** threads; `{"keys": []}`, the default, keeps
+nothing unique, and `GET` reads it (`workspace:read`). `linear_issue` is the
+only key it takes today: the other attributes are kinds and routing, where
+"only one open thread" is a WIP limit, not ownership.
+
+With it on, a thread write that would give a second open thread the same
+ticket is refused and writes nothing:
+
+- **Where.** Creating a thread with the ticket (REST
+  `POST /channels/{cid}/threads`, MCP `create_thread`, and every other create
+  path that stores attributes, plan children included), and setting
+  attributes on an open thread (`PUT /threads/{id}/attributes`, MCP
+  `set_thread_attributes`).
+- **The answer.** REST answers `409` with type
+  `https://maidan.world/problems/conflict` and `holder_thread_id`, the open
+  thread holding the ticket. MCP answers error `-32011`, with `data.status`
+  `409`, the same `data.type` and `data.holder_thread_id`. The holder is named
+  only when the caller may read it; a caller outside its private channel or
+  DM learns that the ticket is taken, not by which thread. Work in the holder,
+  or close it first.
+- **What holds.** A thread that is not closed, archived or erased, in the same
+  workspace. Closing the holder frees the ticket, so a ticket can be reworked
+  after it closes; another workspace's threads never count; a thread with no
+  ticket never conflicts; and the holder may restate its own ticket. A closed
+  thread can be given any ticket, since it holds nothing.
+- **Races.** Two writers of one ticket cannot both win. On Postgres each takes
+  a transaction-scoped advisory lock on (workspace, key, value) before looking
+  for a holder, so the second waits for the first to commit and then sees its
+  thread. On SQLite the check runs inside a transaction that already holds the
+  database's one write lock. A unique index cannot express the rule, because
+  whether a value is held depends on the workspace's setting and on the other
+  thread's state.
+
+What it does not do: turning it on does not close duplicates already open (the
+next write on such a ticket is refused), reopening a closed thread is not
+checked, and a planner that stamps the parent's ticket on each plan child is
+refused while the parent is open, so put the ticket on the parent only.
+
 ### Claim and release comments on Linear
 
 A task's attributes may name the Linear issue it is for

@@ -25,10 +25,14 @@ pub async fn set_thread_attributes(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    Ok(Json(
-        state
-            .store
-            .set_thread_attributes(thread_id, body.validated().map_err(ApiError::BadRequest)?)
-            .await?,
-    ))
+    let attributes = body.validated().map_err(ApiError::BadRequest)?;
+    match state
+        .store
+        .set_thread_attributes(thread_id, attributes)
+        .await
+    {
+        Ok(stored) => Ok(Json(stored)),
+        // A value the workspace keeps unique, held by another open thread.
+        Err(err) => Err(crate::routes::disclose_holder(&state, &auth, err).await),
+    }
 }

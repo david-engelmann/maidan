@@ -1037,7 +1037,7 @@ pub async fn dispatch(
         "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
         "release_claim" => thread::release_claim(server, auth, args).await,
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
-        "set_thread_attributes" => thread::set_thread_attributes(store, args).await,
+        "set_thread_attributes" => thread::set_thread_attributes(store, auth, args).await,
         "submit_plan" => thread::submit_plan(server, auth, args).await,
         "amend_plan" => thread::amend_plan(server, auth, args).await,
         "watch_pull" => thread::watch_pull(server, auth, args).await,

@@ -7224,6 +7224,14 @@
           "detail": {
             "type": "string"
           },
+          "holder_thread_id": {
+            "description": "On a `conflict` 409 refusing a value the workspace keeps unique among\nits open threads: the open thread that holds it, when the caller may\nread that thread.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "must_refetch": {
             "description": "A CursorTooOld 409 is a must-refetch, never a silent clamp.",
             "type": "boolean"
@@ -12276,6 +12284,13 @@
         "additionalProperties": false,
         "type": "object"
       },
+      "UniqueAttributeKey": {
+        "description": "A task attribute a workspace can keep unique among its open threads.",
+        "enum": [
+          "linear_issue"
+        ],
+        "type": "string"
+      },
       "UnreadCount": {
         "description": "The unread-notification badge count for a member.",
         "properties": {
@@ -13471,6 +13486,23 @@
           "workspace_id",
           "reason",
           "suspended_at"
+        ],
+        "type": "object"
+      },
+      "WorkspaceUniqueThreadAttributes": {
+        "additionalProperties": false,
+        "description": "A workspace's unique thread attributes, read and set by\n`/workspaces/{id}/unique-thread-attributes`: no two open threads in the\nworkspace may hold the same value of any key listed. Empty by default.",
+        "properties": {
+          "keys": {
+            "description": "The attribute keys held unique, such as `linear_issue`.",
+            "items": {
+              "$ref": "#/components/schemas/UniqueAttributeKey"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
         ],
         "type": "object"
       },
@@ -37212,6 +37244,155 @@
           }
         ],
         "summary": "List a workspace's withdrawn messages",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/unique-thread-attributes": {
+      "get": {
+        "operationId": "get_workspace_unique_thread_attributes",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The task attributes no two open threads in the workspace may share a value of",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "operationId": "set_workspace_unique_thread_attributes",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceUniqueThreadAttributes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Replace the task attributes no two open threads in the workspace may share a value of",
         "tags": [
           "workspaces"
         ]

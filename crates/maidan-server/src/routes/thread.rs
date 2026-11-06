@@ -68,6 +68,12 @@ pub async fn create_thread(
             body.priority,
         )
         .await;
+    let created = match created {
+        Err(err @ maidan_store::StoreError::AttributeHeld { .. }) => {
+            return Err(super::disclose_holder(&state, &auth, err).await);
+        }
+        created => created,
+    };
     let actor = (!auth.bypass).then_some(auth.member_id);
     let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
     // The response carries the attributes the thread now reads with. With

@@ -259,7 +259,7 @@ export type PlanState = { blocked: number; closed: number; open: number; total: 
 export type PostDmMessage = { body: string; metadata?: unknown; };
 export type PreservedMessage = { author_id: MemberId; body: string; channel_id: ChannelId; content?: ContentBlock[] | null; edits: MessageEdit[]; message_id: MessageId; posted_at: string; thread_id: ThreadId; tombstoned_at: string; };
 export type PriceSnapshot = { cache_read_usd_micros_per_million: number; cache_write_1h_usd_micros_per_million: number; cache_write_5m_usd_micros_per_million: number; input_usd_micros_per_million: number; output_usd_micros_per_million: number; };
-export type ProblemDetails = { children?: PlannedChild[] | null; conflicts?: FootprintConflict[] | null; detail: string; must_refetch?: boolean; quota_bytes?: number | null; snapshot?: string | null; status: number; title: string; type: string; upload_bytes?: number | null; used_bytes?: number | null; };
+export type ProblemDetails = { children?: PlannedChild[] | null; conflicts?: FootprintConflict[] | null; detail: string; holder_thread_id?: string | null; must_refetch?: boolean; quota_bytes?: number | null; snapshot?: string | null; status: number; title: string; type: string; upload_bytes?: number | null; used_bytes?: number | null; };
 export type ProtectedResourceMetadata = { authorization_servers: string[]; bearer_methods_supported: string[]; resource: string; resource_name: string; };
 export type ProviderRollup = SliceNumbers & { provider?: string | null; };
 export type ProvisionedWorkspace = { member: Member; token: MintApiTokenResponse; workspace: Workspace; };
@@ -434,6 +434,7 @@ export type TransitionAction = "start_review" | "close" | "archive";
 export type TransitionThread = { action: TransitionAction; };
 export type TriageIntakeItem = { channel_id?: string | null; decision: IntakeTriageDecision; reason?: string | null; thread_id?: string | null; };
 export type UnassignThread = Record<string, unknown>;
+export type UniqueAttributeKey = "linear_issue";
 export type UnreadCount = { count: number; };
 export type UsageEvidence = { batch?: boolean; cache_key?: string | null; cache_miss_reason?: string | null; effort?: string | null; harness?: string | null; harness_version?: string | null; pack_sha256?: string[]; provider?: string | null; service_tier?: string | null; standard_price?: null | PriceSnapshot; };
 export type UsageLedgerEntry = { accepted_at: string; budget: ThreadBudget; claim_failed_event_id?: number | null; evidence: UsageEvidence; reason?: string | null; stamp: PayerStamp; stopped: boolean; thread_id: ThreadId; turns: number; usage_event_id: number; usage_report_id: string; };
@@ -470,6 +471,7 @@ export type WorkspaceInviteRole = "viewer" | "member";
 export type WorkspacePurgeResult = { api_tokens_revoked: number; artifact_shas?: string[]; artifacts_removed: number; content_keys_destroyed: number; embeddings_removed: number; events_removed: number; messages_purged: number; messages_tombstoned: number; occurred_at: string; references_removed: number; workspace_id: WorkspaceId; };
 export type WorkspaceReviewChildren = { review_children: ReviewChildren; };
 export type WorkspaceSuspension = { reason: string; suspended_at: string; suspended_by?: null | MemberId; workspace_id: WorkspaceId; };
+export type WorkspaceUniqueThreadAttributes = { keys: UniqueAttributeKey[]; };
 export type WorkspaceUsage = { channels: number; members: number; messages: number; threads: number; workspace_id: WorkspaceId; };
 
 /** Every METHOD + path template the server documents. */
@@ -682,6 +684,7 @@ export type ApiRoute =
   | "GET /workspaces/{id}/thread-lookup"
   | "GET /workspaces/{id}/threads"
   | "GET /workspaces/{id}/tombstones"
+  | "GET /workspaces/{id}/unique-thread-attributes"
   | "GET /workspaces/{id}/usage"
   | "GET /workspaces/{id}/usage-conformance"
   | "GET /workspaces/{id}/usage-meters"
@@ -889,6 +892,7 @@ export type ApiRoute =
   | "PUT /workspaces/{id}/review-children"
   | "PUT /workspaces/{id}/slots"
   | "PUT /workspaces/{id}/spawn-budget"
+  | "PUT /workspaces/{id}/unique-thread-attributes"
   | "PUT /workspaces/{id}/wip-limit"
   | "PUT /workspaces/{wid}/glossary/{term}"
   | "PUT /workspaces/{wid}/memory-blocks/{id}"
