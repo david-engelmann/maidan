@@ -41,8 +41,14 @@ export function parseRoute(hash: string): Route {
   return ROUTES.find((r) => r.id === id)?.id ?? "not-found";
 }
 
+/** The hash a place owns, with no sub-route and no query. */
+export function targetHash(id: RouteId): string {
+  return `#/${id}`;
+}
+
 export function navigate(id: RouteId): void {
-  if (parseRoute(window.location.hash) !== id) window.location.hash = `/${id}`;
+  const next = targetHash(id);
+  if (window.location.hash !== next) window.location.hash = `/${id}`;
 }
 
 function subscribe(fn: () => void): () => void {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
 import { ToolsApi } from "../core/tools.ts";
 import type { Loaded } from "./usePeople.ts";
@@ -18,6 +18,10 @@ export function useLoad<T>(key: string | null, read: () => Promise<T>): Loaded<T
   const [state, setState] = useState<{ key: string | null; value: Loaded<T> }>({ key: null, value: { status: "loading", value: null, error: null } });
   const gen = useRef(0);
   const readRef = useRef(read);
+  // A new key, including null on sign-out, drops a read started for the previous one.
+  useLayoutEffect(() => {
+    gen.current += 1;
+  }, [key]);
   useEffect(() => {
     readRef.current = read;
   });

@@ -1,7 +1,7 @@
 // Needs you: the reviews, approval gates, blocks and questions waiting on the
 // signed-in member. A port of the classic board's needs.js and the gate half
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
-import { guarded, apiPath, headers, failure, keepAuth, noteAuthLost, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, headers, failure, keepAuth, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
 import { formatBytes } from "./tools.ts";
 
@@ -122,7 +122,10 @@ export function parseConfirmLink(hash: string): ConfirmLink | null {
   const m = /^#\/?confirm-approval=([^.&]+)\.([^&]+)$/.exec(hash);
   if (!m) return null;
   try {
-    return { gateId: decodeURIComponent(m[1]), token: decodeURIComponent(m[2]) };
+    const gateId = decodeURIComponent(m[1]).trim();
+    const token = decodeURIComponent(m[2]).trim();
+    if (!gateId || !token) return null;
+    return { gateId, token };
   } catch {
     return null;
   }
@@ -152,7 +155,9 @@ export function sortNeeds(items: WaitingItem[]): Need[] {
     if (g) return g;
     const r = Number(b.kind === "review_request") - Number(a.kind === "review_request");
     if (r) return r;
-    return Date.parse(b.since) - Date.parse(a.since);
+    const tb = Date.parse(b.since);
+    const ta = Date.parse(a.since);
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
   });
 }
 
@@ -295,8 +300,14 @@ export class NeedsApi {
       return { state: "error", why: "Could not load the evidence: the server did not answer" };
     }
     if (res.status === 404) return { state: "none" };
-    noteAuthLost(res);
-    if (!res.ok) return { state: "error", why: `Could not load the evidence (${res.status})` };
+    if (!res.ok) {
+      try {
+        await failure(res, this.mode());
+      } catch (err) {
+        const message = err instanceof ApiError && err.message ? err.message : "Could not load the evidence";
+        return { state: "error", why: `Could not load the evidence. ${message}` };
+      }
+    }
     try {
       return { state: "ready", packet: (await res.json()) as ReviewPacket };
     } catch {
