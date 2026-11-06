@@ -25,48 +25,7 @@ import {
   withSecurityHeaders,
 } from "./edge.js";
 import { isStatusRequest, statusResponse } from "./status.js";
-
-// Worker secrets and vars the server reads. Anything else in `env` (the
-// Durable Object binding) stays in the Worker.
-const SERVER_ENV = [
-  "DATABASE_URL",
-  "MAIDAN_CONTENT_KEK",
-  "MAIDAN_SESSION_SECRET",
-  "MAIDAN_PUBLIC_ORIGIN",
-  "MAIDAN_OAUTH_CLIENT_METADATA_HOSTS",
-  "MAIDAN_OAUTH_DYNAMIC_REGISTRATION",
-  "MAIDAN_OAUTH_DCR_REDIRECT_HOSTS",
-  "ARTIFACT_BACKEND",
-  "S3_ENDPOINT",
-  "S3_BUCKET",
-  "S3_REGION",
-  "S3_ACCESS_KEY_ID",
-  "S3_SECRET_ACCESS_KEY",
-  "MAIDAN_OIDC_ENABLED",
-  "MAIDAN_OIDC_ISSUER",
-  "MAIDAN_OIDC_CLIENT_ID",
-  "MAIDAN_OIDC_CLIENT_SECRET",
-  "MAIDAN_OIDC_REDIRECT_URI",
-  "MAIDAN_OIDC_LINK_EMAIL",
-  "MAIDAN_OIDC_EMAILS_VERIFIED",
-  "MAIDAN_SIGNUP",
-  "MAIDAN_SIGNUP_EMAIL_DOMAINS",
-  "MAIDAN_SIGNUP_OPEN",
-  "MAIDAN_SIGNUP_PRIVACY_URL",
-  "MAIDAN_SIGNUP_TERMS_URL",
-  "MAIDAN_FREE_ALLOWANCE",
-  "MAIDAN_MEDIA_QUOTA_BYTES",
-  "MAIDAN_EXPORT_SIGNING_KEY",
-  "MAIDAN_TURNSTILE_SECRET",
-  "MAIDAN_TURNSTILE_SITE_KEY",
-  "MAIDAN_GITHUB_TOKEN",
-  "MAIDAN_GITHUB_WRITE_REPOS",
-  "MAIDAN_OPS_ALERT_CHANNEL",
-  "MAIDAN_SLACK_BOT_TOKEN",
-  "MAIDAN_VAPID_PRIVATE_KEY",
-  "MAIDAN_VAPID_PUBLIC_KEY",
-  "MAIDAN_VAPID_SUBJECT",
-];
+import { ContainerEnvSession, envFingerprint, serverEnv } from "./server-env.js";
 
 export class MaidanServer extends Container {
   defaultPort = 8080;
@@ -74,18 +33,28 @@ export class MaidanServer extends Container {
 
   constructor(ctx, env) {
     super(ctx, env);
-    const passed = Object.fromEntries(
-      SERVER_ENV.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
-    );
-    this.envVars = {
-      ...passed,
-      MAIDAN_BIND: "0.0.0.0:8080",
-      MAIDAN_ENV: "production",
-      MAIDAN_LOG_FORMAT: "json",
-      // The Worker rewrites X-Forwarded-For to the one address Cloudflare saw,
-      // so the server trusts exactly that hop for rate limits.
-      MAIDAN_TRUSTED_PROXY_HOPS: "1",
-    };
+    this.envVars = serverEnv(env);
+    this.envSession = new ContainerEnvSession();
+  }
+
+  // The container keeps the environment of the start() that created it. An
+  // image rollout can leave the new image running on the previous start's
+  // environment, so a var that arrived in the same deploy never reaches the
+  // process. The session recycles that container, and keeps a start already
+  // in flight on this instance from being recycled by the next request.
+  async fetch(request) {
+    const fingerprint = await envFingerprint(this.envVars);
+    return this.envSession.serve({
+      fingerprint,
+      container: this.ctx.container,
+      storage: this.ctx.storage,
+      blockConcurrencyWhile: (fn) => this.ctx.blockConcurrencyWhile(fn),
+      destroy: async () => {
+        console.log("recycling container to apply environment changes");
+        await this.destroy();
+      },
+      forward: () => super.fetch(request),
+    });
   }
 }
 

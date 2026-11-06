@@ -1,0 +1,319 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import {
+  ENV_FINGERPRINT_KEY,
+  SERVER_ENV,
+  ContainerEnvSession,
+  containerEnvPlan,
+  envFingerprint,
+  serverEnv,
+} from "../src/server-env.js";
+
+const config = (file) =>
+  JSON.parse(
+    readFileSync(new URL(`../${file}`, import.meta.url), "utf8")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n"),
+  );
+
+test("the fingerprint key is what the container class stores", () => {
+  assert.equal(ENV_FINGERPRINT_KEY, "containerEnvFingerprint");
+});
+
+test("registration set to 1 is forwarded as the string 1, and every value is a string", async () => {
+  for (const file of ["wrangler.jsonc", "wrangler.prod.jsonc"]) {
+    const vars = config(file).vars;
+    assert.equal(vars.MAIDAN_OAUTH_DYNAMIC_REGISTRATION, "1", file);
+    assert.equal(typeof vars.MAIDAN_OAUTH_DCR_REDIRECT_HOSTS, "string", file);
+    const env = serverEnv(vars);
+    assert.equal(env.MAIDAN_OAUTH_DYNAMIC_REGISTRATION, "1", file);
+    assert.equal(env.MAIDAN_OAUTH_DCR_REDIRECT_HOSTS, vars.MAIDAN_OAUTH_DCR_REDIRECT_HOSTS, file);
+    assert.equal(env.MAIDAN_PUBLIC_ORIGIN, vars.MAIDAN_PUBLIC_ORIGIN, file);
+    for (const value of Object.values(env)) {
+      assert.equal(typeof value, "string", file);
+    }
+  }
+});
+
+test("a numeric or boolean binding is stringified so container start can take it", () => {
+  const env = serverEnv({
+    MAIDAN_OAUTH_DYNAMIC_REGISTRATION: 1,
+    MAIDAN_OIDC_ENABLED: true,
+    MAIDAN_SIGNUP: false,
+  });
+  assert.equal(env.MAIDAN_OAUTH_DYNAMIC_REGISTRATION, "1");
+  assert.equal(env.MAIDAN_OIDC_ENABLED, "true");
+  assert.equal(env.MAIDAN_SIGNUP, "false");
+  assert.equal(env.MAIDAN_TRUSTED_PROXY_HOPS, "1");
+  assert.equal(env.MAIDAN_ENV, "production");
+  assert.equal(env.MAIDAN_BIND, "0.0.0.0:8080");
+});
+
+test("an unset registration switch is absent, and a fixed setting wins over a binding", () => {
+  const env = serverEnv({ MAIDAN_BIND: "127.0.0.1:1", MAIDAN_PUBLIC_ORIGIN: "https://dev.maidan.world" });
+  assert.equal(env.MAIDAN_OAUTH_DYNAMIC_REGISTRATION, undefined);
+  assert.equal(env.MAIDAN_BIND, "0.0.0.0:8080");
+  assert.equal(env.MAIDAN_PUBLIC_ORIGIN, "https://dev.maidan.world");
+  assert.ok(SERVER_ENV.includes("MAIDAN_OAUTH_DYNAMIC_REGISTRATION"));
+  assert.ok(SERVER_ENV.includes("MAIDAN_OAUTH_DCR_REDIRECT_HOSTS"));
+});
+
+test("a running container whose start predates the current environment is recycled", async () => {
+  const before = await envFingerprint(serverEnv({ MAIDAN_PUBLIC_ORIGIN: "https://dev.maidan.world" }));
+  const after = await envFingerprint(
+    serverEnv({
+      MAIDAN_PUBLIC_ORIGIN: "https://dev.maidan.world",
+      MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1",
+    }),
+  );
+  assert.notEqual(before, after);
+  assert.deepEqual(containerEnvPlan({ running: true, startedFingerprint: before, fingerprint: after }), {
+    destroy: true,
+    remember: true,
+  });
+  assert.deepEqual(containerEnvPlan({ running: true, startedFingerprint: undefined, fingerprint: after }), {
+    destroy: true,
+    remember: true,
+  });
+});
+
+test("a container already started with this environment is left running", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+  assert.deepEqual(containerEnvPlan({ running: true, startedFingerprint: fingerprint, fingerprint }), {
+    destroy: false,
+    remember: false,
+  });
+  assert.deepEqual(containerEnvPlan({ running: false, startedFingerprint: fingerprint, fingerprint }), {
+    destroy: false,
+    remember: false,
+  });
+});
+
+test("a stopped container with a stale environment is started and then remembered", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+  assert.deepEqual(containerEnvPlan({ running: false, startedFingerprint: "stale", fingerprint }), {
+    destroy: false,
+    remember: true,
+  });
+});
+
+test("the same environment fingerprints the same, whatever the key order", async () => {
+  const left = await envFingerprint({ B: "1", A: "true" });
+  const right = await envFingerprint({ A: "true", B: "1" });
+  assert.equal(left, right);
+  assert.notEqual(left, await envFingerprint({ A: "true", B: "1", C: "" }));
+});
+
+test("the container class delegates environment changes to the session", () => {
+  const worker = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const fetch = worker.slice(worker.indexOf("async fetch(request)"), worker.indexOf("export default"));
+  assert.match(worker, /this\.envVars = serverEnv\(env\)/);
+  assert.match(worker, /this\.envSession = new ContainerEnvSession\(\)/);
+  assert.match(fetch, /this\.envSession\.serve\(/);
+  assert.match(fetch, /forward: \(\) => super\.fetch\(request\)/);
+});
+
+// Serializes the Durable Object input lock. The request itself runs after the
+// callback, which is when a second request overlaps a start.
+function createLock() {
+  let tail = Promise.resolve();
+  return (fn) => {
+    const run = tail.then(() => fn());
+    tail = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  };
+}
+
+function memoryStorage(seed) {
+  const values = new Map(seed);
+  return {
+    gets: 0,
+    puts: 0,
+    async get(key) {
+      this.gets += 1;
+      return values.get(key);
+    },
+    async put(key, value) {
+      this.puts += 1;
+      values.set(key, value);
+    },
+    snapshot(key) {
+      return values.get(key);
+    },
+  };
+}
+
+function deferred() {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  return { gate, release };
+}
+
+function rig({ fingerprint, running = false, stored }) {
+  const session = new ContainerEnvSession();
+  const container = { running };
+  const storage = memoryStorage(stored === undefined ? [] : [[ENV_FINGERPRINT_KEY, stored]]);
+  const locks = [];
+  const lock = createLock();
+  const blockConcurrencyWhile = (fn) => {
+    locks.push(1);
+    return lock(fn);
+  };
+  let destroys = 0;
+  const destroy = async () => {
+    destroys += 1;
+    container.running = false;
+  };
+  return {
+    session,
+    container,
+    storage,
+    locks,
+    destroy,
+    destroys: () => destroys,
+    serve(forward) {
+      return session.serve({
+        fingerprint,
+        container,
+        storage,
+        blockConcurrencyWhile,
+        destroy,
+        forward,
+      });
+    },
+  };
+}
+
+test("two requests cold-starting together leave the container up and record it once it is running", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+  const world = rig({ fingerprint });
+  const inside = deferred();
+  const release = deferred();
+
+  const first = world.serve(async () => {
+    world.container.running = true;
+    inside.release();
+    await release.gate;
+    return "a";
+  });
+  await inside.gate;
+  const second = world.serve(async () => "b");
+  const secondResult = await second;
+  release.release();
+  const firstResult = await first;
+
+  assert.equal(firstResult, "a");
+  assert.equal(secondResult, "b");
+  assert.equal(world.destroys(), 0);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.container.running, true);
+});
+
+test("a recycle in progress is not destroyed again by a request that arrives mid-start", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+  const world = rig({ fingerprint, running: true, stored: "from-the-previous-start" });
+  const inside = deferred();
+  const release = deferred();
+
+  const first = world.serve(async () => {
+    assert.equal(world.container.running, false, "the stale container is stopped before the replacement starts");
+    world.container.running = true;
+    inside.release();
+    await release.gate;
+    return "a";
+  });
+  await inside.gate;
+  assert.equal(world.destroys(), 1);
+  const second = await world.serve(async () => "b");
+  release.release();
+  assert.equal(await first, "a");
+  assert.equal(second, "b");
+  assert.equal(world.destroys(), 1);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(world.session.verifiedFingerprint, fingerprint);
+  assert.equal(world.session.inFlightStarts, 0);
+  assert.equal(world.session.startingFingerprint, null);
+});
+
+test("a start that throws or never runs is not recorded, and the next request tries again", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+
+  const thrown = rig({ fingerprint });
+  await assert.rejects(
+    thrown.serve(async () => {
+      throw new Error("container failed to start");
+    }),
+    /container failed to start/,
+  );
+  assert.equal(thrown.storage.snapshot(ENV_FINGERPRINT_KEY), undefined);
+  assert.equal(thrown.storage.puts, 0);
+  assert.equal(thrown.session.inFlightStarts, 0);
+  assert.equal(thrown.session.startingFingerprint, null);
+  assert.equal(thrown.session.verifiedFingerprint, null);
+  const retried = await thrown.serve(async () => {
+    thrown.container.running = true;
+    return "retried";
+  });
+  assert.equal(retried, "retried");
+  assert.equal(thrown.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+  assert.equal(thrown.destroys(), 0);
+
+  const quiet = rig({ fingerprint });
+  assert.equal(
+    await quiet.serve(async () => {
+      quiet.container.running = false;
+      return "down";
+    }),
+    "down",
+  );
+  assert.equal(quiet.storage.snapshot(ENV_FINGERPRINT_KEY), undefined);
+  assert.equal(quiet.storage.puts, 0);
+  assert.equal(quiet.session.inFlightStarts, 0);
+  assert.equal(quiet.session.startingFingerprint, null);
+  assert.equal(quiet.session.verifiedFingerprint, null);
+  assert.equal(
+    await quiet.serve(async () => {
+      quiet.container.running = true;
+      return "up";
+    }),
+    "up",
+  );
+  assert.equal(quiet.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+});
+
+test("a warm container whose environment is already verified skips the lock and the stored fingerprint", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_OAUTH_DYNAMIC_REGISTRATION: "1" }));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  world.session.verifiedFingerprint = fingerprint;
+  const answer = await world.serve(async () => "warm");
+  assert.equal(answer, "warm");
+  assert.equal(world.locks.length, 0);
+  assert.equal(world.storage.gets, 0);
+  assert.equal(world.storage.puts, 0);
+  assert.equal(world.destroys(), 0);
+
+  await world.serve(async () => {
+    world.container.running = false;
+    return "slept";
+  });
+  assert.equal(world.session.verifiedFingerprint, null);
+  assert.equal(world.locks.length, 0, "the request that finds it running still skips the lock");
+
+  world.container.running = false;
+  await world.serve(async () => {
+    world.container.running = true;
+    return "woke";
+  });
+  assert.ok(world.locks.length > 0);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+});

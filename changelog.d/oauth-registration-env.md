@@ -1,0 +1,4 @@
+### Dynamic client registration reaches the hosted container
+
+- **Fixed:** the hosted Worker stringifies the environment it passes into the container, and recycles a running container when that environment changes. A container keeps the environment of the `start()` that created it, so after dynamic client registration was deployed, `dev.maidan.world` was still the new build with `MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1` set on the Worker and absent in the process: `GET /.well-known/oauth-authorization-server` omitted `registration_endpoint` and `POST /oauth/register` answered 404. `1` and `true` both turn registration on.
+- **Fixed:** a second request that arrives while a cold start or a recycle is still booting no longer destroys that container. The fingerprint is stored only once the container is running, and a start this instance already has in flight for the same environment is left alone.
