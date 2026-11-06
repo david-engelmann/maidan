@@ -46,11 +46,33 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 1
 
-# NetworkPolicy is opt-in and cluster-specific — enable it and set `ingressFrom`
-# to your ingress controller's namespace, then lock egress down to your
-# datastores (`allowAllEgress: false` + `egress`).
-# networkPolicy:
-#   enabled: true
+# Production turns NetworkPolicy on. Override `ingressFrom` for your ingress
+# controller namespace, and replace `egress` with your datastore selectors
+# when they are not the in-namespace defaults from k8s/base.
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  allowAllEgress: false
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: maidan
+              app.kubernetes.io/component: postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: maidan
+              app.kubernetes.io/component: minio
+      ports:
+        - port: 9000
+          protocol: TCP
 
 resources:
   requests:
