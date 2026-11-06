@@ -51,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - id: filter
         env:
@@ -105,6 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           # Release-stream truth is derived from the real tag set.
           fetch-depth: 0
       - name: install repository-script dependencies
@@ -199,6 +201,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -225,6 +229,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: trufflehog scan
         uses: trufflesecurity/trufflehog@main
@@ -238,6 +243,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -286,6 +293,8 @@ jobs:
     # gated by the required Rust e2e tests.
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -317,6 +326,8 @@ jobs:
     # (docs/Decisions.md).
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -352,6 +363,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -388,6 +401,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -426,6 +441,8 @@ jobs:
     # scripts/tla.sh). Not a required check (docs/Decisions.md).
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: set up java
         uses: actions/setup-java@v4
         with:
@@ -447,6 +464,8 @@ jobs:
     # advisory can turn it red with no change in this repo.
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -474,6 +493,8 @@ jobs:
     # required check (docs/Conventions.md, "Dependencies").
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -504,6 +525,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -554,6 +577,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -586,6 +611,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # The workspace's test binaries reach about 83G here, which left 871M of
       # the runner's disk. MinIO refuses writes below its free-drive floor, so
       # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
@@ -643,6 +670,8 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -744,6 +773,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # The pgvector tests pull from Docker Hub, which failed this job on main
       # on 2026-10-16 (`bytes remaining on stream`); the other container jobs
       # already pull through Google's public mirror of it.
@@ -794,6 +825,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -836,6 +869,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -878,6 +913,8 @@ jobs:
     # docs/Decisions.md, "Coverage floors are per crate and advisory").
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -963,6 +1000,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -1060,6 +1099,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -1103,6 +1144,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -1163,6 +1206,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Deploy pins match the newest tagged release
         run: bash scripts/check-deploy-pins.sh
@@ -1179,6 +1223,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install sqlite3
         run: command -v sqlite3 || (sudo apt-get update && sudo apt-get install -y sqlite3)
       - name: SQLite backup and restore drill
@@ -1195,6 +1241,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install promtool
         run: |
           set -euo pipefail
@@ -1238,6 +1286,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -1293,6 +1343,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
@@ -1344,6 +1396,8 @@ jobs:
     # scrolls sideways or a page that throws. Not a required check.
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -1386,6 +1440,8 @@ jobs:
     # See ui-tests/README.md.
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

@@ -87,6 +87,8 @@ jobs:
             shard: --shard 3/4
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -145,6 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
@@ -174,6 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
@@ -223,6 +227,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -257,6 +263,8 @@ jobs:
       FUZZ_TOOLCHAIN: nightly-2026-10-31
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install rust (nightly, for the sanitizer)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -373,6 +381,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cursor arithmetic (maidan-types)

@@ -18,6 +18,14 @@ export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 lang="${1:-typescript}"
 port="${MAIDAN_SDK_PORT:-8080}"
+case "$lang" in
+  typescript|python|go|rust) ;;
+  *) echo "sdk-test: unsupported language: $lang (want typescript|python|go|rust)" >&2; exit 1 ;;
+esac
+if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  echo "sdk-test: refusing out-of-range port: $port" >&2
+  exit 1
+fi
 base="http://127.0.0.1:${port}"
 
 echo "=== building maidan-server ==="

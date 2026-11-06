@@ -22,8 +22,18 @@ jobs:
     runs-on: macos-13
     timeout-minutes: 90
     steps:
+      - name: release tag shape
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "not a release tag: $TAG (want vN.N.N)" >&2
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           ref: refs/tags/${{ inputs.tag }}
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
@@ -35,6 +45,7 @@ jobs:
         run: cargo build --release --bin maidan-server --bin maidan --target x86_64-apple-darwin
       - name: package
         run: |
+          set -euo pipefail
           mkdir -p dist
           tar -czf dist/maidan-x86_64-apple-darwin.tar.gz \
             -C target/x86_64-apple-darwin/release maidan-server maidan
