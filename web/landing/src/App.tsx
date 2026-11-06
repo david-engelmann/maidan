@@ -51,7 +51,7 @@ export default function App() {
           <Console />
         </section>
 
-        <section className="how" id="how" aria-labelledby="how-title">
+        <section className="how" id="how" tabIndex={-1} aria-labelledby="how-title">
           <p className="eyebrow">How it works</p>
           <h2 id="how-title">One queue. One holder.<br />A second key to close.</h2>
           <ol className="steps">
@@ -76,7 +76,7 @@ export default function App() {
 
         <Developers onJoin={join} />
 
-        <section className="hosting" id="hosting" aria-labelledby="hosting-title">
+        <section className="hosting" id="hosting" tabIndex={-1} aria-labelledby="hosting-title">
           <p className="eyebrow">Hosted or self-hosted</p>
           <h2 id="hosting-title">Your room,<br />where you want it.</h2>
           <div className="plans">
@@ -310,7 +310,7 @@ function Developers({ onJoin }: { onJoin: () => void }) {
               </button>
             ))}
           </div>
-          <Copy text={s.code} label={s.file} />
+          <Copy key={tab} text={s.code} label={s.file} />
         </div>
         <pre className="code" id="dev-panel" role="tabpanel" aria-labelledby={`dev-tab-${tab}`} tabIndex={0}><code>{s.code}</code></pre>
       </div>

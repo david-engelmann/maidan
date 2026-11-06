@@ -10,7 +10,17 @@ import { fixtures } from "./_fixtures";
 const fx = fixtures();
 const DIST = resolve(__dirname, "../../crates/maidan-server/static/landing/dist");
 
+const AXE = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
+
 async function openLanding(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const clipboard = { writeText: async () => {} };
+    try {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+    } catch {
+      // The browser already exposed a clipboard.
+    }
+  });
   await page.route((url) => url.pathname === "/", (route) =>
     route.fulfill({ path: resolve(DIST, "index.html"), contentType: "text/html; charset=utf-8" }),
   );
@@ -113,3 +123,101 @@ test("the waitlist sheet validates, accepts a join, and Done returns to the butt
   await expect(sheet).toHaveAttribute("aria-modal", "false");
   await expect(open).toBeFocused();
 });
+
+async function axeClean(page: Page): Promise<void> {
+  const scan = await new AxeBuilder({ page }).withTags(AXE).analyze();
+  expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+}
+
+const VIEWPORTS = [
+  { name: "desktop", width: 1440, height: 900, mobile: false },
+  { name: "phone", width: 390, height: 844, mobile: true },
+  { name: "narrow phone", width: 360, height: 800, mobile: true },
+] as const;
+
+for (const vp of VIEWPORTS) {
+  test.describe(vp.name, () => {
+    test.use({ viewport: { width: vp.width, height: vp.height }, isMobile: vp.mobile, hasTouch: vp.mobile });
+
+    let errors: string[] = [];
+    test.beforeEach(({ page }) => {
+      errors = [];
+      page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+      page.on("response", (res) => {
+        const kind = res.request().resourceType();
+        if (res.status() >= 400 && ["stylesheet", "script", "font", "image"].includes(kind)) {
+          errors.push(`${kind} ${res.status()}: ${new URL(res.url()).pathname}`);
+        }
+      });
+    });
+
+    test("stays on the screen with no accessibility violations", async ({ page }) => {
+      await openLanding(page);
+      await expect(page.getByRole("heading", { name: /Agents claim/ })).toBeVisible();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      expect(errors).toEqual([]);
+      await axeClean(page);
+    });
+
+    test("copy resets when the tab changes, and anchors clear the header", async ({ page }) => {
+      await openLanding(page);
+      const copy = page.locator(".copy");
+      await copy.click();
+      await expect(copy).toHaveText("Copied");
+      await expect(page.locator(".run-card [role=status]")).toContainText("Copied");
+      await page.locator("#dev-tab-python").click();
+      await expect(copy).toHaveText("Copy");
+
+      for (const id of ["#developers", "#how"]) {
+        await page.evaluate((hash) => { location.hash = hash; }, id);
+        await expect.poll(async () => page.evaluate((sel) => {
+          const section = document.querySelector(sel);
+          const header = document.querySelector(".top");
+          if (!section || !header) return -1;
+          const s = section.getBoundingClientRect();
+          const h = header.getBoundingClientRect();
+          return s.y - (h.y + h.height);
+        }, id)).toBeGreaterThanOrEqual(-2);
+      }
+    });
+
+    test("errors are named only while they show, and Escape returns focus", async ({ page }) => {
+      await openLanding(page);
+      const opener = page.getByRole("button", { name: "Join the waitlist" }).first();
+      await opener.click();
+      const close = page.locator(".sheet-close");
+      const box = await close.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(44);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+      await expect(page.locator("#wl-email")).toBeFocused();
+      await close.focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(page.locator("#wl-submit")).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(close).toBeFocused();
+
+      await page.locator("#wl-submit").click();
+      await expect(page.locator("#wl-email")).toBeFocused();
+      for (const id of ["wl-email", "wl-use", "wl-consent"]) {
+        const field = page.locator(`#${id}`);
+        await expect(field).toHaveAttribute("aria-invalid", "true");
+        await expect(field).toHaveAttribute("aria-describedby", `${id}-err`);
+      }
+      await axeClean(page);
+      await page.locator("#wl-email").fill("ada@example.com");
+      await page.locator("#wl-use").fill("A review queue for our agents.");
+      await page.locator("#wl-consent").check();
+      for (const id of ["wl-email", "wl-use", "wl-consent"]) {
+        await expect(page.locator(`#${id}`)).not.toHaveAttribute("aria-describedby");
+      }
+      await page.locator("#wl-submit").click();
+      await expect(page.getByRole("heading", { name: "You're on the list." })).toBeVisible();
+      await expect(page.locator(".done")).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#join")).toHaveAttribute("aria-modal", "false");
+      await expect(opener).toBeFocused();
+    });
+  });
+}
