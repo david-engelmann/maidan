@@ -247,15 +247,32 @@ fn raw_host(url: &str) -> Option<&str> {
 
 async fn http_status(resp: reqwest::Response) -> A2aClientError {
     let status = resp.status();
-    let bytes = resp.bytes().await.unwrap_or_default();
-    let end = bytes.len().min(512);
-    let snippet = String::from_utf8_lossy(&bytes[..end]);
-    let snippet = snippet.trim();
+    let snippet = error_body_snippet(resp).await;
     if snippet.is_empty() {
         A2aClientError::Http(format!("HTTP {status}"))
     } else {
         A2aClientError::Http(format!("HTTP {status}: {snippet}"))
     }
+}
+
+/// At most 512 bytes, and at most eight chunks. A non-2xx body is a diagnostic,
+/// not a download: `bytes()` would buffer a multi-megabyte or dripping reply.
+async fn error_body_snippet(mut resp: reqwest::Response) -> String {
+    let mut buf = Vec::with_capacity(512);
+    for _ in 0..8 {
+        if buf.len() >= 512 {
+            break;
+        }
+        match resp.chunk().await {
+            Ok(Some(chunk)) if !chunk.is_empty() => {
+                let take = (512 - buf.len()).min(chunk.len());
+                buf.extend_from_slice(&chunk[..take]);
+            }
+            _ => break,
+        }
+    }
+    drop(resp);
+    String::from_utf8_lossy(&buf).trim().to_string()
 }
 
 fn request(method: &str, id: JsonRpcId, params: serde_json::Value) -> JsonRpcRequest {

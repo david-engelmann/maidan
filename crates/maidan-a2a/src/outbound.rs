@@ -83,15 +83,32 @@ impl Outbound {
 
 async fn transport_status(response: reqwest::Response, what: &str) -> FederationError {
     let status = response.status();
-    let bytes = response.bytes().await.unwrap_or_default();
-    let end = bytes.len().min(512);
-    let snippet = String::from_utf8_lossy(&bytes[..end]);
-    let snippet = snippet.trim();
+    let snippet = error_body_snippet(response).await;
     if snippet.is_empty() {
         FederationError::Transport(format!("remote {what} returned {status}"))
     } else {
         FederationError::Transport(format!("remote {what} returned {status}: {snippet}"))
     }
+}
+
+/// At most 512 bytes, and at most eight chunks. The rest of a rejected body is
+/// discarded with the response.
+async fn error_body_snippet(mut resp: reqwest::Response) -> String {
+    let mut buf = Vec::with_capacity(512);
+    for _ in 0..8 {
+        if buf.len() >= 512 {
+            break;
+        }
+        match resp.chunk().await {
+            Ok(Some(chunk)) if !chunk.is_empty() => {
+                let take = (512 - buf.len()).min(chunk.len());
+                buf.extend_from_slice(&chunk[..take]);
+            }
+            _ => break,
+        }
+    }
+    drop(resp);
+    String::from_utf8_lossy(&buf).trim().to_string()
 }
 
 impl Outbound {
