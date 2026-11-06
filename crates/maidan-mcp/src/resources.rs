@@ -6,6 +6,7 @@
 //! - `maidan://threads/{id}` — full thread transcript (up to 100 messages).
 //! - `maidan://digests/{thread_id}` — the thread's current digest (C10).
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use maidan_artifacts::Sha256;
@@ -194,6 +195,28 @@ pub async fn read(
             }
         ]
     }))
+}
+
+/// The URI to authorize, store, and match. An artifact digest is rewritten to
+/// canonical lowercase hex so `resources/read`, `resources/subscribe`, and a
+/// later `ResourceUpdate` all name the same resource. Anything else is
+/// returned unchanged, including a digest that does not parse.
+pub fn canonical_uri(uri: &str) -> Cow<'_, str> {
+    let Ok((kind, id_str)) = parse_uri(uri) else {
+        return Cow::Borrowed(uri);
+    };
+    if kind != "artifacts" {
+        return Cow::Borrowed(uri);
+    }
+    let Ok(sha) = Sha256::from_hex(id_str) else {
+        return Cow::Borrowed(uri);
+    };
+    let canonical = sha.to_hex();
+    if canonical == id_str {
+        Cow::Borrowed(uri)
+    } else {
+        Cow::Owned(format!("{URI_PREFIX}artifacts/{canonical}"))
+    }
 }
 
 pub fn validate_uri(uri: &str) -> Result<(), McpError> {
