@@ -1,18 +1,20 @@
 # Seat runner config. Copy to seats.toml and fill in the workspace and repos.
 # The numbers below are cautious starting points for a small machine.
-# Tune them for yours.
-seats = 1               # tune this: session seats claiming at once
-idle_secs = 60          # wait after a run that did no work
-kill_grace_secs = 10    # SIGTERM, then SIGKILL after this many seconds
+# Tune them for yours. Never put a seat token in this file.
+seats = 1               # tune this: session seats claiming at once (1..8)
+idle_secs = 60          # wait after a run that did no work (1..3600)
+kill_grace_secs = 10    # SIGTERM, then SIGKILL after this many seconds (1..120)
 
 [maidan]
-url = "http://127.0.0.1:8080"   # use https for anything that is not loopback
+# Loopback http is fine; anything else must be https so the seat token is not
+# cleartext on the wire.
+url = "http://127.0.0.1:8080"
 workspace_id = "00000000-0000-0000-0000-000000000000"
 token_env = "MAIDAN_TOKEN"   # the seat token is read from this variable, never from here
 # Other variables that must never reach the repository's preflight commands.
 secret_env = []
-lease_secs = 3600            # also bounds how long a crashed runner's claim stays held
-timeout_secs = 60            # give up on a request after this long without an answer
+lease_secs = 1800            # also bounds how long a crashed runner's claim stays held (60..3600)
+timeout_secs = 60            # give up on a request after this long without an answer (1..120)
 claim_attempts = 3           # tries for claim-next and acknowledge, under one Idempotency-Key
 claim_backoff_secs = 2       # doubled after each try, unless the server sends Retry-After
 release_attempts = 4         # tries for a release the server did not answer
@@ -33,10 +35,10 @@ pass_token = true            # Codex's MCP config reads the token from token_env
 # a wall-clock and memory cap and exits 124 when the time cap fired and 137
 # when the memory cap fired.
 capped = "scripts/capped"
-run_secs = 3600              # tune this
-run_mem_gb = 8               # tune this
-preflight_secs = 600         # tune this
-preflight_mem_gb = 4         # tune this
+run_secs = 1800              # tune this (60..3600)
+run_mem_gb = 8               # tune this (1..32)
+preflight_secs = 600         # tune this (30..1800)
+preflight_mem_gb = 4         # tune this (1..16)
 
 [host]
 # Defaults when unset: max_load15 = the CPU count, min_free_gb = 5.

@@ -3,6 +3,8 @@
 # stays on the server's data volume; each recipe's `provision` step mints its
 # agent a narrower token.
 # Not a production deployment: see compose.yaml or the Helm chart for that.
+# Cost posture: the published port is loopback-only, init restarts never, and
+# there is no cron. Agents in the including recipes must also use restart: "no".
 services:
   maidan:
     build:
@@ -18,7 +20,8 @@ services:
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       # Dev-only HMAC key for signed session, resume and approval tokens.
-      MAIDAN_SESSION_SECRET: "recipe-dev-session-secret-32-bytes-long"
+      # Override for anything beyond a local recipe run.
+      MAIDAN_SESSION_SECRET: ${MAIDAN_SESSION_SECRET:-recipe-dev-session-secret-32-bytes-long}
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     ports:
@@ -31,6 +34,7 @@ services:
       timeout: 5s
       retries: 24
       start_period: 5s
+    restart: "no"
 
   init:
     image: maidan-recipe:source

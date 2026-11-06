@@ -9,27 +9,34 @@
 # volume before maidan-server starts, because the server probes the endpoint
 # for the vector dimension at boot. Write-up: docs/Providers.md ("Recipe: local
 # embeddings with Ollama").
+#
+# Cost posture: the pull is one-shot (`restart: "no"`), Ollama is profile-gated
+# (`full` only), no host ports are published, and there is no cron or always-on
+# wake. Stop the stack when you are done so the container sleeps.
 
 services:
   ollama:
-    # Pinned to a release tag; the image is large (several GB) because it
-    # carries the GPU runtimes, and this recipe uses only the CPU path.
-    image: ollama/ollama:0.40.5
+    # Pinned release; the image is large (several GB) because it carries the
+    # GPU runtimes, and this recipe uses only the CPU path.
+    image: ollama/ollama:0.40.5@sha256:0e8ff22ff86b4718cfa886844062117af13b50eb5689cca78279778e15744980
     container_name: maidan-ollama
     volumes:
       - ollama_models:/root/.ollama
+    # No ports: only sibling compose services reach Ollama on the compose network.
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 10s
     profiles:
       - full
+    restart: "no"
 
   ollama-pull:
     # One-shot: the same image as a client of the server above, so the model is
     # on disk before maidan-server's boot-time probe.
-    image: ollama/ollama:0.40.5
+    image: ollama/ollama:0.40.5@sha256:0e8ff22ff86b4718cfa886844062117af13b50eb5689cca78279778e15744980
     container_name: maidan-ollama-pull
     depends_on:
       ollama:
@@ -39,6 +46,7 @@ services:
     command: ["pull", "nomic-embed-text"]
     profiles:
       - full
+    restart: "no"
 
   maidan-server:
     depends_on:

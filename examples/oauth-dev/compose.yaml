@@ -19,7 +19,9 @@ name: maidan-oauth-dev
 # must be the same address your shell and Maidan use. Docker Desktop needs host
 # networking turned on in its settings; on Linux it works as is.
 #
-# Development only: plain HTTP, an in-memory database, loopback client metadata.
+# Development only: plain HTTP on loopback, an in-memory database, no cron
+# triggers, and no always-on restart. The admin password comes from the
+# environment; it is never written into this file.
 
 services:
   keycloak:
@@ -33,3 +35,4 @@ services:
       - --http-host=127.0.0.1
       - --http-port=${KC_PORT:-8081}
       - --features=cimd,resource-indicators
+    restart: "no"

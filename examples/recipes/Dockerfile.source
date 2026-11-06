@@ -24,5 +24,7 @@ RUN useradd --system --uid 10001 --create-home maidan \
  && chown -R maidan:maidan /data
 USER maidan
 WORKDIR /home/maidan
+# Recipes publish only 127.0.0.1 on the host; EXPOSE documents the in-container port.
 EXPOSE 8080
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/maidan-server"]
