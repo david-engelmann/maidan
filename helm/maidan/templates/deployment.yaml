@@ -24,6 +24,8 @@ spec:
       # every Service named maidan-*, which the server would read as unknown
       # configuration.
       enableServiceLinks: false
+      # The server never calls the Kubernetes API; keep the SA token off the disk.
+      automountServiceAccountToken: false
       # Covers the server's drain (MAIDAN_SHUTDOWN_DRAIN_SECS) plus in-flight
       # requests; past it the kubelet sends SIGKILL.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}

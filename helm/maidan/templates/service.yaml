@@ -1,3 +1,6 @@
+{{- if and .Values.production (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) }}
+{{- fail (printf "service.type %q is not allowed in production: use ClusterIP behind an Ingress" .Values.service.type) }}
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,4 +1,10 @@
 {{- if .Values.ingress.enabled }}
+{{- if and .Values.production (not .Values.ingress.tls) }}
+{{- fail "a production ingress needs tls: set ingress.tls (secretName + hosts)" }}
+{{- end }}
+{{- if not .Values.ingress.hosts }}
+{{- fail "ingress.hosts is empty: name at least one host" }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -16,7 +22,7 @@ spec:
   {{- if .Values.ingress.tls }}
   tls:
     {{- range .Values.ingress.tls }}
-    - secretName: {{ .secretName }}
+    - secretName: {{ required "ingress.tls[].secretName is required" .secretName }}
       hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -25,11 +31,17 @@ spec:
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
+    {{- if not .host }}
+    {{- fail "ingress.hosts[].host is empty" }}
+    {{- end }}
     - host: {{ .host | quote }}
       http:
         paths:
           {{- range .paths }}
-          - path: {{ .path }}
+          {{- if and (ne .pathType "Prefix") (ne .pathType "Exact") }}
+          {{- fail (printf "ingress pathType %q must be Prefix or Exact" .pathType) }}
+          {{- end }}
+          - path: {{ required "ingress path is required" .path }}
             pathType: {{ .pathType }}
             backend:
               service:

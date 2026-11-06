@@ -34,7 +34,17 @@ command -v jq >/dev/null 2>&1 || need jq
 # The installs name the images this script loads, so MAIDAN_IMAGE and
 # STACK_POSTGRES_IMAGE (name:tag) can point at other builds.
 for ref in "${image}" "${postgres_image}"; do
+  case "$ref" in
+    (*..*|/*|*[[:space:]]*) echo "refusing image ref: $ref" >&2; exit 1;;
+  esac
   [[ "${ref##*/}" == *:* ]] || { echo "${ref} has no tag" >&2; exit 1; }
+done
+for p in "${local_port}" "${stack_local_port}"; do
+  [[ "$p" =~ ^[0-9]+$ ]] || { echo "port is not an integer: $p" >&2; exit 1; }
+  if [ "$p" -lt 1024 ] || [ "$p" -gt 65535 ]; then
+    echo "port out of range (1024-65535): $p" >&2
+    exit 1
+  fi
 done
 
 pf_pids=()
