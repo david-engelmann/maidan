@@ -493,17 +493,17 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         wax["attributes"]["repo"], "example/wax",
         "stored as owner/name"
     );
-    let (status, bgv3) = create_thread(
+    let (status, web) = create_thread(
         &base,
         &room.token,
         room.channel,
-        json!({ "title": "bgv3 half", "attributes": half("example/bgv3") }),
+        json!({ "title": "web half", "attributes": half("example/web") }),
     )
     .await;
     assert_eq!(
         status,
         StatusCode::CREATED,
-        "the other repository's half: {bgv3}"
+        "the other repository's half: {web}"
     );
 
     // Same ticket, same repository: refused, naming the set and the holder.
@@ -527,7 +527,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         &room.token,
         "set_thread_attributes",
         json!({
-            "thread_id": bgv3["id"],
+            "thread_id": web["id"],
             "kind": "change",
             "linear_issue": "ENG-6598",
             "repo": "example/wax"

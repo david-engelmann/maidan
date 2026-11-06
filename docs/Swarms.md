@@ -523,7 +523,7 @@ A ticket should have one owner at a time in each repository. When the router
 stamps a thread with its Linear issue, nothing else stops a second path from
 opening another thread on the same work: ENG-6598 got a hosted Pi draft and a
 laptop session pull request at once. A ticket often has deliberate halves in
-two repositories (a wax pull request and a bgv3 one), so the rule that stops
+two repositories (a pull request in a web app and one in its API), so the rule that stops
 two owners is per ticket **and** repository, and a workspace makes it a
 refusal.
 

@@ -198,8 +198,8 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
     create(
         store.as_ref(),
         room.channel,
-        "bgv3 half",
-        Some(ticket_in("ENG-6598", "example/bgv3")),
+        "web half",
+        Some(ticket_in("ENG-6598", "example/web")),
     )
     .await
     .expect("the same ticket in another repository");
