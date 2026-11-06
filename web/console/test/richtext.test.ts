@@ -88,6 +88,24 @@ test("message text: a rule is not a table row, and a tilde fence keeps its langu
   assert.deepEqual(blocks[2], { kind: "code", lang: "js", text: "const x = 1;" });
 });
 
+test("message text: a route name stops at a word boundary", () => {
+  for (const raw of ["#/needsX", "#/people-ops", "#/threadsfoo"]) {
+    assert.deepEqual(parseInline(raw), [{ kind: "text", text: raw }]);
+  }
+  assert.deepEqual(parseInline("#/needs"), [{ kind: "link", href: "#/needs", text: "#/needs", internal: true }]);
+  assert.deepEqual(parseInline("(#/people)"), [
+    { kind: "text", text: "(" },
+    { kind: "link", href: "#/people", text: "#/people", internal: true },
+    { kind: "text", text: ")" },
+  ]);
+  assert.deepEqual(parseInline("#/threads/t/th_1"), [
+    { kind: "link", href: "#/threads/t/th_1", text: "#/threads/t/th_1", internal: true },
+  ]);
+  assert.deepEqual(parseInline("#/board?channel=ch_1"), [
+    { kind: "link", href: "#/board?channel=ch_1", text: "#/board?channel=ch_1", internal: true },
+  ]);
+});
+
 test("message text: links allow http, https and console routes, and code stays literal", () => {
   assert.deepEqual(parseInline("[PR #42](https://example.com/a_(b))"), [
     { kind: "link", href: "https://example.com/a_(b)", text: "PR #42" },

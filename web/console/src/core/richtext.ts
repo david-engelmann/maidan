@@ -35,7 +35,9 @@ const QUOTE = /^[ \t]*> ?(.*)$/;
 // Same shape as before: the last character cannot be sentence punctuation, and
 // a later pass restores a `)` the URL itself opened.
 const URL = /https?:\/\/[^\s<>\x22\x27\x60]+[^\s<>\x22\x27\x60.,;:!?)\]]/;
-const HASH = /^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?:\/[^\s<>\x22\x27\x60)\]]*)?/;
+// The route name ends on a boundary, so #/needsX stays text while #/needs and
+// #/board?channel=ch_1 still link.
+const HASH = /^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?=$|[/?\s.,;:!?)\]])(?:[/?][^\s<>()[\]\x22\x27]*)?/;
 
 type Fence = { mark: string; len: number; lang: string };
 
@@ -80,7 +82,7 @@ function takeHash(text: string, at: number): { href: string; length: number } | 
   const m = HASH.exec(text.slice(at));
   if (!m) return null;
   const href = m[0].replace(/[.,;:!?)]+$/, "");
-  if (!/^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?:\/|$)/.test(href)) return null;
+  if (!/^#\/(?:threads|board|needs|artifacts|people|activity|catalog|tools)(?:[/?]|$)/.test(href)) return null;
   return { href, length: href.length };
 }
 
