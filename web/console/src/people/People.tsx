@@ -378,7 +378,7 @@ function AddAgentCard({ api, onAdded }: { api: PeopleApi; onAdded: () => void })
   const base = session.credentials.base || window.location.origin;
   return (
     <div className="add-agent-card">
-      <h2>Add an agent</h2>
+      <h3>Add an agent</h3>
       <AddAgent api={api} workspace={session.workspaceId} base={base} channelId={null} onAdded={onAdded} />
     </div>
   );
