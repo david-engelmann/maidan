@@ -52,8 +52,11 @@ pub fn oidc_login() {}
 /// address the identity provider later verifies must sit in the instance's
 /// sign-up domain list. The callback consumes the pending sign-up and
 /// creates the workspace, its first member, the identity and the session in
-/// one transaction. Without a workspace invite, 404 unless sign-up is
-/// enabled on the instance.
+/// one transaction. An optional `workspace_name` names that workspace;
+/// omitted or blank, it is named after the new member. A browser
+/// (`Accept: text/html`) is sent to the console form first and posts
+/// back; an API caller starts here. Without a workspace invite, 404
+/// unless sign-up is enabled on the instance.
 #[utoipa::path(
     get,
     path = "/auth/oidc/signup",
@@ -61,7 +64,7 @@ pub fn oidc_login() {}
     params(OidcSignupQuery),
     security(()),
     responses(
-        (status = 307, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
+        (status = 307, description = "Redirect to the console form for a browser, or to the IdP for an API caller (mock callback when MAIDAN_OIDC_MOCK=1)"),
         (status = 400, response = BadRequest),
         (status = 403, description = "OIDC disabled, the invite is unknown, spent or expired, or sign-up here is by invite only", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
@@ -71,9 +74,10 @@ pub fn oidc_signup() {}
 
 /// Start a sign-up after the Turnstile check
 ///
-/// The console's form POST once its Turnstile widget has a token. Same start
-/// as the GET, with the token in the form body so it never sits in a URL.
-/// Answers 303 to the identity provider.
+/// The console's form POST once its Turnstile widget has a token, carrying
+/// the workspace name chosen on that form. Same start as the GET, with the
+/// token in the form body so it never sits in a URL. Answers 303 to the
+/// identity provider. A blank name is named after the new member.
 #[utoipa::path(
     post,
     path = "/auth/oidc/signup",

@@ -359,9 +359,22 @@ async fn with_turnstile_unset_nothing_asks_for_a_token_and_the_csp_is_unchanged(
     let base = spawn(None).await;
     let (status, _) = join(&base, "plain@seven.example", None).await;
     assert_eq!(status, StatusCode::CREATED);
+    // A browser names the workspace before the provider. No token is asked
+    // for: Turnstile is off, and the form is the console's.
     let res = client()
         .get(format!("{base}/auth/oidc/signup"))
         .header("accept", "text/html")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.headers()["location"].to_str().unwrap(),
+        "/ui/?signup_check=1"
+    );
+    // An API caller that sends no name still starts, and lands on the default.
+    let res = client()
+        .get(format!("{base}/auth/oidc/signup"))
+        .header("accept", "application/json")
         .send()
         .await
         .unwrap();
