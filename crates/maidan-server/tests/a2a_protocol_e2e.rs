@@ -1702,3 +1702,39 @@ async fn client_reports_error_bodies_and_does_not_follow_redirects() {
     let text = err.to_string();
     assert!(text.contains("302") && text.contains("go away"), "{text}");
 }
+
+#[tokio::test]
+async fn client_stops_reading_a_huge_error_body_after_512_bytes() {
+    let (listener, base) = accept_http().await;
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let _ = read_http_request(&mut sock).await;
+        let mut first = Vec::from(&b"BOUNDS:"[..]);
+        first.resize(600, b'x');
+        let header = format!(
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            2 * 1024 * 1024
+        );
+        sock.write_all(header.as_bytes()).await.unwrap();
+        sock.write_all(&first).await.unwrap();
+        // A client that drains Content-Length waits here. One that stops at
+        // 512 bytes has already returned.
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let _ = sock.write_all(&[b'z'; 64 * 1024]).await;
+    });
+    let started = std::time::Instant::now();
+    let err = A2aClient::new(&base)
+        .unwrap()
+        .send_message(sample_message("x"))
+        .await
+        .unwrap_err();
+    let elapsed = started.elapsed();
+    let text = err.to_string();
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "the client waited on the rest of the body ({elapsed:?}): {}",
+        text.len()
+    );
+    assert!(text.contains("500") && text.contains("BOUNDS:"), "{text}");
+    assert!(text.len() < 800, "snippet was not bounded: {}", text.len());
+}
