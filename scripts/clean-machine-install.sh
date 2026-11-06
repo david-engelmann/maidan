@@ -38,6 +38,9 @@ TAG="${MAIDAN_TAG:-}"
 if [ -z "$TAG" ]; then
   TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | jq -er '.tag_name')
 fi
+case "$TAG" in (*[!A-Za-z0-9._-]*|"") echo "bad tag: $TAG" >&2; exit 1;; esac
+[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { echo "not a release tag: $TAG" >&2; exit 1; }
 echo "release: ${TAG}"
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/maidan-clean-install.XXXXXX")
@@ -56,6 +59,10 @@ REF="${MAIDAN_REF:-$TAG}"
 raw="https://raw.githubusercontent.com/${REPO}/${REF}"
 mkdir -p "$WORK/docker" "$WORK/scripts"
 for f in compose.quickstart.yaml docker/Dockerfile.quickstart scripts/quickstart-two-agents.sh; do
+  case "$f" in
+    (*..*|/*|*\*) echo "refusing path: $f" >&2; exit 1;;
+  esac
+  mkdir -p "$WORK/$(dirname "$f")"
   curl -fsSL "${raw}/${f}" -o "$WORK/${f}"
 done
 chmod +x "$WORK/scripts/quickstart-two-agents.sh"

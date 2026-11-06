@@ -52,6 +52,31 @@ otelcol.processor.attributes "redact" {
 		action = "delete"
 	}
 
+	action {
+		key    = "authorization"
+		action = "delete"
+	}
+
+	action {
+		key    = "api_key"
+		action = "delete"
+	}
+
+	action {
+		key    = "password"
+		action = "delete"
+	}
+
+	action {
+		key    = "token"
+		action = "delete"
+	}
+
+	action {
+		key    = "MAIDAN_CONTENT_KEK"
+		action = "delete"
+	}
+
 	output {
 		traces = [otelcol.processor.batch.default.input]
 	}

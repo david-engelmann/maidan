@@ -28,3 +28,10 @@ config:
 
 secrets:
   DATABASE_URL: "sqlite:///data/maidan.db?mode=rwc"
+
+# CI smoke stays on-cluster (SQLite + localfs); lock egress to DNS only.
+networkPolicy:
+  enabled: true
+  allowAllEgress: false
+  egress: []
+

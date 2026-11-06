@@ -141,8 +141,9 @@ podDisruptionBudget:
 networkPolicy:
   enabled: false
   ingressFrom: []      # e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]
-  allowAllEgress: true
-  egress: []           # used when allowAllEgress is false (DNS is always allowed)
+  # Must stay false when enabled: the template refuses allowAllEgress.
+  allowAllEgress: false
+  egress: []           # DNS is always allowed; add Postgres/Redis/S3 ports here
 
 persistence:
   enabled: true

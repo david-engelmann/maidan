@@ -52,6 +52,7 @@ jobs:
           platforms: linux/amd64
           build-args: |
             MAIDAN_VERSION=${{ steps.version.outputs.version }}
+            MAIDAN_ENABLE_BOOTSTRAP=0
           tags: maidan-server:${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/maidan-server.tar
           cache-from: |
@@ -109,10 +110,14 @@ jobs:
       - run: npm ci
       - name: push the image to the account registry
         run: |
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "GITHUB_SHA is not a full commit sha: ${GITHUB_SHA:-empty}" >&2; exit 1; }
           docker load --input "$RUNNER_TEMP/maidan-server.tar"
           npx wrangler containers push "maidan-server:$GITHUB_SHA"
       - name: deploy
         run: |
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "GITHUB_SHA is not a full commit sha: ${GITHUB_SHA:-empty}" >&2; exit 1; }
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$GITHUB_SHA"
           sed -i \
             -e "s#\"image\": \"../../crates/maidan-server/Dockerfile\"#\"image\": \"$image\"#" \

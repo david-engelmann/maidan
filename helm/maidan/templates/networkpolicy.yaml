@@ -1,4 +1,7 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- if .Values.networkPolicy.allowAllEgress }}
+{{- fail "networkPolicy.allowAllEgress must be false when networkPolicy is enabled; set egress (DNS is always allowed)" }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -30,13 +33,8 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
-    {{- if .Values.networkPolicy.allowAllEgress }}
-    # Open egress by default so Postgres/Redis/S3 work without per-cluster
-    # tuning. Set `allowAllEgress: false` and populate `egress` to lock it down.
-    - {}
-    {{- else }}
+    # allowAllEgress is refused above; only the explicit egress list remains.
     {{- with .Values.networkPolicy.egress }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
     {{- end }}
 {{- end }}
