@@ -69,6 +69,10 @@ class RecipeHttpGates(unittest.TestCase):
         self.assertEqual(validate_timeout(60), 60.0)
         with self.assertRaises(ValueError):
             validate_timeout(0.5)
+        with self.assertRaises(ValueError):
+            validate_timeout(float("nan"))
+        with self.assertRaises(ValueError):
+            validate_timeout(float("inf"))
         self.assertEqual(validate_id("chan_1", "channel_id"), "chan_1")
         with self.assertRaises(ValueError):
             validate_id("../x", "channel_id")

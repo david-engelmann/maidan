@@ -107,6 +107,8 @@ def validate_timeout(timeout: float) -> float:
         value = float(timeout)
     except (TypeError, ValueError) as exc:
         raise ValueError("timeout must be a number") from exc
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError("timeout must be a finite number")
     if value < _MIN_TIMEOUT or value > _MAX_TIMEOUT:
         raise ValueError(f"timeout must be {_MIN_TIMEOUT}..{_MAX_TIMEOUT}")
     return value
