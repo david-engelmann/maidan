@@ -45,5 +45,7 @@ export function codexConfig(mcpUrl, token) {
     `[mcp_servers.${SERVER_NAME}]`,
     `url = "${mcpUrl}"`,
     `bearer_token_env_var = "${TOKEN_VAR}"`,
+    "# A claim can wait up to 300 s for work.",
+    "tool_timeout_sec = 330",
   ].join("\n");
 }

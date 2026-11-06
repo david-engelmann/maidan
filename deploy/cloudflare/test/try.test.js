@@ -179,5 +179,7 @@ test("the Codex config names an environment variable rather than holding the tok
   assert.match(text, /^\[mcp_servers\.maidan\]$/m);
   assert.match(text, new RegExp(`^url = "${URL_.replace(/[.\/]/g, "\\$&")}"$`, "m"));
   assert.match(text, /^bearer_token_env_var = "MAIDAN_TOKEN"$/m);
+  assert.match(text, /^tool_timeout_sec = 330$/m);
+  assert.match(text, /A claim can wait up to 300 s for work\./);
   assert.match(text, new RegExp(`^export MAIDAN_TOKEN=${TOKEN}$`, "m"));
 });

@@ -246,6 +246,8 @@ export function problemPage(problem, requestId) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${escapeHtml(title)} · Maidan</title>
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f2eee6">
 <link rel="stylesheet" href="/site.css">
 </head>
 <body>
@@ -254,7 +256,7 @@ export function problemPage(problem, requestId) {
   <a class="brand" href="/"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor"/><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor"/><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor"/><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor"/><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor"/><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor"/><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor"/><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor"/></svg><span>Maidan</span></a>
   <a class="signin" href="/ui/">Sign in</a>
 </header>
-<main id="content">
+<main id="content" tabindex="-1">
   <h1>${escapeHtml(title)}</h1>
   ${detail ? `<p class="lead">${escapeHtml(detail.charAt(0).toUpperCase() + detail.slice(1))}${/[.!?]$/.test(detail) ? "" : "."}</p>` : ""}
   <p><a href="/">Go to the front page</a>, <a href="/ui/">sign in to your workspace</a>, or <a href="/support">ask for help</a>.</p>

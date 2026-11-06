@@ -32,15 +32,17 @@ const PARTS = [
   ["indexer", "Search index"],
 ];
 
-export const STATUS_CSS = `body{margin:0;font:16px/1.5 system-ui,-apple-system,sans-serif;background:#f6f3ec;color:#1f1d1a}
-main{max-width:40rem;margin:0 auto;padding:3rem 1.25rem}
+export const STATUS_CSS = `html{-webkit-text-size-adjust:100%}
+body{margin:0;font:16px/1.5 system-ui,-apple-system,sans-serif;background:#f6f3ec;color:#1f1d1a}
+main{max-width:40rem;margin:0 auto;padding:max(2.5rem,env(safe-area-inset-top)) max(1.25rem,env(safe-area-inset-right)) max(2.5rem,env(safe-area-inset-bottom)) max(1.25rem,env(safe-area-inset-left))}
 h1{font-size:1.6rem;letter-spacing:-.02em;margin:0 0 .25rem}
 .overall{font-size:1.15rem;font-weight:600;margin:0 0 1.5rem}
 .ok{color:#1e6b3a}.bad{color:#9a2a1a}
 ul{list-style:none;padding:0;margin:0;border-top:1px solid #ddd6c8}
 li{display:flex;justify-content:space-between;padding:.75rem 0;border-bottom:1px solid #ddd6c8}
 footer{margin-top:1.5rem;color:#6b665c;font-size:.875rem}
-@media (prefers-color-scheme:dark){body{background:#17160f;color:#ece7dc}ul,li{border-color:#3a372f}footer{color:#a39d90}.ok{color:#6fcf8f}.bad{color:#f08a76}}`;
+:focus-visible{outline:3px solid #1f1d1a;outline-offset:3px}
+@media (prefers-color-scheme:dark){body{background:#17160f;color:#ece7dc}ul,li{border-color:#3a372f}footer{color:#a39d90}.ok{color:#6fcf8f}.bad{color:#f08a76}:focus-visible{outline-color:#ece7dc}}`;
 
 // Whether a request is for the status page or its stylesheet.
 export function isStatusRequest(request) {
@@ -80,7 +82,10 @@ export function renderStatus(summary, now = new Date()) {
     .join("");
   const version = summary.version ? ` · version ${escape(summary.version)}` : "";
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17160f" media="(prefers-color-scheme: dark)">
 <title>Maidan status</title><link rel="stylesheet" href="/status.css"></head>
 <body><main><h1>Maidan status</h1>
 <p class="overall ${summary.up ? "ok" : "bad"}">${overall}</p>
