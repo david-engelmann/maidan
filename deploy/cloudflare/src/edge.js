@@ -4,6 +4,45 @@
 // sniffing. Kept apart from the Worker so it is testable without the Workers
 // runtime.
 
+// Internal hosts: names under `.internal` that the container calls over plain
+// HTTP and one of our own Workers answers through a service binding, so a
+// webhook to the review seats or Soundcheck never crosses the public internet
+// and neither Worker needs a public API. `MAIDAN_INTERNAL_HOSTS` maps each
+// name to a binding (`seats.internal=SEATS,soundcheck.internal=SOUNDCHECK`).
+// A name not under `.internal`, or one whose binding this deploy does not
+// declare, is left out: every other host keeps the container's own internet
+// egress, which the server needs for Neon, R2, GitHub and Slack.
+const INTERNAL_HOST = /^(?:[a-z0-9-]+\.)+internal$/;
+const BINDING_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// The `[host, binding]` pairs of `raw` that this deploy can serve, the first
+// mention of a host winning.
+export function parseInternalHosts(raw, env = {}) {
+  const pairs = new Map();
+  for (const entry of String(raw ?? "").split(",")) {
+    const [rawHost, rawBinding, ...rest] = entry.split("=");
+    if (rawBinding === undefined || rest.length > 0) continue;
+    const host = rawHost.trim().toLowerCase().replace(/\.+$/, "");
+    const binding = rawBinding.trim();
+    if (!INTERNAL_HOST.test(host) || !BINDING_NAME.test(binding) || pairs.has(host)) continue;
+    if (typeof env[binding]?.fetch !== "function") continue;
+    pairs.set(host, binding);
+  }
+  return [...pairs];
+}
+
+// The `outboundByHost` handlers for `raw`: each forwards the container's
+// request, unchanged, to its binding. The binding is read from the `env` the
+// handler is called with, the Worker's own.
+export function internalOutboundByHost(raw, env = {}) {
+  return Object.fromEntries(
+    parseInternalHosts(raw, env).map(([host, binding]) => [
+      host,
+      (request, handlerEnv) => handlerEnv[binding].fetch(request),
+    ]),
+  );
+}
+
 // A year of HSTS for the zone's hosts, all of which serve HTTPS only.
 export const SECURITY_HEADERS = {
   "strict-transport-security": "max-age=31536000; includeSubDomains",

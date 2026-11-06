@@ -29,11 +29,23 @@
   "exports": {
     "MaidanServer": { "type": "durable-object", "storage": "sqlite" }
   },
+  // Internal hosts (docs/Hosted Operations.md): the container's webhooks to
+  // `http://seats.internal/...` reach the review-seat Worker over this binding,
+  // never the public internet. Soundcheck's control plane joins once its
+  // Worker exists, with its API only on a named entrypoint:
+  //   { "binding": "SOUNDCHECK", "service": "soundcheck-control", "entrypoint": "Internal" }
+  // and `soundcheck.internal=SOUNDCHECK` / `soundcheck.internal` added to the
+  // two vars below.
+  "services": [{ "binding": "SEATS", "service": "maidan-wax-seats" }],
   "vars": {
     "MAIDAN_PUBLIC_ORIGIN": "https://swarm.maidan.world",
     "ARTIFACT_BACKEND": "s3",
     "S3_BUCKET": "maidan-artifacts-swarm",
-    "S3_REGION": "auto"
+    "S3_REGION": "auto",
+    // The Worker routes these hosts to their bindings; the server may send
+    // webhooks to exactly these names.
+    "MAIDAN_INTERNAL_HOSTS": "seats.internal=SEATS",
+    "MAIDAN_INTERNAL_EGRESS_HOSTS": "seats.internal"
   },
   // Agents claim and renew all day, which keeps the container awake while
   // work is open; the daily cron runs schedules and sweeps on a quiet day.
