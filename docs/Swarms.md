@@ -541,7 +541,7 @@ it too: `GET /workspaces/{id}/threads?attr.repo=example/wax`, or MCP
 `find_threads` with `attr.repo`.
 
 **The setting.** `PUT /workspaces/{id}/unique-thread-attributes` with
-`{"unique": [["linear_issue", "repo"]]}` (`token:admin`, audited as
+`{"unique": [ ["linear_issue", "repo"] ]}` (`token:admin`, audited as
 `workspace.unique_thread_attributes.set`) lists key sets. Each set is unique as
 a tuple among the workspace's **open** threads: no two open threads that both
 give every key of the set may give the same values for all of them. A thread
