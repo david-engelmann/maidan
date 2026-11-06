@@ -229,6 +229,11 @@ test("escape, a route change and the tone choose which toasts remain and how the
   const list = [notice(1, 1000, "ok"), notice(2, 1000, "error")];
   const dismissed = selectLiveToasts(list, new Set([1, 2]), 0, 2000, none, null);
   assert.deepEqual(dismissed, []);
+  const paused = selectLiveToasts([notice(1, 0)], new Set(), 0, 20_000, none, 1000);
+  assert.equal(paused.length, 1);
+  const second = notice(3, 20_000);
+  assert.equal(selectLiveToasts([second], new Set([1]), 0, 20_000 + TOAST_MS - 1, none, null).length, 1);
+  assert.equal(selectLiveToasts([second], new Set([1]), 0, 20_000 + TOAST_MS, none, null).length, 0);
   assert.equal(selectLiveToasts(list, new Set(), 1500, 2000, none, null).length, 0);
   assert.equal(toastRole("error"), "alert");
   assert.equal(toastRole("ok"), "status");

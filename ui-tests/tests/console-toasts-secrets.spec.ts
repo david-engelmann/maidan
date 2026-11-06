@@ -61,6 +61,20 @@ test("a toast pauses under the pointer and focus, and Escape or a new page clear
   await expect(failed).toHaveAttribute("role", "alert");
 });
 
+test("a toast dismissed while focused does not freeze the next one", async ({ page }) => {
+  test.setTimeout(30_000);
+  await signInWithCookie(page, fx);
+  await openOnChannel(page, fx.board_channel_id, `#/threads/t/${fx.board_open_thread_id}`);
+  const first = await pinToast(page);
+  await first.getByRole("button", { name: "Dismiss" }).focus();
+  await first.getByRole("button", { name: "Dismiss" }).click();
+  await expect(first).toHaveCount(0);
+  const second = await pinToast(page);
+  await page.mouse.move(2, 2);
+  await expect(second).toBeVisible();
+  await expect(second).toHaveCount(0, { timeout: 8000 });
+});
+
 test("a second secret resets Show and Copied, and the card stays in the phone width", async ({ page }) => {
   test.setTimeout(45_000);
   await page.addInitScript(() => {

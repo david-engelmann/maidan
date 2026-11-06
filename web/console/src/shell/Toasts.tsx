@@ -50,6 +50,7 @@ export function Toasts() {
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   const holds = useRef({ hover: false, focus: false });
   const frozenRef = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef(list);
   const goneRef = useRef(gone);
   const navRef = useRef(navAt);
@@ -85,9 +86,7 @@ export function Toasts() {
     }
     holds.current[which] = true;
   };
-  const release = (which: "hover" | "focus") => {
-    holds.current[which] = false;
-    if (holds.current.hover || holds.current.focus) return;
+  const unfreeze = () => {
     const start = frozenRef.current;
     frozenRef.current = null;
     const t = Date.now();
@@ -98,15 +97,34 @@ export function Toasts() {
     setFrozenAt(null);
     setNow(t);
   };
+  const release = (which: "hover" | "focus") => {
+    holds.current[which] = false;
+    if (holds.current.hover || holds.current.focus) return;
+    unfreeze();
+  };
   const dismiss = () => {
+    holds.current = { hover: false, focus: false };
+    unfreeze();
     setGone((g) => {
       const next = new Set(g);
       for (const n of liveRef.current) next.add(n.id);
       return next;
     });
   };
+  const dismissOne = (id: number) => {
+    setGone((g) => new Set(g).add(id));
+  };
+  useEffect(() => {
+    const root = rootRef.current;
+    const inside = !!(root && document.activeElement && root.contains(document.activeElement));
+    if (!inside) holds.current.focus = false;
+    if (live.length === 0) holds.current.hover = false;
+    if (holds.current.focus || holds.current.hover || frozenRef.current === null) return;
+    unfreeze();
+  }, [live.length]);
   return (
     <div
+      ref={rootRef}
       className="toasts"
       onMouseEnter={() => engage("hover")}
       onMouseLeave={() => release("hover")}
@@ -123,7 +141,7 @@ export function Toasts() {
       {live.map((n) => (
         <div key={n.id} className={`toast ${n.tone}`} role={toastRole(n.tone)}>
           <span>{n.text}</span>
-          <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => setGone((g) => new Set(g).add(n.id))}>×</button>
+          <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => dismissOne(n.id)}>×</button>
         </div>
       ))}
     </div>
