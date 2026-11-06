@@ -6,8 +6,9 @@
 // Search finds messages; Workspace renames, switches, and adds channels,
 // tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
-import { type FormEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ago } from "../core/board.ts";
+import { PeopleApi } from "../core/people.ts";
 import { convHash } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
 import {
@@ -24,6 +25,9 @@ import {
   OPERATOR_GLOBAL,
   holds,
   showsOperator,
+  channelFollowLabel,
+  channelsToFollow,
+  memberChoices,
   searchQuery,
   switchHref,
   NOTIFICATION_KINDS,
@@ -90,7 +94,7 @@ export function Tools() {
       </div>
       </div>
       {tab === "inbox" ? <Inbox api={api} me={me} /> : null}
-      {tab === "prefs" ? <Prefs api={api} me={me} /> : null}
+      {tab === "prefs" ? <Prefs api={api} me={me} ws={ws} /> : null}
       {tab === "deliveries" ? <Deliveries api={api} ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
       {tab === "search" ? <Search api={api} ws={ws} /> : null}
@@ -198,13 +202,14 @@ function Inbox({ api, me }: { api: ToolsApi; me: string | null }) {
 
 // ---- Preferences ---------------------------------------------------------
 
-function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
+function Prefs({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string | null }) {
   const key = me;
   const mode = useLoad(key, () => api.deliveryMode(me ?? ""));
   const email = useLoad(key, () => api.email(me ?? ""));
   const prefs = useLoad(key, () => api.prefs(me ?? ""));
-  const channels = useLoad(key, () => api.follows(me ?? "", "channel"));
-  const threads = useLoad(key, () => api.follows(me ?? "", "thread"));
+  const channelFollows = useLoad(key, () => api.follows(me ?? "", "channel"));
+  const threadFollows = useLoad(key, () => api.follows(me ?? "", "thread"));
+  const workspaceChannels = useLoad(ws, () => api.channels(ws ?? ""));
   const [emailDraft, setEmailDraft] = useState("");
   const [name, setName] = useState("");
   const [muteKind, setMuteKind] = useState<string>(NOTIFICATION_KINDS[0]);
@@ -249,7 +254,10 @@ function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
         </div>
       </Panel>
       {(["channel", "thread"] as const).map((what) => {
-        const loaded = what === "channel" ? channels : threads;
+        const loaded = what === "channel" ? channelFollows : threadFollows;
+        const known = workspaceChannels.value ?? [];
+        const followedIds = (channelFollows.value ?? []).map((f) => f.channel_id ?? "").filter(Boolean);
+        const channelMenu = what === "channel" && known.length > 0;
         return (
           <Panel key={what} title={what === "channel" ? "Channels you follow" : "Threads you follow"}>
             <State loaded={loaded}>
@@ -258,9 +266,10 @@ function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
                   <ul className="tool-list">
                     {rows.map((f) => {
                       const id = (what === "channel" ? f.channel_id : f.thread_id) ?? "";
+                      const label = what === "channel" ? channelFollowLabel(id, known) : id;
                       return (
                         <li key={id} tabIndex={-1} className="tool-row">
-                          <code className="mono-id">{id}</code>
+                          {what === "channel" && label.startsWith("#") ? <span>{label}</span> : <code className="mono-id">{label}</code>}
                           <button type="button" className="chip-btn" disabled={busy !== null} onClick={() => void act(id, async () => { await api.unfollow(me, what, id); await loaded.reload(); }, "Unfollowed", "Could not unfollow")}>Unfollow</button>
                         </li>
                       );
@@ -272,7 +281,14 @@ function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
               }
             </State>
             <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); const id = follow[what].trim(); if (!id) return; void act("f", async () => { await api.follow(me, what, id); setFollow((x) => ({ ...x, [what]: "" })); await loaded.reload(); }, "Following", "Could not follow that"); }}>
-              <label className="field grow">{what === "channel" ? "Channel id" : "Thread id"}<input value={follow[what]} onChange={(e) => setFollow((x) => ({ ...x, [what]: e.target.value }))} /></label>
+              {channelMenu ? (
+                <label className="field grow">Channel<select value={follow.channel} onChange={(e) => setFollow((x) => ({ ...x, channel: e.target.value }))}>
+                  <option value="">Choose a channel</option>
+                  {channelsToFollow(known, followedIds).map((c) => <option key={c.id} value={c.id}>{`#${c.name}`}</option>)}
+                </select></label>
+              ) : (
+                <label className="field grow">{what === "channel" ? "Channel id" : "Thread id"}<input value={follow[what]} onChange={(e) => setFollow((x) => ({ ...x, [what]: e.target.value }))} /></label>
+              )}
               <button className="button steel" disabled={busy !== null || !follow[what].trim()}>Follow</button>
             </form>
           </Panel>
@@ -562,19 +578,29 @@ function Recent() {
 // ---- Search --------------------------------------------------------------
 
 function Search({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const { store } = useSession();
+  const people = useMemo(() => new PeopleApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+  const members = useLoad(ws, () => people.people(ws ?? ""));
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<string>(SEARCH_MODES[0]);
   const [author, setAuthor] = useState("");
   const [ran, setRan] = useState<string | null>(null);
   const hits = useLoad(ws && ran ? ran : null, () => api.search(ws ?? "", ran ?? ""));
   if (!ws) return <Panel title="Search">{SELF_ONLY}</Panel>;
+  const authorReady = members.value != null;
   return (
     <div className="tool-grid">
       <Panel title="Search messages">
         <form className="row-form" role="search" onSubmit={(e: FormEvent) => { e.preventDefault(); if (q.trim()) setRan(searchQuery(q, mode, "", author)); }}>
           <label className="field grow">Words<input type="search" value={q} onChange={(e) => setQ(e.target.value)} /></label>
           <label className="field">Mode<select value={mode} onChange={(e) => setMode(e.target.value)}>{SEARCH_MODES.map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
-          <label className="field">Author id<input value={author} onChange={(e) => setAuthor(e.target.value)} spellCheck={false} /></label>
+          {members.status === "error" && !authorReady ? (
+            <label className="field">Author id<input value={author} onChange={(e) => setAuthor(e.target.value)} spellCheck={false} /></label>
+          ) : (
+            <label className="field">Author<select value={authorReady ? author : ""} onChange={(e) => setAuthor(e.target.value)} disabled={!authorReady}>
+              {(authorReady ? memberChoices(members.value ?? []) : [{ id: "", label: "Loading…" }]).map((c) => <option key={c.id || "anyone"} value={c.id}>{c.label}</option>)}
+            </select></label>
+          )}
           <button className="button steel" disabled={!q.trim()}>Search</button>
         </form>
         {ran ? (

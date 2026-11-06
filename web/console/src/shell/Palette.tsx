@@ -1,9 +1,31 @@
 // The command palette: ⌘K / Ctrl+K anywhere, or the search button. It is a
 // combobox over a listbox: arrows move the active option, Enter runs it,
 // Escape closes, Tab stays inside, and focus goes back where it came from.
+// Signed in, the same list also finds channels, people, task titles and messages.
 import { motion, useReducedMotion } from "motion/react";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { rank, type Command } from "./commands.ts";
+import { followChannelJump } from "../core/boardQuery.ts";
+import { BoardApi } from "../core/board.ts";
+import { liveBus } from "../core/bus.ts";
+import { sayError } from "../core/notices.ts";
+import { PeopleApi } from "../core/people.ts";
+import { ThreadsApi } from "../core/threads.ts";
+import { ToolsApi, searchQuery, type SearchHit } from "../core/tools.ts";
+import { useSession } from "../hooks/useSession.ts";
+import { navigate, useRoute } from "./router.ts";
+import type { Command } from "./commands.ts";
+import {
+  PALETTE_SEARCH_DEBOUNCE_MS,
+  PALETTE_SEARCH_MIN,
+  loadPaletteIndex,
+  openThreadHash,
+  paletteEmpty,
+  paletteItems,
+  palettePlaceholder,
+  peekPaletteIndex,
+  storePaletteIndex,
+  type PaletteIndex,
+} from "./paletteIndex.ts";
 
 export type { Command };
 
@@ -47,16 +69,139 @@ export function Palette({ open, onClose, commands }: { open: boolean; onClose: (
 }
 
 function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const { session, store } = useSession();
+  const route = useRoute();
+  const signedIn = session.status === "signed-in";
+  const workspaceId = signedIn ? session.workspaceId : null;
+  const me = signedIn ? session.memberId : null;
+  const apis = useMemo(() => {
+    const creds = () => store.getSnapshot().credentials;
+    const mode = () => store.getSnapshot().mode;
+    const fetchFn = (url: string, init?: RequestInit) => fetch(url, init);
+    return {
+      tools: new ToolsApi(fetchFn, creds, mode),
+      people: new PeopleApi(fetchFn, creds, mode),
+      board: new BoardApi(fetchFn, creds, mode),
+      threads: new ThreadsApi(fetchFn, creds, mode),
+    };
+  }, [store]);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [index, setIndex] = useState<PaletteIndex | null>(() => (workspaceId ? peekPaletteIndex(workspaceId) : null));
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   useEffect(() => input.current?.focus(), []);
-  const shown = useMemo(() => rank(commands, query), [commands, query]);
+
+  // Channels and people once per open, then again on a resync. The last index
+  // for this workspace shows immediately, so a reopen is not a blank list.
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    let ticket = 0;
+    const refresh = () => {
+      const mine = ++ticket;
+      const keepTasks = () => (peekPaletteIndex(workspaceId)?.tasks ?? []);
+      return loadPaletteIndex(workspaceId, {
+        channels: () => apis.tools.channels(workspaceId),
+        people: () => apis.people.people(workspaceId),
+        tasks: (channelId) => apis.board.threads(channelId).then((rows) => rows.map((t) => ({ id: t.id, title: t.title ?? "" }))),
+      }, (directory) => {
+        if (!alive || mine !== ticket) return;
+        const next = { ...directory, tasks: keepTasks() };
+        storePaletteIndex(next);
+        setIndex(next);
+      })
+        .then((next) => {
+          if (!alive || mine !== ticket) return;
+          storePaletteIndex(next);
+          setIndex(next);
+        })
+        .catch(() => {
+          /* loadPaletteIndex already swallows a refused read */
+        });
+    };
+    setIndex(peekPaletteIndex(workspaceId));
+    void refresh();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = liveBus.listen((m) => {
+      if (m.type !== "resync") return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void refresh();
+      }, 250);
+    });
+    return () => {
+      alive = false;
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [workspaceId, apis]);
+
+  // Message search waits a beat, and a newer query or a close drops the answer.
+  useEffect(() => {
+    const q = query.trim();
+    if (!workspaceId || q.length < PALETTE_SEARCH_MIN) {
+      setHits([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setHits([]);
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void apis.tools.search(workspaceId, searchQuery(q, "lexical", "", "")).then(
+        (rows) => {
+          if (cancelled) return;
+          setHits(rows);
+          setSearching(false);
+        },
+        () => {
+          if (cancelled) return;
+          setHits([]);
+          setSearching(false);
+        },
+      );
+    }, PALETTE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, workspaceId, apis]);
+
+  const shown = useMemo(
+    () =>
+      paletteItems({
+        commands,
+        query,
+        channels: index?.workspaceId === workspaceId ? index.channels : [],
+        people: index?.workspaceId === workspaceId ? index.people : [],
+        tasks: index?.workspaceId === workspaceId ? index.tasks : [],
+        hits,
+        me,
+        jumpChannel: (id) => followChannelJump(route, id),
+        openPerson: (id) => {
+          if (!workspaceId || !me) return;
+          void apis.threads.openDm(workspaceId, me, id).then(
+            (dm) => {
+              window.location.hash = `#/threads/dm/${encodeURIComponent(dm.id)}`;
+            },
+            (e: unknown) => sayError(e, "Could not open that conversation"),
+          );
+        },
+        openSelf: () => navigate("people"),
+        openThread: (id) => {
+          window.location.hash = openThreadHash(id);
+        },
+      }),
+    [commands, query, index, hits, me, workspaceId, route, apis],
+  );
   const at = Math.min(active, Math.max(0, shown.length - 1));
   const activeId = shown[at] ? `cmd-${shown[at].id}` : undefined;
   useEffect(() => {
-    if (activeId) list.current?.querySelector(`#${activeId}`)?.scrollIntoView({ block: "nearest" });
+    if (activeId) list.current?.querySelector(`#${CSS.escape(activeId)}`)?.scrollIntoView({ block: "nearest" });
   }, [activeId]);
   const run = (c: Command | undefined) => {
     if (!c) return;
@@ -64,6 +209,8 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
     c.run();
   };
   const move = (by: number) => setActive((at + by + shown.length) % Math.max(1, shown.length));
+  const empty = paletteEmpty(query, shown.length, searching);
+  const placeholder = palettePlaceholder(signedIn);
   return (
     <>
       <div className="palette-field">
@@ -75,8 +222,8 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
           aria-expanded="true"
           aria-autocomplete="list"
           aria-haspopup="listbox"
-          placeholder="Go to a place or run a command…"
-          aria-label="Search commands"
+          placeholder={placeholder}
+          aria-label={placeholder}
           aria-controls="palette-list"
           aria-activedescendant={activeId}
           autoComplete="off"
@@ -115,7 +262,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
       <ul id="palette-list" ref={list} className="palette-list" role="listbox" aria-label="Commands">
         {shown.map((c, i) => (
           <Fragment key={c.id}>
-            {!query.trim() && (i === 0 || shown[i - 1].group !== c.group) && (
+            {(i === 0 || shown[i - 1].group !== c.group) && (
               <li role="presentation" className="palette-group">{c.group}</li>
             )}
             <li
@@ -140,7 +287,8 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
           </Fragment>
         ))}
       </ul>
-      {!shown.length && <p className="palette-empty" role="status">Nothing matches “{query.trim()}”.</p>}
+      {empty === "searching" && <p className="palette-empty" role="status">Searching…</p>}
+      {empty === "none" && <p className="palette-empty" role="status">Nothing matches “{query.trim()}”.</p>}
       <p className="palette-foot" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> move <kbd>↵</kbd> run <kbd>G</kbd> then a letter jumps</p>
     </>
   );

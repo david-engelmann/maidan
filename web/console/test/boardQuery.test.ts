@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matches, readQuery, writeQuery } from "../src/core/boardQuery.ts";
+import { SELECT_CHANNEL_EVENT, channelJump, followChannelJump, matches, pickChannel, readQuery, writeQuery } from "../src/core/boardQuery.ts";
 import type { Card } from "../src/core/board.ts";
 
 const card = (o: { id: string; title: string; lane: Card["chrome"]["lane"]; who?: string }): Card => ({
@@ -28,6 +28,44 @@ test("a card matches only when every filter set agrees", () => {
   assert.ok(matches(c, { ...none, agent: "m1", state: "working" }));
   assert.ok(!matches(c, { ...none, agent: "m2" }));
   assert.ok(!matches(c, { ...none, state: "open" }));
+});
+
+test("a channel link without a task still names the channel", () => {
+  assert.equal(readQuery("#/board?channel=c1").channel, "c1");
+  assert.equal(readQuery("#/board?channel=c1").task, null);
+  assert.deepEqual(channelJump("needs", "#/needs", "c1"), { href: "#/board?channel=c1", select: false });
+  assert.deepEqual(channelJump("threads", "#/threads/t/abc", "c1"), { href: null, select: true });
+  assert.deepEqual(channelJump("board", "#/board?channel=c1", "c1"), { href: null, select: true });
+  assert.deepEqual(channelJump("board", "#/board", "ops/1"), { href: "#/board?channel=ops%2F1", select: false });
+});
+
+test("the first read prefers the link's channel over the remembered one", () => {
+  const channels = [{ id: "a" }, { id: "b" }];
+  assert.equal(pickChannel(null, channels, "a", "b"), "b");
+  assert.equal(pickChannel(null, channels, "a", null), "a");
+  assert.equal(pickChannel("b", channels, "a", "a"), "b", "a menu choice wins over the link");
+  assert.equal(pickChannel(null, channels, "missing", "also-missing"), "a");
+  assert.equal(pickChannel(null, [], null, null), null);
+});
+
+test("a channel jump writes the board link, and on Threads it only selects", () => {
+  const events: Event[] = [];
+  const previous = (globalThis as { window?: unknown }).window;
+  const location = { hash: "#/needs" };
+  (globalThis as { window?: unknown }).window = { location, dispatchEvent: (e: Event) => events.push(e) };
+  try {
+    followChannelJump("needs", "c1");
+    assert.equal(location.hash, "#/board?channel=c1");
+    assert.equal(events.length, 0);
+    location.hash = "#/threads";
+    followChannelJump("threads", "c1");
+    assert.equal(location.hash, "#/threads");
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, SELECT_CHANNEL_EVENT);
+    assert.equal((events[0] as CustomEvent<string>).detail, "c1");
+  } finally {
+    (globalThis as { window?: unknown }).window = previous;
+  }
 });
 
 test("a task link names its channel, and a bare URL keeps a paren it opened", async () => {

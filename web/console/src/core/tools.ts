@@ -35,6 +35,35 @@ export type AppInstallation = { id: string; app_id: string; revoked_at?: string 
 export type SwitchableWorkspace = { workspace_id: string; name: string; current?: boolean };
 export const SEARCH_MODES = ["lexical", "semantic"] as const;
 
+export type PickerMember = { id: string; name: string; handle?: string | null };
+export type PickerChannel = { id: string; name: string };
+
+/** How a member is offered in a menu: the name, and the handle when it adds something. */
+export function memberLabel(m: PickerMember): string {
+  const handle = (m.handle ?? "").trim().replace(/^@/, "");
+  const name = m.name.trim() || handle || m.id.slice(0, 8);
+  if (!handle || handle === name) return name;
+  return `${name} (@${handle})`;
+}
+
+/** Anyone first, then members by the label a person reads. */
+export function memberChoices(members: PickerMember[]): Array<{ id: string; label: string }> {
+  const rows = [...members].sort((a, b) => memberLabel(a).localeCompare(memberLabel(b)) || a.id.localeCompare(b.id));
+  return [{ id: "", label: "Anyone" }, ...rows.map((m) => ({ id: m.id, label: memberLabel(m) }))];
+}
+
+/** A followed channel as #name, or the raw id when this workspace has no such channel. */
+export function channelFollowLabel(id: string, channels: PickerChannel[]): string {
+  const name = channels.find((c) => c.id === id)?.name.trim();
+  return name ? `#${name}` : id;
+}
+
+/** Channels still available to follow, by name. */
+export function channelsToFollow(channels: PickerChannel[], followed: Iterable<string>): PickerChannel[] {
+  const have = new Set(followed);
+  return channels.filter((c) => c.name.trim() && !have.has(c.id)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
 /** The query string for a workspace search; empty fields stay out. */
 export function searchQuery(q: string, mode: string, channel = "", author = ""): string {
   const p = new URLSearchParams({ q: q.trim(), mode, limit: "20" });
