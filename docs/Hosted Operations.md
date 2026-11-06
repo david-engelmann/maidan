@@ -122,6 +122,8 @@ The Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 secret and the OIDC secret are prod's own. The R2 keys should be a token scoped
 to `maidan-artifacts-prod` alone.
 
+`FEDERATION_ENCRYPTION_KEY` (32 random bytes, hex) encrypts webhook secrets, federation peer tokens, A2A push credentials and workspace secrets at rest. Without it, creating any of them answers 500. Keep it: rotating it needs `FEDERATION_DECRYPT_KEYS`.
+
 `MAIDAN_EXPORT_SIGNING_KEY` (32 random bytes, hex) signs workspace exports.
 Without it `GET /workspaces/{id}/export` refuses, and the support page's
 export promise fails. `openssl rand -hex 32 | npx wrangler secret put

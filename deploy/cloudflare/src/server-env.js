@@ -55,6 +55,9 @@ export const SERVER_ENV = [
   "MAIDAN_FREE_ALLOWANCE",
   "MAIDAN_MEDIA_QUOTA_BYTES",
   "MAIDAN_EXPORT_SIGNING_KEY",
+  // Encrypts webhook secrets, federation peer tokens, A2A push credentials
+  // and workspace secrets at rest; without it creating any of them is a 500.
+  "FEDERATION_ENCRYPTION_KEY",
   "MAIDAN_TURNSTILE_SECRET",
   "MAIDAN_TURNSTILE_SITE_KEY",
   "MAIDAN_GITHUB_TOKEN",
