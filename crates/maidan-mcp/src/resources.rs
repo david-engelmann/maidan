@@ -91,18 +91,18 @@ pub async fn read(
 
     let payload = match kind {
         "artifacts" => {
-            if id_str.len() != 64 {
-                return Err(McpError::InvalidParams(
-                    "artifact sha256 must be 64 hex chars".into(),
-                ));
-            }
+            // Same decoder as `validate_uri`: uppercase hex is a real digest,
+            // stored and queried in canonical lowercase.
+            let sha =
+                Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+            let canonical = sha.to_hex();
             // Access is gated by the caller (server::resources_read →
             // artifact_ref_exists). `size_bytes` is
             // authoritative metadata, so the blob is never loaded just to
             // report its length.
             let meta = match viewer {
-                Some(ws) => store.get_artifact_for_workspace(ws, id_str).await?,
-                None => store.get_artifact_by_sha(id_str).await?,
+                Some(ws) => store.get_artifact_for_workspace(ws, &canonical).await?,
+                None => store.get_artifact_by_sha(&canonical).await?,
             };
             json!({
                 "artifact": meta,
