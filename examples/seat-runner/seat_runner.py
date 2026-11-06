@@ -221,6 +221,8 @@ class Maidan:
                 text = e.read().decode(errors="replace")
             except (http.client.HTTPException, OSError):
                 text = ""
+            finally:
+                e.close()
             try:
                 return e.code, json.loads(text), retry_after
             except ValueError:

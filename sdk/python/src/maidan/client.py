@@ -440,6 +440,8 @@ class Client:
                     raw = e.read()
                 except Exception:
                     raw = b""
+                finally:
+                    e.close()
             # An answer cut off mid-body (IncompleteRead) is an
             # http.client.HTTPException, not an OSError: it escaped unretried.
             except (urllib.error.URLError, http.client.HTTPException, OSError) as e:

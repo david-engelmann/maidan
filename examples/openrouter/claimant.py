@@ -81,6 +81,8 @@ class Maidan:
                 return err.code, err.read().decode("utf-8", "replace")
             except (http.client.HTTPException, OSError):
                 return err.code, ""
+            finally:
+                err.close()
         except (urllib.error.URLError, http.client.HTTPException, OSError) as err:
             raise Fatal(f"{where}: no answer: {type(err).__name__}: {err}") from None
         except ValueError as err:
@@ -208,7 +210,8 @@ def openrouter(path, key, body=None, timeout=600):
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as err:
-        raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {err.read().decode('utf-8', 'replace')[:300]}")
+        with err:
+            raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {err.read().decode('utf-8', 'replace')[:300]}")
 
 
 def price_snapshot(model):
