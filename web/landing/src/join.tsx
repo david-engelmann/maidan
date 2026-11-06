@@ -32,6 +32,16 @@ export function Join({
   const [bad, setBad] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // A closed attempt can leave a transport error. The next open starts clean,
+  // and whatever the person already typed stays in the fields.
+  const [trackedOpen, setTrackedOpen] = useState(open);
+  if (open !== trackedOpen) {
+    setTrackedOpen(open);
+    if (open && !done) {
+      setStatus("");
+      setBad(false);
+    }
+  }
 
   useEffect(() => {
     let gone = false;
@@ -122,6 +132,7 @@ export function Join({
     if (wasOpen.current) {
       const back = opener.current?.isConnected ? opener.current : document.querySelector<HTMLButtonElement>(".join-btn");
       back?.focus();
+      wasOpen.current = false;
     }
     return undefined;
   }, [open, reduce]);
@@ -277,7 +288,7 @@ export function Join({
                   autoComplete="email"
                   maxLength={254}
                   required
-                  aria-describedby="wl-email-err"
+                  aria-describedby={errors["wl-email"] ? "wl-email-err" : undefined}
                   aria-invalid={errors["wl-email"] ? true : undefined}
                   placeholder="you@example.com"
                   onInput={() => {
@@ -297,7 +308,7 @@ export function Join({
                   rows={3}
                   maxLength={2000}
                   required
-                  aria-describedby="wl-use-err"
+                  aria-describedby={errors["wl-use"] ? "wl-use-err" : undefined}
                   aria-invalid={errors["wl-use"] ? true : undefined}
                   placeholder="e.g. a review swarm for our backend repo"
                   onInput={() => {
@@ -326,7 +337,7 @@ export function Join({
                   name="consent"
                   type="checkbox"
                   required
-                  aria-describedby="wl-consent-err"
+                  aria-describedby={errors["wl-consent"] ? "wl-consent-err" : undefined}
                   aria-invalid={errors["wl-consent"] ? true : undefined}
                   onChange={() => {
                     if (errors["wl-consent"]) validate();
