@@ -117,14 +117,42 @@ fn maidan_bin() -> std::ffi::OsString {
         .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into())
 }
 
-fn wait_with_timeout(child: std::process::Child, secs: u64) -> std::process::Output {
-    let (tx, rx) = std::sync::mpsc::channel();
+fn wait_with_timeout(mut child: std::process::Child, secs: u64) -> std::process::Output {
+    use std::io::Read;
+    drop(child.stdin.take());
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut stderr = child.stderr.take().expect("stderr");
+    let (out_tx, out_rx) = std::sync::mpsc::channel();
+    let (err_tx, err_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(child.wait_with_output());
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        let _ = out_tx.send(buf);
     });
-    rx.recv_timeout(std::time::Duration::from_secs(secs))
-        .expect("mcp-stdio did not exit")
-        .expect("wait")
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr.read_to_end(&mut buf);
+        let _ = err_tx.send(buf);
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return std::process::Output {
+                    status,
+                    stdout: out_rx.recv().unwrap_or_default(),
+                    stderr: err_rx.recv().unwrap_or_default(),
+                };
+            }
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("mcp-stdio did not exit within {secs}s");
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(err) => panic!("mcp-stdio wait failed: {err}"),
+        }
+    }
 }
 
 /// A message posted over a one-shot `mcp-stdio` pipe is embedded before the
@@ -231,6 +259,7 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
+        .env_remove("MAIDAN_EMBEDDING_PROVIDER")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -268,11 +297,18 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
         ws.id.0
     );
     let mut child = Command::new(maidan_bin())
-        .args(["mcp-stdio", "--database-url", &database_url])
+        .args([
+            "mcp-stdio",
+            "--database-url",
+            &database_url,
+            "--embedding-provider",
+            "hash-v1",
+        ])
         .env("MAIDAN_MCP_TOKEN", secret.as_str())
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
+        .env_remove("MAIDAN_EMBEDDING_PROVIDER")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

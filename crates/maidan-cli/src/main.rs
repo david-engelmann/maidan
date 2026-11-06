@@ -512,9 +512,9 @@ async fn highest_search_event_id(
 async fn wait_for_search_projection(
     store: &dyn Store,
     processed_log_id: &std::sync::atomic::AtomicI64,
+    deadline: tokio::time::Instant,
 ) {
     use std::sync::atomic::Ordering;
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     let start = processed_log_id.load(Ordering::Relaxed).max(
         store
             .tap_cursor(maidan_search::SEARCH_TAP_SURFACE)
@@ -629,8 +629,17 @@ async fn run_mcp_stdio(
             .map_err(anyhow::Error::from)
     })
     .await;
-    wait_for_search_projection(store.as_ref(), &processed_log_id).await;
-    indexer.shutdown().await;
+    // One budget for the walk, the wait, and shutdown. A remote embedder's
+    // own timeout is longer than this, and shutdown must not outlive it.
+    let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    wait_for_search_projection(store.as_ref(), &processed_log_id, drain_deadline).await;
+    let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
+    if tokio::time::timeout(remaining, indexer.shutdown())
+        .await
+        .is_err()
+    {
+        tracing::warn!("timed out waiting for search indexer shutdown at mcp-stdio exit");
+    }
     joined.context("stdio task join")?.context("mcp stdio")?;
     Ok(())
 }
