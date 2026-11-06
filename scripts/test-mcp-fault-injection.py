@@ -716,11 +716,44 @@ class McpClaimantUnderFaults(FaultCase):
                    "fault": {"kind": "drip", "chunk_bytes": 4, "pause_ms": 80}})
         api = claimant.Maidan(self.proxy.url, "t", max_retries=0, sleep=lambda _s: None)
         started = time.monotonic()
-        with self.assertRaises(claimant.MaidanError):
+        with self.assertRaises(claimant.MaidanError) as caught:
             api.tool("whoami", {}, timeout=0.15)
         elapsed = time.monotonic() - started
+        message = str(caught.exception)
+        self.assertTrue(
+            "TimeoutError" in message or "no complete answer within" in message, message)
         self.assertLess(elapsed, 0.6, f"the deadline should cut a drip short, took {elapsed:.2f}s")
         self.assertEqual(self.maidan.claims, [])
+
+    def test_a_drip_inside_the_deadline_is_read_whole(self):
+        self.plan({**self.tool("whoami"),
+                   "fault": {"kind": "drip", "chunk_bytes": 32, "pause_ms": 5}})
+        api = claimant.Maidan(self.proxy.url, "t", max_retries=0, sleep=lambda _s: None)
+        me = api.tool("whoami", {}, timeout=2)
+        self.assertEqual(me["workspace_id"], WS)
+
+    def test_a_remote_http_openrouter_url_is_refused(self):
+        previous = os.environ.get("OPENROUTER_BASE_URL")
+        os.environ["OPENROUTER_BASE_URL"] = "http://example.com/api/v1"
+        try:
+            with self.assertRaises(claimant.Fatal) as caught:
+                claimant.openrouter("/models", "secret-key")
+        finally:
+            if previous is None:
+                os.environ.pop("OPENROUTER_BASE_URL", None)
+            else:
+                os.environ["OPENROUTER_BASE_URL"] = previous
+        self.assertIn("https", str(caught.exception))
+        self.assertNotIn("secret-key", str(caught.exception))
+
+    def test_crlf_sse_keeps_the_result_and_nan_retry_after_is_ignored(self):
+        note = "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\r\n\r\n"
+        result = "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\r\n\r\n"
+        doc = claimant._json_rpc(note + result, "text/event-stream")
+        self.assertEqual(doc["result"], {"ok": True})
+        self.assertIsNone(claimant.retry_after_seconds("nan"))
+        self.assertIsNone(claimant.retry_after_seconds("inf"))
+        self.assertEqual(claimant.retry_after_seconds("2"), 2.0)
 
     def test_a_claim_lost_conflict_is_not_retried(self):
         self.plan({**self.tool("acknowledge_claim"), "times": 1, "fault": {
@@ -805,7 +838,9 @@ class RealServerMcpFaults(unittest.TestCase):
         import socket as socket_mod
         import urllib.request
 
-        work = Path(tempfile.mkdtemp())
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        work = Path(temporary.name)
         db = work / "maidan.db"
         kek = "11" * 32
         env = {**os.environ, "DATABASE_URL": f"sqlite:///{db}?mode=rwc", "MAIDAN_CONTENT_KEK": kek,

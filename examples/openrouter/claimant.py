@@ -85,7 +85,7 @@ def retry_after_seconds(value, now=None):
         secs = float(text)
     except ValueError:
         secs = None
-    if secs is not None and secs >= 0:
+    if secs is not None and math.isfinite(secs) and secs >= 0:
         return min(secs, 60.0)
     try:
         when = email.utils.parsedate_to_datetime(text)
@@ -97,6 +97,13 @@ def retry_after_seconds(value, now=None):
         when = when.replace(tzinfo=datetime.timezone.utc)
     clock = time.time() if now is None else now
     return min(60.0, max(0.0, when.timestamp() - clock))
+
+
+def _as_deadline(err, timeout):
+    """A socket that has already timed out, reported as the call's deadline."""
+    if isinstance(err, (socket.timeout, TimeoutError)) or "timed out" in str(err).lower():
+        return TimeoutError(f"no complete answer within {timeout}s")
+    return err
 
 
 def _already_buffered(resp):
@@ -146,12 +153,20 @@ def read_until(resp, timeout):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError(f"no complete answer within {timeout}s")
-        buffered = _already_buffered(resp)
+        if sock is not None:
+            try:
+                sock.settimeout(remaining)
+            except OSError:
+                pass
+        try:
+            buffered = _already_buffered(resp)
+        except (socket.timeout, TimeoutError, OSError) as err:
+            raise _as_deadline(err, timeout) from err
         if buffered:
             try:
                 chunk = resp.read(min(len(buffered), 65536))
-            except socket.timeout as err:
-                raise TimeoutError(f"no complete answer within {timeout}s") from err
+            except (socket.timeout, TimeoutError, OSError) as err:
+                raise _as_deadline(err, timeout) from err
             if chunk is None:
                 continue
             if chunk == b"":
@@ -181,8 +196,8 @@ def read_until(resp, timeout):
                 except OSError:
                     pass
             chunk = resp.read(1)
-        except socket.timeout as err:
-            raise TimeoutError(f"no complete answer within {timeout}s") from err
+        except (socket.timeout, TimeoutError, OSError) as err:
+            raise _as_deadline(err, timeout) from err
         if chunk is None:
             continue
         if chunk == b"":
@@ -214,7 +229,9 @@ def _json_rpc(text, content_type):
     if not text:
         return None
     if content_type and "text/event-stream" in content_type:
-        for block in text.split("\n\n"):
+        # A notification and a result split by CRLF must stay two events.
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        for block in normalized.split("\n\n"):
             data = "".join(
                 line[5:].lstrip() for line in block.splitlines() if line.startswith("data:")
             )
@@ -296,7 +313,9 @@ class Maidan:
                 raise MaidanError(f"{where}: HTTP {status}: {text[:300]}", status)
             content_type = hdrs.get("Content-Type") if hdrs is not None else ""
             parsed = parse(text, content_type or "")
-            if parsed is None and text.strip():
+            # An empty JSON-RPC body is not a result. An empty REST body is.
+            empty_rpc = parse is _json_rpc and not text.strip()
+            if parsed is None and (text.strip() or empty_rpc):
                 if attempt < self.max_retries:
                     self._pause(attempt, hdrs)
                     continue
@@ -433,8 +452,10 @@ def openrouter_base():
 
 
 def openrouter(path, key, body=None, timeout=600):
+    base = openrouter_base()
+    check_url(base)
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(openrouter_base() + path, data=data, method="POST" if data else "GET")
+    req = urllib.request.Request(base + path, data=data, method="POST" if data else "GET")
     if key:
         req.add_header("Authorization", f"Bearer {key}")
     req.add_header("Content-Type", "application/json")
@@ -694,7 +715,12 @@ def deliver(args, maidan, key, thread_id, repo, checkout, usage, renewer):
     base_sha = checkout.git("rev-parse", "HEAD")
 
     footprint_items = [{"kind": "branch", "value": branch}]
-    status, current = maidan.rest("GET", f"/threads/{thread_id}/footprint")
+    try:
+        status, current = maidan.rest("GET", f"/threads/{thread_id}/footprint")
+    except MaidanError as err:
+        if err.status != 404:
+            raise
+        status, current = 404, None
     if status == 200 and isinstance(current, dict):
         footprint_items = [i for i in current.get("items", []) if i.get("kind") != "branch"] + footprint_items
     maidan.tool("set_thread_footprint", {"thread_id": thread_id, "repo": repo, "mode": "exclusive",
