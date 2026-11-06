@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { fixtures } from "./_fixtures";
 
 const fx = fixtures();
@@ -91,4 +92,104 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
     expect(navUrl.searchParams.get("code")).toBeTruthy();
     expect(navUrl.searchParams.get("state")).toBe("test-state-123");
   }
+});
+
+async function pendingConsent(page: Page, request: APIRequestContext): Promise<void> {
+  const challenge = "7ZJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJx";
+  const authUrl =
+    `${fx.base_url}/oauth/authorize?response_type=code` +
+    `&client_id=playwright-consent-client` +
+    `&redirect_uri=${encodeURIComponent("https://client.example/callback")}` +
+    `&code_challenge=${challenge}&code_challenge_method=S256` +
+    `&scope=workspace%3Aread&state=a11y-state` +
+    `&resource=${encodeURIComponent(`${fx.base_url}/mcp/streamable`)}`;
+  await page.context().addCookies([
+    {
+      name: "maidan_session",
+      value: fx.session_cookie,
+      domain: new URL(fx.base_url).hostname,
+      path: "/",
+    },
+  ]);
+  const authRes = await request.get(authUrl, {
+    headers: { Authorization: `Bearer ${fx.token}` },
+    maxRedirects: 0,
+  });
+  expect(authRes.status()).toBe(307);
+  const requestId = authRes.headers()["location"].split("request=")[1];
+  await page.goto(`${fx.base_url}/ui/oauth/consent?request=${requestId}`);
+  await expect(page.locator("h1")).toContainText("Connect");
+}
+
+async function fits(page: Page): Promise<boolean> {
+  return page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+}
+
+async function shortOf44(page: Page, selector: string): Promise<string[]> {
+  return page.locator(selector).evaluateAll((els) =>
+    els
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { t: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 32), w: Math.round(r.width), h: Math.round(r.height) };
+      })
+      .filter(({ w, h }) => w < 44 || h < 44)
+      .map(({ t, w, h }) => `${t} ${w}x${h}`),
+  );
+}
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
+
+  test("consent and connected apps meet contrast, heading order, and a 44px target", async ({ page, request }) => {
+    const csp: string[] = [];
+    page.on("console", (msg) => {
+      if (/Content Security Policy/i.test(msg.text())) csp.push(msg.text());
+    });
+    await pendingConsent(page, request);
+
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+      expect(scan.violations.map((v) => `${scheme} ${v.id}`)).toEqual([]);
+      const order = await new AxeBuilder({ page }).withRules(["heading-order"]).analyze();
+      expect(order.violations.map((v) => v.id)).toEqual([]);
+      expect(await fits(page)).toBe(true);
+      expect(await shortOf44(page, ".brand")).toEqual([]);
+      expect(await shortOf44(page, 'button[name="approved"]')).toEqual([]);
+      await expect(page.locator("button").first()).toHaveCSS("transition-duration", "0s");
+    }
+    const theme = await page.locator('meta[name="theme-color"]').evaluateAll((els) =>
+      els.map((el) => `${el.getAttribute("media")} ${el.getAttribute("content")}`),
+    );
+    expect(theme).toEqual([
+      "(prefers-color-scheme: light) #f2eee6",
+      "(prefers-color-scheme: dark) #121110",
+    ]);
+
+    await page.click('button[name="approved"][value="true"]');
+    await page.waitForURL(/chrome-error|chromewebdata|client\.example/);
+    await page.goto("/ui/oauth/grants");
+    await expect(page.locator("h1")).toHaveText("Connected apps");
+    await expect(page.locator("section.app h2").first()).toBeVisible();
+
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+      expect(scan.violations.map((v) => `${scheme} ${v.id}`)).toEqual([]);
+      const order = await new AxeBuilder({ page }).withRules(["heading-order"]).analyze();
+      expect(order.violations.map((v) => v.id)).toEqual([]);
+      expect(await fits(page)).toBe(true);
+      expect(await shortOf44(page, ".brand")).toEqual([]);
+      expect(await shortOf44(page, "button.danger")).toEqual([]);
+      expect(await shortOf44(page, ".foot a")).toEqual([]);
+      await expect(page.locator("button.danger").first()).toHaveCSS("transition-duration", "0s");
+    }
+
+    while ((await page.locator("button.danger").count()) > 0) {
+      await page.locator("button.danger").first().click();
+      await expect(page).toHaveURL(/\/ui\/oauth\/grants/);
+    }
+    await expect(page.getByText("No apps are connected to this workspace.")).toBeVisible();
+    expect(csp, csp.join("\n")).toEqual([]);
+  });
 });

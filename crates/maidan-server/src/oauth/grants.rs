@@ -63,7 +63,7 @@ pub async fn grants_page(
             None => html_escape(&grant.client_id),
         };
         rows.push_str(&format!(
-            r#"<section class="app"><header><div><h3>{client_name}</h3><div class="id">{client_id}</div></div><form method="post" action="/ui/api/oauth/grants/{grant_id}/revoke"><button type="submit" class="danger">Disconnect</button></form></header>{capabilities}</section>"#,
+            r#"<section class="app"><header><div><h2>{client_name}</h2><div class="id">{client_id}</div></div><form method="post" action="/ui/api/oauth/grants/{grant_id}/revoke"><button type="submit" class="danger">Disconnect</button></form></header>{capabilities}</section>"#,
             client_id = html_escape(&grant.client_id),
             capabilities = page::capability_list(&grant.scope),
             grant_id = grant.id.0,

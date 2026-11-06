@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5f6VI2HVUQ9ozWdVZo1CyS76Q58UbbGqPfHnjH40uOk='; style-src 'sha256-LJzL1jTs++h8mqbMbEVq2NoFHaDk3Fh0u34D4JR6aMI='; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5f6VI2HVUQ9ozWdVZo1CyS76Q58UbbGqPfHnjH40uOk='; style-src 'sha256-sX+KXQcz4zfS5QFN7xhKpeSt+Zz5c312BE5c8t1ze+M='; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1e1f22" media="(prefers-color-scheme: dark)">
 <title>Maidan approval</title>
 <style>
 :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #5f6368; --line: #d9dce1; --bg: #ffffff; --warn-bg: #fff4e5; --warn-fg: #7a4100; --accent: #1a5fd0; }
@@ -25,9 +27,10 @@ ul.evidence li { padding: 5px 0; border-bottom: 1px solid var(--line); display: 
 .muted { color: var(--muted); }
 textarea { width: 100%; min-height: 52px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+button { font: inherit; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 10px 18px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 button.primary { border-color: var(--accent); color: var(--accent); }
-button:disabled { opacity: .5; cursor: default; }
+button:disabled, button.primary:disabled { color: var(--muted); border-color: var(--line); background: transparent; cursor: not-allowed; }
+button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 10px 0 0; }
 .link { font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
 [hidden] { display: none !important; }

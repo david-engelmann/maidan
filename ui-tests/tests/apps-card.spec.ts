@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page, type FrameLocator } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { fixtures } from "./_fixtures";
 
 // The inline approval card (Next 17), driven as an MCP Apps host would drive
@@ -40,12 +41,20 @@ async function openGate(request: APIRequestContext, prompt: string): Promise<str
 // after the handshake. Every request the View makes is kept in
 // window.__requests; tools/call goes to the real server through
 // window.__callTool (exposed from Node), ui/open-link is recorded only.
-async function mountCard(page: Page, html: string, initialResult: object, initialArgs: object) {
+async function mountCard(
+  page: Page,
+  html: string,
+  initialResult: object,
+  initialArgs: object,
+  frame: { width?: number; sandbox?: string } = {},
+) {
   const csp: string[] = [];
   page.on("console", (msg) => {
     if (/Content Security Policy/i.test(msg.text())) csp.push(msg.text());
   });
-  await page.setContent(`<!doctype html><html><body><iframe id="card" sandbox="allow-scripts" title="card" style="width:640px;height:720px;border:0"></iframe></body></html>`);
+  const width = frame.width ?? 640;
+  const sandbox = frame.sandbox ?? "allow-scripts";
+  await page.setContent(`<!doctype html><html lang="en"><head><title>Card host</title></head><body><iframe id="card" sandbox="${sandbox}" title="card" style="width:${width}px;height:720px;border:0"></iframe></body></html>`);
   await page.evaluate(
     ({ html, initialResult, initialArgs }) => {
       const w = window as any;
@@ -216,5 +225,102 @@ test("Accept that needs confirmation shows the console link and never says it wa
   await mcp(request, fx.token, "tools/call", {
     name: "approval_decide",
     arguments: { gate_id: gateId, decision: "decline" },
+  });
+});
+
+async function controlSize(card: FrameLocator, id: string): Promise<string> {
+  const box = await card.locator(id).boundingBox();
+  expect(box, id).not.toBeNull();
+  return `${id} ${Math.round(box!.width)}x${Math.round(box!.height)}`;
+}
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "light" });
+
+  test("the card meets touch size, contrast, focus, and both color schemes", async ({ page, request }) => {
+    const html = await cardHtml(request);
+    const gate = {
+      id: "00000000-0000-7000-8000-0000000000aa",
+      workspace_id: fx.workspace_id,
+      requested_by: fx.requester_id,
+      prompt: "Ship the build?",
+      state: "pending",
+      risk: "high",
+      created_at: new Date().toISOString(),
+    };
+    const result = {
+      content: [{ type: "text", text: "confirmation required" }],
+      isError: false,
+      structuredContent: {
+        kind: "maidan.approval_decision",
+        status: "confirmation_required",
+        confirmation_url: "/ui/#confirm-approval=relative",
+        gate_id: gate.id,
+        gate,
+      },
+    };
+    const { card, csp } = await mountCard(page, html, result, { gate_id: gate.id }, {
+      width: 358,
+      sandbox: "allow-scripts allow-same-origin",
+    });
+    await expect(card.locator("#accept")).toBeVisible();
+    await expect(card.locator("#open-link")).toBeDisabled();
+    const fits = await card.locator("html").evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fits).toBe(true);
+    const small = [];
+    for (const id of ["#accept", "#decline", "#refresh", "#open-link"]) {
+      const size = await controlSize(card, id);
+      const [, dims] = size.split(" ");
+      const [w, h] = dims.split("x").map(Number);
+      if (w < 44 || h < 44) small.push(size);
+    }
+    expect(small).toEqual([]);
+
+    // A decision with no requester makes the card refresh. With no tool answer
+    // the actions stay disabled, which is the in-flight state. The note is
+    // still in the tab order.
+    await page.locator("#card").click({ position: { x: 8, y: 8 } });
+    await page.keyboard.press("Tab");
+    await expect(card.locator("#note")).toBeFocused();
+    const outline = await card.locator("#note").evaluate((el) => getComputedStyle(el).outlineStyle);
+    expect(outline).not.toBe("none");
+
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      const ratio = await card.locator("#accept, #open-link").evaluateAll((els) => {
+        const channel = (c: number) => {
+          const s = c / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        };
+        const lum = (rgb: number[]) => 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+        const parse = (color: string) => {
+          const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+          if (!m) return null;
+          return { rgb: [Number(m[1]), Number(m[2]), Number(m[3])], a: m[4] === undefined ? 1 : Number(m[4]) };
+        };
+        const one = (el: Element) => {
+          const fg = parse(getComputedStyle(el).color);
+          let node: Element | null = el;
+          let bg: number[] | null = null;
+          while (node) {
+            const parsed = parse(getComputedStyle(node).backgroundColor);
+            if (parsed && parsed.a > 0) {
+              bg = parsed.rgb;
+              break;
+            }
+            node = node.parentElement;
+          }
+          if (!fg || !bg) return 0;
+          const hi = Math.max(lum(fg.rgb), lum(bg));
+          const lo = Math.min(lum(fg.rgb), lum(bg));
+          return (hi + 0.05) / (lo + 0.05);
+        };
+        return Math.min(...els.map(one));
+      });
+      expect(ratio, scheme).toBeGreaterThanOrEqual(4.5);
+      const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+      expect(scan.violations.map((v) => `${scheme} ${v.id}`), scheme).toEqual([]);
+    }
+    expect(csp, csp.join("\n")).toEqual([]);
   });
 });
