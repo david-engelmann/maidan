@@ -23,26 +23,16 @@
 # DEMO_PAUSE (seconds, default 0) spaces the steps out for a recording.
 set -euo pipefail
 
+here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/demo-guards.sh
+source "$here/demo-guards.sh"
+
 BASE="${MAIDAN_URL:-http://127.0.0.1:8080}"
 PAUSE="${DEMO_PAUSE:-0}"
 SUFFIX="${DEMO_SUFFIX:-}"
 
-# The script sends bearer tokens on every call: plain http only to loopback.
-if [[ "$BASE" == http://* ]]; then
-  authority="${BASE#http://}"; authority="${authority%%/*}"
-  case "$authority" in
-    *@*) host= ;;                                   # userinfo hides the real host
-    "[::1]" | "[::1]:"*) host="[::1]" ;;
-    *) host="${authority%%:*}" ;;
-  esac
-  case "$host" in
-    127.0.0.1 | localhost | "[::1]") ;;
-    *) echo "refusing to send tokens to $BASE over plain http; use https or a loopback address" >&2; exit 1 ;;
-  esac
-elif [[ "$BASE" != https://* ]]; then
-  echo "MAIDAN_URL must be an http(s) URL, got $BASE" >&2; exit 1
-fi
-
+demo_validate_base "$BASE" || exit 1
+demo_validate_pause "$PAUSE" || exit 1
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
@@ -65,15 +55,22 @@ else
   fi
 fi
 
+demo_validate_workspace "$WS" || exit 1
+demo_validate_token "$ADMIN" || exit 1
+
 if [ -t 1 ]; then B=$'\e[1m'; D=$'\e[90m'; G=$'\e[32m'; X=$'\e[31m'; C=$'\e[36m'; Y=$'\e[33m'; M=$'\e[35m'; R=$'\e[0m'
 else B=; D=; G=; X=; C=; Y=; M=; R=; fi
 
 rest() { # rest <token> <METHOD> <path> [json]
+  demo_validate_token "$1" || exit 1
+  demo_validate_rest "$2" "$3" || exit 1
   curl -fsS -X "$2" -H "authorization: Bearer $1" -H 'content-type: application/json' \
     "$BASE$3" ${4:+--data "$4"}
 }
 mcp() { # mcp <token> <tool> <json-args>  -> the tool's JSON result
   local out
+  demo_validate_token "$1" || exit 1
+  demo_validate_mcp_tool "$2" || exit 1
   out=$(curl -fsS -H "authorization: Bearer $1" -H 'content-type: application/json' "$BASE/mcp" \
     --data "$(jq -nc --arg n "$2" --argjson a "$3" \
       '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:$n,arguments:$a}}')")
@@ -84,6 +81,8 @@ mcp() { # mcp <token> <tool> <json-args>  -> the tool's JSON result
 }
 mcp_refused() { # mcp_refused <token> <tool> <json-args> <expected>  -> the refusal text; fails unless refused for <expected>
   local out
+  demo_validate_token "$1" || exit 1
+  demo_validate_mcp_tool "$2" || exit 1
   out=$(curl -fsS -H "authorization: Bearer $1" -H 'content-type: application/json' "$BASE/mcp" \
     --data "$(jq -nc --arg n "$2" --argjson a "$3" \
       '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:$n,arguments:$a}}')")
