@@ -57,8 +57,16 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
 }
 
 // The shell and the thread pane already use h1 and h2. Shift this message so
-// its shallowest heading is h3 and later ones step down from there, never
-// skipping a level and never climbing back to the pane title.
+// its shallowest heading is h3, then let each later heading rise by at most
+// one level. A skipped markdown level (`#` then `###`) must not skip h4.
+// @heading-ranks
+export function clampHeadingLevel(level: number, min: number, state: { last: number }): number {
+  const raw = Math.min(6, Math.max(3, level - min + 3));
+  const clamped = Math.min(raw, state.last + 1);
+  state.last = clamped;
+  return clamped;
+}
+
 function shallowest(blocks: Block[]): number {
   let min = 7;
   for (const block of blocks) {
@@ -68,19 +76,34 @@ function shallowest(blocks: Block[]): number {
   return min;
 }
 
-function headingClass(level: number, min: number): { tag: "h3" | "h4" | "h5" | "h6"; className: string } {
-  const shifted = Math.min(6, Math.max(3, level - min + 3));
-  if (shifted === 3) return { tag: "h3", className: "msg-heading msg-h3" };
-  if (shifted === 4) return { tag: "h4", className: "msg-heading msg-h4" };
-  if (shifted === 5) return { tag: "h5", className: "msg-heading msg-h5" };
+function walkHeadings(blocks: Block[], min: number, state: { last: number }, out: number[]) {
+  for (const block of blocks) {
+    if (block.kind === "heading") out.push(clampHeadingLevel(block.level, min, state));
+    else if (block.kind === "quote") walkHeadings(block.blocks, min, state, out);
+  }
+}
+
+/** Rendered heading ranks for a body, in document order, quotes included. */
+export function headingRanks(body: string): number[] {
+  const blocks = parseBlocks(body);
+  const out: number[] = [];
+  walkHeadings(blocks, shallowest(blocks), { last: 2 }, out);
+  return out;
+}
+// @heading-ranks-end
+
+function headingClass(level: number): { tag: "h3" | "h4" | "h5" | "h6"; className: string } {
+  if (level <= 3) return { tag: "h3", className: "msg-heading msg-h3" };
+  if (level === 4) return { tag: "h4", className: "msg-heading msg-h4" };
+  if (level === 5) return { tag: "h5", className: "msg-heading msg-h5" };
   return { tag: "h6", className: "msg-heading msg-h6" };
 }
 
-function Blocks({ blocks, min }: { blocks: Block[]; min: number }) {
+function Blocks({ blocks, min, ranks }: { blocks: Block[]; min: number; ranks: { last: number } }) {
   return blocks.map((block, i) => {
     if (block.kind === "code") return <CodeBlock key={i} lang={block.lang} text={block.text} />;
     if (block.kind === "heading") {
-      const { tag: Tag, className } = headingClass(block.level, min);
+      const { tag: Tag, className } = headingClass(clampHeadingLevel(block.level, min, ranks));
       return <Tag key={i} className={className}><Parts parts={block.parts} /></Tag>;
     }
     if (block.kind === "ul") {
@@ -100,7 +123,7 @@ function Blocks({ blocks, min }: { blocks: Block[]; min: number }) {
     if (block.kind === "quote") {
       return (
         <blockquote key={i} className="msg-quote">
-          <Blocks blocks={block.blocks} min={min} />
+          <Blocks blocks={block.blocks} min={min} ranks={ranks} />
         </blockquote>
       );
     }
@@ -130,7 +153,7 @@ export function MessageBody({ body }: { body: string }) {
   const blocks = parseBlocks(body);
   return (
     <div className="msg-rich">
-      <Blocks blocks={blocks} min={shallowest(blocks)} />
+      <Blocks blocks={blocks} min={shallowest(blocks)} ranks={{ last: 2 }} />
     </div>
   );
 }

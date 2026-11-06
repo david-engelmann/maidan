@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import ts from "typescript";
 import { parseBlocks, parseInline } from "../src/core/richtext.ts";
+
+// The rank helpers live in the view module. Node's type stripper cannot load
+// TSX, so the test compiles that pure slice and runs it against parseBlocks.
+function headingApi(): {
+  clampHeadingLevel: (level: number, min: number, state: { last: number }) => number;
+  headingRanks: (body: string) => number[];
+} {
+  const src = readFileSync(new URL("../src/threads/MessageBody.tsx", import.meta.url), "utf8");
+  const start = src.indexOf("// @heading-ranks\n");
+  const end = src.indexOf("// @heading-ranks-end");
+  assert.ok(start >= 0 && end > start);
+  const js = ts.transpileModule(src.slice(start, end), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
+  }).outputText.replace(/^export /gm, "");
+  return new Function("parseBlocks", `${js}\nreturn { clampHeadingLevel, headingRanks };`)(parseBlocks);
+}
 
 const textOf = (parts: { kind: string; text?: string }[]) => parts.map((p) => (p.kind === "break" ? "\n" : p.text ?? "")).join("");
 
@@ -146,6 +163,19 @@ test("message text: links allow http, https and console routes, and code stays l
     { kind: "text", text: " and " },
     { kind: "strike", text: "gone" },
   ]);
+});
+
+test("message headings rise by one level at a time, including inside quotes", () => {
+  const { clampHeadingLevel, headingRanks } = headingApi();
+  const state = { last: 2 };
+  assert.equal(clampHeadingLevel(1, 1, state), 3);
+  assert.equal(state.last, 3);
+  assert.deepEqual(headingRanks("# Title\n\n### Section"), [3, 4]);
+  assert.deepEqual(headingRanks("# Title\n\n#### Deep\n\n##### Deeper"), [3, 4, 5]);
+  assert.deepEqual(headingRanks("# A\n\n### B\n\n# C\n\n#### D"), [3, 4, 3, 4]);
+  assert.deepEqual(headingRanks("### OnlySub\n\n##### Deeper"), [3, 4]);
+  assert.deepEqual(headingRanks("# Summary\n\n### Findings\n\n##### Notes\n\n# Next\n\n#### Follow-up"), [3, 4, 5, 3, 4]);
+  assert.deepEqual(headingRanks("# Title\n\n> ### Quoted\n>\n> ##### Inside\n\n#### After"), [3, 4, 5, 6]);
 });
 
 test("the message view maps blocks to elements and never injects HTML", () => {

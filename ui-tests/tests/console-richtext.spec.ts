@@ -118,3 +118,17 @@ test("a message renders structure, safe links and a copyable code block", async 
   const phoneBad = phone.violations.filter((v) => v.impact === "serious" || v.impact === "critical" || v.id === "heading-order");
   expect(phoneBad.map((v) => `${v.id} (${v.impact})`)).toEqual([]);
 });
+
+test("a skipped markdown heading still steps one level at a time", async ({ page }) => {
+  const mark = `md ranks ${Date.now()}`;
+  await post(page, [mark, "", "# Summary", "", "### Findings", "", "##### Notes", "", "# Next", "", "#### Follow-up"].join("\n"));
+  await signInWithCookie(page, fx);
+  await openOnChannel(page, fx.channel_id, `#/threads/t/${fx.thread_id}`);
+  const msg = page.locator(".msg", { hasText: mark });
+  await expect(msg).toBeVisible();
+  const tags = await msg.locator("h3, h4, h5, h6").evaluateAll((els) => els.map((el) => el.tagName));
+  expect(tags).toEqual(["H3", "H4", "H5", "H3", "H4"]);
+  await msg.evaluate((el) => el.setAttribute("data-md-ranks", ""));
+  const axe = await new AxeBuilder({ page }).include("[data-md-ranks]").withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations.map((v) => v.id)).toEqual([]);
+});
