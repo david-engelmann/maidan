@@ -4,6 +4,7 @@
 // `image` is the Dockerfile so a local `wrangler deploy` builds from source.
 // The deploy-dev workflow builds the image with a warm cache instead, pushes it
 // to the account's registry, and swaps this line for that reference.
+// Fleet cost/security invariants: scripts/check-wrangler-fleet-gates.sh
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-dev",
