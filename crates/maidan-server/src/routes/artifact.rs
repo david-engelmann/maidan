@@ -38,6 +38,10 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
     }
 }
 
+fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
+    (!auth.bypass).then_some(auth.workspace_id.0)
+}
+
 pub async fn begin_multipart_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -45,7 +49,7 @@ pub async fn begin_multipart_artifact(
     cap(&auth, ARTIFACT_UPLOAD)?;
     super::refuse_stored_bytes(&state, &auth)?;
     let upload = s3_artifacts(&state.artifacts)?
-        .begin_multipart_upload()
+        .begin_multipart_upload_scoped(multipart_scope(&auth))
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -67,8 +71,9 @@ pub async fn upload_multipart_artifact_part(
     if body.is_empty() {
         return Err(ApiError::BadRequest("empty part body".into()));
     }
-    super::refuse_stored_bytes(&state, &auth)?;
     let upload = multipart_upload(&upload_id, &q.object_key);
+    upload.validate_for_workspace(multipart_scope(&auth))?;
+    super::refuse_stored_bytes(&state, &auth)?;
     let etag = s3_artifacts(&state.artifacts)?
         .upload_part(&upload, part_number, body)
         .await?;
@@ -84,6 +89,7 @@ pub async fn complete_multipart_artifact(
     cap(&auth, ARTIFACT_UPLOAD)?;
     let filename = upload_filename(body.filename)?;
     let upload = multipart_upload(&upload_id, &body.object_key);
+    upload.validate_for_workspace(multipart_scope(&auth))?;
     let parts: Vec<CompletedPart> = body
         .parts
         .into_iter()
@@ -149,6 +155,7 @@ pub async fn abort_multipart_artifact(
 ) -> ApiResult<StatusCode> {
     cap(&auth, ARTIFACT_UPLOAD)?;
     let upload = multipart_upload(&q.upload_id, &q.object_key);
+    upload.validate_for_workspace(multipart_scope(&auth))?;
     s3_artifacts(&state.artifacts)?
         .abort_multipart_upload(&upload)
         .await?;
@@ -254,8 +261,9 @@ pub async fn get_artifact(
 ) -> ApiResult<Response> {
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    ensure_artifact_ref(&state, &auth, &sha_hex).await?;
-    let meta = artifact_as_seen_by(&state, &auth, &sha_hex).await?;
+    let canonical = sha.to_hex();
+    ensure_artifact_ref(&state, &auth, &canonical).await?;
+    let meta = artifact_as_seen_by(&state, &auth, &canonical).await?;
     let bytes = state.artifacts.get(&sha).await?;
     Ok(crate::artifact_response::artifact_response(&meta, bytes))
 }
@@ -266,9 +274,10 @@ pub async fn get_artifact_metadata(
     ApiPath(sha_hex): ApiPath<String>,
 ) -> ApiResult<Json<Artifact>> {
     cap(&auth, WORKSPACE_READ)?;
-    Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    ensure_artifact_ref(&state, &auth, &sha_hex).await?;
-    Ok(Json(artifact_as_seen_by(&state, &auth, &sha_hex).await?))
+    let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let canonical = sha.to_hex();
+    ensure_artifact_ref(&state, &auth, &canonical).await?;
+    Ok(Json(artifact_as_seen_by(&state, &auth, &canonical).await?))
 }
 
 /// `DELETE /artifacts/:sha` — erase the caller's workspace's copy of an
@@ -330,4 +339,159 @@ async fn artifact_as_seen_by(
             .await?
     };
     Ok(artifact)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::extract::{Extension, State};
+    use bytes::Bytes;
+    use maidan_artifacts::LocalFsStore;
+    use maidan_auth::capability::{ARTIFACT_UPLOAD, WORKSPACE_READ};
+    use maidan_bus::InMemoryBus;
+    use maidan_search::SqliteSearch;
+    use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::extract::{ApiBytes, ApiJson, ApiPath, ApiQuery};
+    use crate::state::AppState;
+
+    async fn harness() -> (AppState, tempfile::TempDir) {
+        let pool = maidan_search::sqlite_pool_options()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let dir = tempfile::tempdir().unwrap();
+        let artifacts: Arc<dyn ArtifactStore> = Arc::new(LocalFsStore::new(dir.path()));
+        let bus: Arc<dyn maidan_bus::EventBus> = Arc::new(InMemoryBus::new());
+        let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
+        let state = AppState::for_tests(store, artifacts, bus, search);
+        (state, dir)
+    }
+
+    async fn member(state: &AppState, name: &str, caps: Vec<String>) -> AuthContext {
+        let ws = state
+            .store
+            .create_workspace(NewWorkspace { name: name.into() })
+            .await
+            .unwrap();
+        let member = state
+            .store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: name.into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        AuthContext::from_session(member.id, ws.id, caps)
+    }
+
+    fn assert_bad_request(err: ApiError) {
+        match err {
+            ApiError::BadRequest(msg) => assert!(
+                !msg.contains("require S3"),
+                "key was rejected only because the backend is not S3: {msg}"
+            ),
+            other => panic!("expected 400 Bad Request, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn uppercase_sha_reads_the_artifact_and_its_metadata() {
+        let (state, _dir) = harness().await;
+        let auth = member(&state, "reader", vec![WORKSPACE_READ.to_string()]).await;
+        let body = Bytes::from_static(b"uppercase digest still resolves");
+        let sha = state.artifacts.put(body).await.unwrap();
+        state
+            .store
+            .upsert_artifact_with_event(
+                NewArtifact {
+                    sha256: sha.to_hex(),
+                    size_bytes: 32,
+                    mime_type: None,
+                    filename: None,
+                    kind: ArtifactKind::Attachment,
+                    uploaded_by: Some(auth.member_id),
+                },
+                Some(auth.workspace_id),
+            )
+            .await
+            .unwrap();
+        let upper = sha.to_hex().to_ascii_uppercase();
+        get_artifact(
+            State(state.clone()),
+            Extension(auth.clone()),
+            ApiPath(upper.clone()),
+        )
+        .await
+        .expect("uppercase blob read");
+        let meta = get_artifact_metadata(State(state), Extension(auth), ApiPath(upper))
+            .await
+            .expect("uppercase metadata");
+        assert_eq!(meta.0.sha256, sha.to_hex());
+    }
+
+    #[tokio::test]
+    async fn multipart_routes_reject_foreign_and_content_addressed_keys() {
+        let (state, _dir) = harness().await;
+        let auth = member(&state, "uploader", vec![ARTIFACT_UPLOAD.to_string()]).await;
+        let other = Uuid::now_v7();
+        let keys = [
+            "e3/b0/c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            format!("multipart/{other}/{}", Uuid::now_v7()),
+            format!("multipart/{}", Uuid::now_v7()),
+        ];
+        for key in keys {
+            let aborted = abort_multipart_artifact(
+                State(state.clone()),
+                Extension(auth.clone()),
+                ApiQuery(AbortMultipartQuery {
+                    upload_id: "up".into(),
+                    object_key: key.clone(),
+                }),
+            )
+            .await;
+            assert_bad_request(aborted.unwrap_err());
+
+            let part = upload_multipart_artifact_part(
+                State(state.clone()),
+                Extension(auth.clone()),
+                ApiPath(("up".into(), 1)),
+                ApiQuery(MultipartUploadQuery {
+                    object_key: key.clone(),
+                }),
+                ApiBytes(Bytes::from_static(b"part")),
+            )
+            .await;
+            assert_bad_request(part.unwrap_err());
+
+            let completed = complete_multipart_artifact(
+                State(state.clone()),
+                Extension(auth.clone()),
+                ApiPath("up".into()),
+                ApiJson(CompleteMultipartArtifact {
+                    object_key: key,
+                    parts: vec![MultipartPartInput {
+                        part_number: 1,
+                        etag: "etag".into(),
+                    }],
+                    kind: ArtifactKind::Attachment,
+                    mime_type: None,
+                    filename: None,
+                }),
+            )
+            .await;
+            assert_bad_request(completed.unwrap_err());
+        }
+    }
 }

@@ -41,15 +41,27 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
     }
 }
 
+fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
+    (!auth.bypass).then_some(auth.workspace_id.0)
+}
+
+fn map_artifact(err: maidan_artifacts::ArtifactError) -> McpError {
+    match err {
+        maidan_artifacts::ArtifactError::InvalidInput(msg)
+        | maidan_artifacts::ArtifactError::InvalidSha(msg) => McpError::InvalidParams(msg),
+        other => McpError::Internal(other.to_string()),
+    }
+}
+
 pub(super) async fn begin_artifact_multipart(
     server: &crate::server::McpServer,
     auth: &AuthContext,
 ) -> Result<Value, McpError> {
     refuse_stored_bytes(server, auth)?;
     let upload = s3_artifacts(&server.artifacts)?
-        .begin_multipart_upload()
+        .begin_multipart_upload_scoped(multipart_scope(auth))
         .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
+        .map_err(map_artifact)?;
     Ok(json!({
         "upload_id": upload.upload_id,
         "object_key": upload.object_key,
@@ -75,11 +87,17 @@ pub(super) async fn upload_artifact_multipart_part(
     let raw = STANDARD
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
+    if raw.is_empty() {
+        return Err(McpError::InvalidParams("empty part body".into()));
+    }
     let upload = multipart_upload(&a.upload_id, &a.object_key);
+    upload
+        .validate_for_workspace(multipart_scope(auth))
+        .map_err(map_artifact)?;
     let etag = s3_artifacts(&server.artifacts)?
         .upload_part(&upload, a.part_number, Bytes::from(raw))
         .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
+        .map_err(map_artifact)?;
     Ok(json!({
         "part_number": a.part_number,
         "etag": etag,
@@ -109,6 +127,9 @@ pub(super) async fn complete_artifact_multipart(
 ) -> Result<Value, McpError> {
     let a: CompleteMultipartArgs = crate::tools::parse_args(args)?;
     let upload = multipart_upload(&a.upload_id, &a.object_key);
+    upload
+        .validate_for_workspace(multipart_scope(auth))
+        .map_err(map_artifact)?;
     let parts: Vec<CompletedPart> = a
         .parts
         .into_iter()
@@ -130,7 +151,7 @@ pub(super) async fn complete_artifact_multipart(
     let sha = s3_artifacts(&server.artifacts)?
         .complete_multipart_upload(&upload, &parts)
         .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
+        .map_err(map_artifact)?;
     let bytes = server
         .artifacts
         .get(&sha)
@@ -172,15 +193,19 @@ struct AbortMultipartArgs {
 }
 
 pub(super) async fn abort_artifact_multipart(
-    artifacts: &Arc<dyn ArtifactStore>,
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AbortMultipartArgs = crate::tools::parse_args(args)?;
     let upload = multipart_upload(&a.upload_id, &a.object_key);
-    s3_artifacts(artifacts)?
+    upload
+        .validate_for_workspace(multipart_scope(auth))
+        .map_err(map_artifact)?;
+    s3_artifacts(&server.artifacts)?
         .abort_multipart_upload(&upload)
         .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
+        .map_err(map_artifact)?;
     Ok(json!({ "aborted": true }))
 }
 
@@ -193,6 +218,9 @@ pub(super) async fn upload_artifact(
     let raw = STANDARD
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
+    if raw.is_empty() {
+        return Err(McpError::InvalidParams("empty artifact body".into()));
+    }
     let bytes = Bytes::from(raw);
     // Refused before the bytes are written, so a refusal stores nothing: the
     // stored-bytes cutoff and the media quota are both checked first.
@@ -554,5 +582,100 @@ mod stored_bytes_cutoff_tests {
             bytes,
             "the other workspace's artifact still reads"
         );
+    }
+
+    fn assert_invalid_params(err: McpError) {
+        match err {
+            McpError::InvalidParams(msg) => {
+                assert!(
+                    !msg.contains("require S3"),
+                    "key was rejected only because the backend is not S3: {msg}"
+                );
+            }
+            other => panic!("expected invalid params, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_bodies_are_rejected_before_a_write() {
+        let f = fixture().await;
+        let upload = json!({ "kind": "attachment", "content_base64": "" });
+        assert_invalid_params(
+            upload_artifact(&f.server, &f.cut, &upload)
+                .await
+                .unwrap_err(),
+        );
+        let part = json!({
+            "upload_id": "up",
+            "object_key": format!("multipart/{}/{}", f.cut.workspace_id.0, uuid::Uuid::now_v7()),
+            "part_number": 1,
+            "content_base64": "",
+        });
+        let err = upload_artifact_multipart_part(&f.server, &f.cut, &part)
+            .await
+            .unwrap_err();
+        match err {
+            McpError::InvalidParams(msg) => assert_eq!(msg, "empty part body"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn foreign_and_content_addressed_keys_are_rejected() {
+        let f = fixture().await;
+        let keys = [
+            "e3/b0/c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            format!(
+                "multipart/{}/{}",
+                f.other.workspace_id.0,
+                uuid::Uuid::now_v7()
+            ),
+            format!("multipart/{}", uuid::Uuid::now_v7()),
+        ];
+        for key in keys {
+            let part = json!({
+                "upload_id": "up",
+                "object_key": key,
+                "part_number": 1,
+                "content_base64": STANDARD.encode(b"part"),
+            });
+            assert_invalid_params(
+                upload_artifact_multipart_part(&f.server, &f.cut, &part)
+                    .await
+                    .unwrap_err(),
+            );
+            let complete = json!({
+                "upload_id": "up",
+                "object_key": key,
+                "parts": [{"part_number": 1, "etag": "etag"}],
+                "kind": "attachment",
+            });
+            assert_invalid_params(
+                complete_artifact_multipart(&f.server, &f.cut, &complete)
+                    .await
+                    .unwrap_err(),
+            );
+            let abort = json!({ "upload_id": "up", "object_key": key });
+            assert_invalid_params(
+                abort_artifact_multipart(&f.server, &f.cut, &abort)
+                    .await
+                    .unwrap_err(),
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn uppercase_sha_resource_read_finds_the_artifact() {
+        let f = fixture().await;
+        let sha = Sha256::compute(b"readable in either case");
+        upsert_uploaded_artifact(&f.server, &f.cut, new_artifact(&sha, &f.cut, 24))
+            .await
+            .unwrap();
+        let uri = format!("maidan://artifacts/{}", sha.to_hex().to_ascii_uppercase());
+        let got = crate::resources::read(&f.server.store, &uri, &f.cut)
+            .await
+            .unwrap();
+        let text = got["contents"][0]["text"].as_str().unwrap();
+        assert!(text.contains(&sha.to_hex()), "{text}");
     }
 }

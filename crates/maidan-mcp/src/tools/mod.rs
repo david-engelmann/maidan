@@ -1119,7 +1119,6 @@ async fn dispatch_rest(
     call: &crate::call_context::CallContext,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let artifacts = &server.artifacts;
     let search = &server.search;
     let embedding_provider = &server.embedding_provider;
     match name {
@@ -1219,7 +1218,7 @@ async fn dispatch_rest(
         "complete_artifact_multipart" => {
             artifact::complete_artifact_multipart(server, auth, args).await
         }
-        "abort_artifact_multipart" => artifact::abort_artifact_multipart(artifacts, args).await,
+        "abort_artifact_multipart" => artifact::abort_artifact_multipart(server, auth, args).await,
         "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
         "get_artifact" => artifact::get_artifact(server, auth, args).await,
         "search_messages" => {
