@@ -1,0 +1,106 @@
+name: deploy swarm
+
+# swarm.maidan.world runs `dev` (docs/Hosted Operations.md): each dev commit
+# whose push CI passed is deployed, with the image `deploy dev` already built
+# and pushed for it. No tag, release record or pins PR stands between a merge
+# and the swarm. A commit `deploy dev` skipped (it changed no server, migration
+# or deploy file) has nothing new to run, so it is skipped here too.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "A dev commit whose deploy-dev image exists (default: dev's head)"
+        required: false
+
+# The newest green commit wins; an older run still deploying gives way.
+concurrency:
+  group: deploy-swarm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: dev
+      url: https://swarm.maidan.world
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # A run that finishes after a newer commit landed must not roll the
+      # swarm back to it: only dev's head deploys.
+      - name: this commit is dev's head
+        id: head
+        run: |
+          head=$(git rev-parse origin/dev)
+          if [ "$head" != "$SHA" ] && [ "${{ github.event_name }}" != workflow_dispatch ]; then
+            echo "dev moved on to $head; the run for it deploys"
+            echo "go=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git checkout -q "$SHA"
+          echo "go=true" >> "$GITHUB_OUTPUT"
+      # `deploy dev` builds and pushes this commit's image. CI usually ends
+      # after it; wait for it otherwise, and skip a commit it never ran for.
+      - name: the image deploy dev pushed
+        id: image
+        if: steps.head.outputs.go == 'true'
+        run: |
+          for _ in $(seq 1 60); do
+            row=$(gh run list -R "$GITHUB_REPOSITORY" --workflow deploy-dev.yml --commit "$SHA" --event push --limit 1 \
+              --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
+            case "$row" in
+              "") echo "deploy dev did not run for $SHA (no server change); the swarm keeps its build"
+                  echo "go=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              "completed success") echo "go=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              completed*) echo "deploy dev ended '$row' for $SHA; not deploying it to the swarm" >&2; exit 1 ;;
+            esac
+            sleep 30
+          done
+          echo "deploy dev is still running for $SHA after 30 minutes" >&2; exit 1
+      - uses: actions/setup-node@v4
+        if: steps.image.outputs.go == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: deploy
+        if: steps.image.outputs.go == 'true'
+        working-directory: deploy/cloudflare
+        run: |
+          npm ci
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$SHA"
+          sed -i "s#\"image\": \"registry.cloudflare.com/ACCOUNT/maidan-server:RELEASE\"#\"image\": \"$image\"#" wrangler.swarm.jsonc
+          grep -q "\"image\": \"$image\"" wrangler.swarm.jsonc
+          npx wrangler deploy -c wrangler.swarm.jsonc || { sleep 15; npx wrangler deploy -c wrangler.swarm.jsonc; }
+      # The rollout replaces the running container, so wait until this build
+      # answers, then make sure an anonymous caller still reads nothing.
+      - name: the swarm runs this build
+        if: steps.image.outputs.go == 'true'
+        run: |
+          want="dev-${SHA::8}"
+          for _ in $(seq 1 36); do
+            got=$(curl -fsS https://swarm.maidan.world/health | jq -r .version || true)
+            if [ "$got" = "$want" ]; then echo "swarm.maidan.world runs $want"; break; fi
+            sleep 10
+          done
+          [ "$got" = "$want" ] || { echo "swarm.maidan.world answers ${got:-nothing}, not $want" >&2; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://swarm.maidan.world/me)
+          [ "$code" = 401 ] || { echo "GET /me without a token answered $code, not 401" >&2; exit 1; }
