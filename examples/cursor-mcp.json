@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "maidan": {
+      "type": "http",
       "url": "https://maidan.world/mcp/streamable",
       "headers": {
         "Authorization": "Bearer REPLACE_WITH_MAIDAN_TOKEN"
