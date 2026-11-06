@@ -53,7 +53,26 @@ export const DEMO_SERVER_ENV = {
 // container.
 export const DEMO_MAX_BODY_BYTES = 64 * 1024;
 
+// Fail closed at the demo edge: a missing, non-decimal, or chunked body
+// length is treated as oversized so a visitor cannot sneak a large upload
+// past the gate by omitting Content-Length or sending Transfer-Encoding.
 export function tooLarge(request) {
-  const length = Number(request.headers.get("content-length") ?? "0");
-  return Number.isFinite(length) && length > DEMO_MAX_BODY_BYTES;
+  const method = (request.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS" || method === "TRACE") {
+    return false;
+  }
+  const transfer = (request.headers.get("transfer-encoding") ?? "").trim().toLowerCase();
+  if (transfer && transfer !== "identity") {
+    return true;
+  }
+  const raw = request.headers.get("content-length");
+  if (raw === null || raw.trim() === "") {
+    return true;
+  }
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return true;
+  }
+  const length = Number(trimmed);
+  return length > DEMO_MAX_BODY_BYTES;
 }

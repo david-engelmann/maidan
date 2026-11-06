@@ -41,3 +41,39 @@ test("every path a Maidan route serves reaches the container", () => {
     assert.ok(!isScannerProbe(path), path);
   }
 });
+
+test("encoded and dotted scanner paths normalize before matching", () => {
+  for (const path of [
+    "/%2e%2e/.env",
+    "/./.env",
+    "//.env",
+    "/api/%2eenv",
+    "/.git%2fconfig",
+    "/%2eaws/credentials",
+  ]) {
+    assert.ok(isScannerProbe(path), path);
+  }
+});
+
+test("extra probe families the edge now refuses", () => {
+  for (const path of [
+    "/.htaccess",
+    "/web.config",
+    "/docker-compose.yml",
+    "/.ssh/id_rsa",
+    "/id_rsa",
+    "/.DS_Store",
+    "/actuator/env",
+    "/actuator/health",
+  ]) {
+    assert.ok(isScannerProbe(path), path);
+  }
+});
+
+test("normalizeScannerPath collapses slashes and decodes once", async () => {
+  const { normalizeScannerPath } = await import("../src/scanner.js");
+  assert.equal(normalizeScannerPath("/./.env"), "/.env");
+  assert.equal(normalizeScannerPath("//api//.env"), "/api/.env");
+  assert.equal(normalizeScannerPath("/%2egit/config"), "/.git/config");
+  assert.equal(normalizeScannerPath(""), "/");
+});

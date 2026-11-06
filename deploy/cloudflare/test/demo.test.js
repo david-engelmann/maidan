@@ -97,3 +97,33 @@ test("an oversized body is refused before it wakes the container", () => {
   assert.equal(tooLarge(big), true);
   assert.equal(tooLarge(small), false);
 });
+
+test("a body method with no Content-Length is refused at the demo edge", () => {
+  const post = new Request("https://try.maidan.world/mcp", { method: "POST" });
+  assert.equal(tooLarge(post), true);
+  assert.equal(tooLarge(new Request("https://try.maidan.world/", { method: "GET" })), false);
+});
+
+test("garbage Content-Length and chunked Transfer-Encoding fail closed", () => {
+  assert.equal(
+    tooLarge(new Request("https://try.maidan.world/mcp", {
+      method: "POST",
+      headers: { "content-length": "65537abc" },
+    })),
+    true,
+  );
+  assert.equal(
+    tooLarge(new Request("https://try.maidan.world/mcp", {
+      method: "POST",
+      headers: { "content-length": "10", "transfer-encoding": "chunked" },
+    })),
+    true,
+  );
+  assert.equal(
+    tooLarge(new Request("https://try.maidan.world/mcp", {
+      method: "PUT",
+      headers: { "content-length": " 12 " },
+    })),
+    false,
+  );
+});

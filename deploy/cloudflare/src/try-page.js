@@ -22,6 +22,32 @@ export const SITEVERIFY_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/siteverify`;
 // The action the widget renders with and the check requires back.
 export const TURNSTILE_ACTION = "sandbox";
 
+/** Strip a trailing slash (except `/`) so `/try.css/` does not miss the asset set. */
+export function tryPathname(pathname) {
+  if (typeof pathname !== "string" || pathname.length === 0) return "/";
+  if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
+  return pathname;
+}
+
+/** A Turnstile token the mint will send: non-empty, bounded, no control bytes. */
+export function sanitizeTurnstileToken(token) {
+  if (typeof token !== "string") return "";
+  const t = token.trim();
+  if (!t || t.length > 2048) return "";
+  if (/[\u0000-\u001f\u007f]/.test(t)) return "";
+  return t;
+}
+
+/** Cloudflare's siteverify answer must name this host (case-insensitive) and action. */
+export function turnstileAccepted(answer, host) {
+  if (!answer || answer.success !== true) return false;
+  if (answer.action !== TURNSTILE_ACTION) return false;
+  const got = typeof answer.hostname === "string" ? answer.hostname.trim().toLowerCase() : "";
+  const want = typeof host === "string" ? host.trim().toLowerCase() : "";
+  return Boolean(got && want && got === want);
+}
+
+
 // The page runs only its own script, posts only to its own origin, and loads
 // Cloudflare's challenge only when the widget is on.
 export function tryCsp(withTurnstile) {
@@ -58,11 +84,11 @@ export async function checkTurnstile(request, env, fetchImpl = fetch) {
   let token = "";
   try {
     const body = await request.clone().json();
-    token = typeof body?.turnstile_token === "string" ? body.turnstile_token.trim() : "";
+    token = sanitizeTurnstileToken(body?.turnstile_token);
   } catch {
     token = "";
   }
-  if (!token || token.length > 2048) {
+  if (!token) {
     return problem(403, "complete the human check before starting a sandbox");
   }
   const form = new FormData();
@@ -79,7 +105,7 @@ export async function checkTurnstile(request, env, fetchImpl = fetch) {
     return problem(502, "the human check could not be verified right now; try again");
   }
   const host = new URL(request.url).hostname;
-  if (answer?.success === true && answer.hostname === host && answer.action === TURNSTILE_ACTION) {
+  if (turnstileAccepted(answer, host)) {
     return null;
   }
   return problem(403, "the human check was not accepted; solve it again");
@@ -89,23 +115,26 @@ export async function checkTurnstile(request, env, fetchImpl = fetch) {
 // container.
 export async function handleTry(request, env, fetchImpl = fetch) {
   const url = new URL(request.url);
+  const path = tryPathname(url.pathname);
   const read = request.method === "GET" || request.method === "HEAD";
-  if (read && url.pathname === TRY_CONFIG_PATH) {
+  if (read && path === TRY_CONFIG_PATH) {
     const siteKey = turnstileOn(env) ? env[TURNSTILE_SITE_KEY_VAR] : null;
     return new Response(JSON.stringify({ turnstile_site_key: siteKey }), {
       headers: { "content-type": "application/json", "cache-control": "no-store" },
     });
   }
-  if (read && TRY_PATHS.has(url.pathname)) {
-    const asset = await env.ASSETS.fetch(new Request(url.toString(), { method: request.method }));
+  if (read && TRY_PATHS.has(path)) {
+    const assetUrl = new URL(url.toString());
+    assetUrl.pathname = path;
+    const asset = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: request.method }));
     const out = new Response(asset.body, asset);
-    if (url.pathname === "/") {
+    if (path === "/") {
       out.headers.set("content-security-policy", tryCsp(turnstileOn(env)));
       out.headers.set("cache-control", "no-store");
     }
     return out;
   }
-  if (request.method === "POST" && url.pathname === "/sandbox") {
+  if (request.method === "POST" && path === "/sandbox") {
     return checkTurnstile(request, env, fetchImpl);
   }
   return null;
