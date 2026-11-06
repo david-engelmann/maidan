@@ -100,7 +100,7 @@ export function clientSetup(client: ClientId, base: string, token: string, chann
             "from maidan import Client",
             "",
             "client = Client()  # reads MAIDAN_URL and MAIDAN_TOKEN",
-            `task = client.claim_next_thread("${channelId ?? "CHANNEL_ID"}")`,
+            `task = client.claim_next_thread("${channelId?.trim() || "CHANNEL_ID"}")`,
             "if task:",
             '    client.messages.post(task.id, "hello")',
             '    client.threads.set_result(task.id, {"said": "hello"}, task.claim_lease_id)',
