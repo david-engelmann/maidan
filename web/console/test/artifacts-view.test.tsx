@@ -28,8 +28,7 @@ test("a task can be chosen, and a linked file shows its name and size", async ()
   // The lookup field keeps the name the browser tests query.
   expect(screen.getByLabelText("sha256")).toBeTruthy();
 
-  const evidence = screen.getByRole("heading", { name: "A task's evidence" }).closest("section");
-  if (!evidence) throw new Error("missing evidence section");
+  const evidence = screen.getByRole("region", { name: "A task's evidence" });
   const view = within(evidence);
   const select = await waitFor(() => view.getByRole("combobox", { name: "Choose a task" }));
   await waitFor(() => expect(view.getByRole("option", { name: "#general — Deploy v9" })).toBeTruthy());

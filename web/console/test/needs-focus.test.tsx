@@ -99,6 +99,37 @@ test("confirm and note keep focus, and Escape or Cancel gives it back", async ()
   release({ evidence_root: "root", self_reported_only: false, manifest: { artifacts: [] } });
   await waitFor(() => expect(review.querySelector(".need-evidence")).toBeTruthy());
   expect(document.activeElement).toBe(within(review).getByRole("button", { name: /Send back/ }));
+
+  // The note replaces the action row, so the clicked button is gone. Escape
+  // has to land on the new Send back, not the first button in the row.
+  await user.click(within(review).getByRole("button", { name: /Send back/ }));
+  await waitFor(() => expect(document.activeElement).toBe(review.querySelector("textarea")));
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(within(review).getByRole("button", { name: /Send back/ })));
+});
+
+test("r focuses the note while the queue pick stays focused", async () => {
+  const user = userEvent.setup();
+  const { router, node } = shell(<NeedsYou />, [
+    {
+      match: /\/members\/me\/waiting$/,
+      body: () => ({
+        items: [{ kind: "review_request", thread_id: "t-review", summary: "Please review", since: "2026-11-01T00:00:00Z", age_secs: 10 }],
+      }),
+    },
+    { match: /\/approval-gates$/, body: () => [] },
+    { match: /\/threads\/t-review\/review-packet$/, body: () => ({ evidence_root: "root", self_reported_only: false, manifest: { artifacts: [] } }) },
+    { match: /\/threads\/t-review\/artifacts$/, body: () => [] },
+  ]);
+  await renderSignedIn(node, router.fn);
+  const pick = await waitFor(() => screen.getByRole("button", { name: /Please review/ }));
+  pick.focus();
+  expect(document.activeElement).toBe(pick);
+  await user.keyboard("r");
+  const note = document.querySelector("textarea");
+  await waitFor(() => expect(document.activeElement).toBe(note));
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Send back/ })));
 });
 
 test("answering a row moves focus to the next one", async () => {

@@ -47,13 +47,15 @@ test("a task's evidence opens from the task list and names the file", async ({ p
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/artifacts");
   await expect(page.getByLabel("sha256")).toBeVisible();
-  const evidence = page.locator("section", { has: page.getByRole("heading", { name: "A task's evidence" }) });
+  const evidence = page.getByRole("region", { name: "A task's evidence" });
   const select = evidence.getByLabel("Choose a task");
   await select.selectOption({ label: "#general — Deploy v9" });
   const file = evidence.getByRole("button", { name });
   await expect(file).toContainText("18 B");
   await expect(file).toContainText(`${sha.slice(0, 12)}…`);
-  await expect(evidence.getByRole("link", { name: "Open task" })).toHaveAttribute("href", `#/threads/t/${fx.thread_id}`);
+  // Other files already linked to this task have their own Open task link.
+  const row = evidence.locator("li", { hasText: name });
+  await expect(row.getByRole("link", { name: "Open task" })).toHaveAttribute("href", `#/threads/t/${fx.thread_id}`);
   await file.click();
   await expect(page.getByLabel("sha256")).toHaveValue(sha);
   await evidence.getByLabel("Task id").fill(fx.board_open_thread_id);

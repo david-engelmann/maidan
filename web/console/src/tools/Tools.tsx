@@ -831,22 +831,24 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
 
 // ---- Session ---------------------------------------------------------------
 
-/** The capability card: what this credential can do in the console. */
+/** What this credential can do, and the way out.
+ * A signed-in tab renders this before GET /me resolves the mode: Sign out
+ * has to be there in that gap, or a reload can hide the only way out. */
 function SessionCard() {
   const { session, store } = useSession();
   const [leaving, setLeaving] = useState(false);
-  if (session.status !== "signed-in" || !session.mode) return null;
+  if (session.status !== "signed-in") return null;
   const signOut = async () => {
     if (leaving) return;
     setLeaving(true);
     await store.logout();
     setLeaving(false);
   };
-  const card = session.grant ? capabilityCard(session.mode, session.grant) : null;
+  const card = session.mode && session.grant ? capabilityCard(session.mode, session.grant) : null;
   return (
     <Panel title="Session">
       <dl className="facts">
-        <div><dt>Acting with</dt><dd className="session-credential">{MODE_LINE[session.mode]}</dd></div>
+        <div><dt>Acting with</dt><dd className="session-credential">{session.mode ? MODE_LINE[session.mode] : "Checking…"}</dd></div>
         <div><dt>Member id</dt><dd className="mono-id session-member">{session.memberId}</dd></div>
         <div><dt>Workspace id</dt><dd className="mono-id">{session.workspaceId}</dd></div>
       </dl>

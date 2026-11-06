@@ -291,7 +291,11 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const rowRef = useRef<HTMLLIElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  // The control name, not the element: the action row unmounts while a note
+  // or confirm is open, so the button that was clicked is no longer connected.
+  const triggerControlRef = useRef<string | null>(null);
   const pendingRestore = useRef(false);
+  const prevPhaseRef = useRef<RowState["phase"]>(state.phase);
 
   // A review can only be approved against the evidence it was handed, and
   // the person approving sees that evidence first.
@@ -394,6 +398,12 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
       const active = document.activeElement;
       const activeBtn = active instanceof HTMLElement && root?.contains(active) ? active : null;
       triggerRef.current = clicked ?? askBtn ?? activeBtn;
+      const activeControl = activeBtn?.dataset.needControl;
+      triggerControlRef.current =
+        clicked?.dataset.needControl
+        ?? (activeControl && activeControl !== "pick" ? activeControl : null)
+        ?? askBtn?.getAttribute("data-need-control")
+        ?? null;
       if (ask === "approve_note" || ask === "request_changes" || ask === "decline") setState({ phase: "note", ask });
       else setState({ phase: "confirm", ask });
     },
@@ -410,6 +420,16 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   const restoreTrigger = useCallback(() => {
     const root = rowRef.current;
     if (!root) return;
+    // The opener unmounted with the action row. Its control name finds the
+    // button that replaced it; the stored element is only a fallback.
+    const ctrl = triggerControlRef.current;
+    if (ctrl) {
+      const next = root.querySelector<HTMLElement>(`[data-need-control="${CSS.escape(ctrl)}"]`);
+      if (next && !(next instanceof HTMLButtonElement && next.disabled)) {
+        next.focus();
+        return;
+      }
+    }
     const trigger = triggerRef.current;
     if (trigger?.isConnected && !(trigger instanceof HTMLButtonElement && trigger.disabled)) {
       trigger.focus();
@@ -419,16 +439,32 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
     btn?.focus();
   }, []);
 
-  // Confirm and note replace the action row. Put focus on the new primary
-  // control, and on Cancel or Escape put it back on the button that opened it.
-  // A later render (a refresh, or evidence arriving) that drops focus restores
-  // the same control.
+  // Confirm and note replace the action row. A phase change always moves
+  // focus onto the new primary control, even when the queue pick stayed
+  // mounted and focused. A same-phase redraw (a refresh, or evidence
+  // arriving) leaves focus where it is, and only puts it back when that
+  // redraw dropped it on the document. Cancel or Escape returns it to the
+  // control that opened the phase.
   useLayoutEffect(() => {
     const root = rowRef.current;
+    const phaseChanged = prevPhaseRef.current !== state.phase;
+    prevPhaseRef.current = state.phase;
     if (!root) return;
     if (pendingRestore.current && state.phase === "idle") {
       pendingRestore.current = false;
       restoreTrigger();
+      return;
+    }
+    if (phaseChanged && state.phase === "confirm") {
+      root.querySelector<HTMLElement>(".need-confirm .btn.go")?.focus();
+      return;
+    }
+    if (phaseChanged && state.phase === "note") {
+      noteRef.current?.focus();
+      return;
+    }
+    if (phaseChanged && state.phase === "error") {
+      root.querySelector<HTMLElement>(".need-error button")?.focus();
       return;
     }
     if (!focusLost()) return;

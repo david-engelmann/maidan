@@ -106,8 +106,8 @@ export function Artifacts() {
   return (
     <div className="tool-grid">
       <Library />
-      <section className="card tool-panel">
-        <h2>Find a file</h2>
+      <section className="card tool-panel" aria-labelledby="find-file-heading">
+        <h2 id="find-file-heading">Find a file</h2>
         <form className="row-form" onSubmit={lookup}>
           <label className="field grow">sha256<input value={sha} onChange={(e) => setSha(e.target.value)} spellCheck={false} autoCapitalize="off" placeholder="64 hex characters" /></label>
           <button className="button steel">Look up</button>
@@ -120,8 +120,8 @@ export function Artifacts() {
           meta.status === "loading" ? <p className="muted">Looking up…</p> : meta.value ? <ArtifactCard api={api} sha={looked} meta={meta.value} onLink={threadOn ? () => void linkOp("link", looked) : null} onErase={() => void erase(looked)} busy={busy} /> : meta.error ? <p className="err" role="alert">{meta.error}</p> : <p className="muted">Not found, or not in this workspace.</p>
         ) : null}
       </section>
-      <section className="card tool-panel">
-        <h2>A task's evidence</h2>
+      <section className="card tool-panel" aria-labelledby="task-evidence-heading">
+        <h2 id="task-evidence-heading">A task's evidence</h2>
         <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); setThreadOn(thread.trim() || null); }}>
           <label className="field grow">Choose a task
             <select aria-label="Choose a task" value={known ? thread : ""} onChange={(e) => openTask(e.target.value)}>
