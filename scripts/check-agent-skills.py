@@ -40,6 +40,16 @@ NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 TICKED = re.compile(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)*)`")
 
 
+def skill_under_root(skill: Path, skills_root: Path) -> bool:
+    """True when ``skill`` resolves to a direct child directory of ``skills_root``."""
+    try:
+        resolved = skill.resolve()
+        root = skills_root.resolve()
+    except OSError:
+        return False
+    return resolved.is_dir() and resolved.parent == root and resolved.name == skill.name
+
+
 def frontmatter(text: str) -> dict[str, str]:
     if not text.startswith("---\n"):
         return {}
@@ -60,20 +70,30 @@ def main() -> int:
     errors: list[str] = []
     covered: set[str] = set()
 
+    skills_root = SKILLS.resolve()
     skills = sorted(path.parent for path in SKILLS.glob("*/SKILL.md"))
     if not skills:
         errors.append(f"no skills under {SKILLS.relative_to(ROOT)}")
     for skill in skills:
-        where = skill.relative_to(ROOT)
-        text = (skill / "SKILL.md").read_text()
+        try:
+            skill_resolved = skill.resolve()
+        except OSError as exc:
+            errors.append(f"{skill}: cannot resolve skill path ({exc})")
+            continue
+        if skill_resolved != skills_root / skill_resolved.name or not skill_resolved.is_dir():
+            errors.append(f"{skill}: skill path escapes {SKILLS.relative_to(ROOT)}")
+            continue
+        where = skill_resolved.relative_to(ROOT)
+        text = (skill_resolved / "SKILL.md").read_text()
         meta = frontmatter(text)
-        if meta.get("name") != skill.name:
-            errors.append(f"{where}: frontmatter name must be {skill.name!r}")
-        if not NAME.match(skill.name) or len(skill.name) > 64:
+        if meta.get("name") != skill_resolved.name:
+            errors.append(f"{where}: frontmatter name must be {skill_resolved.name!r}")
+        if not NAME.match(skill_resolved.name) or len(skill_resolved.name) > 64:
             errors.append(f"{where}: a skill name is 1 to 64 lowercase letters, digits and hyphens")
-        description = meta.get("description", "")
+        description = meta.get("description", "").strip()
         if not description or len(description) > 1024:
             errors.append(f"{where}: description must be 1 to 1024 characters")
+        skill = skill_resolved
 
         body, sep, tools_section = text.partition("\n## Tools\n")
         if not sep:
@@ -86,20 +106,34 @@ def main() -> int:
         docs = sorted(skill.glob("*.md"))
         used = set(TICKED.findall(body))
         for doc in docs:
-            if doc.name != "SKILL.md":
-                used |= set(TICKED.findall(doc.read_text()))
+            try:
+                doc_resolved = doc.resolve()
+            except OSError:
+                errors.append(f"{where}: cannot resolve {doc.name}")
+                continue
+            if not doc_resolved.is_relative_to(skill):
+                errors.append(f"{where}: {doc.name} escapes the skill directory")
+                continue
+            if doc_resolved.name != "SKILL.md":
+                used |= set(TICKED.findall(doc_resolved.read_text()))
         for name in sorted((listed & catalog) - used):
             errors.append(f"{where}: Tools lists {name} but the skill never says how to use it")
         covered |= listed & catalog
 
         for doc in docs:
-            for name in sorted(set(TICKED.findall(doc.read_text()))):
+            try:
+                doc_resolved = doc.resolve()
+            except OSError:
+                continue
+            if not doc_resolved.is_relative_to(skill):
+                continue
+            for name in sorted(set(TICKED.findall(doc_resolved.read_text()))):
                 if name in catalog or name in NOT_TOOLS or "_" not in name:
                     continue
                 if name.endswith(FIELD_SUFFIXES):
                     continue
                 if name.split("_")[0] in verbs:
-                    errors.append(f"{doc.relative_to(ROOT)}: `{name}` looks like a tool and is not in the catalog")
+                    errors.append(f"{doc_resolved.relative_to(ROOT)}: `{name}` looks like a tool and is not in the catalog")
 
     for name in sorted(set(NOT_IN_A_SKILL) - catalog):
         errors.append(f"NOT_IN_A_SKILL names {name}, which the catalog does not have")

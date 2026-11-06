@@ -3,14 +3,21 @@
   "short_name": "Maidan",
   "description": "Your board, needs and threads.",
   "id": "/ui/",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/ui/#/board",
   "scope": "/ui/",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "orientation": "any",
   "background_color": "#f2eee6",
   "theme_color": "#f2eee6",
+  "categories": ["productivity", "developer"],
   "icons": [
     { "src": "/ui/icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
-    { "src": "/ui/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/ui/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/ui/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ui/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/ui/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/ui/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

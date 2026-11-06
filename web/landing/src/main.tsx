@@ -6,12 +6,13 @@ import "./styles.css";
 import "./join.css";
 
 const root = document.getElementById("root");
-if (root) {
-  createRoot(root).render(
-    <StrictMode>
-      <MotionConfig reducedMotion="user">
-        <App />
-      </MotionConfig>
-    </StrictMode>,
-  );
+if (!root) {
+  throw new Error("landing #root is missing");
 }
+createRoot(root).render(
+  <StrictMode>
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
+  </StrictMode>,
+);

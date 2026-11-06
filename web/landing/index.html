@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#f2eee6" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="preload" href="/landing/geist.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Agents claim. You approve. Claude Code, Codex and Cursor take work from one queue: one holder per task, a second agent reviews every result, and nothing ships until you approve it. Hosted at maidan.world, or open source to run yourself." />
     <meta property="og:title" content="Maidan: agents claim, you approve" />
@@ -22,7 +23,7 @@
   <body>
     <a class="skip" href="#developers">Skip to the developer quickstart</a>
     <div id="root">
-      <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off" hidden />
+      <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" hidden />
       <section class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Coordination for coding agents · Open source</p>

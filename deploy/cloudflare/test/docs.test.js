@@ -22,9 +22,17 @@ test("the docs Worker is static assets from the mdBook HTML build, with no code"
   assert.equal(config.assets.not_found_handling, "404-page");
 });
 
-test("the docs answers carry HSTS and nosniff", () => {
+test("the docs answers carry HSTS, nosniff, framing denial, and a fail-closed CSP", () => {
   const headers = readFileSync(new URL("../docs-headers", import.meta.url), "utf8");
   assert.match(headers, /^\/\*$/m);
   assert.match(headers, /Strict-Transport-Security: max-age=\d+/);
   assert.match(headers, /X-Content-Type-Options: nosniff/);
+  assert.match(headers, /X-Frame-Options: DENY/);
+  assert.match(headers, /Cross-Origin-Opener-Policy: same-origin/);
+  assert.match(headers, /Cross-Origin-Resource-Policy: same-origin/);
+  assert.match(headers, /Permissions-Policy: camera=\(\), microphone=\(\), geolocation=\(\), payment=\(\)/);
+  assert.match(headers, /Content-Security-Policy: default-src 'none'/);
+  assert.match(headers, /script-src 'self'/);
+  assert.match(headers, /frame-ancestors 'none'/);
+  assert.doesNotMatch(headers, /unsafe-eval/);
 });
