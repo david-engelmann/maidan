@@ -4,18 +4,27 @@
 import type { ArtifactMeta } from "./tools.ts";
 
 export type FileSource = { id: string; title: string };
-export type FileRow = { sha: string; meta: ArtifactMeta | null; sources: FileSource[] };
+export type FileRow = { sha: string; meta: ArtifactMeta | null; sources: FileSource[]; metaFailed?: boolean };
 export type FileKind = "image" | "text" | "data" | "archive" | "other";
+
+/**
+ * Live frames that can change which files are linked. Storing bytes emits
+ * `artifact_upserted`. Linking and unlinking a thread artifact write no event
+ * of their own; the link kinds are still honored when a server sends one.
+ */
+export const FILE_REFRESH_KINDS = new Set(["artifact_upserted", "artifact_linked", "artifact_unlinked", "thread_artifact_linked", "thread_artifact_unlinked"]);
 
 export function gatherFiles(
   tasks: Array<{ id: string; title?: string | null }>,
   linked: Map<string, string[]>,
   metas: Map<string, ArtifactMeta | null>,
+  failedMeta?: ReadonlySet<string>,
 ): FileRow[] {
   const by = new Map<string, FileRow>();
   for (const t of tasks) {
     for (const sha of linked.get(t.id) ?? []) {
-      const row = by.get(sha) ?? { sha, meta: metas.get(sha) ?? null, sources: [] };
+      const row = by.get(sha) ?? { sha, meta: metas.get(sha) ?? null, sources: [], metaFailed: failedMeta?.has(sha) ?? false };
+      if (failedMeta?.has(sha)) row.metaFailed = true;
       if (!row.sources.some((s) => s.id === t.id)) row.sources.push({ id: t.id, title: t.title?.trim() || "Untitled task" });
       by.set(sha, row);
     }
