@@ -274,7 +274,11 @@ export function Join({
             Close
           </button>
         </div>
-        {done ? null : (
+        {done ? (
+          <div className="card">
+            <button type="button" className="submit" onClick={() => onOpenChange(false)}>Done</button>
+          </div>
+        ) : (
           <div className="card">
             <form id="waitlist-form" noValidate onSubmit={onSubmit}>
               <div className="field">
