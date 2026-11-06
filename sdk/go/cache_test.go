@@ -3,6 +3,8 @@
 package maidan
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -212,5 +214,18 @@ func TestBlankOrWhitespaceCacheInputsAreRefused(t *testing.T) {
 	}
 	if _, err := CacheSalt("  ", []byte(strings.Repeat("k", 32))); err == nil || !strings.Contains(err.Error(), "workspace id is required") {
 		t.Fatalf("CacheSalt blank workspace: %v", err)
+	}
+}
+
+func TestPaddedCacheInputsKeepOriginalBytes(t *testing.T) {
+	// requireText validates only; CacheKey must hash the caller's bytes, not a trim.
+	got, err := CacheKey(" ws", "group ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(" ws\ngroup "))
+	want := "maidan-" + hex.EncodeToString(sum[:])[:32]
+	if got != want {
+		t.Fatalf("CacheKey padded = %s, want %s (original bytes)", got, want)
 	}
 }

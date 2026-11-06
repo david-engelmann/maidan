@@ -37,7 +37,8 @@ func cacheErr(format string, args ...any) error {
 	return &CacheError{Msg: fmt.Sprintf(format, args...)}
 }
 
-// requireText returns a required non-blank string; whitespace-only values are refused.
+// requireText validates a required non-blank string (after trim) without changing it;
+// callers keep the original value so cache keys and headers stay byte-stable.
 func requireText(value, label string) (string, error) {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -53,9 +54,7 @@ func requireText(value, label string) (string, error) {
 // own, so the prefix is only put first. The result marshals to the provider's
 // JSON.
 func CachedPrefix(provider, text, ttl string) (any, error) {
-	var err error
-	provider, err = requireText(provider, "provider")
-	if err != nil {
+	if _, err := requireText(provider, "provider"); err != nil {
 		return nil, err
 	}
 	if ttl != "" && ttl != "5m" && ttl != "1h" {
@@ -91,13 +90,10 @@ func CachedPrefix(provider, text, ttl string) (any, error) {
 // workspaces: the workspace id is hashed in, so the same group name in two
 // workspaces gives two keys, and the key reveals neither.
 func CacheKey(workspaceID, group string) (string, error) {
-	var err error
-	workspaceID, err = requireText(workspaceID, "workspace id")
-	if err != nil {
+	if _, err := requireText(workspaceID, "workspace id"); err != nil {
 		return "", err
 	}
-	group, err = requireText(group, "group")
-	if err != nil {
+	if _, err := requireText(group, "group"); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256([]byte(workspaceID + "\n" + group))
@@ -113,13 +109,10 @@ type RequestFields struct {
 // CacheKeyFields is where key goes for a provider that takes one, and empty
 // fields for one that does not.
 func CacheKeyFields(provider, key string) (RequestFields, error) {
-	var err error
-	provider, err = requireText(provider, "provider")
-	if err != nil {
+	if _, err := requireText(provider, "provider"); err != nil {
 		return RequestFields{}, err
 	}
-	key, err = requireText(key, "cache key")
-	if err != nil {
+	if _, err := requireText(key, "cache key"); err != nil {
 		return RequestFields{}, err
 	}
 	switch provider {
@@ -145,13 +138,10 @@ var uuidV7 = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab
 // gateway's spend joins the thread's outcome. Helicone's path and name default
 // to "/" and "maidan" when empty.
 func GatewaySession(gateway, threadID, path, name string) (RequestFields, error) {
-	var err error
-	gateway, err = requireText(gateway, "gateway")
-	if err != nil {
+	if _, err := requireText(gateway, "gateway"); err != nil {
 		return RequestFields{}, err
 	}
-	threadID, err = requireText(threadID, "thread id")
-	if err != nil {
+	if _, err := requireText(threadID, "thread id"); err != nil {
 		return RequestFields{}, err
 	}
 	if path == "" {
@@ -207,18 +197,14 @@ var oneKeyRouters = map[string]oneKeyRouter{
 // the key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only:
 // no router accepts a prefix hash from a client.
 func RoutingHints(router, threadID, parentThreadID string) (RequestFields, error) {
-	var err error
-	router, err = requireText(router, "router")
-	if err != nil {
+	if _, err := requireText(router, "router"); err != nil {
 		return RequestFields{}, err
 	}
-	threadID, err = requireText(threadID, "thread id")
-	if err != nil {
+	if _, err := requireText(threadID, "thread id"); err != nil {
 		return RequestFields{}, err
 	}
 	if parentThreadID != "" {
-		parentThreadID, err = requireText(parentThreadID, "parent thread id")
-		if err != nil {
+		if _, err := requireText(parentThreadID, "parent thread id"); err != nil {
 			return RequestFields{}, err
 		}
 	}
@@ -249,9 +235,7 @@ const MinSaltKeyBytes = 32
 // bytes. Set the salt from a trusted server-side component that holds the key,
 // never from an end client. It is a cache partition, not an auth token.
 func CacheSalt(workspaceID string, saltKey []byte) (RequestFields, error) {
-	var err error
-	workspaceID, err = requireText(workspaceID, "workspace id")
-	if err != nil {
+	if _, err := requireText(workspaceID, "workspace id"); err != nil {
 		return RequestFields{}, err
 	}
 	if len(saltKey) < MinSaltKeyBytes {
