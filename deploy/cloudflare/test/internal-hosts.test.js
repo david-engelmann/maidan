@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { internalOutboundByHost, parseInternalHosts } from "../src/edge.js";
+import { internalOutboundByHost, parseInternalHosts, routedEgressHosts } from "../src/edge.js";
 
 const binding = (name) => ({
   calls: [],
@@ -43,6 +43,20 @@ test("a mapped host is forwarded to its binding, and nothing else is intercepted
   const response = await handlers["seats.internal"](request, env, { containerId: "c", className: "MaidanServer" });
   assert.equal(await response.text(), "seats /wake");
   assert.equal(env.SEATS.calls[0], request);
+});
+
+test("the server is handed only the listed names the Worker routes", () => {
+  const env = { SEATS: binding("seats") };
+  const map = "seats.internal=SEATS,control.internal=CONTROL";
+  assert.equal(routedEgressHosts("seats.internal", map, env), "seats.internal");
+  // A listed name with no route, or no declared binding, is dropped.
+  assert.equal(
+    routedEgressHosts(" Seats.Internal. ,control.internal,other.internal,seats.internal", map, env),
+    "seats.internal",
+  );
+  assert.equal(routedEgressHosts("control.internal", map, env), undefined);
+  assert.equal(routedEgressHosts("seats.internal", "", env), undefined);
+  assert.equal(routedEgressHosts(undefined, map, env), undefined);
 });
 
 test("no map means no interception at all", () => {

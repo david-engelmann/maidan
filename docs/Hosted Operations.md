@@ -226,11 +226,13 @@ Three settings, all in the instance's Wrangler config:
    because the container network answers the name with a placeholder that
    routes to the Worker. Nothing else gets looser: plain HTTP to a public host
    keeps the public-address rule, and private addresses still need
-   `MAIDAN_PRIVATE_EGRESS_HOSTS`.
+   `MAIDAN_PRIVATE_EGRESS_HOSTS`. The Worker hands the server only the listed
+   names it also maps to a declared binding, so a name whose route is missing
+   is refused rather than sent to the internet.
 
 The list covers the whole instance, so on an instance with customer workspaces
 any workspace admin could point a webhook at a listed host. The receiving
-Worker therefore checks `X-Maidan-Signature` against the subscription's
+Worker must therefore check `X-Maidan-Signature` against the subscription's
 secret, as any webhook receiver must. Only the swarm sets these today.
 
 **On the swarm**, `wrangler.swarm.jsonc` binds `SEATS` to `maidan-wax-seats`

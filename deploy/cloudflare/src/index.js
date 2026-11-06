@@ -13,6 +13,7 @@ import { isScannerProbe } from "./scanner.js";
 import {
   edgeRedirect,
   internalOutboundByHost,
+  routedEgressHosts,
   isPageNavigation,
   isSitePage,
   HOSTED_FOOTER_LINKS,
@@ -80,6 +81,13 @@ export class MaidanServer extends Container {
     const passed = Object.fromEntries(
       SERVER_ENV.filter((name) => env[name] !== undefined).map((name) => [name, env[name]]),
     );
+    // Only the internal names this Worker actually routes reach the server.
+    const routed = routedEgressHosts(env.MAIDAN_INTERNAL_EGRESS_HOSTS, env.MAIDAN_INTERNAL_HOSTS, env);
+    if (routed === undefined) {
+      delete passed.MAIDAN_INTERNAL_EGRESS_HOSTS;
+    } else {
+      passed.MAIDAN_INTERNAL_EGRESS_HOSTS = routed;
+    }
     this.envVars = {
       ...passed,
       MAIDAN_BIND: "0.0.0.0:8080",

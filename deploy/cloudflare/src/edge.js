@@ -31,6 +31,19 @@ export function parseInternalHosts(raw, env = {}) {
   return [...pairs];
 }
 
+// The server's `MAIDAN_INTERNAL_EGRESS_HOSTS`: the names in `rawEgress` that
+// `rawMap` also routes to a declared binding, or undefined when none is. A
+// listed name the Worker does not route would otherwise be accepted as a
+// webhook target and then fail at every delivery.
+export function routedEgressHosts(rawEgress, rawMap, env = {}) {
+  const routed = new Set(parseInternalHosts(rawMap, env).map(([host]) => host));
+  const hosts = String(rawEgress ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase().replace(/\.+$/, ""))
+    .filter((host, i, all) => routed.has(host) && all.indexOf(host) === i);
+  return hosts.length > 0 ? hosts.join(",") : undefined;
+}
+
 // The `outboundByHost` handlers for `raw`: each forwards the container's
 // request, unchanged, to its binding. The binding is read from the `env` the
 // handler is called with, the Worker's own.

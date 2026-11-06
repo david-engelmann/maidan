@@ -272,7 +272,10 @@ Every operator-supplied target (webhook, automation, federation peer, A2A
 push, web push) is checked when it is registered and again at each delivery.
 A delivery resolves the name, refuses the whole answer if any address is
 private, link-local, loopback or reserved, pins the request to those
-addresses and never follows redirects.
+addresses and never follows redirects. Two lists are the exceptions: a host in
+`MAIDAN_PRIVATE_EGRESS_HOSTS` may resolve to a private or loopback address but
+never a link-local one, and the answer for a host in
+`MAIDAN_INTERNAL_EGRESS_HOSTS` is not checked at all.
 
 ## GitHub, Slack and Linear
 
