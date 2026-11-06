@@ -4,6 +4,7 @@ import type { Credentials } from "../src/core/api.ts";
 import { TRANSITION_WORDS, type Thread } from "../src/core/board.ts";
 import {
   authorLabel,
+  freshRoster,
   channelTag,
   holding,
   lastActiveByMember,
@@ -185,6 +186,16 @@ test("last active follows the holder and the person who filed the task", () => {
   assert.deepEqual(lastActiveFact("away", null), { text: "Away", iso: null });
   assert.deepEqual(lastActiveFact("offline", at.get("ada")), { text: null, iso: "2026-10-30T10:00:00Z" });
   assert.deepEqual(lastActiveFact("offline", null), { text: "No activity yet", iso: null });
+});
+
+test("a review with no workspace does not wait on a roster that will never arrive", () => {
+  const none = freshRoster(null);
+  assert.equal(none.workspaceId, null);
+  assert.equal(none.ready, true);
+  assert.equal(authorLabel(none.ready, undefined), "Someone");
+  const ws = freshRoster("ws");
+  assert.equal(ws.ready, false);
+  assert.equal(authorLabel(ws.ready, undefined), "…");
 });
 
 test("a review author waits for the roster instead of flashing Someone", () => {

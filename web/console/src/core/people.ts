@@ -163,6 +163,11 @@ export function channelTag(name: string | null | undefined, channelCount: number
   return ` · #${n}`;
 }
 
+/** The roster a review starts from. No workspace means there is nobody to load. */
+export function freshRoster(workspaceId: string | null): { workspaceId: string | null; ready: boolean } {
+  return { workspaceId, ready: !workspaceId };
+}
+
 /** A message author: a placeholder until the roster arrives, then the name or a fallback. */
 export function authorLabel(ready: boolean, name: string | null | undefined, fallback = "Someone"): string {
   if (name) return name;

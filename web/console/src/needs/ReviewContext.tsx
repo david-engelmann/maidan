@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiPath, type Credentials } from "../core/api.ts";
 import { BoardApi, type Member } from "../core/board.ts";
-import { authorLabel } from "../core/people.ts";
+import { authorLabel, freshRoster } from "../core/people.ts";
 import { ThreadsApi, type Message } from "../core/threads.ts";
 import { mediaEssence, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -59,15 +59,15 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   // Bumped by Try again, so a failed read is never shown as an empty one.
   const [attempt, setAttempt] = useState(0);
   // Reset when the workspace changes, during render, so an author is never
-  // "Someone" for a roster that has not answered yet.
-  const [roster, setRoster] = useState<{ workspaceId: string | null; members: Map<string, Member>; ready: boolean }>({
-    workspaceId: null,
-    members: new Map(),
-    ready: false,
-  });
+  // "Someone" for a roster that has not answered yet. With no workspace there
+  // is nothing to load, so the roster starts ready instead of stuck on "…".
   const workspaceId = session.workspaceId;
+  const [roster, setRoster] = useState<{ workspaceId: string | null; members: Map<string, Member>; ready: boolean }>({
+    ...freshRoster(workspaceId),
+    members: new Map(),
+  });
   const staleRoster = roster.workspaceId !== workspaceId;
-  if (staleRoster) setRoster({ workspaceId, members: new Map(), ready: !workspaceId });
+  if (staleRoster) setRoster({ ...freshRoster(workspaceId), members: new Map() });
   const members = staleRoster ? new Map<string, Member>() : roster.members;
   const membersReady = staleRoster ? !workspaceId : roster.ready;
 
