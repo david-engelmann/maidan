@@ -252,7 +252,10 @@ to `base_sha`, commits it on your branch, opens a **draft** pull request
 against `base`, and answers wherever `deliver_to` points.
 
 Build the envelope with `change_result.py`, the helper in the same directory
-as this runbook. Below, `$CLAIMANT_DIR` is that directory: for example
+as this runbook. It refuse-closes on an unsafe `--out` / `--summary-file` /
+`--deliver-to-file` path, a malformed claim lease or `owner/name` repo, a
+`prod` base branch, or a body over `--max-bytes` — fix the args; do not hand-edit
+the JSON. Below, `$CLAIMANT_DIR` is that directory: for example
 `~/.claude/skills/maidan-claimant` for a skill installed for your user,
 `.claude/skills/maidan-claimant` for one installed in the repository, or
 `.cursor/maidan-claimant` for Cursor. The helper works on the checkout in the

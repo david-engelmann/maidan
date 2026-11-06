@@ -36,6 +36,10 @@ In short:
 5. **Deliver.** Build the `pi.change.result/1` envelope with
    [`change_result.py`](change_result.py) and `PUT` it to
    `/threads/{id}/result`; Maidan commits it and opens a draft pull request.
+   The helper refuse-closes on a bad claim lease, an unsafe `--out` /
+   `--summary-file` / `--deliver-to-file` path (`..`, absolute, or `~`), a
+   malformed `owner/name` repo, a `prod` base, or an oversize body — fix the
+   args rather than editing the JSON by hand.
    If the helper exits `3` (binary, symlink, submodule or too large), use the
    runbook's fallback: push your own branch, open the draft yourself, and
    register it with `register_thread_pull`.

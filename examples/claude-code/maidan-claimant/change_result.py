@@ -20,6 +20,7 @@ Standard library only. No network: this never sees the token.
 """
 
 import argparse
+from pathlib import Path
 import json
 import re
 import subprocess
@@ -43,12 +44,62 @@ FALLBACK = 3
 # A git call that outlives this (a lock, a credential prompt) would hold the
 # claim with nobody watching; failing lets the session release it.
 GIT_TIMEOUT_SECS = 120
-
-
 class Stop(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
+
+
+REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+BASE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]+$")
+CLAIM_LEASE = re.compile(r"^[A-Za-z0-9._:~-]{8,128}$")
+MIN_MAX_BYTES = 1024
+
+
+def refuse_path(label, value):
+    """Refuse path args that escape the working tree or look like redirects."""
+    if value is None:
+        return
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise Stop(FIX, f"{label} must not contain control characters")
+    p = Path(value)
+    if p.is_absolute():
+        raise Stop(FIX, f"{label} must be a relative path, got {value!r}")
+    if ".." in p.parts:
+        raise Stop(FIX, f"{label} must not contain '..'")
+    if value.startswith("~"):
+        raise Stop(FIX, f"{label} must not expand a home directory")
+
+
+def validate_inputs(args):
+    if not CLAIM_LEASE.match(args.claim_lease_id):
+        raise Stop(
+            FIX,
+            "claim-lease-id must be 8..128 characters of [A-Za-z0-9._:~-]",
+        )
+    if args.repo is not None and not REPO_NAME.match(args.repo):
+        raise Stop(FIX, f"repo {args.repo!r} must look like owner/name")
+    if args.base is not None:
+        if args.base.lower() == "prod":
+            raise Stop(FIX, "a change is never opened against prod")
+        if not BASE_BRANCH.match(args.base) or ".." in args.base:
+            raise Stop(FIX, f"base branch {args.base!r} is not a safe branch name")
+    if args.max_bytes < MIN_MAX_BYTES or args.max_bytes > DEFAULT_MAX_BYTES:
+        raise Stop(
+            FIX,
+            f"max-bytes must be {MIN_MAX_BYTES}..{DEFAULT_MAX_BYTES}, got {args.max_bytes}",
+        )
+    refuse_path("--out", args.out)
+    refuse_path("--summary-file", args.summary_file)
+    refuse_path("--deliver-to-file", args.deliver_to_file)
+    # Absolute checkouts are allowed for --repo-dir (real agent paths), but
+    # still refuse NUL and parent-segment escapes in the given string.
+    if args.repo_dir is not None:
+        if "\x00" in args.repo_dir:
+            raise Stop(FIX, "--repo-dir must not contain NUL")
+        if ".." in Path(args.repo_dir).parts:
+            raise Stop(FIX, "--repo-dir must not contain '..'")
+
 
 
 def git(repo_dir, *args):
@@ -153,6 +204,7 @@ def deliver_to(args):
 
 
 def build(args):
+    validate_inputs(args)
     if not CHANGE_BRANCH.match(args.branch):
         raise Stop(FIX, f"branch {args.branch!r} must match feature/agent-[a-z0-9][a-z0-9-]*")
     if args.linear_issue and not ISSUE_KEY.match(args.linear_issue):
