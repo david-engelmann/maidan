@@ -19,6 +19,10 @@ gets instead of a clean answer:
                  Content-Length matches, so the client reads broken JSON
     rpc_error    answer a JSON-RPC error (`code`, `message`) to the request's
                  id without forwarding: a fault inside a 200
+    drip         forward, then send the body a few bytes at a time, pausing
+                 `pause_ms` between chunks of `chunk_bytes` (default 4 and 80).
+                 Headers go out first, so a client whose timeout covers the
+                 whole answer still has to notice the pause between chunks
     drift        forward, then change the answer's schema: `drop` lists
                  fields to remove, `add` fields to add, `set` fields to give
                  another value (a wrong type). An MCP tool result is changed
@@ -62,7 +66,7 @@ HOP_BY_HOP = frozenset({
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
 })
-KINDS = frozenset({"latency", "timeout", "drop", "drop_after", "status", "truncate", "rpc_error", "drift"})
+KINDS = frozenset({"latency", "timeout", "drop", "drop_after", "status", "truncate", "rpc_error", "drift", "drip"})
 
 
 @dataclass
@@ -248,6 +252,25 @@ class FaultProxy:
         h.close_connection = True
 
     @staticmethod
+    def _drip(h: BaseHTTPRequestHandler, status: int, headers: list[tuple[str, str]], body: bytes,
+              chunk_bytes: int, pause_ms: float) -> None:
+        """Headers at once, then the body in pauses. A per-read timeout that is
+        shorter than `pause_ms` still has to give up on the whole answer."""
+        h.send_response(status)
+        for key, value in headers:
+            h.send_header(key, value)
+        h.send_header("Content-Length", str(len(body)))
+        h.send_header("Connection", "close")
+        h.end_headers()
+        h.wfile.flush()
+        step = max(1, int(chunk_bytes))
+        for start in range(0, len(body), step):
+            time.sleep(max(0.0, pause_ms) / 1000)
+            h.wfile.write(body[start:start + step])
+            h.wfile.flush()
+        h.close_connection = True
+
+    @staticmethod
     def _hang_up(h: BaseHTTPRequestHandler) -> None:
         h.close_connection = True
         try:
@@ -284,8 +307,8 @@ class FaultProxy:
                 headers = [("Content-Type", "application/problem+json")]
                 if fault.get("retry_after") is not None:
                     headers.append(("Retry-After", str(fault["retry_after"])))
-                problem = {"type": "about:blank", "title": "injected fault", "status": status,
-                           "detail": f"fault proxy: {status}"}
+                problem = {"type": fault.get("type") or "about:blank", "title": "injected fault",
+                           "status": status, "detail": f"fault proxy: {status}"}
                 seen.status = status
                 self._answer(h, status, headers, json.dumps(problem).encode())
                 return
@@ -306,6 +329,10 @@ class FaultProxy:
             if kind == "truncate":
                 cut = answer[: int(fault.get("bytes", max(1, len(answer) // 2)))]
                 self._answer(h, status, headers, cut, len(answer) if fault.get("keep_length") else None)
+                return
+            if kind == "drip":
+                self._drip(h, status, headers, answer, int(fault.get("chunk_bytes", 4)),
+                           float(fault.get("pause_ms", 80)))
                 return
             if kind == "drift":
                 answer = drift_answer(answer, fault)

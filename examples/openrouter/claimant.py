@@ -18,15 +18,19 @@ Standard library only.
 """
 
 import argparse
+import datetime
+import email.utils
 import http.client
 import ipaddress
 import json
 import math
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -56,47 +60,249 @@ class Fatal(Exception):
     pass
 
 
+class MaidanError(Fatal):
+    """A Maidan call that failed after its retries, or a 2xx the client cannot use."""
+
+    def __init__(self, message, status=0):
+        super().__init__(message)
+        self.status = status
+
+
+# Statuses a retry may repeat. 409 is included only when the problem type is
+# idempotency-key-in-flight; claim-lost and every other conflict are final.
+RETRY_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+IN_FLIGHT_SUFFIX = "/idempotency-key-in-flight"
+
+
+def retry_after_seconds(value, now=None):
+    """Seconds from a Retry-After delta or HTTP-date, capped at 60."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        secs = float(text)
+    except ValueError:
+        secs = None
+    if secs is not None and secs >= 0:
+        return min(secs, 60.0)
+    try:
+        when = email.utils.parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    clock = time.time() if now is None else now
+    return min(60.0, max(0.0, when.timestamp() - clock))
+
+
+def _socket_of(resp):
+    fp = getattr(resp, "fp", None)
+    raw = getattr(fp, "raw", None)
+    sock = getattr(raw, "_sock", None)
+    if sock is None:
+        sock = getattr(getattr(raw, "_fp", None), "_sock", None)
+    return sock
+
+
+def read_until(resp, timeout):
+    """Read `resp` to the end, but stop once `timeout` seconds have passed.
+
+    `urlopen`'s timeout is one socket read. A peer that sends a few bytes and
+    waits can hold that read open forever. Each chunk gets only the time still
+    left on the deadline.
+    """
+    import select
+
+    deadline = time.monotonic() + timeout
+    parts = []
+    sock = _socket_of(resp)
+    # A single `read(65536)` waits out the whole content-length, and each
+    # socket recv gets a fresh timer. Reading one byte at a time is what lets
+    # the deadline shrink between the chunks a dripping peer sends.
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"no complete answer within {timeout}s")
+        pending = b""
+        peek = getattr(getattr(resp, "fp", None), "peek", None)
+        if peek is not None:
+            try:
+                pending = peek(1)
+            except (OSError, ValueError):
+                pending = b""
+        if not pending and sock is not None:
+            try:
+                live = sock.fileno() >= 0
+            except OSError:
+                live = False
+            if live:
+                try:
+                    sock.settimeout(remaining)
+                except OSError:
+                    pass
+                try:
+                    ready, _, _ = select.select([sock], [], [], remaining)
+                except (OSError, ValueError):
+                    ready = [sock]
+                if not ready:
+                    raise TimeoutError(f"no complete answer within {timeout}s")
+        try:
+            chunk = resp.read(1)
+        except socket.timeout as err:
+            raise TimeoutError(f"no complete answer within {timeout}s") from err
+        if not chunk:
+            return b"".join(parts)
+        parts.append(chunk)
+        # Drain what has already arrived, still under the same deadline.
+        if sock is not None:
+            try:
+                sock.settimeout(0)
+                while True:
+                    more = resp.read(65536)
+                    if not more:
+                        return b"".join(parts)
+                    parts.append(more)
+                    if len(more) < 65536:
+                        break
+            except (socket.timeout, BlockingIOError, OSError):
+                pass
+            try:
+                sock.settimeout(remaining)
+            except OSError:
+                pass
+
+
+def _problem_type(text):
+    try:
+        doc = json.loads(text) if text else None
+    except ValueError:
+        return None
+    if isinstance(doc, dict) and isinstance(doc.get("type"), str):
+        return doc["type"]
+    return None
+
+
+def _retryable_http(status, text):
+    if status in RETRY_STATUSES:
+        return True
+    if status != 409:
+        return False
+    kind = _problem_type(text)
+    return isinstance(kind, str) and kind.endswith(IN_FLIGHT_SUFFIX)
+
+
+def _json_rpc(text, content_type):
+    """A JSON-RPC object from a JSON body or an SSE `data:` line, or None."""
+    if not text:
+        return None
+    if content_type and "text/event-stream" in content_type:
+        for block in text.split("\n\n"):
+            data = "".join(
+                line[5:].lstrip() for line in block.splitlines() if line.startswith("data:")
+            )
+            if not data:
+                continue
+            try:
+                doc = json.loads(data)
+            except ValueError:
+                return None
+            if isinstance(doc, dict) and ("result" in doc or "error" in doc):
+                return doc
+        return None
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
 # ------------------------------------------------------------------- Maidan
 
 
 class Maidan:
-    def __init__(self, url, token):
+    def __init__(self, url, token, max_retries=2, backoff=0.25, sleep=time.sleep):
         self.url = url.rstrip("/")
         self.token = token
+        self.max_retries = max_retries
+        self.backoff = backoff
+        self.sleep = sleep
         self.ids = 0
         self.lock = threading.Lock()
 
-    def _send(self, req, timeout):
-        # No answer, a timeout, an answer cut short or one that is not JSON is
-        # Fatal, not a traceback: in the renewer thread a traceback ended the
-        # thread with `lost` unset, so the claimant worked on as if it held a
-        # lease that was lapsing.
-        where = f"{req.get_method()} {urllib.parse.urlsplit(req.full_url).path}"
+    def _pause(self, attempt, headers):
+        wait = retry_after_seconds(headers.get("Retry-After") if headers is not None else None)
+        if wait is None:
+            wait = min(8.0, self.backoff * (2 ** attempt))
+        self.sleep(wait)
+
+    def _once(self, req, timeout):
+        """One attempt. Transport and mid-body failures propagate for a retry."""
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                text = resp.read().decode("utf-8")
-                return resp.status, (json.loads(text) if text else None)
+            resp = urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as err:
+            # The status is already known. A body that dies mid-read must not
+            # hide a final 409 (claim-lost) behind a transport retry.
             try:
-                return err.code, err.read().decode("utf-8", "replace")
-            except (http.client.HTTPException, OSError):
-                return err.code, ""
+                raw = read_until(err, timeout)
+            except (http.client.HTTPException, OSError, TimeoutError):
+                raw = b""
             finally:
                 err.close()
-        except (urllib.error.URLError, http.client.HTTPException, OSError) as err:
-            raise Fatal(f"{where}: no answer: {type(err).__name__}: {err}") from None
-        except ValueError as err:
-            raise Fatal(f"{where}: an answer that is not JSON: {err}") from None
+            return err.code, raw.decode("utf-8", "replace"), err.headers
+        try:
+            raw = read_until(resp, timeout)
+        finally:
+            resp.close()
+        return resp.status, raw.decode("utf-8", "replace"), resp.headers
+
+    def _attempts(self, method, path, data, headers, timeout, parse):
+        """Repeat one logical call. `data` and the idempotency key stay put."""
+        where = f"{method} {path}"
+        last = "no answer"
+        for attempt in range(self.max_retries + 1):
+            req = urllib.request.Request(self.url + path, data=data, method=method)
+            for key, value in headers.items():
+                req.add_header(key, value)
+            try:
+                status, text, hdrs = self._once(req, timeout)
+            except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as err:
+                last = f"no answer: {type(err).__name__}: {err}"
+                if attempt >= self.max_retries:
+                    raise MaidanError(f"{where}: {last}", 0) from None
+                self._pause(attempt, None)
+                continue
+            if status >= 400:
+                if attempt < self.max_retries and _retryable_http(status, text):
+                    self._pause(attempt, hdrs)
+                    continue
+                raise MaidanError(f"{where}: HTTP {status}: {text[:300]}", status)
+            content_type = hdrs.get("Content-Type") if hdrs is not None else ""
+            parsed = parse(text, content_type or "")
+            if parsed is None and text.strip():
+                if attempt < self.max_retries:
+                    self._pause(attempt, hdrs)
+                    continue
+                raise MaidanError(f"{where}: an answer that is not JSON: {text[:300]}", status)
+            return status, parsed
+        raise MaidanError(f"{where}: {last}", 0)
 
     def rest(self, method, path, body=None, raw=None, timeout=60):
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-        req = urllib.request.Request(self.url + path, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {self.token}")
+        headers = {"Authorization": f"Bearer {self.token}"}
         if data is not None:
-            req.add_header("Content-Type", "application/json")
-        return self._send(req, timeout)
+            headers["Content-Type"] = "application/json"
+        if method != "GET":
+            headers["Idempotency-Key"] = str(uuid.uuid4())
+
+        return self._attempts(method, path, data, headers, timeout, _rest_body)
 
     def rpc(self, method, params, name=None, timeout=60):
+        # One id and one body for every attempt. A fresh id would be a different
+        # fingerprint, and the server would answer 422 idempotency-key-reused.
         with self.lock:
             self.ids += 1
             rid = self.ids
@@ -107,25 +313,25 @@ class Maidan:
             "io.modelcontextprotocol/clientInfo": {"name": "maidan-openrouter-claimant", "version": "1"},
         }
         body = {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
-        req = urllib.request.Request(self.url + "/mcp/streamable", data=json.dumps(body).encode(), method="POST")
+        raw = json.dumps(body).encode()
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
             "MCP-Protocol-Version": MCP_REVISION,
             "Mcp-Method": method,
+            "Idempotency-Key": str(uuid.uuid4()),
         }
         if name:
             headers["Mcp-Name"] = name
-        for key, value in headers.items():
-            req.add_header(key, value)
-        status, reply = self._send(req, timeout)
+        status, reply = self._attempts("POST", "/mcp/streamable", raw, headers, timeout, _json_rpc)
+        label = f"{method} {name or ''}".strip()
         if not isinstance(reply, dict):
-            raise Fatal(f"{method} {name or ''}: HTTP {status}: {str(reply)[:300]}")
+            raise MaidanError(f"{label}: HTTP {status}: {str(reply)[:300]}", status)
         if "error" in reply:
-            raise Fatal(f"{method} {name or ''}: {reply['error']}")
+            raise MaidanError(f"{label}: {reply['error']}", status)
         if not isinstance(reply.get("result"), dict):
-            raise Fatal(f"{method} {name or ''}: HTTP {status}: a reply without a result: {str(reply)[:300]}")
+            raise MaidanError(f"{label}: HTTP {status}: a reply without a result: {str(reply)[:300]}", status)
         return reply["result"]
 
     def tool(self, name, args, timeout=60):
@@ -149,6 +355,15 @@ class Maidan:
             cursor = result.get("nextCursor")
             if not cursor:
                 return names
+
+
+def _rest_body(text, _content_type):
+    if not text.strip():
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
 
 
 def seat_token():
@@ -199,19 +414,30 @@ class Renewer(threading.Thread):
 # --------------------------------------------------------------- OpenRouter
 
 
+def openrouter_base():
+    return os.environ.get("OPENROUTER_BASE_URL", OPENROUTER).rstrip("/")
+
+
 def openrouter(path, key, body=None, timeout=600):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(OPENROUTER + path, data=data, method="POST" if data else "GET")
+    req = urllib.request.Request(openrouter_base() + path, data=data, method="POST" if data else "GET")
     if key:
         req.add_header("Authorization", f"Bearer {key}")
     req.add_header("Content-Type", "application/json")
     req.add_header("X-Title", "Maidan claimant")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as err:
-        with err:
-            raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {err.read().decode('utf-8', 'replace')[:300]}")
+        try:
+            raw = read_until(err, timeout)
+        finally:
+            err.close()
+        raise Fatal(f"OpenRouter {path}: HTTP {err.code}: {raw.decode('utf-8', 'replace')[:300]}") from None
+    try:
+        raw = read_until(resp, timeout)
+    finally:
+        resp.close()
+    return json.loads(raw.decode("utf-8"))
 
 
 def price_snapshot(model):
@@ -380,8 +606,8 @@ def plain_envelope(status, detail, deliver_to):
 
 def work(args, maidan, key):
     me = maidan.tool("whoami", {})
-    if not (isinstance(me, dict) and isinstance(me.get("workspace_id"), str)):
-        raise Fatal(f"whoami answer without a workspace_id: {str(me)[:300]}")
+    if not (isinstance(me, dict) and isinstance(me.get("workspace_id"), str) and me["workspace_id"]):
+        raise MaidanError(f"whoami answer without a workspace_id: {str(me)[:300]}")
     workspace = me["workspace_id"]
     checkout = Checkout(args.repo_dir)
     repo = args.repo or repo_from_remote(checkout)
@@ -393,10 +619,11 @@ def work(args, maidan, key):
     if not claim:
         print("no work")
         return 0
-    if not (isinstance(claim, dict) and isinstance(claim.get("id"), str)
-            and isinstance(claim.get("claim_lease_id"), str)):
+    if not (isinstance(claim, dict) and isinstance(claim.get("id"), str) and claim["id"]
+            and isinstance(claim.get("claim_lease_id"), str) and claim["claim_lease_id"]):
         # Nothing to release it with; its lease bounds how long it is held.
-        raise Fatal(f"claim answer without a string id and claim_lease_id: {str(claim)[:300]}")
+        # A drifted 200 is not retried: the call already completed.
+        raise MaidanError(f"claim answer without a string id and claim_lease_id: {str(claim)[:300]}")
     thread_id, lease = claim["id"], claim["claim_lease_id"]
     print(f"claimed {thread_id}")
     renewer = Renewer(maidan, thread_id, lease, args.lease_secs)
@@ -564,8 +791,12 @@ def main(argv=None):
                         help="the directory holding change_result.py")
     parser.add_argument("--allow-push", action="store_true",
                         help="for a change the flow cannot commit, push our own branch and open the draft (needs gh)")
+    parser.add_argument("--openrouter-url",
+                        help="OpenRouter base URL (default: OPENROUTER_BASE_URL or https://openrouter.ai/api/v1)")
     parser.add_argument("--check", action="store_true", help="connect and check the tools; no claim, no model")
     args = parser.parse_args(argv)
+    if args.openrouter_url:
+        os.environ["OPENROUTER_BASE_URL"] = args.openrouter_url
     vendor = args.model.split("/", 1)[0]
     args.provider = args.provider or VENDORS.get(vendor, vendor)
     if not 0 <= args.wait_ms <= 300_000:

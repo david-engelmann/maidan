@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import subprocess
 import importlib.util
 import io
 import json
@@ -562,6 +563,9 @@ class McpClaimantUnderFaults(FaultCase):
 
     def setUp(self) -> None:
         super().setUp()
+        with self.maidan.lock:
+            self.maidan.queue.append(str(uuid.uuid4()))
+        self.second = self.maidan.queue[-1]
         self.tmp = tempfile.mkdtemp()
         self.delivered: list[str] = []
         saved = (claimant.deliver, claimant.report_usage)
@@ -617,28 +621,41 @@ class McpClaimantUnderFaults(FaultCase):
         self.assertIn("upstream unavailable", lines[0])
         self.assertEqual(self.maidan.claims, [])
 
-    def test_a_dropped_claim_stops_with_one_line_not_a_traceback(self):
-        for kind in ("drop", "drop_after"):
-            with self.subTest(kind=kind):
-                self.setUp()
-                self.plan({**self.tool("claim_next_workspace_thread"), "fault": {"kind": kind}})
-                code, lines = self.run_main()
-                self.assert_one_line(code, lines)
-                self.assertIn("no answer", lines[0])
-                self.assertLessEqual(len(self.maidan.claims), 1, "never a second claim")
-                self.assertEqual(self.delivered, [])
+    def _claim_keys(self) -> set[str]:
+        return {seen.headers.get("idempotency-key")
+                for seen in self.proxy.seen
+                if seen.tool == "claim_next_workspace_thread" and seen.headers.get("idempotency-key")}
 
-    def test_a_503_or_a_claim_cut_short_stops_with_one_line(self):
-        for fault in ({"kind": "status", "status": 503, "retry_after": "1"},
+    def assert_recovered_one(self) -> None:
+        code, lines = self.run_main()
+        self.assertEqual((code, lines), (0, []), lines)
+        self.assertEqual(len(self.delivered), 1)
+        self.assertEqual(len(self.maidan.claims), 1, "one claim, never a second thread")
+        self.assertEqual(self.maidan.leases, {})
+        self.assertIn(self.second, self.maidan.queue)
+        self.assertEqual(len(self._claim_keys()), 1)
+
+    def test_a_lost_or_cut_short_claim_is_retried_once(self):
+        for fault in ({"kind": "drop"},
+                      {"kind": "drop_after"},
+                      {"kind": "status", "status": 503, "retry_after": "0"},
+                      {"kind": "status", "status": 409, "retry_after": "0",
+                       "type": "https://maidan.world/problems/idempotency-key-in-flight"},
                       {"kind": "truncate", "bytes": 30, "keep_length": True},
-                      {"kind": "truncate", "bytes": 30}):
+                      {"kind": "truncate", "bytes": 30, "keep_length": False}):
             with self.subTest(fault=fault):
                 self.setUp()
                 self.plan({**self.tool("claim_next_workspace_thread"), "fault": fault})
-                code, lines = self.run_main()
-                self.assert_one_line(code, lines)
-                self.assertLessEqual(len(self.maidan.claims), 1)
-                self.assertEqual(self.delivered, [])
+                self.assert_recovered_one()
+
+    def test_an_exhausted_claim_stops_with_one_line(self):
+        self.plan({**self.tool("claim_next_workspace_thread"), "times": 3, "fault": {"kind": "drop"}})
+        code, lines = self.run_main()
+        self.assert_one_line(code, lines)
+        self.assertIn("no answer", lines[0])
+        self.assertNotIn("Traceback", "\n".join(lines))
+        self.assertEqual(self.delivered, [])
+        self.assertEqual(self.maidan.claims, [])
 
     def test_a_claim_missing_its_lease_or_id_stops_with_one_line(self):
         # It was a KeyError traceback.
@@ -664,9 +681,32 @@ class McpClaimantUnderFaults(FaultCase):
         self.assertEqual(self.delivered, [])
         self.assert_one_claim_released()
 
+    def test_a_drip_past_the_deadline_stops(self):
+        self.plan({**self.tool("whoami"),
+                   "fault": {"kind": "drip", "chunk_bytes": 4, "pause_ms": 80}})
+        api = claimant.Maidan(self.proxy.url, "t", max_retries=0, sleep=lambda _s: None)
+        started = time.monotonic()
+        with self.assertRaises(claimant.MaidanError):
+            api.tool("whoami", {}, timeout=0.15)
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 0.6, f"the deadline should cut a drip short, took {elapsed:.2f}s")
+        self.assertEqual(self.maidan.claims, [])
+
+    def test_a_claim_lost_conflict_is_not_retried(self):
+        self.plan({**self.tool("acknowledge_claim"), "times": 1, "fault": {
+            "kind": "status", "status": 409,
+            "type": "https://maidan.world/problems/claim-lost",
+        }})
+        code, lines = self.run_main()
+        seen = [(s.tool, s.fault, s.status) for s in self.proxy.seen]
+        self.assertEqual(code, 1, (lines, seen))
+        self.assertEqual(len(lines), 1, lines)
+        acks = [s for s in self.proxy.seen if s.tool == "acknowledge_claim"]
+        self.assertEqual(len(acks), 1, seen)
+
     def test_a_release_that_gets_no_answer_says_so_in_one_line(self):
-        # The URLError escaped the `except Fatal` around the release.
-        self.plan({**self.tool("release_claim"), "fault": {"kind": "drop"}})
+        # Every attempt is dropped, so the retries run out and the release says so.
+        self.plan({**self.tool("release_claim"), "times": -1, "fault": {"kind": "drop"}})
         code, lines = self.run_main()
         self.assertEqual(code, 0)
         self.assertEqual(len(lines), 1, lines)
@@ -675,7 +715,7 @@ class McpClaimantUnderFaults(FaultCase):
     def test_a_renewal_that_gets_no_answer_marks_the_claim_lost(self):
         # The renewer caught only Fatal, so a dropped connection ended its
         # thread with `lost` unset and the claimant delivered on a dead lease.
-        self.plan({**self.tool("renew_claim"), "fault": {"kind": "drop"}})
+        self.plan({**self.tool("renew_claim"), "times": -1, "fault": {"kind": "drop"}})
         api = claimant.Maidan(self.proxy.url, "t")
         claim = api.tool("claim_next_workspace_thread", {"workspace_id": WS})
         renewer = claimant.Renewer(api, claim["id"], claim["claim_lease_id"], 0.3)
@@ -706,6 +746,190 @@ class FaultProxyItself(FaultCase):
     def test_a_rule_without_a_known_fault_is_refused(self):
         with self.assertRaises(ValueError):
             faults.Rule.from_dict({"fault": {"kind": "gremlins"}})
+
+
+def _bin(name: str, env_name: str) -> str | None:
+    chosen = os.environ.get(env_name)
+    if chosen:
+        return chosen
+    target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+    path = target / "debug" / name
+    return str(path) if path.is_file() else None
+
+
+class RealServerMcpFaults(unittest.TestCase):
+    """The OpenRouter claimant against maidan-server, with the fault proxy in front.
+
+    Skipped only when the binaries are not on disk. This checkout builds them
+    under target/debug, so the case runs here.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.server_bin = _bin("maidan-server", "MAIDAN_SERVER_BIN")
+        cls.cli_bin = _bin("maidan", "MAIDAN_BIN")
+        if not cls.server_bin or not cls.cli_bin:
+            raise unittest.SkipTest("maidan-server and maidan are not built")
+
+    def test_a_lost_claim_against_the_real_server_takes_one_thread(self) -> None:
+        import socket as socket_mod
+        import urllib.request
+
+        work = Path(tempfile.mkdtemp())
+        db = work / "maidan.db"
+        kek = "11" * 32
+        env = {**os.environ, "DATABASE_URL": f"sqlite:///{db}?mode=rwc", "MAIDAN_CONTENT_KEK": kek,
+               "MAIDAN_SESSION_SECRET": "fault-test-session-secret-32bytes!",
+               "MAIDAN_BOOTSTRAP": "1", "MAIDAN_LOG": "error"}
+        env.pop("MAIDAN_ENV", None)
+        init = subprocess.run(
+            [self.cli_bin, "init", "--database-url", env["DATABASE_URL"],
+             "--workspace", "faults", "--admin-handle", "admin"],
+            env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(init.returncode, 0, init.stderr[-500:])
+        token = next(line.strip() for line in reversed(init.stdout.splitlines()) if line.strip().startswith("maid_"))
+        sock = socket_mod.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        server_env = {**env, "MAIDAN_BIND": f"127.0.0.1:{port}",
+                      "ARTIFACT_LOCALFS_ROOT": str(work / "artifacts")}
+        proc = subprocess.Popen(
+            [self.server_bin], env=server_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
+        def stop_server() -> None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+        self.addCleanup(stop_server)
+        base = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                urllib.request.urlopen(base + "/health/ready", timeout=0.5).close()
+                break
+            except OSError:
+                if proc.poll() is not None:
+                    self.fail(proc.stderr.read()[-800:] if proc.stderr else "server exited")
+                time.sleep(0.2)
+        else:
+            self.fail("server did not become ready")
+
+        def call(method, path, body=None, bearer=token):
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(base + path, data=data, method=method)
+            req.add_header("Authorization", f"Bearer {bearer}")
+            if data is not None:
+                req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+
+        me = call("GET", "/me")
+        workspace = me["workspace_id"]
+        agent = call("POST", f"/workspaces/{workspace}/members", {"handle": "seat", "kind": "agent"})
+        minted = call("POST", f"/workspaces/{workspace}/members/{agent['id']}/tokens",
+                      {"label": "seat", "capabilities": me["known_capabilities"]})
+        seat = minted["secret"]
+        channel = call("POST", f"/workspaces/{workspace}/channels", {"name": "work"}, bearer=seat)
+        call("POST", f"/channels/{channel['id']}/members", {"member_id": agent["id"]}, bearer=token)
+        made = {"n": 0}
+
+        def two_threads():
+            made["n"] += 1
+            repo = f"acme/run-{made['n']}"
+            out = []
+            for title in ("one", "two"):
+                out.append(call("POST", f"/channels/{channel['id']}/threads", {
+                    "title": f"{title}-{made['n']}",
+                    "attributes": {"kind": "change", "engine": "session"},
+                    "footprint": {"repo": repo, "mode": "exclusive",
+                                  "items": [{"kind": "branch", "value": f"feature/{title}-{made['n']}"}]},
+                }, bearer=seat))
+            return repo, out
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def _ok(self, doc):
+                raw = json.dumps(doc).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def do_GET(self):
+                self._ok({"data": []})
+
+            def do_POST(self):
+                self._ok({"choices": [{"message": {"role": "assistant", "content": "done"}}], "usage": {}})
+
+        router = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        router.daemon_threads = True
+        threading.Thread(target=router.serve_forever, daemon=True).start()
+        self.addCleanup(router.shutdown)
+
+        saved = (claimant.deliver, claimant.report_usage)
+
+        def deliver(args, m, key, tid, repo, checkout, usage, renewer):
+            m.tool("set_thread_result", {
+                "thread_id": tid, "claim_lease_id": renewer.lease_id,
+                "result": {"schema": "maidan.waiter.result/1", "result_kind": "pi.change.result/1",
+                           "status": "no_change", "error_detail": "fault test", "deliver_to": []},
+            })
+
+        claimant.deliver = deliver
+        claimant.report_usage = lambda *a: None
+        self.addCleanup(lambda: setattr(claimant, "deliver", saved[0]))
+        self.addCleanup(lambda: setattr(claimant, "report_usage", saved[1]))
+
+        for fault in ({"kind": "drop_after"},
+                      {"kind": "truncate", "bytes": 40, "keep_length": False},
+                      {"kind": "truncate", "bytes": 40, "keep_length": True},
+                      {"kind": "status", "status": 503, "retry_after": "0"}):
+            with self.subTest(fault=fault["kind"] + str(fault.get("keep_length", ""))):
+                repo, threads = two_threads()
+                proxy = faults.FaultProxy(base)
+                self.addCleanup(proxy.close)
+                proxy.set_plan([{"path": "^/mcp/streamable$", "tool": "claim_next_workspace_thread",
+                                 "fault": fault}])
+                err = io.StringIO()
+                env_saved = {k: os.environ.get(k) for k in ("MAIDAN_URL", "MAIDAN_TOKEN", "OPENROUTER_API_KEY")}
+                os.environ["MAIDAN_URL"] = proxy.url
+                os.environ["MAIDAN_TOKEN"] = seat
+                os.environ["OPENROUTER_API_KEY"] = "test-key"
+                try:
+                    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                        code = claimant.main([
+                            "--model", "x-ai/grok-4", "--repo", repo, "--repo-dir", str(work),
+                            "--wait-ms", "0", "--lease-secs", "60",
+                            "--openrouter-url", f"http://127.0.0.1:{router.server_address[1]}/api/v1",
+                        ])
+                finally:
+                    for key, value in env_saved.items():
+                        if value is None:
+                            os.environ.pop(key, None)
+                        else:
+                            os.environ[key] = value
+                self.assertEqual(code, 0, err.getvalue())
+                listed = call("GET", f"/channels/{channel['id']}/threads", bearer=seat)
+                rows = listed if isinstance(listed, list) else listed.get("threads", listed)
+                by_id = {row["id"]: row for row in rows}
+                pair = [by_id[thread["id"]] for thread in threads]
+                states = sorted(row["state"] for row in pair)
+                self.assertEqual(states, ["in_review", "open"], pair)
+                reviewed = next(row for row in pair if row["state"] == "in_review")
+                waiting = next(row for row in pair if row["state"] == "open")
+                self.assertIsNone(reviewed.get("claim_lease_id"))
+                self.assertIsNone(waiting.get("claim_lease_id"))
+                result = call("GET", f"/threads/{reviewed['id']}/result", bearer=seat)
+                self.assertEqual(result["result"]["status"], "no_change")
 
 
 if __name__ == "__main__":

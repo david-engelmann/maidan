@@ -35,6 +35,13 @@ What one run does:
    `--provider`. Then it starts review and releases the claim, which it
    always does, even after a failure.
 
+A lost answer is tried again with the same `Idempotency-Key` and the same
+request body, so a claim the server already took is replayed rather than
+taken twice. Each call also has a total time limit: a server that drips
+bytes cannot hold it open past that. `--openrouter-url` (or
+`OPENROUTER_BASE_URL`) points the catalog and the model call somewhere
+other than OpenRouter.
+
 ## Run it
 
 ```sh
