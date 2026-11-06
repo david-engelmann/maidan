@@ -25,9 +25,10 @@ for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
 
-if [ -n "$TOKEN" ] && [ "${MAIDAN_ALLOW_INSECURE_HTTP:-}" != "1" ] && [[ "$BASE_URL" == http://* ]]; then
-  host="${BASE_URL#http://}"
-  host="${host%%/*}"
+lower_url="$(printf '%s' "$BASE_URL" | tr '[:upper:]' '[:lower:]')"
+if [ -n "$TOKEN" ] && [ "${MAIDAN_ALLOW_INSECURE_HTTP:-}" != "1" ] && [[ "$lower_url" == http://* ]]; then
+  host="${lower_url#http://}"
+  host="${host%%[/?#]*}"
   host="${host##*@}"
   if [[ "$host" == \[* ]]; then
     host="${host#\[}"
@@ -39,7 +40,7 @@ if [ -n "$TOKEN" ] && [ "${MAIDAN_ALLOW_INSECURE_HTTP:-}" != "1" ] && [[ "$BASE_
   case "$host" in
     localhost|::1) loopback=1 ;;
   esac
-  if [[ "$host" =~ ^127(\.[0-9]{1,3}){3}$ ]]; then
+  if [[ "$host" =~ ^127\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] && (( 10#${BASH_REMATCH[1]} <= 255 && 10#${BASH_REMATCH[2]} <= 255 && 10#${BASH_REMATCH[3]} <= 255 )); then
     loopback=1
   fi
   if [ "$loopback" != "1" ]; then

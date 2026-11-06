@@ -13,8 +13,7 @@ const channel = process.env.MAIDAN_CHANNEL;
 function loopback(hostname) {
   const host = (hostname || "").replace(/^\[|\]$/g, "").toLowerCase();
   if (host === "localhost" || host === "::1") return true;
-  const octets = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  return Boolean(octets && octets.slice(1).every((part) => Number(part) <= 255));
+  return /^127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(host);
 }
 
 if (token && process.env.MAIDAN_ALLOW_INSECURE_HTTP !== "1") {
@@ -24,7 +23,12 @@ if (token && process.env.MAIDAN_ALLOW_INSECURE_HTTP !== "1") {
   } catch {
     parsed = null;
   }
-  if (parsed && parsed.protocol === "http:" && !loopback(parsed.hostname)) {
+  // `new URL` rejects an octet above 255. That URL is still cleartext, and
+  // skipping the guard would send the token as soon as a channel is set.
+  const cleartext = parsed
+    ? parsed.protocol === "http:"
+    : base.trim().toLowerCase().startsWith("http:");
+  if (cleartext && !(parsed && loopback(parsed.hostname))) {
     console.error(
       `refusing to send MAIDAN_TOKEN over cleartext to ${base}; use https, or set MAIDAN_ALLOW_INSECURE_HTTP=1 for a trusted network`,
     );
