@@ -247,7 +247,9 @@ Worker must therefore check `X-Maidan-Signature` against the subscription's
 secret, as any webhook receiver must. Only the swarm sets these today.
 
 **On the swarm**, `wrangler.swarm.jsonc` binds `SEATS` to `maidan-wax-seats`
-and maps `seats.internal`. A webhook on ready threads wakes the seat Worker:
+and `PI` to `pi-waiter`, and maps `seats.internal` and `pi.internal`. A webhook
+on ready threads wakes the seat Worker, and another wakes Pi's waiter at
+`http://pi.internal/wake`:
 
 ```sh
 curl -X POST https://swarm.maidan.world/workspaces/$WS/webhooks \

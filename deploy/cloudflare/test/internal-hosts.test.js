@@ -99,9 +99,15 @@ const config = (file) =>
 test("only the swarm declares internal hosts, each on a declared binding", () => {
   const swarm = config("wrangler.swarm.jsonc");
   const declared = Object.fromEntries((swarm.services ?? []).map((s) => [s.binding, { fetch() {} }]));
-  assert.deepEqual(swarm.services, [{ binding: "SEATS", service: "maidan-wax-seats" }]);
-  assert.deepEqual(parseInternalHosts(swarm.vars.MAIDAN_INTERNAL_HOSTS, declared), [["seats.internal", "SEATS"]]);
-  assert.equal(swarm.vars.MAIDAN_INTERNAL_EGRESS_HOSTS, "seats.internal");
+  assert.deepEqual(swarm.services, [
+    { binding: "SEATS", service: "maidan-wax-seats" },
+    { binding: "PI", service: "pi-waiter" },
+  ]);
+  assert.deepEqual(parseInternalHosts(swarm.vars.MAIDAN_INTERNAL_HOSTS, declared), [
+    ["seats.internal", "SEATS"],
+    ["pi.internal", "PI"],
+  ]);
+  assert.equal(swarm.vars.MAIDAN_INTERNAL_EGRESS_HOSTS, "seats.internal,pi.internal");
   for (const file of ["wrangler.prod.jsonc", "wrangler.jsonc"]) {
     const other = config(file);
     assert.equal(other.services, undefined, file);
