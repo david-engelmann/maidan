@@ -19,6 +19,13 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 
 T = TypeVar("T", bound="Model")
 
+# Fail closed on hostile or runaway payloads: a single oversize string or a
+# deeply nested bag should not pin the client. Limits match the TS console
+# api-shape gates so both sides refuse the same shapes.
+_MAX_STR_LEN = 1_000_000
+_MAX_LIST_LEN = 100_000
+_MAX_DEPTH = 64
+
 # Wire names that are not Python identifiers.
 _WIRE_NAMES = {"$type": "type"}
 
@@ -29,7 +36,9 @@ class Model:
     extra: Dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
-    def from_dict(cls: Type[T], data: Any) -> T:
+    def from_dict(cls: Type[T], data: Any, _depth: int = 0) -> T:
+        if _depth > _MAX_DEPTH:
+            raise ValueError(f"{cls.__name__}: nesting exceeds {_MAX_DEPTH}")
         if not isinstance(data, dict):
             raise ValueError(f"{cls.__name__}: expected a JSON object, got {type(data).__name__}")
         hints = _hints(cls)
@@ -39,9 +48,9 @@ class Model:
         for key, value in data.items():
             name = _WIRE_NAMES.get(key, key)
             if name in known:
-                kwargs[name] = _convert(hints[name], value)
+                kwargs[name] = _convert(hints[name], value, _depth + 1)
             else:
-                extra[key] = value
+                extra[key] = _bound_extra(value, _depth + 1)
         try:
             return cls(**kwargs, extra=extra)
         except TypeError as exc:
@@ -57,24 +66,52 @@ def _hints(cls: type) -> Dict[str, Any]:
     return _HINTS[cls]
 
 
-def _convert(hint: Any, value: Any) -> Any:
+def _bound_str(value: str, label: str) -> str:
+    if len(value) > _MAX_STR_LEN:
+        raise ValueError(f"{label}: string exceeds {_MAX_STR_LEN} characters")
+    return value
+
+
+def _bound_extra(value: Any, depth: int) -> Any:
+    if depth > _MAX_DEPTH:
+        raise ValueError(f"extra: nesting exceeds {_MAX_DEPTH}")
+    if isinstance(value, str):
+        return _bound_str(value, "extra")
+    if isinstance(value, list):
+        if len(value) > _MAX_LIST_LEN:
+            raise ValueError(f"extra: list exceeds {_MAX_LIST_LEN} items")
+        return [_bound_extra(v, depth + 1) for v in value]
+    if isinstance(value, dict):
+        return {k: _bound_extra(v, depth + 1) for k, v in value.items()}
+    return value
+
+
+def _convert(hint: Any, value: Any, depth: int = 0) -> Any:
+    if depth > _MAX_DEPTH:
+        raise ValueError(f"value: nesting exceeds {_MAX_DEPTH}")
     if value is None:
         return None
+    if isinstance(value, str):
+        value = _bound_str(value, "value")
     origin = typing.get_origin(hint)
     if origin in (typing.Union, types.UnionType):
         inner = [a for a in typing.get_args(hint) if a is not type(None)]
-        return _convert(inner[0], value) if len(inner) == 1 else value
+        return _convert(inner[0], value, depth + 1) if len(inner) == 1 else value
     if origin in (list, List) and isinstance(value, list):
+        if len(value) > _MAX_LIST_LEN:
+            raise ValueError(f"list exceeds {_MAX_LIST_LEN} items")
         (item,) = typing.get_args(hint)
-        return [_convert(item, v) for v in value]
+        return [_convert(item, v, depth + 1) for v in value]
     if isinstance(hint, type) and issubclass(hint, Model):
-        return hint.from_dict(value)
+        return hint.from_dict(value, _depth=depth + 1)
     return value
 
 
 def from_list(cls: Type[T], data: Any) -> List[T]:
     if not isinstance(data, list):
         raise ValueError(f"{cls.__name__}[]: expected a JSON array, got {type(data).__name__}")
+    if len(data) > _MAX_LIST_LEN:
+        raise ValueError(f"{cls.__name__}[]: list exceeds {_MAX_LIST_LEN} items")
     return [cls.from_dict(row) for row in data]
 
 

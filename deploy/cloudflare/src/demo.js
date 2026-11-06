@@ -11,6 +11,13 @@ import { tooLarge } from "./demo-config.js";
 import { handleTry } from "./try-page.js";
 import { fetchDemo } from "./demo-edge.js";
 import { ContainerEnvSession, envFingerprint } from "./server-env.js";
+import {
+  demoBadRequest,
+  demoHostAllowed,
+  demoHttpsRedirect,
+  demoMethodNotAllowed,
+  isAllowedDemoMethod,
+} from "./demo-worker-gates.js";
 
 export class MaidanDemo extends Container {
   defaultPort = 8080;
@@ -62,12 +69,24 @@ export class MaidanDemo extends Container {
 
 export default {
   async fetch(request, env) {
-    if (new URL(request.url).protocol === "http:") {
-      const url = new URL(request.url);
-      url.protocol = "https:";
-      return Response.redirect(url.toString(), 301);
+    let url;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return withSecurityHeaders(demoBadRequest());
     }
-    if (isScannerProbe(new URL(request.url).pathname)) {
+    if (url.protocol === "http:") {
+      const httpsUrl = demoHttpsRedirect(url);
+      if (!httpsUrl) return withSecurityHeaders(demoBadRequest());
+      return Response.redirect(httpsUrl, 301);
+    }
+    if (!isAllowedDemoMethod(request.method)) {
+      return withSecurityHeaders(demoMethodNotAllowed());
+    }
+    if (!demoHostAllowed(url.hostname, env?.[DEMO_PUBLIC_ORIGIN_VAR])) {
+      return withSecurityHeaders(demoBadRequest("host not allowed\n"));
+    }
+    if (isScannerProbe(url.pathname)) {
       return withSecurityHeaders(new Response("not found\n", { status: 404 }));
     }
     if (tooLarge(request)) {

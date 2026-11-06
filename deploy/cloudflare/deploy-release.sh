@@ -12,6 +12,27 @@ src=ghcr.io/david-engelmann/maidan-server
 config=${DEPLOY_CONFIG:-wrangler.prod.jsonc}
 origin=${DEPLOY_ORIGIN:-https://maidan.world}
 
+# Only our hosted origins. A typo or http:// would push a signed image and then
+# health-check a stranger's host (or cleartext).
+DEPLOY_ORIGIN_CHECK="$origin" python3 - <<'PY'
+import os, sys
+from urllib.parse import urlparse
+u = urlparse(os.environ["DEPLOY_ORIGIN_CHECK"])
+host = (u.hostname or "").lower()
+ok = (
+    u.scheme == "https"
+    and not u.username
+    and not u.password
+    and (host == "maidan.world" or host.endswith(".maidan.world"))
+    and u.path in ("", "/")
+    and not u.query
+    and not u.fragment
+)
+sys.exit(0 if ok else 1)
+PY
+|| { echo "DEPLOY_ORIGIN must be https://maidan.world or https://*.maidan.world (got: $origin)" >&2; exit 1; }
+
+
 # The release workflow signs each image keylessly; refuse an image it did not
 # sign, so a re-pointed tag cannot reach production.
 cosign verify "$src:$tag" \

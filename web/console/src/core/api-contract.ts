@@ -1,4 +1,5 @@
-// Compile-time contract between the console's read shapes and the server's
+// Compile-time contract between the console's read shapes
+// (runtime gates for the same bags live in ./api-shape). and the server's
 // OpenAPI schemas (api.gen.ts, generated from the committed spec). Each line
 // says "a body the server documents fits what the console reads". When a
 // field the console relies on is renamed, retyped or dropped in the spec,
