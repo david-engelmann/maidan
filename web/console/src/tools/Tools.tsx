@@ -7,9 +7,9 @@
 // tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ago } from "../core/board.ts";
-import { PeopleApi } from "../core/people.ts";
-import { convHash } from "../core/threads.ts";
+import { ago, BoardApi, type Thread } from "../core/board.ts";
+import { PeopleApi, type Person } from "../core/people.ts";
+import { convHash, ThreadsApi } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
 import {
   DELIVERY_KINDS,
@@ -27,15 +27,23 @@ import {
   showsOperator,
   channelFollowLabel,
   channelsToFollow,
+  describeNotificationKind,
   memberChoices,
+  memberLabel,
   searchQuery,
   switchHref,
+  taskFollowLabel,
+  tasksToFollow,
+  threadLinkLabel,
   NOTIFICATION_KINDS,
   deliveryState,
   scheduleCadence,
   type DeliveryStatus,
+  type PickerChannel,
+  type PickerTask,
   type ReindexJob,
   type ToolsApi,
+  type WorkEvent,
 } from "../core/tools.ts";
 import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -44,6 +52,7 @@ import { capabilityCard } from "../core/session.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
+import { peekPaletteIndex } from "../shell/paletteIndex.ts";
 import { Connect } from "./Connect.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 
@@ -93,7 +102,7 @@ export function Tools() {
         ))}
       </div>
       </div>
-      {tab === "inbox" ? <Inbox api={api} me={me} /> : null}
+      {tab === "inbox" ? <Inbox api={api} me={me} ws={ws} /> : null}
       {tab === "prefs" ? <Prefs api={api} me={me} ws={ws} /> : null}
       {tab === "deliveries" ? <Deliveries api={api} ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
@@ -159,13 +168,240 @@ function useAct() {
 
 const SELF_ONLY = <p className="muted">Sign in as a member to see this.</p>;
 
+/** A few channels at a time, so opening Tools does not request every thread list at once. */
+const TASK_FETCHES = 4;
+const EMPTY_TASKS: ReadonlyMap<string, PickerTask> = new Map();
+
+type TaskCatalog = { tasks: PickerTask[]; channels: PickerChannel[]; error: boolean };
+type WorkspaceTasks = { tasks: PickerTask[]; byId: ReadonlyMap<string, PickerTask>; status: "loading" | "ready" | "error" };
+
+const taskCatalogs = new Map<string, TaskCatalog>();
+const taskCatalogJobs = new Map<string, Promise<TaskCatalog>>();
+/** Missing threads, including a 404, so a render does not ask for the same id again. */
+const resolvedThreads = new Map<string, Map<string, PickerTask | null>>();
+const resolvingThreads = new Map<string, Promise<void>>();
+
+function catalogFromPalette(ws: string): TaskCatalog | null {
+  const index = peekPaletteIndex(ws);
+  if (!index) return null;
+  const tasks: PickerTask[] = [];
+  for (const task of index.tasks) {
+    const title = task.title.trim();
+    if (!title) continue;
+    tasks.push({ id: task.id, title, channelName: task.channelName?.trim() || null });
+  }
+  if (!tasks.length) return null;
+  return { tasks, channels: index.channels.map((channel) => ({ id: channel.id, name: channel.name })), error: false };
+}
+
+function peekCatalog(ws: string): TaskCatalog | null {
+  const cached = taskCatalogs.get(ws);
+  if (cached) return cached;
+  const warm = catalogFromPalette(ws);
+  if (!warm) return null;
+  taskCatalogs.set(ws, warm);
+  return warm;
+}
+
+const NO_EXTRAS: PickerTask[] = [];
+
+function extraTasks(ws: string): PickerTask[] {
+  const found = resolvedThreads.get(ws);
+  if (!found) return NO_EXTRAS;
+  const tasks: PickerTask[] = [];
+  for (const task of found.values()) if (task?.title.trim()) tasks.push(task);
+  return tasks.length ? tasks : NO_EXTRAS;
+}
+
+async function pool<T>(items: readonly T[], limit: number, run: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return;
+  let next = 0;
+  const workers = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: workers }, async () => {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      await run(items[index]);
+    }
+  }));
+}
+
+async function fetchCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<TaskCatalog> {
+  const warm = peekCatalog(ws);
+  if (warm) return warm;
+  try {
+    const channels = await tools.channels(ws);
+    const tasks: PickerTask[] = [];
+    let failed = 0;
+    await pool(channels, TASK_FETCHES, async (channel) => {
+      try {
+        const rows = await board.threads(channel.id);
+        for (const row of rows) {
+          const title = (row.title ?? "").trim();
+          if (!title) continue;
+          tasks.push({ id: row.id, title, channelId: channel.id, channelName: channel.name.trim() || null });
+        }
+      } catch {
+        failed += 1;
+      }
+    });
+    return { tasks, channels, error: channels.length > 0 && failed === channels.length };
+  } catch {
+    return { tasks: [], channels: [], error: true };
+  }
+}
+
+function loadCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<TaskCatalog> {
+  const warm = peekCatalog(ws);
+  if (warm) return Promise.resolve(warm);
+  const pending = taskCatalogJobs.get(ws);
+  if (pending) return pending;
+  const job = fetchCatalog(ws, tools, board).then((value) => {
+    if (!value.error) taskCatalogs.set(ws, value);
+    return value;
+  }).finally(() => {
+    if (taskCatalogJobs.get(ws) === job) taskCatalogJobs.delete(ws);
+  });
+  taskCatalogJobs.set(ws, job);
+  return job;
+}
+
+function channelOf(thread: Thread): string | null {
+  const value = (thread as { channel_id?: unknown }).channel_id;
+  return typeof value === "string" && value ? value : null;
+}
+
+function pickerFromThread(thread: Thread, channels: ReadonlyMap<string, string>): PickerTask | null {
+  const title = (thread.title ?? "").trim();
+  if (!title) return null;
+  const channelId = channelOf(thread);
+  const channelName = channelId ? channels.get(channelId)?.trim() || null : null;
+  return { id: thread.id, title, channelId, channelName };
+}
+
+function rememberThread(ws: string, id: string, task: PickerTask | null): void {
+  let found = resolvedThreads.get(ws);
+  if (!found) {
+    found = new Map();
+    resolvedThreads.set(ws, found);
+  }
+  found.set(id, task);
+}
+
+/** One read per thread id. A direct message or a subthread is not in the channel lists. */
+function resolveMissing(ws: string, id: string, api: ThreadsApi, channels: ReadonlyMap<string, string>): Promise<void> {
+  if (resolvedThreads.get(ws)?.has(id)) return Promise.resolve();
+  const key = `${ws}\0${id}`;
+  const pending = resolvingThreads.get(key);
+  if (pending) return pending;
+  const job = api.thread(id).then(
+    (thread) => rememberThread(ws, id, pickerFromThread(thread, channels)),
+    () => rememberThread(ws, id, null),
+  ).finally(() => {
+    if (resolvingThreads.get(key) === job) resolvingThreads.delete(key);
+  });
+  resolvingThreads.set(key, job);
+  return job;
+}
+
+function usePeopleApi(): PeopleApi {
+  const { store } = useSession();
+  return useMemo(() => new PeopleApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+}
+
+/**
+ * Channel tasks for this workspace, from the palette when it already has them,
+ * otherwise from each channel a few at a time. Thread ids the lists do not
+ * carry are resolved once and remembered, including a miss.
+ */
+function useWorkspaceTasks(ws: string | null, api: ToolsApi, referenced: readonly string[]): WorkspaceTasks {
+  const { store } = useSession();
+  const board = useMemo(() => new BoardApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+  const threads = useMemo(() => new ThreadsApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+  const refKey = [...new Set(referenced.map((id) => id.trim()).filter(Boolean))].sort().join("\0");
+  const [fetched, setFetched] = useState<{ ws: string; value: TaskCatalog } | null>(null);
+  const [extras, setExtras] = useState<{ ws: string; tasks: PickerTask[] }>({ ws: "", tasks: NO_EXTRAS });
+  const warm = useMemo(() => (ws ? peekCatalog(ws) : null), [ws]);
+  const held = (fetched?.ws === ws ? fetched.value : null) ?? warm;
+  const shownExtras = useMemo(() => (extras.ws === ws ? extras.tasks : ws ? extraTasks(ws) : NO_EXTRAS), [extras, ws]);
+  useEffect(() => {
+    if (!ws || peekCatalog(ws)) return;
+    let alive = true;
+    void loadCatalog(ws, api, board).then((value) => {
+      if (alive) setFetched({ ws, value });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ws, api, board]);
+  useEffect(() => {
+    if (!ws || !held) return;
+    const ids = refKey ? refKey.split("\0") : [];
+    const known = new Set(held.error ? [] : held.tasks.map((task) => task.id));
+    const names = new Map(held.channels.map((channel) => [channel.id, channel.name]));
+    const todo = ids.filter((id) => !known.has(id) && !resolvedThreads.get(ws)?.has(id));
+    if (!todo.length) return;
+    let alive = true;
+    const publish = () => {
+      if (alive) setExtras({ ws, tasks: extraTasks(ws) });
+    };
+    void pool(todo, TASK_FETCHES, (id) => resolveMissing(ws, id, threads, names)).then(publish, publish);
+    return () => {
+      alive = false;
+    };
+  }, [ws, held, refKey, threads]);
+  const byId = useMemo(() => {
+    const map = new Map<string, PickerTask>();
+    if (held && !held.error) for (const task of held.tasks) if (task.title.trim()) map.set(task.id, task);
+    for (const task of shownExtras) map.set(task.id, task);
+    return map;
+  }, [held, shownExtras]);
+  if (!ws) return { tasks: [], byId: EMPTY_TASKS, status: "ready" };
+  if (!held) return { tasks: [], byId: EMPTY_TASKS, status: "loading" };
+  if (held.error) return { tasks: [], byId, status: "error" };
+  return { tasks: held.tasks, byId, status: "ready" };
+}
+
+function namedMember(people: readonly { id: string; name: string; handle?: string | null }[] | null | undefined, id: string | null | undefined): string | null {
+  if (!id || !people) return null;
+  const member = people.find((person) => person.id === id);
+  return member ? memberLabel(member) : null;
+}
+
+function memberBy(people: readonly { id: string; name: string; handle?: string | null }[] | null | undefined, id: string | null | undefined): string {
+  const name = namedMember(people, id);
+  return name ? ` \u00b7 by ${name}` : "";
+}
+
+function auditActor(id: string, people: Loaded<Person[]>): string | null {
+  const named = namedMember(people.value, id);
+  if (named) return named;
+  if (people.status === "loading") return null;
+  return id.slice(0, 8);
+}
+
+function eventTarget(event: WorkEvent, tasks: ReadonlyMap<string, PickerTask>, channels: PickerChannel[]): ReactNode {
+  if (event.thread_id) {
+    const fallback = `thread ${event.thread_id.slice(0, 8)}`;
+    return <a href={convHash({ kind: "task", id: event.thread_id })}>{threadLinkLabel(event.thread_id, tasks, fallback)}</a>;
+  }
+  if (event.channel_id) {
+    const named = channelFollowLabel(event.channel_id, channels);
+    return named === event.channel_id ? `channel ${event.channel_id.slice(0, 8)}` : named;
+  }
+  return "workspace";
+}
+
 // ---- Inbox ---------------------------------------------------------------
 
-function Inbox({ api, me }: { api: ToolsApi; me: string | null }) {
+function Inbox({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string | null }) {
   const [unreadOnly, setUnreadOnly] = useState(true);
   const list = useLoad(me ? `${me}|${unreadOnly}` : null, () => api.notifications(me ?? "", unreadOnly));
   const count = useLoad(me ? `c|${me}|${list.value?.length ?? -1}` : null, () => api.unread(me ?? ""));
   const { busy, act } = useAct();
+  const threadIds = (list.value ?? []).flatMap((n) => (n.thread_id ? [n.thread_id] : []));
+  const tasks = useWorkspaceTasks(ws, api, threadIds);
   if (!me) return <Panel title="Inbox">{SELF_ONLY}</Panel>;
   const reload = async () => {
     await list.reload();
@@ -184,8 +420,8 @@ function Inbox({ api, me }: { api: ToolsApi; me: string | null }) {
               {rows.map((n) => (
                 <li key={n.id} tabIndex={-1} className={`tool-row${n.read_at ? " read" : ""}`}>
                   <div>
-                    <b>{n.kind.replace(/_/g, " ")}</b>
-                    <p className="muted small">{n.thread_id ? <a href={`#/threads/t/${encodeURIComponent(n.thread_id)}`}>Open the thread</a> : "Workspace"}{n.created_at ? ` · ${ago(n.created_at, Date.now())}` : ""}{n.read_at ? " · read" : ""}</p>
+                    <b>{describeNotificationKind(n.kind)}</b>
+                    <p className="muted small">{n.thread_id ? <a href={convHash({ kind: "task", id: n.thread_id })}>{threadLinkLabel(n.thread_id, tasks.byId, "Open the thread")}</a> : "Workspace"}{n.created_at ? ` · ${ago(n.created_at, Date.now())}` : ""}{n.read_at ? " · read" : ""}</p>
                   </div>
                   {!n.read_at ? <button type="button" className="chip-btn" disabled={busy !== null} onClick={() => void act(n.id, async () => { await api.markRead(me, n.id); await reload(); }, null, "Could not mark that read")}>Mark read</button> : null}
                 </li>
@@ -215,6 +451,9 @@ function Prefs({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string |
   const [muteKind, setMuteKind] = useState<string>(NOTIFICATION_KINDS[0]);
   const [follow, setFollow] = useState({ channel: "", thread: "" });
   const { busy, act } = useAct();
+  const followedThreadIds = (threadFollows.value ?? []).map((f) => f.thread_id ?? "").filter(Boolean);
+  const workspaceTasks = useWorkspaceTasks(ws, api, followedThreadIds);
+  const threadMenu = workspaceTasks.status === "ready" ? tasksToFollow(workspaceTasks.tasks, followedThreadIds) : [];
   if (!me) return <Panel title="Preferences">{SELF_ONLY}</Panel>;
   const muted = new Set((prefs.value ?? []).filter((p) => p.muted).map((p) => p.kind));
   return (
@@ -266,10 +505,22 @@ function Prefs({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string |
                   <ul className="tool-list">
                     {rows.map((f) => {
                       const id = (what === "channel" ? f.channel_id : f.thread_id) ?? "";
-                      const label = what === "channel" ? channelFollowLabel(id, known) : id;
+                      const channelLabel = what === "channel" ? channelFollowLabel(id, known) : "";
+                      const taskLabel = what === "thread" ? taskFollowLabel(id, workspaceTasks.byId) : null;
+                      const taskWaiting = Boolean(taskLabel && !taskLabel.resolved && workspaceTasks.status === "loading");
                       return (
                         <li key={id} tabIndex={-1} className="tool-row">
-                          {what === "channel" && label.startsWith("#") ? <span>{label}</span> : <code className="mono-id">{label}</code>}
+                          {taskWaiting ? (
+                            <span className="muted">Loading…</span>
+                          ) : taskLabel?.resolved ? (
+                            <a className="grow" href={convHash({ kind: "task", id })}>{taskLabel.text}</a>
+                          ) : taskLabel ? (
+                            <a className="grow" href={convHash({ kind: "task", id })}><code className="mono-id">{id}</code></a>
+                          ) : channelLabel.startsWith("#") ? (
+                            <span>{channelLabel}</span>
+                          ) : (
+                            <code className="mono-id">{channelLabel}</code>
+                          )}
                           <button type="button" className="chip-btn" disabled={busy !== null} onClick={() => void act(id, async () => { await api.unfollow(me, what, id); await loaded.reload(); }, "Unfollowed", "Could not unfollow")}>Unfollow</button>
                         </li>
                       );
@@ -281,13 +532,24 @@ function Prefs({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string |
               }
             </State>
             <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); const id = follow[what].trim(); if (!id) return; void act("f", async () => { await api.follow(me, what, id); setFollow((x) => ({ ...x, [what]: "" })); await loaded.reload(); }, "Following", "Could not follow that"); }}>
-              {channelMenu ? (
-                <label className="field grow">Channel<select value={follow.channel} onChange={(e) => setFollow((x) => ({ ...x, channel: e.target.value }))}>
-                  <option value="">Choose a channel</option>
-                  {channelsToFollow(known, followedIds).map((c) => <option key={c.id} value={c.id}>{`#${c.name}`}</option>)}
+              {what === "channel" ? (
+                channelMenu ? (
+                  <label className="field grow">Channel<select value={follow.channel} onChange={(e) => setFollow((x) => ({ ...x, channel: e.target.value }))}>
+                    <option value="">Choose a channel</option>
+                    {channelsToFollow(known, followedIds).map((c) => <option key={c.id} value={c.id}>{`#${c.name}`}</option>)}
+                  </select></label>
+                ) : (
+                  <label className="field grow">Channel id<input value={follow.channel} onChange={(e) => setFollow((x) => ({ ...x, channel: e.target.value }))} /></label>
+                )
+              ) : workspaceTasks.status === "loading" ? (
+                <label className="field grow">Task<select disabled defaultValue=""><option value="">Loading…</option></select></label>
+              ) : threadMenu.length > 0 ? (
+                <label className="field grow">Task<select value={follow.thread} onChange={(e) => setFollow((x) => ({ ...x, thread: e.target.value }))}>
+                  <option value="">Choose a task</option>
+                  {threadMenu.map((task) => <option key={task.id} value={task.id}>{task.label}</option>)}
                 </select></label>
               ) : (
-                <label className="field grow">{what === "channel" ? "Channel id" : "Thread id"}<input value={follow[what]} onChange={(e) => setFollow((x) => ({ ...x, [what]: e.target.value }))} /></label>
+                <label className="field grow">Thread id<input value={follow.thread} onChange={(e) => setFollow((x) => ({ ...x, thread: e.target.value }))} /></label>
               )}
               <button className="button steel" disabled={busy !== null || !follow[what].trim()}>Follow</button>
             </form>
@@ -407,6 +669,8 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const schedules = useLoad(ws, () => api.schedules(ws ?? ""));
   const [kind, setKind] = useState<string>(EVENT_KINDS[0]);
   const events = useLoad(ws ? `${ws}|${kind}` : null, () => api.events(ws ?? "", kind));
+  const threadIds = (events.value ?? []).flatMap((event) => (event.thread_id ? [event.thread_id] : []));
+  const tasks = useWorkspaceTasks(ws, api, threadIds);
   const { session } = useSession();
   const federation = holds(session.grant, FEDERATION_ADMIN);
   const peers = useLoad(ws && federation ? ws : null, () => api.peers(ws ?? ""));
@@ -457,7 +721,7 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((e) => (
-                  <li key={e.id} tabIndex={-1} className="tool-row"><span className="mono-id">#{e.id}</span><span className="grow small">{e.thread_id ? <a href={`#/threads/t/${encodeURIComponent(e.thread_id)}`}>thread {e.thread_id.slice(0, 8)}</a> : e.channel_id ? `channel ${e.channel_id.slice(0, 8)}` : "workspace"}</span></li>
+                  <li key={e.id} tabIndex={-1} className="tool-row"><span className="mono-id">#{e.id}</span><span className="grow small">{eventTarget(e, tasks.byId, channels.value ?? [])}</span></li>
                 ))}
               </ul>
             ) : (
@@ -578,14 +842,15 @@ function Recent() {
 // ---- Search --------------------------------------------------------------
 
 function Search({ api, ws }: { api: ToolsApi; ws: string | null }) {
-  const { store } = useSession();
-  const people = useMemo(() => new PeopleApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
+  const people = usePeopleApi();
   const members = useLoad(ws, () => people.people(ws ?? ""));
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<string>(SEARCH_MODES[0]);
   const [author, setAuthor] = useState("");
   const [ran, setRan] = useState<string | null>(null);
   const hits = useLoad(ws && ran ? ran : null, () => api.search(ws ?? "", ran ?? ""));
+  const threadIds = (hits.value ?? []).flatMap((hit) => (hit.thread_id ? [hit.thread_id] : []));
+  const tasks = useWorkspaceTasks(ws, api, threadIds);
   if (!ws) return <Panel title="Search">{SELF_ONLY}</Panel>;
   const authorReady = members.value != null;
   return (
@@ -612,7 +877,7 @@ function Search({ api, ws }: { api: ToolsApi; ws: string | null }) {
                     <li key={h.message_id ?? h.id ?? i} tabIndex={-1} className="tool-row">
                       <div className="grow">
                         <p>{h.snippet || h.body || "(no text)"}</p>
-                        {h.thread_id ? <a className="muted small" href={convHash({ kind: "task", id: h.thread_id })}>Open the thread</a> : null}
+                        {h.thread_id ? <p className="muted small"><a className="muted small" href={convHash({ kind: "task", id: h.thread_id })}>{threadLinkLabel(h.thread_id, tasks.byId, "Open the thread")}</a>{memberBy(members.value, h.author_id)}</p> : null}
                       </div>
                     </li>
                   ))}
@@ -643,6 +908,8 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const peers = useLoad(ws && federation ? ws : null, () => api.peers(ws ?? ""));
   const installs = useLoad(ws, () => api.appInstallations(ws ?? ""));
   const audit = useLoad(ws && auditOn ? ws : null, () => api.workspaceAudit(ws ?? "", 100));
+  const people = usePeopleApi();
+  const auditMembers = useLoad(ws && auditOn ? ws : null, () => people.people(ws ?? ""));
   const spaces = useLoad("switchable", () => api.switchable());
   if (!ws) return <Panel title="Workspace">{SELF_ONLY}</Panel>;
   const base = session.status === "signed-in" ? session.credentials.base : "";
@@ -746,11 +1013,14 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
             {(rows) =>
               rows.length ? (
                 <ul className="tool-list">
-                  {rows.map((a, i) => (
-                    <li key={i} tabIndex={-1} className="tool-row">
-                      <div className="grow"><b>{a.action}</b><p className="muted small">{new Date(a.occurred_at).toLocaleString()}{a.target_kind ? ` · ${a.target_kind}` : ""}</p></div>
-                    </li>
-                  ))}
+                  {rows.map((a, i) => {
+                    const who = a.actor_id ? auditActor(a.actor_id, auditMembers) : null;
+                    return (
+                      <li key={i} tabIndex={-1} className="tool-row">
+                        <div className="grow"><b>{a.action}</b><p className="muted small">{new Date(a.occurred_at).toLocaleString()}{who ? ` \u00b7 by ${who}` : ""}{a.target_kind ? ` · ${a.target_kind}` : ""}</p></div>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : <p className="muted">Nothing audited yet.</p>
             }
