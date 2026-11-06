@@ -1,9 +1,45 @@
 package maidan
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"time"
 )
+
+
+// MaxModelJSONBytes is the largest JSON document DecodeModelJSON will accept.
+// Oversized bodies fail closed so a hostile payload cannot pin the client.
+const MaxModelJSONBytes = 1 << 20 // 1 MiB
+
+// DecodeModelJSON unmarshals one JSON value with a hard byte cap.
+func DecodeModelJSON(r io.Reader, dst any) error {
+	if r == nil {
+		return fmt.Errorf("maidan: nil reader")
+	}
+	limited := io.LimitReader(r, int64(MaxModelJSONBytes)+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return err
+	}
+	if len(data) > MaxModelJSONBytes {
+		return fmt.Errorf("maidan: JSON body exceeds %d bytes", MaxModelJSONBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	// Refuse trailing junk after one value.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("maidan: trailing JSON after first value")
+		}
+		return err
+	}
+	return nil
+}
 
 // Response models, from the server's OpenAPI schemas. encoding/json ignores
 // members a struct does not declare, so a field added to the server does not

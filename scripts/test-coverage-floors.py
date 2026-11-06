@@ -92,5 +92,37 @@ class Check(unittest.TestCase):
         self.assertIn("maidan-gone", failures[0])
 
 
+
+
+
+class LcovBounds(unittest.TestCase):
+    def test_rejects_nul(self):
+        payload = "SF:crates/maidan-auth/src/lib.rs" + "\0" + "\nLF:1\nLH:1\nend_of_record\n"
+        with self.assertRaisesRegex(ValueError, "NUL"):
+            floors.per_crate(payload)
+
+    def test_rejects_dotdot_sf_path(self):
+        bad = (
+            "SF:/home/runner/work/maidan/maidan/crates/../secret/crates/maidan-auth/src/lib.rs\n"
+            "LF:1\nLH:1\nend_of_record\n"
+        )
+        with self.assertRaisesRegex(ValueError, r"\.\."):
+            floors.per_crate(bad)
+
+    def test_rejects_negative_counts(self):
+        with self.assertRaisesRegex(ValueError, "negative"):
+            floors.per_crate(
+                "SF:/home/runner/work/maidan/maidan/crates/maidan-auth/src/lib.rs\n"
+                "LF:-1\nLH:0\nend_of_record\n"
+            )
+
+    def test_rejects_oversize_payload(self):
+        huge = "SF:/x/crates/maidan-auth/src/a.rs\nLF:1\nLH:1\nend_of_record\n" + (
+            "#" * floors.MAX_LCOV_BYTES
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            floors.per_crate(huge)
+
+
 if __name__ == "__main__":
     unittest.main()

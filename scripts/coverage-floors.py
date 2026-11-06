@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CRATE_PATH = re.compile(r"(?:^|/)crates/([^/]+)/")
+MAX_LCOV_BYTES = 50_000_000
 GENERATED = re.compile(r"/generated(?:\.serde)?\.rs$")
 
 
@@ -39,20 +40,35 @@ class Lines:
 
 def per_crate(lcov: str) -> dict[str, Lines]:
     """Covered and instrumented lines per crate, from lcov ``SF``/``LH``/``LF``."""
+    if not isinstance(lcov, str):
+        raise ValueError("lcov must be text")
+    if len(lcov.encode("utf-8", errors="surrogatepass")) > MAX_LCOV_BYTES:
+        raise ValueError(f"lcov exceeds {MAX_LCOV_BYTES} bytes")
+    if "\0" in lcov:
+        raise ValueError("lcov contains a NUL byte")
     totals: dict[str, Lines] = {}
     crate: str | None = None
     for raw in lcov.splitlines():
         line = raw.strip()
         if line.startswith("SF:"):
-            match = CRATE_PATH.search(line[3:])
-            generated = GENERATED.search(line[3:])
+            path = line[3:]
+            if ".." in path.split("/"):
+                raise ValueError(f"lcov SF path must not contain '..': {path}")
+            match = CRATE_PATH.search(path)
+            generated = GENERATED.search(path)
             crate = match.group(1) if match and not generated else None
         elif crate is None:
             continue
         elif line.startswith("LF:"):
-            totals.setdefault(crate, Lines()).found += int(line[3:])
+            found = int(line[3:])
+            if found < 0:
+                raise ValueError(f"negative LF in lcov: {line}")
+            totals.setdefault(crate, Lines()).found += found
         elif line.startswith("LH:"):
-            totals.setdefault(crate, Lines()).covered += int(line[3:])
+            covered = int(line[3:])
+            if covered < 0:
+                raise ValueError(f"negative LH in lcov: {line}")
+            totals.setdefault(crate, Lines()).covered += covered
         elif line == "end_of_record":
             crate = None
     return totals
@@ -99,7 +115,12 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--floors", type=Path, default=Path(".config/coverage-floors.toml"))
     args = parser.parse_args(argv)
 
-    totals = per_crate(args.lcov.read_text(encoding="utf-8"))
+    try:
+        text = args.lcov.read_text(encoding="utf-8")
+        totals = per_crate(text)
+    except ValueError as exc:
+        print(f"coverage-floors: {exc}", file=sys.stderr)
+        return 1
     if not totals:
         print(f"no workspace crates in {args.lcov}", file=sys.stderr)
         return 1

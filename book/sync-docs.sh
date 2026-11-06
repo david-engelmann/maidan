@@ -26,6 +26,10 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+gates="$repo_root/book/sync-docs-gates.py"
+require_page() { python3 "$gates" check-name "$1" >/dev/null; }
+require_asset() { python3 "$gates" check-asset "$1" >/dev/null; }
+
 src_docs="$repo_root/book/src/docs"
 
 rm -rf "$src_docs"
@@ -43,7 +47,8 @@ top_pages=(
   "Framework Integrations" "Harness Caching" "WASI-Handlers"
 )
 for name in "${top_pages[@]}"; do
-  cp "$repo_root/docs/$name.md" "$src_docs/${name// /-}.md"
+  require_page "$name"
+  cp "$repo_root/docs/$name.md" "$src_docs/$(python3 "$gates" stage-name "$name")"
 done
 
 # Maintainer pages: the repo's own process, plans and history. They stay in
@@ -53,13 +58,17 @@ maintainer_pages=(
   "Dependencies" "Open Work" "Roadmap" "OAuth" "README" "Kani" "Hosted Console"
   "Hosted Operations"
 )
+require_asset "maidan-mark.svg"
 cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
+require_asset "maidan-social.png"
 cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"
 for art in maidan-lockup how-it-works; do
   for theme in light dark; do
+    require_asset "$art-$theme.svg"
     cp "$repo_root/docs/assets/$art-$theme.svg" "$src_docs/assets/$art-$theme.svg"
   done
 done
+require_asset "handoff-demo.gif"
 cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
 
 export GH="https://github.com/david-engelmann/maidan/blob/main"
@@ -78,6 +87,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
 
   # 1b) links to maintainer pages -> GitHub, before step 2 renames spaces
   for name in "${maintainer_pages[@]}"; do
+    require_page "$name"
     export PAGE="${name// /%20}"
     perl -pi -e 's{\]\((?:\.\./docs/|\.\./)?\Q$ENV{PAGE}\E\.md(#[^)]*)?\)}{]($ENV{GH}/docs/$ENV{PAGE}.md$1)}g' "$f"
   done
