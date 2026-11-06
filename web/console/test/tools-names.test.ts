@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   NOTIFICATION_KINDS,
+  catalogShouldRefresh,
   describeNotificationKind,
+  nextCatalog,
+  storedCatalog,
   taskFollowLabel,
   tasksToFollow,
   threadLinkLabel,
@@ -47,6 +50,30 @@ test("a thread link names the channel and the title, or keeps the fallback", () 
   assert.equal(threadLinkLabel("d", map, "thread dddddddd"), "thread dddddddd");
   assert.equal(threadLinkLabel("nope", map, "Open the thread"), "Open the thread");
   assert.equal(threadLinkLabel("nope", new Map(), "thread abcdef01"), "thread abcdef01");
+});
+
+test("a partial or failed task list is not cached, and a warm list stays up while a later read fails", () => {
+  const channel = { id: "gen", name: "general" };
+  const task = tasks[1];
+  assert.equal(storedCatalog({ tasks: [task], channels: [channel], failed: 1, error: null }), null);
+  assert.equal(storedCatalog({ tasks: [], channels: [], failed: 0, error: "down" }), null);
+  const stored = storedCatalog({ tasks: [task], channels: [channel], failed: 0, error: null });
+  assert.deepEqual(stored, { tasks: [task], channels: [channel], error: false });
+  const kept = nextCatalog(stored, { tasks: [], channels: [channel], failed: 2, error: null });
+  assert.equal(kept.store, stored);
+  assert.equal(kept.show, stored);
+  const fresh = nextCatalog(null, { tasks: [task], channels: [channel], failed: 1, error: null });
+  assert.equal(fresh.store, null);
+  assert.deepEqual(fresh.show.tasks, [task]);
+  assert.equal(fresh.show.error, false);
+});
+
+test("task names refresh when a task is created, renamed, or the feed resyncs", () => {
+  assert.equal(catalogShouldRefresh({ type: "resync" }), true);
+  assert.equal(catalogShouldRefresh({ type: "event", frame: { kind: "thread_created" } }), true);
+  assert.equal(catalogShouldRefresh({ type: "event", frame: { kind: "thread_updated" } }), true);
+  assert.equal(catalogShouldRefresh({ type: "event", frame: { kind: "message_posted" } }), false);
+  assert.equal(catalogShouldRefresh({ type: "event" }), false);
 });
 
 test("notification kinds are words, and an unknown kind is a capitalized phrase", () => {

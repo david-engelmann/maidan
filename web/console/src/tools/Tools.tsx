@@ -8,6 +8,7 @@
 // Recent is every notice this tab has shown.
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ago, BoardApi, type Thread } from "../core/board.ts";
+import { liveBus } from "../core/bus.ts";
 import { PeopleApi, type Person } from "../core/people.ts";
 import { convHash, ThreadsApi } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
@@ -35,6 +36,10 @@ import {
   taskFollowLabel,
   tasksToFollow,
   threadLinkLabel,
+  catalogShouldRefresh,
+  nextCatalog,
+  type TaskCatalogRead,
+  type TaskCatalogView,
   NOTIFICATION_KINDS,
   deliveryState,
   scheduleCadence,
@@ -172,11 +177,12 @@ const SELF_ONLY = <p className="muted">Sign in as a member to see this.</p>;
 const TASK_FETCHES = 4;
 const EMPTY_TASKS: ReadonlyMap<string, PickerTask> = new Map();
 
-type TaskCatalog = { tasks: PickerTask[]; channels: PickerChannel[]; error: boolean };
+type TaskCatalog = TaskCatalogView;
 type WorkspaceTasks = { tasks: PickerTask[]; byId: ReadonlyMap<string, PickerTask>; status: "loading" | "ready" | "error" };
 
 const taskCatalogs = new Map<string, TaskCatalog>();
 const taskCatalogJobs = new Map<string, Promise<TaskCatalog>>();
+const taskCatalogEpoch = new Map<string, number>();
 /** Missing threads, including a 404, so a render does not ask for the same id again. */
 const resolvedThreads = new Map<string, Map<string, PickerTask | null>>();
 const resolvingThreads = new Map<string, Promise<void>>();
@@ -227,9 +233,7 @@ async function pool<T>(items: readonly T[], limit: number, run: (item: T) => Pro
   }));
 }
 
-async function fetchCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<TaskCatalog> {
-  const warm = peekCatalog(ws);
-  if (warm) return warm;
+async function fetchCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<TaskCatalogRead> {
   try {
     const channels = await tools.channels(ws);
     const tasks: PickerTask[] = [];
@@ -246,20 +250,22 @@ async function fetchCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promi
         failed += 1;
       }
     });
-    return { tasks, channels, error: channels.length > 0 && failed === channels.length };
+    const total = channels.length > 0 && failed === channels.length;
+    return { tasks, channels, failed, error: total ? "The task list did not load" : null };
   } catch {
-    return { tasks: [], channels: [], error: true };
+    return { tasks: [], channels: [], failed: 0, error: "The task list did not load" };
   }
 }
 
 function loadCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<TaskCatalog> {
-  const warm = peekCatalog(ws);
-  if (warm) return Promise.resolve(warm);
   const pending = taskCatalogJobs.get(ws);
   if (pending) return pending;
-  const job = fetchCatalog(ws, tools, board).then((value) => {
-    if (!value.error) taskCatalogs.set(ws, value);
-    return value;
+  const epoch = taskCatalogEpoch.get(ws) ?? 0;
+  const job = fetchCatalog(ws, tools, board).then((read) => {
+    if ((taskCatalogEpoch.get(ws) ?? 0) !== epoch) return taskCatalogs.get(ws) ?? nextCatalog(null, read).show;
+    const next = nextCatalog(taskCatalogs.get(ws) ?? null, read);
+    if (next.store) taskCatalogs.set(ws, next.store);
+    return next.show;
   }).finally(() => {
     if (taskCatalogJobs.get(ws) === job) taskCatalogJobs.delete(ws);
   });
@@ -322,11 +328,23 @@ function useWorkspaceTasks(ws: string | null, api: ToolsApi, referenced: readonl
   const refKey = [...new Set(referenced.map((id) => id.trim()).filter(Boolean))].sort().join("\0");
   const [fetched, setFetched] = useState<{ ws: string; value: TaskCatalog } | null>(null);
   const [extras, setExtras] = useState<{ ws: string; tasks: PickerTask[] }>({ ws: "", tasks: NO_EXTRAS });
-  const warm = useMemo(() => (ws ? peekCatalog(ws) : null), [ws]);
+  const [rev, setRev] = useState(0);
+  const warm = useMemo(() => (ws ? peekCatalog(ws) : null), [ws, rev]);
   const held = (fetched?.ws === ws ? fetched.value : null) ?? warm;
   const shownExtras = useMemo(() => (extras.ws === ws ? extras.tasks : ws ? extraTasks(ws) : NO_EXTRAS), [extras, ws]);
   useEffect(() => {
-    if (!ws || peekCatalog(ws)) return;
+    if (!ws) return;
+    return liveBus.listen((m) => {
+      if (!catalogShouldRefresh(m)) return;
+      taskCatalogs.delete(ws);
+      taskCatalogJobs.delete(ws);
+      taskCatalogEpoch.set(ws, (taskCatalogEpoch.get(ws) ?? 0) + 1);
+      resolvedThreads.delete(ws);
+      setRev((n) => n + 1);
+    });
+  }, [ws]);
+  useEffect(() => {
+    if (!ws) return;
     let alive = true;
     void loadCatalog(ws, api, board).then((value) => {
       if (alive) setFetched({ ws, value });
@@ -334,7 +352,7 @@ function useWorkspaceTasks(ws: string | null, api: ToolsApi, referenced: readonl
     return () => {
       alive = false;
     };
-  }, [ws, api, board]);
+  }, [ws, api, board, rev]);
   useEffect(() => {
     if (!ws || !held) return;
     const ids = refKey ? refKey.split("\0") : [];
@@ -353,8 +371,8 @@ function useWorkspaceTasks(ws: string | null, api: ToolsApi, referenced: readonl
   }, [ws, held, refKey, threads]);
   const byId = useMemo(() => {
     const map = new Map<string, PickerTask>();
-    if (held && !held.error) for (const task of held.tasks) if (task.title.trim()) map.set(task.id, task);
     for (const task of shownExtras) map.set(task.id, task);
+    if (held && !held.error) for (const task of held.tasks) if (task.title.trim()) map.set(task.id, task);
     return map;
   }, [held, shownExtras]);
   if (!ws) return { tasks: [], byId: EMPTY_TASKS, status: "ready" };

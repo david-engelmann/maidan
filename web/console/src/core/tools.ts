@@ -66,6 +66,35 @@ export function channelsToFollow(channels: PickerChannel[], followed: Iterable<s
 
 export type PickerTask = { id: string; title: string; channelId?: string | null; channelName?: string | null };
 
+export type TaskCatalogView = { tasks: PickerTask[]; channels: PickerChannel[]; error: boolean };
+
+/** One pass over the channels. `failed` counts channels that did not answer; `error` is set when the whole read failed. */
+export type TaskCatalogRead = { tasks: PickerTask[]; channels: PickerChannel[]; failed: number; error: string | null };
+
+/** A partial or failed read is not remembered. The next visit asks again. */
+export function storedCatalog(read: TaskCatalogRead): TaskCatalogView | null {
+  if (read.failed > 0 || read.error !== null) return null;
+  return { tasks: read.tasks, channels: read.channels, error: false };
+}
+
+/**
+ * What to show after a read, and what to keep for the next visit.
+ * A warm catalog stays on screen when the new read is partial or failed.
+ */
+export function nextCatalog(cached: TaskCatalogView | null, read: TaskCatalogRead): { show: TaskCatalogView; store: TaskCatalogView | null } {
+  const stored = storedCatalog(read);
+  if (stored) return { show: stored, store: stored };
+  if (cached && !cached.error) return { show: cached, store: cached };
+  return { show: { tasks: read.tasks, channels: read.channels, error: read.error !== null && read.tasks.length === 0 }, store: null };
+}
+
+/** The task list is stale when the feed resyncs or a task is created or renamed. */
+export function catalogShouldRefresh(message: { type: string; frame?: { kind?: string } }): boolean {
+  if (message.type === "resync") return true;
+  const kind = message.type === "event" ? message.frame?.kind : undefined;
+  return kind === "thread_created" || kind === "thread_updated";
+}
+
 /** The follow menu separates channel and title with an em dash; a link uses a dot. */
 const FOLLOW_MARK = "\u2014";
 const LINK_MARK = "\u00b7";
