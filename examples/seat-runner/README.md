@@ -52,7 +52,13 @@ Each seat takes the configured repositories in turn. For each run:
    the thread is then never claimed. A review that touches nothing can use
    a shared lane item (`{"kind": "lane", "value": "red-team"}`).
 5. **Harness.** The whole harness process runs under
-   `capped --time run_secs --mem-gb run_mem_gb`. A cap inside the sandbox
+   `capped --time run_secs --mem-gb run_mem_gb`, and the runner renews the
+   claim about every third of `lease_secs` while that process is alive, so a
+   long run does not lose the lease. The first renewal waits, so a short run
+   is still only claim, acknowledge and release. A renewal the server refuses
+   stops renewing and lets the harness finish. Each Maidan call also stops
+   at `timeout_secs` of wall clock, so a server that drips bytes cannot hold
+   the seat open. A cap inside the sandbox
    could not measure anything. Codex runs as
    `codex exec -m <model> --sandbox workspace-write --ephemeral
    -c mcp_servers.maidan.default_tools_approval_mode="approve"

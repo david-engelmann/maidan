@@ -26,12 +26,16 @@ claims are released.
 from __future__ import annotations
 
 import argparse
+import datetime
+import email.utils
 import http.client
 import ipaddress
 import json
+import math
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -102,6 +106,17 @@ class Config:
     repos: list[Repo]
 
 
+def require_number(name: str, value: object, *, positive: bool) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ConfigError(f"{name} must be a number") from None
+    if not math.isfinite(number) or (number <= 0 if positive else number < 0):
+        kind = "a positive finite number" if positive else "zero or a positive finite number"
+        raise ConfigError(f"{name} must be {kind}")
+    return number
+
+
 def is_loopback(url: str) -> bool:
     host = urllib.parse.urlparse(url).hostname or ""
     if host == "localhost":
@@ -144,6 +159,8 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     for r in repos:
         if not r.preflight:
             raise ConfigError(f"{r.repo}: a preflight (toolchain version and narrow check) is required")
+        if not r.checkout.is_dir():
+            raise ConfigError(f"{r.repo}: checkout {r.checkout} is not a directory")
     prompts = {str(kind): str(Path(path).expanduser()) for kind, path in harness.get("prompts", {}).items()}
     for kind, path in prompts.items():
         if not Path(path).is_file():
@@ -151,6 +168,25 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     seats = int(raw.get("seats", 1))
     if seats < 1:
         raise ConfigError("seats must be at least 1")
+    workspace_id = str(maidan.get("workspace_id", "")).strip()
+    if not workspace_id:
+        raise ConfigError("maidan.workspace_id is required")
+    prompt = str(Path(harness.get("prompt", Path(__file__).with_name("prompt.md"))).expanduser())
+    if not Path(prompt).is_file():
+        raise ConfigError(f"no prompt file at {prompt}")
+    capped_bin = str(Path(caps.get("capped", "scripts/capped")).expanduser())
+    if "/" in capped_bin:
+        capped_ok = Path(capped_bin).is_file()
+    else:
+        capped_ok = shutil.which(capped_bin) is not None
+    if not capped_ok:
+        raise ConfigError(f"capped was not found at {capped_bin}")
+    claim_attempts = int(maidan.get("claim_attempts", 3))
+    release_attempts = int(maidan.get("release_attempts", 4))
+    if claim_attempts < 1:
+        raise ConfigError("claim_attempts must be at least 1")
+    if release_attempts < 1:
+        raise ConfigError("release_attempts must be at least 1")
     url = maidan.get("url", "http://127.0.0.1:8080").rstrip("/")
     if not url.startswith("https://") and not is_loopback(url):
         print(f"seat-runner: warning: {url} is not https; the seat token crosses the network in clear",
@@ -160,30 +196,101 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
         token=token,
         token_env=token_env,
         secret_env=frozenset({token_env, *maidan.get("secret_env", [])}),
-        workspace_id=maidan["workspace_id"],
+        workspace_id=workspace_id,
         seats=seats,
         harness_bin=harness.get("bin", "codex"),
         model=model,
         pass_token=bool(harness.get("pass_token", True)),
-        prompt=str(Path(harness.get("prompt", Path(__file__).with_name("prompt.md"))).expanduser()),
+        prompt=prompt,
         prompts=prompts,
-        capped=str(Path(caps.get("capped", "scripts/capped")).expanduser()),
-        run_secs=int(caps.get("run_secs", 3600)),
-        run_mem_gb=float(caps.get("run_mem_gb", 8)),
-        preflight_secs=int(caps.get("preflight_secs", 600)),
-        preflight_mem_gb=float(caps.get("preflight_mem_gb", 4)),
-        lease_secs=int(maidan.get("lease_secs", 3600)),
-        timeout_secs=float(maidan.get("timeout_secs", 60)),
-        claim_attempts=max(1, int(maidan.get("claim_attempts", 3))),
-        claim_backoff_secs=float(maidan.get("claim_backoff_secs", 2)),
-        max_load15=float(host.get("max_load15", os.cpu_count() or 1)),
-        min_free_gb=float(host.get("min_free_gb", 5)),
-        idle_secs=float(raw.get("idle_secs", 60)),
-        kill_grace_secs=float(raw.get("kill_grace_secs", 10)),
-        release_attempts=max(1, int(maidan.get("release_attempts", 4))),
-        release_backoff_secs=float(maidan.get("release_backoff_secs", 2)),
+        capped=capped_bin,
+        run_secs=int(require_number("run_secs", caps.get("run_secs", 3600), positive=True)),
+        run_mem_gb=require_number("run_mem_gb", caps.get("run_mem_gb", 8), positive=True),
+        preflight_secs=int(require_number("preflight_secs", caps.get("preflight_secs", 600), positive=True)),
+        preflight_mem_gb=require_number("preflight_mem_gb", caps.get("preflight_mem_gb", 4), positive=True),
+        lease_secs=int(require_number("lease_secs", maidan.get("lease_secs", 3600), positive=True)),
+        timeout_secs=require_number("timeout_secs", maidan.get("timeout_secs", 60), positive=True),
+        claim_attempts=claim_attempts,
+        claim_backoff_secs=require_number("claim_backoff_secs", maidan.get("claim_backoff_secs", 2), positive=False),
+        max_load15=require_number("max_load15", host.get("max_load15", os.cpu_count() or 1), positive=False),
+        min_free_gb=require_number("min_free_gb", host.get("min_free_gb", 5), positive=False),
+        idle_secs=require_number("idle_secs", raw.get("idle_secs", 60), positive=False),
+        kill_grace_secs=require_number("kill_grace_secs", raw.get("kill_grace_secs", 10), positive=False),
+        release_attempts=release_attempts,
+        release_backoff_secs=require_number("release_backoff_secs", maidan.get("release_backoff_secs", 2), positive=False),
         repos=repos,
     )
+
+
+def _socket_of(resp: object):
+    fp = getattr(resp, "fp", None)
+    raw = getattr(fp, "raw", None)
+    sock = getattr(raw, "_sock", None)
+    if sock is None:
+        sock = getattr(getattr(raw, "_fp", None), "_sock", None)
+    return sock
+
+
+def read_until(resp: object, timeout: float) -> bytes:
+    """Read `resp` until it ends or `timeout` seconds have passed.
+
+    `urlopen`'s timeout resets on every socket read, so a peer that drips
+    bytes can hold a call open. Bytes already buffered are taken without
+    turning the socket non-blocking, which urllib would treat as end of file.
+    """
+    import select
+
+    deadline = time.monotonic() + timeout
+    parts: list[bytes] = []
+    sock = _socket_of(resp)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"no complete answer within {timeout}s")
+        if sock is not None:
+            try:
+                sock.settimeout(remaining)
+            except OSError:
+                pass
+        peek = getattr(getattr(resp, "fp", None), "peek", None)
+        buffered = b""
+        if peek is not None:
+            try:
+                buffered = peek(0) or b""
+            except (OSError, ValueError):
+                buffered = b""
+        if buffered:
+            chunk = resp.read(min(len(buffered), 65536))  # type: ignore[attr-defined]
+            if not chunk:
+                return b"".join(parts)
+            parts.append(chunk)
+            continue
+        if sock is not None:
+            try:
+                live = sock.fileno() >= 0
+            except OSError:
+                live = False
+            if live:
+                try:
+                    ready, _, _ = select.select([sock], [], [], remaining)
+                except (OSError, ValueError):
+                    ready = [sock]
+                if not ready:
+                    raise TimeoutError(f"no complete answer within {timeout}s")
+        try:
+            if sock is not None:
+                try:
+                    sock.settimeout(max(0.0, deadline - time.monotonic()))
+                except OSError:
+                    pass
+            chunk = resp.read(1)  # type: ignore[attr-defined]
+        except (socket.timeout, TimeoutError, OSError) as err:
+            if isinstance(err, (socket.timeout, TimeoutError)) or "timed out" in str(err).lower():
+                raise TimeoutError(f"no complete answer within {timeout}s") from err
+            raise
+        if not chunk:
+            return b"".join(parts)
+        parts.append(chunk)
 
 
 class Maidan:
@@ -198,10 +305,10 @@ class Maidan:
         return status, answer
 
     def send(self, method: str, path: str, body: object | None = None,
-             key: str | None = None) -> tuple[int, object, str | None]:
+             key: str | None = None, raw: bytes | None = None) -> tuple[int, object, str | None]:
         """`(status, body, Retry-After)`. An answer cut short or not JSON
         counts as no answer: whether the server acted is unknown."""
-        data = None if body is None else json.dumps(body).encode()
+        data = raw if raw is not None else (None if body is None else json.dumps(body).encode())
         req = urllib.request.Request(self.url + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self.token}")
         # Cloudflare refuses urllib's default agent (error 1010) in front of
@@ -213,18 +320,23 @@ class Maidan:
             req.add_header("Idempotency-Key", key)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as res:
-                text = res.read().decode()
+                try:
+                    blob = read_until(res, self.timeout)
+                except TimeoutError as e:
+                    return UNREACHABLE, f"TimeoutError: {e}", None
+                text = blob.decode()
                 return res.status, json.loads(text) if text else None, None
         except urllib.error.HTTPError as e:
             retry_after = e.headers.get("Retry-After") if e.headers is not None else None
             try:
-                text = e.read().decode(errors="replace")
-            except (http.client.HTTPException, OSError):
-                text = ""
+                blob = read_until(e, self.timeout)
+            except (TimeoutError, http.client.HTTPException, OSError):
+                blob = b""
             finally:
                 e.close()
+            text = blob.decode(errors="replace")
             try:
-                return e.code, json.loads(text), retry_after
+                return e.code, json.loads(text) if text else text, retry_after
             except ValueError:
                 return e.code, text, retry_after
         # An answer cut off mid-body (IncompleteRead) is an
@@ -238,17 +350,31 @@ def retry_wait(attempt: int, backoff: float, retry_after: str | None) -> float:
     """Seconds before the next try: the server's Retry-After when it sent
     one, else `backoff` doubled per try; never more than a minute."""
     if retry_after is not None:
+        text = str(retry_after).strip()
         try:
-            return min(max(float(retry_after), 0.0), MAX_RETRY_AFTER_SECS)
+            secs = float(text)
         except ValueError:
-            pass
+            secs = None
+        if secs is not None and math.isfinite(secs):
+            return min(max(secs, 0.0), MAX_RETRY_AFTER_SECS)
+        try:
+            when = email.utils.parsedate_to_datetime(text)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            when = None
+        if when is not None:
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=datetime.timezone.utc)
+            return min(max(when.timestamp() - time.time(), 0.0), MAX_RETRY_AFTER_SECS)
     return min(backoff * 2**attempt, MAX_RETRY_AFTER_SECS)
 
 
 def worth_retrying(status: int, body: object) -> bool:
     if status == UNREACHABLE or status in RETRY_STATUSES:
         return True
-    return status == 409 and isinstance(body, dict) and body.get("type") == IN_FLIGHT
+    if status != 409 or not isinstance(body, dict):
+        return False
+    kind = body.get("type")
+    return isinstance(kind, str) and (kind == IN_FLIGHT or kind.endswith("/idempotency-key-in-flight"))
 
 
 def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
@@ -469,9 +595,10 @@ class Runner:
         Returns `(status, body, tries)`. The key is what makes a retry safe:
         a claim whose answer was lost is answered again, not taken again."""
         key = str(uuid.uuid4())
+        raw = json.dumps(body).encode("utf-8")
         status, answer = UNREACHABLE, None
         for attempt in range(attempts):
-            status, answer, retry_after = self.api.send("POST", path, body, key=key)
+            status, answer, retry_after = self.api.send("POST", path, raw=raw, key=key)
             if not worth_retrying(status, answer):
                 return status, answer, attempt + 1
             if attempt + 1 < attempts:
@@ -528,12 +655,29 @@ class Runner:
         attributes = claim.get("attributes")
         kind = attributes.get("kind") if isinstance(attributes, dict) else None
         outcome, code = "stopped", None
+        ack = UNREACHABLE
+        stop_renew = threading.Event()
+        renewer: threading.Thread | None = None
         try:
             ack, _, _ = self.write(f"/threads/{thread_id}/claim/acknowledge", {"claim_lease_id": lease_id},
                                    self.cfg.claim_attempts, self.cfg.claim_backoff_secs)
             if not 200 <= ack < 300:
                 outcome = "ack_failed"
             elif not self.stop.is_set():
+                def renew() -> None:
+                    # Wait before the first renewal so a short run is only
+                    # claim, acknowledge, release. A lost lease stops quietly.
+                    while not stop_renew.wait(max(0.2, self.cfg.lease_secs / 3)) and not self.stop.is_set():
+                        status, _, _ = self.write(
+                            f"/threads/{thread_id}/claim/renew",
+                            {"claim_lease_id": lease_id, "lease_secs": self.cfg.lease_secs},
+                            self.cfg.claim_attempts, self.cfg.claim_backoff_secs,
+                        )
+                        if not 200 <= status < 300:
+                            return
+
+                renewer = threading.Thread(target=renew, daemon=True)
+                renewer.start()
                 code = self.run_process(
                     seat,
                     capped(self.cfg, self.cfg.run_secs, self.cfg.run_mem_gb,
@@ -545,8 +689,12 @@ class Runner:
                     0: "ran", CAPPED_TIME: "timed_out", CAPPED_MEMORY: "out_of_memory",
                 }.get(code, "failed")
         finally:
+            stop_renew.set()
+            if renewer is not None:
+                renewer.join(2)
             released = self.release(thread_id, lease_id)
-        return done(outcome, thread=thread_id, exit=code, release=released)
+        extra = {"ack_status": ack} if outcome == "ack_failed" else {}
+        return done(outcome, thread=thread_id, exit=code, release=released, **extra)
 
     def seat_loop(self, seat: int, once: bool) -> None:
         repos = self.cfg.repos

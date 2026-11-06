@@ -1,4 +1,5 @@
 """The seat runner against a fake Maidan, a fake `capped` and a fake harness."""
+import email.utils
 import io
 import json
 import os
@@ -27,11 +28,12 @@ class FakeMaidan:
     and records every call."""
 
     def __init__(self, ready: int = 1, claim: bool = True, ack_status: int = 200,
-                 drop_releases: int = 0, kind: str | None = None) -> None:
+                 drop_releases: int = 0, kind: str | None = None, renew_status: int = 200) -> None:
         self.kind = kind
         self.ready = ready
         self.claim = claim
         self.ack_status = ack_status
+        self.renew_status = renew_status
         # Hang up on this many release calls before answering one.
         self.drop_releases = drop_releases
         self.on_ack = lambda: None
@@ -57,6 +59,8 @@ class FakeMaidan:
                 if self.path.endswith("/claim/acknowledge"):
                     fake.on_ack()
                     status = fake.ack_status
+                if self.path.endswith("/claim/renew"):
+                    status = fake.renew_status
                 if self.path.startswith(f"/workspaces/{WS}/queue-depth"):
                     out = {"open": fake.ready, "ready": fake.ready, "assigned": 0, "blocked": 0, "unclaimable": 0}
                 elif self.path.endswith("/threads/claim-next"):
@@ -102,6 +106,7 @@ class SeatRunnerTest(unittest.TestCase):
             "model": "example-model",
             "preflight": '[["true"]]',
             "run_secs": 30,
+            "capped": str(HERE / "fake_capped.py"),
             "max_load15": 100000,
             "min_free_gb": 0,
             "harness_extra": "",
@@ -116,6 +121,7 @@ kill_grace_secs = 1
 url = "{maidan.url}"
 workspace_id = "{WS}"
 release_backoff_secs = 0.01
+{f"lease_secs = {values['lease_secs']}" if "lease_secs" in values else ""}
 [harness]
 name = "codex"
 bin = "{HERE / 'fake_harness.py'}"
@@ -123,7 +129,7 @@ model = "{values['model']}"
 models = ["example-model"]
 {values['harness_extra']}
 [caps]
-capped = "{HERE / 'fake_capped.py'}"
+capped = "{values['capped']}"
 run_secs = {values['run_secs']}
 [host]
 max_load15 = {values['max_load15']}
@@ -296,6 +302,8 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ack_failed")
         self.assertEqual(self.harness_runs(), [])
         self.assertEqual(self.releases(maidan), [{"claim_lease_id": LEASE}])
+        line = json.loads(out.getvalue())
+        self.assertEqual(line["ack_status"], 409)
 
     def test_a_harness_that_ignores_sigterm_is_killed_before_its_claim_is_released(self):
         maidan = FakeMaidan()
@@ -402,6 +410,140 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         self.addCleanup(maidan.close)
         with self.assertRaises(seat_runner.ConfigError):
             self.runner(maidan, harness_extra=f'prompts = {{ review = "{self.tmp / "missing.md"}" }}')
+
+    def test_a_long_harness_renews_the_lease_and_stops_before_release(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        os.environ["FAKE_HARNESS_SECS"] = "1"
+        runner, _ = self.runner(maidan, lease_secs=1, run_secs=30)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        paths = maidan.paths("POST")
+        renews = [i for i, path in enumerate(paths) if path.endswith("/claim/renew")]
+        release = next(i for i, path in enumerate(paths) if path.endswith("/claim/release"))
+        self.assertTrue(renews, paths)
+        self.assertLess(renews[-1], release)
+
+    def test_a_refused_renewal_lets_the_harness_finish(self):
+        maidan = FakeMaidan(renew_status=409)
+        self.addCleanup(maidan.close)
+        os.environ["FAKE_HARNESS_SECS"] = "1"
+        runner, _ = self.runner(maidan, lease_secs=1, run_secs=30)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        self.assertEqual(len(self.harness_runs()), 1)
+        self.assertTrue(any(path.endswith("/claim/renew") for path in maidan.paths("POST")))
+        self.assertEqual(self.releases(maidan), [{"claim_lease_id": LEASE}])
+
+    def test_retry_after_dates_and_non_finite_numbers_and_a_relative_in_flight_type(self):
+        self.assertEqual(seat_runner.retry_wait(0, 1.0, "nan"), 1.0)
+        self.assertEqual(seat_runner.retry_wait(0, 1.0, "inf"), 1.0)
+        when = email.utils.formatdate(time.time() + 5, usegmt=True)
+        wait = seat_runner.retry_wait(0, 1.0, when)
+        self.assertGreater(wait, 0.0)
+        self.assertLessEqual(wait, 60.0)
+        self.assertTrue(seat_runner.worth_retrying(409, {"type": "https://example.test/idempotency-key-in-flight"}))
+        self.assertFalse(seat_runner.worth_retrying(409, {"type": "https://maidan.world/problems/claim-lost"}))
+
+        class Once(BaseHTTPRequestHandler):
+            seen: list[tuple[str, bytes]] = []
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(n)
+                Once.seen.append((self.headers.get("Idempotency-Key") or "", raw))
+                if len(Once.seen) == 1:
+                    body = json.dumps({"type": "https://example.test/idempotency-key-in-flight"}).encode()
+                    self.send_response(409)
+                else:
+                    body = b'{"ok":true}'
+                    self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_):
+                return
+
+        Once.seen = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Once)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        api = seat_runner.Maidan(f"http://127.0.0.1:{server.server_address[1]}", "t", timeout=2)
+        extra = FakeMaidan()
+        self.addCleanup(extra.close)
+        runner, _ = self.runner(extra)
+        runner.api = api
+        status, answer, tries = runner.write("/threads/t/claim/renew", {"n": 1}, 3, 0)
+        self.assertEqual((status, answer, tries), (200, {"ok": True}, 2))
+        self.assertEqual(len(Once.seen), 2)
+        self.assertEqual(Once.seen[0][0], Once.seen[1][0])
+        self.assertEqual(Once.seen[0][1], Once.seen[1][1])
+
+    def test_a_drip_stops_at_the_deadline_and_a_split_body_is_read_whole(self):
+        class Slow(BaseHTTPRequestHandler):
+            mode = "drip"
+
+            def do_GET(self):
+                body = b'{"ok":true,"pad":"' + (b"x" * 80) + b'"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if Slow.mode == "drip":
+                    for i in range(0, len(body), 4):
+                        self.wfile.write(body[i:i + 4])
+                        self.wfile.flush()
+                        time.sleep(0.08)
+                elif Slow.mode == "fast":
+                    for i in range(0, len(body), 20):
+                        self.wfile.write(body[i:i + 20])
+                        self.wfile.flush()
+                        time.sleep(0.01)
+                else:
+                    self.wfile.write(body[:8])
+                    self.wfile.flush()
+                    time.sleep(0.04)
+                    self.wfile.write(body[8:])
+                    self.wfile.flush()
+
+            def log_message(self, *_):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        Slow.mode = "drip"
+        status, answer, _ = seat_runner.Maidan(url, "t", timeout=0.15).send("GET", "/")
+        self.assertEqual(status, seat_runner.UNREACHABLE)
+        self.assertIn("TimeoutError", str(answer))
+        Slow.mode = "fast"
+        status, answer, _ = seat_runner.Maidan(url, "t", timeout=2).send("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertEqual(answer["ok"], True)
+        Slow.mode = "split"
+        status, answer, _ = seat_runner.Maidan(url, "t", timeout=2).send("GET", "/")
+        self.assertEqual(answer["ok"], True)
+
+    def test_startup_refuses_a_bad_config_before_any_call(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        cases = [
+            {"harness_extra": f'prompt = "{self.tmp / "missing-prompt.md"}"'},
+            {"checkout_missing": True},
+            {"capped": str(self.tmp / "no-capped")},
+            {"run_secs": 0},
+        ]
+        for over in cases:
+            missing = over.pop("checkout_missing", False)
+            path = self.config(maidan, **over)
+            if missing:
+                text = path.read_text().replace(f'checkout = "{self.tmp}"', 'checkout = "/no/such/checkout"')
+                path.write_text(text)
+            before = len(maidan.calls)
+            code = seat_runner.main(["--config", str(path), "--once"])
+            self.assertEqual(code, 2, over)
+            self.assertEqual(len(maidan.calls), before, over)
 
 
 if __name__ == "__main__":
