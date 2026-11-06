@@ -554,6 +554,10 @@
           "id": {
             "$ref": "#/components/schemas/ApprovalGateId"
           },
+          "kind": {
+            "$ref": "#/components/schemas/ApprovalGateKind",
+            "description": "Why the gate was opened. `request` is an agent's own ask. `review_round_cap` is the server asking a person whether a task that has been sent back enough times should go around again."
+          },
           "prompt": {
             "type": "string"
           },
@@ -635,6 +639,14 @@
           "created_at"
         ],
         "type": "object"
+      },
+      "ApprovalGateKind": {
+        "description": "Why an approval gate is open.",
+        "enum": [
+          "request",
+          "review_round_cap"
+        ],
+        "type": "string"
       },
       "ApprovalGateId": {
         "format": "uuid",
@@ -8488,8 +8500,18 @@
             "description": "Whether the approval requirement is met (`required_count == 0` or\n`approvals >= required_count`).",
             "type": "boolean"
           },
+          "max_rounds": {
+            "description": "The cap in force. 3 when the thread has no requirement row. 0 means the cap is off.",
+            "format": "int64",
+            "type": "integer"
+          },
           "required_count": {
             "description": "Approvals required (0 when no requirement is set).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "send_backs": {
+            "description": "Send-backs (`in_review` to `open`) since the latest accepted review-round cap, or since the thread began when none has been accepted.",
             "format": "int64",
             "type": "integer"
           }
@@ -8497,7 +8519,9 @@
         "required": [
           "required_count",
           "approvals",
-          "approvals_met"
+          "approvals_met",
+          "send_backs",
+          "max_rounds"
         ],
         "type": "object"
       },
@@ -9243,8 +9267,15 @@
         "type": "object"
       },
       "SetReviewRequirement": {
-        "description": "Set a thread's review requirement: `required_count` distinct qualifying\napprovals before it can `close`.",
+        "description": "Set a thread's review requirement: `required_count` distinct qualifying\napprovals before it can `close`. `max_rounds` is how many send-backs one\ncycle allows before a person decides. Omit it to leave the cap as it is.",
         "properties": {
+          "max_rounds": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "required_count": {
             "format": "int64",
             "type": "integer"
@@ -11728,6 +11759,11 @@
             "format": "date-time",
             "type": "string"
           },
+          "max_rounds": {
+            "description": "Send-backs allowed in one cycle before a person decides. 0 is uncapped. A missing row still means 3.",
+            "format": "int64",
+            "type": "integer"
+          },
           "required_count": {
             "format": "int64",
             "type": "integer"
@@ -11743,6 +11779,7 @@
         "required": [
           "thread_id",
           "required_count",
+          "max_rounds",
           "created_at",
           "updated_at"
         ],

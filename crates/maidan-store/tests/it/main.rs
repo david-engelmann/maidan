@@ -425,6 +425,9 @@ mod review_request_changes;
 #[path = "../review_requests.rs"]
 mod review_requests;
 
+#[path = "../review_round_cap.rs"]
+mod review_round_cap;
+
 #[path = "../review_signals.rs"]
 mod review_signals;
 

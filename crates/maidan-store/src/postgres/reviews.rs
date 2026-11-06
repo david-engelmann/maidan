@@ -7,8 +7,9 @@
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    review_decision_from_waiter, Event, MemberId, ReviewDecision, ReviewStatus, ReviewSubmission,
-    ReviewVerdict, ThreadId, ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE,
+    review_decision_from_waiter, review_round_cap_prompt, ApprovalGate, Event, MemberId,
+    ReviewDecision, ReviewStatus, ReviewSubmission, ReviewVerdict, ThreadId, ThreadReview,
+    ThreadReviewRequirement, WorkspaceId, CRITICAL_REVIEW_NOTE, DEFAULT_MAX_REVIEW_ROUNDS,
     REVIEW_SKILL,
 };
 use sqlx::{PgPool, Row};
@@ -20,6 +21,7 @@ fn row_to_req(row: &sqlx::postgres::PgRow) -> ThreadReviewRequirement {
     ThreadReviewRequirement {
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
         required_count: row.get::<i64, _>("required_count"),
+        max_rounds: row.get::<i64, _>("max_rounds"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     }
@@ -53,22 +55,46 @@ pub async fn set_requirement(
     required_count: i64,
 ) -> Result<ThreadReviewRequirement, StoreError> {
     let mut conn = pool.acquire().await?;
-    set_requirement_on(&mut conn, thread_id, required_count).await
+    set_requirement_on(&mut conn, thread_id, required_count, None).await
+}
+
+#[cfg(feature = "test-support")]
+pub async fn set_rounds(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    required_count: i64,
+    max_rounds: Option<i64>,
+) -> Result<ThreadReviewRequirement, StoreError> {
+    let mut conn = pool.acquire().await?;
+    set_requirement_on(&mut conn, thread_id, required_count, max_rounds).await
 }
 
 pub(crate) async fn set_requirement_on(
     conn: &mut sqlx::PgConnection,
     thread_id: ThreadId,
     required_count: i64,
+    max_rounds: Option<i64>,
 ) -> Result<ThreadReviewRequirement, StoreError> {
+    if required_count < 0 || max_rounds.is_some_and(|n| n < 0) {
+        return Err(StoreError::InvalidInput(
+            "required_count and max_rounds must be >= 0".into(),
+        ));
+    }
     let row = sqlx::query(
-        "INSERT INTO maidan_thread_review_reqs (thread_id, required_count, created_at, updated_at)
-         VALUES ($1, $2, NOW(), NOW())
-         ON CONFLICT (thread_id) DO UPDATE SET required_count = excluded.required_count, updated_at = NOW()
-         RETURNING thread_id, required_count, created_at, updated_at",
+        "INSERT INTO maidan_thread_review_reqs
+             (thread_id, required_count, max_rounds, created_at, updated_at)
+         VALUES ($1, $2, COALESCE($3, 3), NOW(), NOW())
+         ON CONFLICT (thread_id) DO UPDATE SET
+             required_count = excluded.required_count,
+             max_rounds = CASE WHEN $4 IS NULL THEN maidan_thread_review_reqs.max_rounds
+                               ELSE excluded.max_rounds END,
+             updated_at = NOW()
+         RETURNING thread_id, required_count, max_rounds, created_at, updated_at",
     )
     .bind(thread_id.0)
     .bind(required_count)
+    .bind(max_rounds)
+    .bind(max_rounds)
     .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_req(&row))
@@ -87,7 +113,7 @@ pub(crate) async fn get_requirement_on(
     thread_id: ThreadId,
 ) -> Result<Option<ThreadReviewRequirement>, StoreError> {
     let row = sqlx::query(
-        "SELECT thread_id, required_count, created_at, updated_at
+        "SELECT thread_id, required_count, max_rounds, created_at, updated_at
          FROM maidan_thread_review_reqs WHERE thread_id = $1",
     )
     .bind(thread_id.0)
@@ -347,11 +373,98 @@ async fn submit_review_on(
         }
         None => None,
     };
+    let (escalated, approval_gate) = if reopened.is_some() {
+        escalate_round_cap(tx, workspace_id, channel_id, thread_id, reviewer_id, note).await?
+    } else {
+        (None, None)
+    };
     Ok(ReviewSubmission {
         review,
         submitted,
         reopened,
+        escalated,
+        approval_gate,
     })
+}
+
+/// Send-backs since the latest accepted review-round cap, the cap in force,
+/// and whether a review-round gate is already pending. Timestamps compare as
+/// `timestamptz`, which sqlx reads as `DateTime<Utc>`.
+async fn round_standing(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<(i64, i64, bool), StoreError> {
+    let max_rounds: i64 =
+        sqlx::query_scalar("SELECT max_rounds FROM maidan_thread_review_reqs WHERE thread_id = $1")
+            .bind(thread_id.0)
+            .fetch_optional(&mut *conn)
+            .await?
+            .unwrap_or(DEFAULT_MAX_REVIEW_ROUNDS);
+    let cutoff: Option<DateTime<Utc>> = sqlx::query_scalar(
+        "SELECT resolved_at FROM maidan_approval_gates
+         WHERE thread_id = $1 AND kind = 'review_round_cap' AND state = 'accepted'
+           AND resolved_at IS NOT NULL
+         ORDER BY resolved_at DESC
+         LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let times: Vec<DateTime<Utc>> = sqlx::query_scalar(
+        "SELECT occurred_at FROM maidan_thread_transitions
+         WHERE thread_id = $1 AND from_state = 'in_review' AND to_state = 'open'",
+    )
+    .bind(thread_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    let send_backs = times
+        .into_iter()
+        .filter(|at| cutoff.is_none_or(|cut| *at > cut))
+        .count() as i64;
+    let pending: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM maidan_approval_gates
+         WHERE thread_id = $1 AND kind = 'review_round_cap' AND state = 'pending'
+         LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok((max_rounds, send_backs, pending.is_some()))
+}
+
+async fn escalate_round_cap(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: WorkspaceId,
+    channel_id: maidan_types::ChannelId,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    note: Option<&str>,
+) -> Result<(Option<maidan_types::StoredEvent>, Option<ApprovalGate>), StoreError> {
+    let (max_rounds, send_backs, pending) = round_standing(tx, thread_id).await?;
+    if max_rounds == 0 || pending || send_backs < max_rounds {
+        return Ok((None, None));
+    }
+    let gate = super::approval_gates::open_review_round_cap(
+        tx,
+        workspace_id,
+        thread_id,
+        reviewer_id,
+        &review_round_cap_prompt(send_backs, note),
+    )
+    .await?;
+    let stored = super::events::append_in_tx(
+        tx,
+        &Event::ApprovalRequested {
+            occurred_at: gate.created_at,
+            workspace_id,
+            channel_id: Some(channel_id),
+            thread_id: Some(thread_id),
+            gate_id: gate.id,
+            requested_by: reviewer_id,
+        },
+    )
+    .await?;
+    Ok((Some(stored), Some(gate)))
 }
 
 /// Whether a change request from `reviewer_id` sends the thread back (SQLite
@@ -496,10 +609,14 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
     };
 
     let approvals_met = required_count == 0 || approvals >= required_count;
+    let mut conn = pool.acquire().await?;
+    let (max_rounds, send_backs, _) = round_standing(&mut conn, thread_id).await?;
     Ok(ReviewStatus {
         required_count,
         approvals,
         approvals_met,
+        send_backs,
+        max_rounds,
     })
 }
 
@@ -542,7 +659,7 @@ pub async fn apply_critical_review_decision(
     )
     .await?;
     if get_requirement_on(&mut tx, thread_id).await?.is_none() {
-        set_requirement_on(&mut tx, thread_id, 1).await?;
+        set_requirement_on(&mut tx, thread_id, 1, None).await?;
     }
     tx.commit().await?;
     Ok(Some(review))

@@ -599,6 +599,9 @@ mod retry_budget_e2e;
 #[path = "../review_rest_e2e.rs"]
 mod review_rest_e2e;
 
+#[path = "../review_round_cap_e2e.rs"]
+mod review_round_cap_e2e;
+
 #[path = "../review_signals_e2e.rs"]
 mod review_signals_e2e;
 

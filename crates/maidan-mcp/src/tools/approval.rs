@@ -17,11 +17,14 @@ use super::content_json;
 use crate::apps_card::with_structured;
 use crate::call_context::{CallContext, UiSupport};
 use crate::error::McpError;
-use maidan_auth::{capability::APPROVAL_GRANT, AuthContext};
+use maidan_auth::{
+    capability::{APPROVAL_GRANT, CHANNEL_ADMIN},
+    AuthContext,
+};
 use maidan_types::{
-    ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy, ApprovalRisk, AuditScope,
-    GateDecisionVia, MemberKind, NewApprovalConfirmation, NewApprovalGate, NewAuditEvent,
-    ReviewPacket,
+    ApprovalGate, ApprovalGateId, ApprovalGateKind, ApprovalGateState, ApprovalPolicy,
+    ApprovalRisk, AuditScope, GateDecisionVia, MemberKind, NewApprovalConfirmation,
+    NewApprovalGate, NewAuditEvent, ReviewPacket,
 };
 
 /// Unknown fields are rejected.
@@ -259,6 +262,9 @@ pub(super) async fn approval_decide(
         return Ok(already_resolved(&gate, call.ui));
     }
     let via = crate::client_identity::decided_via(server, auth, call).await?;
+    if gate.kind == ApprovalGateKind::ReviewRoundCap {
+        return decide_round_cap(server, auth, &gate, a.decision, note, &via, call).await;
+    }
     if a.decision == Decision::Decline {
         return resolve(
             server,
@@ -312,6 +318,61 @@ fn already_resolved(gate: &ApprovalGate, ui: UiSupport) -> Value {
         }),
         ui,
     )
+}
+
+const ROUND_CAP_REFUSAL: &str = "only a person or channel admin can decide a review-round cap gate";
+
+/// A review-round cap is decided by a person or by governance. Declining
+/// takes `approval:grant` or `channel:admin`. Accepting takes `approval:grant`
+/// below the workspace threshold, including when the caller sent the work
+/// back. An agent token with only `workspace:write` is refused. A human token
+/// without `approval:grant` still gets the confirmation link.
+async fn decide_round_cap(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    gate: &ApprovalGate,
+    decision: Decision,
+    note: Option<String>,
+    via: &GateDecisionVia,
+    call: &CallContext,
+) -> Result<Value, McpError> {
+    let admin = auth.bypass || auth.has_capability(CHANNEL_ADMIN);
+    let grant = auth.bypass || auth.has_capability(APPROVAL_GRANT);
+    if decision == Decision::Decline {
+        if admin || grant {
+            return resolve(
+                server,
+                auth,
+                gate,
+                ApprovalGateState::Declined,
+                note,
+                via,
+                "direct",
+                call.ui,
+            )
+            .await;
+        }
+        return Err(McpError::Forbidden(ROUND_CAP_REFUSAL.into()));
+    }
+    let policy = server.store.get_approval_policy(gate.workspace_id).await?;
+    if auth.bypass || (grant && !policy.needs_confirmation(gate.risk)) {
+        return resolve(
+            server,
+            auth,
+            gate,
+            ApprovalGateState::Accepted,
+            note,
+            via,
+            "approval:grant",
+            call.ui,
+        )
+        .await;
+    }
+    let member = server.store.get_member(auth.member_id).await?;
+    if member.kind != MemberKind::Human {
+        return Err(McpError::Forbidden(ROUND_CAP_REFUSAL.into()));
+    }
+    confirmation(server, auth, gate, note, call, via, &policy).await
 }
 
 async fn resolve(

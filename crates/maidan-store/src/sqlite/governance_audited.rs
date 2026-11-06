@@ -8,7 +8,7 @@ use maidan_types::{
     AllowedEgressTarget, AppId, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
     ChannelMemberRole, EgressTargetId, Member, MemberFreeze, MemberId, NewAuditEvent,
     NewEgressTarget, NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent,
-    ThreadId, ThreadReviewRequirement, WorkspaceId,
+    ThreadId, WorkspaceId,
 };
 use sqlx::SqlitePool;
 
@@ -106,19 +106,37 @@ pub async fn set_review_requirement(
     pool: &SqlitePool,
     thread_id: ThreadId,
     required_count: i64,
+    max_rounds: Option<i64>,
     allow_lower: bool,
-    audit_for: AuditFor<(i64, ThreadReviewRequirement)>,
-) -> Result<(i64, ThreadReviewRequirement), StoreError> {
+    audit_for: AuditFor<maidan_types::ReviewRequirementChange>,
+) -> Result<maidan_types::ReviewRequirementChange, StoreError> {
     let mut tx = pool.begin().await?;
-    let previous = reviews::get_requirement_on(&mut tx, thread_id)
-        .await?
-        .map(|r| r.required_count)
-        .unwrap_or(0);
-    if required_count < previous && !allow_lower {
+    let existing = reviews::get_requirement_on(&mut tx, thread_id).await?;
+    let previous_count = existing.as_ref().map(|r| r.required_count).unwrap_or(0);
+    let previous_max_rounds = existing
+        .as_ref()
+        .map(|r| r.max_rounds)
+        .unwrap_or(maidan_types::DEFAULT_MAX_REVIEW_ROUNDS);
+    if required_count < previous_count && !allow_lower {
         return Err(StoreError::Conflict(crate::REVIEW_LOWER_REFUSAL.into()));
     }
-    let requirement = reviews::set_requirement_on(&mut tx, thread_id, required_count).await?;
-    let change = (previous, requirement);
+    if let Some(next) = max_rounds {
+        if next < 0 {
+            return Err(StoreError::InvalidInput("max_rounds must be >= 0".into()));
+        }
+        if maidan_types::max_rounds_loosens(previous_max_rounds, next) && !allow_lower {
+            return Err(StoreError::Conflict(
+                crate::REVIEW_ROUND_LOOSEN_REFUSAL.into(),
+            ));
+        }
+    }
+    let requirement =
+        reviews::set_requirement_on(&mut tx, thread_id, required_count, max_rounds).await?;
+    let change = maidan_types::ReviewRequirementChange {
+        previous_count,
+        previous_max_rounds,
+        requirement,
+    };
     audit::append_scoped(
         &mut tx,
         crate::audit_scope::AuditOwner::Thread(thread_id),

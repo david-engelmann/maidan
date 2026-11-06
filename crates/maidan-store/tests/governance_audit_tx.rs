@@ -118,11 +118,11 @@ where
 
     // The requirement is not lowered by a caller that may not lower it.
     store
-        .set_review_requirement_audited(t, 2, false, audit_for(ws.id, "req.raise"))
+        .set_review_requirement_audited(t, 2, None, false, audit_for(ws.id, "req.raise"))
         .await
         .unwrap();
     let refused = store
-        .set_review_requirement_audited(t, 1, false, audit_for(ws.id, "req.lower"))
+        .set_review_requirement_audited(t, 1, None, false, audit_for(ws.id, "req.lower"))
         .await;
     assert!(
         matches!(refused, Err(StoreError::Conflict(_))),
@@ -137,11 +137,14 @@ where
             .required_count,
         2
     );
-    let (from, lowered) = store
-        .set_review_requirement_audited(t, 1, true, audit_for(ws.id, "req.lower"))
+    let lowered = store
+        .set_review_requirement_audited(t, 1, None, true, audit_for(ws.id, "req.lower"))
         .await
         .unwrap();
-    assert_eq!((from, lowered.required_count), (2, 1));
+    assert_eq!(
+        (lowered.previous_count, lowered.requirement.required_count),
+        (2, 1)
+    );
 
     // Revoking an installation revokes its tokens in the same transaction.
     let installed = store.create_app_installation(install()).await.unwrap();
@@ -268,7 +271,7 @@ where
         .any(|m| m.member_id == worker.id));
     fails(
         store
-            .set_review_requirement_audited(other, 3, true, audit_for(ws.id, "x"))
+            .set_review_requirement_audited(other, 3, None, true, audit_for(ws.id, "x"))
             .await
             .map(drop),
         "requirement set",

@@ -2498,6 +2498,16 @@ macro_rules! store_delegations {
                 reviews::set_requirement(self.pool(), thread_id, required_count).await
             }
 
+            #[cfg(feature = "test-support")]
+            async fn set_review_rounds(
+                &self,
+                thread_id: ThreadId,
+                required_count: i64,
+                max_rounds: Option<i64>,
+            ) -> Result<ThreadReviewRequirement, StoreError> {
+                reviews::set_rounds(self.pool(), thread_id, required_count, max_rounds).await
+            }
+
             async fn get_review_requirement(
                 &self,
                 thread_id: ThreadId,
@@ -5979,13 +5989,15 @@ macro_rules! store_delegations {
                 &self,
                 thread_id: ThreadId,
                 required_count: i64,
+                max_rounds: Option<i64>,
                 allow_lower: bool,
-                audit: crate::AuditFor<(i64, ThreadReviewRequirement)>,
-            ) -> Result<(i64, ThreadReviewRequirement), StoreError> {
+                audit: crate::AuditFor<ReviewRequirementChange>,
+            ) -> Result<ReviewRequirementChange, StoreError> {
                 governance_audited::set_review_requirement(
                     self.pool(),
                     thread_id,
                     required_count,
+                    max_rounds,
                     allow_lower,
                     audit,
                 )

@@ -4769,7 +4769,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_review_requirement`
 
-**Set review requirement.** Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.
+**Set review requirement.** Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. max_rounds is how many send-backs one cycle allows before a person decides whether it goes around again (default 3; 0 leaves it uncapped). Omit max_rounds to leave the cap as it is. Tightening the cap needs thread:transition. Raising or removing it needs channel:admin. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -4778,6 +4778,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "max_rounds": {
+      "description": "send-backs allowed before a person decides (default 3, 0 is uncapped). Omit to leave the current cap.",
+      "type": "integer"
+    },
     "required_count": {
       "description": "approvals needed (>= 0)",
       "type": "integer"

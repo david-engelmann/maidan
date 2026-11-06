@@ -25,6 +25,48 @@ use crate::ids::{MemberId, ThreadId};
 /// close-gate.
 pub const REVIEW_SKILL: &str = "review";
 
+/// How many times a thread may be sent back from review before a person has
+/// to decide whether it gets another round. `0` leaves it uncapped. A thread
+/// with no requirement row still uses this.
+pub const DEFAULT_MAX_REVIEW_ROUNDS: i64 = 3;
+
+/// Why a declined or cancelled review-round cap keeps the thread off the queue.
+pub const REVIEW_ROUND_HELD_REASON: &str =
+    "A person declined another round of review, so this task stays off the queue.";
+
+/// Whether setting the cap to `next` loosens the cap that is in force.
+/// Uncapped is `0`. Putting a cap on an uncapped thread is a tightening.
+/// Raising a positive cap, or setting it back to `0`, is a loosening.
+pub fn max_rounds_loosens(current: i64, next: i64) -> bool {
+    (next == 0 && current != 0) || (current > 0 && next > current)
+}
+
+/// What a person reads when review has sent a task back `send_backs` times.
+/// `note` is the latest change request, trimmed and cut so the sentence stays short.
+pub fn review_round_cap_prompt(send_backs: i64, note: Option<&str>) -> String {
+    let note = note.map(str::trim).filter(|n| !n.is_empty());
+    match note {
+        Some(note) => {
+            let shown = truncate_chars(note, 160);
+            format!(
+                "Sent back {send_backs} times in review (latest note: {shown}). Accept to return this task to the queue for another round, or decline to keep it off the queue."
+            )
+        }
+        None => format!(
+            "Sent back {send_backs} times in review. Accept to return this task to the queue for another round, or decline to keep it off the queue."
+        ),
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let head: String = s.chars().take(max).collect();
+        format!("{head}…")
+    }
+}
+
 /// A reviewer's decision on a thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,8 +98,21 @@ impl ReviewDecision {
 pub struct ThreadReviewRequirement {
     pub thread_id: ThreadId,
     pub required_count: i64,
+    /// Send-backs allowed in one cycle before a person decides. `0` is uncapped.
+    /// A missing row still means [`DEFAULT_MAX_REVIEW_ROUNDS`].
+    pub max_rounds: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// One audited write of a review requirement: the counts it replaced, and the
+/// row it wrote. `previous_max_rounds` is the cap that was in force, including
+/// the default when the thread had no row yet.
+#[derive(Debug, Clone)]
+pub struct ReviewRequirementChange {
+    pub previous_count: i64,
+    pub previous_max_rounds: i64,
+    pub requirement: ThreadReviewRequirement,
 }
 
 /// A reviewer's decision record (one per `(thread, reviewer)` — re-submitting
@@ -128,12 +183,19 @@ pub struct ReviewSubmission {
     /// The `ThreadStateChanged` (`in_review` → `open`) of a change request that
     /// sent the thread back. `None` when the verdict reopened nothing.
     pub reopened: Option<crate::StoredEvent>,
+    /// The `ApprovalRequested` written when this send-back reached the cap and
+    /// opened a review-round gate. `None` when the verdict opened none.
+    pub escalated: Option<crate::StoredEvent>,
+    /// The gate `escalated` opened, when one was opened.
+    pub approval_gate: Option<crate::ApprovalGate>,
 }
 
 impl ReviewSubmission {
     /// Every event the verdict appended, oldest first.
     pub fn events(&self) -> impl Iterator<Item = &crate::StoredEvent> {
-        std::iter::once(&self.submitted).chain(self.reopened.as_ref())
+        std::iter::once(&self.submitted)
+            .chain(self.reopened.as_ref())
+            .chain(self.escalated.as_ref())
     }
 }
 
@@ -150,6 +212,12 @@ pub struct ReviewStatus {
     /// Whether the approval requirement is met (`required_count == 0` or
     /// `approvals >= required_count`).
     pub approvals_met: bool,
+    /// Send-backs (`in_review` → `open`) since the latest accepted review-round
+    /// cap, or since the thread began when none has been accepted.
+    pub send_backs: i64,
+    /// The cap in force. [`DEFAULT_MAX_REVIEW_ROUNDS`] when the thread has no
+    /// requirement row. `0` means the cap is off.
+    pub max_rounds: i64,
 }
 
 /// The result a review packet pins: the hash of its canonical JSON and who
