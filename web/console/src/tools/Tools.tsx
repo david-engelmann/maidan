@@ -36,6 +36,7 @@ import {
   taskFollowLabel,
   tasksToFollow,
   threadLinkLabel,
+  catalogIsFresh,
   catalogShouldRefresh,
   nextCatalog,
   type TaskCatalogRead,
@@ -178,9 +179,10 @@ const TASK_FETCHES = 4;
 const EMPTY_TASKS: ReadonlyMap<string, PickerTask> = new Map();
 
 type TaskCatalog = TaskCatalogView;
+type StampedCatalog = { view: TaskCatalog; at: number };
 type WorkspaceTasks = { tasks: PickerTask[]; byId: ReadonlyMap<string, PickerTask>; status: "loading" | "ready" | "error" };
 
-const taskCatalogs = new Map<string, TaskCatalog>();
+const taskCatalogs = new Map<string, StampedCatalog>();
 const taskCatalogJobs = new Map<string, Promise<TaskCatalog>>();
 const taskCatalogEpoch = new Map<string, number>();
 /** Missing threads, including a 404, so a render does not ask for the same id again. */
@@ -200,13 +202,12 @@ function catalogFromPalette(ws: string): TaskCatalog | null {
   return { tasks, channels: index.channels.map((channel) => ({ id: channel.id, name: channel.name })), error: false };
 }
 
-function peekCatalog(ws: string): TaskCatalog | null {
+function peekCatalog(ws: string, now = Date.now()): TaskCatalog | null {
   const cached = taskCatalogs.get(ws);
-  if (cached) return cached;
-  const warm = catalogFromPalette(ws);
-  if (!warm) return null;
-  taskCatalogs.set(ws, warm);
-  return warm;
+  // A fresh complete read is shown at once. A stale one is still shown while
+  // the mount asks again, and a palette snapshot is never written into the map.
+  if (cached) return catalogIsFresh(cached.at, now) || cached.view.tasks.length > 0 ? cached.view : null;
+  return catalogFromPalette(ws);
 }
 
 const NO_EXTRAS: PickerTask[] = [];
@@ -262,9 +263,11 @@ function loadCatalog(ws: string, tools: ToolsApi, board: BoardApi): Promise<Task
   if (pending) return pending;
   const epoch = taskCatalogEpoch.get(ws) ?? 0;
   const job = fetchCatalog(ws, tools, board).then((read) => {
-    if ((taskCatalogEpoch.get(ws) ?? 0) !== epoch) return taskCatalogs.get(ws) ?? nextCatalog(null, read).show;
-    const next = nextCatalog(taskCatalogs.get(ws) ?? null, read);
-    if (next.store) taskCatalogs.set(ws, next.store);
+    const stamped = taskCatalogs.get(ws);
+    if ((taskCatalogEpoch.get(ws) ?? 0) !== epoch) return stamped?.view ?? nextCatalog(null, read).show;
+    const next = nextCatalog(stamped?.view ?? null, read);
+    if (next.store) taskCatalogs.set(ws, { view: next.store, at: Date.now() });
+    else if (read.failed > 0 || read.error !== null) taskCatalogs.delete(ws);
     return next.show;
   }).finally(() => {
     if (taskCatalogJobs.get(ws) === job) taskCatalogJobs.delete(ws);

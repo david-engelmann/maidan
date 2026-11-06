@@ -77,14 +77,24 @@ export function storedCatalog(read: TaskCatalogRead): TaskCatalogView | null {
   return { tasks: read.tasks, channels: read.channels, error: false };
 }
 
+/** How long a complete catalog may stand in before Tools asks the server again. */
+export const CATALOG_TTL_MS = 15_000;
+
+/** A stored catalog is warm only inside the freshness window. */
+export function catalogIsFresh(at: number, now: number, ttl = CATALOG_TTL_MS): boolean {
+  return now - at < ttl;
+}
+
 /**
  * What to show after a read, and what to keep for the next visit.
- * A warm catalog stays on screen when the new read is partial or failed.
+ * A warm catalog stays on screen when the new read is partial or failed,
+ * but that warm copy is not written back: a partial channel must not freeze
+ * the palette's snapshot for the rest of the session.
  */
 export function nextCatalog(cached: TaskCatalogView | null, read: TaskCatalogRead): { show: TaskCatalogView; store: TaskCatalogView | null } {
   const stored = storedCatalog(read);
   if (stored) return { show: stored, store: stored };
-  if (cached && !cached.error) return { show: cached, store: cached };
+  if (cached && !cached.error) return { show: cached, store: null };
   return { show: { tasks: read.tasks, channels: read.channels, error: read.error !== null && read.tasks.length === 0 }, store: null };
 }
 

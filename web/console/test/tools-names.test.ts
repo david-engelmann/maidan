@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   NOTIFICATION_KINDS,
+  CATALOG_TTL_MS,
+  catalogIsFresh,
   catalogShouldRefresh,
   describeNotificationKind,
   nextCatalog,
@@ -60,12 +62,22 @@ test("a partial or failed task list is not cached, and a warm list stays up whil
   const stored = storedCatalog({ tasks: [task], channels: [channel], failed: 0, error: null });
   assert.deepEqual(stored, { tasks: [task], channels: [channel], error: false });
   const kept = nextCatalog(stored, { tasks: [], channels: [channel], failed: 2, error: null });
-  assert.equal(kept.store, stored);
+  assert.equal(kept.store, null);
   assert.equal(kept.show, stored);
   const fresh = nextCatalog(null, { tasks: [task], channels: [channel], failed: 1, error: null });
   assert.equal(fresh.store, null);
   assert.deepEqual(fresh.show.tasks, [task]);
   assert.equal(fresh.show.error, false);
+  const renamed = { ...task, title: "Alpha renamed" };
+  const created = { id: "n", title: "New task", channelId: "gen", channelName: "general" };
+  const again = nextCatalog(stored, { tasks: [renamed, created], channels: [channel], failed: 0, error: null });
+  assert.deepEqual(again.store?.tasks.map((item) => item.title), ["Alpha renamed", "New task"]);
+  assert.equal(again.show, again.store);
+});
+
+test("a catalog is warm for fifteen seconds and then must be read again", () => {
+  assert.equal(catalogIsFresh(1_000, 1_000 + CATALOG_TTL_MS - 1), true);
+  assert.equal(catalogIsFresh(1_000, 1_000 + CATALOG_TTL_MS), false);
 });
 
 test("task names refresh when a task is created, renamed, or the feed resyncs", () => {
