@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [432.0.0] — 2026-11-06
+
+Webhooks, federation peers, A2A push configs and workspace secrets work on the hosted service: its Worker now passes the key that encrypts them at rest.
+
+### Webhooks and workspace secrets on the hosted service
+
+- **Fixed:** the Cloudflare Worker now passes `FEDERATION_ENCRYPTION_KEY` to the server. Without it, creating a webhook, a federation peer, an A2A push config or a workspace secret on maidan.world answered 500.
+
 ## [431.0.0] — 2026-11-06
 
 Internal hosts: the hosted Maidan sends webhooks to our own Cloudflare Workers over service bindings, never across the internet. The first use is waking the review seats when work is ready, in place of polling.
