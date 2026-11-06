@@ -1,9 +1,17 @@
+use std::fmt;
+
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 /// Plaintext bearer secret shown once at mint time (`maid_<uuid><uuid>`).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TokenSecret(String);
+
+impl fmt::Debug for TokenSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TokenSecret([REDACTED])")
+    }
+}
 
 impl TokenSecret {
     pub fn generate() -> Self {
@@ -20,8 +28,14 @@ impl TokenSecret {
 /// Plaintext cross-organization share-ticket secret shown once at issuance.
 /// The distinct prefix prevents it from being mistaken for an ordinary
 /// workspace bearer token at either auth boundary.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ShareTicketSecret(String);
+
+impl fmt::Debug for ShareTicketSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ShareTicketSecret([REDACTED])")
+    }
+}
 
 impl ShareTicketSecret {
     pub fn generate() -> Self {
@@ -38,8 +52,14 @@ impl ShareTicketSecret {
 /// Plaintext workspace-invite secret shown once at minting. The `maid_inv_`
 /// prefix keeps it from being taken for a bearer token, and the OIDC
 /// sign-up route uses it to tell an invite from a sign-up code.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WorkspaceInviteSecret(String);
+
+impl fmt::Debug for WorkspaceInviteSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("WorkspaceInviteSecret([REDACTED])")
+    }
+}
 
 impl WorkspaceInviteSecret {
     pub fn generate() -> Self {
@@ -75,6 +95,21 @@ pub fn hashes_equal(stored_hash: &str, computed_hash: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_redacts_every_secret() {
+        let token = TokenSecret::generate();
+        let ticket = ShareTicketSecret::generate();
+        let invite = WorkspaceInviteSecret::generate();
+        let rendered = format!("{token:?} {ticket:?} {invite:?}");
+        assert_eq!(
+            rendered,
+            "TokenSecret([REDACTED]) ShareTicketSecret([REDACTED]) WorkspaceInviteSecret([REDACTED])"
+        );
+        assert!(!rendered.contains(token.as_str()));
+        assert!(!rendered.contains(ticket.as_str()));
+        assert!(!rendered.contains(invite.as_str()));
+    }
 
     #[test]
     fn hash_is_64_hex_chars() {
