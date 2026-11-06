@@ -10,17 +10,20 @@
 set -euo pipefail
 
 root="${ARTIFACT_LOCALFS_ROOT:-/tmp/maidan-demo-artifacts}"
-# The demo only writes under /tmp. Refuse a path that escapes it, walks up, or
-# carries shell-metacharacters a later operator might expand.
+# The demo only writes under a subdirectory of /tmp. A bare /tmp/ would pass a
+# /tmp/* glob and then `rm -rf` wipe the whole temp tree.
+while [ "${root%/}" != "$root" ]; do
+  root="${root%/}"
+done
 case "$root" in
-  /tmp/*) ;;
+  /tmp/?*) ;;
   *)
-    echo "ARTIFACT_LOCALFS_ROOT must be an absolute path under /tmp" >&2
+    echo "ARTIFACT_LOCALFS_ROOT must be a subdirectory of /tmp" >&2
     exit 1
     ;;
 esac
 case "$root" in
-  *..*|*$'\n'*|*$'\r'*|*'*'*|*'?'*|*'{'*)
+  *..*|*$'\n'*|*$'\r'*|*'*'*|*'?'*|*'{'*|*/.|*/./*|*//*)
     echo "ARTIFACT_LOCALFS_ROOT is not a safe path: $root" >&2
     exit 1
     ;;
