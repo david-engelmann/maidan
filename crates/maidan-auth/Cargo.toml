@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "AuthN/AuthZ for Maidan: tokens, capabilities, ACLs."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
@@ -38,4 +41,8 @@ chrono.workspace = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
 

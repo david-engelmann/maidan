@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Core domain types for Maidan."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [features]
 openapi = ["dep:utoipa"]
@@ -26,6 +29,10 @@ utoipa = { version = "5", optional = true, features = ["chrono", "uuid"] }
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

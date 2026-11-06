@@ -2,9 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ./scripts/check-build-bin-dir.sh
-cargo test -p maidan-types --test event_kinds_contract
-cargo test -p maidan-types --test event_surface_disposition_contract
-cargo test -p maidan-types --test ws_subscribe_filter_schema
+cargo test -p maidan-types --test it event_kinds_contract::
+cargo test -p maidan-types --test it event_surface_disposition_contract::
+cargo test -p maidan-types --test it ws_subscribe_filter_schema::
 cargo test -p maidan-server --test it portable_frame_goldens::
 ./scripts/check-mcp-resource-notifications.sh
 cargo test -p maidan-mcp --test it tools_catalog_contract::

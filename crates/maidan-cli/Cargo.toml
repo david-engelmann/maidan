@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Operator CLI for Maidan."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [[bin]]
 name = "maidan"
@@ -44,9 +47,5 @@ testcontainers-modules = { version = "0.11", features = ["postgres"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[test]]
-name = "stdio_smoke"
-path = "tests/stdio_smoke.rs"
-
-[[test]]
-name = "reindex_smoke"
-path = "tests/reindex_smoke.rs"
+name = "it"
+path = "tests/it/main.rs"
