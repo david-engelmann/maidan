@@ -22,9 +22,11 @@ class UsageError(ValueError):
 def _at(obj: Any, path: str) -> Any:
     value = obj
     for key in path.split("."):
-        if not isinstance(value, dict):
+        if key in ("__proto__", "prototype", "constructor"):
             return None
-        value = value.get(key)
+        if not isinstance(value, dict) or key not in value:
+            return None
+        value = value[key]
     return value
 
 
@@ -252,6 +254,9 @@ def normalize_usage(
     ledger can report what the lane saved. It is refused on any other call,
     as the server refuses it.
     """
+    if not isinstance(provider, str) or not provider.strip():
+        raise UsageError("provider is required")
+    provider = provider.strip()
     if provider not in _READERS:
         raise UsageError(f"unknown provider {provider}")
     if not isinstance(response, dict):
@@ -261,7 +266,13 @@ def normalize_usage(
     chosen = (model if model is not None else got.get("model") or "").strip()
     if not chosen:
         raise UsageError("model is required: the response names none, so pass model=")
-    evidence: dict = {"provider": evidence_provider or name}
+    if evidence_provider is None:
+        evidence_name = name
+    else:
+        if not isinstance(evidence_provider, str) or not evidence_provider.strip():
+            raise UsageError("evidence provider is required")
+        evidence_name = evidence_provider.strip()
+    evidence: dict = {"provider": evidence_name}
     if got.get("service_tier"):
         evidence["service_tier"] = got["service_tier"]
     if got.get("cache_miss_reason"):

@@ -15,6 +15,14 @@ const SRC = resolve(here, "../src");
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
 export const PENDING = new Map();
 
+/** Paths with `..`, empty segments, or a non-absolute form are not console API calls. */
+export function isSafeApiPath(path) {
+  if (typeof path !== "string" || !path.startsWith("/")) return false;
+  if (path.includes("?") || path.includes("#")) return false;
+  const parts = path.split("/");
+  return parts.slice(1).every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
+
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me|tools|ui\/api)(\/|$|\?)/;
 const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/g;
 
@@ -33,6 +41,7 @@ export function callsIn(text) {
       const raw = m[1] ?? m[2] ?? m[3];
       if (!API_ROOTS.test(raw)) continue;
       const path = raw.split("?")[0].replace(/\$\{[^}]*\}/g, "{}");
+      if (!isSafeApiPath(path)) continue;
       for (const method of new Set(methods)) out.push({ line: i + 1, method, path });
     }
   });
@@ -40,6 +49,7 @@ export function callsIn(text) {
 }
 
 export function matches(spec, method, path) {
+  if (!method || !isSafeApiPath(path)) return false;
   const re = new RegExp(`^${method} ${path.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\\?\{\\?\}|\{\}/g, "[^/]+")}$`);
   return routes(spec).some((r) => re.test(r));
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { callsIn, matches, check, PENDING } from "./check-spec.mjs";
+import { callsIn, matches, check, PENDING, isSafeApiPath } from "./check-spec.mjs";
 import { tsType, generate } from "./gen-api-types.mjs";
 
 const spec = {
@@ -46,4 +46,17 @@ test("single-quoted paths and the /tools and /ui/api roots are checked too", () 
   assert.deepEqual(callsIn("return this.get('/threads/nope');"), [{ line: 1, method: "GET", path: "/threads/nope" }]);
   assert.deepEqual(callsIn("return this.get(`/tools`);"), [{ line: 1, method: "GET", path: "/tools" }]);
   assert.deepEqual(callsIn("return this.get(`/ui/api/messages/${m}/votes`);"), [{ line: 1, method: "GET", path: "/ui/api/messages/{}/votes" }]);
+});
+
+test("paths with empty or parent segments are not console API calls", () => {
+  assert.equal(isSafeApiPath("/threads/{}"), true);
+  assert.equal(isSafeApiPath("/threads/../members"), false);
+  assert.equal(isSafeApiPath("/threads//id"), false);
+  assert.equal(isSafeApiPath("threads/x"), false);
+  assert.equal(isSafeApiPath("/threads/{}?x=1"), false);
+  assert.deepEqual(callsIn('await this.send("GET", `/threads/${id}/../members`);'), []);
+  assert.deepEqual(callsIn('await this.send("GET", `/threads//${id}`);'), []);
+  assert.ok(!matches(spec, "GET", "/threads/../members"));
+  assert.ok(!matches(spec, "GET", "/threads//id"));
+  assert.ok(!matches(spec, "", "/threads/{}"));
 });

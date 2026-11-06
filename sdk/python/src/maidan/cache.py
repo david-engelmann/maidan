@@ -26,11 +26,22 @@ __all__ = [
     "cache_salt",
     "gateway_session",
     "routing_hints",
+    "require_text",
 ]
 
 
 class CacheError(ValueError):
     """A cache or gateway helper given an input it cannot place."""
+
+
+def require_text(value: object, label: str) -> str:
+    """A required non-blank string; whitespace-only values are refused."""
+    if not isinstance(value, str):
+        raise CacheError(f"{label} is required")
+    text = value.strip()
+    if not text:
+        raise CacheError(f"{label} is required")
+    return text
 
 
 @dataclass(frozen=True)
@@ -58,6 +69,9 @@ def cached_prefix(provider: str, text: str, ttl: str | None = None) -> Any:
     minutes); the rest cache a matching prefix on their own, so the prefix is
     only put first.
     """
+    provider = require_text(provider, "provider")
+    if not isinstance(text, str):
+        raise CacheError("prefix text must be a string")
     if ttl is not None and ttl not in _TTLS:
         raise CacheError("ttl must be 5m or 1h")
     if ttl is not None and provider not in ("anthropic", "bedrock-converse"):
@@ -88,14 +102,16 @@ def cache_key(workspace_id: str, group: str) -> str:
     The workspace id is hashed in, so the same group name in two workspaces
     gives two keys, and the key reveals neither.
     """
-    if not workspace_id or not group:
-        raise CacheError("workspace id and group are required")
+    workspace_id = require_text(workspace_id, "workspace id")
+    group = require_text(group, "group")
     digest = hashlib.sha256(f"{workspace_id}\n{group}".encode("utf-8")).hexdigest()
     return f"maidan-{digest[:32]}"
 
 
 def cache_key_fields(provider: str, key: str) -> dict:
     """Where ``key`` goes for a provider that takes one; ``{}`` for one that does not."""
+    provider = require_text(provider, "provider")
+    key = require_text(key, "cache key")
     if provider in ("openai-responses", "openai-chat", "mistral", "xai-responses"):
         return {"body": {"prompt_cache_key": key}}
     if provider == "xai-chat":
@@ -119,8 +135,8 @@ def gateway_session(gateway: str, thread_id: str, path: str = "/", name: str = "
 
     Helicone also takes ``path`` and ``name``.
     """
-    if not thread_id:
-        raise CacheError("thread id is required")
+    gateway = require_text(gateway, "gateway")
+    thread_id = require_text(thread_id, "thread id")
     if gateway == "openrouter":
         return {"body": {"session_id": thread_id}}
     if gateway == "helicone":
@@ -162,9 +178,12 @@ def routing_hints(router: str, thread_id: str, parent_thread_id: str | None = No
     the key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only:
     no router accepts a prefix hash from a client.
     """
-    if not thread_id:
-        raise CacheError("thread id is required")
-    parent = parent_thread_id or None
+    router = require_text(router, "router")
+    thread_id = require_text(thread_id, "thread id")
+    if parent_thread_id is None or parent_thread_id == "":
+        parent = None
+    else:
+        parent = require_text(parent_thread_id, "parent thread id")
     spec = _ONE_KEY_ROUTERS.get(router)
     if spec is None:
         raise CacheError(f"unknown router {router}")
@@ -189,8 +208,7 @@ def cache_salt(workspace_id: str, salt_key: Union[str, bytes]) -> dict:
     bytes. Set the salt from a trusted server-side component that holds the key,
     never from an end client. It is a cache partition, not an auth token.
     """
-    if not workspace_id:
-        raise CacheError("workspace id is required")
+    workspace_id = require_text(workspace_id, "workspace id")
     key = salt_key.encode("utf-8") if isinstance(salt_key, str) else bytes(salt_key)
     if len(key) < MIN_SALT_KEY_BYTES:
         raise CacheError(f"salt key must be at least {MIN_SALT_KEY_BYTES} bytes")
