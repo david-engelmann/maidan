@@ -13,6 +13,7 @@ struct BenchCtx {
 fn sqlite_ctx() -> BenchCtx {
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     rt.block_on(async {
+        // sqlite-pools: bare on purpose
         let pool = SqlitePoolOptions::new()
             .connect("sqlite::memory:")
             .await

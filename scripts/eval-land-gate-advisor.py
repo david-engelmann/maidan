@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import os
 import statistics
 import sys
@@ -21,9 +22,15 @@ from typing import Any
 
 COLORS = ("green", "amber", "red")
 INPUT_USD_PER_TOKEN = 0.042 / 1_000_000
+MAX_CASES_BYTES = 5_000_000
+MAX_CASES = 10_000
+_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
+    size = path.stat().st_size
+    if size > MAX_CASES_BYTES:
+        raise ValueError(f"{path}: cases file exceeds {MAX_CASES_BYTES} bytes")
     cases: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as source:
         for line_number, line in enumerate(source, 1):
@@ -40,18 +47,44 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
                     f"{path}:{line_number}: actual must be one of {', '.join(COLORS)}"
                 )
             cases.append(case)
+            if len(cases) > MAX_CASES:
+                raise ValueError(f"{path}: more than {MAX_CASES} cases")
     if not cases:
         raise ValueError(f"{path}: no evaluation cases")
     return cases
 
 
+
+def require_advisor_url(url: str) -> str:
+    """Only http(s) URLs with a host; no userinfo, fragments, or blank hosts."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("advisor URL must be http or https")
+    if not parsed.hostname:
+        raise ValueError("advisor URL must include a host")
+    if parsed.username or parsed.password:
+        raise ValueError("advisor URL must not include userinfo")
+    if parsed.fragment:
+        raise ValueError("advisor URL must not include a fragment")
+    return url.rstrip("/")
+
+
+def require_thread_id(thread_id: str) -> str:
+    if not _THREAD_ID_RE.fullmatch(thread_id or ""):
+        raise ValueError("thread id must be 1..128 chars of [A-Za-z0-9_.:-]")
+    return thread_id
+
+
 def call_advisor(url: str, thread_id: str, token: str, case: dict[str, Any]) -> dict[str, Any]:
+    base = require_advisor_url(url)
+    tid = require_thread_id(thread_id)
     body = {"state": case["state"]}
     for optional in ("instructions", "thresholds"):
         if optional in case:
             body[optional] = case[optional]
     request = urllib.request.Request(
-        f"{url.rstrip('/')}/threads/{thread_id}/land-gate/advice",
+        f"{base}/threads/{tid}/land-gate/advice",
         data=json.dumps(body).encode(),
         headers={
             "Authorization": f"Bearer {token}",

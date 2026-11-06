@@ -50,7 +50,15 @@ def main() -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("no command given")
+    if args.time <= 0:
+        parser.error("--time must be a positive number of seconds")
+    if not (args.mem_gb > 0) or args.mem_gb != args.mem_gb:
+        parser.error("--mem-gb must be a positive finite number of gigabytes")
+    if args.mem_gb == float("inf"):
+        parser.error("--mem-gb must be a positive finite number of gigabytes")
     limit_kb = int(args.mem_gb * 1024 * 1024)
+    if limit_kb <= 0:
+        parser.error("--mem-gb is too small to enforce")
     child = subprocess.Popen(command, start_new_session=True)
     pgid = child.pid
     started = time.monotonic()

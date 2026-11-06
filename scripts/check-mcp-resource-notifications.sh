@@ -39,6 +39,12 @@ if ! grep -qF "resources/subscribe" "$SERVER"; then
   echo "MCP resources/subscribe not found in $SERVER"
   exit 1
 fi
+for sym in "resources/list" "resources/templates/list"; do
+  if ! grep -qF "$sym" "$SERVER"; then
+    echo "MCP $sym not found in $SERVER"
+    exit 1
+  fi
+done
 
 if ! grep -qF "mcp/notifications" crates/maidan-server/src/app.rs; then
   echo "GET /mcp/notifications route missing"
