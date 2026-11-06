@@ -381,10 +381,6 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         with self.assertRaises(seat_runner.ConfigError):
             seat_runner.load_config(path, dict(os.environ))
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_a_review_thread_runs_the_review_prompt_and_other_kinds_the_default(self):
         review = self.tmp / "review-prompt.md"
         review.write_text("REVIEW-PROMPT-MARKER: red-team this pull request.")
@@ -406,3 +402,7 @@ if __name__ == "__main__":
         self.addCleanup(maidan.close)
         with self.assertRaises(seat_runner.ConfigError):
             self.runner(maidan, harness_extra=f'prompts = {{ review = "{self.tmp / "missing.md"}" }}')
+
+
+if __name__ == "__main__":
+    unittest.main()

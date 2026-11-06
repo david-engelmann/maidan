@@ -8,6 +8,7 @@ client (``_WebSocketConn``) so the package needs no third-party dependency.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 import socket
@@ -23,7 +24,7 @@ import uuid
 from typing import Any, Callable, Iterator, List, Optional
 
 from .cache import BootPrefix, boot_prefix
-from .errors import PROBLEM_BASE, MaidanError, problem_error
+from .errors import PROBLEM_BASE, MaidanError, UnreadableResponseError, problem_error
 from .models import (
     Artifact,
     Channel,
@@ -111,6 +112,23 @@ def retry_delay(attempt: int, retry_after: Optional[str] = None, rand: Callable[
             pass
     base = min(8.0, 0.5 * (2 ** attempt))
     return base / 2 + rand() * (base / 2)
+
+
+def _not_json(raw: bytes) -> bool:
+    if not raw:
+        return False
+    try:
+        json.loads(raw.decode("utf-8"))
+    except ValueError:
+        return True
+    return False
+
+
+def _json(method: str, path: str, status: int, raw: bytes) -> Any:
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except ValueError as e:
+        raise UnreadableResponseError(status, None, f"{method} {path}: HTTP {status} answer is not JSON: {e}") from None
 
 
 def _retryable(status: int, raw: bytes) -> bool:
@@ -274,7 +292,7 @@ class _Threads:
     def set_result(self, thread_id: str, result: Any, claim_lease_id: str) -> ThreadResult:
         """PUT /threads/{id}/result, under your live claim: pass the claim's ``claim_lease_id``."""
         body = {"result": result, "claim_lease_id": claim_lease_id}
-        return ThreadResult.from_dict(self._c._req("PUT", f"/threads/{thread_id}/result", body))
+        return self._c._model(ThreadResult, "PUT", f"/threads/{thread_id}/result", body)
 
     def get_result(self, thread_id: str) -> ThreadResult:
         return ThreadResult.from_dict(self._c._req("GET", f"/threads/{thread_id}/result"))
@@ -349,8 +367,24 @@ class Client:
         Returns the claimed thread (plus a content-addressed ``pin``), or ``None``
         when nothing is claimable. ``body`` may set ``lease_secs``.
         """
-        raw = self._req("POST", f"/channels/{channel_id}/threads/claim-next", body or {})
-        return None if raw is None else ClaimedThread.from_dict(raw)
+        path = f"/channels/{channel_id}/threads/claim-next"
+        status, raw = self._req_status("POST", path, body or {})
+        if raw is None:
+            return None
+        # A claim without these cannot be renewed, finished or released, and
+        # the model would pass a wrong-typed id straight through.
+        if not (isinstance(raw, dict) and isinstance(raw.get("id"), str) and isinstance(raw.get("claim_lease_id"), str)):
+            raise UnreadableResponseError(
+                status, None, f"POST {path}: HTTP {status} claim without a string id and claim_lease_id; "
+                "if one was taken it is held until its lease lapses"
+            )
+        try:
+            return ClaimedThread.from_dict(raw)
+        except ValueError as e:
+            raise UnreadableResponseError(
+                status, None, f"POST {path}: HTTP {status} claim this client cannot read ({e}); "
+                f"thread {raw['id']} is held under lease {raw['claim_lease_id']} until it lapses"
+            ) from None
 
     def renew_claim(
         self,
@@ -364,12 +398,11 @@ class Client:
         (``claim.claim_lease_id``). Presenting it is what stops a stale holder
         from extending a lease the next owner has already taken over.
         """
-        return Thread.from_dict(
-            self._req(
-                "POST",
-                f"/threads/{thread_id}/claim/renew",
-                {"claim_lease_id": claim_lease_id, "lease_secs": lease_secs},
-            )
+        return self._model(
+            Thread,
+            "POST",
+            f"/threads/{thread_id}/claim/renew",
+            {"claim_lease_id": claim_lease_id, "lease_secs": lease_secs},
         )
 
     def _capture_room_lsn(self, headers: Any) -> None:
@@ -381,12 +414,15 @@ class Client:
             self.last_room_lsn = parsed
 
     # --- HTTP core ---
-    def _send(self, method: str, path: str, headers: dict, data: Optional[bytes]) -> tuple:
+    def _send(self, method: str, path: str, headers: dict, data: Optional[bytes], json_answer: bool = False) -> tuple:
         """Send with retries; return ``(status, headers, body)`` of the last answer.
 
         A write carries one ``Idempotency-Key`` across all its attempts, so a
         retry after a lost response gets the first answer back instead of
-        writing twice."""
+        writing twice. With ``json_answer``, a 2xx whose body is not JSON (cut
+        off on the way) is retried like a lost answer: on a write, the same key
+        gets the stored answer back, where a fresh call would claim again.
+        No answer after the last try raises :class:`MaidanError` with status 0."""
         # Cloudflare answers urllib's default agent with error 1010 (a 403),
         # so a client of a host behind it, maidan.world among them, names itself.
         headers = {"authorization": f"Bearer {self.token}", "user-agent": f"maidan-python/{__version__}", **headers}
@@ -404,14 +440,21 @@ class Client:
                     raw = e.read()
                 except Exception:
                     raw = b""
-            except (urllib.error.URLError, OSError):
+                finally:
+                    e.close()
+            # An answer cut off mid-body (IncompleteRead) is an
+            # http.client.HTTPException, not an OSError: it escaped unretried.
+            except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
                 if attempt >= self.max_retries:
-                    raise
+                    raise MaidanError(
+                        0, None, f"{method} {path}: no answer after {attempt + 1} tries: {type(e).__name__}: {e}"
+                    ) from e
                 self._sleep(retry_delay(attempt))
                 attempt += 1
                 continue
             self._capture_room_lsn(resp_headers)
-            if attempt < self.max_retries and _retryable(status, raw):
+            unreadable = json_answer and 200 <= status < 300 and _not_json(raw)
+            if attempt < self.max_retries and (unreadable or _retryable(status, raw)):
                 ra = resp_headers.get("retry-after") if resp_headers is not None else None
                 self._sleep(retry_delay(attempt, ra))
                 attempt += 1
@@ -419,27 +462,43 @@ class Client:
             return status, resp_headers, raw
 
     def _req(self, method: str, path: str, body: Any = None) -> Any:
+        return self._req_status(method, path, body)[1]
+
+    def _req_status(self, method: str, path: str, body: Any = None) -> tuple:
+        """``(status, parsed JSON body)`` of a successful answer."""
         headers = {}
         data = None
         if body is not None:
             headers["content-type"] = "application/json"
             data = json.dumps(body).encode("utf-8")
-        status, resp_headers, raw = self._send(method, path, headers, data)
+        status, resp_headers, raw = self._send(method, path, headers, data, json_answer=True)
         if status >= 400:
             self._raise(status, resp_headers, raw)
         if status == 204 or not raw:
-            return None
-        return json.loads(raw.decode("utf-8"))
+            return status, None
+        return status, _json(method, path, status, raw)
+
+    def _model(self, cls: Any, method: str, path: str, body: Any = None) -> Any:
+        """The answer as ``cls``; one the model cannot read raises
+        :class:`UnreadableResponseError` rather than a bare ``ValueError``
+        that ``except MaidanError`` would miss."""
+        status, raw = self._req_status(method, path, body)
+        try:
+            return cls.from_dict(raw)
+        except ValueError as e:
+            raise UnreadableResponseError(
+                status, None, f"{method} {path}: HTTP {status} answer this client cannot read: {e}"
+            ) from None
 
     def _req_raw(self, method: str, path: str, body: Optional[bytes] = None) -> Any:
-        status, resp_headers, raw = self._send(method, path, {}, body)
+        status, resp_headers, raw = self._send(method, path, {}, body, json_answer=method != "GET")
         if status >= 400:
             self._raise(status, resp_headers, raw)
         if method == "GET":
             return raw
         if status == 204 or not raw:
             return None
-        return json.loads(raw.decode("utf-8"))
+        return _json(method, path, status, raw)
 
     def _raise(self, status: int, headers: Any, raw: bytes) -> None:
         try:

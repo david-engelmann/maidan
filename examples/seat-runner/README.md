@@ -38,7 +38,14 @@ Each seat takes the configured repositories in turn. For each run:
    removed from their environment, since they run code from the checkout.
    If one fails, nothing is claimed.
 4. **Claim.** `POST /workspaces/{wid}/threads/claim-next` with
-   `engine: "session"` and the repo, then acknowledge. A `null` claim ends
+   `engine: "session"` and the repo, then acknowledge. Each carries one
+   `Idempotency-Key` across up to `maidan.claim_attempts` tries, retried on
+   no answer (including one cut short or not JSON), 408, 429, 5xx and a key
+   still in flight, waiting the server's `Retry-After` (at most a minute) or
+   `maidan.claim_backoff_secs`, doubled per try. The key is what makes the
+   retry safe: a claim whose answer was lost is answered again, not taken
+   twice. A claim answer without a string `id` and `claim_lease_id` runs no
+   harness; with nothing to release it by, its lease bounds it. A `null` claim ends
    the run. Only a thread whose footprint names the repo is claimed, so a
    producer gives each thread one (`PUT /threads/{id}/footprint`). A
    footprint needs at least one item: an empty `items` list clears it, and
@@ -73,8 +80,12 @@ Each run writes one JSON line to stdout. It has `seat`, `repo` and
 `outcome`, plus `thread`, `exit` and `release` when a claim was taken. The
 outcome is one of `ran`, `no_work`, `host_busy`, `preflight_failed`,
 `timed_out`, `out_of_memory`, `failed`, `claim_failed`, `ack_failed`,
-`queue_unreachable`, `stopped` or `error`. An unreachable server or an
-unexpected error is logged and the seat carries on after `idle_secs`.
+`queue_unreachable`, `queue_unreadable`, `stopped` or `error`, with
+`detail` saying why when it is a failure. `queue_unreadable` is a
+queue-depth answer without a whole-number `ready`: it is not read as an empty
+queue. An unreachable server or an unexpected error is logged and the seat
+carries on after `idle_secs`. Every request gives up after
+`maidan.timeout_secs` (default 60) without an answer.
 
 SIGTERM or SIGINT stops every seat. Each running harness and everything
 below it gets SIGTERM, then SIGKILL after `kill_grace_secs`, and only then is
@@ -124,3 +135,10 @@ check that:
   starting the harness;
 - a harness that ignores SIGTERM is SIGKILLed before its claim is released;
 - the preflight never sees the seat token or `secret_env`.
+
+`scripts/test-mcp-fault-injection.py` puts the runner behind
+`scripts/mcp-fault-proxy.py` and injects one fault per test: latency, a
+timeout, a dropped connection, a 500/502/503 with and without `Retry-After`,
+an answer cut short, a JSON-RPC error and a drifted schema. Each run either
+recovers within its tries or stops with one line, holding no claim it could
+release and never claiming twice.
