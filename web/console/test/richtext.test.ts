@@ -89,14 +89,27 @@ test("message text: a rule is not a table row, and a tilde fence keeps its langu
 });
 
 test("message text: a route name stops at a word boundary", () => {
-  for (const raw of ["#/needsX", "#/people-ops", "#/threadsfoo"]) {
+  for (const raw of ["#/needsX", "#/people-ops", "#/threadsfoo", "#/boardroom"]) {
     assert.deepEqual(parseInline(raw), [{ kind: "text", text: raw }]);
   }
   assert.deepEqual(parseInline("#/needs"), [{ kind: "link", href: "#/needs", text: "#/needs", internal: true }]);
+  assert.deepEqual(parseInline("(#/board)"), [
+    { kind: "text", text: "(" },
+    { kind: "link", href: "#/board", text: "#/board", internal: true },
+    { kind: "text", text: ")" },
+  ]);
   assert.deepEqual(parseInline("(#/people)"), [
     { kind: "text", text: "(" },
     { kind: "link", href: "#/people", text: "#/people", internal: true },
     { kind: "text", text: ")" },
+  ]);
+  assert.deepEqual(parseInline("#/threads/t/123."), [
+    { kind: "link", href: "#/threads/t/123", text: "#/threads/t/123", internal: true },
+    { kind: "text", text: "." },
+  ]);
+  assert.deepEqual(parseInline("#/people,"), [
+    { kind: "link", href: "#/people", text: "#/people", internal: true },
+    { kind: "text", text: "," },
   ]);
   assert.deepEqual(parseInline("#/threads/t/th_1"), [
     { kind: "link", href: "#/threads/t/th_1", text: "#/threads/t/th_1", internal: true },
