@@ -360,3 +360,250 @@ fn every_allowlisted_import_resolves() {
         out.error_kind, out.error
     );
 }
+
+fn small() -> WasiLimits {
+    WasiLimits {
+        fuel: 5_000_000,
+        memory_bytes: 64 * 1024,
+    }
+}
+
+fn assert_marks_error(src: &str) {
+    let started = std::time::Instant::now();
+    let out = maidan_wasi::run(&wat(src), &invoke(), small());
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "syscall took {:?}: {:?}",
+        started.elapsed(),
+        out.error
+    );
+    assert!(
+        out.ok,
+        "guest trapped instead of returning errno: {:?}",
+        out.error
+    );
+    assert_eq!(
+        out.stdout, "E",
+        "errno was zero or the guest did not report it"
+    );
+}
+
+#[test]
+fn fd_write_rejects_a_four_gib_iovec_without_allocating_it() {
+    assert_marks_error(
+        r#"(module
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 1)
+             (data (i32.const 64) "E")
+             (func (export "_start")
+               (i32.store (i32.const 0) (i32.const 32))
+               (i32.store (i32.const 4) (i32.const -1))
+               (if (i32.ne
+                     (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 16))
+                     (i32.const 0))
+                 (then
+                   (i32.store (i32.const 48) (i32.const 64))
+                   (i32.store (i32.const 52) (i32.const 1))
+                   (drop (call $fd_write
+                           (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#,
+    );
+}
+
+#[test]
+fn random_get_rejects_multi_gigabyte_lengths_without_allocating_them() {
+    for len in ["2147483647", "-1"] {
+        assert_marks_error(&format!(
+            r#"(module
+                 (import "wasi_snapshot_preview1" "random_get"
+                   (func $random_get (param i32 i32) (result i32)))
+                 (import "wasi_snapshot_preview1" "fd_write"
+                   (func $fd_write (param i32 i32 i32 i32) (result i32)))
+                 (memory (export "memory") 1)
+                 (data (i32.const 64) "E")
+                 (func (export "_start")
+                   (if (i32.ne (call $random_get (i32.const 32) (i32.const {len})) (i32.const 0))
+                     (then
+                       (i32.store (i32.const 48) (i32.const 64))
+                       (i32.store (i32.const 52) (i32.const 1))
+                       (drop (call $fd_write
+                               (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#
+        ));
+    }
+}
+
+#[test]
+fn scatter_gather_lengths_that_overflow_or_run_away_return_errno() {
+    for (iovs, len) in [("2147483644", "2"), ("-1", "-1"), ("0", "10000")] {
+        assert_marks_error(&format!(
+            r#"(module
+                 (import "wasi_snapshot_preview1" "fd_write"
+                   (func $fd_write (param i32 i32 i32 i32) (result i32)))
+                 (import "wasi_snapshot_preview1" "fd_read"
+                   (func $fd_read (param i32 i32 i32 i32) (result i32)))
+                 (memory (export "memory") 1)
+                 (data (i32.const 64) "E")
+                 (func (export "_start")
+                   (if (i32.and
+                         (i32.ne (call $fd_write
+                                   (i32.const 1) (i32.const {iovs}) (i32.const {len}) (i32.const 16))
+                                 (i32.const 0))
+                         (i32.ne (call $fd_read
+                                   (i32.const 0) (i32.const {iovs}) (i32.const {len}) (i32.const 16))
+                                 (i32.const 0)))
+                     (then
+                       (i32.store (i32.const 48) (i32.const 64))
+                       (i32.store (i32.const 52) (i32.const 1))
+                       (drop (call $fd_write
+                               (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#
+        ));
+    }
+}
+
+#[test]
+fn negative_pointers_are_faults_on_every_checked_call() {
+    assert_marks_error(
+        r#"(module
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "fd_read"
+               (func $fd_read (param i32 i32 i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "fd_fdstat_get"
+               (func $fd_fdstat_get (param i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "args_sizes_get"
+               (func $args_sizes_get (param i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "environ_sizes_get"
+               (func $environ_sizes_get (param i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "clock_time_get"
+               (func $clock_time_get (param i32 i64 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "clock_res_get"
+               (func $clock_res_get (param i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "random_get"
+               (func $random_get (param i32 i32) (result i32)))
+             (memory (export "memory") 1)
+             (data (i32.const 64) "E")
+             (func (export "_start")
+               (local $bad i32)
+               (local.set $bad (i32.const 1))
+               (if (i32.eq (call $fd_write (i32.const 1) (i32.const -1) (i32.const 1) (i32.const 0))
+                           (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $fd_read (i32.const 0) (i32.const -2147483648) (i32.const 1) (i32.const 0))
+                           (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $fd_fdstat_get (i32.const 1) (i32.const -1)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $args_sizes_get (i32.const -1) (i32.const 0)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $environ_sizes_get (i32.const 0) (i32.const -1)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $clock_time_get (i32.const 0) (i64.const 0) (i32.const -1))
+                           (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $clock_res_get (i32.const 1) (i32.const -2147483648)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.eq (call $random_get (i32.const -1) (i32.const 4)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (local.get $bad)
+                 (then
+                   (i32.store (i32.const 48) (i32.const 64))
+                   (i32.store (i32.const 52) (i32.const 1))
+                   (drop (call $fd_write
+                           (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#,
+    );
+}
+
+#[test]
+fn fd_read_skips_a_zero_length_iovec_and_still_reads_stdin() {
+    let m = wat(r#"(module
+             (import "wasi_snapshot_preview1" "fd_read"
+               (func $fd_read (param i32 i32 i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 2)
+             (func (export "_start")
+               (i32.store (i32.const 0) (i32.const 200))
+               (i32.store (i32.const 4) (i32.const 0))
+               (i32.store (i32.const 8) (i32.const 200))
+               (i32.store (i32.const 12) (i32.const 4096))
+               (drop (call $fd_read (i32.const 0) (i32.const 0) (i32.const 2) (i32.const 32)))
+               (i32.store (i32.const 40) (i32.const 200))
+               (i32.store (i32.const 44) (i32.load (i32.const 32)))
+               (drop (call $fd_write (i32.const 1) (i32.const 40) (i32.const 1) (i32.const 48)))))"#);
+    let out = maidan_wasi::run(&m, &invoke(), WasiLimits::default());
+    assert!(out.ok, "{:?}", out.error);
+    let echoed: serde_json::Value =
+        serde_json::from_str(&out.stdout).expect("a leading zero iovec must not look like EOF");
+    assert_eq!(echoed["command"], "demo");
+}
+
+#[test]
+fn an_oversized_table_is_a_memory_limit() {
+    let initial = wat(r#"(module (table 100000 funcref) (func (export "_start")))"#);
+    let out = maidan_wasi::run(&initial, &invoke(), small());
+    assert!(!out.ok);
+    assert_eq!(
+        out.error_kind,
+        Some(WasiFailureKind::MemoryLimit),
+        "{:?} {}",
+        out.error_kind,
+        out.error.clone().unwrap_or_default()
+    );
+
+    let grown = wat(r#"(module
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 1)
+             (table 1 funcref)
+             (data (i32.const 64) "E")
+             (func (export "_start")
+               (if (i32.eq (table.grow (ref.null func) (i32.const 100000)) (i32.const -1))
+                 (then
+                   (i32.store (i32.const 48) (i32.const 64))
+                   (i32.store (i32.const 52) (i32.const 1))
+                   (drop (call $fd_write
+                           (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#);
+    let out = maidan_wasi::run(&grown, &invoke(), small());
+    assert!(out.ok, "table.grow should return -1, got {:?}", out.error);
+    assert_eq!(out.stdout, "E");
+}
+
+#[test]
+fn clock_ids_and_fd_close_reject_what_preview1_does_not_define() {
+    assert_marks_error(
+        r#"(module
+             (import "wasi_snapshot_preview1" "clock_time_get"
+               (func $clock_time_get (param i32 i64 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "clock_res_get"
+               (func $clock_res_get (param i32 i32) (result i32)))
+             (import "wasi_snapshot_preview1" "fd_close"
+               (func $fd_close (param i32) (result i32)))
+             (import "wasi_snapshot_preview1" "fd_write"
+               (func $fd_write (param i32 i32 i32 i32) (result i32)))
+             (memory (export "memory") 1)
+             (data (i32.const 64) "E")
+             (func (export "_start")
+               (local $bad i32)
+               (local.set $bad (i32.const 1))
+               (if (i32.ne (call $clock_time_get (i32.const 0) (i64.const 0) (i32.const 0))
+                           (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.ne (call $clock_time_get (i32.const 99) (i64.const 0) (i32.const 8))
+                           (i32.const 28))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.ne (call $clock_res_get (i32.const -1) (i32.const 8)) (i32.const 28))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.ne (call $fd_close (i32.const 99)) (i32.const 8))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.ne (call $fd_close (i32.const -1)) (i32.const 8))
+                 (then (local.set $bad (i32.const 0))))
+               (if (i32.ne (call $fd_close (i32.const 1)) (i32.const 0))
+                 (then (local.set $bad (i32.const 0))))
+               (if (local.get $bad)
+                 (then
+                   (i32.store (i32.const 48) (i32.const 64))
+                   (i32.store (i32.const 52) (i32.const 1))
+                   (drop (call $fd_write
+                           (i32.const 1) (i32.const 48) (i32.const 1) (i32.const 56)))))))"#,
+    );
+}

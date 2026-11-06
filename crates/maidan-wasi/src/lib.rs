@@ -42,8 +42,18 @@ pub const MAX_OUTPUT_BYTES: usize = 256 * 1024;
 mod errno {
     pub const SUCCESS: i32 = 0;
     pub const BADF: i32 = 8;
+    /// A guest pointer is outside the linear memory it was given.
+    pub const FAULT: i32 = 21;
     pub const INVAL: i32 = 28;
 }
+
+/// preview-1 allows a scatter/gather list, not a loop the guest can use to
+/// burn host time without spending Wasm fuel.
+const MAX_IOVS: usize = 1024;
+
+/// A `funcref` table past this, or whose pointer-sized footprint exceeds the
+/// memory cap, is the same failure as growing linear memory past the cap.
+const MAX_TABLE_ELEMENTS: usize = 16_384;
 
 /// Guest-visible file descriptors.
 mod fd {
@@ -91,9 +101,16 @@ impl wasmi::ResourceLimiter for MemoryCap {
     fn table_growing(
         &mut self,
         _current: usize,
-        _desired: usize,
+        desired: usize,
         _maximum: Option<usize>,
     ) -> Result<bool, wasmi_core::LimiterError> {
+        let bytes = desired.saturating_mul(std::mem::size_of::<usize>());
+        if desired > MAX_TABLE_ELEMENTS || bytes > self.max_bytes {
+            if let Ok(mut hit) = self.hit.lock() {
+                *hit = true;
+            }
+            return Ok(false);
+        }
         Ok(true)
     }
 
@@ -326,26 +343,33 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
         }
     }
 
-    /// Write a little-endian u32 into guest memory.
-    fn put_u32(
-        caller: &mut Caller<'_, HostState>,
-        mem: wasmi::Memory,
-        ptr: i32,
-        value: u32,
-    ) -> Result<(), ()> {
-        mem.write(caller, ptr as usize, &value.to_le_bytes())
-            .map_err(|_| ())
+    /// Wasm32 addresses are unsigned. `as usize` on a negative `i32` sign-extends.
+    fn guest_ptr(ptr: i32) -> usize {
+        ptr as u32 as usize
     }
 
-    fn read_bytes(
-        caller: &mut Caller<'_, HostState>,
-        mem: wasmi::Memory,
-        ptr: i32,
-        len: usize,
-    ) -> Result<Vec<u8>, ()> {
-        let mut buf = vec![0u8; len];
-        mem.read(caller, ptr as usize, &mut buf).map_err(|_| ())?;
-        Ok(buf)
+    fn fits(mem_len: usize, start: usize, len: usize) -> bool {
+        start.checked_add(len).is_some_and(|end| end <= mem_len)
+    }
+
+    /// One fuel unit per 64 bytes scanned, plus one per record, so a guest
+    /// cannot spend a single Wasm instruction on a huge host `memset` or copy.
+    fn fuel_for(bytes: usize, records: usize) -> u64 {
+        (bytes as u64).div_ceil(64).saturating_add(records as u64)
+    }
+
+    fn charge(caller: &mut Caller<'_, HostState>, units: u64) -> bool {
+        if units == 0 {
+            return true;
+        }
+        let Ok(fuel) = caller.get_fuel() else {
+            return true;
+        };
+        if fuel < units {
+            let _ = caller.set_fuel(0);
+            return false;
+        }
+        caller.set_fuel(fuel - units).is_ok()
     }
 
     // --- stdio -----------------------------------------------------------
@@ -363,26 +387,57 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
                 if fd_num != fd::STDOUT && fd_num != fd::STDERR {
                     return errno::BADF;
                 }
+                if iovs_len < 0 || (iovs_len as usize) > MAX_IOVS {
+                    return errno::INVAL;
+                }
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
-                let mut total: u32 = 0;
-                for i in 0..iovs_len.max(0) {
-                    let base = iovs + i * 8;
-                    let Ok(head) = read_bytes(&mut caller, mem, base, 8) else {
-                        return errno::INVAL;
-                    };
-                    let ptr = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as i32;
-                    let len = u32::from_le_bytes([head[4], head[5], head[6], head[7]]) as usize;
-                    let Ok(chunk) = read_bytes(&mut caller, mem, ptr, len) else {
-                        return errno::INVAL;
-                    };
-                    caller.data_mut().push_output(fd_num, &chunk);
-                    total = total.saturating_add(len as u32);
+                let mem_len = mem.data(&caller).len();
+                let nwritten_at = guest_ptr(nwritten);
+                if !fits(mem_len, nwritten_at, 4) {
+                    return errno::FAULT;
                 }
-                if put_u32(&mut caller, mem, nwritten, total).is_err() {
+                let count = iovs_len as usize;
+                let mut planned: Vec<(usize, usize)> = Vec::with_capacity(count);
+                let mut total: u32 = 0;
+                for i in 0..count {
+                    let Some(base) = (iovs as u32).checked_add((i as u32).saturating_mul(8)) else {
+                        return errno::INVAL;
+                    };
+                    let base = base as usize;
+                    if !fits(mem_len, base, 8) {
+                        return errno::FAULT;
+                    }
+                    let mut head = [0u8; 8];
+                    head.copy_from_slice(&mem.data(&caller)[base..base + 8]);
+                    let buf = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
+                    let len = u32::from_le_bytes([head[4], head[5], head[6], head[7]]) as usize;
+                    if len > 0 && !fits(mem_len, buf, len) {
+                        return errno::FAULT;
+                    }
+                    total = match total.checked_add(len as u32) {
+                        Some(sum) => sum,
+                        None => return errno::INVAL,
+                    };
+                    planned.push((buf, len));
+                }
+                if !charge(&mut caller, fuel_for(total as usize, count)) {
                     return errno::INVAL;
                 }
+                for (buf, len) in planned {
+                    let mut copied = 0;
+                    while copied < len {
+                        let n = (len - copied).min(4096);
+                        let mut tmp = [0u8; 4096];
+                        let start = buf + copied;
+                        tmp[..n].copy_from_slice(&mem.data(&caller)[start..start + n]);
+                        caller.data_mut().push_output(fd_num, &tmp[..n]);
+                        copied += n;
+                    }
+                }
+                mem.data_mut(&mut caller)[nwritten_at..nwritten_at + 4]
+                    .copy_from_slice(&total.to_le_bytes());
                 errno::SUCCESS
             },
         )
@@ -402,35 +457,74 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
                 if fd_num != fd::STDIN {
                     return errno::BADF;
                 }
+                if iovs_len < 0 || (iovs_len as usize) > MAX_IOVS {
+                    return errno::INVAL;
+                }
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
+                let mem_len = mem.data(&caller).len();
+                let nread_at = guest_ptr(nread);
+                if !fits(mem_len, nread_at, 4) {
+                    return errno::FAULT;
+                }
+                let remaining = {
+                    let d = caller.data();
+                    d.stdin.len().saturating_sub(d.stdin_pos)
+                };
+                let count = iovs_len as usize;
+                let mut planned: Vec<(usize, usize)> = Vec::with_capacity(count);
+                let mut left = remaining;
                 let mut total: u32 = 0;
-                for i in 0..iovs_len.max(0) {
-                    let base = iovs + i * 8;
-                    let Ok(head) = read_bytes(&mut caller, mem, base, 8) else {
-                        return errno::INVAL;
-                    };
-                    let ptr = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
-                    let cap = u32::from_le_bytes([head[4], head[5], head[6], head[7]]) as usize;
-                    let (pos, remaining) = {
-                        let d = caller.data();
-                        (d.stdin_pos, d.stdin.len().saturating_sub(d.stdin_pos))
-                    };
-                    let take = cap.min(remaining);
-                    if take == 0 {
+                for i in 0..count {
+                    if left == 0 {
                         break;
                     }
-                    let chunk = caller.data().stdin[pos..pos + take].to_vec();
-                    if mem.write(&mut caller, ptr, &chunk).is_err() {
+                    let Some(base) = (iovs as u32).checked_add((i as u32).saturating_mul(8)) else {
                         return errno::INVAL;
+                    };
+                    let base = base as usize;
+                    if !fits(mem_len, base, 8) {
+                        return errno::FAULT;
                     }
-                    caller.data_mut().stdin_pos += take;
-                    total = total.saturating_add(take as u32);
+                    let mut head = [0u8; 8];
+                    head.copy_from_slice(&mem.data(&caller)[base..base + 8]);
+                    let buf = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
+                    let cap = u32::from_le_bytes([head[4], head[5], head[6], head[7]]) as usize;
+                    if cap == 0 {
+                        continue;
+                    }
+                    if !fits(mem_len, buf, cap) {
+                        return errno::FAULT;
+                    }
+                    let take = cap.min(left);
+                    total = match total.checked_add(take as u32) {
+                        Some(sum) => sum,
+                        None => return errno::INVAL,
+                    };
+                    planned.push((buf, take));
+                    left -= take;
                 }
-                if put_u32(&mut caller, mem, nread, total).is_err() {
+                if !charge(&mut caller, fuel_for(total as usize, count)) {
                     return errno::INVAL;
                 }
+                let mut pos = caller.data().stdin_pos;
+                for (buf, take) in planned {
+                    let mut copied = 0;
+                    while copied < take {
+                        let n = (take - copied).min(4096);
+                        let mut tmp = [0u8; 4096];
+                        tmp[..n]
+                            .copy_from_slice(&caller.data().stdin[pos + copied..pos + copied + n]);
+                        mem.data_mut(&mut caller)[buf + copied..buf + copied + n]
+                            .copy_from_slice(&tmp[..n]);
+                        copied += n;
+                    }
+                    pos += take;
+                }
+                caller.data_mut().stdin_pos = pos;
+                mem.data_mut(&mut caller)[nread_at..nread_at + 4]
+                    .copy_from_slice(&total.to_le_bytes());
                 errno::SUCCESS
             },
         )
@@ -469,7 +563,12 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
         .func_wrap(
             WASI_PREVIEW1_MODULE,
             "fd_close",
-            |_: Caller<'_, HostState>, _fd: i32| -> i32 { errno::SUCCESS },
+            |_: Caller<'_, HostState>, fd_num: i32| -> i32 {
+                if !(fd::STDIN..=fd::STDERR).contains(&fd_num) {
+                    return errno::BADF;
+                }
+                errno::SUCCESS
+            },
         )
         .map_err(|e| e.to_string())?;
     linker
@@ -493,11 +592,13 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
+                let start = guest_ptr(buf);
+                if !fits(mem.data(&caller).len(), start, 24) {
+                    return errno::FAULT;
+                }
                 let mut stat = [0u8; 24];
                 stat[0] = 2; // filetype: character_device
-                if mem.write(&mut caller, buf as usize, &stat).is_err() {
-                    return errno::INVAL;
-                }
+                mem.data_mut(&mut caller)[start..start + 24].copy_from_slice(&stat);
                 errno::SUCCESS
             },
         )
@@ -515,11 +616,14 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
                     let Some(mem) = memory(&mut caller) else {
                         return errno::INVAL;
                     };
-                    if put_u32(&mut caller, mem, count, 0).is_err()
-                        || put_u32(&mut caller, mem, size, 0).is_err()
-                    {
-                        return errno::INVAL;
+                    let mem_len = mem.data(&caller).len();
+                    let count_at = guest_ptr(count);
+                    let size_at = guest_ptr(size);
+                    if !fits(mem_len, count_at, 4) || !fits(mem_len, size_at, 4) {
+                        return errno::FAULT;
                     }
+                    mem.data_mut(&mut caller)[count_at..count_at + 4].fill(0);
+                    mem.data_mut(&mut caller)[size_at..size_at + 4].fill(0);
                     errno::SUCCESS
                 },
             )
@@ -540,20 +644,22 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
         .func_wrap(
             WASI_PREVIEW1_MODULE,
             "clock_time_get",
-            |mut caller: Caller<'_, HostState>, _id: i32, _precision: i64, out: i32| -> i32 {
+            |mut caller: Caller<'_, HostState>, id: i32, _precision: i64, out: i32| -> i32 {
+                if !(0..=3).contains(&id) {
+                    return errno::INVAL;
+                }
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
+                let start = guest_ptr(out);
+                if !fits(mem.data(&caller).len(), start, 8) {
+                    return errno::FAULT;
+                }
                 let nanos = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos() as u64)
                     .unwrap_or(0);
-                if mem
-                    .write(&mut caller, out as usize, &nanos.to_le_bytes())
-                    .is_err()
-                {
-                    return errno::INVAL;
-                }
+                mem.data_mut(&mut caller)[start..start + 8].copy_from_slice(&nanos.to_le_bytes());
                 errno::SUCCESS
             },
         )
@@ -562,16 +668,19 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
         .func_wrap(
             WASI_PREVIEW1_MODULE,
             "clock_res_get",
-            |mut caller: Caller<'_, HostState>, _id: i32, out: i32| -> i32 {
+            |mut caller: Caller<'_, HostState>, id: i32, out: i32| -> i32 {
+                if !(0..=3).contains(&id) {
+                    return errno::INVAL;
+                }
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
-                if mem
-                    .write(&mut caller, out as usize, &1_000u64.to_le_bytes())
-                    .is_err()
-                {
-                    return errno::INVAL;
+                let start = guest_ptr(out);
+                if !fits(mem.data(&caller).len(), start, 8) {
+                    return errno::FAULT;
                 }
+                mem.data_mut(&mut caller)[start..start + 8]
+                    .copy_from_slice(&1_000u64.to_le_bytes());
                 errno::SUCCESS
             },
         )
@@ -586,9 +695,17 @@ fn register_preview1(linker: &mut wasmi::Linker<HostState>) -> Result<(), String
                 let Some(mem) = memory(&mut caller) else {
                     return errno::INVAL;
                 };
-                let zeros = vec![0u8; len.max(0) as usize];
-                if mem.write(&mut caller, ptr as usize, &zeros).is_err() {
+                // `len` is a Wasm `size` (`u32`). A negative `i32` is a huge length.
+                let len = (len as u32) as usize;
+                let start = guest_ptr(ptr);
+                if len > 0 && !fits(mem.data(&caller).len(), start, len) {
+                    return errno::FAULT;
+                }
+                if !charge(&mut caller, fuel_for(len, 0)) {
                     return errno::INVAL;
+                }
+                if len > 0 {
+                    mem.data_mut(&mut caller)[start..start + len].fill(0);
                 }
                 errno::SUCCESS
             },
