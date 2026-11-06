@@ -113,6 +113,10 @@ client a `503` `overloaded` problem with `Retry-After`. A problem body the
 server sends to a browser page (an expired invite, a sign-in for the wrong
 address) is shown as a page with its title, its detail and a support link.
 
+### Restarting the container
+
+A running Container keeps the environment it started with, so a deploy that changes settings without changing the image doesn't reach it until it restarts. Set `MAIDAN_OPS_RESTART_TOKEN` (a Worker secret, never passed to the server) and `POST /__ops/restart` with `Authorization: Bearer <token>`. The Worker stops the container and answers `202`, and the next request starts a fresh one with the current settings.
+
 ### Secrets
 
 The Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,

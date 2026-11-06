@@ -17,6 +17,7 @@ import {
   isSitePage,
   HOSTED_FOOTER_LINKS,
   isContainerUnavailable,
+  isOpsRestart,
   isProblemForAPerson,
   problemPage,
   NOT_FOUND_PAGE,
@@ -32,6 +33,12 @@ import { ContainerEnvSession, envFingerprint, serverEnv } from "./server-env.js"
 export class MaidanServer extends Container {
   defaultPort = 8080;
   sleepAfter = "15m";
+
+  // Stop the container; the next request starts a fresh one, with the
+  // environment of the Worker version that serves it.
+  async restart() {
+    if (this.ctx.container.running) await this.destroy();
+  }
 
   constructor(ctx, env) {
     super(ctx, env);
@@ -76,6 +83,10 @@ export { ContainerProxy } from "@cloudflare/containers";
 
 export default {
   async fetch(request, env) {
+    if (await isOpsRestart(request, env.MAIDAN_OPS_RESTART_TOKEN)) {
+      await getContainer(env.MAIDAN).restart();
+      return withSecurityHeaders(new Response("restarting\n", { status: 202, headers: { "cache-control": "no-store" } }));
+    }
     const hasSite = env.ASSETS !== undefined;
     const redirect = edgeRedirect(request, { hasSite });
     if (redirect) {

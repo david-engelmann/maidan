@@ -272,3 +272,25 @@ export function problemPage(problem, requestId) {
 </html>
 `;
 }
+
+// The operator's restart: `POST /__ops/restart` with
+// `Authorization: Bearer <MAIDAN_OPS_RESTART_TOKEN>`. A running Container keeps
+// the environment it started with across Worker deploys, so a deploy that
+// changes settings without changing the image needs this to take effect.
+// Answered by the Worker; the container never sees the request.
+export const OPS_RESTART_PATH = "/__ops/restart";
+
+export async function isOpsRestart(request, token) {
+  if (!token || request.method !== "POST" || new URL(request.url).pathname !== OPS_RESTART_PATH) {
+    return false;
+  }
+  const enc = new TextEncoder();
+  const got = enc.encode(request.headers.get("authorization") ?? "");
+  const want = enc.encode(`Bearer ${token}`);
+  if (got.byteLength !== want.byteLength) return false;
+  // Constant time, and portable: the Workers runtime's timingSafeEqual is not
+  // in Node, where the tests run.
+  let diff = 0;
+  for (let i = 0; i < want.byteLength; i++) diff |= got[i] ^ want[i];
+  return diff === 0;
+}

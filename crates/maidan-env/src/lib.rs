@@ -257,6 +257,8 @@ pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_MCP_TOKEN",
     "MAIDAN_NETWORK",
     "MAIDAN_OPENAPI_PORT",
+    // The Cloudflare Worker reads it (the operator restart); the server never does.
+    "MAIDAN_OPS_RESTART_TOKEN",
     "MAIDAN_OTHER_TOKEN",
     "MAIDAN_OTHER_WORKSPACE",
     "MAIDAN_OTLP_PORT",
