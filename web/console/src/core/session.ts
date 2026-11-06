@@ -280,6 +280,37 @@ export function grantCard(grant: { capabilities: string[]; known: string[] }): {
   };
 }
 
+/**
+ * Authority a browser session never holds. The console routes do not grant
+ * these, and the card must not say a signed-in person can. A token may hold
+ * them, and then the card says so.
+ */
+const NOT_ON_A_SESSION = new Set(["federation:admin", "operator:global"]);
+
+/**
+ * The Preferences capability card.
+ *
+ * A bearer or a delegated token is exactly its grant. A person's own sign-in
+ * is what GET /ui/api/me reports for the console: posting, editing, uploading
+ * and moving a task, not only the read routes that happen to serve /me. The
+ * card never adds a capability the response left out, so a viewer stays
+ * read-only, and it never shows federation:admin or operator:global on a
+ * session.
+ */
+export function capabilityCard(
+  mode: CredentialMode | null,
+  grant: { capabilities: string[]; known: string[] },
+): { can: string[]; cannot: string[] } {
+  const card = grantCard(grant);
+  if (mode !== "session") return card;
+  const withheld = card.can.filter((c) => NOT_ON_A_SESSION.has(c));
+  if (withheld.length === 0) return card;
+  return {
+    can: card.can.filter((c) => !NOT_ON_A_SESSION.has(c)),
+    cannot: [...card.cannot, ...withheld].sort(),
+  };
+}
+
 export type FrontDoorHint = "choose" | "no-workspace" | null;
 
 /**

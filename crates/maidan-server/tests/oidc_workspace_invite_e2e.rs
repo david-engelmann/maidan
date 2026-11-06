@@ -330,6 +330,29 @@ async fn member_invite_joins_once_and_only_with_the_matching_email() {
     let cookie = session_cookie(&ok);
     let me = env.me(&cookie).await;
     assert_eq!(me["workspace_id"], ws.0.to_string());
+    // A member's sign-in can post and move tasks in the console. The card
+    // reads this list, so the read router's subset would show those as "Can't".
+    let held = caps(&me);
+    for cap in [
+        "workspace:read",
+        "workspace:write",
+        "message:post",
+        "thread:transition",
+        "artifact:upload",
+        "event:subscribe",
+        "search:query",
+    ] {
+        assert!(
+            held.iter().any(|c| c == cap),
+            "a member's session can {cap} in the console, got {held:?}"
+        );
+    }
+    for cap in ["federation:admin", "operator:global", "token:admin"] {
+        assert!(
+            !held.iter().any(|c| c == cap),
+            "a member's session does not hold {cap}, got {held:?}"
+        );
+    }
     assert_eq!(env.create_channel(&cookie, ws).await, StatusCode::CREATED);
     let member_id: uuid::Uuid = me["member_id"].as_str().unwrap().parse().unwrap();
     let member = env
@@ -431,6 +454,26 @@ async fn an_invite_never_grants_above_the_inviter_and_never_crosses_workspaces()
     assert_eq!(me["workspace_id"], ws.0.to_string());
     let held = caps(&me);
     assert!(held.iter().any(|c| c == "workspace:read"), "{me}");
+    for cap in ["event:subscribe", "search:query"] {
+        assert!(
+            held.iter().any(|c| c == cap),
+            "a viewer can {cap}, got {held:?}"
+        );
+    }
+    for cap in [
+        "workspace:write",
+        "message:post",
+        "thread:transition",
+        "artifact:upload",
+        "federation:admin",
+        "operator:global",
+        "token:admin",
+    ] {
+        assert!(
+            !held.iter().any(|c| c == cap),
+            "a viewer does not hold {cap}, got {held:?}"
+        );
+    }
     assert_eq!(env.create_channel(&cookie, ws).await, StatusCode::FORBIDDEN);
     assert_eq!(env.mint_first_admin(&cookie).await, StatusCode::FORBIDDEN);
     // Confirming a model's approval is a write: a viewer is refused before

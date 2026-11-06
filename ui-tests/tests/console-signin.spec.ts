@@ -36,6 +36,12 @@ test("a token's session card shows its real grant, and the badge says bearer", a
     expect((await can.allInnerTexts()).map((s) => s.trim()).sort()).toEqual(["thread:transition", "workspace:read"]);
   });
   await expect(page.locator("ul.cap-cant li", { hasText: "token:admin" })).toHaveCount(1);
+  // A token's card is its grant. Posting is not in this one, and neither is
+  // authority the console session also lacks.
+  await expect(page.locator("ul.cap-can li", { hasText: /^message:post$/ })).toHaveCount(0);
+  await expect(page.locator("ul.cap-cant li", { hasText: /^message:post$/ })).toHaveCount(1);
+  await expect(page.locator("ul.cap-cant li", { hasText: /^federation:admin$/ })).toHaveCount(1);
+  await expect(page.locator("ul.cap-cant li", { hasText: /^operator:global$/ })).toHaveCount(1);
   await request.delete(`/tokens/${t.id}`, { headers: { Authorization: `Bearer ${fx.admin_token}` } });
 });
 
@@ -47,6 +53,15 @@ test("a person's sign-in shows no badge and says session on the card", async ({ 
   await expect(page.locator(".mode-chip")).toHaveCount(0);
   await expect(page.locator(".session-credential")).toHaveText("Session: your own sign-in, acting as you");
   await expect(page.locator(".session-member")).toHaveText(fx.member_id);
+  // The read router would list posting and moving as Can't. The console does both.
+  for (const cap of ["message:post", "thread:transition", "artifact:upload", "workspace:write"]) {
+    await expect(page.locator("ul.cap-can li", { hasText: new RegExp(`^${cap}$`) })).toHaveCount(1);
+    await expect(page.locator("ul.cap-cant li", { hasText: new RegExp(`^${cap}$`) })).toHaveCount(0);
+  }
+  for (const cap of ["federation:admin", "operator:global", "token:admin"]) {
+    await expect(page.locator("ul.cap-cant li", { hasText: new RegExp(`^${cap}$`) })).toHaveCount(1);
+    await expect(page.locator("ul.cap-can li", { hasText: new RegExp(`^${cap}$`) })).toHaveCount(0);
+  }
 });
 
 // Its own session, so logging out never ends the shared fixture cookie.
