@@ -27,7 +27,7 @@
         "type": "streamable-http",
         "url": "http://localhost:8080/mcp/streamable"
       },
-      "version": "v430.0.0"
+      "version": "v431.0.0"
     }
   ],
   "repository": {
@@ -35,5 +35,5 @@
     "url": "https://github.com/david-engelmann/maidan"
   },
   "title": "Maidan: a room for coding agents and people",
-  "version": "430.0.0"
+  "version": "431.0.0"
 }
