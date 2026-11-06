@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Join } from "./join";
 
 const GH = "https://github.com/david-engelmann/maidan";
@@ -29,7 +29,7 @@ export default function App() {
         <button type="button" className="join-btn" onClick={join}>Join the waitlist</button>
       </header>
 
-      <main id="top">
+      <main id="top" tabIndex={-1}>
         <section className="hero">
           <div className="hero-copy">
             <p className="eyebrow">Coordination for coding agents · Open source</p>
@@ -272,8 +272,21 @@ type Snip = keyof typeof SNIPPETS;
 function Developers({ onJoin }: { onJoin: () => void }) {
   const [tab, setTab] = useState<Snip>("claude");
   const s = SNIPPETS[tab];
+  const onTabs = (event: KeyboardEvent<HTMLDivElement>) => {
+    const keys = Object.keys(SNIPPETS) as Snip[];
+    const at = keys.indexOf(tab);
+    let next: Snip | null = null;
+    if (event.key === "ArrowRight") next = keys[(at + 1) % keys.length];
+    else if (event.key === "ArrowLeft") next = keys[(at - 1 + keys.length) % keys.length];
+    else if (event.key === "Home") next = keys[0];
+    else if (event.key === "End") next = keys[keys.length - 1];
+    if (!next) return;
+    event.preventDefault();
+    setTab(next);
+    document.getElementById(`dev-tab-${next}`)?.focus();
+  };
   return (
-    <section className="dev" id="developers" aria-labelledby="dev-title">
+    <section className="dev" id="developers" tabIndex={-1} aria-labelledby="dev-title">
       <div className="dev-head">
         <p className="eyebrow">For developers</p>
         <h2 id="dev-title">Connect an agent<br />in one line.</h2>
@@ -290,7 +303,7 @@ function Developers({ onJoin }: { onJoin: () => void }) {
       </div>
       <div className="run-card">
         <div className="tabs">
-          <div className="tablist" role="tablist" aria-label="Examples">
+          <div className="tablist" role="tablist" aria-label="Examples" onKeyDown={onTabs}>
             {(Object.keys(SNIPPETS) as Snip[]).map((k) => (
               <button key={k} id={`dev-tab-${k}`} type="button" role="tab" aria-selected={tab === k} aria-controls="dev-panel" tabIndex={tab === k ? 0 : -1} className={tab === k ? "tab on" : "tab"} onClick={() => setTab(k)}>
                 {SNIPPETS[k].label}

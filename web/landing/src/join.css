@@ -21,7 +21,7 @@
 .sheet .lede { margin: 0.6rem 0 0; color: var(--sheet-muted, rgba(245, 247, 250, 0.64)); font-size: 1rem; }
 .grabber { display: block; width: 40px; height: 5px; margin: 0.2rem auto 0.85rem; border-radius: 999px; background: currentColor; opacity: 0.35; }
 .sheet h2 { margin: 0; font-size: clamp(2rem, 8vw, 2.6rem); letter-spacing: -0.05em; line-height: 0.95; font-weight: 560; }
-.sheet-close { position: absolute; top: 0.2rem; right: 0; min-height: 44px; padding: 0 0.2rem; color: var(--sheet-muted, rgba(245, 247, 250, 0.64)); background: none; border: 0; cursor: pointer; }
+.sheet-close { position: absolute; top: 0.2rem; right: 0; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 0.5rem; color: var(--sheet-muted, rgba(245, 247, 250, 0.64)); background: none; border: 0; cursor: pointer; }
 .card { padding-bottom: 0.4rem; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.85rem; }
 .field label, .check label { color: var(--sheet-muted, rgba(245, 247, 250, 0.7)); font-size: 0.92rem; }
@@ -42,6 +42,7 @@
   background: var(--submit-bg, #f4f7f6); color: var(--submit-ink, #101418); font: inherit; font-weight: 640; letter-spacing: -0.03em;
 }
 .submit:active { transform: scale(0.985); }
+@media (prefers-reduced-motion: reduce) { .submit:active { transform: none; } }
 .submit:disabled { opacity: 0.6; }
 .status { min-height: 1.3rem; margin: 0.55rem 0 0; color: var(--sheet-muted, rgba(245, 247, 250, 0.64)); }
 .status.is-error { color: var(--danger, #ff8fa3); }

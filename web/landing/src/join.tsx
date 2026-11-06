@@ -7,6 +7,35 @@ type Field = "wl-email" | "wl-use" | "wl-consent";
 
 const sheetSpring = { type: "spring" as const, stiffness: 340, damping: 34, mass: 0.8 };
 
+function failTurnstile(script: HTMLScriptElement, reject: (err: Error) => void): void {
+  script.dataset.turnstileState = "error";
+  script.remove();
+  reject(new Error("turnstile"));
+}
+
+/** Load the check once. A failed tag is removed so the next open can try again. */
+function loadTurnstile(): Promise<void> {
+  if (window.turnstile) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const stale = document.querySelector<HTMLScriptElement>("script[data-turnstile='waitlist']");
+    if (stale?.dataset.turnstileState === "error") stale.remove();
+    const pending = document.querySelector<HTMLScriptElement>("script[data-turnstile='waitlist']");
+    if (pending) {
+      pending.addEventListener("load", () => resolve(), { once: true });
+      pending.addEventListener("error", () => failTurnstile(pending, reject), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.dataset.turnstile = "waitlist";
+    script.dataset.turnstileState = "loading";
+    script.onload = () => resolve();
+    script.onerror = () => failTurnstile(script, reject);
+    document.head.appendChild(script);
+  });
+}
+
 export function Join({
   open,
   onOpenChange,
@@ -34,6 +63,7 @@ export function Join({
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    if (!open || done || widget.current !== null) return;
     let gone = false;
     const start = async () => {
       let siteKey: string | null = null;
@@ -47,15 +77,12 @@ export function Join({
         siteKey = null;
       }
       if (!siteKey || gone) return;
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-        script.async = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error("turnstile"));
-        document.head.appendChild(script);
-      }).catch(() => undefined);
-      if (gone || !window.turnstile || !slot.current) return;
+      try {
+        await loadTurnstile();
+      } catch {
+        return;
+      }
+      if (gone || !window.turnstile || !slot.current || widget.current !== null) return;
       slot.current.hidden = false;
       widget.current = window.turnstile.render(slot.current, {
         sitekey: siteKey,
@@ -71,8 +98,14 @@ export function Join({
     void start();
     return () => {
       gone = true;
+      const id = widget.current;
+      const api = window.turnstile as { remove?: (widgetId: string) => void } | undefined;
+      if (id && api?.remove) {
+        api.remove(id);
+        widget.current = null;
+      }
     };
-  }, []);
+  }, [open, done]);
 
   useEffect(() => {
     if (!open) return;
@@ -263,7 +296,11 @@ export function Join({
             Close
           </button>
         </div>
-        {done ? null : (
+        {done ? (
+          <div className="card">
+            <button type="button" className="submit" onClick={() => onOpenChange(false)}>Done</button>
+          </div>
+        ) : (
           <div className="card">
             <form id="waitlist-form" noValidate onSubmit={onSubmit}>
               <div className="field">
