@@ -75,6 +75,31 @@ class CiCost(unittest.TestCase):
             self.assertIn("minute", r.stderr)
 
 
+    def test_hour_step_thirteen_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "scripts").mkdir()
+            (root / ".github/workflows").mkdir(parents=True)
+            (root / "deploy/cloudflare").mkdir(parents=True)
+            (root / "scripts/check-ci-cost.sh").write_text(
+                (ROOT / "scripts/check-ci-cost.sh").read_text()
+            )
+            (root / ".github/workflows/bad.yml").write_text(
+                "on:\n  schedule:\n    - cron: '0 */13 * * *'\njobs: {}\n"
+            )
+            (root / "deploy/cloudflare/wrangler.jsonc").write_text(
+                '{ "triggers": { "crons": ["17 9 * * *"] } }\n'
+            )
+            r = subprocess.run(
+                ["bash", str(root / "scripts/check-ci-cost.sh")],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("hour", r.stderr)
+
 class SmokePorts(unittest.TestCase):
     def _reject(self, script: str, env: dict[str, str], needle: str) -> None:
         r = subprocess.run(

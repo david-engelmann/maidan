@@ -99,7 +99,10 @@ def fires_more_than_daily(cron: str) -> str | None:
             return False
         if re.fullmatch(r"\*/(\d+)", field):
             step = int(field.split("/")[1])
-            return (modulus // step) > 1 if step else True
+            # Any step > 1 fires more than once per day/hour cycle
+            # (e.g. hour */13 => 00 and 13; minute */45 => :00 and :45).
+            # Floor division undercounted those; refuse every step greater than 1.
+            return (not step) or step > 1
         if "," in field or "-" in field:
             return True
         return True
