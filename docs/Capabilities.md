@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v434.0.0](https://github.com/david-engelmann/maidan/releases/tag/v434.0.0) — one owner per ticket
+
+Threads carry a `repo` attribute, and `PUT /workspaces/{id}/unique-thread-attributes` sets key sets (such as `[["linear_issue","repo"]]`) that open `kind: change` threads may not share; a conflict answers 409 with `holder_thread_id`. The swarm binds Pi's waiter as `pi.internal`. `CHANGELOG.md` under `[434.0.0]` has every entry.
+
 ## [v433.0.0](https://github.com/david-engelmann/maidan/releases/tag/v433.0.0) — an operator restart
 
 `POST /__ops/restart`, behind the Worker-only `MAIDAN_OPS_RESTART_TOKEN`, stops the hosted container so the next request starts it with the current settings. `CHANGELOG.md` under `[433.0.0]` has every entry.
