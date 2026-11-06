@@ -2,8 +2,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if rg -n 'quay\.io/minio/(minio|mc):latest' \
-  compose.yaml compose.dev.yaml k8s helm; then
+# grep is always available; exit 1 (no matches) is success for this scan.
+set +e
+minio_latest=$(grep -RInE --exclude-dir='.git' 'quay\.io/minio/(minio|mc):latest'   compose.yaml compose.dev.yaml k8s helm 2>/dev/null)
+minio_rc=$?
+set -e
+if [ "$minio_rc" -gt 1 ]; then
+  echo "deploy contract: grep failed ($minio_rc) scanning for MinIO :latest; refusing to pass" >&2
+  exit 1
+fi
+if [ "$minio_rc" -eq 0 ]; then
+  echo "$minio_latest" >&2
   echo "MinIO deployment images must use immutable release tags, not :latest" >&2
   exit 1
 fi
@@ -24,8 +33,40 @@ for name in minio minio-client; do
   }
   # Any reference to the image that is not a full digest (a tag, or none) is
   # refused before the pins are compared, or it would silently drop out of them.
-  loose="$(rg -oP --no-filename "cgr\.dev/chainguard/${name}(?![-\w])[^\"'\s]*" \
-    compose.yaml compose.dev.yaml k8s | rg -v "^cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}$" || true)"
+  # Portable scan (no rg -P): list every cgr.dev/chainguard/<name> reference that
+  # is not a full sha256 digest. Fail closed if the scanner itself errors.
+  loose="$(
+    NAME="$name" python3 - <<'PY'
+import os, re, sys
+from pathlib import Path
+name = os.environ["NAME"]
+pat = re.compile(rf"cgr\.dev/chainguard/{re.escape(name)}(?![-\w])[^\"'\s]*")
+ok = re.compile(rf"^cgr\.dev/chainguard/{re.escape(name)}@sha256:[0-9a-f]{{64}}$")
+roots = ["compose.yaml", "compose.dev.yaml", "k8s"]
+bad = []
+for root in roots:
+    p = Path(root)
+    paths = [p] if p.is_file() else sorted(p.rglob("*")) if p.is_dir() else []
+    for path in paths:
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(errors="replace")
+        except OSError as e:
+            print(f"scan failed reading {path}: {e}", file=sys.stderr)
+            sys.exit(2)
+        for m in pat.finditer(text):
+            ref = m.group(0)
+            if not ok.match(ref):
+                bad.append(ref)
+sys.stdout.write("\n".join(bad))
+PY
+  )"
+  loose_rc=$?
+  if [[ "$loose_rc" -ne 0 ]]; then
+    echo "deploy contract: failed scanning cgr.dev/chainguard/${name} references" >&2
+    exit 1
+  fi
   if [[ -n "${loose}" ]]; then
     echo "cgr.dev/chainguard/${name} must be referenced by a full sha256 digest; found:" >&2
     echo "${loose}" >&2
@@ -37,10 +78,17 @@ for name in minio minio-client; do
   }
   pins="$(
     {
-      rg -o --no-filename "cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}" \
-        compose.yaml compose.dev.yaml k8s || true
+      set +e
+      found=$(grep -RhoE "cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}"         compose.yaml compose.dev.yaml k8s 2>/dev/null)
+      grc=$?
+      set -e
+      if [ "$grc" -gt 1 ]; then
+        echo "deploy contract: grep failed ($grc) listing digests for ${name}" >&2
+        exit 1
+      fi
+      printf '%s\n' "$found"
       echo "${chart_pin}"
-    } | sort -u
+    } | awk 'NF' | sort -u
   )"
   if [[ "$(grep -c . <<<"${pins}")" -ne 1 ]]; then
     echo "cgr.dev/chainguard/${name} must be pinned to one digest across compose.yaml, compose.dev.yaml, k8s/ and ${stack_values}; found:" >&2

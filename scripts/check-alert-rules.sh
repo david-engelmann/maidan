@@ -9,16 +9,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+RULES="docs/alerts/prometheus-rules-maidan-slo.yaml"
+TEST_FILE="prometheus-rules-maidan-slo.test.yaml"
+GEN="docs/alerts/slo-rules.generated.yaml"
+
+# Missing rule files must fail even when promtool is absent: a soft skip would
+# hide a deleted or moved CRD from local runs and from CI image drift.
+[[ -f "$RULES" ]] || { echo "alert rules: missing $RULES" >&2; exit 1; }
+[[ -f "docs/alerts/$TEST_FILE" ]] || { echo "alert rules: missing docs/alerts/$TEST_FILE" >&2; exit 1; }
+
 if ! command -v promtool >/dev/null 2>&1; then
   echo "promtool not found — install it (https://prometheus.io/download/) to" \
        "validate the SLO rules locally; CI runs it in the required" \
        "'promtool (alert rules)' job. Skipping." >&2
   exit 0
 fi
-
-RULES="docs/alerts/prometheus-rules-maidan-slo.yaml"
-TEST_FILE="prometheus-rules-maidan-slo.test.yaml"
-GEN="docs/alerts/slo-rules.generated.yaml"
 
 cleanup() { rm -f "$GEN"; }
 trap cleanup EXIT
@@ -30,6 +35,15 @@ if command -v yq >/dev/null 2>&1; then
 else
   python3 -c "import yaml; yaml.safe_dump(yaml.safe_load(open('$RULES'))['spec'], open('$GEN', 'w'), sort_keys=False)"
 fi
+# Refuse an empty or non-groups extract so a bad CRD cannot pass check rules.
+python3 - <<PY
+import sys, yaml
+doc = yaml.safe_load(open("$GEN"))
+groups = (doc or {}).get("groups") if isinstance(doc, dict) else None
+if not isinstance(groups, list) or not groups:
+    print("alert rules: extracted $GEN has no groups", file=sys.stderr)
+    sys.exit(1)
+PY
 
 promtool check rules "$GEN"
 

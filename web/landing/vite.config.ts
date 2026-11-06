@@ -23,6 +23,8 @@ export default defineConfig({
   build: {
     outDir: process.env.LANDING_OUT ?? "../../crates/maidan-server/static/landing/dist",
     emptyOutDir: true,
+    // Nothing inlined: the strict CSP allows no inline script/style.
+    assetsInlineLimit: 0,
     assetsDir: "",
     cssCodeSplit: false,
     modulePreload: false,

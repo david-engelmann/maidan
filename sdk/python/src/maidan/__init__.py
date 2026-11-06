@@ -165,3 +165,14 @@ __all__ = [
     "retry_delay",
     "usd_micros",
 ]
+
+import re as _re
+
+if not _re.fullmatch(r"\d+\.\d+\.\d+[a-z0-9.-]*", __version__):
+    raise RuntimeError(f"maidan.__version__ is not semver-shaped: {__version__!r}")
+
+
+def __getattr__(name: str):
+    """Unknown attributes fail closed instead of returning None via typo imports."""
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+

@@ -30,6 +30,29 @@ if [ -z "${MAIDAN_REVIEWER_TOKEN:-}" ] || [ -z "${MAIDAN_ADMIN_TOKEN:-}" ]; then
   exit 2
 fi
 case "$WAIT_DAYS" in ''|*[!0-9]*) echo "MAIDAN_REVIEW_WAIT_DAYS must be a whole number of days" >&2; exit 2 ;; esac
+# Bound the wait so a typo cannot ask for multi-year coverage or zero days.
+if [ "$WAIT_DAYS" -lt 1 ] || [ "$WAIT_DAYS" -gt 365 ]; then
+  echo "MAIDAN_REVIEW_WAIT_DAYS must be between 1 and 365" >&2
+  exit 2
+fi
+# Only http(s) URLs without userinfo; a file: or credentialed URL would leak
+# the bearer into the wrong place or print secrets via curl's error path.
+case "$BASE_URL" in
+  http://*|https://*) ;;
+  *) echo "MAIDAN_URL must be an http(s) URL" >&2; exit 2 ;;
+esac
+BASE_URL="${BASE_URL%/}"
+python3 - "$BASE_URL" <<'PY' || exit 2
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+if u.scheme not in ("http", "https") or u.username or u.password or not u.hostname:
+    print("MAIDAN_URL must be http(s) with a host and no userinfo", file=sys.stderr)
+    sys.exit(1)
+if u.query or u.fragment:
+    print("MAIDAN_URL must not carry a query or fragment", file=sys.stderr)
+    sys.exit(1)
+PY
 
 me=$(curl -fsS -H "authorization: Bearer ${MAIDAN_REVIEWER_TOKEN}" "${BASE_URL}/me") || {
   echo "FAIL: the reviewer token is refused by ${BASE_URL}/me (expired, revoked or wrong)" >&2

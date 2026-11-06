@@ -11,6 +11,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     // `npm run dev` talks to a local server for the API and the socket.
+    // Proxy targets stay on loopback only so a mistaken LAN/DNS target cannot
+    // forward bearer cookies off-box during local development.
+    strictPort: true,
+    fs: { strict: true },
     proxy: {
       "/ui/api": "http://127.0.0.1:8080",
       "/v1": "http://127.0.0.1:8080",

@@ -30,15 +30,29 @@ case "$(uname -s)/$(uname -m)" in
 esac
 scanner="${OSV_SCANNER:-${TMPDIR:-/tmp}/osv-scanner-${version}-${asset}}"
 
+verify_scanner() {
+  local path="$1"
+  if command -v sha256sum >/dev/null; then
+    echo "${sha256}  ${path}" | sha256sum -c --quiet
+  else
+    echo "${sha256}  ${path}" | shasum -a 256 -c --quiet
+  fi
+}
+
+# Always hash-check before chmod/exec, including an OSV_SCANNER override, so a
+# stale or swapped binary cannot run under this gate.
 if [[ ! -f "$scanner" ]]; then
   curl -fsSL --retry 3 -o "$scanner.part" \
     "https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_${asset}"
+  if ! verify_scanner "$scanner.part"; then
+    rm -f "$scanner.part"
+    echo "osv-scan: downloaded binary failed the pinned sha256 for ${asset}" >&2
+    exit 1
+  fi
   mv "$scanner.part" "$scanner"
-fi
-if command -v sha256sum >/dev/null; then
-  echo "${sha256}  ${scanner}" | sha256sum -c --quiet
-else
-  echo "${sha256}  ${scanner}" | shasum -a 256 -c --quiet
+elif ! verify_scanner "$scanner"; then
+  echo "osv-scan: ${scanner} does not match the pinned sha256 for ${version}/${asset}" >&2
+  exit 1
 fi
 chmod +x "$scanner"
 

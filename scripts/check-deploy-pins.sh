@@ -30,6 +30,10 @@ die() {
 
 # Higher semver, compared numerically so section order cannot pick an older tag.
 version_gt() {
+  # Reject anything that is not dotted integers so bash arithmetic cannot
+  # evaluate shell metacharacters from a corrupted CHANGELOG line.
+  [[ "$1" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || return 1
+  [[ "$2" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || return 1
   local IFS=.
   local -a a=($1) b=($2)
   local i
@@ -98,6 +102,13 @@ checked=()
 pin() {
   local file="$1" count="$2" pattern="$3" alt="${4:-}" found=0 line text version
   [[ -f "$file" ]] || die "$file is missing"
+  set +e
+  hits=$(grep -noE "$pattern" "$file")
+  grc=$?
+  set -e
+  if [[ "$grc" -gt 1 ]]; then
+    die "$file: grep failed ($grc) for pattern ${pattern}"
+  fi
   while IFS=: read -r line text; do
     [[ -n "$line" ]] || continue
     found=$((found + 1))
@@ -106,7 +117,7 @@ pin() {
     [[ "$version" == "$expected" || ( -n "$alt" && "$version" == "$alt" ) \
       || ( -n "$release_alt" && "$version" == "$release_alt" ) ]] ||
       failures+=("${file}:${line} pins ${version}: ${text}")
-  done < <(grep -noE "$pattern" "$file" || true)
+  done <<< "$hits"
   if [[ "$count" -eq 0 ]]; then
     [[ "$found" -gt 0 ]] || die "$file: no pin matches ${pattern}; if it moved, update this script"
   else
