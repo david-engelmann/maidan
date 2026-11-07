@@ -27,11 +27,12 @@ class FakeMaidan:
     and records every call."""
 
     def __init__(self, ready: int = 1, claim: bool = True, ack_status: int = 200,
-                 drop_releases: int = 0, kind: str | None = None) -> None:
+                 drop_releases: int = 0, kind: str | None = None, renew_status: int = 200) -> None:
         self.kind = kind
         self.ready = ready
         self.claim = claim
         self.ack_status = ack_status
+        self.renew_status = renew_status
         # Hang up on this many release calls before answering one.
         self.drop_releases = drop_releases
         self.on_ack = lambda: None
@@ -57,6 +58,8 @@ class FakeMaidan:
                 if self.path.endswith("/claim/acknowledge"):
                     fake.on_ack()
                     status = fake.ack_status
+                if self.path.endswith("/claim/renew"):
+                    status = fake.renew_status
                 if self.path.startswith(f"/workspaces/{WS}/queue-depth"):
                     out = {"open": fake.ready, "ready": fake.ready, "assigned": 0, "blocked": 0, "unclaimable": 0}
                 elif self.path.endswith("/threads/claim-next"):
@@ -116,6 +119,7 @@ kill_grace_secs = 1
 url = "{maidan.url}"
 workspace_id = "{WS}"
 release_backoff_secs = 0.01
+{f"lease_secs = {values['lease_secs']}" if "lease_secs" in values else ""}
 [harness]
 name = "codex"
 bin = "{HERE / 'fake_harness.py'}"
@@ -241,6 +245,28 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         time.sleep(0.5)
         with self.assertRaises(ProcessLookupError, msg="the harness is gone"):
             os.kill(run["pid"], 0)
+
+    def test_a_long_harness_renews_the_lease_and_stops_before_release(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        os.environ["FAKE_HARNESS_SECS"] = "1"
+        runner, _ = self.runner(maidan, lease_secs=1, run_secs=30)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        paths = maidan.paths("POST")
+        renews = [i for i, path in enumerate(paths) if path.endswith("/claim/renew")]
+        release = next(i for i, path in enumerate(paths) if path.endswith("/claim/release"))
+        self.assertTrue(renews, paths)
+        self.assertLess(renews[-1], release)
+
+    def test_a_refused_renewal_lets_the_harness_finish(self):
+        maidan = FakeMaidan(renew_status=409)
+        self.addCleanup(maidan.close)
+        os.environ["FAKE_HARNESS_SECS"] = "1"
+        runner, _ = self.runner(maidan, lease_secs=1, run_secs=30)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        self.assertEqual(len(self.harness_runs()), 1)
+        self.assertTrue(any(path.endswith("/claim/renew") for path in maidan.paths("POST")))
+        self.assertEqual(self.releases(maidan), [{"claim_lease_id": LEASE}])
 
     def releases(self, maidan: FakeMaidan) -> list[object]:
         return [b for _, p, b in maidan.calls if p == f"/threads/{THREAD}/claim/release"]

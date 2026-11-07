@@ -528,12 +528,30 @@ class Runner:
         attributes = claim.get("attributes")
         kind = attributes.get("kind") if isinstance(attributes, dict) else None
         outcome, code = "stopped", None
+        stop_renew = threading.Event()
+        renewer: threading.Thread | None = None
         try:
             ack, _, _ = self.write(f"/threads/{thread_id}/claim/acknowledge", {"claim_lease_id": lease_id},
                                    self.cfg.claim_attempts, self.cfg.claim_backoff_secs)
             if not 200 <= ack < 300:
                 outcome = "ack_failed"
             elif not self.stop.is_set():
+                def renew() -> None:
+                    # A run longer than the lease would otherwise lose its
+                    # claim mid-work. Wait before the first renewal so a short
+                    # run is only claim, acknowledge, release. A lost lease
+                    # stops quietly: the release that follows reports it.
+                    while not stop_renew.wait(max(0.2, self.cfg.lease_secs / 3)) and not self.stop.is_set():
+                        status, _, _ = self.write(
+                            f"/threads/{thread_id}/claim/renew",
+                            {"claim_lease_id": lease_id, "lease_secs": self.cfg.lease_secs},
+                            self.cfg.claim_attempts, self.cfg.claim_backoff_secs,
+                        )
+                        if not 200 <= status < 300:
+                            return
+
+                renewer = threading.Thread(target=renew, daemon=True)
+                renewer.start()
                 code = self.run_process(
                     seat,
                     capped(self.cfg, self.cfg.run_secs, self.cfg.run_mem_gb,
@@ -545,6 +563,9 @@ class Runner:
                     0: "ran", CAPPED_TIME: "timed_out", CAPPED_MEMORY: "out_of_memory",
                 }.get(code, "failed")
         finally:
+            stop_renew.set()
+            if renewer is not None:
+                renewer.join(2)
             released = self.release(thread_id, lease_id)
         return done(outcome, thread=thread_id, exit=code, release=released)
 
