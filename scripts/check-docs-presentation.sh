@@ -24,12 +24,22 @@ test "$(shasum -a 256 "$root/docs/assets/maidan-mark.svg" | cut -d ' ' -f 1)" = 
 rg -q 'width="1200" height="630"' "$root/docs/assets/maidan-social.svg"
 rg -q 'fill="#f2eee6"' "$root/docs/assets/maidan-social.svg"
 rg -q 'fill="#e8501c"' "$root/docs/assets/maidan-social.svg"
+if rg -i -q '#14532d|#4ade80|#b45309' "$root/book/theme"; then
+  echo "book/theme still uses the pine, fern, or ochre palette" >&2
+  exit 1
+fi
 test -f "$html/docs/assets/maidan-mark.svg"
 test -f "$html/docs/assets/maidan-social.png"
 test -f "$html/favicon.svg"
 rg -q 'class="mermaid"' "$html/docs/Architecture.html"
 rg -q 'property="og:image".*maidan-social\.png' "$html/index.html"
 rg -q 'name="twitter:card".*summary_large_image' "$html/index.html"
+rg -q 'name="theme-color"[^>]*content="#f2eee6"' "$html/index.html"
+rg -q 'name="theme-color"[^>]*content="#121110"' "$html/index.html"
+if rg -i -q '#14532d|#4ade80|#b45309' "$html/theme/maidan.css" "$html/favicon.svg"; then
+  echo "published docs theme still uses the pine, fern, or ochre palette" >&2
+  exit 1
+fi
 if rg -q 'git-edit-button|github\.com/david-engelmann/maidan/edit/main' "$html" --glob '*.html'; then
   echo "published pages still contain the broken generated-source edit link" >&2
   exit 1
