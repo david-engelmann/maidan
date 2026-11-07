@@ -175,6 +175,8 @@ pub struct PostgresStore {
     keys: Arc<ContentKeyring>,
     /// The hard allowance cutoff, shared with the server's meter buffer.
     usage_meters: Arc<crate::usage_meters::UsageMeterBuffer>,
+    /// The boot grace on lapsed claims ([`crate::claim_grace`]).
+    claim_grace: Arc<crate::claim_grace::ClaimGrace>,
 }
 
 /// Cumulative read-routing outcomes. The server snapshots this into
@@ -267,6 +269,7 @@ impl PostgresStore {
             replica_health: Arc::new(ReplicaHealth::default()),
             keys,
             usage_meters: Arc::default(),
+            claim_grace: Arc::default(),
         }
     }
 
@@ -301,6 +304,7 @@ impl PostgresStore {
             replica_health,
             keys,
             usage_meters: Arc::default(),
+            claim_grace: Arc::default(),
         }
     }
 

@@ -26,6 +26,10 @@ macro_rules! store_delegations {
             fn usage_meters(&self) -> ::std::sync::Arc<crate::usage_meters::UsageMeterBuffer> {
                 self.usage_meters.clone()
             }
+
+            fn claim_grace(&self) -> ::std::sync::Arc<crate::claim_grace::ClaimGrace> {
+                self.claim_grace.clone()
+            }
         }
     };
     ($store:ty, WorkspaceStore) => {
@@ -2181,6 +2185,7 @@ macro_rules! store_delegations {
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
+                    &self.claim_grace,
                     QueueScope::Channel(channel_id),
                     readable_by,
                     None,
@@ -2198,6 +2203,7 @@ macro_rules! store_delegations {
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
+                    &self.claim_grace,
                     QueueScope::Workspace(workspace_id),
                     readable_by,
                     repo,
@@ -2213,6 +2219,7 @@ macro_rules! store_delegations {
             ) -> Result<ChannelOccupancy, StoreError> {
                 threads::occupancy(
                     self.read_pool(),
+                    &self.claim_grace,
                     QueueScope::Channel(channel_id),
                     readable_by,
                 )
@@ -2226,6 +2233,7 @@ macro_rules! store_delegations {
             ) -> Result<ChannelOccupancy, StoreError> {
                 threads::occupancy(
                     self.read_pool(),
+                    &self.claim_grace,
                     QueueScope::Workspace(workspace_id),
                     readable_by,
                 )
@@ -2886,7 +2894,15 @@ macro_rules! store_delegations {
                 lease_secs: Option<i64>,
                 engine: Option<maidan_types::TaskEngine>,
             ) -> Result<Option<Thread>, StoreError> {
-                threads::claim_next(self.pool(), channel_id, member_id, lease_secs, engine).await
+                threads::claim_next(
+                    self.pool(),
+                    &self.claim_grace,
+                    channel_id,
+                    member_id,
+                    lease_secs,
+                    engine,
+                )
+                .await
             }
 
             async fn claim_next_thread_with_event(
@@ -2900,6 +2916,7 @@ macro_rules! store_delegations {
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
+                    &self.claim_grace,
                     ClaimScope::Channel(channel_id),
                     member_id,
                     lease_secs,
@@ -2921,6 +2938,7 @@ macro_rules! store_delegations {
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
+                    &self.claim_grace,
                     ClaimScope::Workspace(workspace_id),
                     member_id,
                     lease_secs,
@@ -3422,7 +3440,7 @@ macro_rules! store_delegations {
                 now: chrono::DateTime<chrono::Utc>,
                 limit: i64,
             ) -> Result<Vec<StoredEvent>, StoreError> {
-                threads::reap_expired_claims(self.pool(), now, limit).await
+                threads::reap_expired_claims(self.pool(), &self.claim_grace, now, limit).await
             }
 
             async fn report_unacknowledged_claims(

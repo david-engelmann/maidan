@@ -141,6 +141,7 @@ pub mod automation_deliveries;
 pub mod blob_reap_retry;
 mod change_notices;
 pub mod change_pulls;
+pub mod claim_grace;
 mod claim_next;
 pub mod content_keyring;
 mod content_keys;
@@ -190,6 +191,7 @@ pub mod workspace_invites;
 
 pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 pub use automation_deliveries::AutomationDeliveryFilter;
+pub use claim_grace::ClaimGrace;
 pub use dialect::Dialect;
 pub use error::StoreError;
 pub use idempotency::{IdempotencyReservation, NewIdempotencyKey, StoredResponse};

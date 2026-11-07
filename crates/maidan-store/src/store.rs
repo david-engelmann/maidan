@@ -39,6 +39,12 @@ pub trait MetaStore: Send + Sync {
     /// set it refreshes is the set the store enforces.
     fn usage_meters(&self) -> std::sync::Arc<crate::usage_meters::UsageMeterBuffer>;
 
+    /// The boot grace this store's claim reads honor: while it holds, no
+    /// lease counts as lapsed, so neither the reaper nor `claim_next` takes a
+    /// claim whose holder missed its heartbeats while the server was down.
+    /// The server starts it at boot ([`crate::claim_grace`]).
+    fn claim_grace(&self) -> std::sync::Arc<crate::claim_grace::ClaimGrace>;
+
     async fn health_check(&self) -> Result<(), StoreError>;
 
     /// The primary's current WAL write position — the read-replica causality
@@ -2568,7 +2574,8 @@ pub trait AssignmentStore: Send + Sync {
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
     /// `member_id` — the "pull the next task" primitive. Claimable = unassigned
-    /// **or** its lease has expired,
+    /// **or** its lease has expired (no lease counts as expired during the
+    /// boot grace, [`MetaStore::claim_grace`]),
     /// **and** every task-dependency is terminal (a task blocked by an
     /// unfinished dependency is skipped), **and** it has no
     /// explicit [`BlockedReason`] row. `lease_secs` sets a lease deadline
@@ -3026,7 +3033,8 @@ pub trait AssignmentStore: Send + Sync {
     /// `claim_next` charges the same way. Concurrent reapers take
     /// distinct threads (`FOR UPDATE SKIP LOCKED` on Postgres; SQLite
     /// serializes writers). Returns the appended events, oldest deadline
-    /// first.
+    /// first. During the boot grace ([`MetaStore::claim_grace`]) nothing is
+    /// reaped.
     async fn reap_expired_claims(
         &self,
         now: chrono::DateTime<chrono::Utc>,

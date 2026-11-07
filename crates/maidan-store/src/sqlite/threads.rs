@@ -7,6 +7,7 @@ use maidan_types::{
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::claim_grace::ClaimGrace;
 use crate::claim_next::{self, ClaimScope, ClaimSql};
 use crate::queue_counts::{self, QueueScope, QueueSql};
 use crate::sqlite::budget;
@@ -618,13 +619,16 @@ fn lapsed_claim(
 }
 
 /// The thread `claim_next` would give `member_id` in `scope` at `now`, with
-/// the claim it still carries (see [`lapsed_claim`]). Shared by both
-/// `claim_next` variants and both scopes so they take the same thread.
+/// the claim it still carries (see [`lapsed_claim`]). A lease counts as
+/// lapsed when its deadline is before `lease_clock`
+/// ([`ClaimGrace::lease_clock`]). Shared by both `claim_next` variants and
+/// both scopes so they take the same thread.
 async fn claim_next_candidate(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     scope: ClaimScope,
     member_id: MemberId,
     now: DateTime<Utc>,
+    lease_clock: DateTime<Utc>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
@@ -652,7 +656,7 @@ async fn claim_next_candidate(
     Ok(sqlx::query(&sql)
         .bind(member_id.0)
         .bind(scope.id())
-        .bind(now.to_rfc3339())
+        .bind(lease_clock.to_rfc3339())
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
@@ -913,6 +917,7 @@ pub async fn list_unassigned_reviews(
 /// can't double-assign.
 pub async fn claim_next(
     pool: &SqlitePool,
+    grace: &ClaimGrace,
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
@@ -931,6 +936,7 @@ pub async fn claim_next(
         ClaimScope::Channel(channel_id),
         member_id,
         now,
+        grace.lease_clock(now),
         None,
         engine,
         None,
@@ -976,6 +982,7 @@ pub(crate) const REQUEUED_AFTER_RESULT: &str =
 /// [`crate::claimability`] rules `claim_next` uses.
 pub async fn queue_depth(
     pool: &SqlitePool,
+    grace: &ClaimGrace,
     scope: QueueScope,
     readable_by: Option<MemberId>,
     repo: Option<&str>,
@@ -985,7 +992,7 @@ pub async fn queue_depth(
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
-        .bind(Utc::now().to_rfc3339())
+        .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
         .fetch_one(pool)
@@ -1004,6 +1011,7 @@ pub async fn queue_depth(
 /// Postgres twin. The four sub-counts partition `open`.
 pub async fn occupancy(
     pool: &SqlitePool,
+    grace: &ClaimGrace,
     scope: QueueScope,
     readable_by: Option<MemberId>,
 ) -> Result<ChannelOccupancy, StoreError> {
@@ -1011,7 +1019,7 @@ pub async fn occupancy(
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
-        .bind(Utc::now().to_rfc3339())
+        .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(None::<&str>)
         .bind(None::<&str>)
         .fetch_one(pool)
@@ -1032,6 +1040,7 @@ pub async fn occupancy(
 /// route; a takeover of a lapsed lease reports the prior holder's end first).
 pub(crate) async fn claim_next_with_event(
     pool: &SqlitePool,
+    grace: &ClaimGrace,
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
@@ -1046,8 +1055,17 @@ pub(crate) async fn claim_next_with_event(
     // The candidate row keeps its pre-update claim, so a reclaim of an expired
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
-    let Some(candidate) =
-        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine, lane).await?
+    let Some(candidate) = claim_next_candidate(
+        &mut tx,
+        scope,
+        member_id,
+        now,
+        grace.lease_clock(now),
+        repo,
+        engine,
+        lane,
+    )
+    .await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
@@ -1070,9 +1088,15 @@ pub(crate) async fn claim_next_with_event(
 /// `claim_next` or another reaper.
 pub async fn reap_expired_claims(
     pool: &SqlitePool,
+    grace: &ClaimGrace,
     now: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
+    // A holder that missed its heartbeats while the server was down keeps
+    // its claim through the boot grace.
+    if grace.holding(now) {
+        return Ok(Vec::new());
+    }
     let mut tx = pool.begin().await?;
     let lapsed = sqlx::query(
         "SELECT id, assignee_id, assignment_expires_at, work_started_at FROM maidan_threads

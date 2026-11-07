@@ -41,6 +41,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CLAIM_ACK_TIMEOUT_SECS",
     "MAIDAN_CLAIM_DEFAULT_LEASE_SECS",
     "MAIDAN_CLAIM_LAPSE_WARN_SECS",
+    "MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS",
     "MAIDAN_CLAIM_REAP_TICK_SECS",
     "MAIDAN_CONSOLE_ORIGIN",
     "MAIDAN_CONTENT_KEK",
@@ -804,6 +805,10 @@ mod tests {
         ),
         (
             "MAIDAN_CLAIM_LAPSE_WARN_SECS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (

@@ -139,6 +139,8 @@ pub struct SqliteStore {
     keys: Arc<ContentKeyring>,
     /// The hard allowance cutoff, shared with the server's meter buffer.
     usage_meters: Arc<crate::usage_meters::UsageMeterBuffer>,
+    /// The boot grace on lapsed claims ([`crate::claim_grace`]).
+    claim_grace: Arc<crate::claim_grace::ClaimGrace>,
 }
 
 impl SqliteStore {
@@ -149,6 +151,7 @@ impl SqliteStore {
             pool,
             keys,
             usage_meters: Arc::default(),
+            claim_grace: Arc::default(),
         }
     }
 

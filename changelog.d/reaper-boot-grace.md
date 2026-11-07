@@ -1,0 +1,3 @@
+### A server restart keeps the claims in flight
+
+- **Fixed:** For `MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS` (600 s; `0` turns it off) after the server starts, no lease counts as lapsed. The claim reaper frees none, `claim_next` takes none over, and the queue counts agree. A deploy keeps the server down for minutes, longer than a short lease, so each restart used to lose every claim in flight: the holder's `set_thread_result` was refused with `ClaimLost` and the work was done again. A holder that comes back renews by its lease id and delivers; a lease nobody renews is reaped when the grace ends. The grace is each process's own, held in memory.

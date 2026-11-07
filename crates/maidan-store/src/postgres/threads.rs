@@ -7,6 +7,7 @@ use maidan_types::{
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::claim_grace::ClaimGrace;
 use crate::claim_next::{self, ClaimScope, ClaimSql};
 use crate::error::StoreError;
 use crate::postgres::budget;
@@ -825,6 +826,7 @@ type Claimed = (
 /// both scopes so they take the same thread.
 async fn claim_next_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    grace: &ClaimGrace,
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
@@ -850,7 +852,9 @@ async fn claim_next_in_tx(
             engine: "$7::text",
             lane: "$8::text",
             requeued_after_result: REQUEUED_AFTER_RESULT,
-            now: "$11::timestamptz",
+            // A lease lapsed when its deadline is before the lease clock: `now`,
+            // or during the boot grace a time before every deadline.
+            now: "$12::timestamptz",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM ($11::timestamptz - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
             warm_hold_since: "$9::timestamptz",
@@ -877,6 +881,7 @@ async fn claim_next_in_tx(
     .bind(now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS))
     .bind(now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS))
     .bind(now)
+    .bind(grace.lease_clock(now))
     .fetch_optional(&mut **tx)
     .await?;
     let Some(row) = row else {
@@ -893,6 +898,7 @@ async fn claim_next_in_tx(
 /// `member_id`. `None` when there is no unassigned work.
 pub async fn claim_next(
     pool: &PgPool,
+    grace: &ClaimGrace,
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
@@ -905,6 +911,7 @@ pub async fn claim_next(
     let mut tx = pool.begin().await?;
     let Some((thread, lapsed)) = claim_next_in_tx(
         &mut tx,
+        grace,
         ClaimScope::Channel(channel_id),
         member_id,
         lease_secs,
@@ -951,6 +958,7 @@ pub(crate) const REQUEUED_AFTER_RESULT: &str = "tr.occurred_at >= r.produced_at"
 /// [`queue_counts`](crate::queue_counts).
 pub async fn queue_depth(
     pool: &PgPool,
+    grace: &ClaimGrace,
     scope: QueueScope,
     readable_by: Option<MemberId>,
     repo: Option<&str>,
@@ -962,7 +970,7 @@ pub async fn queue_depth(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
-        .bind(chrono::Utc::now())
+        .bind(grace.lease_clock(chrono::Utc::now()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -981,6 +989,7 @@ pub async fn queue_depth(
 /// as `queue_depth` does. The four sub-counts partition `open`.
 pub async fn occupancy(
     pool: &PgPool,
+    grace: &ClaimGrace,
     scope: QueueScope,
     readable_by: Option<MemberId>,
 ) -> Result<ChannelOccupancy, StoreError> {
@@ -990,7 +999,7 @@ pub async fn occupancy(
         .bind(DM_CHANNEL_NAME)
         .bind(None::<&str>)
         .bind(None::<&str>)
-        .bind(chrono::Utc::now())
+        .bind(grace.lease_clock(chrono::Utc::now()))
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -1008,6 +1017,7 @@ pub async fn occupancy(
 /// (behaviour-preserving — matches the old route).
 pub(crate) async fn claim_next_with_event(
     pool: &PgPool,
+    grace: &ClaimGrace,
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
@@ -1016,8 +1026,10 @@ pub(crate) async fn claim_next_with_event(
     lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    let Some((thread, lapsed)) =
-        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine, lane).await?
+    let Some((thread, lapsed)) = claim_next_in_tx(
+        &mut tx, grace, scope, member_id, lease_secs, repo, engine, lane,
+    )
+    .await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
@@ -1041,9 +1053,15 @@ pub(crate) async fn claim_next_with_event(
 /// double-charging the same thread.
 pub async fn reap_expired_claims(
     pool: &PgPool,
+    grace: &ClaimGrace,
     now: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
+    // A holder that missed its heartbeats while the server was down keeps
+    // its claim through the boot grace.
+    if grace.holding(now) {
+        return Ok(Vec::new());
+    }
     let mut tx = pool.begin().await?;
     let rows = sqlx::query(
         "WITH lapsed AS (

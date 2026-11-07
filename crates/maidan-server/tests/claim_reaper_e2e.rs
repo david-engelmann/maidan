@@ -675,3 +675,110 @@ async fn reaper_reports_a_stalled_claim_once_per_reason_postgres() {
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     reaper_reports_a_stalled_claim_once_per_reason(store, search).await;
 }
+
+/// A restart outlasts a short lease, so its holders miss their heartbeats.
+/// During the boot grace the reaper frees none of those leases and a holder
+/// that comes back renews its own; when the grace ends, the reaper frees the
+/// lease nobody renewed. A grace of 0 holds nothing, as before.
+async fn reaper_waits_out_the_boot_grace(
+    store: Arc<dyn Store>,
+    search: Arc<dyn maidan_search::Search>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(64)),
+        search,
+    );
+    let r = room(store.as_ref()).await;
+    for title in ["back", "gone", "no grace"] {
+        new_thread(store.as_ref(), r.channel, title).await;
+    }
+    // Both are claimed before either lapses: a lapsed lease is claimable,
+    // and the second claim would take the first thread again.
+    let mut claimed = Vec::new();
+    for _ in 0..2 {
+        claimed.push(
+            store
+                .claim_next_thread(r.channel, r.holder, Some(300), None)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    let mut held = Vec::new();
+    for thread in claimed {
+        // The server was down past the deadline.
+        held.push(
+            store
+                .renew_claim(thread.id, r.holder, thread.claim_lease_id.unwrap(), -120)
+                .await
+                .unwrap(),
+        );
+    }
+    let (back, gone) = (&held[0], &held[1]);
+
+    claim_reaper::start_boot_grace(store.as_ref(), Some(Duration::from_secs(600)));
+    assert_eq!(
+        claim_reaper::sweep_once(&state).await,
+        0,
+        "nothing is reaped during the grace"
+    );
+    for thread in [back, gone] {
+        assert_eq!(
+            store.get_thread(thread.id).await.unwrap().claim_lease_id,
+            thread.claim_lease_id,
+            "the holder keeps its claim"
+        );
+    }
+    store
+        .renew_claim(back.id, r.holder, back.claim_lease_id.unwrap(), 300)
+        .await
+        .expect("the holder renews its lapsed lease during the grace");
+
+    // The grace ends.
+    store
+        .claim_grace()
+        .hold_until(chrono::Utc::now() - chrono::Duration::seconds(1));
+    assert_eq!(claim_reaper::sweep_once(&state).await, 1);
+    assert_eq!(store.get_thread(gone.id).await.unwrap().assignee_id, None);
+    assert_eq!(
+        store.get_thread(back.id).await.unwrap().assignee_id,
+        Some(r.holder),
+        "the renewed lease is live"
+    );
+
+    // A grace of 0 holds nothing.
+    claim_reaper::start_boot_grace(store.as_ref(), None);
+    let claimed = store
+        .claim_next_thread(r.channel, r.holder, Some(300), None)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .renew_claim(claimed.id, r.holder, claimed.claim_lease_id.unwrap(), -120)
+        .await
+        .unwrap();
+    assert_eq!(claim_reaper::sweep_once(&state).await, 1);
+    assert_eq!(
+        store.get_thread(claimed.id).await.unwrap().assignee_id,
+        None
+    );
+}
+
+#[tokio::test]
+async fn reaper_waits_out_the_boot_grace_sqlite() {
+    let (store, search) = sqlite().await;
+    reaper_waits_out_the_boot_grace(store, search).await;
+}
+
+#[tokio::test]
+async fn reaper_waits_out_the_boot_grace_postgres() {
+    let Some((_container, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
+    reaper_waits_out_the_boot_grace(store, search).await;
+}

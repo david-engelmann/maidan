@@ -89,6 +89,9 @@ mod channel_closed_results;
 #[path = "../child_threads.rs"]
 mod child_threads;
 
+#[path = "../claim_boot_grace.rs"]
+mod claim_boot_grace;
+
 #[path = "../claim_deadline.rs"]
 mod claim_deadline;
 
