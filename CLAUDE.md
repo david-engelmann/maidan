@@ -91,7 +91,7 @@ change.
   batch must not be merged on its own: its required heavy checks were
   skipped, not passed.
 
-## Current state (2026-11-03)
+## Current state (2026-11-07)
 
 - **Releases:** latest **`v435.0.0`** (2026-11-07). The newest record in
   `docs/Capabilities.md` says what it carries. A release is one button: run
@@ -110,18 +110,20 @@ change.
   had no npm for `build.rs`), and `v421.0.0` on `16898a6b` (the release
   scan refused the distroless `libssl3`); `v422.0.0` carries both, and was
   published but never deployed; `v423.0.0` carries it.
-- **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
-  41): finding and closing threads by attribute, and the M13
-  alert proof. Then the launch path (Next 23,
-  24, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
+- **Two queues, in Open Work's Next.** The swarm factory first (Next 33 and
+  44): a day at 8 concurrent claimants unattended, and the lockstep rename
+  of the external change producer's wire names. Then the launch path (Next
+  23, 24, 47, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
   #1325 a gate is accepted only by a browser session the person signed in to
   or `approval:grant`, nobody accepts their own request, and
   `approval_decide` (#1332) sends a person to confirm in the console unless
   the workspace set a threshold. `AUTH_DISABLED` checks nothing and is never
   a deployment mode.
-- **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
-  commit whose required checks passed. Its operator pins and deploys it;
-  coordination with the agents working on this repo is on issue #1495.
+- **The swarm runs `dev`** (2026-11-07): a private infra repo deploys each
+  `dev` commit whose CI passed to the swarm's own instance (it was a local
+  stack from 2026-10-14). This repo names no private project or deployment;
+  `scripts/check-no-internal-names.sh` enforces it. Coordination with the
+  agents working on this repo is on issue #1495.
 - **Deploy pins move with the release record,** before the tag:
   `scripts/release-record.sh` moves them all, and `scripts/check-deploy-pins.sh`
   holds them (`docs/Pi.md` included) to the release the tree records. The
