@@ -8519,7 +8519,7 @@
             "type": "boolean"
           },
           "max_rounds": {
-            "description": "The cap in force. [`DEFAULT_MAX_REVIEW_ROUNDS`] when the thread has no\nrequirement row. `0` means the cap is off.",
+            "description": "The cap in force: 3, the default, when the thread has no\nrequirement row. `0` means the cap is off.",
             "format": "int64",
             "type": "integer"
           },
@@ -11785,7 +11785,7 @@
             "type": "string"
           },
           "max_rounds": {
-            "description": "Send-backs allowed in one cycle before a person decides. `0` is uncapped.\nA missing row still means [`DEFAULT_MAX_REVIEW_ROUNDS`].",
+            "description": "Send-backs allowed in one cycle before a person decides. `0` is uncapped.\nA missing row still means the default of 3.",
             "format": "int64",
             "type": "integer"
           },

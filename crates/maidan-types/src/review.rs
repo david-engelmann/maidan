@@ -104,7 +104,7 @@ pub struct ThreadReviewRequirement {
     pub thread_id: ThreadId,
     pub required_count: i64,
     /// Send-backs allowed in one cycle before a person decides. `0` is uncapped.
-    /// A missing row still means [`DEFAULT_MAX_REVIEW_ROUNDS`].
+    /// A missing row still means the default of 3.
     pub max_rounds: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -220,7 +220,7 @@ pub struct ReviewStatus {
     /// Send-backs (`in_review` → `open`) since the latest accepted review-round
     /// cap, or since the thread began when none has been accepted.
     pub send_backs: i64,
-    /// The cap in force. [`DEFAULT_MAX_REVIEW_ROUNDS`] when the thread has no
+    /// The cap in force: 3, the default, when the thread has no
     /// requirement row. `0` means the cap is off.
     pub max_rounds: i64,
 }
