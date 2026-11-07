@@ -415,9 +415,12 @@ required review and `main`'s lock (`lock_branch`) yield only to an admin
 `RELEASE_TOKEN` is a secret of the `release` environment, which only `dev` may
 deploy from, so no other branch's workflow can read it. It is the
 maintainer's fine-grained token for `david-engelmann/maidan` alone, acting as
-an admin, with read and write on Contents, Pull requests and Workflows among
-others (Workflows because `main`'s fast-forward carries every workflow change
-since the last release, and GitHub refuses a token without it). When it
+an admin, with read and write on Administration, Contents, Pull requests and
+Workflows among others. Workflows because `main`'s fast-forward carries every
+workflow change since the last release, and GitHub refuses a token without it;
+Administration because `main` is locked, which even an admin cannot push
+through, so the run lifts the lock for the one fast-forward and restores it at
+once (and says so loudly if it cannot). When it
 expires the run fails at its first step that needs it; create a new token with
 the same repository and permissions and store it with
 `gh secret set RELEASE_TOKEN --env release -R david-engelmann/maidan`, pasting

@@ -167,13 +167,35 @@ promote() {
   fi
   status="$(gh api "repos/${REPO}/compare/${main}...${sha}" --jq .status)"
   [[ "$status" == "ahead" ]] || die "${sha:0:8} is not a fast-forward of main ${main:0:8} (${status}); refusing"
-  # force=false: GitHub itself refuses anything but a fast-forward. The token
-  # is the maintainer's: an admin passes main's lock and required review
-  # (enforce_admins is off), and GITHUB_TOKEN cannot.
+  # force=false: GitHub itself refuses anything but a fast-forward. main is
+  # locked (lock_branch), which even an admin cannot push through, so the
+  # lock is lifted for the one update and restored at once, as the
+  # maintainer's own promotion always did. The token is the maintainer's: an
+  # admin passes main's required review (enforce_admins is off).
+  local protection
+  protection="$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${REPO}/branches/main/protection")" \
+    || die "RELEASE_TOKEN cannot read main's protection. It needs Administration read/write on ${REPO} (docs/Operations.md, 'The release token')."
+  set_lock() { # set_lock true|false: rewrite main's protection with only the lock changed
+    jq --argjson lock "$1" '{
+      required_status_checks: (.required_status_checks | {strict, contexts}),
+      enforce_admins: .enforce_admins.enabled,
+      required_pull_request_reviews: (.required_pull_request_reviews // null | if . then {dismiss_stale_reviews, require_code_owner_reviews, require_last_push_approval, required_approving_review_count} else null end),
+      restrictions: null,
+      required_linear_history: .required_linear_history.enabled,
+      allow_force_pushes: .allow_force_pushes.enabled,
+      allow_deletions: .allow_deletions.enabled,
+      required_conversation_resolution: .required_conversation_resolution.enabled,
+      lock_branch: $lock
+    }' <<<"$protection" | GH_TOKEN="$RELEASE_TOKEN" gh api -X PUT "repos/${REPO}/branches/main/protection" --input - --silent
+  }
+  set_lock false || die "RELEASE_TOKEN could not unlock main. It needs Administration read/write on ${REPO} (docs/Operations.md, 'The release token')."
+  trap 'set_lock true || echo "RE-LOCK FAILED: lock main by hand (Settings, Branches, main, Lock branch)" >&2' EXIT
   if ! GH_TOKEN="$RELEASE_TOKEN" gh api -X PATCH "repos/${REPO}/git/refs/heads/main" \
     -f sha="$sha" -F force=false --silent; then
-    die "RELEASE_TOKEN could not fast-forward main. It must be an admin's token with Contents and Workflows read/write on ${REPO} (docs/Operations.md, 'The release token')."
+    die "RELEASE_TOKEN could not fast-forward main. It must be an admin's token with Contents, Workflows and Administration read/write on ${REPO} (docs/Operations.md, 'The release token')."
   fi
+  set_lock true || die "main moved to ${sha:0:8} but could not be locked again: lock it by hand"
+  trap - EXIT
   now="$(gh api "repos/${REPO}/git/ref/heads/main" --jq .object.sha)"
   [[ "$now" == "$sha" ]] || die "main is at ${now:0:8} after the update, not ${sha:0:8}"
   echo "main fast-forwarded ${main:0:8} -> ${sha:0:8}"
