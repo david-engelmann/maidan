@@ -7,10 +7,20 @@ export type Notice = { id: number; text: string; tone: Tone; at: number };
 
 export const KEEP = 50;
 const SECRETISH = /\b[A-Za-z0-9_\-+/=.]{32,}\b/g;
+const MDN = /\bmdn_[A-Za-z0-9_.-]+\b/g;
+const BEARER = /\b(Bearer\s+)([^\s,;]+)/gi;
 
-/** Hides anything long and token-shaped; ids, shas and words pass through. */
+/** Hides tokens. A long token-shaped run, any `mdn_` secret, and the secret after Bearer. Ids and shas pass through. */
 export function redact(text: string): string {
-  return text.replace(SECRETISH, (m) => (/^[0-9a-f-]{36}$/i.test(m) || /^[0-9a-f]{64}$/i.test(m) ? m : "[hidden]"));
+  return text
+    .replace(MDN, "[hidden]")
+    .replace(BEARER, "$1[hidden]")
+    .replace(SECRETISH, (m) => (/^[0-9a-f-]{36}$/i.test(m) || /^[0-9a-f]{64}$/i.test(m) ? m : "[hidden]"));
+}
+
+/** True when the signed-in room changed, including a sign-out. The first sign-in has nothing to clear. */
+export function leaveRoom(previous: string | null, next: string | null): boolean {
+  return previous !== null && previous !== next;
 }
 
 export class Notices {
