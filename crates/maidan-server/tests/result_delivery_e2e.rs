@@ -54,6 +54,28 @@ impl SlackSender for Unsent {
     }
 }
 
+/// A Slack that takes every post.
+struct Posting;
+
+#[async_trait::async_trait]
+impl SlackSender for Posting {
+    async fn post_message(
+        &self,
+        channel: &str,
+        _: &str,
+        _: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
+        Ok(Some(ExternalRef::Slack {
+            channel_id: channel.into(),
+            ts: "1700000001.000100".into(),
+        }))
+    }
+
+    async fn update_message(&self, _: &str, _: &str, _: &str) -> Result<(), SlackError> {
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl GithubSender for Unsent {
     async fn post_comment(
@@ -722,4 +744,67 @@ async fn a_queued_result_whose_sender_is_gone_fails_when_the_worker_picks_it_up(
     );
     assert_eq!(failed_events(&h).await.len(), 1);
     assert!(claim_body(&h).await.is_none(), "the queue entry is dead");
+}
+
+#[tokio::test]
+async fn a_configured_surface_is_sent_while_another_surface_has_no_sender() {
+    let mut h = harness_without_senders("slack-but-no-linear").await;
+    h.state.attach_slack_sender(Arc::new(Posting));
+    bless_slack(&h, "C0123ABCDEF").await;
+    bless_linear(&h).await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([
+                { "surface": "linear", "team": TEAM, "issue": "ENG-7" },
+                { "surface": "slack", "channel": "C0123ABCDEF", "thread_ts": "1700000000.000100" }
+            ]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.sent, 1, "the slack result is sent: {stats:?}");
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    let slack = rows.iter().find(|r| r.surface == "slack").unwrap();
+    let linear = rows.iter().find(|r| r.surface == "linear").unwrap();
+    assert_eq!(slack.status, status::DELIVERED, "{slack:?}");
+    assert_eq!(linear.status, status::FAILED, "{linear:?}");
+    assert_eq!(
+        linear.last_error.as_deref(),
+        Some("Linear delivery is not configured on this server (MAIDAN_LINEAR_API_KEY)")
+    );
+}
+
+#[tokio::test]
+async fn a_send_that_will_be_retried_is_counted_on_the_delivery_row() {
+    let h = harness("retried").await;
+    bless_slack(&h, "C0123ABCDEF").await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([{ "surface": "slack", "channel": "C0123ABCDEF" }]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.retried, 1, "{stats:?}");
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(rows[0].status, status::PENDING, "still being retried");
+    assert_eq!(rows[0].attempts, 1, "{rows:?}");
+    assert_eq!(
+        rows[0].last_error.as_deref(),
+        Some("slack http error: these tests send nothing")
+    );
 }

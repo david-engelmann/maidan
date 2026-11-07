@@ -61,6 +61,22 @@ test("an unset registration switch is absent, and a fixed setting wins over a bi
   assert.ok(SERVER_ENV.includes("MAIDAN_OAUTH_DCR_REDIRECT_HOSTS"));
 });
 
+test("every result sender's credential reaches the container", () => {
+  const credentials = [
+    "MAIDAN_SLACK_BOT_TOKEN",
+    "MAIDAN_LINEAR_API_KEY",
+    "MAIDAN_GITHUB_TOKEN",
+    "MAIDAN_GITHUB_APP_ID",
+    "MAIDAN_GITHUB_APP_INSTALLATION_ID",
+    "MAIDAN_GITHUB_APP_PRIVATE_KEY",
+  ];
+  const env = serverEnv(Object.fromEntries(credentials.map((name) => [name, `${name}-value`])));
+  for (const name of credentials) {
+    assert.ok(SERVER_ENV.includes(name), name);
+    assert.equal(env[name], `${name}-value`, name);
+  }
+});
+
 test("a running container whose start predates the current environment is recycled", async () => {
   const before = await envFingerprint(serverEnv({ MAIDAN_PUBLIC_ORIGIN: "https://dev.maidan.world" }));
   const after = await envFingerprint(

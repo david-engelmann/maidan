@@ -330,6 +330,56 @@ async fn run_disposition_suite(store: &dyn Store) {
 
 /// Two targets on one thread are independent deliveries — partial delivery is the
 /// model, so one target failing must not disturb the other.
+/// A retry is counted on a pending row and leaves it pending; a row that has
+/// left `pending` keeps what it says.
+async fn run_retry_suite(store: &dyn Store) {
+    let tid = thread(store, "retries").await;
+    let row = store
+        .arm_result_delivery(tid, &slack(), revision())
+        .await
+        .expect("arm")
+        .expect("armed");
+    store
+        .note_result_delivery_retry(row.id, "slack http error: timed out")
+        .await
+        .expect("first retry");
+    store
+        .note_result_delivery_retry(row.id, "slack api error: ratelimited")
+        .await
+        .expect("second retry");
+    let retried = store
+        .get_result_delivery(tid, &slack())
+        .await
+        .expect("get")
+        .expect("exists");
+    assert_eq!(retried.status, status::PENDING);
+    assert_eq!(retried.attempts, 2);
+    assert_eq!(
+        retried.last_error.as_deref(),
+        Some("slack api error: ratelimited")
+    );
+
+    store
+        .mark_result_delivery_failed(row.id, "gave up")
+        .await
+        .expect("failed");
+    store
+        .note_result_delivery_retry(row.id, "a late retry")
+        .await
+        .expect("late retry");
+    let failed = store
+        .get_result_delivery(tid, &slack())
+        .await
+        .expect("get")
+        .expect("exists");
+    assert_eq!(failed.status, status::FAILED);
+    assert_eq!(
+        failed.attempts, 3,
+        "the give-up counts; the late note does not"
+    );
+    assert_eq!(failed.last_error.as_deref(), Some("gave up"));
+}
+
 async fn run_per_target_suite(store: &dyn Store) {
     let tid = thread(store, "per-target").await;
     let rev = revision();
@@ -616,6 +666,7 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     let store = sqlite().await;
     run_arming_suite(&store).await;
     run_disposition_suite(&store).await;
+    run_retry_suite(&store).await;
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;
@@ -655,6 +706,7 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_postgres() {
     let store = PostgresStore::for_tests(pool);
     run_arming_suite(&store).await;
     run_disposition_suite(&store).await;
+    run_retry_suite(&store).await;
     run_per_target_suite(&store).await;
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;

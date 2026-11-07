@@ -114,6 +114,28 @@ pub async fn mark_failed(
     mark_undelivered(pool, id, status::FAILED, error, true).await
 }
 
+/// Record a send attempt that failed and will be retried: the row stays
+/// `pending`, and its `attempts` and `last_error` say what the transport is
+/// doing, so a row the queue is still retrying does not read as never tried.
+/// A row that has left `pending` is not touched.
+pub async fn note_retry(
+    pool: &PgPool,
+    id: ResultDeliveryId,
+    error: &str,
+) -> Result<(), StoreError> {
+    sqlx::query(&format!(
+        "UPDATE maidan_result_deliveries
+         SET attempts = attempts + 1, last_error = $2, updated_at = now()
+         WHERE id = $1 AND status = '{pending}'",
+        pending = status::PENDING
+    ))
+    .bind(id.0)
+    .bind(error)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Record a target we deliberately did not deliver to — an unknown surface, or
 /// one the workspace has not blessed. **Not an error:** `docs/Result Delivery.md`
 /// makes "delivered nowhere" a normal outcome, so the disposition is recorded

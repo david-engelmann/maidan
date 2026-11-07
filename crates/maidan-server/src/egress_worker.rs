@@ -1294,6 +1294,36 @@ async fn record_result_gave_up(
     crate::metrics::record_result_delivery(target.surface().as_str(), "failed");
 }
 
+/// A send that failed and will be retried. The outbox row carries the
+/// retry; the result-delivery row, which is what a producer and the result
+/// read see, gets the attempt and the error too, or it would read `pending`,
+/// `attempts: 0`, no `last_error` through every retry, as if never tried.
+async fn record_result_retry(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    error: &str,
+) {
+    let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    else {
+        return;
+    };
+    if let Err(err) = state.store.note_result_delivery_retry(row.id, error).await {
+        tracing::warn!(error = %err, id = %row.id, "egress worker: noting the retry failed");
+    }
+    tracing::warn!(
+        thread_id = %entry.thread_id,
+        surface = %entry.surface,
+        selector = %entry.selector,
+        attempts = entry.attempts,
+        error,
+        "egress worker: result delivery failed; will retry"
+    );
+}
+
 /// Best-effort audit of a result-delivery send attempt. Never fails the
 /// delivery itself.
 async fn audit_result_attempt(
@@ -1564,6 +1594,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     stats.dead += 1;
                 } else {
                     if entry.kind == EgressKind::Result {
+                        record_result_retry(state, &entry, &target, &failure.message).await;
                         audit_result_attempt(
                             state,
                             &entry,

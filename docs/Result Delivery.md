@@ -610,6 +610,9 @@ One row per `(thread, target)`:
   or `skipped`
   (deliberately not delivered — an unknown surface, or a target the workspace has
   not blessed). `skipped` is **not an error**; `last_error` carries the reason.
+- **`attempts`** counts the sends tried, and **`last_error`** holds the latest
+  failure. While the egress queue is still retrying, the row stays `pending`
+  with both set, so a delivery being retried does not read as one never tried.
 - **`selector`** is the full destination (`owner/name#123` on GitHub), which is
   finer than the `owner/name` the allowlist is keyed on.
 - **`external_ref`** is the object we created — a Slack `ts`, a GitHub comment
