@@ -556,7 +556,7 @@
           },
           "kind": {
             "$ref": "#/components/schemas/ApprovalGateKind",
-            "description": "Why the gate was opened. `request` is an agent's own ask. `review_round_cap` is the server asking a person whether a task that has been sent back enough times should go around again."
+            "description": "Why the gate was opened. `request` is an agent's own ask. `review_round_cap`\nis the server asking a person whether a task that has been sent back\nenough times should go around again."
           },
           "prompt": {
             "type": "string"
@@ -640,16 +640,16 @@
         ],
         "type": "object"
       },
+      "ApprovalGateId": {
+        "format": "uuid",
+        "type": "string"
+      },
       "ApprovalGateKind": {
         "description": "Why an approval gate is open.",
         "enum": [
           "request",
           "review_round_cap"
         ],
-        "type": "string"
-      },
-      "ApprovalGateId": {
-        "format": "uuid",
         "type": "string"
       },
       "ApprovalGateState": {
@@ -8519,7 +8519,7 @@
             "type": "boolean"
           },
           "max_rounds": {
-            "description": "The cap in force. 3 when the thread has no requirement row. 0 means the cap is off.",
+            "description": "The cap in force. [`DEFAULT_MAX_REVIEW_ROUNDS`] when the thread has no\nrequirement row. `0` means the cap is off.",
             "format": "int64",
             "type": "integer"
           },
@@ -8529,7 +8529,7 @@
             "type": "integer"
           },
           "send_backs": {
-            "description": "Send-backs (`in_review` to `open`) since the latest accepted review-round cap, or since the thread began when none has been accepted.",
+            "description": "Send-backs (`in_review` → `open`) since the latest accepted review-round\ncap, or since the thread began when none has been accepted.",
             "format": "int64",
             "type": "integer"
           }
@@ -11785,7 +11785,7 @@
             "type": "string"
           },
           "max_rounds": {
-            "description": "Send-backs allowed in one cycle before a person decides. 0 is uncapped. A missing row still means 3.",
+            "description": "Send-backs allowed in one cycle before a person decides. `0` is uncapped.\nA missing row still means [`DEFAULT_MAX_REVIEW_ROUNDS`].",
             "format": "int64",
             "type": "integer"
           },
