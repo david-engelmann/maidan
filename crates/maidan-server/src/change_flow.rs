@@ -37,6 +37,14 @@
 //! history a reviewer had read, and without the two heads GitHub can no
 //! longer show what the rebase changed. It is best effort, like the body
 //! edit, so a failed comment never undoes the move.
+//!
+//! **One commit status: the producer's own check.** A result whose `check`
+//! names a context and a state gets that commit status on the head this
+//! round delivered (`POST /repos/{repo}/statuses/{sha}`), after the branch
+//! and its pull request are in place. A commit status rather than a check
+//! run, because a personal access token can post one. A malformed `check`
+//! or a status GitHub refuses never fails the delivery: it is logged and
+//! recorded as a warning on the delivery row.
 
 use maidan_types::{ChangeResult, ThreadId};
 use sha2::{Digest, Sha256};
@@ -64,6 +72,10 @@ pub enum ChangeOutcome {
         /// What the pull request lacks against the producer's template; see
         /// [`template_warnings`].
         template_warnings: Vec<String>,
+        /// Why the result's `check` did not become a commit status
+        /// ([`CHECK_INVALID`] or [`CHECK_NOT_POSTED`]); `None` when it did, or
+        /// when the result carries no `check`.
+        check_warning: Option<&'static str>,
     },
     /// Nothing more will be written; the reason is recorded.
     Refused(String),
@@ -127,6 +139,13 @@ pub const MISSING_TESTING: &str = "missing_testing";
 /// The warning for a pull request whose title and body name no issue key.
 pub const MISSING_ISSUE_KEY: &str = "missing_issue_key";
 
+/// The warning for a result whose `check` is malformed: no commit status was
+/// posted, and the change was delivered.
+pub const CHECK_INVALID: &str = "check_invalid";
+/// The warning for a commit status GitHub did not take: the change was
+/// delivered without it.
+pub const CHECK_NOT_POSTED: &str = "check_not_posted";
+
 /// What a pull request lacks against the producer's template: a `Testing`
 /// heading in the body, and an issue key (`ENG-123`) in the title or body.
 /// It flags and never refuses: the change lands as a draft either way, and
@@ -147,6 +166,7 @@ pub fn template_warnings(title: &str, body: &str) -> Vec<String> {
 pub fn template_note(warnings: &[String]) -> Option<String> {
     let missing: Vec<&str> = warnings
         .iter()
+        .filter(|code| ![CHECK_INVALID, CHECK_NOT_POSTED].contains(&code.as_str()))
         .map(|code| match code.as_str() {
             MISSING_TESTING => "a Testing section",
             MISSING_ISSUE_KEY => "an issue key (like ENG-123) in the title or body",
@@ -154,6 +174,18 @@ pub fn template_note(warnings: &[String]) -> Option<String> {
         })
         .collect();
     (!missing.is_empty()).then(|| format!("PR template: missing {}.", missing.join(" and ")))
+}
+
+/// The Slack line saying the result's `check` did not become a commit
+/// status, or `None` when it did or there was none.
+pub fn check_note(warnings: &[String]) -> Option<String> {
+    warnings.iter().find_map(|code| match code.as_str() {
+        CHECK_INVALID => {
+            Some("Commit status not posted: the result's `check` is malformed.".to_string())
+        }
+        CHECK_NOT_POSTED => Some("Commit status not posted: GitHub did not take it.".to_string()),
+        _ => None,
+    })
 }
 
 /// A Markdown heading reading `Testing`, at any level, outside fenced code:
@@ -434,12 +466,39 @@ pub async fn deliver_change(
             tracing::warn!(repo = req.repo, pull = pull.number, error = %err, "change flow: rebase range not commented");
         }
     }
+    let check_warning = post_check(git, req, &commit_sha).await;
     Ok(ChangeOutcome::Committed {
         commit_sha,
         pull,
         rebased_from,
         template_warnings,
+        check_warning,
     })
+}
+
+/// Post the result's `check` as a commit status on `head_sha`, the head this
+/// round delivered, so a retry, a later round or a rebase posts it again on
+/// the head it leaves. Best effort, like the body edit: the branch and the
+/// pull request stand whatever happens here, and the warning returned is
+/// recorded on the delivery row.
+async fn post_check(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+    head_sha: &str,
+) -> Option<&'static str> {
+    match req.change.check.as_ref()? {
+        Err(reason) => {
+            tracing::warn!(repo = req.repo, branch = req.branch, reason = %reason, "change flow: the result's check is malformed; no commit status posted");
+            Some(CHECK_INVALID)
+        }
+        Ok(check) => match git.create_commit_status(req.repo, head_sha, check).await {
+            Ok(()) => None,
+            Err(err) => {
+                tracing::warn!(repo = req.repo, sha = head_sha, context = %check.context, error = %err, "change flow: commit status not posted");
+                Some(CHECK_NOT_POSTED)
+            }
+        },
+    }
 }
 
 /// The line that names a squash-rebase's range, on the pull request and in
@@ -843,7 +902,23 @@ mod tests {
             linear_issue: None,
             current_state: None,
             rebase: false,
+            check: None,
         }
+    }
+
+    #[test]
+    fn check_warnings_get_their_own_line_and_never_read_as_a_template_gap() {
+        let warnings = [MISSING_TESTING.to_string(), CHECK_INVALID.to_string()];
+        let template = template_note(&warnings).unwrap();
+        assert!(!template.contains("check"), "{template}");
+        assert!(check_note(&warnings).unwrap().contains("malformed"));
+        let not_posted = check_note(&[CHECK_NOT_POSTED.to_string()]).unwrap();
+        assert!(
+            not_posted.contains("GitHub did not take it"),
+            "{not_posted}"
+        );
+        assert_eq!(template_note(&[CHECK_NOT_POSTED.to_string()]), None);
+        assert_eq!(check_note(&[MISSING_ISSUE_KEY.to_string()]), None);
     }
 
     #[test]

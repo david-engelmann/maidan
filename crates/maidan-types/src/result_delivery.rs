@@ -90,8 +90,10 @@ pub struct ResultDelivery {
     pub attempts: i64,
     pub last_error: Option<String>,
     /// For a change: what its pull request lacks against the producer's
-    /// template (`missing_testing`, `missing_issue_key`). A flag, not a
-    /// failure: the change landed either way. Absent when nothing is missing.
+    /// template (`missing_testing`, `missing_issue_key`), and why the result's
+    /// `check` became no commit status (`check_invalid`, `check_not_posted`).
+    /// A flag, not a failure: the change landed either way. Absent when nothing
+    /// is missing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub template_warnings: Vec<String>,
     pub created_at: DateTime<Utc>,

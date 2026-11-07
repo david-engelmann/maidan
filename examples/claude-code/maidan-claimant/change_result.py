@@ -10,7 +10,12 @@ what Maidan's change flow accepts, and writes the request body for
     python3 change_result.py --base-sha <sha> --branch feature/agent-<slug> \
         --claim-lease-id <lease> \
         --title "[ENG-123] ..." --summary-file body.md --linear-issue ENG-123 \
-        --deliver-to-file deliver_to.json --out change-result.json
+        --deliver-to-file deliver_to.json --out change-result.json \
+        --check-context claimant/prepush --check-state success \
+        --check-description "make prepush passed"
+
+The optional `--check-*` flags add `check`, the gate you ran before handing
+the change back; Maidan posts it as a commit status on the head it delivers.
 
 Exit status: 0 written; 2 a mistake to fix (an unclean tree, a bad branch, an
 empty diff); 3 the change cannot go as a diff (a binary file, a symlink, a
@@ -32,6 +37,10 @@ CHANGE_BRANCH = re.compile(r"^feature/agent-[a-z0-9][a-z0-9-]*$")
 # `maidan_types::is_issue_key`.
 ISSUE_KEY = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
 FULL_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+# A commit status as the change flow takes it (`maidan_types::ChangeCheck`).
+CHECK_STATES = ("success", "failure", "error", "pending")
+CHECK_CONTEXT_MAX = 100
+CHECK_DESCRIPTION_MAX = 140
 # The server's default request limit is 2 MiB (`MAIDAN_MAX_BODY_BYTES`);
 # leave room for the headers and a margin.
 DEFAULT_MAX_BYTES = 2_000_000
@@ -152,6 +161,19 @@ def deliver_to(args):
     return targets
 
 
+def check(args):
+    """The `check` object, refused here when Maidan would skip it."""
+    context = (args.check_context or "").strip()
+    if not context or len(context) > CHECK_CONTEXT_MAX or not context.isprintable():
+        raise Stop(FIX, f"--check-context must be 1 to {CHECK_CONTEXT_MAX} printable characters")
+    if args.check_state not in CHECK_STATES:
+        raise Stop(FIX, f"--check-state must be one of {', '.join(CHECK_STATES)}")
+    out = {"context": context, "state": args.check_state}
+    if args.check_description:
+        out["description"] = " ".join(args.check_description.split())[:CHECK_DESCRIPTION_MAX]
+    return out
+
+
 def build(args):
     if not CHANGE_BRANCH.match(args.branch):
         raise Stop(FIX, f"branch {args.branch!r} must match feature/agent-[a-z0-9][a-z0-9-]*")
@@ -179,6 +201,8 @@ def build(args):
             envelope["summary"] = fh.read()
     if args.linear_issue:
         envelope["linear_issue"] = args.linear_issue
+    if args.check_context or args.check_state:
+        envelope["check"] = check(args)
     # The claim fence: Maidan stores the result only while this lease is the
     # thread's live claim, so a seat whose claim lapsed and was taken over
     # cannot land its work over the new holder's.
@@ -200,6 +224,9 @@ def main(argv=None):
     parser.add_argument("--summary-file", help="a file holding the pull request body")
     parser.add_argument("--linear-issue", help="the tracker issue key, such as ENG-123")
     parser.add_argument("--deliver-to-file", help="a JSON file holding the opening message's deliver_to list")
+    parser.add_argument("--check-context", help="the commit status context for the check you ran, such as claimant/prepush")
+    parser.add_argument("--check-state", help="that check's state: success, failure, error or pending")
+    parser.add_argument("--check-description", help="one line on what the check found (cut to 140 characters)")
     parser.add_argument("--repo", help="owner/name, for a github_branch target deliver_to lacks")
     parser.add_argument("--base", help="the pull request's base branch, for that target")
     parser.add_argument("--repo-dir", default=".", help="the checkout (default: the current directory)")

@@ -136,6 +136,10 @@ struct Fake {
     dequeued: HashMap<i64, String>,
     /// Commits already on the base branch, which `compare` reports behind.
     on_base: Vec<String>,
+    /// Every commit status posted, as `(sha, body)`.
+    statuses: Vec<(String, Value)>,
+    /// Fail every commit status with a 500.
+    fail_statuses: bool,
 }
 
 impl Fake {
@@ -495,6 +499,26 @@ async fn github(
             fake.pull_comments
                 .push((number, body["body"].as_str().unwrap().into()));
             reply(StatusCode::CREATED, json!({"id": 1}))
+        }
+        ("POST", r) if r.starts_with("statuses/") => {
+            if fake.fail_statuses {
+                return reply(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"message": "down"}),
+                );
+            }
+            let sha = r["statuses/".len()..].to_string();
+            if !fake.commits.contains_key(&sha) {
+                return reply(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    json!({"message": "No commit found for SHA"}),
+                );
+            }
+            fake.statuses.push((sha, body.clone()));
+            reply(
+                StatusCode::CREATED,
+                json!({"id": 1, "state": body["state"]}),
+            )
         }
         ("POST", "pulls") if fake.pulls_unprocessable > 0 => {
             fake.pulls_unprocessable -= 1;
@@ -3342,6 +3366,187 @@ async fn the_pull_request_body_keeps_a_current_state_section_across_rounds() {
     assert_eq!(f.pulls[0].title, title, "the title is left to people");
 }
 
+// ---------------------------------------------------------------- the check
+
+/// A change result carrying the producer's own `check`.
+fn change_with_check(base_sha: &str, check: Value) -> Value {
+    let mut result = change("changed", base_sha, BRANCH, DIFF);
+    result["check"] = check;
+    result
+}
+
+fn status_requests(h: &Harness) -> Vec<String> {
+    h.fake
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| r.contains("/statuses/"))
+        .cloned()
+        .collect()
+}
+
+#[tokio::test]
+async fn a_check_is_posted_as_a_commit_status_on_the_delivered_head_after_the_pull_request() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change_with_check(
+        &h.base_sha,
+        json!({"context": "seat/prepush", "state": "success", "description": "make prepush passed"}),
+    );
+    result["view_url"] = json!("https://runs.example.com/7");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.last_error, None);
+    assert!(
+        !row.template_warnings
+            .iter()
+            .any(|w| w.starts_with("check_")),
+        "{:?}",
+        row.template_warnings
+    );
+    let head = {
+        let f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        assert_eq!(
+            f.statuses,
+            vec![(
+                head.clone(),
+                json!({
+                    "state": "success",
+                    "context": "seat/prepush",
+                    "description": "make prepush passed",
+                    "target_url": "https://runs.example.com/7",
+                })
+            )]
+        );
+        let at = |wanted: &str| f.requests.iter().position(|r| r == wanted);
+        let pulled = at(&format!("POST /repos/{REPO}/pulls")).expect("the pull request opened");
+        let posted = at(&format!("POST /repos/{REPO}/statuses/{head}")).expect("status posted");
+        assert!(posted > pulled, "the status follows the pull request");
+        head
+    };
+    assert!(
+        !h.slack_reply().contains("Commit status"),
+        "{}",
+        h.slack_reply()
+    );
+
+    // A re-delivery posts it again on the head it leaves, here the same one.
+    let replayed = maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        replayed,
+        Some(maidan_store::ResultDeliveryReplay::Enqueued(_))
+    ));
+    h.drain().await;
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.refs[BRANCH], head);
+    let heads: Vec<&str> = f.statuses.iter().map(|(sha, _)| sha.as_str()).collect();
+    assert_eq!(heads, vec![head.as_str(), head.as_str()]);
+}
+
+#[tokio::test]
+async fn a_change_without_a_check_posts_no_commit_status() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED);
+    assert!(h.fake.lock().unwrap().statuses.is_empty());
+    assert!(status_requests(&h).is_empty(), "{:?}", status_requests(&h));
+    assert!(!h.slack_reply().contains("Commit status"));
+}
+
+#[tokio::test]
+async fn a_malformed_check_posts_nothing_and_still_delivers_the_branch_with_a_warning() {
+    let h = harness().await;
+    h.allow_change().await;
+    let result = change_with_check(&h.base_sha, json!({"context": " ", "state": "passed"}));
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.last_error, None, "a warning is not a failure");
+    assert_eq!(
+        row.template_warnings,
+        vec!["missing_testing", "missing_issue_key", "check_invalid"]
+    );
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(f.refs.contains_key(BRANCH), "the branch was delivered");
+        assert_eq!(f.pulls.len(), 1, "the draft opened");
+        assert!(f.statuses.is_empty());
+    }
+    assert!(status_requests(&h).is_empty(), "{:?}", status_requests(&h));
+    let reply = h.slack_reply();
+    assert!(reply.contains("Committed "), "{reply}");
+    assert!(
+        reply.contains("Commit status not posted: the result's `check` is malformed."),
+        "{reply}"
+    );
+    assert!(
+        reply.contains("PR template: missing a Testing section and an issue key"),
+        "{reply}"
+    );
+}
+
+#[tokio::test]
+async fn a_commit_status_github_refuses_leaves_the_branch_and_pull_request_standing() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().fail_statuses = true;
+    let result = change_with_check(
+        &h.base_sha,
+        json!({"context": "seat/prepush", "state": "failure"}),
+    );
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.last_error, None);
+    assert!(
+        row.template_warnings
+            .iter()
+            .any(|w| w == "check_not_posted"),
+        "{:?}",
+        row.template_warnings
+    );
+    let f = h.fake.lock().unwrap();
+    let head = f.refs.get(BRANCH).expect("the branch stands").clone();
+    assert_eq!(f.commits[&head].parents, vec![h.base_sha.clone()]);
+    assert_eq!(f.pulls.len(), 1, "the pull request stands");
+    assert!(f.forced.is_empty(), "nothing is rolled back");
+    assert_eq!(
+        f.requests
+            .iter()
+            .filter(|r| r.contains("/statuses/"))
+            .count(),
+        1,
+        "tried once, not retried"
+    );
+    drop(f);
+    let reply = h.slack_reply();
+    assert!(
+        reply.contains("Commit status not posted: GitHub did not take it."),
+        "{reply}"
+    );
+}
+
 // ---------------------------------------------------------------- notices
 
 const BRIDGE_DIFF: &str = "diff --git a/src/bridge/x.rs b/src/bridge/x.rs\nindex 1111111..2222222 100644\n--- a/src/bridge/x.rs\n+++ b/src/bridge/x.rs\n@@ -1 +1 @@\n-pub fn bridge() {}\n+pub fn bridge() -> u8 { 1 }\n";
@@ -3768,6 +3973,27 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
     assert_eq!(
         h.delivery(&h.a, "github_branch").await.status,
         status::DELIVERED
+    );
+}
+
+#[tokio::test]
+async fn a_rebase_round_posts_its_check_on_the_new_head() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let mut result = rebase_change(&new_base, DIFF);
+    result["check"] = json!({"context": "seat/prepush", "state": "pending"});
+    h.route(&h.a, &result, 2).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let f = h.fake.lock().unwrap();
+    let head = f.refs[BRANCH].clone();
+    assert_ne!(head, delivered, "the rebase moved the branch");
+    assert_eq!(
+        f.statuses,
+        vec![(head, json!({"state": "pending", "context": "seat/prepush"}))],
+        "the status lands on the rebased head, not the one it replaced"
     );
 }
 

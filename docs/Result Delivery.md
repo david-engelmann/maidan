@@ -303,6 +303,7 @@ envelope fields, Maidan reads:
 | `error_detail` | Optional. Why a run that changed nothing ended. The Slack reply to a status other than `changed` gives it after the status, in place of `summary`, with a cause repeated across retries said once and the whole cut at 600 characters. Without it the reply gives `summary`. |
 | `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message, first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
 | `pr_state` | Optional, `{title, body}`. `body` describes the whole branch against its base as it stands after this round (where `title` and `summary` describe this round). Maidan keeps it in one section of the pull request body, between `<!-- pi:current-state -->` and `<!-- /pi:current-state -->`, replacing only that section on each delivery and appending it when the markers are missing, so edits people and review bots make elsewhere in the body stay. Mentions are defused and the section is capped at 20,000 characters. `pr_state.title` is not read: a title people fixed is never reverted. A failed body edit never fails the delivery. |
+| `check` | Optional, `{context, state, description}`: the producer's own check of the change before delivery. After the branch is pushed and the pull request opened or found, Maidan posts it as a commit status on the head it delivered (`POST /repos/{repo}/statuses/{sha}`, with the envelope's `view_url` as `target_url` when it is https), so a re-delivery or a rebase round posts it again on the head it leaves. `context` is non-empty, printable and at most 100 characters; `state` is `success`, `failure`, `error` or `pending`; `description` is put on one line and cut to 140 characters. A malformed `check` posts nothing and adds `check_invalid` to the row's `template_warnings`; a status GitHub refuses adds `check_not_posted`. Either way the branch and the pull request stand and the Slack reply says so in one line. A commit status, not a check run, because a token can post one. |
 
 **What a `changed` result does**, per `github_branch` target the workspace has
 blessed:
@@ -334,7 +335,8 @@ blessed:
 5. Opens a **draft** pull request against `base` with the title and summary
    when none is open for the branch. Maidan posts no other comment (except
    a squash-rebase's range, below), requests no review, and never marks the
-   pull request ready, approves or merges it.
+   pull request ready, approves or merges it. A result with a `check` then
+   gets its commit status on the delivered head (see the table above).
 6. Replies in the Slack target's thread with the commit SHA and the pull
    request link. The reply waits for the branch delivery; a target that was
    refused or skipped is reported with its reason.

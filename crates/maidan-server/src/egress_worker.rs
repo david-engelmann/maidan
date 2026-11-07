@@ -705,9 +705,13 @@ async fn github_branch_result(
             commit_sha,
             pull,
             rebased_from,
-            template_warnings,
+            mut template_warnings,
+            check_warning,
         }) => {
             crate::metrics::record_github_egress("sent");
+            // A `check` that did not become a commit status rides with the
+            // template flags: the change landed either way.
+            template_warnings.extend(check_warning.map(str::to_string));
             // Before the row is marked delivered, so the Slack reply that
             // waits on it reads them. Best effort: a flag never holds a
             // landed change.

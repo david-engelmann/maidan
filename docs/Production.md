@@ -336,15 +336,17 @@ commits a result to a branch and opens a draft pull request as the token's
 owner. Use a fine-grained token with **Contents** and **Pull requests** (read
 and write) on exactly the repositories it may write to, and nothing else. For
 CI notices (`ci_failed`, `checks_done`) add **Actions** and **Commit
-statuses**, read-only. Only a GitHub App can create check runs; with a token,
-the summary comment carries the verdict.
+statuses**, read-only; for a change result's `check`, which Maidan posts as a
+commit status on the head it delivered, make **Commit statuses** read and
+write. Only a GitHub App can create check runs; with a token, the summary
+comment carries the verdict.
 
 **A GitHub App instead.** Set `MAIDAN_GITHUB_APP_ID`,
 `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`.
 Every GitHub call then uses a short-lived installation token, renewed before
 it expires, and commits as the app's bot. Grant **Contents**, **Pull
-requests**, **Issues** and **Checks** (read and write) on the same
-repositories. A partial app config refuses boot rather than falling back to
+requests**, **Issues**, **Checks** and **Commit statuses** (read and write)
+on the same repositories. A partial app config refuses boot rather than falling back to
 the token.
 
 **Which repositories.** `MAIDAN_GITHUB_WRITE_REPOS` (`example/app,example/skills`)
