@@ -656,7 +656,9 @@ pub async fn run(state: AppState, channel: String) {
         "boot",
         &format!(
             ":white_check_mark: Maidan {} started; operator alerts reach this channel.{armed}",
-            env!("CARGO_PKG_VERSION")
+            // The build it is (`/health`'s version: vN.N.N or dev-<sha>), not
+            // the crate's 0.0.0, so the channel says which build came up.
+            crate::version()
         ),
     )
     .await;
