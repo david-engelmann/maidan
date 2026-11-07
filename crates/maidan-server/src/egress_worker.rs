@@ -1389,6 +1389,29 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             continue;
         };
         let surface = target.surface().as_str();
+        // A result queued for a surface this server has no sender for (armed
+        // before the credential was removed, or replayed without it) can
+        // never be sent: it fails now, naming the setting, rather than
+        // retrying against nothing.
+        if entry.kind == EgressKind::Result
+            && let Some(reason) =
+                crate::result_delivery::unconfigured_reason(state, target.surface())
+        {
+            dead_letter(state, &entry, &reason).await;
+            if let Ok(Some(row)) = state
+                .store
+                .get_result_delivery(entry.thread_id, &target)
+                .await
+                && let Err(err) =
+                    crate::result_delivery::record_unconfigured(state, &row, &target, &reason).await
+            {
+                tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
+            }
+            audit_result_attempt(state, &entry, Some(&target), "dead", Some(&reason)).await;
+            crate::metrics::record_egress_delivery(surface, crate::metrics::EgressOutcome::Dead);
+            stats.dead += 1;
+            continue;
+        }
         // The claim counted this try, so a first post has `attempts == 1`.
         if crate::suspension::held_back(state, entry.workspace_id).await {
             let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;

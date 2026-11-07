@@ -604,7 +604,10 @@ One row per `(thread, target)`:
 ```
 
 - **`status`** is `pending` (armed, not yet sent), `delivered`, `failed` (the
-  transport gave up and the egress queue dead-lettered it), or `skipped`
+  transport gave up and the egress queue dead-lettered it, or the server has no
+  sender for the surface: `last_error` then names the setting, such as
+  `Slack delivery is not configured on this server (MAIDAN_SLACK_BOT_TOKEN)`),
+  or `skipped`
   (deliberately not delivered — an unknown surface, or a target the workspace has
   not blessed). `skipped` is **not an error**; `last_error` carries the reason.
 - **`selector`** is the full destination (`owner/name#123` on GitHub), which is

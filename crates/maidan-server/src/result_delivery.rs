@@ -11,7 +11,10 @@
 //! `deliver_to` is valid and normal (thread-only, zero rows). A target the
 //! workspace has not blessed, or a surface this build does not know, is a
 //! *skip with a recorded warning* — never silence, never an error that sinks
-//! the other targets. Partial delivery is the model.
+//! the other targets. Partial delivery is the model. A blessed target on a
+//! surface this server has no sender for (its credential is unset) is
+//! recorded `failed` at once, naming the setting: no worker could send it, and
+//! a row left `pending` would never say so.
 //!
 //! The every-replica router is safe because `arm_result_delivery` is the
 //! contended write: exactly one replica wins the right to enqueue. The egress
@@ -29,9 +32,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget,
-    ExternalRef, GithubReviewComment, NewEgressOutbox, ResultAttachment, ResultDelivery, ThreadId,
-    WaiterResult, WorkspaceId, CHANGE_RESULT_KIND,
+    parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressSurface,
+    EgressTarget, ExternalRef, GithubReviewComment, NewEgressOutbox, ResultAttachment,
+    ResultDelivery, ThreadId, WaiterResult, WorkspaceId, CHANGE_RESULT_KIND,
 };
 use tracing::{debug, warn};
 
@@ -338,6 +341,11 @@ async fn route_one(
                 .map_err(|e| e.to_string())?;
             if let Some(reason) = allowed.then(|| no_change_reason(&egress, waiter)).flatten() {
                 skip_routable(state, thread_id, &egress, revision, &reason).await
+            } else if let Some(reason) = allowed
+                .then(|| unconfigured_reason(state, egress.surface()))
+                .flatten()
+            {
+                fail_unconfigured(state, thread_id, &egress, revision, &reason).await
             } else if allowed {
                 enqueue_routable(
                     state,
@@ -361,6 +369,33 @@ async fn route_one(
             }
         }
     }
+}
+
+/// Why this server can never send to `surface`: no sender was built for it,
+/// because the credential that builds one is unset. `None` when one was.
+///
+/// A row armed for such a surface used to stay `pending` with nothing to send
+/// it, and nobody could tell the result would never arrive. The reason names
+/// the setting, so whoever reads the row knows what to fix.
+pub fn unconfigured_reason(state: &AppState, surface: EgressSurface) -> Option<String> {
+    let (configured, name, setting) = match surface {
+        EgressSurface::Slack => (
+            state.slack_sender.is_some(),
+            "Slack",
+            "MAIDAN_SLACK_BOT_TOKEN",
+        ),
+        EgressSurface::Github | EgressSurface::GithubBranch => (
+            state.github_sender.is_some(),
+            "GitHub",
+            "MAIDAN_GITHUB_TOKEN or a GitHub App",
+        ),
+        EgressSurface::Linear => (
+            state.linear_sender.is_some(),
+            "Linear",
+            "MAIDAN_LINEAR_API_KEY",
+        ),
+    };
+    (!configured).then(|| format!("{name} delivery is not configured on this server ({setting})"))
 }
 
 /// Why a blessed `github_branch` target still gets no GitHub write: only a
@@ -616,6 +651,64 @@ async fn record_skip(state: &AppState, row: ResultDelivery, reason: &str) -> Res
         selector = %row.selector,
         reason,
         "result delivery: skipped"
+    );
+    Ok(())
+}
+
+/// A blessed target on a surface this server has no sender for: armed, then
+/// failed at once with the reason, and said the way a transport that gave up
+/// says it (the event, the operator alert, the metric). Nothing is enqueued,
+/// since no worker could ever send it; a replay after the operator sets the
+/// credential and restarts delivers it.
+async fn fail_unconfigured(
+    state: &AppState,
+    thread_id: ThreadId,
+    target: &EgressTarget,
+    revision: DateTime<Utc>,
+    reason: &str,
+) -> Result<(), String> {
+    let Some(row) = state
+        .store
+        .arm_result_delivery(thread_id, target, revision)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(());
+    };
+    record_unconfigured(state, &row, target, reason).await
+}
+
+/// Record `row` as `failed` because its surface has no sender, and publish
+/// the `ResultDeliveryFailed` the store appended with it.
+pub async fn record_unconfigured(
+    state: &AppState,
+    row: &ResultDelivery,
+    target: &EgressTarget,
+    reason: &str,
+) -> Result<(), String> {
+    if let Some(event) = state
+        .store
+        .mark_result_delivery_failed(row.id, reason)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        crate::routes::publish_stored(state, event).await;
+    }
+    crate::ops_alert::alert(
+        &format!("result-delivery-unconfigured:{}:{target}", row.thread_id),
+        &format!(
+            "A task result was not delivered: thread {} to {target} failed because {reason}. The result is stored; replay it with POST /threads/{}/deliveries/{}/replay once the server has the setting.",
+            row.thread_id, row.thread_id, row.id
+        ),
+    )
+    .await;
+    crate::metrics::record_result_delivery(target.surface().as_str(), status::FAILED);
+    warn!(
+        thread_id = %row.thread_id,
+        surface = %row.surface,
+        selector = %row.selector,
+        reason,
+        "result delivery: failed, the surface is not configured"
     );
     Ok(())
 }
