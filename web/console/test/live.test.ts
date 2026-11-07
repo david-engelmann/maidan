@@ -159,4 +159,74 @@ test("disconnect stops retrying; forgetResume drops the stored token", () => {
   assert.equal(h.conn.getStatus().kind, "idle");
   h.conn.forgetResume();
   assert.equal(h.store.has("resume"), false);
+  assert.equal(h.store.has("resume:workspace"), false);
+});
+
+test("switching workspaces drops the previous resume token and starts at the head", () => {
+  const h = harness();
+  h.conn.connect({ workspace_id: "ws_1" });
+  h.sockets[0].open();
+  h.sockets[0].frame({ type: "subscribe_ack", after_id: 4, resume_token: "rt_1" });
+  assert.equal(h.store.get("resume:workspace"), "ws_1");
+  h.conn.connect({ workspace_id: "ws_2" });
+  h.sockets[1].open();
+  const sent = JSON.parse(h.sockets[1].sent[0]);
+  assert.equal(sent.resume_token, undefined);
+  assert.equal(sent.after_id, 0);
+  assert.deepEqual(sent.filter, { workspace_id: "ws_2" });
+  assert.equal(h.store.has("resume"), false);
+  assert.equal(h.store.has("resume:workspace"), false);
+});
+
+test("a fresh connection resumes only for the workspace that stored the token", () => {
+  const h = harness();
+  h.conn.connect({ workspace_id: "ws_1" });
+  h.sockets[0].open();
+  h.sockets[0].frame({ type: "subscribe_ack", after_id: 4, resume_token: "rt_1" });
+  const saved = new Map(h.store);
+  const openAs = (ws: string) => {
+    h.store.clear();
+    for (const [k, v] of saved) h.store.set(k, v);
+    const sockets: FakeSocket[] = [];
+    const conn = new LiveConnection({
+      url: "ws://x/ws/subscribe",
+      openSocket: () => {
+        const s = new FakeSocket();
+        sockets.push(s);
+        return s;
+      },
+      storage: {
+        getItem: (k) => h.store.get(k) ?? null,
+        setItem: (k, v) => void h.store.set(k, v),
+        removeItem: (k) => void h.store.delete(k),
+      },
+      resumeKey: "resume",
+      token: () => "",
+      memberId: () => "mem_1",
+    });
+    conn.connect({ workspace_id: ws });
+    sockets[0].open();
+    return JSON.parse(sockets[0].sent[0]) as { resume_token?: string; after_id?: number };
+  };
+  const other = openAs("ws_2");
+  assert.equal(other.resume_token, undefined);
+  assert.equal(other.after_id, 0);
+  const same = openAs("ws_1");
+  assert.equal(same.resume_token, "rt_1");
+});
+
+test("update replaces the socket url used on the next connect", () => {
+  const urls: string[] = [];
+  const conn = new LiveConnection({
+    url: "ws://old/ws/subscribe",
+    openSocket: (url) => {
+      urls.push(url);
+      return new FakeSocket();
+    },
+    storage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
+    resumeKey: "resume",
+  });
+  conn.update({ url: "ws://new/ws/subscribe" });
+  conn.connect({ workspace_id: "ws_1" });
+  assert.deepEqual(urls, ["ws://new/ws/subscribe"]);
 });

@@ -30,7 +30,7 @@ export type WorkEvent = { id: number | string; kind: string; thread_id?: string 
 export type Peer = { id: string; name?: string | null; base_url?: string | null };
 export type ArtifactMeta = { sha256?: string; filename?: string | null; mime_type?: string | null; size_bytes?: number; kind?: string | null; created_at?: string | null };
 
-export type SearchHit = { message_id?: string; id?: string; thread_id?: string | null; body?: string | null; snippet?: string | null };
+export type SearchHit = { message_id?: string; id?: string; thread_id?: string | null; author_id?: string | null; body?: string | null; snippet?: string | null };
 export type AppInstallation = { id: string; app_id: string; revoked_at?: string | null };
 export type SwitchableWorkspace = { workspace_id: string; name: string; current?: boolean };
 export const SEARCH_MODES = ["lexical", "semantic"] as const;
@@ -62,6 +62,121 @@ export function channelFollowLabel(id: string, channels: PickerChannel[]): strin
 export function channelsToFollow(channels: PickerChannel[], followed: Iterable<string>): PickerChannel[] {
   const have = new Set(followed);
   return channels.filter((c) => c.name.trim() && !have.has(c.id)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+export type PickerTask = { id: string; title: string; channelId?: string | null; channelName?: string | null };
+
+export type TaskCatalogView = { tasks: PickerTask[]; channels: PickerChannel[]; error: boolean };
+
+/** One pass over the channels. `failed` counts channels that did not answer; `error` is set when the whole read failed. */
+export type TaskCatalogRead = { tasks: PickerTask[]; channels: PickerChannel[]; failed: number; error: string | null };
+
+/** A partial or failed read is not remembered. The next visit asks again. */
+export function storedCatalog(read: TaskCatalogRead): TaskCatalogView | null {
+  if (read.failed > 0 || read.error !== null) return null;
+  return { tasks: read.tasks, channels: read.channels, error: false };
+}
+
+/** How long a complete catalog may stand in before Tools asks the server again. */
+export const CATALOG_TTL_MS = 15_000;
+
+/** A stored catalog is warm only inside the freshness window. */
+export function catalogIsFresh(at: number, now: number, ttl = CATALOG_TTL_MS): boolean {
+  return now - at < ttl;
+}
+
+/**
+ * What to show after a read, and what to keep for the next visit.
+ * A warm catalog stays on screen when the new read is partial or failed,
+ * but that warm copy is not written back: a partial channel must not freeze
+ * the palette's snapshot for the rest of the session.
+ */
+export function nextCatalog(cached: TaskCatalogView | null, read: TaskCatalogRead): { show: TaskCatalogView; store: TaskCatalogView | null } {
+  const stored = storedCatalog(read);
+  if (stored) return { show: stored, store: stored };
+  if (cached && !cached.error) return { show: cached, store: null };
+  return { show: { tasks: read.tasks, channels: read.channels, error: read.error !== null && read.tasks.length === 0 }, store: null };
+}
+
+/** The task list is stale when the feed resyncs or a task is created or renamed. */
+export function catalogShouldRefresh(message: { type: string; frame?: { kind?: string } }): boolean {
+  if (message.type === "resync") return true;
+  const kind = message.type === "event" ? message.frame?.kind : undefined;
+  return kind === "thread_created" || kind === "thread_updated";
+}
+
+/** The follow menu separates channel and title with an em dash; a link uses a dot. */
+const FOLLOW_MARK = "\u2014";
+const LINK_MARK = "\u00b7";
+
+function taskWords(task: PickerTask, mark: string): string | null {
+  const title = task.title.trim();
+  if (!title) return null;
+  const channel = (task.channelName ?? "").trim();
+  return channel ? `#${channel} ${mark} ${title}` : title;
+}
+
+function isTaskList(tasks: ReadonlyMap<string, PickerTask> | readonly PickerTask[]): tasks is readonly PickerTask[] {
+  return Array.isArray(tasks);
+}
+
+function findTask(id: string, tasks: ReadonlyMap<string, PickerTask> | readonly PickerTask[]): PickerTask | undefined {
+  if (isTaskList(tasks)) return tasks.find((task) => task.id === id);
+  return tasks.get(id);
+}
+
+/** A followed task as "#channel — title", or the title when it has no channel name. The id when unknown. */
+export function taskFollowLabel(id: string, tasks: ReadonlyMap<string, PickerTask> | PickerTask[]): { text: string; resolved: boolean } {
+  const task = findTask(id, tasks);
+  const label = task ? taskWords(task, FOLLOW_MARK) : null;
+  return label ? { text: label, resolved: true } : { text: id, resolved: false };
+}
+
+/** Tasks still available to follow, "#channel — title" or title, by channel then title then id. */
+export function tasksToFollow(tasks: PickerTask[], followed: Iterable<string>): Array<{ id: string; label: string }> {
+  const have = new Set(followed);
+  return tasks
+    .filter((task) => task.title.trim() && !have.has(task.id))
+    .sort((a, b) => {
+      const channel = (a.channelName ?? "").trim().localeCompare((b.channelName ?? "").trim());
+      if (channel) return channel;
+      const title = a.title.trim().localeCompare(b.title.trim());
+      return title || a.id.localeCompare(b.id);
+    })
+    .flatMap((task) => {
+      const label = taskWords(task, FOLLOW_MARK);
+      return label ? [{ id: task.id, label }] : [];
+    });
+}
+
+const NOTIFICATION_LABELS: Record<string, string> = {
+  message_posted: "Message posted",
+  mention_recorded: "Mentioned you",
+  thread_ready: "Task ready",
+  thread_result_set: "Result posted",
+  review_submitted: "Review submitted",
+  claim_expired: "Claim expired",
+  thread_landed: "Task landed",
+  approval_requested: "Approval requested",
+  thread_assigned: "Assigned to you",
+  thread_assignment_changed: "Assigned to you",
+};
+
+/** A notification kind in words. An unknown snake_case kind is capitalized as a phrase. */
+export function describeNotificationKind(kind: string): string {
+  const known = NOTIFICATION_LABELS[kind];
+  if (known) return known;
+  const words = kind.split("_").map((word) => word.trim()).filter(Boolean);
+  if (!words.length) return kind;
+  const [head, ...rest] = words;
+  return [head.charAt(0).toUpperCase() + head.slice(1).toLowerCase(), ...rest.map((word) => word.toLowerCase())].join(" ");
+}
+
+/** "#channel · title" when the task is known, otherwise the caller's fallback. */
+export function threadLinkLabel(threadId: string, tasks: ReadonlyMap<string, PickerTask>, fallback: string): string {
+  const task = tasks.get(threadId);
+  const label = task ? taskWords(task, LINK_MARK) : null;
+  return label ?? fallback;
 }
 
 /** The query string for a workspace search; empty fields stay out. */

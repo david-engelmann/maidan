@@ -2,6 +2,7 @@
 // A port of the board's session.js: discovery, the cookie session, the
 // token-for-session exchange, and /me, without touching the DOM.
 import { SIGNED_OUT, apiPath, bumpAuthEpoch, signOutPostsLogout, credentialMode, onAuthLost, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
+import { controlBus } from "./bus.ts";
 
 export type Discovery = {
   /** False when discovery has not been answered yet (unreachable, 5xx, 429). */
@@ -79,6 +80,8 @@ export class SessionStore {
   // unlike gen, which also moves on every refresh.
   private epoch = 0;
   private readonly fetchFn: Fetch;
+  /** Set only by setWorkspace. A token swap and a sign-out forget it, so the next /me wins. */
+  private pinnedWorkspaceId: string | null = null;
 
   constructor(base: string, fetchFn: Fetch) {
     this.state = initialSession(base);
@@ -128,7 +131,15 @@ export class SessionStore {
       if (!res.ok) {
         const creds = { ...this.state.credentials, tokenSession: false, sessionMemberId: null, sessionTokenId: null };
         const signedIn = Boolean(creds.pastedToken);
-        this.set({ credentials: creds, status: signedIn ? "signed-in" : "signed-out", memberId: signedIn ? this.state.memberId : null, displayName: null });
+        this.set({
+          credentials: creds,
+          status: signedIn ? "signed-in" : "signed-out",
+          memberId: signedIn ? this.state.memberId : null,
+          displayName: null,
+          ...(signedIn ? {} : { workspaceId: null, mode: null, grant: null }),
+        });
+        // An expired cookie must not leave the previous room's workspace or grant behind.
+        if (!signedIn) controlBus.clear();
         if (signedIn) await this.readMe(gen);
         return this.state;
       }
@@ -140,7 +151,7 @@ export class SessionStore {
         credentials: { ...this.state.credentials, tokenSession: Boolean(body.token_id), sessionMemberId: body.member_id, sessionTokenId: typeof body.token_id === "string" ? body.token_id : null },
         memberId: body.member_id,
         displayName: shown || null,
-        workspaceId: this.state.workspaceId ?? body.workspace_id,
+        workspaceId: this.pinnedWorkspaceId ?? body.workspace_id,
         error: null,
       });
       await this.readMe(gen);
@@ -167,7 +178,7 @@ export class SessionStore {
         mode: credentialMode(me),
         grant: { capabilities: strings(me.capabilities), known: strings(me.known_capabilities) },
         memberId: me.member_id,
-        workspaceId: this.state.workspaceId ?? me.workspace_id,
+        workspaceId: this.pinnedWorkspaceId ?? me.workspace_id,
       });
     } catch {
       /* the session read already said who this is */
@@ -179,7 +190,7 @@ export class SessionStore {
    * with no session key (404) cannot hold one, so the token stays in this
    * tab's memory only, never in storage.
    */
-  async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
+  async signInWithToken(secret: string, opts: { sameRoom?: boolean } = {}): Promise<{ ok: boolean; error?: string }> {
     this.epoch++;
     bumpAuthEpoch();
     const gen = ++this.gen;
@@ -195,7 +206,7 @@ export class SessionStore {
     }
     if (gen !== this.gen) return { ok: false };
     if (res.status === 404) {
-      this.set({ credentials: { ...this.state.credentials, pastedToken: secret } });
+      this.adoptCredential({ ...this.state.credentials, pastedToken: secret }, opts.sameRoom === true);
       await this.refresh();
       return { ok: true };
     }
@@ -208,9 +219,33 @@ export class SessionStore {
             : "Could not sign in with that token",
       };
     }
-    this.set({ credentials: { ...this.state.credentials, pastedToken: "", tokenSession: true } });
+    this.adoptCredential({ ...this.state.credentials, pastedToken: "", tokenSession: true }, opts.sameRoom === true);
     await this.refresh();
     return { ok: true };
+  }
+
+  /**
+   * A new secret is a new room. Drop any workspace pinned from the previous
+   * sign-in, and the presence snapshot that belonged to it, before reading
+   * who this secret is. A rotation of this page's own token is the same
+   * member in the same workspace: blanking the room there would unmount the
+   * screen that is showing the new secret once.
+   */
+  private adoptCredential(credentials: Credentials, sameRoom = false): void {
+    if (sameRoom) {
+      this.set({ credentials });
+      return;
+    }
+    this.pinnedWorkspaceId = null;
+    this.set({
+      credentials,
+      workspaceId: null,
+      memberId: null,
+      displayName: null,
+      mode: null,
+      grant: null,
+    });
+    controlBus.clear();
   }
 
   /** The credential this tab holds now, as a number to compare later. */
@@ -225,11 +260,15 @@ export class SessionStore {
    */
   async adoptRotated(secret: string, connection: number): Promise<boolean> {
     if (connection !== this.epoch || this.state.status !== "signed-in") return false;
-    return (await this.signInWithToken(secret)).ok;
+    return (await this.signInWithToken(secret, { sameRoom: true })).ok;
   }
 
   setWorkspace(workspaceId: string): void {
-    this.set({ workspaceId });
+    if (workspaceId === this.state.workspaceId) return;
+    this.pinnedWorkspaceId = workspaceId;
+    this.set({ workspaceId, grant: null });
+    controlBus.clear();
+    void this.readMe(++this.gen);
   }
 
   /** Sign out for real: post /auth/logout when the session cookie is ours, then forget the tab's credentials. */
@@ -252,6 +291,8 @@ export class SessionStore {
 
   /** Forget this tab's credentials; logout() posts /auth/logout when due. */
   signOut(): void {
+    this.pinnedWorkspaceId = null;
+    controlBus.clear();
     this.epoch++;
     bumpAuthEpoch();
     this.gen++;

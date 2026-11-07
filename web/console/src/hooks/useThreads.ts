@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
-import { ThreadsApi, ThreadsError, movesList, toggleReaction, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction, type VoteTally } from "../core/threads.ts";
+import { ThreadsApi, ThreadsError, mergeReads, movesList, toggleReaction, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction, type TallyRead, type VoteTally } from "../core/threads.ts";
 import type { SessionState } from "../core/session.ts";
 import { backoff } from "./useNeeds.ts";
 import { sayError } from "../core/notices.ts";
@@ -55,12 +55,14 @@ export type ConversationData = {
   reactions: Record<string, Reaction[]>;
   /** Votes on each message, by kind; live through vote_cast / vote_retracted. */
   votes: Record<string, VoteTally[]>;
+  /** A vote or reaction reload failed after counts were already shown. */
+  votesStale: boolean;
   /** The last read failed: what is shown is from this time. */
   staleSince: number | null;
   error: string | null;
 };
 
-const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, votes: {}, staleSince: null, error: null };
+const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, votes: {}, votesStale: false, staleSince: null, error: null };
 
 /** One conversation's messages and reactions, refreshed when its thread moves. */
 export function useConversation(api: ThreadsApi, threadId: string | null, me: string | null) {
@@ -77,26 +79,20 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
     try {
       const messages = await api.messages(threadId);
       // Reactions and votes read side by side, so votes add no extra wait.
-      const [pairs, votePairs] = await Promise.all([Promise.all(
-        messages.map(async (m) => {
-          try {
-            return [m.id, await api.reactions(m.id, me)] as const;
-          } catch {
-            return [m.id, [] as Reaction[]] as const;
-          }
-        }),
-      ), Promise.all(
-        messages.map(async (m) => {
-          try {
-            return [m.id, await withinVoteWait(api.votes(m.id, me))] as const;
-          } catch {
-            return [m.id, [] as VoteTally[]] as const;
-          }
-        }),
-      )]);
+      // A failed read is kept apart from an empty tally, so a reload can keep the last counts.
+      const [reactionReads, voteReads] = await Promise.all([
+        Promise.all(messages.map((m) => readTally(m.id, () => api.reactions(m.id, me)))),
+        Promise.all(messages.map((m) => readTally(m.id, () => withinVoteWait(api.votes(m.id, me))))),
+      ]);
       if (mine !== gen.current) return;
       failures.current = 0;
-      setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), votes: Object.fromEntries(votePairs), staleSince: null, error: null });
+      setData((d) => {
+        const had = d.status === "ready";
+        const reactions = mergeReads(d.reactions, reactionReads, had);
+        const votes = mergeReads(d.votes, voteReads, had);
+        const votesStale = reactions.stale || votes.stale;
+        return { status: "ready", messages, reactions: reactions.next, votes: votes.next, votesStale, staleSince: null, error: null };
+      });
     } catch (e) {
       if (mine !== gen.current) return;
       failures.current += 1;
@@ -188,6 +184,15 @@ export function useVisualViewport(inset: (innerHeight: number, vv: VisualViewpor
       for (const k of ["--vv-top", "--vv-h", "--kb"]) root.style.removeProperty(k);
     };
   }, [inset]);
+}
+
+/** One message's reactions or votes. `failed` is a rejected read, not an empty tally. */
+async function readTally<T>(id: string, read: () => Promise<T[]>): Promise<TallyRead<T>> {
+  try {
+    return { id, rows: await read(), failed: false };
+  } catch {
+    return { id, rows: [], failed: true };
+  }
 }
 
 /** A vote read that hangs must not hold the conversation on "Loading messages…": give up after 5s and show no tally. */

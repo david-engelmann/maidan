@@ -18,8 +18,8 @@ const CSS: &str = r#"
 @media (prefers-color-scheme:dark){:root{--paper:#121110;--card:#1a1917;--ink:#e9e5dc;--muted:#9d988e;--line:rgba(233,229,220,.08);--line-strong:rgba(233,229,220,.14);--hover:rgba(236,232,223,.06);--signal:#f06a35;--danger:#f07267;--hi:rgba(255,255,255,.04)}}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
-body{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:max(16px,6vh) 16px 32px}
-.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;margin-bottom:20px;color:var(--ink);text-decoration:none}
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:max(16px, 6vh, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left))}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;min-height:44px;min-width:44px;padding:8px 12px;margin-bottom:12px;border-radius:999px;color:var(--ink);text-decoration:none}
 .brand svg{width:22px;height:22px}
 main{width:100%;max-width:480px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 0 var(--hi) inset,0 30px 80px -40px rgba(21,20,17,.45);padding:28px}
 main.wide{max-width:560px}
@@ -44,14 +44,18 @@ button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 button.primary:hover{opacity:.9}
 button.danger{flex:0 0 auto;color:var(--danger)}
 .foot{font-size:13px;color:var(--muted);text-align:center;margin-top:16px}
-.foot a,.note a{color:inherit}
+.foot a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 10px;border-radius:8px;color:inherit}
+.note a{color:inherit}
+a:focus-visible{outline:none;box-shadow:var(--ring);border-radius:6px}
+.brand:focus-visible{border-radius:999px}
 section.app{border-top:1px solid var(--line);padding:18px 0 4px}
 section.app:first-of-type{border-top:0}
 section.app header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-section.app h3{margin:0;font-size:16px;font-weight:600}
+section.app h2{margin:0;font-size:16px;font-weight:600;text-transform:none;letter-spacing:normal;color:var(--ink)}
 section.app .id{font:12px var(--mono);color:var(--muted);word-break:break-all}
 .empty{color:var(--muted);text-align:center;padding:24px 0 12px}
 @media (max-width:480px){main{padding:22px 18px}ul.caps li{flex-direction:column;gap:2px}section.app header{flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
 "#;
 
 /// The Maidan mark, as the console draws it.
@@ -73,16 +77,16 @@ pub(super) fn csp() -> String {
 /// `body` is markup the caller has already escaped.
 pub(super) fn render(title: &str, class: &str, body: &str) -> String {
     format!(
-        r#"<!DOCTYPE html>
+        r##"<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>{title} · Maidan</title><style>{CSS}</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f2eee6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)"><meta name="referrer" content="no-referrer"><title>{title} · Maidan</title><style>{CSS}</style></head>
 <body>
 <a class="brand" href="/ui/">{MARK}<span>Maidan</span></a>
 <main class="{class}">
 {body}
 </main>
 </body>
-</html>"#,
+</html>"##,
         title = html_escape(title),
     )
 }

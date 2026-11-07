@@ -1,0 +1,18 @@
+.activity-head { min-width: 0; max-width: 100%; }
+.activity-head .seg { min-width: 0; max-width: 100%; }
+.activity-head .field { flex: 1 1 12rem; min-width: 0; }
+.activity-list { min-width: 0; }
+.activity-row { flex-wrap: wrap; min-width: 0; }
+.activity-row .grow,
+.activity-row a { min-width: 0; overflow-wrap: anywhere; }
+.activity-channel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-row,
+  .activity-channel { transition: none; }
+}

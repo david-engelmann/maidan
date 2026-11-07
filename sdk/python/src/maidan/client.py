@@ -8,8 +8,12 @@ client (``_WebSocketConn``) so the package needs no third-party dependency.
 from __future__ import annotations
 
 import base64
+import datetime
+import email.utils
+import hashlib
 import http.client
 import json
+import math
 import os
 import socket
 import ssl
@@ -100,16 +104,41 @@ def new_idempotency_key() -> str:
     return str(uuid.uuid4())
 
 
+def _parse_retry_after(value: Optional[str]) -> Optional[float]:
+    """Seconds from a ``Retry-After`` delta or an HTTP-date, or ``None``.
+
+    ``nan``, ``inf``, a negative number and text that is not a date are
+    ``None``. A date in the past is ``0``."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        ra = float(text)
+    except ValueError:
+        ra = None
+    if ra is not None:
+        if math.isfinite(ra) and ra >= 0:
+            return ra
+        return None
+    try:
+        when = email.utils.parsedate_to_datetime(text)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    return max(0.0, when.timestamp() - time.time())
+
+
 def retry_delay(attempt: int, retry_after: Optional[str] = None, rand: Callable[[], float] = random.random) -> float:
     """Seconds before retry ``attempt`` (0-based): the server's ``Retry-After``
     when it sent one (capped at 60), else 0.5s * 2^attempt capped at 8s, jittered."""
-    if retry_after is not None:
-        try:
-            ra = float(retry_after)
-            if ra >= 0:
-                return min(ra, 60.0)
-        except ValueError:
-            pass
+    parsed = _parse_retry_after(retry_after)
+    if parsed is not None:
+        return min(parsed, 60.0)
     base = min(8.0, 0.5 * (2 ** attempt))
     return base / 2 + rand() * (base / 2)
 
@@ -431,13 +460,16 @@ class Client:
         attempt = 0
         while True:
             req = urllib.request.Request(f"{self.base_url}{path}", data=data, method=method, headers=headers)
+            deadline = time.monotonic() + self.timeout
             try:
-                with self._urlopen(req, timeout=self.timeout) as resp:
-                    status, resp_headers, raw = resp.status, resp.headers, resp.read()
+                remaining = max(0.001, deadline - time.monotonic())
+                with self._urlopen(req, timeout=remaining) as resp:
+                    status, resp_headers = resp.status, resp.headers
+                    raw = _read_until(resp, deadline)
             except urllib.error.HTTPError as e:
                 status, resp_headers = e.code, e.headers
                 try:
-                    raw = e.read()
+                    raw = _read_until(e, deadline)
                 except Exception:
                     raw = b""
                 finally:
@@ -513,10 +545,7 @@ class Client:
         if headers is not None:
             ra = headers.get("retry-after")
             if ra:
-                try:
-                    err.retry_after = float(ra)
-                except ValueError:
-                    pass
+                err.retry_after = _parse_retry_after(ra)
         raise err
 
     # --- WebSocket subscribe ---
@@ -553,7 +582,7 @@ class Client:
         ``type: cursor_too_old`` is delivered (then the socket closes) — never a
         silent skip. Unknown kinds are still delivered.
         """
-        ws_url = self.base_url.replace("http", "ws", 1) + "/ws/subscribe"
+        ws_url = _websocket_url(self.base_url)
 
         def _dispatch(text: str) -> None:
             try:
@@ -570,7 +599,7 @@ class Client:
             if isinstance(frame.get("kind"), str):
                 on_event(frame)
 
-        conn = _WebSocketConn(ws_url, _dispatch, on_error)
+        conn = _WebSocketConn(ws_url, _dispatch, on_error, timeout=self.timeout)
         conn.connect()
         payload: dict = {"filter": filter or {}, "token": self.token}
         if after_id:
@@ -671,6 +700,102 @@ def _normalize_stored(row: StoredEvent) -> dict:
     return out
 
 
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_MAX_WS_HEADER_BYTES = 65536
+
+
+def _websocket_url(base_url: str) -> str:
+    """``http(s)`` base → ``ws(s)://…/ws/subscribe``. A host that contains
+    ``http`` is left as written."""
+    parts = urllib.parse.urlsplit(base_url)
+    if parts.scheme == "http":
+        scheme = "ws"
+    elif parts.scheme == "https":
+        scheme = "wss"
+    else:
+        raise MaidanError(0, None, f"unsupported URL scheme {parts.scheme!r}")
+    path = (parts.path or "").rstrip("/") + "/ws/subscribe"
+    return urllib.parse.urlunsplit((scheme, parts.netloc, path, "", ""))
+
+
+def _read_until(resp: Any, deadline: float) -> bytes:
+    """Read ``resp`` until it ends or ``deadline`` (``time.monotonic``) passes.
+
+    A test double with no socket (``io.BytesIO``) is read in one call. A real
+    ``HTTPResponse`` is read in buffered chunks so a dripping peer cannot
+    reset the socket timer on every byte.
+    """
+    if time.monotonic() >= deadline:
+        raise TimeoutError("no complete answer within the deadline")
+    fp = getattr(resp, "fp", None)
+    raw = getattr(fp, "raw", None) if fp is not None else None
+    sock = getattr(raw, "_sock", None) if raw is not None else None
+    if sock is None and raw is not None:
+        sock = getattr(getattr(raw, "_fp", None), "_sock", None)
+    if sock is None:
+        return resp.read()
+
+    import select
+
+    parts: list[bytes] = []
+    peek = getattr(fp, "peek", None)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("no complete answer within the deadline")
+        buffered = b""
+        if peek is not None:
+            try:
+                buffered = peek(0) or b""
+            except (OSError, ValueError):
+                buffered = b""
+        if buffered:
+            chunk = resp.read(min(len(buffered), 65536))
+            if not chunk:
+                return b"".join(parts)
+            parts.append(chunk)
+            continue
+        try:
+            live = sock.fileno() >= 0
+        except OSError:
+            live = False
+        if not live:
+            try:
+                chunk = resp.read(65536)
+            except Exception:
+                chunk = b""
+            if chunk:
+                parts.append(chunk)
+                continue
+            return b"".join(parts)
+        try:
+            sock.settimeout(remaining)
+            ready, _, _ = select.select([sock], [], [], remaining)
+        except (OSError, ValueError):
+            ready = None
+        if not ready:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("no complete answer within the deadline")
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("no complete answer within the deadline")
+            sock.settimeout(remaining)
+            # One byte from the socket, then the next loop drains what that
+            # read already buffered. A single large read would wait out the
+            # whole body and reset the timer on every recv.
+            chunk = resp.read(1)
+        except (socket.timeout, TimeoutError, OSError) as err:
+            if parts and not live:
+                return b"".join(parts)
+            if isinstance(err, (socket.timeout, TimeoutError)) or "timed out" in str(err).lower() or getattr(err, "errno", None) == 9:
+                raise TimeoutError("no complete answer within the deadline") from err
+            raise
+        if not chunk:
+            return b"".join(parts)
+        parts.append(chunk)
+
+
 def _qs(query: Optional[dict]) -> str:
     if not query:
         return ""
@@ -683,10 +808,17 @@ class _WebSocketConn:
     text frames. Enough for Maidan's subscribe (small JSON text frames); handles
     ping (auto-pong), close, and fragmentation. No third-party dependency."""
 
-    def __init__(self, url: str, on_text: Callable[[str], None], on_error: Optional[Callable[[Exception], None]]):
+    def __init__(
+        self,
+        url: str,
+        on_text: Callable[[str], None],
+        on_error: Optional[Callable[[Exception], None]],
+        timeout: float = 30.0,
+    ):
         self._url = url
         self._on_text = on_text
         self._on_error = on_error
+        self._timeout = timeout
         self._sock: Optional[socket.socket] = None
         self._buf = b""
         self._closed = False
@@ -694,41 +826,93 @@ class _WebSocketConn:
         self._send_lock = threading.Lock()
 
     def connect(self) -> None:
-        parsed = urllib.parse.urlparse(self._url)
+        parsed = urllib.parse.urlsplit(self._url)
         secure = parsed.scheme == "wss"
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or (443 if secure else 80)
         path = parsed.path or "/"
         if parsed.query:
             path += "?" + parsed.query
+        deadline = time.monotonic() + self._timeout
+        raw: Optional[socket.socket] = None
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise MaidanError(0, None, "WebSocket handshake timed out")
+            raw = socket.create_connection((host, port), timeout=max(0.001, remaining))
+            self._sock = raw
+            if secure:
+                raw.settimeout(max(0.001, deadline - time.monotonic()))
+                ctx = ssl.create_default_context()
+                raw = ctx.wrap_socket(raw, server_hostname=host)
+                self._sock = raw
 
-        raw = socket.create_connection((host, port), timeout=30)
-        if secure:
-            ctx = ssl.create_default_context()
-            raw = ctx.wrap_socket(raw, server_hostname=host)
-        self._sock = raw
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+            host_header = parsed.netloc or host
+            req = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {host_header}\r\n"
+                f"User-Agent: maidan-python/{__version__}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            raw.settimeout(max(0.001, deadline - time.monotonic()))
+            raw.sendall(req.encode("ascii"))
 
-        key = base64.b64encode(os.urandom(16)).decode("ascii")
-        req = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
-        )
-        raw.sendall(req.encode("ascii"))
-
-        # Read the handshake response headers; keep any trailing frame bytes.
-        while b"\r\n\r\n" not in self._buf:
-            chunk = raw.recv(4096)
-            if not chunk:
-                raise MaidanError(0, None, "WebSocket handshake closed early")
-            self._buf += chunk
-        head, self._buf = self._buf.split(b"\r\n\r\n", 1)
-        status_line = head.split(b"\r\n", 1)[0].decode("latin-1", "replace")
-        if "101" not in status_line:
-            raise MaidanError(0, status_line, f"WebSocket handshake failed: {status_line}")
+            while b"\r\n\r\n" not in self._buf:
+                if len(self._buf) > _MAX_WS_HEADER_BYTES:
+                    raise MaidanError(0, None, "WebSocket handshake headers are too large")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise MaidanError(0, None, "WebSocket handshake timed out")
+                raw.settimeout(max(0.001, remaining))
+                chunk = raw.recv(4096)
+                if not chunk:
+                    raise MaidanError(0, None, "WebSocket handshake closed early")
+                self._buf += chunk
+            if len(self._buf) > _MAX_WS_HEADER_BYTES + 4 and b"\r\n\r\n" not in self._buf[:_MAX_WS_HEADER_BYTES + 4]:
+                raise MaidanError(0, None, "WebSocket handshake headers are too large")
+            head, self._buf = self._buf.split(b"\r\n\r\n", 1)
+            if len(head) > _MAX_WS_HEADER_BYTES:
+                raise MaidanError(0, None, "WebSocket handshake headers are too large")
+            text = head.decode("latin-1", "replace")
+            lines = text.split("\r\n")
+            status_line = lines[0]
+            parts = status_line.split(None, 2)
+            if not (len(parts) >= 2 and parts[0].startswith("HTTP/") and parts[1] == "101"):
+                raise MaidanError(0, status_line, f"WebSocket handshake failed: {status_line}")
+            headers: dict[str, str] = {}
+            for line in lines[1:]:
+                if ":" not in line:
+                    continue
+                name, value = line.split(":", 1)
+                headers[name.strip().lower()] = value.strip()
+            if headers.get("upgrade", "").lower() != "websocket":
+                raise MaidanError(0, status_line, f"WebSocket handshake missing Upgrade: {status_line}")
+            expected = base64.b64encode(
+                hashlib.sha1((key + _WS_GUID).encode("ascii")).digest()
+            ).decode("ascii")
+            if headers.get("sec-websocket-accept") != expected:
+                raise MaidanError(0, status_line, f"WebSocket handshake rejected the key: {status_line}")
+            raw.settimeout(None)
+        except MaidanError:
+            self._shutdown_socket()
+            if raw is not None and self._sock is None:
+                try:
+                    raw.close()
+                except OSError:
+                    pass
+            raise
+        except (TimeoutError, socket.timeout, OSError) as exc:
+            self._shutdown_socket()
+            if raw is not None and self._sock is None:
+                try:
+                    raw.close()
+                except OSError:
+                    pass
+            raise MaidanError(0, None, f"WebSocket handshake failed: {type(exc).__name__}: {exc}") from exc
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
@@ -825,9 +1009,15 @@ class _WebSocketConn:
         self._shutdown_socket()
 
     def _shutdown_socket(self) -> None:
-        if self._sock is not None:
-            try:
-                self._sock.close()
-            except OSError:
-                pass
-            self._sock = None
+        sock = self._sock
+        self._sock = None
+        if sock is None:
+            return
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            sock.close()
+        except OSError:
+            pass

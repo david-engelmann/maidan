@@ -181,7 +181,11 @@ test("the palette jumps to a channel and opens a task from its title", async ({ 
   await expect(box.getByRole("option", { name: "#build", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.evaluate((id) => window.localStorage.setItem("maidan_console_channel", id), fx.board_channel_id);
+  // The board remembers a channel per workspace, so both keys move back.
+  await page.evaluate(({ ws, id }) => {
+    window.localStorage.setItem(`maidan_console_channel:${ws}`, id);
+    window.localStorage.setItem("maidan_console_channel", id);
+  }, { ws: fx.workspace_id, id: fx.board_channel_id });
   await page.goto("/ui/#/threads");
   await expect(page.locator(".conv-list .channel-pick select")).toHaveValue(fx.board_channel_id);
   await page.keyboard.press("ControlOrMeta+k");

@@ -259,6 +259,15 @@ func (s *Subscription) readLoop(br *bufio.Reader, onEvent func(Event), onError f
 	}
 }
 
+// wsHostHeader is the Host header for a WebSocket handshake: the hostname
+// alone on the default port, otherwise host:port.
+func wsHostHeader(host, port string, secure bool) string {
+	if (secure && port == "443") || (!secure && port == "80") {
+		return host
+	}
+	return net.JoinHostPort(host, port)
+}
+
 // wsDial performs the RFC-6455 client handshake and returns the connection plus a
 // buffered reader positioned at the first frame.
 func wsDial(baseURL, path string) (net.Conn, *bufio.Reader, error) {
@@ -296,7 +305,7 @@ func wsDial(baseURL, path string) (net.Conn, *bufio.Reader, error) {
 	req := fmt.Sprintf(
 		"GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
 			"Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
-		path, addr, base64.StdEncoding.EncodeToString(key),
+		path, wsHostHeader(host, port, secure), base64.StdEncoding.EncodeToString(key),
 	)
 	if _, err := conn.Write([]byte(req)); err != nil {
 		_ = conn.Close()

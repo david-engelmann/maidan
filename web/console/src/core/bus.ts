@@ -23,15 +23,26 @@ type ControlListener = (frame: ControlFrame) => void;
 /** Control frames (presence, typing) from the same connection. */
 export class ControlBus {
   private readonly listeners = new Set<ControlListener>();
+  private readonly resets = new Set<() => void>();
   /** The last presence snapshot, so a screen opened later starts from it. */
   last: ControlFrame | null = null;
   listen = (fn: ControlListener): (() => void) => {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   };
+  /** Told when the snapshot is dropped, so a screen can clear presence it already showed. */
+  onClear = (fn: () => void): (() => void) => {
+    this.resets.add(fn);
+    return () => this.resets.delete(fn);
+  };
   emit(frame: ControlFrame): void {
     if (frame.type === "presence_snapshot") this.last = frame;
     for (const fn of this.listeners) fn(frame);
+  }
+  /** Forget the snapshot. A sign-out or a workspace change must not keep the previous room online. */
+  clear(): void {
+    this.last = null;
+    for (const fn of this.resets) fn();
   }
 }
 

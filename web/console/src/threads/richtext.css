@@ -1,0 +1,25 @@
+/* Structured message bodies. Colors come from the console tokens, so light
+   and dark stay in step without a second palette. */
+.msg-rich { display: grid; gap: var(--space-2); min-width: 0; white-space: normal; }
+.msg-heading { margin: 0; color: var(--ink); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3; }
+.msg-h3 { font-size: var(--text-lg); }
+.msg-h4 { font-size: var(--text-md); }
+.msg-h5 { font-size: var(--text-base); }
+.msg-h6 { font-size: var(--text-sm); }
+.msg-list { margin: 0; padding-left: 1.25rem; display: grid; gap: var(--space-1); }
+.msg-list li { min-width: 0; }
+.msg-quote { margin: 0; padding: var(--space-2) var(--space-3); display: grid; gap: var(--space-2); border-left: 3px solid var(--line); border-radius: 0 var(--r-sm) var(--r-sm) 0; background: var(--paper-2); color: var(--ink); }
+.msg-rule { height: 0; margin: 0; border: 0; border-top: 1px solid var(--line); }
+.msg-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; }
+.msg-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: var(--text-sm); white-space: nowrap; }
+.msg-table th, .msg-table td { border: 1px solid var(--line); padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
+.msg-table th { font-weight: 600; color: var(--ink); background: var(--paper-2); }
+.msg-em { font-style: italic; }
+.msg-del { color: var(--muted); text-decoration: line-through; }
+.msg-codeblock { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--hover); }
+.msg-codehead { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding-left: var(--space-3); }
+.msg-lang { font-family: var(--mono); font-size: var(--text-xs); color: var(--muted); }
+.msg-copy { flex: none; margin-left: auto; min-height: 44px; min-width: 44px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; transition: background .15s; }
+.msg-copy:hover { background: var(--paper-2); }
+.msg-codeblock .msg-pre { margin: 0; border: 0; border-radius: 0; border-top: 1px solid var(--line); background: transparent; }
+@media (prefers-reduced-motion: reduce) { .msg-copy { transition: none; } }

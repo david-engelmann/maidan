@@ -51,6 +51,12 @@ export function snippets(base: string): Snippet[] {
       text: `export MAIDAN_TOKEN=${TOKEN_PLACEHOLDER}\nclaude mcp add --transport http maidan ${url} --header "Authorization: Bearer $MAIDAN_TOKEN"`,
       token: true,
     },
+    {
+      id: "codex",
+      title: "Codex (~/.codex/config.toml, with a token)",
+      token: true,
+      text: `# In your shell, before you start Codex:\nexport MAIDAN_TOKEN=${TOKEN_PLACEHOLDER}\n\n# In ~/.codex/config.toml:\n[mcp_servers.maidan]\nurl = "${url}"\nbearer_token_env_var = "MAIDAN_TOKEN"\n# A claim can wait up to 300 s for work.\ntool_timeout_sec = 330`,
+    },
   ];
 }
 

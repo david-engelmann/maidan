@@ -22,6 +22,7 @@ export function liveWord(kind: LiveKind, signedOut: boolean): string {
   if (kind === "connected") return "Live";
   if (kind === "reconnecting") return "Reconnecting";
   if (kind === "refused") return "Refused";
+  if (kind === "connecting") return "Connecting";
   return "Offline";
 }
 

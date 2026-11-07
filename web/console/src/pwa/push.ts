@@ -31,8 +31,9 @@ export type PushDeps = {
 
 /** Base64url VAPID public key to the bytes `subscribe` wants. */
 export function applicationServerKey(b64: string): Uint8Array<ArrayBuffer> {
-  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
-  const raw = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + pad);
+  const key = b64.trim();
+  const pad = "=".repeat((4 - (key.length % 4)) % 4);
+  const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/") + pad);
   const out = new Uint8Array(new ArrayBuffer(raw.length));
   for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
   return out;
@@ -58,7 +59,7 @@ export async function enablePush(member: string | null, d: PushDeps): Promise<Pu
   if (!key) return { registered: false, reason: "vapid_unavailable" };
   if (!key.public_key) return { registered: false, reason: key.reason || "vapid_unset" };
   let permission = d.permission();
-  if (permission === "default") permission = await d.requestPermission();
+  if (permission === "default") permission = await d.requestPermission().catch(() => "denied");
   if (permission !== "granted") return { registered: false, reason: "permission_denied" };
   try {
     const sub = (await pm.getSubscription()) ?? (await pm.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(key.public_key) }));
@@ -74,10 +75,10 @@ export async function enablePush(member: string | null, d: PushDeps): Promise<Pu
 /** Drop this browser's subscription. `forget` clears the server copy when it can. */
 export async function disablePush(d: Pick<PushDeps, "pushManager">, forget: (endpoint: string) => Promise<void>): Promise<PushOutcome> {
   const pm = await d.pushManager().catch(() => null);
-  const sub = pm ? await pm.getSubscription() : null;
+  const sub = pm ? await pm.getSubscription().catch(() => null) : null;
   if (sub) {
     await forget(sub.endpoint).catch(() => undefined);
-    await sub.unsubscribe();
+    await sub.unsubscribe().catch(() => false);
   }
   return { registered: false, reason: "off" };
 }

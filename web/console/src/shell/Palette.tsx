@@ -19,6 +19,7 @@ import {
   PALETTE_SEARCH_MIN,
   loadPaletteIndex,
   openThreadHash,
+  paletteRefreshesOn,
   paletteEmpty,
   paletteItems,
   palettePlaceholder,
@@ -126,7 +127,8 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
     void refresh();
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = liveBus.listen((m) => {
-      if (m.type !== "resync") return;
+      const kind = m.type === "event" ? m.frame.kind : undefined;
+      if (m.type !== "resync" && !paletteRefreshesOn(kind)) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;

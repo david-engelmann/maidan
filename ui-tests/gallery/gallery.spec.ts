@@ -161,7 +161,9 @@ for (const vp of VIEWPORTS) {
       test.skip(!fx.waiting.review_thread_id, "the seed has no task in review");
       // The task's own view: its messages, and its result and evidence opened.
       await signIn(page, fx.waiting, `#/threads/t/${fx.waiting.review_thread_id}`);
-      await expect(page.getByText("End a deactivated member's WebSocket streams").first()).toBeVisible();
+      // The deep link now moves the list to the task's channel, so the list
+      // row (hidden behind the open conversation on a phone) also has the title.
+      await expect(page.locator(".conv-open").getByText("End a deactivated member's WebSocket streams").first()).toBeVisible();
       await expect(page.getByText(/re-checks the token or session/).first()).toBeVisible();
       const more = page.locator("details", { has: page.locator("summary", { hasText: "Result and evidence" }) });
       await more.locator("summary").click();

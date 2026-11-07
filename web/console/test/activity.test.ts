@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { absorbPayloadNames, actorText, actorWords, channelText, describeActivity, describeKind, EMPTY_DIRECTORY, filterActivity, groupOf, mergeActivity, threadText, toActivity, type ActivityRow } from "../src/core/activity.ts";
+import { absorbPayloadNames, activityChannels, actorText, actorWords, channelText, describeActivity, describeKind, directoryAfterLoad, EMPTY_DIRECTORY, filterActivity, groupOf, mergeActivity, threadText, toActivity, type ActivityDirectory, type ActivityRow } from "../src/core/activity.ts";
 import { ROUTES, parseRoute } from "../src/shell/router.ts";
 
 const blank = { title: null, channelName: null, actorName: null, actorHandle: null, toState: null };
@@ -79,6 +79,49 @@ test("groups filter by kind family", () => {
   const rows = [toActivity({ id: 1, kind: "vote_cast" })!, toActivity({ id: 2, kind: "message_posted" })!];
   assert.deepEqual(filterActivity(rows, "votes").map((x) => x.id), [1]);
   assert.equal(filterActivity(rows, "all").length, 2);
+});
+
+const row = (id: number, kind: string, extra: Partial<ActivityRow> = {}): ActivityRow => ({
+  id, kind, threadId: null, channelId: null, actorId: null, at: null, title: null, channelName: null, actorName: null, actorHandle: null, toState: null, ...extra,
+});
+
+test("search and channel narrow the list, and a channel menu names every channel in view", () => {
+  const dir: ActivityDirectory = {
+    threads: new Map([["t1", "Deploy v9"]]),
+    channels: new Map([["c1", "general"]]),
+    actors: new Map([["m1", "Ada"]]),
+  };
+  const rows = [
+    row(1, "thread_created", { threadId: "t1", channelId: "c1", actorId: "m1", title: "Deploy v9" }),
+    row(2, "message_posted", { threadId: "t2", channelId: "c2", actorId: "m2", channelName: "ops", title: "Notes" }),
+    row(3, "vote_cast", { threadId: "t1", channelId: "c1", actorId: "m1" }),
+  ];
+  assert.deepEqual(filterActivity(rows, "tasks", "", "", dir).map((r) => r.id), [1]);
+  assert.deepEqual(filterActivity(rows, "all", "deploy", "", dir).map((r) => r.id), [1, 3]);
+  assert.deepEqual(filterActivity(rows, "all", "ada", "c1", dir).map((r) => r.id), [1, 3]);
+  assert.deepEqual(filterActivity(rows, "messages", "ada", "", dir).map((r) => r.id), []);
+  assert.deepEqual(filterActivity(rows, "all", "#2", "", dir).map((r) => r.id), [2]);
+  assert.deepEqual(filterActivity(rows, "all", "message_posted", "", dir).map((r) => r.id), [2]);
+  assert.deepEqual(activityChannels(rows, dir), [
+    { id: "c1", label: "#general" },
+    { id: "c2", label: "#ops" },
+  ]);
+});
+
+test("a new workspace starts from an empty directory, so the previous room's titles do not carry over", () => {
+  const previous: ActivityDirectory = {
+    threads: new Map([["t-old", "Deploy v9"]]),
+    channels: new Map([["c-old", "general"]]),
+    actors: new Map([["m-old", "Ada"]]),
+  };
+  const fresh = directoryAfterLoad(null, EMPTY_DIRECTORY, []);
+  assert.equal(fresh.threads.has("t-old"), false);
+  assert.equal(fresh.channels.has("c-old"), false);
+  assert.equal(fresh.actors.has("m-old"), false);
+  const sameRoom = directoryAfterLoad(previous, EMPTY_DIRECTORY, []);
+  assert.equal(sameRoom.threads.get("t-old"), "Deploy v9");
+  const renamed = directoryAfterLoad(previous, { ...EMPTY_DIRECTORY, threads: new Map([["t-old", "Deploy v10"]]) }, []);
+  assert.equal(renamed.threads.get("t-old"), "Deploy v10");
 });
 
 test("activity is a route", () => {

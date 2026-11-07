@@ -302,11 +302,30 @@ impl Client {
             Some(secs) => json!({ "lease_secs": secs }),
             None => json!({}),
         };
-        self.send_as(
+        let claim: Option<ClaimedThread> = self.send_as(
             "POST",
             &format!("/channels/{channel_id}/threads/claim-next"),
             Some(&body),
-        )
+        )?;
+        if let Some(claim) = &claim {
+            let lease = claim.thread.claim_lease_id.as_deref().unwrap_or("");
+            if claim.thread.id.is_empty() || lease.is_empty() {
+                let held = if claim.thread.id.is_empty() {
+                    String::new()
+                } else {
+                    format!(" thread {} is held", claim.thread.id)
+                };
+                let held_lease = if lease.is_empty() {
+                    String::new()
+                } else {
+                    format!(" under lease {lease}")
+                };
+                return Err(MaidanError::Decode(format!(
+                    "POST /channels/{channel_id}/threads/claim-next: claim without a string id and claim_lease_id;{held}{held_lease} until its lease lapses"
+                )));
+            }
+        }
+        Ok(claim)
     }
 
     /// Holder-only lease heartbeat.
@@ -331,7 +350,13 @@ impl Client {
     /// Send with retries and return the last answer. A write carries one
     /// `Idempotency-Key` across all its attempts, so a retry after a lost
     /// response gets the first answer back instead of writing twice.
-    fn exchange(&self, method: &str, path: &str, payload: Payload<'_>) -> Result<Answer> {
+    fn exchange(
+        &self,
+        method: &str,
+        path: &str,
+        payload: Payload<'_>,
+        json_answer: bool,
+    ) -> Result<Answer> {
         let url = format!("{}{}", self.base_url, path);
         let key = matches!(method, "POST" | "PUT" | "PATCH" | "DELETE").then(new_idempotency_key);
         let mut attempt = 0u32;
@@ -363,10 +388,20 @@ impl Client {
             let status = resp.status();
             let retry_after = resp.header("retry-after").map(str::to_string);
             let mut raw = Vec::new();
-            resp.into_reader()
-                .read_to_end(&mut raw)
-                .map_err(|e| MaidanError::transport(e.to_string()))?;
-            if attempt < self.max_retries && retryable(status, &raw) {
+            if let Err(e) = resp.into_reader().read_to_end(&mut raw) {
+                if attempt < self.max_retries {
+                    (self.sleep)(retry_delay(attempt, None, unit()));
+                    attempt += 1;
+                    continue;
+                }
+                return Err(MaidanError::transport(e.to_string()));
+            }
+            let not_json = json_answer
+                && (200..300).contains(&status)
+                && status != 204
+                && !raw.iter().all(u8::is_ascii_whitespace)
+                && serde_json::from_slice::<Value>(&raw).is_err();
+            if attempt < self.max_retries && (not_json || retryable(status, &raw)) {
                 (self.sleep)(retry_delay(attempt, retry_after.as_deref(), unit()));
                 attempt += 1;
                 continue;
@@ -398,15 +433,15 @@ impl Client {
         body: Option<&Value>,
     ) -> Result<T> {
         let payload = body.map_or(Payload::None, Payload::Json);
-        Self::decode(self.exchange(method, path, payload)?)
+        Self::decode(self.exchange(method, path, payload, true)?)
     }
 
     fn send_bytes<T: DeserializeOwned>(&self, path: &str, data: &[u8]) -> Result<T> {
-        Self::decode(self.exchange("POST", path, Payload::Bytes(data))?)
+        Self::decode(self.exchange("POST", path, Payload::Bytes(data), true)?)
     }
 
     fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
-        let answer = self.exchange("GET", path, Payload::None)?;
+        let answer = self.exchange("GET", path, Payload::None, false)?;
         if answer.status >= 400 {
             return Err(api_error(answer));
         }

@@ -2,7 +2,7 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
-import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
+import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, shownBadgeTargets, limitForOpen, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
 import { useCardVotes } from "../hooks/useCardVotes.ts";
 import { liveStatus } from "../core/bus.ts";
 import { Icon } from "../shell/icons.tsx";
@@ -109,8 +109,8 @@ export function Board() {
     [store],
   );
   const presence = usePresence();
-  const here = useMemo(() => presenceStrip(data.members, presence, data.threads), [data.members, presence, data.threads]);
   const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
+  const here = useMemo(() => presenceStrip(data.members, presence, data.threads, live), [data.members, presence, data.threads, live]);
   const stale = staleBanner(live, data.loadedAt, data.failedSince, now);
   const [focus, setFocus] = useState<HealthKey | null>(null);
   const health = useMemo(() => boardHealth(data.threads, now, data.gates), [data.threads, now, data.gates]);
@@ -127,8 +127,6 @@ export function Board() {
     for (const l of LANES) out[l.key] = out[l.key].filter((c) => matches(c, { ...query, state: null }));
     return out;
   }, [shownThreads, data.gates, query]);
-  const voteIds = useMemo(() => badgeTargets(lanes), [lanes]);
-  const votes = useCardVotes(api, voteIds);
   // How many cards each lane or group renders; a channel switch starts over.
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [limitsFor, setLimitsFor] = useState(data.channelId);
@@ -136,7 +134,7 @@ export function Board() {
     setLimitsFor(data.channelId);
     setLimits({});
   }
-  const limitOf = (k: string) => limits[k] ?? LANE_PAGE;
+  const limitOf = (k: string, cards: Card[]) => limitForOpen(cards, limits[k] ?? LANE_PAGE, openId);
   const more = (k: string) => setLimits((m) => ({ ...m, [k]: (m[k] ?? LANE_PAGE) + LANE_PAGE }));
   const [view, setViewState] = useState<"lanes" | "agents">(() => (localStorage.getItem(VIEW_KEY) === "agents" ? "agents" : "lanes"));
   const setView = (v: "lanes" | "agents") => {
@@ -154,6 +152,18 @@ export function Board() {
     const ids = new Set(keys.flatMap((k) => lanes[k].map((c) => c.thread.id)));
     return byAgent(shownThreads.filter((t) => ids.has(t.id)), data.gates, data.members);
   }, [view, lanes, shownThreads, data.gates, data.members, query.state]);
+  // Badges follow the cards on screen, including a "Show more" window and a deep-linked card past the first page.
+  const voteIds = useMemo(() => {
+    if (view === "agents") {
+      const shown = groups.flatMap((g) => windowed(g.cards, limitForOpen(g.cards, limits[`ag-${g.id ?? ""}`] ?? LANE_PAGE, openId)).shown);
+      return shownBadgeTargets(shown);
+    }
+    return badgeTargets(lanes, {
+      review: limitForOpen(lanes.review, limits.review ?? LANE_PAGE, openId),
+      working: limitForOpen(lanes.working, limits.working ?? LANE_PAGE, openId),
+    });
+  }, [view, groups, lanes, limits, openId]);
+  const votes = useCardVotes(api, voteIds);
   // A task just created opens from the create's answer until the board's own
   // read has it, so a failed refresh does not leave the drawer shut.
   const [created, setCreated] = useState<Thread | null>(null);
@@ -173,6 +183,8 @@ export function Board() {
       const l = lanes.getBoundingClientRect();
       if (c.right > l.right) lanes.scrollLeft += c.right - l.right + 12;
       else if (c.left < l.left) lanes.scrollLeft -= l.left - c.left + 12;
+      // A deep-linked card past the first page sits below the fold.
+      if (c.top < 0 || c.bottom > window.innerHeight) card.scrollIntoView({ block: "nearest", inline: "nearest" });
     }, 220);
     return () => window.clearTimeout(t);
   }, [openId, cardLoaded]);
@@ -270,7 +282,7 @@ export function Board() {
                 <span className="dot" aria-hidden="true" />
                 {/* The status rides inside the name's span: as a flex item of its own it got the chip's gap, a space before the comma. */}
                 <span>{p.name}<span className="visually-hidden">{`, ${presenceWords(p)}`}</span></span>
-                {p.holding > 0 && <span className="count" aria-hidden="true">{p.holding}</span>}
+                {p.holding > 0 && <span className="count" title="Tasks held in this channel" aria-hidden="true">{p.holding}</span>}
               </li>
             ))}
           </ul>
@@ -343,13 +355,13 @@ export function Board() {
                 <span className="count">{g.cards.length}</span>
               </h2>
               <ul className="cards">
-                {windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).shown.map((c) => (
+                {windowed(g.cards, limitOf(`ag-${g.id ?? ""}`, g.cards)).shown.map((c) => (
                   <li key={c.thread.id}>
                     <TaskCard card={c} now={now} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} votes={votes.get(c.thread.id)} selected={openId === c.thread.id} onOpen={() => setOpenId(c.thread.id)} />
                   </li>
                 ))}
               </ul>
-              <MoreCards hidden={windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).hidden} onMore={() => more(`ag-${g.id ?? ""}`)} />
+              <MoreCards hidden={windowed(g.cards, limitOf(`ag-${g.id ?? ""}`, g.cards)).hidden} onMore={() => more(`ag-${g.id ?? ""}`)} />
             </section>
           ))}
           {!groups.length && data.status === "ready" && <p className="muted">{(filtering(query) || active) && LANES.some((l) => all[l.key].length) ? "Nothing here matches." : "No live tasks in this channel."}</p>}
@@ -382,7 +394,7 @@ export function Board() {
               ) : null}
               <ul className="cards">
                 <AnimatePresence initial={false}>
-                  {windowed(lanes[l.key], limitOf(l.key)).shown.map((c) => (
+                  {windowed(lanes[l.key], limitOf(l.key, lanes[l.key])).shown.map((c) => (
                     <motion.li
                       key={c.thread.id}
                       layout={!reduce && lanes[l.key].length <= ANIMATE_UP_TO}
@@ -397,7 +409,7 @@ export function Board() {
                 </AnimatePresence>
                 {!lanes[l.key].length && data.status === "ready" && <li className="empty">{(filtering(query) || active) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
               </ul>
-              <MoreCards hidden={windowed(lanes[l.key], limitOf(l.key)).hidden} onMore={() => more(l.key)} />
+              <MoreCards hidden={windowed(lanes[l.key], limitOf(l.key, lanes[l.key])).hidden} onMore={() => more(l.key)} />
             </section>
           ))}
         </div>

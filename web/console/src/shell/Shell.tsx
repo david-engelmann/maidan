@@ -2,7 +2,7 @@
 // bar over the home indicator, and the same four places as a rail on a wide
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { controlBus, liveBus, liveStatus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
@@ -17,6 +17,7 @@ import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette } from "./Palette.tsx";
 import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommands, type Command } from "./commands.ts";
+import { clearPaletteIndex } from "./paletteIndex.ts";
 import { ROUTES, navigate, phoneTabs, usePlace, useRoute, type Route, type RouteId } from "./router.ts";
 import { EmptyState } from "./EmptyState.tsx";
 
@@ -48,6 +49,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   // The front door's hint is read once and taken off the address bar, so a
   // reload never replays it.
   const [hint, setHint] = useState(() => readFrontDoorHint(window.location.search).hint);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [severalWorkspaces, setSeveralWorkspaces] = useState(false);
+  const browserSession = signedIn && !session.credentials.pastedToken && !session.credentials.tokenSession;
   // A browser that followed a sign-up link lands here to name the workspace
   // before the provider. A session already in this tab must not hide that form.
   const namingWorkspace = readSignupCheck(window.location.search).active;
@@ -55,6 +59,27 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
     const { rest } = readFrontDoorHint(window.location.search);
     if (rest !== window.location.search) window.history.replaceState(null, "", `${window.location.pathname}${rest}${window.location.hash}`);
   }, []);
+  useEffect(() => {
+    if (!signedIn) clearPaletteIndex();
+  }, [signedIn]);
+  useEffect(() => {
+    if (!browserSession) return;
+    let live = true;
+    const base = (session.credentials.base || window.location.origin).replace(/\/$/, "");
+    void fetch(`${base}/auth/session/workspaces`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { workspaces?: unknown } | null) => {
+        if (!live) return;
+        const list = body && Array.isArray(body.workspaces) ? body.workspaces : [];
+        setSeveralWorkspaces(list.length > 1);
+      })
+      .catch(() => {
+        if (live) setSeveralWorkspaces(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [browserSession, session.credentials.base]);
 
   useEffect(() => {
     let seq: { at: number } | null = null;
@@ -100,11 +125,14 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
             { id: "new-message", title: "New message", hint: "Start a conversation with a person or agent", group: "Actions", run: () => { requestCompose(); navigate("threads"); } },
             { id: "upload", title: "Upload a file", hint: "Files: add an artifact and link it to a task", group: "Actions", run: () => navigate("artifacts") },
             { id: "refresh", title: "Refresh this screen", hint: "Read everything on this screen again", group: "Actions", run: () => liveBus.emit({ type: "resync" }) },
+            ...(browserSession && severalWorkspaces
+              ? ([{ id: "switch-workspace", title: "Switch workspace", hint: "Open another workspace in your account", group: "Actions", run: () => setChooserOpen(true) }] satisfies Command[])
+              : []),
             { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => void store.logout() },
           ] satisfies Command[])
         : []),
     ],
-    [signedIn, store],
+    [signedIn, store, browserSession, severalWorkspaces],
   );
 
   const current = route === "not-found" ? NOT_FOUND : (ROUTES.find((r) => r.id === route) ?? ROUTES[0]);
@@ -185,8 +213,8 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         </nav>
       )}
 
-      {hint === "choose" && session.status === "signed-in" && !session.credentials.pastedToken && !session.credentials.tokenSession ? (
-        <Chooser onClose={() => setHint(null)} />
+      {(hint === "choose" || chooserOpen) && session.status === "signed-in" && !session.credentials.pastedToken && !session.credentials.tokenSession ? (
+        <Chooser onClose={() => { setHint(null); setChooserOpen(false); }} />
       ) : null}
       <Toasts />
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
@@ -233,10 +261,37 @@ function NotFound() {
 function PhoneTabs({ route, reduce, support }: { route: Route; reduce: boolean; support: string | null }) {
   const { tabs, more } = phoneTabs();
   const inMore = more.some((r) => r.id === route);
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const el = details.current;
+    if (!el) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !el.open) return;
+      e.preventDefault();
+      el.open = false;
+      el.querySelector("summary")?.focus();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (!el.open || !(e.target instanceof Node) || el.contains(e.target)) return;
+      el.open = false;
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest(".tab-more-list a")) el.open = false;
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    el.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+      el.removeEventListener("click", onClick);
+    };
+  }, [route]);
   return (
     <div className="tabbar-row">
       <Tabs route={route} reduce={reduce} layoutId="tab-pill" routes={tabs} />
-      <details className="tab-more" key={route}>
+      <details className="tab-more" key={route} ref={details}>
         <summary aria-current={inMore ? "page" : undefined}>
           <Icon name="more" />
           <span className="label">More</span>

@@ -63,9 +63,13 @@ export function goSequence(state: { at: number } | null, key: string, now: numbe
 
 /** True when a key press is typing into a field, so shortcuts stay out of the way. */
 export function isTyping(target: EventTarget | null): boolean {
-  const el = target as { tagName?: string; isContentEditable?: boolean } | null;
+  const el = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null;
   if (!el?.tagName) return false;
-  return el.isContentEditable === true || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+  const tag = el.tagName.toUpperCase();
+  if (el.isContentEditable === true || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (typeof el.closest !== "function") return false;
+  if (el.closest('[contenteditable="true"], [role="textbox"], [role="combobox"], [role="searchbox"]')) return true;
+  return Boolean(el.closest('[role="dialog"][aria-modal="true"]'));
 }
 
 // "New message" from anywhere: Threads may not be mounted yet, so the ask is
@@ -92,4 +96,4 @@ export function listStep(current: number, length: number, key: string): number |
 }
 
 /** The rows j and k move between, in screen order. */
-export const LIST_ROWS = ".convs .conv, .person-row, .tool-row, .need-pick, .need-card, .lane .task:not(.task-sk)";
+export const LIST_ROWS = ".convs .conv, .person-row, .tool-row, .need-pick, .need-card, .lane .task:not(.task-sk), .act-list .act-link, .activity-list a, .cat-item > summary";

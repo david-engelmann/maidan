@@ -43,7 +43,9 @@ export function apiPath(c: Credentials, suffix: string): string {
 }
 
 export function wsUrl(base: string): string {
-  return trimBase(base).replace(/^http/, "ws") + "/ws/subscribe";
+  const trimmed = trimBase(base);
+  const origin = trimmed || (typeof window !== "undefined" && window.location?.origin ? window.location.origin : "");
+  return origin.replace(/^http/, "ws") + "/ws/subscribe";
 }
 
 export function headers(c: Credentials, json = false): Record<string, string> {
@@ -101,6 +103,17 @@ export const MODE_LINE: Record<CredentialMode, string> = {
   bearer: "Bearer token: acts as this member",
   delegated: "Delegated token: acts only within the grant it was lent",
 };
+
+/** A string the server meant a person to read, including `{ error: { message } }`. */
+export function problemDetail(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const rec = body as { message?: unknown; detail?: unknown; error?: unknown };
+  const nested = rec.error && typeof rec.error === "object" ? (rec.error as { message?: unknown; detail?: unknown }) : null;
+  for (const value of [rec.message, rec.detail, rec.error, nested?.message, nested?.detail]) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
 
 /** What GET /me says the page acts with. */
 export function credentialMode(
@@ -164,7 +177,7 @@ function refusal(cap: string | null, mode: CredentialMode | null): string {
     return cap
       ? `${lead} It holds only what its grant lends: ask for a grant that includes it`
       : `${lead} It holds only what its grant lends: ask for a grant with the right capability`;
-  return cap ? `${lead} Mint a token with it in Tokens` : `${lead} Mint one with the right capability in Tokens`;
+  return cap ? `${lead} Mint a token with it in Tools, then Tokens` : `${lead} Mint one with the right capability in Tools, then Tokens`;
 }
 
 /**
@@ -248,8 +261,7 @@ export async function failure(
   noteAuthLost(res);
   let detail: string | null = null;
   try {
-    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = body.message ?? body.detail ?? body.error ?? null;
+    detail = problemDetail(await res.json());
   } catch {
     detail = null;
   }

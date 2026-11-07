@@ -5,8 +5,9 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { NeedsApi } from "../core/needs.ts";
-import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
+import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread, type Transition } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
+import { historyNewestFirst, loadTaskDependencies, transitionAt, transitionPhrase, type DepLink } from "../core/taskSheet.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { ReviewContext } from "../needs/ReviewContext.tsx";
@@ -61,11 +62,13 @@ export function TaskSheet(props: Props) {
 }
 
 function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: Props & { thread: Thread }) {
-  const { session } = useSession();
+  const { session, store } = useSession();
   const box = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<"claim" | "close" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [facts, setFacts] = useState<CloseFacts | null>(null);
+  const [history, setHistory] = useState<Transition[]>([]);
+  const [deps, setDeps] = useState<DepLink[]>([]);
   // Bumped by an in-sheet action, so the result and evidence read again.
   const [rev, setRev] = useState(0);
   const changed = () => {
@@ -88,7 +91,8 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
         return;
       }
       if (e.key !== "Tab" || !box.current) return;
-      const f = Array.from(box.current.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], [tabindex='0']"));
+      // summary is keyboard-focusable, so the cycle has to count the history disclosure.
+      const f = Array.from(box.current.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], summary, [tabindex='0']"));
       if (!f.length) return;
       const first = f[0];
       const last = f[f.length - 1];
@@ -107,18 +111,38 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
     };
   }, [onClose]);
 
-  // A close clears the claim, so who closed it comes from its transitions.
+  // History is part of every task. A close still names who closed it from the same rows.
   useEffect(() => {
-    if (!terminal) return;
     let live = true;
     api
       .transitions(th.id)
-      .then((rows) => live && setFacts(closeFacts(th, rows)))
-      .catch(() => live && setFacts(null));
+      .then((rows) => {
+        if (!live) return;
+        setHistory(rows);
+        setFacts(terminal ? closeFacts(th, rows) : null);
+      })
+      .catch(() => {
+        if (!live) return;
+        setHistory([]);
+        setFacts(null);
+      });
     return () => {
       live = false;
     };
-  }, [api, th, terminal]);
+    // `th` is read for who closed it. The fields above are what make that read stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, th.id, th.updated_at, th.state, th.closed_without_review, rev, terminal]);
+
+  useEffect(() => {
+    let live = true;
+    const creds = store.getSnapshot().credentials;
+    void loadTaskDependencies((url, init) => fetch(url, init), creds, th.id).then((rows) => {
+      if (live) setDeps(rows);
+    });
+    return () => {
+      live = false;
+    };
+  }, [store, th.id, th.updated_at, rev]);
 
   const act = async (kind: "claim" | "close") => {
     if (busy) return;
@@ -185,7 +209,46 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
         )}
         {facts?.handedOffBy && <div><dt>Handed off by</dt><dd>{name(facts.handedOffBy)}</dd></div>}
         {th.updated_at && <div><dt>Last change</dt><dd><time dateTime={th.updated_at} title={new Date(th.updated_at).toLocaleString()}>{ago(th.updated_at, now)}</time></dd></div>}
+        {deps.length > 0 && (
+          <div>
+            <dt>Depends on</dt>
+            <dd>
+              <ul className="work-list">
+                {deps.map((d) => (
+                  <li key={d.id}>
+                    <a className="msg-link" href={d.href}>{d.title}</a>
+                    {d.cue ? <span className="muted"> {d.cue}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        )}
       </dl>
+
+      {history.length > 0 && (
+        <details className="pins">
+          <summary>History ({history.length})</summary>
+          <ul>
+            {historyNewestFirst(history).map((row, i) => {
+              const at = transitionAt(row);
+              return (
+                <li key={`${i}-${row.to_state ?? ""}-${at ?? ""}`}>
+                  {name(row.actor_id)}
+                  {" · "}
+                  {transitionPhrase(row)}
+                  {at ? (
+                    <>
+                      {" · "}
+                      <time dateTime={at} title={new Date(at).toLocaleString()}>{ago(at, now)}</time>
+                    </>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
 
       {chips(th, chrome.lane).length > 0 && (
         <ul className="sheet-chips" aria-label="Flags">

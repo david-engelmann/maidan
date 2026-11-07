@@ -31,7 +31,7 @@ export function useLive(session: SessionState, filter: Omit<LiveFilter, "workspa
   const token = session.credentials.pastedToken;
   const memberId = session.memberId;
   useEffect(() => {
-    conn.update({ token: () => token, memberId: () => memberId, ...handlers });
+    conn.update({ url: wsUrl(session.credentials.base), token: () => token, memberId: () => memberId, ...handlers });
   });
 
   // Screens send presence through the one connection.

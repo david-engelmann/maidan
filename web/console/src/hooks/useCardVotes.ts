@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import type { BoardApi, VoteBadge } from "../core/board.ts";
 import { liveBus } from "../core/bus.ts";
 
+/** How many card-vote reads run at once. A long lane must not open one request per card. */
+const VOTE_READ_LIMIT = 6;
+
 /** Vote counts for the given cards, refreshed when a vote on one moves. */
 export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, VoteBadge> {
   const [votes, setVotes] = useState<Map<string, VoteBadge>>(() => new Map());
@@ -15,9 +18,27 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
     let live = true;
     // Each card's latest read wins; an older response that lands late is dropped.
     const seq = new Map<string, number>();
+    let running = 0;
+    const waiters: Array<() => void> = [];
+    const acquire = () =>
+      new Promise<void>((resolve) => {
+        if (running < VOTE_READ_LIMIT) {
+          running += 1;
+          resolve();
+        } else waiters.push(() => {
+          running += 1;
+          resolve();
+        });
+      });
+    const release = () => {
+      running -= 1;
+      const next = waiters.shift();
+      if (next) next();
+    };
     const read = async (id: string) => {
       const mine = (seq.get(id) ?? 0) + 1;
       seq.set(id, mine);
+      await acquire();
       try {
         const b = await api.cardVotes(id);
         if (!live || seq.get(id) !== mine) return;
@@ -28,17 +49,13 @@ export function useCardVotes(api: BoardApi, threadIds: string[]): Map<string, Vo
           return next;
         });
       } catch {
-        // A failed read drops the badge rather than keep a count that may be stale.
+        // A blip keeps the last badge. Dropping it would flash a card as unvoted.
         if (!live || seq.get(id) !== mine) return;
-        setVotes((m) => {
-          if (!m.has(id)) return m;
-          const next = new Map(m);
-          next.delete(id);
-          return next;
-        });
+      } finally {
+        release();
       }
     };
-    const wanted = new Set(key ? key.split(",") : []);
+    const wanted = key ? key.split(",") : [];
     for (const id of wanted) void read(id);
     const off = liveBus.listen((m) => {
       if (m.type === "resync") {

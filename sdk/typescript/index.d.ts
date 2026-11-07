@@ -127,6 +127,8 @@ export declare class PlanConflictError extends MaidanError {}
 export declare class ClaimLostError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export declare class UnknownProblemError extends MaidanError {}
+/** A 2xx answer this client cannot read: cut short, not JSON, or missing a claim's id and lease. */
+export declare class UnreadableResponseError extends MaidanError {}
 
 /** Problem `type` URI → error class. */
 export declare const PROBLEM_TYPES: Readonly<Record<string, typeof MaidanError>>;

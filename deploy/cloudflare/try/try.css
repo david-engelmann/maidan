@@ -37,7 +37,8 @@ main { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 0 var(--
 section { padding: 3.5rem 0 2rem; min-width: 0; }
 h1, h2 { margin: 0; font-weight: 560; letter-spacing: -0.06em; line-height: 0.92; text-wrap: balance; }
 h1 { font-size: clamp(3rem, 12vw, 6.4rem); }
-h2 { font-size: clamp(2rem, 8vw, 3.4rem); outline: none; }
+h2 { font-size: clamp(2rem, 8vw, 3.4rem); }
+main:focus:not(:focus-visible), h2:focus:not(:focus-visible) { outline: none; }
 h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
 .eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lede { margin: 1.3rem 0 0; max-width: 36rem; text-wrap: pretty; color: var(--muted); font-size: 1.08rem; }
@@ -64,15 +65,19 @@ h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -
 .secret code { display: block; word-break: break-all; }
 .snippet pre { white-space: pre; }
 .snippet pre code { font: inherit; }
-.copy { flex: none; min-height: 44px; padding: 0 0.9rem; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 0.9rem; font-weight: 560; }
+.copy { flex: none; min-height: 44px; min-width: 44px; padding: 0 0.9rem; border-radius: 99px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 0.9rem; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; }
 .copy.done { background: var(--ink); color: var(--paper); }
 code { font-family: var(--mono); font-size: 0.9em; }
 
 .foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }
-.foot a { text-decoration: none; }
+.foot a { text-decoration: none; min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
 .foot a:hover { color: var(--ink); }
 
 @media (max-width: 30rem) {
   .secret, .snippet { flex-direction: column; align-items: stretch; }
   .copy { align-self: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }

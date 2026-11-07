@@ -2,7 +2,7 @@
 // them out for this caller. A list with a filter; each tool opens to its
 // description, its input parameters and its safety hints.
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { CATALOG_FORBIDDEN, CatalogApi, annotationBadges, filterTools, openTool, schemaParams, summary, toolTitle, type CatalogTool } from "../core/catalog.ts";
+import { CATALOG_FILTERS, CATALOG_FORBIDDEN, CatalogApi, annotationBadges, filterTools, openTool, schemaOneOfRequired, schemaParams, summary, toolProfiles, toolTitle, type CatalogFilter, type CatalogTool, type Param } from "../core/catalog.ts";
 import { useLoad } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { EmptyState } from "../shell/EmptyState.tsx";
@@ -27,17 +27,64 @@ function Badges({ tool }: { tool: CatalogTool }) {
   );
 }
 
+function oneOfNote(schema: CatalogTool["inputSchema"]): string {
+  const names: string[] = [];
+  for (const group of schemaOneOfRequired(schema)) {
+    for (const name of group) if (!names.includes(name)) names.push(name);
+  }
+  return names.length ? `Requires one of: ${names.join(", ")}` : "";
+}
+
+function requirementLabel(param: Param) {
+  if (param.requirement === "required") return <span className="param-req">required</span>;
+  if (param.requirement === "one-of") return <span className="param-opt">one of required</span>;
+  return <span className="param-opt">optional</span>;
+}
+
+function CopyToolName({ name }: { name: string }) {
+  const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
+  const copy = () => {
+    let writing: Promise<void> | undefined;
+    try {
+      writing = navigator.clipboard?.writeText(name);
+    } catch {
+      setCopied("failed");
+      return;
+    }
+    if (!writing) {
+      setCopied("failed");
+      return;
+    }
+    void writing.then(() => setCopied("copied"), () => setCopied("failed"));
+  };
+  return (
+    <>
+      <button type="button" className="chip-btn" aria-label="Copy tool name" onClick={copy}>
+        {copied === "copied" ? "Copied" : "Copy name"}
+      </button>
+      {copied === "failed" ? <p className="err small" role="alert">This browser would not copy. Select the name and copy it by hand.</p> : null}
+    </>
+  );
+}
+
 function ToolDetail({ tool }: { tool: CatalogTool }) {
   const params = schemaParams(tool.inputSchema);
+  const profiles = toolProfiles(tool.name);
+  const note = oneOfNote(tool.inputSchema);
   return (
     <article className="tool-detail" aria-labelledby="tool-detail-title">
       <header className="tool-detail-head">
         <h2 id="tool-detail-title">{toolTitle(tool)}</h2>
-        <code className="mono-id">{tool.name}</code>
+        <div className="row-form">
+          <code className="mono-id">{tool.name}</code>
+          <CopyToolName name={tool.name} />
+        </div>
+        {profiles.length ? <p className="muted small">{profiles.map((p) => p.path).join(" · ")}</p> : null}
         <Badges tool={tool} />
       </header>
       {tool.description ? <p className="tool-description">{tool.description}</p> : <p className="muted">No description.</p>}
       <h3 className="tool-section">Parameters</h3>
+      {note ? <p className="muted small">{note}</p> : null}
       {params.length ? (
         <dl className="param-list">
           {params.map((p) => (
@@ -45,10 +92,12 @@ function ToolDetail({ tool }: { tool: CatalogTool }) {
               <dt>
                 <code>{p.name}</code>
                 <span className="param-type">{p.type}</span>
-                {p.required ? <span className="param-req">required</span> : <span className="param-opt">optional</span>}
+                {p.format ? <span className="param-type">{p.format}</span> : null}
+                {requirementLabel(p)}
               </dt>
               <dd>
                 {p.description || <span className="muted">No description.</span>}
+                {p.defaultValue !== undefined ? <span className="muted small"> default: {p.defaultValue}</span> : null}
                 {p.choices.length ? (
                   <span className="param-choices">
                     {p.choices.map((c) => (
@@ -67,6 +116,15 @@ function ToolDetail({ tool }: { tool: CatalogTool }) {
   );
 }
 
+function rosterCount(status: string, total: number, shown: number, query: string, filter: CatalogFilter): string {
+  if (status === "loading") return "Loading tools";
+  if (status !== "ready") return "";
+  const narrowed = query !== "" || filter !== "all";
+  const base = narrowed ? `${shown} of ${total} tools` : `${total} tools`;
+  const path = CATALOG_FILTERS.find((f) => f.id === filter)?.path;
+  return path ? `${base} · ${path}` : base;
+}
+
 export function Catalog() {
   const { store, session } = useSession();
   const api = useMemo(() => new CatalogApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode), [store]);
@@ -75,10 +133,16 @@ export function Catalog() {
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash);
   const open = openTool(hash);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<CatalogFilter>("all");
   const tools = loaded.value ?? [];
-  const shown = filterTools(tools, query);
+  const shown = filterTools(tools, query, filter);
   const selected = open ? (tools.find((t) => t.name === open) ?? null) : null;
   const forbidden = loaded.error === CATALOG_FORBIDDEN;
+  const filtering = query !== "" || filter !== "all";
+  const reset = () => {
+    setQuery("");
+    setFilter("all");
+  };
 
   return (
     <div className={`catalog-grid${open ? " detail-open" : ""}`}>
@@ -86,8 +150,13 @@ export function Catalog() {
         <div className="roster-tools">
           <input className="search" type="search" placeholder="Find a tool" aria-label="Find a tool by name or description" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
+        <div className="view-pick client-pick" role="group" aria-label="Filter tools">
+          {CATALOG_FILTERS.map((f) => (
+            <button key={f.id} type="button" className="chip-btn" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</button>
+          ))}
+        </div>
         <p className="mono roster-count" aria-live="polite">
-          {loaded.status === "ready" ? (query ? `${shown.length} of ${tools.length} tools` : `${tools.length} tools`) : loaded.status === "loading" ? "Loading tools" : ""}
+          {rosterCount(loaded.status, tools.length, shown.length, query, filter)}
         </p>
         {loaded.status === "loading" ? (
           <ul className="tool-rows" aria-hidden="true">
@@ -110,8 +179,8 @@ export function Catalog() {
           <LoadError message={loaded.error} onRetry={() => void loaded.reload()} />
         ) : null}
         {loaded.status === "ready" && !shown.length ? (
-          query ? (
-            <EmptyState title="No matching tools" body={`No tool matches “${query}”.`} />
+          filtering ? (
+            <EmptyState title="No matching tools" body={query ? `No tool matches “${query}”.` : "No tool matches this filter."} action={<button type="button" className="button ghost" onClick={reset}>Show all tools</button>} />
           ) : (
             <EmptyState title="No tools yet" body="This access lists no tools." />
           )
@@ -137,7 +206,11 @@ export function Catalog() {
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
-          <p className="muted">Pick a tool to see what it does and what it takes.</p>
+          <div className="pane-empty">
+            <span className="pane-empty-mark" />
+            <strong>No tool selected</strong>
+            <p className="muted">Pick a tool to see what it does and what it takes.</p>
+          </div>
         </section>
       )}
     </div>

@@ -17,6 +17,7 @@ import { membersPending,
   clockTime,
   convHash,
   dmConversation,
+  directThreadRef,
   groupConversation,
   groupRefusal,
   editRefusal,
@@ -154,6 +155,45 @@ export function Threads() {
   const [reads, setReads] = useState<{ key: string | null; value: SeenState }>(() => ({ key: readsKey, value: loadSeen(readsKey) }));
   if (reads.key !== readsKey) setReads({ key: readsKey, value: loadSeen(readsKey) });
   const threadById = useMemo(() => new Map(board.threads.map((t) => [t.id, t])), [board.threads]);
+  // A #/threads/t/{thread_id} link from Activity or Search may be a DM's thread, not a task.
+  const directHit = open?.kind === "task" ? directThreadRef(open.id, direct.dms, direct.groups) : null;
+  const directKey = directHit ? `${directHit.kind}:${directHit.id}` : null;
+  if (directHit && tab !== "direct") setTab("direct");
+  useEffect(() => {
+    if (!directHit) return;
+    const hash = convHash(directHit);
+    if (window.location.hash === hash) return;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, [directHit, directKey]);
+
+  // A task deep link outside the current channel: read it once, then switch.
+  const [linked, setLinked] = useState<{ id: string; thread: Thread } | null>(null);
+  const switchedFor = useRef<string | null>(null);
+  const directSettled = direct.status === "ready" || direct.status === "error";
+  useEffect(() => {
+    if (!open || open.kind !== "task" || directHit || !directSettled || threadById.has(open.id)) return;
+    const id = open.id;
+    let live = true;
+    deps.threads.thread(id).then(
+      (t) => {
+        if (live) setLinked({ id, thread: t });
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, directHit, directSettled, threadById, deps.threads]);
+  useEffect(() => {
+    if (!open || open.kind !== "task" || directHit) return;
+    const t = linked?.id === open.id ? linked.thread : undefined;
+    const channelId = t?.channel_id;
+    if (!channelId || channelId === board.channelId || switchedFor.current === open.id) return;
+    if (!board.channels.some((c) => c.id === channelId)) return;
+    switchedFor.current = open.id;
+    selectChannel(channelId);
+  }, [open, directHit, linked, board.channelId, board.channels, selectChannel]);
 
   const tasks = useMemo(() => board.threads.map(taskConversation).sort(byRecent), [board.threads]);
   const dms = useMemo(() => {
@@ -166,9 +206,16 @@ export function Threads() {
     if (!open) return null;
     const known = [...tasks, ...dms].find((c) => sameRef(c.ref, open));
     if (known) return known;
-    if (open.kind === "task") return { ref: open, threadId: open.id, label: "Task", detail: "", updatedAt: null };
+    if (open.kind === "task") {
+      if (directHit) return null;
+      const t = threadById.get(open.id) ?? (linked?.id === open.id ? linked.thread : undefined);
+      if (t) return taskConversation(t);
+      // A thread id that is not in this channel may still be a DM the list has not loaded.
+      if (!directSettled) return null;
+      return { ref: open, threadId: open.id, label: "Task", detail: "", updatedAt: null };
+    }
     return null;
-  }, [open, tasks, dms]);
+  }, [open, tasks, dms, directHit, directSettled, threadById, linked]);
 
   // Opening a conversation reads it, and so does staying in it as it moves.
   const openedId = current?.threadId ?? null;
@@ -270,7 +317,7 @@ export function Threads() {
       </section>
       {open ? (
         current ? (
-          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} />
+          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} threads={board.threads} />
         ) : (
           <section className="conv-open" aria-label="Conversation">
             <header className="conv-head">
@@ -367,7 +414,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
   );
 }
 
-function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member> }) {
+function ConversationView({ api, conv, me, members, threads }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member>; threads: Thread[] }) {
   const { data, send, react, refresh } = useConversation(api, conv.threadId, me);
   const [pins, setPins] = useState<{ thread: string; ids: ReadonlySet<string> }>({ thread: conv.threadId, ids: new Set() });
   const pinned = pins.thread === conv.threadId ? pins.ids : EMPTY_PINS;
@@ -406,7 +453,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
     say("Message edited");
     await refresh();
   };
-  const [title, setTitle] = useState<string | null>(null);
+  const [attachSeq, setAttachSeq] = useState(0);
   const messages = useMemo(() => visibleMessages(data.messages), [data.messages]);
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
@@ -414,19 +461,6 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
   const prevIds = useRef<string[]>([]);
   const anchor = useRef<{ id: string; offset: number } | null>(null);
   const [unseen, setUnseen] = useState(0);
-
-  // A deep-linked task in another channel names itself once it is read.
-  useEffect(() => {
-    if (conv.ref.kind !== "task" || conv.label !== "Task") return;
-    let live = true;
-    api.thread(conv.ref.id).then(
-      (t) => live && setTitle(t.title || "(untitled task)"),
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [api, conv]);
 
   const remember = useCallback(() => {
     const el = scroller.current;
@@ -479,7 +513,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
     setUnseen(0);
   };
 
-  const label = title ?? conv.label;
+  const label = conv.label;
 
   return (
     <section className="conv-open" aria-label={label}>
@@ -490,7 +524,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           {conv.detail && <p>{conv.detail}</p>}
         </div>
       </header>
-      {conv.ref.kind === "task" && <TaskFactsPanel api={api} threadId={conv.threadId} members={members} />}
+      {conv.ref.kind === "task" && <TaskFactsPanel api={api} threadId={conv.threadId} members={members} threads={threads} attachSeq={attachSeq} />}
       {pinnedMessages(messages, pinned).length > 0 && (
         <details className="pins">
           <summary>Pinned ({pinnedMessages(messages, pinned).length})</summary>
@@ -509,7 +543,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           </ul>
         </details>
       )}
-      {data.staleSince && <p className="conv-stale" role="status">Offline since {clockTime(new Date(data.staleSince).toISOString())}. Retrying.</p>}
+      {data.staleSince ? <p className="conv-stale" role="status">Offline since {clockTime(new Date(data.staleSince).toISOString())}. Retrying.</p> : data.votesStale ? <p className="conv-stale" role="status">Vote counts could not be refreshed.</p> : null}
       <div className="messages" ref={scroller} onScroll={remember} aria-live="polite" aria-relevant="additions">
         {data.status === "loading" || data.status === "idle" ? (
           <p className="muted pad">Loading messages…</p>
@@ -553,6 +587,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
       <Composer
         label={label}
         onAttach={(file) => api.attach(conv.threadId, file)}
+        onAttached={() => setAttachSeq((n) => n + 1)}
         onSend={async (body) => {
           sent.current = true;
           await send(conv.ref, body);
@@ -729,9 +764,10 @@ type ComposerProps = {
   label: string;
   onSend: (body: string) => Promise<void>;
   onAttach: (file: File) => Promise<{ filename: string }>;
+  onAttached?: () => void;
 };
 
-function Composer({ label, onSend, onAttach }: ComposerProps) {
+function Composer({ label, onSend, onAttach, onAttached }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -752,7 +788,10 @@ function Composer({ label, onSend, onAttach }: ComposerProps) {
         break;
       }
     }
-    if (names.length) setAttached(`Attached ${names.join(", ")}`);
+    if (names.length) {
+      setAttached(`Attached ${names.join(", ")}`);
+      onAttached?.();
+    }
   };
 
   const submit = async () => {
@@ -782,6 +821,19 @@ function Composer({ label, onSend, onAttach }: ComposerProps) {
       {error && <p className="conv-error" role="alert">{error}</p>}
       <p className="composer-note" role="status">{attached ?? ""}</p>
       <div className="composer-row">
+        <label className="chip-btn">
+          Attach
+          <input
+            type="file"
+            multiple
+            className="visually-hidden"
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? []);
+              e.currentTarget.value = "";
+              if (files.length) void paste(files);
+            }}
+          />
+        </label>
         <label className="visually-hidden" htmlFor="compose">Message {label}</label>
         <textarea
           id="compose"
@@ -813,11 +865,11 @@ function Composer({ label, onSend, onAttach }: ComposerProps) {
   );
 }
 
-function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId: string; members: Map<string, Member> }) {
+function TaskFactsPanel({ api, threadId, members, threads, attachSeq }: { api: ThreadsApi; threadId: string; members: Map<string, Member>; threads: Thread[]; attachSeq: number }) {
   const [facts, setFacts] = useState<{ thread: string; value: TaskFacts } | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (!open || facts?.thread === threadId) return;
+    if (!open) return;
     let live = true;
     void api.facts(threadId).then((value) => {
       if (live) setFacts({ thread: threadId, value });
@@ -825,7 +877,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     return () => {
       live = false;
     };
-  }, [api, threadId, open, facts?.thread]);
+  }, [api, threadId, open, attachSeq]);
   const f = facts?.thread === threadId ? facts.value : null;
   const name = (id: string | undefined) => (id ? members.get(id)?.name || (membersPending(members) ? "…" : id.slice(0, 8)) : "someone");
   const deps = f?.deps?.dependencies ?? [];
@@ -840,7 +892,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
         <div className="facts-body small">
           <dl className="fact-rows">
             <div><dt>Result</dt><dd>{f.result ? <><pre className="fact-code fact-json" tabIndex={0}>{JSON.stringify(f.result.result, null, 2)}</pre> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
-            <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
+            <div><dt>Depends on</dt><dd><DependsOn api={api} ids={deps.map((d) => d.depends_on_thread_id)} threads={threads} ready={f.deps ? Boolean(f.deps.ready) : undefined} /></dd></div>
           </dl>
           {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}
           {entries.length ? (
@@ -863,6 +915,53 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
         </div>
       )}
     </details>
+  );
+}
+
+function DependsOn({ api, ids, threads, ready }: { api: ThreadsApi; ids: string[]; threads: Thread[]; ready: boolean | undefined }) {
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const key = ids.join(",");
+  useEffect(() => {
+    const missing = (key ? key.split(",") : []).filter((id) => !threads.some((t) => t.id === id));
+    if (!missing.length) return;
+    let live = true;
+    void Promise.all(
+      missing.map(async (id) => {
+        try {
+          const t = await api.thread(id);
+          return [id, t.title?.trim() || "(untitled task)"] as const;
+        } catch {
+          return [id, id.slice(0, 8)] as const;
+        }
+      }),
+    ).then((rows) => {
+      if (!live) return;
+      setExtra((cur) => {
+        const next = { ...cur };
+        for (const [id, title] of rows) next[id] = title;
+        return next;
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, [api, key, threads]);
+  if (!ids.length) return <span className="muted">Nothing</span>;
+  const titleOf = (id: string) => {
+    const known = threads.find((t) => t.id === id);
+    if (known) return known.title?.trim() || "(untitled task)";
+    return extra[id] ?? "…";
+  };
+  return (
+    <>
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 ? ", " : null}
+          <a href={convHash({ kind: "task", id })}>{titleOf(id)}</a>
+        </span>
+      ))}
+      {ready === undefined ? null : ` · ${ready ? "ready" : "not ready"}`}
+    </>
   );
 }
 
@@ -920,7 +1019,7 @@ function AddEvidence({ api, threadId, onAdded }: { api: ThreadsApi; threadId: st
 
 /** Who voted what on a message, read-only: votes are cast by agents over MCP or REST. */
 function Votes({ votes, members }: { votes: VoteTally[]; members: Map<string, Member> }) {
-  const who = (id: string) => members.get(id)?.name || id;
+  const who = (id: string) => nameOf(members, id);
   return (
     <ul className="votes" aria-label="Votes">
       {votes.map((v) => {
