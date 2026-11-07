@@ -58,6 +58,27 @@ test("signing in with another workspace's token drops the room that was pinned",
   assert.equal(s.getSnapshot().grant, null);
 });
 
+test("rotating this page's own token never blanks the room it is showing", async () => {
+  const fetchFn: Fetch = async (url) => {
+    if (url.endsWith("/auth/session/from-token")) return json(200, {});
+    if (url.endsWith("/auth/session")) return json(200, { member_id: "mem", token_id: "tok", workspace_id: "ws_a" });
+    if (url.endsWith("/me")) {
+      return json(200, { member_id: "mem", workspace_id: "ws_a", is_bearer: true, capabilities: ["token:admin"], known_capabilities: ["token:admin"] });
+    }
+    return json(404, {});
+  };
+  const s = new SessionStore(BASE, fetchFn);
+  await s.signInWithToken("token-a");
+  const rooms: Array<string | null> = [];
+  const off = s.subscribe(() => rooms.push(s.getSnapshot().workspaceId));
+  assert.equal(await s.adoptRotated("token-a2", s.connection()), true);
+  off();
+  // A null here would unmount People, and the new secret it shows once with it.
+  assert.equal(rooms.includes(null), false);
+  assert.equal(s.getSnapshot().workspaceId, "ws_a");
+  assert.equal(s.getSnapshot().memberId, "mem");
+});
+
 test("an expired cookie session forgets the workspace, the grant, and presence", async () => {
   let open = true;
   const fetchFn: Fetch = async (url) => {

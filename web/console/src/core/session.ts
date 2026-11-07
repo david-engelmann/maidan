@@ -190,7 +190,7 @@ export class SessionStore {
    * with no session key (404) cannot hold one, so the token stays in this
    * tab's memory only, never in storage.
    */
-  async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
+  async signInWithToken(secret: string, opts: { sameRoom?: boolean } = {}): Promise<{ ok: boolean; error?: string }> {
     this.epoch++;
     bumpAuthEpoch();
     const gen = ++this.gen;
@@ -206,7 +206,7 @@ export class SessionStore {
     }
     if (gen !== this.gen) return { ok: false };
     if (res.status === 404) {
-      this.adoptCredential({ ...this.state.credentials, pastedToken: secret });
+      this.adoptCredential({ ...this.state.credentials, pastedToken: secret }, opts.sameRoom === true);
       await this.refresh();
       return { ok: true };
     }
@@ -219,7 +219,7 @@ export class SessionStore {
             : "Could not sign in with that token",
       };
     }
-    this.adoptCredential({ ...this.state.credentials, pastedToken: "", tokenSession: true });
+    this.adoptCredential({ ...this.state.credentials, pastedToken: "", tokenSession: true }, opts.sameRoom === true);
     await this.refresh();
     return { ok: true };
   }
@@ -227,9 +227,15 @@ export class SessionStore {
   /**
    * A new secret is a new room. Drop any workspace pinned from the previous
    * sign-in, and the presence snapshot that belonged to it, before reading
-   * who this secret is.
+   * who this secret is. A rotation of this page's own token is the same
+   * member in the same workspace: blanking the room there would unmount the
+   * screen that is showing the new secret once.
    */
-  private adoptCredential(credentials: Credentials): void {
+  private adoptCredential(credentials: Credentials, sameRoom = false): void {
+    if (sameRoom) {
+      this.set({ credentials });
+      return;
+    }
     this.pinnedWorkspaceId = null;
     this.set({
       credentials,
@@ -254,7 +260,7 @@ export class SessionStore {
    */
   async adoptRotated(secret: string, connection: number): Promise<boolean> {
     if (connection !== this.epoch || this.state.status !== "signed-in") return false;
-    return (await this.signInWithToken(secret)).ok;
+    return (await this.signInWithToken(secret, { sameRoom: true })).ok;
   }
 
   setWorkspace(workspaceId: string): void {
