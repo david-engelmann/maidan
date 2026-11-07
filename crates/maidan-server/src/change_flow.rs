@@ -709,10 +709,12 @@ async fn check_rebase_base(
     let on_base = match git.compare_commits(req.repo, base_sha, base_head).await {
         Ok(on_base) => on_base,
         // GitHub does not know the commit: no retry makes it base work.
-        Err(err) if err.is_not_found() => return Ok(Err(format!(
-            "the rebase's base_sha {base_sha} is not a commit in {}; rebase onto a commit of `{}`",
-            req.repo, req.base
-        ))),
+        Err(err) if err.is_not_found() => {
+            let (repo, base) = (req.repo, req.base);
+            return Ok(Err(format!(
+                "the rebase's base_sha {base_sha} is not a commit in {repo}; rebase onto a commit of `{base}`"
+            )));
+        }
         Err(err) => return Err(err),
     };
     if let Err(reason) = base_on_branch(req.base, base_sha, base_head, &on_base) {
