@@ -1,7 +1,8 @@
 name: release-darwin-x86
 
 # Optional Intel Mac binary — not part of the tag release workflow because
-# macos-13 runners can sit queued for hours and block workflow completion.
+# Intel macOS runners can sit queued for hours and block workflow completion.
+# macos-13 is retired; macos-15-intel is the supported Intel image.
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +20,7 @@ env:
 jobs:
   build-darwin-x86:
     name: build x86_64-apple-darwin tarball
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
