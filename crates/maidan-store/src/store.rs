@@ -2336,6 +2336,15 @@ pub trait ReviewStore: Send + Sync {
         thread_id: ThreadId,
         required_count: i64,
     ) -> Result<ThreadReviewRequirement, StoreError>;
+    /// As [`set_review_requirement`](Self::set_review_requirement), also setting
+    /// the send-back cap. `None` keeps an existing cap, or the default on a new row.
+    #[cfg(feature = "test-support")]
+    async fn set_review_rounds(
+        &self,
+        thread_id: ThreadId,
+        required_count: i64,
+        max_rounds: Option<i64>,
+    ) -> Result<ThreadReviewRequirement, StoreError>;
     async fn get_review_requirement(
         &self,
         thread_id: ThreadId,
@@ -5183,9 +5192,10 @@ pub trait GovernanceAuditStore: Send + Sync {
         &self,
         thread_id: ThreadId,
         required_count: i64,
+        max_rounds: Option<i64>,
         allow_lower: bool,
-        audit: crate::AuditFor<(i64, ThreadReviewRequirement)>,
-    ) -> Result<(i64, ThreadReviewRequirement), StoreError>;
+        audit: crate::AuditFor<ReviewRequirementChange>,
+    ) -> Result<ReviewRequirementChange, StoreError>;
     /// `true` when a requirement existed; nothing is recorded otherwise.
     async fn clear_review_requirement_audited(
         &self,

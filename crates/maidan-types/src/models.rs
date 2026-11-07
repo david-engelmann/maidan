@@ -1154,6 +1154,40 @@ pub struct ApprovalGate {
     /// answer given over REST or on the console's own buttons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decided_via: Option<GateDecisionVia>,
+    /// Why the gate was opened. `request` is an agent's own ask. `review_round_cap`
+    /// is the server asking a person whether a task that has been sent back
+    /// enough times should go around again.
+    #[serde(default)]
+    pub kind: ApprovalGateKind,
+}
+
+/// Why an approval gate is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalGateKind {
+    /// An agent asked a person to allow something.
+    #[default]
+    Request,
+    /// Review sent the task back as many times as its cap allows.
+    ReviewRoundCap,
+}
+
+impl ApprovalGateKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Request => "request",
+            Self::ReviewRoundCap => "review_round_cap",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "request" => Some(Self::Request),
+            "review_round_cap" => Some(Self::ReviewRoundCap),
+            _ => None,
+        }
+    }
 }
 
 /// The inputs to open a new approval gate.

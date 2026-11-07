@@ -319,6 +319,7 @@ pub async fn assign(
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     // A reassignment ends the claim it replaces. Charge that claim before the
     // write clears its working clock; a thread that was free charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
@@ -351,6 +352,7 @@ pub async fn assign_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let previous = sqlx::query(
         "SELECT assignee_id FROM maidan_threads WHERE id = $1 AND tombstoned_at IS NULL",
     )
@@ -617,6 +619,7 @@ pub async fn claim(
     // never held the thread.
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
@@ -662,6 +665,7 @@ pub async fn claim_with_event(
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4

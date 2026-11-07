@@ -55,6 +55,7 @@ fn gate(age_secs: i64) -> ApprovalGate {
         resolved_at: None,
         risk: Default::default(),
         decided_via: None,
+        kind: Default::default(),
     }
 }
 
