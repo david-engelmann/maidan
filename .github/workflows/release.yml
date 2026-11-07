@@ -752,6 +752,15 @@ jobs:
           path: dist
       - name: list artifacts
         run: ls -la dist
+      # docker/Dockerfile.quickstart checks the tarball it downloads against
+      # this file, so no release hash is written into the tree and every pin
+      # moves in the release record, before the tag. It is signed below with
+      # the rest.
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum -- *.tar.gz *.cdx.json > SHA256SUMS
+          cat SHA256SUMS
       - name: install cosign
         uses: sigstore/cosign-installer@v3
       - name: sign release artifacts (keyless / Sigstore)
@@ -764,7 +773,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          for f in *.tar.gz *.cdx.json; do
+          for f in *.tar.gz *.cdx.json SHA256SUMS; do
             [ -f "$f" ] || continue
             cosign sign-blob --yes "$f" --bundle "$f.cosign.bundle"
           done

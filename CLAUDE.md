@@ -45,7 +45,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 ```sh
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the quickstart agree on the release
-bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
+bash scripts/check-deploy-pins.sh        # every deploy pin names the release the tree records
 bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 python3 scripts/test-mcp-fault-injection.py   # the Python claimants behind scripts/mcp-fault-proxy.py (in `lint`)
@@ -68,9 +68,10 @@ change.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **Branches:** `main` is prod and `dev` is the default branch (the
-  maintainer, 2026-10-27). Every PR targets `dev`. Only the release agent moves
-  `main`: it fast-forwards `main` to the newest green `dev` commit (no soak
-  wait, the maintainer, 2026-10-30), then tags it and deploys it to maidan.world.
+  maintainer, 2026-10-27). Every PR targets `dev`. Only the `cut release`
+  workflow moves `main`: it fast-forwards `main` to a green `dev` commit that
+  carries the release record (no soak wait, the maintainer, 2026-10-30), then
+  tags it and deploys it to maidan.world.
   dev.maidan.world and the swarm stack run `dev`.
 - **CI:** GitHub Actions. Eight checks are required on `main` and `dev`:
   `lint (fmt + clippy + deny)`, `secrets scan`, `unit tests`,
@@ -92,13 +93,17 @@ change.
 
 ## Current state (2026-11-03)
 
-- **Releases:** latest **`v434.0.0`** (2026-11-06), one owner per
-  ticket (unique thread attributes). A release is cut from the newest `dev`
-  commit whose push CI is green, with no soak wait (the maintainer,
-  2026-10-30). Tags are cut whenever the swarm stack needs
-  newer code (the maintainer, 2026-10-23), from a `main` whose eight required
-  checks passed, with the record PR first and the pins PR after the release
-  publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
+- **Releases:** latest **`v434.0.0`** (2026-11-06). The newest record in
+  `docs/Capabilities.md` says what it carries. A release is one button: run
+  the `cut release` workflow from `dev` (`gh workflow run cut-release.yml -R
+  david-engelmann/maidan --ref dev`, optionally `-f summary='…'`). It writes
+  the record and moves every deploy pin in one commit on the newest `dev`
+  commit whose push CI is green, lands it, waits for `dev`'s push CI,
+  fast-forwards `main`, tags it, and runs `release.yml` and `deploy-prod.yml`
+  until maidan.world reports the tag; no laptop script, no pins PR
+  ([`docs/Operations.md`](docs/Operations.md), "Cutting a release"). No soak
+  wait (the maintainer, 2026-10-30); a release is cut whenever the swarm
+  stack needs newer code (the maintainer, 2026-10-23). Some old clusters were never tagged (v23–26, v78–100, v311,
   v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
   published (a Trivy scan failure); `v419.0.0` carried its contents. `v420.0.0`
   is tagged on `05549018` but was never published (the aarch64 `cross` build
@@ -117,10 +122,11 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v434.0.0`** in the PR that follows its tag.
-  `scripts/check-deploy-pins.sh`
-  keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
-  to change after the next one. The `:dev`
+- **Deploy pins move with the release record,** before the tag:
+  `scripts/release-record.sh` moves them all, and `scripts/check-deploy-pins.sh`
+  holds them (`docs/Pi.md` included) to the release the tree records. The
+  quickstart Dockerfile pins no hash; it checks the tarball against the
+  release's `SHA256SUMS`. The `:dev`
   images in `compose.yaml` and the charts' default values are built from
   source on purpose. Pointing anyone at a deploy is part of the launch, the
   maintainer's call.
@@ -274,6 +280,9 @@ to agree on it.
    closes the stacked PR for good.
 7. The squash commit keeps the branch's commit messages, not the PR body, so the
    PR itself is where the retro lives.
+8. Releases are not PRs you open by hand. The `cut release` workflow opens,
+   checks and merges the `release/vN` record PR itself (it runs the full CI),
+   and CodeRabbit skips it.
 
 The long version is in [`docs/Operations.md`](docs/Operations.md).
 
@@ -368,15 +377,16 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `cargo vet (root lockfile)` job goes red. Run `cargo vet`, then certify or
   exempt what it lists, and commit `supply-chain/` with the lockfile
   ([`docs/Conventions.md`](docs/Conventions.md), "Dependencies").
-- **Cutting a release means bumping every deploy pin in one PR** (Helm prod
+- **A release record moves every deploy pin in its own commit** (Helm prod
   values for both charts, the stack's twice: server and `maidan-postgres`;
-  the quickstart compose file and Dockerfile's
-  `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in
-  `docs/Quickstart.md` and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
-  with that version, but `scripts/check-deploy-pins.sh` does not check them:
-  it checks `MAIDAN_VERSION` and the other pins it lists, and goes red (the
-  `deploy pins` job) while any differs from the newest tagged CHANGELOG
-  section. A change to `helm/maidan` also means repackaging
+  the quickstart compose file and Dockerfile's `MAIDAN_VERSION`, the prod
+  kustomize overlay, the listings, the install commands in `docs/Quickstart.md`,
+  `docs/Production.md` and `docs/Pi.md`). `scripts/release-record.sh` does it
+  and the `cut release` workflow runs it; a new pin goes in its list and in
+  `scripts/check-deploy-pins.sh`, which goes red (the `deploy pins` job) while
+  any pin differs from the release the tree records. Never write a release
+  artifact's hash into the tree: it cannot exist before the tag, and it is
+  what made every release need a second PR. A change to `helm/maidan` also means repackaging
   `helm/maidan-stack/charts/maidan-0.1.0.tgz`
   (`helm package helm/maidan -d helm/maidan-stack/charts`), or the stack keeps
   rendering the old chart; `helm-template-smoke.sh` fails while they differ.
@@ -427,7 +437,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   git-ignored; CI runs `trufflehog`.
 - **Don't push to `main` or `dev`.** It is policy: branch protection does not
   apply to admins, so nothing technical stops you. The one exception is
-  the release agent's fast-forward promotion of `main` to a tested `dev` commit.
+  the `cut release` workflow's fast-forward of `main` to a tested `dev` commit.
 - **Don't merge over a red required check** without the maintainer's explicit
   go-ahead for that PR.
 - **Don't add backwards-compatibility shims.** Until the public 1.0 launch gate
@@ -435,8 +445,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   is no compatibility promise (Open Work, F-54).
 - **Don't bypass GPG signing** unless told to. No signing key is configured;
   tags through `v413.0.0` are annotated and unsigned.
-- **Don't cut release tags** unless you are the coordinator: the maintainer
-  delegated tagging to it on 2026-10-23.
+- **Don't cut release tags by hand.** The `cut release` workflow is the only
+  path, and dispatching it is the coordinator's call (the maintainer delegated
+  tagging to it on 2026-10-23).
 
 ## When you are stuck
 

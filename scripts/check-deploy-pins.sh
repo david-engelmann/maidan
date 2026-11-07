@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Every deploy path and install command pins the newest release: the highest
-# `## [N.N.N]` CHANGELOG version whose `vN.N.N` tag exists, whatever the section order. A section added by a
-# close PR before its tag is cut does not count, because a pin can only move
-# once the tag's images and tarballs exist. Red after a tag is cut, until the one
-# PR that bumps every pin below merges, except on the tagged commit itself (see
-# below). Needs the tags (actions/checkout with fetch-depth: 0).
+# Every deploy path and install command pins the release the tree records: the
+# newest release record (docs/Capabilities.md's first `## [vN.N.N]`, with a
+# CHANGELOG section of its own) while its tag does not exist yet, or else the
+# highest `## [N.N.N]` CHANGELOG version whose `vN.N.N` tag exists, whatever
+# the section order. The record commit moves every pin before its tag exists
+# (scripts/release-record.sh), so the tagged commit already pins its own
+# release and no PR follows the release. Nothing below hashes a release
+# artifact: docker/Dockerfile.quickstart checks its tarball against the
+# SHA256SUMS the release publishes. Needs the tags (actions/checkout with
+# fetch-depth: 0).
 #
 # Pins checked, each against that version:
 #   helm/maidan/values-prod.yaml          image.tag
 #   helm/maidan-stack/values-prod.yaml    maidan.image.tag and postgresql.image.tag
-#   docker/Dockerfile.quickstart          ARG MAIDAN_VERSION (its tarball SHA-256s
-#                                         move with it; they cannot be checked here)
+#   docker/Dockerfile.quickstart          ARG MAIDAN_VERSION
 #   compose.quickstart.yaml               the MAIDAN_VERSION default
 #   k8s/overlays/prod/kustomization.yaml  newTag of maidan-server and maidan-postgres
 #   listings/registry/server.json         its version and its package version
@@ -59,34 +62,15 @@ while read -r version; do
 done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 [[ -n "$best" ]] || die "no CHANGELOG section has its tag here (fetch the tags: fetch-depth: 0)"
 expected="v${best}"
-# The release record (scripts/check-release-records.sh) moves the quickstart's server
-# image and MAIDAN_TAG to the release it records before that release is
-# tagged, so the record commit itself can pass CI and be promoted. Those two
-# quickstart pins may name the record's version while its tag does not exist yet:
-# the Capabilities head, when it is newer than every tagged section and has a
-# CHANGELOG section of its own.
+# The release record moves every pin to the release it records before that
+# release is tagged, so the record commit passes CI and is promoted and tagged
+# as it is: the Capabilities head, when it is newer than every tagged section,
+# has no tag yet and has a CHANGELOG section of its own.
 record="$(grep -m 1 -oE '^## \[v[0-9]+\.[0-9]+\.[0-9]+\]' docs/Capabilities.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
-record_ok=""
 if [[ -n "$record" ]] && version_gt "$record" "$best" \
   && ! git rev-parse -q --verify "refs/tags/v${record}" >/dev/null \
   && grep -qE "^## \[${record//./\\.}\]" CHANGELOG.md; then
-  record_ok="v${record}"
-fi
-
-# The release commit is tagged before its images exist, and the pins can only
-# move in a PR after it, so on that one commit (main's push CI right after a
-# promotion) the pins may still name the release before it. Any later commit
-# is held to the newest release.
-release_alt=""
-if git tag --points-at HEAD | grep -qx "v${best}"; then
-  while read -r version; do
-    [[ "$unpublished" == *" ${version} "* ]] && continue
-    git rev-parse -q --verify "refs/tags/v${version}" >/dev/null || continue
-    version_gt "$best" "$version" || continue
-    if [[ -z "$release_alt" ]] || version_gt "$version" "${release_alt#v}"; then
-      release_alt="v${version}"
-    fi
-  done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  expected="v${record}"
 fi
 
 failures=()
@@ -96,15 +80,14 @@ checked=()
 # exactly <count> such pins (none moved out of the pattern's reach), each at
 # the expected version. <count> 0 means "one or more".
 pin() {
-  local file="$1" count="$2" pattern="$3" alt="${4:-}" found=0 line text version
+  local file="$1" count="$2" pattern="$3" found=0 line text version
   [[ -f "$file" ]] || die "$file is missing"
   while IFS=: read -r line text; do
     [[ -n "$line" ]] || continue
     found=$((found + 1))
     version="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"$text" | head -n 1)"
     checked+=("${file}:${line}")
-    [[ "$version" == "$expected" || ( -n "$alt" && "$version" == "$alt" ) \
-      || ( -n "$release_alt" && "$version" == "$release_alt" ) ]] ||
+    [[ "$version" == "$expected" ]] ||
       failures+=("${file}:${line} pins ${version}: ${text}")
   done < <(grep -noE "$pattern" "$file" || true)
   if [[ "$count" -eq 0 ]]; then
@@ -124,8 +107,8 @@ pin helm/maidan-stack/values-prod.yaml 2 "^    tag: ${v}$"
 pin docker/Dockerfile.quickstart 1 "^ARG MAIDAN_VERSION=${v}$"
 pin compose.quickstart.yaml 1 "MAIDAN_VERSION: \\$\\{MAIDAN_VERSION:-${v}\\}"
 pin k8s/overlays/prod/kustomization.yaml 2 "^    newTag: ${v}$"
-pin docs/Quickstart.md 0 "${image}" "$record_ok"
-pin docs/Quickstart.md 1 "^MAIDAN_TAG=${v}$" "$record_ok"
+pin docs/Quickstart.md 0 "${image}"
+pin docs/Quickstart.md 1 "^MAIDAN_TAG=${v}$"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
 # The catalog listings under listings/ name the published image too: the
 # registry entry's package version, and the image in ToolHive and Docker.
@@ -134,15 +117,15 @@ pin listings/toolhive/server.json 0 "${image}"
 pin listings/docker/server.yaml 0 "${image}"
 # The registry entry's own version is the release without its v.
 registry_version="$(grep -oE '^  "version": "[0-9]+\.[0-9]+\.[0-9]+"' listings/registry/server.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
-[[ "v${registry_version}" == "$expected" || "v${registry_version}" == "$release_alt" ]] || \
+[[ "v${registry_version}" == "$expected" ]] || \
   failures+=("listings/registry/server.json version is ${registry_version:-missing}, not ${expected#v}")
 pin docs/Pi.md 0 "${image}"
 pin docs/Pi.md 1 "^MAIDAN_TAG=${v}$"
 pin docs/Pi.md 1 "releases/tag/${v}"
 
 if [[ "${#failures[@]}" -gt 0 ]]; then
-  echo "deploy pins: the newest tagged CHANGELOG section is ${expected}; bump every pin in one PR:" >&2
+  echo "deploy pins: the tree records ${expected}; every pin moves with its release record (scripts/release-record.sh):" >&2
   printf '  %s\n' "${failures[@]}" >&2
   exit 1
 fi
-echo "deploy pins: ${#checked[@]} pins at ${expected}${release_alt:+ or ${release_alt} (this commit is the ${expected} release)}: ${checked[*]}"
+echo "deploy pins: ${#checked[@]} pins at ${expected}: ${checked[*]}"

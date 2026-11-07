@@ -331,33 +331,99 @@ When a cluster's PRs have merged, its close record is one PR (branch
 
 ## Cutting a release
 
-Tagging is the maintainer's call, not part of closing a cluster. To cut
-`vX.0.0`:
+A release is one button, and it runs entirely on GitHub Actions: the
+[`cut release`](../.github/workflows/cut-release.yml) workflow. Dispatching it
+is the coordinator's call (the maintainer delegated tagging on 2026-10-23).
+From the Actions tab, or:
 
-1. Land a release-record PR: a `## [vX.0.0]` section in `docs/Capabilities.md`
-   (linking the GitHub release) naming what it contains, a `## [X.0.0]` section in
-   `CHANGELOG.md` (`bash scripts/changelog-fragments.sh release X.0.0` moves the
-   `[Unreleased]` entries and every `changelog.d/` fragment under it; then write
-   its summary paragraph), the
-   `latest **\`vX.0.0\`**` line in `CLAUDE.md`, and the image pins in `docs/Quickstart.md`.
-   `bash scripts/check-release-records.sh --tag vX.0.0` must pass.
-2. Tag `main` and push the tag:
+```sh
+gh workflow run cut-release.yml -R david-engelmann/maidan --ref dev \
+  -f summary='One sentence on what this release is for.'
+```
 
-   ```sh
-   git checkout main && git pull --ff-only
-   git tag -a vX.0.0 -m "vX.0.0: <theme>"
-   git push origin vX.0.0
-   ```
+`summary` is optional: without it the CHANGELOG paragraph and the
+Capabilities record are written from the changelog fragments' headings.
+`version` is optional too, and defaults to the next major after the newest
+tag. The run:
 
-   Tags are annotated and unsigned: no GPG key is configured. Release
-   artifacts are signed keylessly with cosign.
+1. **Plans.** It picks the newest first-parent `dev` commit whose push `ci`
+   run concluded success, looking each commit's run up by its SHA (never
+   "the newest run", which once answered a months-old commit).
+2. **Writes the record** on a `release/vX.0.0` branch from that commit, in one
+   commit, with [`scripts/release-record.sh`](../scripts/release-record.sh):
+   `[Unreleased]` and every `changelog.d/` fragment folded into
+   `## [X.0.0]` with its summary paragraph, a `## [vX.0.0]` record in
+   `docs/Capabilities.md`, the `latest **\`vX.0.0\`**` line in `CLAUDE.md`,
+   and **every deploy pin** (both charts' prod values and the repackaged stack
+   chart, the quickstart compose file and Dockerfile, the prod kustomize
+   overlay, the listings, and `docs/Quickstart.md`, `docs/Production.md` and
+   `docs/Pi.md`). The pins can move before the tag because nothing in the tree
+   hashes a release artifact: `docker/Dockerfile.quickstart` checks its
+   tarball against the `SHA256SUMS` the release publishes.
+   `scripts/check-deploy-pins.sh` and `scripts/check-release-records.sh`
+   accept pins that name the recorded release while its tag does not exist
+   yet, and nothing else. There is no pins PR after the release.
+3. **Lands it.** It opens the PR to `dev` (a `release/*` PR runs the full CI,
+   integration and the smokes included; CodeRabbit skips it), waits until
+   every check on the head SHA has finished and `dev`'s required checks
+   passed, and merges it with `--squash --admin --match-head-commit`.
+4. **Waits for `dev`'s push CI** on the merge commit. A newer merge can cancel
+   that run (dev's ci keeps one pending run), so a newer first-parent commit
+   that contains the record and whose push CI is green is promoted instead.
+   A red run on the merge commit stops the release.
+5. **Promotes and tags.** It fast-forwards `main` to that commit (refusing
+   anything `compare` does not call `ahead`, and asking GitHub for
+   `force=false`), creates the annotated tag `vX.0.0` on it, and dispatches
+   `release.yml` for the tag.
+6. **Waits for the release and the deploy**: `release.yml` must succeed, it
+   dispatches `deploy-prod.yml` itself, that run must succeed, and
+   `https://maidan.world/health` must report `vX.0.0`.
 
-   Push the tag the day the record PR merges. A release record with no tag
-   reads as a release that is not there, which is what happened to
-   `v411.0.0`. If you decide not to tag after all, the next PR renames the
-   CHANGELOG heading to `## [X.0.0] — (never tagged; ships in Y.0.0)` and the
-   Capabilities section to a source record, as #1078 did for 411.
-3. The push runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+A failed run is resumed by running the workflow again: when `dev` already
+holds the `vX.0.0` record, the record step is skipped; `main` already at the
+commit and a tag already on it are accepted. If you decide not to release a
+record that landed, the next PR renames the CHANGELOG heading to
+`## [X.0.0] — (never tagged; ships in Y.0.0)` and the Capabilities section to
+a source record, as #1078 did for 411. If a tag's release never published,
+list it in `scripts/unpublished-releases` and cut the next release.
+
+The laptop scripts that used to do this (a record script, a promote script, a
+pins script) are obsolete.
+
+### The tokens
+
+A push, PR, merge or tag made with the workflow's `GITHUB_TOKEN` starts no
+other workflow, and here `GITHUB_TOKEN` can do neither of the two protected
+steps: Actions may not create pull requests in this repository, and `dev`'s
+required review and `main`'s lock (`lock_branch`) yield only to an admin
+(`enforce_admins` is off). So:
+
+- `RELEASE_TOKEN`, an admin's fine-grained token, pushes `release/vX.0.0`,
+  opens and merges its PR (so the PR's CI and `dev`'s push CI run), and
+  fast-forwards `main` (so `main`'s push CI and the docs deploy run).
+- `GITHUB_TOKEN` does everything else. It creates the tag on purpose, so the
+  tag push starts nothing, and then starts `release.yml` with an explicit
+  `gh workflow run` (a dispatch from `GITHUB_TOKEN` does start a run): one
+  release run per tag, never a push-triggered one beside a dispatched one.
+  `release.yml` dispatches `deploy-prod.yml`, `deploy-demo.yml` and
+  `clean-install.yml` the same way.
+
+### The release token
+
+`RELEASE_TOKEN` is a secret of the `release` environment, which only `dev` may
+deploy from, so no other branch's workflow can read it. It is the
+maintainer's fine-grained token for `david-engelmann/maidan` alone, acting as
+an admin, with read and write on Contents, Pull requests and Workflows among
+others (Workflows because `main`'s fast-forward carries every workflow change
+since the last release, and GitHub refuses a token without it). When it
+expires the run fails at its first step that needs it; create a new token with
+the same repository and permissions and store it with
+`gh secret set RELEASE_TOKEN --env release -R david-engelmann/maidan`, pasting
+it at the prompt.
+
+### What the release workflow does
+
+The dispatch runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
    - `release record matches tag` re-runs the record check against the tag;
    - binaries for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
      (via `cross`) and `aarch64-apple-darwin`; `x86_64-apple-darwin` is the
@@ -373,26 +439,24 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
    - the GitHub Release, with the four SBOMs (`maidan-server.cdx.json`,
      `maidan-cli.cdx.json`, `maidan-postgres.linux-amd64.cdx.json`,
      `maidan-postgres.linux-arm64.cdx.json`) and a `.cosign.bundle` beside
-     every artifact.
-4. Verify the release, and see "Debugging the release workflow" below if a job
-   fails. Anyone can verify signatures:
+     every artifact, and a `SHA256SUMS` of the tarballs and SBOMs.
 
-   ```sh
-   cosign verify-blob --bundle maidan-<target>.tar.gz.cosign.bundle \
-     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
-     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-     maidan-<target>.tar.gz
-   cosign verify ghcr.io/david-engelmann/maidan-server:vX.0.0 \
-     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
-     --certificate-oidc-issuer https://token.actions.githubusercontent.com
-   cosign verify-attestation --type cyclonedx ghcr.io/david-engelmann/maidan-server:vX.0.0 \
-     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
-     --certificate-oidc-issuer https://token.actions.githubusercontent.com
-   ```
+Verify the release, and see "Debugging the release workflow" below if a job
+fails. Anyone can verify signatures, and the quickstart's `SHA256SUMS` the same
+way as a tarball (`cosign verify-blob --bundle SHA256SUMS.cosign.bundle … SHA256SUMS`):
 
-   The SBOM and attestation steps first run on the first tag after
-   `v412.0.0`. On that release, run `verify-attestation` for all three images
-   before announcing it.
+```sh
+cosign verify-blob --bundle maidan-<target>.tar.gz.cosign.bundle \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  maidan-<target>.tar.gz
+cosign verify ghcr.io/david-engelmann/maidan-server:vX.0.0 \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation --type cyclonedx ghcr.io/david-engelmann/maidan-server:vX.0.0 \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 Clusters that were never tagged ship in the next release; their Capabilities
 sections say "source record; no tag".
@@ -641,11 +705,13 @@ If the release workflow runs but doesn't produce a GitHub Release:
      writes (it is pinned in the job); the `jq` check failing means an SBOM
      came out empty. Fix the job and rerun with `workflow_dispatch`.
 
-4. To retry a release without re-tagging:
+4. To retry a release without re-tagging, dispatch it on the tag, so its
+   signatures name the tag (the cosign identity accepts `refs/tags/v*` and
+   `heads/main`), or run `cut release` again, which resumes:
 
    ```sh
    gh workflow run release.yml --repo david-engelmann/maidan \
-     -f tag=v0.X.0
+     --ref vX.0.0 -f tag=vX.0.0
    ```
 
 5. To create a release manually after the workflow already failed:

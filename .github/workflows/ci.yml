@@ -90,7 +90,10 @@ jobs:
           # smokes) once for every PR it carries. Our own merge queue: GitHub's
           # needs an organization-owned repository. The full-ci label opts a
           # feature PR in.
-          if [ "$code" = true ] && { [[ "$HEAD_REF" == batch/* ]] || [ "$FULL_LABEL" = true ]; }; then
+          # A release/* PR is the cut release workflow's record: it merges on
+          # its own, so it runs everything. (Its full-ci label is added after
+          # the PR opens, too late for the opened event.)
+          if [ "$code" = true ] && { [[ "$HEAD_REF" == batch/* || "$HEAD_REF" == release/* ]] || [ "$FULL_LABEL" = true ]; }; then
             echo "heavy=true" >> "$GITHUB_OUTPUT"
           else
             echo "heavy=false" >> "$GITHUB_OUTPUT"
@@ -1154,9 +1157,9 @@ jobs:
         run: bash scripts/changelog-fragments.sh check
 
   deploy-pins:
-    # Every deploy path and install command pins the newest tagged CHANGELOG
-    # section (the script lists them). Red once a tag is cut, until the one PR
-    # that bumps every pin merges. Not required.
+    # Every deploy path and install command pins the release the tree records
+    # (the script lists them); the release record moves them all before its
+    # tag. Not required.
     name: deploy pins
     runs-on: ubuntu-latest
     timeout-minutes: 5

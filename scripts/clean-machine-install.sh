@@ -11,9 +11,10 @@
 #   1. Resolves the release tag (MAIDAN_TAG, or the latest GitHub release).
 #   2. Downloads compose.quickstart.yaml, docker/Dockerfile.quickstart and
 #      scripts/quickstart-two-agents.sh at MAIDAN_REF (default: the tag). The
-#      Dockerfile pulls the release binary those files pin and checks its SHA-256,
-#      so the stack runs a published release. If the pin is not the tag, it says
-#      so, and fails under STRICT=1.
+#      Dockerfile pulls the release binary those files pin and checks it against
+#      the release's SHA256SUMS, so the stack runs a published release. A tag's
+#      own files pin that tag; if the pin is not the tag, it says so, and fails
+#      under STRICT=1.
 #   3. Starts it under its own compose project name on a free loopback port.
 #   4. Seeds the first admin with the bundled `maidan init`, then runs the
 #      two-agent demo against it.
@@ -69,8 +70,8 @@ if [ -z "$port" ]; then
 fi
 [ -n "$port" ] || { echo "no free loopback port in 18080-18180" >&2; exit 1; }
 
-# The pinned binary and its SHA-256 live together in the downloaded files, so the
-# version is read from them, never overridden: a mismatched pair fails the build.
+# The version is read from the downloaded files, never overridden, so the run
+# installs exactly what those files pin.
 pinned=$(sed -n 's/.*MAIDAN_VERSION:-\(v[0-9][0-9.]*\)}.*/\1/p' "$WORK/compose.quickstart.yaml" | head -n 1)
 [ -n "$pinned" ] || { echo "could not read the pinned MAIDAN_VERSION from compose.quickstart.yaml" >&2; exit 1; }
 echo "quickstart files at ${REF} pin ${pinned}"

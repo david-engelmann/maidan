@@ -1,24 +1,21 @@
 # One-command local evaluation image (Cluster 278; default-secure since 313). Instead
-# of compiling the Rust workspace, this pulls a pinned, SHA-256-verified Maidan release
-# binary, so a first run takes seconds. Development only: pair it with
-# compose.quickstart.yaml, which runs with auth ON and binds to loopback — the happy
-# path mints a bearer token with `maidan init` (bundled in this image). Do not use this
-# image in production (use crates/maidan-server/Dockerfile, Postgres, and scoped bearer
-# tokens).
+# of compiling the Rust workspace, this pulls a pinned Maidan release binary and
+# checks it against the release's SHA256SUMS, so a first run takes seconds.
+# Development only: pair it with compose.quickstart.yaml, which runs with auth ON and
+# binds to loopback — the happy path mints a bearer token with `maidan init` (bundled
+# in this image). Do not use this image in production (use
+# crates/maidan-server/Dockerfile, Postgres, and scoped bearer tokens).
 #
 # The release binaries are built on ubuntu-latest (glibc), so the runtime base is
 # ubuntu:24.04 to match that glibc generation.
 FROM ubuntu:24.04
 
+# The release to install. The default in `compose.quickstart.yaml` overrides this one;
+# the release record moves both, with every other deploy pin, before its tag is cut
+# (scripts/release-record.sh; scripts/check-deploy-pins.sh lists them). No hash is
+# pinned here: the tarball is checked against the SHA256SUMS published beside it,
+# which is cosign-signed like the tarball (docs/Operations.md, "Cutting a release").
 ARG MAIDAN_VERSION=v434.0.0
-# Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
-# ALL THREE together when MAIDAN_VERSION changes — and the default in
-# `compose.quickstart.yaml`, which overrides this one, and every other deploy pin
-# (`scripts/check-deploy-pins.sh` lists them and checks them):
-#   gh release download <tag> -R david-engelmann/maidan -p 'maidan-*-linux-gnu.tar.gz'
-#   shasum -a 256 maidan-*-linux-gnu.tar.gz
-ARG MAIDAN_SHA256_AMD64=dfad82900bf90046759a0a6919afaa75fe44e13464775eb5017f1e6fe82d3188
-ARG MAIDAN_SHA256_ARM64=46e0ce3b224f8aed588f9d92e3e017a447445f669782f74a50807721e05ed903
 # Set by buildkit; fall back to the build host's arch for a plain `docker build`.
 ARG TARGETARCH
 
@@ -29,16 +26,21 @@ RUN apt-get update \
 RUN set -eu; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "$arch" in \
-      amd64) target="x86_64-unknown-linux-gnu"; sha="${MAIDAN_SHA256_AMD64}" ;; \
-      arm64) target="aarch64-unknown-linux-gnu"; sha="${MAIDAN_SHA256_ARM64}" ;; \
+      amd64) target="x86_64-unknown-linux-gnu" ;; \
+      arm64) target="aarch64-unknown-linux-gnu" ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
-    url="https://github.com/david-engelmann/maidan/releases/download/${MAIDAN_VERSION}/maidan-${target}.tar.gz"; \
-    echo "downloading $url"; \
-    curl -fsSL "$url" -o /tmp/maidan.tar.gz; \
-    echo "${sha}  /tmp/maidan.tar.gz" | sha256sum -c -; \
-    tar -xzf /tmp/maidan.tar.gz -C /usr/local/bin maidan-server maidan; \
-    rm /tmp/maidan.tar.gz; \
+    base="https://github.com/david-engelmann/maidan/releases/download/${MAIDAN_VERSION}"; \
+    tarball="maidan-${target}.tar.gz"; \
+    mkdir /tmp/maidan && cd /tmp/maidan; \
+    echo "downloading ${base}/${tarball}"; \
+    curl -fsSL "${base}/SHA256SUMS" -o SHA256SUMS; \
+    curl -fsSL "${base}/${tarball}" -o "${tarball}"; \
+    grep -E "^[0-9a-f]{64}  ${tarball}\$" SHA256SUMS > want \
+      || { echo "${MAIDAN_VERSION}'s SHA256SUMS lists no ${tarball}" >&2; exit 1; }; \
+    sha256sum -c --strict want; \
+    tar -xzf "${tarball}" -C /usr/local/bin maidan-server maidan; \
+    cd / && rm -rf /tmp/maidan; \
     chmod +x /usr/local/bin/maidan-server /usr/local/bin/maidan
 
 # Non-root user; pre-create the data dir owned by it so a fresh named volume mounted
