@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
 import { NeedsApi, NeedsError, movesNeeds, type GateView, type Need } from "../core/needs.ts";
 import type { SessionState } from "../core/session.ts";
@@ -14,6 +14,18 @@ export type NeedsData = {
 
 const EMPTY: NeedsData = { status: "idle", items: [], gates: new Map(), staleSince: null, error: null };
 
+/** Null when signed out. A new member or workspace is a new room. */
+export function needsRoomKey(session: { status: string; memberId: string | null; workspaceId: string | null }): string | null {
+  if (session.status !== "signed-in" || !session.memberId) return null;
+  return `${session.workspaceId ?? ""}:${session.memberId}`;
+}
+
+/** What Needs you shows the moment the room changes. A signed-out tab is empty; a new room is loading, never the previous room's rows. */
+export function needsDataOnRoomChange(room: string | null): NeedsData {
+  if (!room) return { status: "idle", items: [], gates: new Map(), staleSince: null, error: null };
+  return { status: "loading", items: [], gates: new Map(), staleSince: null, error: null };
+}
+
 /** The next retry after a failed read: 5 s, doubling, capped at a minute. */
 export function backoff(failures: number): number {
   return Math.min(60000, 5000 * 2 ** Math.max(0, failures - 1));
@@ -24,9 +36,25 @@ export function useNeeds(session: SessionState, api: NeedsApi) {
   const [data, setData] = useState<NeedsData>(EMPTY);
   const me = session.status === "signed-in" ? session.memberId : null;
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
+  const room = needsRoomKey(session);
   const gen = useRef(0);
   const failures = useRef(0);
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [seenRoom, setSeenRoom] = useState(room);
+  // Drop the previous room before paint, so a failed read of the new room
+  // cannot mark the old rows stale.
+  if (seenRoom !== room) {
+    setSeenRoom(room);
+    setData(needsDataOnRoomChange(room));
+  }
+  useLayoutEffect(() => {
+    gen.current += 1;
+    failures.current = 0;
+    if (retry.current) {
+      clearTimeout(retry.current);
+      retry.current = null;
+    }
+  }, [room]);
   // The retry calls the current load, whichever render made it.
   const again = useRef<(quiet: boolean) => Promise<void>>(async () => {});
 

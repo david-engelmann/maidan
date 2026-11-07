@@ -42,8 +42,15 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
   }, [store]);
   const workspaceId = session.status === "signed-in" ? session.workspaceId : null;
   const channelId = storedChannel();
+  const room = `${signedIn ? "in" : "out"}:${workspaceId ?? ""}`;
   const [secret, setSecret] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [seenRoom, setSeenRoom] = useState(room);
+  if (seenRoom !== room) {
+    setSeenRoom(room);
+    setSecret(null);
+    setNote(null);
+  }
   const [busy, setBusy] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const mint = async () => {
@@ -79,7 +86,7 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
         {canMint && workspaceId ? (
           <>
             <p className="muted small">{TOKEN_FALLBACK} Name an agent here to mint a scoped <code className="mono-id">maidan.agent.worker</code> token once and fill in its client setup, with one-click install links for Cursor and VS Code.</p>
-            <AddAgent api={peopleApi} workspace={workspaceId} base={base} channelId={channelId} />
+            <AddAgent key={workspaceId ?? ""} api={peopleApi} workspace={workspaceId} base={base} channelId={channelId} />
             <div className="row-form">
               <button type="button" className="button ghost" aria-expanded={showTemplates} aria-controls="connect-token-templates" onClick={() => setShowTemplates((open) => !open)}>
                 Already have a token?
