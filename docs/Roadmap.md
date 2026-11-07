@@ -15,14 +15,16 @@ and the root `CHANGELOG.md`; how the project got here is in
   121–418 are post-gate hardening and product work.
 - **Standalone PRs.** Since Cluster 418, most work lands as a PR taken from the
   ranked Next list in Open Work. Each carries its own PR-level retro and a
-  `CHANGELOG.md` `[Unreleased]` entry and names the Open Work row it closes;
+  `changelog.d/` fragment and names the Open Work row it closes;
   the coordinator updates Open Work after the merge.
 - **Branches.** Since 2026-10-27, `dev` takes every pull request and `main` is
-  prod: the coordinator fast-forwards `main` to a `dev` commit that is green
-  and has run a day on the swarm stack. Ready pull requests merge in batches,
-  one integration branch with one CI run, so two changes that pass alone
-  cannot break `dev` together.
-- **Releases** are cut from `main` as a `vN.0.0` tag that runs `release.yml`;
+  prod: a release fast-forwards `main` to a green `dev` commit that carries
+  its record, with no soak wait (2026-10-30). Ready pull requests merge in
+  batches, one integration branch with one CI run, so two changes that pass
+  alone cannot break `dev` together.
+- **Releases** are one button since 2026-11-07 (#2114): the `cut release`
+  workflow writes the record and moves every deploy pin in one commit, lands
+  it on `dev`, fast-forwards `main`, tags `vN.0.0` and runs `release.yml`;
   publishing it deploys maidan.world (`deploy-prod.yml`, the `prod`
   environment). `scripts/check-release-records.sh` refuses a tag without its
   CHANGELOG section and Capabilities record. A retro does not imply a tag: work
@@ -47,7 +49,8 @@ release, with the launch rows in Open Work (Next 23, 24, 29 and 30) closed.
 
 ## Where it is
 
-The latest release is `v419.0.0` (2026-10-27), which maidan.world runs; `dev` is ahead of it. The work in flight and the
+The latest release is `v435.0.0` (2026-11-07), which maidan.world and
+try.maidan.world run; `dev.maidan.world` and the swarm run `dev`. The work in flight and the
 launch path are the **Now** and **Next** sections of [Open Work](Open%20Work.md),
 which end at the launch gate. `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
 run the binary from `CARGO_TARGET_DIR` when it is set.
@@ -57,7 +60,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). Done: every
-   deploy path pins the newest tag (`v419.0.0`), including the ARM64 page with auth on, and the
+   deploy path pins the newest release (`v435.0.0`), moved with its record before
+   the tag (#2114), including the ARM64 page with auth on, and the
    stack's bundled Postgres and MinIO run in the chart since #1172. Open Work's
    **Before anyone deploys** has no open blocker.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
@@ -168,14 +172,17 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    - **Host.** Per-tenant key custody, with AWS KMS (#1394, #1534), the
      waitlist, sign-up and invites, usage metering against the free
      allowance (#1518, #1529, #1544), and abuse controls (suspension #1516,
-     per-domain limits #1555) are on `main`. Open: the deployment on the
-     maidan.world layout with staging, a demo host, backups, alerts and a
-     status page (Next 24).
+     per-domain limits #1555) are on `main`. The domain layout is live:
+     maidan.world, dev.maidan.world, try.maidan.world and docs.maidan.world,
+     with a drilled restore, ops alerts and a status page. Open: web push on
+     prod (Next 24) and deploys without the five-minute restart gap (Next 47).
    - **Prove.** A validated version (Next 14), the ChatGPT card and the
      connect recipes tested live (Next 17, Next 13), the listing assets and
      demo instance (Next 12), and the launch polish (Next 30). Public `main`
-     names no internal project (#1387) and pi's client contract runs in
-     Maidan's CI (#1384).
+     names no internal project (#1387), nor since #2112 any private
+     deployment, checked by token, and pi's client contract runs in Maidan's
+     CI (#1384). The README and landing lead with the console under "Many
+     agents. No collisions." (#2111, #2116).
    - **Launch.** The launch release and its surfaces, closed by the
      `maidan-launch-1.0` gate (Next 29).
 
@@ -191,20 +198,25 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    maintainer's, prepared outside the repo.
 
 8. **The swarm factory runs unattended.** Many agents, of several model
-   families, take work for one repository from a Maidan queue on a local
-   stack (decided 2026-10-14), without colliding and without merging
+   families, take work for one repository from a Maidan queue on an
+   instance of its own, without colliding and without merging
    unreviewed code: footprints, leases and fencing, plans that a person
    releases, review by a second model family on the exact head, CI, merge
-   queue and deploy tracking, and a ledger per provider and harness. The
-   stack runs any `main` commit whose required checks passed. Ramp step 1
+   queue and deploy tracking, and a ledger per provider and harness. Since
+   2026-11-07 the instance runs `dev`, deployed from a private infra repo on
+   each `dev` commit whose CI passed (it was a local stack from 2026-10-14).
+   Ramp step 1
    (four concurrent claimants on one repository) ran on `v415`; the limit at step 2 was
    agent-ready tickets, not capacity. A seat runner keeps session seats
    claiming under capped runs (#1612), and on 2026-10-24/25 a Codex seat
    delivered changes and ran some twenty second-family red-team reviews
-   through Maidan, posting each verdict on its pull request. Next (Open
-   Work, Next 36 to Next 41): finding and closing threads by attribute, the
-   rest of Program C, and a day at 8 concurrent claimants with no stuck
-   thread.
+   through Maidan, posting each verdict on its pull request. Since then:
+   finding and closing threads by attribute (#1751, #1753), one open change
+   thread per ticket and repository (#2080), a review-round cap that hands a
+   thread to a person (#2047), and claims that survive a restart (#2121).
+   Next (Open Work, Next 33 and Next 44): a day at 8 concurrent claimants
+   with no stuck thread, and the lockstep rename of the external change
+   producer's wire names.
 
 ## What Maidan will not become
 
