@@ -22,9 +22,11 @@ name: cut release
 # one release run, never a push-triggered one and a dispatched one.
 # release.yml dispatches deploy-prod.yml itself; this run waits for both.
 #
-# A rerun after a failure resumes: if dev already holds the vN record, the
-# record job is skipped and the run goes on from dev's ci; an existing tag on
-# the same commit and main already at it are accepted.
+# A rerun after a failure resumes. If dev already holds the vN record, the
+# record job is skipped and the run goes on from dev's ci, accepting main
+# already at the commit. If vN is already tagged (a failed release or deploy),
+# run it with version=N.0.0: it checks that main holds the tag and starts
+# release.yml for it again.
 
 on:
   workflow_dispatch:
@@ -60,6 +62,7 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       base: ${{ steps.plan.outputs.base }}
       record_sha: ${{ steps.plan.outputs.record_sha }}
+      tagged: ${{ steps.plan.outputs.tagged }}
     steps:
       - name: dispatched from dev
         run: |
@@ -76,8 +79,13 @@ jobs:
         run: |
           version="$(bash scripts/cut-release.sh next-version "$WANT")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          tagged="$(bash scripts/cut-release.sh tagged "$version")"
           record_sha="$(bash scripts/cut-release.sh record-on-dev "$version")"
-          if [ -n "$record_sha" ]; then
+          if [ -n "$tagged" ]; then
+            echo "v${version} is already tagged on ${tagged}; resuming at the release"
+            echo "tagged=${tagged}" >> "$GITHUB_OUTPUT"
+            echo "record_sha=${tagged}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$record_sha" ]; then
             echo "dev already holds the v${version} record (${record_sha}); resuming after it"
             echo "record_sha=${record_sha}" >> "$GITHUB_OUTPUT"
           else
@@ -190,6 +198,7 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       RECORD: ${{ needs.record.outputs.merge_sha || needs.plan.outputs.record_sha }}
+      TAGGED: ${{ needs.plan.outputs.tagged }}
     steps:
       - name: the release token is configured
         env:
@@ -209,9 +218,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha="$(bash scripts/cut-release.sh wait-dev-ci "$RECORD")"
+          if [ -n "$TAGGED" ]; then
+            # The tag fixed the commit; a newer green one is not this release.
+            git fetch -q origin main
+            git merge-base --is-ancestor "$TAGGED" origin/main ||
+              { echo "::error::v${VERSION} is tagged on ${TAGGED}, which main does not hold"; exit 1; }
+            sha="$TAGGED"
+          else
+            sha="$(bash scripts/cut-release.sh wait-dev-ci "$RECORD")"
+          fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
       - name: fast-forward main
+        if: needs.plan.outputs.tagged == ''
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}

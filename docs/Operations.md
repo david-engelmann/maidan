@@ -379,9 +379,11 @@ tag. The run:
    dispatches `deploy-prod.yml` itself, that run must succeed, and
    `https://maidan.world/health` must report `vX.0.0`.
 
-A failed run is resumed by running the workflow again: when `dev` already
-holds the `vX.0.0` record, the record step is skipped; `main` already at the
-commit and a tag already on it are accepted. If you decide not to release a
+A failed run is resumed by running the workflow again. When `dev` already
+holds the `vX.0.0` record, the record step is skipped, and `main` already at
+the commit is accepted. When `vX.0.0` is already tagged (its release or deploy
+failed), run it with `-f version=X.0.0`: it checks that `main` holds the tag
+and starts `release.yml` for it again. If you decide not to release a
 record that landed, the next PR renames the CHANGELOG heading to
 `## [X.0.0] — (never tagged; ships in Y.0.0)` and the Capabilities section to
 a source record, as #1078 did for 411. If a tag's release never published,
@@ -424,22 +426,23 @@ it at the prompt.
 ### What the release workflow does
 
 The dispatch runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
-   - `release record matches tag` re-runs the record check against the tag;
-   - binaries for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
-     (via `cross`) and `aarch64-apple-darwin`; `x86_64-apple-darwin` is the
-     manual `release-darwin-x86.yml`;
-   - multi-arch images `ghcr.io/david-engelmann/maidan-server`,
-     `maidan-cli` and `maidan-postgres`;
-   - a blocking trivy scan of each image, then `cosign sign` of each image
-     digest and `cosign attest` of that image's CycloneDX SBOM to the same
-     digest (`generate image SBOMs`: cargo-cyclonedx for the server and CLI;
-     trivy for Postgres, one SBOM per platform, each attested to that
-     platform's manifest digest);
-   - `published server + CLI boot smoke` against the published images;
-   - the GitHub Release, with the four SBOMs (`maidan-server.cdx.json`,
-     `maidan-cli.cdx.json`, `maidan-postgres.linux-amd64.cdx.json`,
-     `maidan-postgres.linux-arm64.cdx.json`) and a `.cosign.bundle` beside
-     every artifact, and a `SHA256SUMS` of the tarballs and SBOMs.
+
+- `release record matches tag` re-runs the record check against the tag;
+- binaries for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+  (via `cross`) and `aarch64-apple-darwin`; `x86_64-apple-darwin` is the
+  manual `release-darwin-x86.yml`;
+- multi-arch images `ghcr.io/david-engelmann/maidan-server`,
+  `maidan-cli` and `maidan-postgres`;
+- a blocking trivy scan of each image, then `cosign sign` of each image
+  digest and `cosign attest` of that image's CycloneDX SBOM to the same
+  digest (`generate image SBOMs`: cargo-cyclonedx for the server and CLI;
+  trivy for Postgres, one SBOM per platform, each attested to that
+  platform's manifest digest);
+- `published server + CLI boot smoke` against the published images;
+- the GitHub Release, with the four SBOMs (`maidan-server.cdx.json`,
+  `maidan-cli.cdx.json`, `maidan-postgres.linux-amd64.cdx.json`,
+  `maidan-postgres.linux-arm64.cdx.json`) and a `.cosign.bundle` beside
+  every artifact, and a `SHA256SUMS` of the tarballs and SBOMs.
 
 Verify the release, and see "Debugging the release workflow" below if a job
 fails. Anyone can verify signatures, and the quickstart's `SHA256SUMS` the same

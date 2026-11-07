@@ -3,7 +3,9 @@
 # workflow stays short and every step can be read and shellchecked here.
 #
 #   next-version [X.Y.Z]       the release to cut: X.Y.Z, or the next major
-#                              after the newest v*.*.* tag
+#                              after the newest v*.*.* tag. An X.Y.Z already
+#                              tagged is accepted, to resume after the tag
+#   tagged X.Y.Z               the commit vX.Y.Z tags, if the tag exists
 #   green-base                 the newest first-parent dev commit whose push
 #                              `ci` run concluded success, looked up by SHA
 #   record-on-dev X.Y.Z        the dev commit that added the vX.Y.Z record, if
@@ -49,6 +51,11 @@ next_version() {
   if [[ -n "$want" ]]; then
     want="${want#v}"
     [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must be X.Y.Z, got ${want}"
+    # A rerun after the tag names it: the run resumes at the release.
+    if git rev-parse -q --verify "refs/tags/v${want}" >/dev/null; then
+      echo "$want"
+      return
+    fi
     [[ "$(printf '%s\n%s\n' "$newest" "$want" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)" == "$want" && "$want" != "$newest" ]] ||
       die "v${want} is not newer than the newest tag v${newest}"
     echo "$want"
@@ -71,9 +78,12 @@ green_base() {
   die "none of dev's 40 newest commits has a green push ci run"
 }
 
+tagged() {
+  git rev-parse -q --verify "refs/tags/v${1}^{commit}" || true
+}
+
 record_on_dev() {
   local version="$1"
-  git rev-parse -q --verify "refs/tags/v${version}" >/dev/null && die "v${version} is already tagged"
   if git show origin/dev:docs/Capabilities.md | grep -m 1 -E '^## \[v[0-9]' | grep -qF "## [v${version}]"; then
     git log --first-parent --format=%H -S "## [v${version}](" origin/dev -- docs/Capabilities.md | tail -n 1
   fi
@@ -234,11 +244,12 @@ case "$cmd" in
   next-version) next_version "$@" ;;
   green-base) green_base ;;
   record-on-dev) record_on_dev "$@" ;;
+  tagged) tagged "$@" ;;
   wait-checks) wait_checks "$@" ;;
   wait-dev-ci) wait_dev_ci "$@" ;;
   promote) promote "$@" ;;
   tag) tag "$@" ;;
   wait-run) wait_run "$@" ;;
   health) health "$@" ;;
-  *) die "usage: $0 next-version|green-base|record-on-dev|wait-checks|wait-dev-ci|promote|tag|wait-run|health ..." ;;
+  *) die "usage: $0 next-version|tagged|green-base|record-on-dev|wait-checks|wait-dev-ci|promote|tag|wait-run|health ..." ;;
 esac
