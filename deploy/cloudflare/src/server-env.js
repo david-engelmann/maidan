@@ -60,9 +60,15 @@ export const SERVER_ENV = [
   "FEDERATION_ENCRYPTION_KEY",
   "MAIDAN_TURNSTILE_SECRET",
   "MAIDAN_TURNSTILE_SITE_KEY",
+  // The result senders. A surface whose credential is missing here has no
+  // sender in the container, and every result aimed at it fails.
   "MAIDAN_GITHUB_TOKEN",
+  "MAIDAN_GITHUB_APP_ID",
+  "MAIDAN_GITHUB_APP_INSTALLATION_ID",
+  "MAIDAN_GITHUB_APP_PRIVATE_KEY",
   "MAIDAN_GITHUB_WRITE_REPOS",
   "MAIDAN_INTERNAL_EGRESS_HOSTS",
+  "MAIDAN_LINEAR_API_KEY",
   "MAIDAN_OPS_ALERT_CHANNEL",
   "MAIDAN_SLACK_BOT_TOKEN",
   "MAIDAN_VAPID_PRIVATE_KEY",

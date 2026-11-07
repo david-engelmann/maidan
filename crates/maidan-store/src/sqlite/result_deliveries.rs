@@ -102,6 +102,26 @@ pub async fn mark_failed(
     mark_undelivered(pool, id, status::FAILED, error, true).await
 }
 
+/// See the Postgres twin.
+pub async fn note_retry(
+    pool: &SqlitePool,
+    id: ResultDeliveryId,
+    error: &str,
+) -> Result<(), StoreError> {
+    sqlx::query(&format!(
+        "UPDATE maidan_result_deliveries
+         SET attempts = attempts + 1, last_error = ?, updated_at = ?
+         WHERE id = ? AND status = '{pending}'",
+        pending = status::PENDING
+    ))
+    .bind(error)
+    .bind(Utc::now().to_rfc3339())
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn mark_skipped(
     pool: &SqlitePool,
     id: ResultDeliveryId,

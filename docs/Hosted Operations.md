@@ -139,6 +139,12 @@ Result delivery to GitHub takes `MAIDAN_GITHUB_TOKEN` and
 `MAIDAN_GITHUB_WRITE_REPOS`, both secrets so the repository list stays out of
 this tree. Without them a session's change is never committed and a review
 never reaches its pull request: the result is stored and its delivery fails.
+A GitHub App can stand in for the token (`MAIDAN_GITHUB_APP_ID`,
+`MAIDAN_GITHUB_APP_INSTALLATION_ID`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`).
+Result delivery to Slack takes `MAIDAN_SLACK_BOT_TOKEN`, and to Linear
+`MAIDAN_LINEAR_API_KEY`. The Worker forwards each of these to the container
+when it is bound. A result aimed at a surface whose credential is missing is
+recorded `failed`, and its `last_error` names the setting.
 
 ## dev.maidan.world
 

@@ -221,12 +221,14 @@ pub struct AppState {
     pub slack: Option<Arc<crate::slack::SlackConfig>>,
     /// Slack projector egress sender, a `chat.postMessage` client set when
     /// `MAIDAN_SLACK_BOT_TOKEN` is configured. `None` disables egress (inbound
-    /// still works). Set via [`AppState::attach_slack_sender`]; tests inject a
+    /// still works), and a result aimed at Slack is recorded `failed` when it
+    /// is armed. Set via [`AppState::attach_slack_sender`]; tests inject a
     /// mock.
     pub slack_sender: Option<Arc<dyn crate::slack::SlackSender>>,
     /// Linear result delivery, set when `MAIDAN_LINEAR_API_KEY` is configured.
-    /// Without one a queued Linear delivery fails each attempt as transient,
-    /// as a missing Slack or GitHub sender does. Tests inject a mock.
+    /// Without one a result aimed at Linear is recorded `failed` naming the
+    /// setting when it is armed, as with a missing Slack or GitHub sender
+    /// (`result_delivery::unconfigured_reason`). Tests inject a mock.
     pub linear_sender: Option<Arc<dyn crate::linear::LinearSender>>,
     /// Git/GitHub projector config, built from `MAIDAN_GITHUB_*` at startup.
     /// `None` when unset — the `/integrations/github/events` route then returns
@@ -238,7 +240,8 @@ pub struct AppState {
     pub deploy_hook: Option<Arc<crate::deploy_ingest::DeployHookConfig>>,
     /// GitHub projector egress sender, an issue-comment client set when
     /// `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
-    /// still works). Set via [`AppState::attach_github_sender`]; tests inject a
+    /// still works), and a result aimed at GitHub is recorded `failed` when it
+    /// is armed. Set via [`AppState::attach_github_sender`]; tests inject a
     /// mock.
     pub github_sender: Option<Arc<dyn crate::github::GithubSender>>,
     /// The one app whose installations may call mark-ready

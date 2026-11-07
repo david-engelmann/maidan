@@ -1474,6 +1474,15 @@ pub trait EgressStore: Send + Sync {
         id: ResultDeliveryId,
         reason: &str,
     ) -> Result<Option<StoredEvent>, StoreError>;
+    /// A send attempt failed and the egress queue will retry it: the row
+    /// stays `pending`, with `attempts` counted and `last_error` set, so a
+    /// delivery still being retried does not read as one never tried. A row
+    /// no longer `pending` is left alone.
+    async fn note_result_delivery_retry(
+        &self,
+        id: ResultDeliveryId,
+        error: &str,
+    ) -> Result<(), StoreError>;
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,

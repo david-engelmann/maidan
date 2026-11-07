@@ -13,13 +13,125 @@ use std::sync::Arc;
 use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{notification_router, AppState};
+use maidan_server::{
+    egress_worker,
+    github::{GithubError, GithubIssueComment, GithubSender},
+    linear::{LinearError, LinearIssue, LinearSender},
+    notification_router,
+    slack::{SlackError, SlackSender},
+    AppState,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    status, EgressSurface, Event, MemberKind, NewChannel, NewEgressTarget, NewMember, NewThread,
-    NewWorkspace, ThreadId, WAITER_RESULT_SCHEMA,
+    status, EgressSurface, Event, EventKind, ExternalRef, GithubCheckRun, GithubReviewComment,
+    MemberKind, NewChannel, NewEgressTarget, NewMember, NewThread, NewWorkspace, ThreadId,
+    WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
+
+/// A Linear team id, the key the allowlist blesses.
+const TEAM: &str = "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b";
+
+/// A sender for every surface, so a blessed target is armed and queued: a
+/// server with no sender for a surface fails the target at once instead.
+/// Only the worker posts, and these tests drain the queue by hand, so
+/// anything that reaches here is refused.
+struct Unsent;
+
+#[async_trait::async_trait]
+impl SlackSender for Unsent {
+    async fn post_message(
+        &self,
+        _: &str,
+        _: &str,
+        _: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
+        Err(SlackError::Http("these tests send nothing".into()))
+    }
+
+    async fn update_message(&self, _: &str, _: &str, _: &str) -> Result<(), SlackError> {
+        Err(SlackError::Http("these tests send nothing".into()))
+    }
+}
+
+/// A Slack that takes every post.
+struct Posting;
+
+#[async_trait::async_trait]
+impl SlackSender for Posting {
+    async fn post_message(
+        &self,
+        channel: &str,
+        _: &str,
+        _: Option<&str>,
+    ) -> Result<Option<ExternalRef>, SlackError> {
+        Ok(Some(ExternalRef::Slack {
+            channel_id: channel.into(),
+            ts: "1700000001.000100".into(),
+        }))
+    }
+
+    async fn update_message(&self, _: &str, _: &str, _: &str) -> Result<(), SlackError> {
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl GithubSender for Unsent {
+    async fn post_comment(
+        &self,
+        _: &str,
+        _: i64,
+        _: &str,
+    ) -> Result<Option<ExternalRef>, GithubError> {
+        Err(GithubError::Http("these tests send nothing".into()))
+    }
+
+    async fn update_comment(&self, _: &str, _: i64, _: &str) -> Result<(), GithubError> {
+        Err(GithubError::Http("these tests send nothing".into()))
+    }
+
+    async fn list_issue_comments(
+        &self,
+        _: &str,
+        _: i64,
+    ) -> Result<Vec<GithubIssueComment>, GithubError> {
+        Err(GithubError::Http("these tests send nothing".into()))
+    }
+
+    async fn create_review(
+        &self,
+        _: &str,
+        _: i64,
+        _: &str,
+        _: &[GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        Err(GithubError::Http("these tests send nothing".into()))
+    }
+
+    async fn create_check_run(&self, _: &str, _: &GithubCheckRun) -> Result<(), GithubError> {
+        Err(GithubError::Http("these tests send nothing".into()))
+    }
+}
+
+#[async_trait::async_trait]
+impl LinearSender for Unsent {
+    async fn issue(&self, _: &str) -> Result<LinearIssue, LinearError> {
+        Err(LinearError::Http("these tests send nothing".into()))
+    }
+
+    async fn create_comment(&self, _: &str, _: &str) -> Result<String, LinearError> {
+        Err(LinearError::Http("these tests send nothing".into()))
+    }
+
+    async fn update_comment(&self, _: &str, _: &str) -> Result<(), LinearError> {
+        Err(LinearError::Http("these tests send nothing".into()))
+    }
+
+    async fn move_issue(&self, _: &str, _: &str) -> Result<(), LinearError> {
+        Err(LinearError::Http("these tests send nothing".into()))
+    }
+}
 
 struct Harness {
     store: Arc<dyn Store>,
@@ -30,7 +142,17 @@ struct Harness {
     member_id: maidan_types::MemberId,
 }
 
+/// A server with a sender for every surface.
 async fn harness(name: &str) -> Harness {
+    let mut h = harness_without_senders(name).await;
+    h.state.attach_slack_sender(Arc::new(Unsent));
+    h.state.attach_github_sender(Arc::new(Unsent));
+    h.state.attach_linear_sender(Arc::new(Unsent));
+    h
+}
+
+/// A server none of whose delivery credentials are set.
+async fn harness_without_senders(name: &str) -> Harness {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -143,6 +265,71 @@ async fn bless_slack(h: &Harness, channel: &str) {
         })
         .await
         .unwrap();
+}
+
+async fn bless_linear(h: &Harness) {
+    h.store
+        .allow_egress_target(NewEgressTarget {
+            workspace_id: h.workspace_id,
+            surface: EgressSurface::Linear,
+            selector: TEAM.into(),
+        })
+        .await
+        .unwrap();
+}
+
+/// The `result_delivery_failed` events in the thread's log, oldest first.
+async fn failed_events(h: &Harness) -> Vec<Event> {
+    h.store
+        .list_events_matching(
+            h.workspace_id,
+            None,
+            Some(h.thread_id),
+            &[EventKind::ResultDeliveryFailed],
+            0,
+            100,
+        )
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|stored| stored.opened_event().unwrap())
+        .collect()
+}
+
+/// Route a result to `target` on a server with no sender for its surface,
+/// then check the row failed naming `setting`, nothing was queued, the
+/// result's roll-up is not `pending`, and the event stream heard it.
+async fn assert_unconfigured_target_fails(h: &Harness, target: Value, surface: &str, reason: &str) {
+    set_and_route(
+        h,
+        &envelope("reviewed", json!([target]), "rendered", "summary"),
+        1,
+    )
+    .await;
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].surface, surface);
+    assert_eq!(rows[0].status, status::FAILED, "{rows:?}");
+    assert_eq!(rows[0].last_error.as_deref(), Some(reason));
+    assert_eq!(maidan_server::dto::delivery_state(&rows), "failed");
+    assert!(
+        claim_body(h).await.is_none(),
+        "nothing is queued for a surface no worker can send to"
+    );
+    let events = failed_events(h).await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    let Event::ResultDeliveryFailed {
+        surface: said_surface,
+        status: said_status,
+        last_error,
+        ..
+    } = &events[0]
+    else {
+        panic!("not a result_delivery_failed: {:?}", events[0]);
+    };
+    assert_eq!(said_surface, surface);
+    assert_eq!(said_status, status::FAILED);
+    assert_eq!(last_error.as_deref(), Some(reason));
 }
 
 async fn claim_body(h: &Harness) -> Option<String> {
@@ -454,5 +641,170 @@ async fn a_second_replica_of_the_same_event_does_not_reenqueue() {
     assert!(
         claim_body(&h).await.is_none(),
         "a replayed event must not leave a second outbox row"
+    );
+}
+
+#[tokio::test]
+async fn a_blessed_slack_target_on_a_server_with_no_slack_sender_fails_naming_the_token() {
+    let h = harness_without_senders("no-slack").await;
+    bless_slack(&h, "C0123ABCDEF").await;
+    assert_unconfigured_target_fails(
+        &h,
+        json!({ "surface": "slack", "channel": "C0123ABCDEF", "thread_ts": "1700000000.000100" }),
+        "slack",
+        "Slack delivery is not configured on this server (MAIDAN_SLACK_BOT_TOKEN)",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_blessed_linear_target_on_a_server_with_no_linear_sender_fails_naming_the_key() {
+    let h = harness_without_senders("no-linear").await;
+    bless_linear(&h).await;
+    assert_unconfigured_target_fails(
+        &h,
+        json!({ "surface": "linear", "team": TEAM, "issue": "ENG-7" }),
+        "linear",
+        "Linear delivery is not configured on this server (MAIDAN_LINEAR_API_KEY)",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_blessed_github_target_on_a_server_with_no_github_sender_fails_naming_the_setting() {
+    let h = harness_without_senders("no-github").await;
+    bless_github(&h, "acme/widgets").await;
+    assert_unconfigured_target_fails(
+        &h,
+        json!({ "surface": "github", "repo": "acme/widgets", "pr": 7 }),
+        "github",
+        "GitHub delivery is not configured on this server (MAIDAN_GITHUB_TOKEN or a GitHub App)",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_unblessed_target_on_a_server_with_no_sender_is_still_skipped_by_the_allowlist() {
+    let h = harness_without_senders("no-slack-unblessed").await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([{ "surface": "slack", "channel": "C0123ABCDEF" }]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].status, status::SKIPPED);
+    assert_eq!(
+        rows[0].last_error.as_deref(),
+        Some("target not in the workspace egress allowlist")
+    );
+}
+
+#[tokio::test]
+async fn a_queued_result_whose_sender_is_gone_fails_when_the_worker_picks_it_up() {
+    let mut h = harness("sender-gone").await;
+    bless_slack(&h, "C0123ABCDEF").await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([{ "surface": "slack", "channel": "C0123ABCDEF" }]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+    assert_eq!(
+        h.store.list_result_deliveries(h.thread_id).await.unwrap()[0].status,
+        status::PENDING
+    );
+    // The token is gone by the time the worker runs; GitHub's sender keeps
+    // the worker running.
+    h.state.slack_sender = None;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.dead, 1, "{stats:?}");
+    assert_eq!(
+        stats.retried, 0,
+        "a missing sender is not retried: {stats:?}"
+    );
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(rows[0].status, status::FAILED);
+    assert_eq!(
+        rows[0].last_error.as_deref(),
+        Some("Slack delivery is not configured on this server (MAIDAN_SLACK_BOT_TOKEN)")
+    );
+    assert_eq!(failed_events(&h).await.len(), 1);
+    assert!(claim_body(&h).await.is_none(), "the queue entry is dead");
+}
+
+#[tokio::test]
+async fn a_configured_surface_is_sent_while_another_surface_has_no_sender() {
+    let mut h = harness_without_senders("slack-but-no-linear").await;
+    h.state.attach_slack_sender(Arc::new(Posting));
+    bless_slack(&h, "C0123ABCDEF").await;
+    bless_linear(&h).await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([
+                { "surface": "linear", "team": TEAM, "issue": "ENG-7" },
+                { "surface": "slack", "channel": "C0123ABCDEF", "thread_ts": "1700000000.000100" }
+            ]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.sent, 1, "the slack result is sent: {stats:?}");
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    let slack = rows.iter().find(|r| r.surface == "slack").unwrap();
+    let linear = rows.iter().find(|r| r.surface == "linear").unwrap();
+    assert_eq!(slack.status, status::DELIVERED, "{slack:?}");
+    assert_eq!(linear.status, status::FAILED, "{linear:?}");
+    assert_eq!(
+        linear.last_error.as_deref(),
+        Some("Linear delivery is not configured on this server (MAIDAN_LINEAR_API_KEY)")
+    );
+}
+
+#[tokio::test]
+async fn a_send_that_will_be_retried_is_counted_on_the_delivery_row() {
+    let h = harness("retried").await;
+    bless_slack(&h, "C0123ABCDEF").await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([{ "surface": "slack", "channel": "C0123ABCDEF" }]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.retried, 1, "{stats:?}");
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(rows[0].status, status::PENDING, "still being retried");
+    assert_eq!(rows[0].attempts, 1, "{rows:?}");
+    assert_eq!(
+        rows[0].last_error.as_deref(),
+        Some("slack http error: these tests send nothing")
     );
 }

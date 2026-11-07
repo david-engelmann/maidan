@@ -1294,6 +1294,36 @@ async fn record_result_gave_up(
     crate::metrics::record_result_delivery(target.surface().as_str(), "failed");
 }
 
+/// A send that failed and will be retried. The outbox row carries the
+/// retry; the result-delivery row, which is what a producer and the result
+/// read see, gets the attempt and the error too, or it would read `pending`,
+/// `attempts: 0`, no `last_error` through every retry, as if never tried.
+async fn record_result_retry(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    error: &str,
+) {
+    let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    else {
+        return;
+    };
+    if let Err(err) = state.store.note_result_delivery_retry(row.id, error).await {
+        tracing::warn!(error = %err, id = %row.id, "egress worker: noting the retry failed");
+    }
+    tracing::warn!(
+        thread_id = %entry.thread_id,
+        surface = %entry.surface,
+        selector = %entry.selector,
+        attempts = entry.attempts,
+        error,
+        "egress worker: result delivery failed; will retry"
+    );
+}
+
 /// Best-effort audit of a result-delivery send attempt. Never fails the
 /// delivery itself.
 async fn audit_result_attempt(
@@ -1389,6 +1419,29 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             continue;
         };
         let surface = target.surface().as_str();
+        // A result queued for a surface this server has no sender for (armed
+        // before the credential was removed, or replayed without it) can
+        // never be sent: it fails now, naming the setting, rather than
+        // retrying against nothing.
+        if entry.kind == EgressKind::Result
+            && let Some(reason) =
+                crate::result_delivery::unconfigured_reason(state, target.surface())
+        {
+            dead_letter(state, &entry, &reason).await;
+            if let Ok(Some(row)) = state
+                .store
+                .get_result_delivery(entry.thread_id, &target)
+                .await
+                && let Err(err) =
+                    crate::result_delivery::record_unconfigured(state, &row, &target, &reason).await
+            {
+                tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
+            }
+            audit_result_attempt(state, &entry, Some(&target), "dead", Some(&reason)).await;
+            crate::metrics::record_egress_delivery(surface, crate::metrics::EgressOutcome::Dead);
+            stats.dead += 1;
+            continue;
+        }
         // The claim counted this try, so a first post has `attempts == 1`.
         if crate::suspension::held_back(state, entry.workspace_id).await {
             let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
@@ -1541,6 +1594,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     stats.dead += 1;
                 } else {
                     if entry.kind == EgressKind::Result {
+                        record_result_retry(state, &entry, &target, &failure.message).await;
                         audit_result_attempt(
                             state,
                             &entry,
