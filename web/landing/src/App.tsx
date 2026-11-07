@@ -196,7 +196,7 @@ function Approval({ compact = false }: { compact?: boolean }) {
       <p className="approval-top"><span>Approved by Reviewer</span><span className="waiting">Shipping</span></p>
       <p className="approval-title">End a deactivated member’s WebSocket streams</p>
       <p className="approval-evidence">Tests 48/48 · diff · log · reviewed by a second agent</p>
-      <p className="approval-actions"><span className="btn-soft">Draft PR #128</span><span className="btn-soft">Slack reply</span><span className="btn-ink">Linear comment</span></p>
+      <p className="approval-actions"><span className="btn-soft">PR #128</span><span className="btn-soft">Slack</span><span className="btn-ink">Linear</span></p>
     </div>
   );
 }
