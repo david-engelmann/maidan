@@ -10,9 +10,9 @@
 //! measurement / resilience tool that needs Docker and is timing-sensitive, not
 //! a pass/fail CI gate. Run it explicitly:
 //!
-//!   cargo test -p maidan-bus --test chaos -- --ignored --nocapture
+//!   cargo test -p maidan-bus --test it chaos:: -- --ignored --nocapture
 //!   MAIDAN_CHAOS_OPS=200 MAIDAN_CHAOS_KILL_EVERY=25 \
-//!     cargo test -p maidan-bus --test chaos -- --ignored --nocapture
+//!     cargo test -p maidan-bus --test it chaos:: -- --ignored --nocapture
 //!
 //! The pure fault-schedule helper (`fault_due`) IS unit-tested in CI.
 

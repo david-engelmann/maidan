@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Event bus for Maidan: in-memory + Postgres LISTEN/NOTIFY backends."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [features]
 # Swap the fan-out's lock for loom's so the `loom` model tests can explore its
@@ -36,3 +39,7 @@ testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 chrono.workspace = true
 uuid.workspace = true
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

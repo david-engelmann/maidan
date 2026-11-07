@@ -27,7 +27,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CRATES = ["maidan-server", "maidan-store", "maidan-search", "maidan-mcp"]
+CRATES = [
+    "maidan-server",
+    "maidan-store",
+    "maidan-search",
+    "maidan-mcp",
+    "maidan-types",
+    "maidan-a2a",
+    "maidan-artifacts",
+    "maidan-auth",
+    "maidan-bus",
+    "maidan-cli",
+]
 # Test files that stay their own binary, each with a [[test]] entry in the
 # crate's Cargo.toml. bootstrap_absent_e2e runs under --no-default-features,
 # which the rest of the suite was never written to build under.
