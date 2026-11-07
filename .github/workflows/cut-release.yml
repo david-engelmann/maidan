@@ -251,6 +251,9 @@ jobs:
   publish:
     name: wait for the release and maidan.world
     needs: [plan, promote]
+    # A resumed run skips the record job; without this the default success()
+    # check, which looks through promote to the skipped record, skips this too.
+    if: ${{ !cancelled() && needs.promote.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     permissions:
