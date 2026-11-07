@@ -296,7 +296,8 @@ envelope fields, Maidan reads:
 | Field | How Maidan uses it |
 |---|---|
 | `status` | `changed`, `no_change`, `seat_error`, `content_blocked` (the producer found a secret in the diff, title or summary, and sent none of it) or `rebase_conflict` (a squash-rebase round whose rebase stopped on conflicts in the producer's checkout). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status; for `rebase_conflict` it says the rebase stopped on conflicts and gives `error_detail`, where the producer lists the conflicting paths. |
-| `rebase` | Optional. `true` (a JSON boolean; anything else is a normal round) makes this a **squash-rebase round**: `base_sha` is the current head of the target's base branch and `diff` is the whole branch's change against it. See below. |
+| `rebase` | Optional. `true` (a JSON boolean; anything else is a normal round) makes this a **squash-rebase round**: `base_sha` is a commit of the target's base branch (its head when the round started) and `diff` is the whole branch's change against it. See below. |
+| `branch_head_sha` | Required for a squash-rebase round, ignored otherwise: the change branch's remote head when the round started, as a full SHA (40 or 64 hex, any case). The force move is leased on it. Absent or not a full SHA, a rebase round is refused. |
 | `base_sha` | The full SHA (40 or 64 hex) the diff applies to, captured before any edit. The commit's parent. **Never** taken from thread metadata or the branch. |
 | `branch` | The branch the producer worked on, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
@@ -381,30 +382,44 @@ change left: it commits on top and finds the pull request already open.
 **A squash-rebase round** (`"rebase": true`) is a follow-up that rebases onto
 the current base instead of merging the base in, for a queue that takes only
 linear pull requests. `branch` is the existing agent branch, `base_sha` the
-base branch's current head, and `diff` the whole branch against it. On top of
+base commit it rebased onto, `branch_head_sha` the branch head the round
+started from, and `diff` the whole branch against `base_sha`. On top of
 every rule above (the branch shape, the allowlisted base, never `prod`, the
 open pull request's base, and the merge-queue refusal below), Maidan refuses
 it, before any write and with the reason recorded, when:
 
 - no pull request is open for the branch;
+- the result names no `branch_head_sha` ("a rebase result must name
+  branch_head_sha, the branch head the round started from");
 - **someone else pushed:** the branch head is not the newest round the change
   flow recorded for that pull request in this workspace (a commit another
   workspace delivered counts as someone else's). The reason names both SHAs;
-- **the base is not current:** `base_sha` is not the base branch's head right
-  now, so a rebase never moves a branch backwards;
+- **the branch moved since this round started:** the branch head is not
+  `branch_head_sha`. The reason names both SHAs;
+- **the base is not on the base branch:** `base_sha` is neither the base
+  branch's head nor one of its ancestors (GitHub's compare of
+  `base_sha...<base head>` is not `ahead` or `identical`);
+- **the base is older than the branch's:** the merge base of the branch head
+  and the base head (the base work the branch already holds) is neither
+  `base_sha` nor one of its ancestors, so the move would drop base work the
+  branch has. A `base_sha` the base has moved past since the round started is
+  accepted when it is no older than that: on a busy base a rebase takes long
+  enough that the head rarely stays put. The exact base head passes without a
+  compare;
 - the diff does not apply to `base_sha`.
 
 Otherwise it applies the diff to the `base_sha` tree, makes one commit whose
 only parent is `base_sha` with the usual `Maidan-Change` trailer, re-reads the
 branch head immediately before the move, and moves the branch with
-`force: true` only if the head is still the one it checked. This is the change
+`force: true` only if the head is still `branch_head_sha`, the head the round
+started from. This is the change
 flow's **only non-fast-forward write**. It is allowed only for a
 `feature/agent-*` branch whose head is the last commit Maidan delivered, and
 only through one guard that no other code path can reach: the force write
 takes a single-use pass that only that guard mints, bound to the branch and
 both commits, and checks the branch shape again. GitHub's ref API has no compare-and-swap, so a push landing between the
 re-read and the move (one round trip) is the window that remains. The round is
-recorded with `rebase: true` and `base_behind` 0, and the pull request's
+recorded with `rebase: true` and how far `base_sha` is behind the base, and the pull request's
 current-state section is updated from `pr_state` as for any round. A retry that
 finds the head is already that rebase commit (same trailer, parent `base_sha`)
 reuses it and writes nothing.

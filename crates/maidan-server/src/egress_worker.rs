@@ -1659,15 +1659,12 @@ async fn record_change_round(
     let Some(base_sha) = request.change.base_sha.clone() else {
         return;
     };
-    // A rebase round was refused unless `base_sha` was the base's head, so
-    // there is nothing to ask GitHub.
-    let base_behind = if request.change.rebase {
-        Some(0)
-    } else {
-        git.commits_behind(request.repo, &base_sha, request.base)
-            .await
-            .ok()
-    };
+    // Asked for a rebase round too: one may build on a base commit the base
+    // has since moved past, so it is not always current.
+    let base_behind = git
+        .commits_behind(request.repo, &base_sha, request.base)
+        .await
+        .ok();
     let round = maidan_types::NewChangeRound {
         workspace_id: entry.workspace_id,
         thread_id: entry.thread_id,

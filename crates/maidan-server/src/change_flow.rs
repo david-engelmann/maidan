@@ -21,14 +21,16 @@
 //! second commit nor a second pull request.
 //!
 //! **One force write: the squash-rebase round.** A result with
-//! `"rebase": true` carries the whole branch's diff against the base branch's
-//! current head. It is rebuilt as one commit on that head and the branch is
+//! `"rebase": true` carries the whole branch's diff against a commit of the
+//! base branch. It is rebuilt as one commit on that commit and the branch is
 //! moved there with `force: true`, the flow's only non-fast-forward write. It
 //! happens only when the branch is an agent branch with an open pull request
-//! outside the merge queue, `base_sha` is the base's head right now, and the
-//! branch head is still the last commit this flow delivered to that pull
-//! request, re-read immediately before the move. The move itself goes
-//! through [`ForceMovePass`], which only this module's guard can mint.
+//! outside the merge queue; `base_sha` is on the base branch and no older than
+//! the base commit the branch already contains; and the branch head is both
+//! the last commit this flow delivered to that pull request and the
+//! `branch_head_sha` the round started from, re-read immediately before the
+//! move. The move itself goes through [`ForceMovePass`], which only this
+//! module's guard can mint.
 //!
 //! **One comment: the rebase range.** After a squash-rebase moves the
 //! branch, the flow comments `Rebased <old_head>..<new_head> onto <base_sha>`
@@ -50,7 +52,7 @@ use maidan_types::{ChangeResult, ThreadId};
 use sha2::{Digest, Sha256};
 
 use crate::change_patch::{self, TreeChange};
-use crate::github::{GitTreeEntry, GithubError, GithubGit, GithubPull};
+use crate::github::{GitComparison, GitTreeEntry, GithubError, GithubGit, GithubPull};
 
 /// GitHub's limit on a pull request title.
 const TITLE_MAX_CHARS: usize = 256;
@@ -606,6 +608,15 @@ async fn rebase_commit(
             req.branch
         )));
     };
+    // The diff is the whole branch as it stood when the round started, so
+    // the move is leased on that head: without it nothing says what the
+    // diff already holds, and a commit pushed since would be dropped.
+    let Some(started_from) = req.change.branch_head_sha.as_deref() else {
+        return Ok(Err(
+            "a rebase result must name branch_head_sha, the branch head the round started from"
+                .into(),
+        ));
+    };
     let Some(head) = git.branch_head(req.repo, req.branch).await? else {
         return Ok(Err(format!(
             "branch `{}` does not exist, so there is nothing to rebase",
@@ -642,10 +653,18 @@ async fn rebase_commit(
             )))
         }
     }
-    // A stale `base_sha` would move the branch backwards past work that has
-    // landed on the base since.
-    let base_head = git.branch_head(req.repo, req.base).await?;
-    if let Err(reason) = check_base_current(req.repo, req.base, base_sha, base_head.as_deref()) {
+    if !started_from.eq_ignore_ascii_case(&head) {
+        return Ok(Err(format!(
+            "the branch moved since this round started (expected {started_from}, found {head})"
+        )));
+    }
+    let Some(base_head) = git.branch_head(req.repo, req.base).await? else {
+        return Ok(Err(format!(
+            "base branch `{}` does not exist in {}",
+            req.base, req.repo
+        )));
+    };
+    if let Err(reason) = check_rebase_base(git, req, base_sha, &base_head, &head).await? {
         return Ok(Err(reason));
     }
     let changes = match apply_at(git, req.repo, base_sha, patches).await? {
@@ -653,29 +672,105 @@ async fn rebase_commit(
         Err(reason) => return Ok(Err(reason)),
     };
     let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
-    match force::move_branch(git, req.repo, req.branch, &head, &commit).await? {
+    // Leased on the head the round started from (checked equal to `head`
+    // above), never on whatever the branch reads at the move.
+    match force::move_branch(git, req.repo, req.branch, started_from, &commit).await? {
         Ok(()) => Ok(Ok((commit, Some(head)))),
         Err(reason) => Ok(Err(reason)),
     }
 }
 
-/// Whether `base_sha` is the base branch's head as just read. SHAs compare
-/// case-insensitively, as every other SHA comparison in this flow does: a
-/// producer may send the hex in upper case, and the same commit must not read
-/// as a stale base.
-fn check_base_current(
-    repo: &str,
+/// Whether a rebase may build on `base_sha`, with `base_head` and
+/// `branch_head` read just now. Returns the refusal, if any.
+///
+/// A producer's rebase can take many minutes on a busy base, which moves
+/// meanwhile, so demanding the exact head refused every such round. What
+/// matters is that the move never takes the branch backwards past base work:
+///
+/// - **(a) on the base:** `base_sha` is the base head or one of its
+///   ancestors, so the commit is base work and not some other line;
+/// - **(b) not older:** the base commit the branch already contains (the
+///   merge base of its head and the base head) is `base_sha` or one of its
+///   ancestors, so the move drops none of the base work the branch had.
+///
+/// The exact head is the fast path: it holds both without a compare. SHAs
+/// compare case-insensitively, as everywhere in this flow: a producer may
+/// send the hex in upper case.
+async fn check_rebase_base(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+    base_sha: &str,
+    base_head: &str,
+    branch_head: &str,
+) -> Result<Result<(), String>, GithubError> {
+    if base_head.eq_ignore_ascii_case(base_sha) {
+        return Ok(Ok(()));
+    }
+    let on_base = match git.compare_commits(req.repo, base_sha, base_head).await {
+        Ok(on_base) => on_base,
+        // GitHub does not know the commit: no retry makes it base work.
+        Err(err) if err.is_not_found() => {
+            let (repo, base) = (req.repo, req.base);
+            return Ok(Err(format!(
+                "the rebase's base_sha {base_sha} is not a commit in {repo}; rebase onto a commit of `{base}`"
+            )));
+        }
+        Err(err) => return Err(err),
+    };
+    if let Err(reason) = base_on_branch(req.base, base_sha, base_head, &on_base) {
+        return Ok(Err(reason));
+    }
+    let contained = git
+        .compare_commits(req.repo, base_head, branch_head)
+        .await?;
+    if contained.merge_base.eq_ignore_ascii_case(base_sha) {
+        return Ok(Ok(()));
+    }
+    let kept = git
+        .compare_commits(req.repo, &contained.merge_base, base_sha)
+        .await?;
+    Ok(base_not_older(
+        req.branch,
+        req.base,
+        base_sha,
+        &contained.merge_base,
+        &kept,
+    ))
+}
+
+/// Rule (a): `on_base` compares `base_sha` with `base_head`, and `base_sha`
+/// must be the head or behind it.
+fn base_on_branch(
     base: &str,
     base_sha: &str,
-    base_head: Option<&str>,
+    base_head: &str,
+    on_base: &GitComparison,
 ) -> Result<(), String> {
-    match base_head {
-        Some(head) if head.eq_ignore_ascii_case(base_sha) => Ok(()),
-        Some(head) => Err(format!(
-            "the rebase's base_sha {base_sha} is not the head of `{base}`, which is at {head}; rebase onto the current base"
-        )),
-        None => Err(format!("base branch `{base}` does not exist in {repo}")),
+    if on_base.base_is_ancestor() {
+        return Ok(());
     }
+    Err(format!(
+        "the rebase's base_sha {base_sha} is not on `{base}`: it is neither the head {base_head} nor one of its ancestors (GitHub compares them as `{}`); rebase onto a commit of `{base}`",
+        on_base.status
+    ))
+}
+
+/// Rule (b): `kept` compares `merge_base`, the base commit the branch
+/// already contains, with `base_sha`, and `merge_base` must be `base_sha` or
+/// behind it.
+fn base_not_older(
+    branch: &str,
+    base: &str,
+    base_sha: &str,
+    merge_base: &str,
+    kept: &GitComparison,
+) -> Result<(), String> {
+    if kept.base_is_ancestor() {
+        return Ok(());
+    }
+    Err(format!(
+        "the rebase's base_sha {base_sha} is older than {merge_base}, the `{base}` commit branch `{branch}` already contains; the move would drop base work the branch has, so rebase onto a newer commit of `{base}`"
+    ))
 }
 
 /// The tree changes `patches` make to the files at `base_sha`, or the reason
@@ -902,6 +997,7 @@ mod tests {
             linear_issue: None,
             current_state: None,
             rebase: false,
+            branch_head_sha: None,
             check: None,
         }
     }
@@ -921,16 +1017,45 @@ mod tests {
         assert_eq!(check_note(&[MISSING_ISSUE_KEY.to_string()]), None);
     }
 
+    fn compared(status: &str) -> GitComparison {
+        GitComparison {
+            status: status.into(),
+            merge_base: "2222222222222222222222222222222222222222".into(),
+        }
+    }
+
     #[test]
-    fn a_base_sha_in_another_case_is_still_the_current_base() {
-        let lower = "abcdef0123456789abcdef0123456789abcdef01";
-        let upper = lower.to_ascii_uppercase();
-        assert!(check_base_current("o/r", "dev", &upper, Some(lower)).is_ok());
-        assert!(check_base_current("o/r", "dev", lower, Some(&upper)).is_ok());
-        let other = "1111111111111111111111111111111111111111";
-        let stale = check_base_current("o/r", "dev", lower, Some(other)).unwrap_err();
-        assert!(stale.contains(lower) && stale.contains(other), "{stale}");
-        assert!(check_base_current("o/r", "dev", lower, None).is_err());
+    fn a_base_sha_behind_or_at_the_base_head_is_on_the_base_and_nothing_else_is() {
+        let sha = "abcdef0123456789abcdef0123456789abcdef01";
+        let head = "1111111111111111111111111111111111111111";
+        for status in ["ahead", "identical"] {
+            assert!(base_on_branch("dev", sha, head, &compared(status)).is_ok());
+        }
+        for status in ["behind", "diverged", ""] {
+            let refused = base_on_branch("dev", sha, head, &compared(status)).unwrap_err();
+            assert!(
+                refused.contains(sha) && refused.contains(head) && refused.contains("not on `dev`"),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_base_sha_older_than_what_the_branch_contains_is_refused_naming_both() {
+        let sha = "abcdef0123456789abcdef0123456789abcdef01";
+        let merge_base = "3333333333333333333333333333333333333333";
+        let branch = "feature/agent-x";
+        for status in ["ahead", "identical"] {
+            assert!(base_not_older(branch, "dev", sha, merge_base, &compared(status)).is_ok());
+        }
+        for status in ["behind", "diverged"] {
+            let refused =
+                base_not_older(branch, "dev", sha, merge_base, &compared(status)).unwrap_err();
+            assert!(
+                refused.contains(sha) && refused.contains(merge_base) && refused.contains("older"),
+                "{refused}"
+            );
+        }
     }
 
     #[test]
