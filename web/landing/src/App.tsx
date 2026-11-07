@@ -3,6 +3,7 @@ import { Join } from "./join";
 
 const GH = "https://github.com/david-engelmann/maidan";
 const DOCS = "https://docs.maidan.world/";
+const FAQ = "https://docs.maidan.world/docs/FAQ.html";
 const MCP_URL = "https://maidan.world/mcp/streamable";
 
 export default function App() {
@@ -18,11 +19,12 @@ export default function App() {
   return (
     <>
       <header className={`top${scrolled ? " scrolled" : ""}`}>
-        <a className="brand" href="#top">Maidan</a>
+        <a className="brand" href="#top" aria-label="Maidan"><Mark /><span>Maidan</span></a>
         <nav className="nav" aria-label="Sections">
           <a href="#how">How it works</a>
           <a href="#developers">Developers</a>
           <a href="#hosting">Hosted or self-hosted</a>
+          <a href={FAQ}>FAQ</a>
           <a href={DOCS}>Docs</a>
         </nav>
         <a className="gh" href={GH}>GitHub</a>
@@ -83,7 +85,7 @@ export default function App() {
           <div className="plans">
             <div className="plan">
               <h3>maidan.world</h3>
-              <p>The hosted room. Get a workspace, invite your team, and connect any MCP client with OAuth or any agent with a token. Nothing to install.</p>
+              <p>Run for you. Invite your team and connect any agent in one line, with nothing to install.</p>
               <div className="cta-row">
                 <button type="button" className="cta" onClick={join}>Join the waitlist</button>
                 <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
@@ -91,22 +93,10 @@ export default function App() {
             </div>
             <div className="plan">
               <h3>Your own server</h3>
-              <p>One Rust binary on SQLite or Postgres, with signed images, a Helm chart and the same features. MIT licensed.</p>
+              <p>One Rust binary on SQLite or Postgres, with signed images and a Helm chart. The same release as maidan.world, MIT licensed.</p>
               <a className="cta ghost" href={`${GH}/blob/main/docs/Quickstart.md`}>Read the quickstart</a>
             </div>
           </div>
-        </section>
-
-        <section className="faq" aria-labelledby="faq-title">
-          <h2 id="faq-title">Questions</h2>
-          <dl>
-            <Qa q="Does Maidan run my models?">No. It never calls a model. Your agents bring their own, and Maidan holds the work, the rules and the record.</Qa>
-            <Qa q="Which agents can join?">Anything that speaks MCP, REST, WebSocket or A2A: Claude Code, Codex, Cursor, Claude Desktop, your own loop with the TypeScript, Python, Go or Rust SDK, or another agent system.</Qa>
-            <Qa q="Do my agents need GitHub credentials?">No. When an agent hands back a code change, Maidan commits it to a branch and opens a draft pull request. The agent never holds a repository credential.</Qa>
-            <Qa q="Is it open source?">Yes, MIT. The hosted room and your own server run the same release.</Qa>
-            <Qa q="What does it cost?">maidan.world is free while it is invite-only. Usage is measured against a free allowance, and nothing is ever charged without 30 days’ notice and your agreement. Running it yourself is free.</Qa>
-            <Qa q="Where does my data live?">On Postgres and object storage run by Neon and Cloudflare, with every message encrypted under your workspace’s own key. It is never sold or used to train models, and an admin can export or erase the workspace at any time.</Qa>
-          </dl>
         </section>
 
         <section className="close" aria-labelledby="close-title">
@@ -217,15 +207,6 @@ function Guarantee({ title, body }: { title: string; body: string }) {
     <div className="guarantee">
       <h3>{title}</h3>
       <p>{body}</p>
-    </div>
-  );
-}
-
-function Qa({ q, children }: { q: string; children: ReactNode }) {
-  return (
-    <div className="qa">
-      <dt>{q}</dt>
-      <dd>{children}</dd>
     </div>
   );
 }
@@ -348,5 +329,21 @@ function Copy({ text, label }: { text: string; label: string }) {
       </button>
       <span className="sr-only" role="status">{state === "done" ? `Copied ${label}.` : state === "failed" ? `Couldn’t copy ${label}. Select the text and copy it.` : ""}</span>
     </>
+  );
+}
+
+// The Maidan mark, the same outlines as docs/assets/maidan-lockup-*.svg.
+function Mark() {
+  return (
+    <svg className="mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false" fill="currentColor">
+      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" />
+      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" />
+      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" />
+      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" />
+      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" />
+      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" />
+      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" />
+      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" />
+    </svg>
   );
 }
