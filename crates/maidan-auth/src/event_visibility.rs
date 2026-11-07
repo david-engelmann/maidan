@@ -67,6 +67,9 @@ impl<'a> EventVisibility<'a> {
                 return Ok(seen);
             }
             let allowed = match self.store.get_channel(channel_id).await {
+                // A channel id from another tenant is never visible, public
+                // or not: the membership checks below assume this workspace.
+                Ok(channel) if channel.workspace_id != self.auth.workspace_id => false,
                 Ok(channel) if channel.name == DM_CHANNEL_NAME => false,
                 Ok(channel) if channel.private => {
                     self.store
@@ -92,5 +95,96 @@ fn settle(result: Result<bool, AuthError>) -> Result<bool, StoreError> {
         Err(AuthError::Store(StoreError::NotFound)) => Ok(false),
         Err(AuthError::Store(e)) => Err(e),
         Err(AuthError::Unauthorized | AuthError::Forbidden(_)) => Ok(false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maidan_store::{prelude::*, run_sqlite_migrations};
+    use maidan_types::{MemberKind, NewChannel, NewMember, NewWorkspace};
+
+    async fn sqlite() -> SqliteStore {
+        let pool = maidan_search::sqlite_pool_options()
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect");
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("pragma");
+        run_sqlite_migrations(&pool).await.expect("migrate");
+        SqliteStore::for_tests(pool)
+    }
+
+    async fn channel(
+        store: &SqliteStore,
+        workspace_id: maidan_types::WorkspaceId,
+        name: &str,
+        private: bool,
+    ) -> ChannelId {
+        store
+            .create_channel(NewChannel {
+                workspace_id,
+                name: name.into(),
+                topic: None,
+                private,
+            })
+            .await
+            .expect("channel")
+            .id
+    }
+
+    /// A reader in workspace A, A's public channel, and B's public and
+    /// private channels.
+    async fn seed() -> (SqliteStore, AuthContext, ChannelId, ChannelId, ChannelId) {
+        let store = sqlite().await;
+        let ws_a = store
+            .create_workspace(NewWorkspace { name: "a".into() })
+            .await
+            .expect("ws a");
+        let ws_b = store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .expect("ws b");
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws_a.id,
+                handle: "reader".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .expect("member");
+        let public_own = channel(&store, ws_a.id, "general", false).await;
+        let public_other = channel(&store, ws_b.id, "general", false).await;
+        let private_other = channel(&store, ws_b.id, "secret", true).await;
+        let auth = AuthContext::from_session(
+            member.id,
+            ws_a.id,
+            vec![crate::capability::WORKSPACE_READ.to_string()],
+        );
+        (store, auth, public_own, public_other, private_other)
+    }
+
+    #[tokio::test]
+    async fn a_public_channel_in_another_workspace_is_not_visible() {
+        let (store, auth, _, public_other, _) = seed().await;
+        let mut vis = EventVisibility::new(&store, &auth);
+        assert!(!vis.allows_in(None, Some(public_other)).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_public_channel_in_the_callers_workspace_is_visible() {
+        let (store, auth, public_own, _, _) = seed().await;
+        let mut vis = EventVisibility::new(&store, &auth);
+        assert!(vis.allows_in(None, Some(public_own)).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_private_channel_in_another_workspace_is_not_visible() {
+        let (store, auth, _, _, private_other) = seed().await;
+        let mut vis = EventVisibility::new(&store, &auth);
+        assert!(!vis.allows_in(None, Some(private_other)).await.unwrap());
     }
 }

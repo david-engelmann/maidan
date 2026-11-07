@@ -245,21 +245,72 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
         .await
         .map_err(|e| e.to_string())?;
     for delivery in pending {
-        let sub = state
+        let sub = match state
             .store
             .get_webhook_subscription(delivery.subscription_id)
             .await
-            .map_err(|e| e.to_string())?;
+        {
+            Ok(sub) => sub,
+            Err(maidan_store::StoreError::NotFound) => {
+                // Returning here would stall every later row in the batch on
+                // each poll, and the row itself can never be delivered.
+                crate::webhooks::forget_webhook_secret(
+                    &state.webhooks.secrets,
+                    delivery.subscription_id,
+                );
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                warn!(
+                    delivery_id = delivery.id,
+                    webhook = %delivery.subscription_id,
+                    "quarantined delivery for deleted webhook subscription"
+                );
+                continue;
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        if sub.subscription.revoked_at.is_some() {
+            // The pending query does not read `revoked_at`, so a revoked
+            // hook's queued retries would otherwise keep going out. Resolving
+            // its secret first would also put it back in the cache.
+            crate::webhooks::forget_webhook_secret(
+                &state.webhooks.secrets,
+                delivery.subscription_id,
+            );
+            let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+            warn!(
+                delivery_id = delivery.id,
+                webhook = %delivery.subscription_id,
+                "quarantined delivery for revoked webhook"
+            );
+            continue;
+        }
         let Some(secret) = resolve_webhook_secret(
             &state.webhooks,
             delivery.subscription_id,
             &sub.secret_ciphertext,
         ) else {
+            // A bare `continue` left the row due with no attempt recorded, so
+            // it came back first in every batch, forever. Count it as a failed
+            // attempt and let the ceiling quarantine it.
+            let err = "missing or undecryptable webhook secret";
             warn!(
                 delivery_id = delivery.id,
                 webhook = %delivery.subscription_id,
-                "skipping delivery: no webhook secret"
+                "{err}"
             );
+            let next = chrono::Utc::now() + delivery_backoff(delivery.attempts);
+            let attempts = state
+                .store
+                .record_webhook_delivery_attempt(delivery.id, err, next)
+                .await
+                .map_err(|e| e.to_string())?;
+            if attempts >= max_attempts as i32 {
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                warn!(
+                    delivery_id = delivery.id,
+                    attempts, max_attempts, "webhook delivery quarantined (undecryptable secret)"
+                );
+            }
             continue;
         };
         let workspace_id = sub.subscription.workspace_id;
