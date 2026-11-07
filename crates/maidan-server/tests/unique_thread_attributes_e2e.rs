@@ -215,7 +215,7 @@ fn assert_held(status: StatusCode, body: &Value) {
         "{body}"
     );
     assert!(
-        body["detail"].as_str().unwrap_or("").contains("ENG-6598"),
+        body["detail"].as_str().unwrap_or("").contains("ENG-5150"),
         "{body}"
     );
 }
@@ -303,7 +303,7 @@ async fn another_workspace_cannot_read_or_set_the_unique_attributes() {
     );
 
     // The attacker's own threads on the victim's ticket are not refused.
-    let ticket = json!({ "title": "t", "attributes": { "linear_issue": "ENG-6598" } });
+    let ticket = json!({ "title": "t", "attributes": { "linear_issue": "ENG-5150" } });
     let (status, _) = create_thread(&base, &victim.token, victim.channel, ticket.clone()).await;
     assert_eq!(status, StatusCode::CREATED);
     keep_tickets_unique(&base, &attacker).await;
@@ -316,7 +316,7 @@ async fn a_held_ticket_is_a_409_naming_the_holder_on_rest_and_mcp() {
     let (base, store) = spawn().await;
     let room = room(store.as_ref(), "held").await;
     keep_tickets_unique(&base, &room).await;
-    let ticket = json!({ "linear_issue": "ENG-6598" });
+    let ticket = json!({ "linear_issue": "ENG-5150" });
 
     let (status, pi) = create_thread(
         &base,
@@ -368,7 +368,7 @@ async fn a_held_ticket_is_a_409_naming_the_holder_on_rest_and_mcp() {
         &base,
         &room.token,
         "set_thread_attributes",
-        json!({ "thread_id": other, "kind": "change", "linear_issue": "ENG-6598" }),
+        json!({ "thread_id": other, "kind": "change", "linear_issue": "ENG-5150" }),
     )
     .await;
     assert_tool_held(&refused);
@@ -423,7 +423,7 @@ async fn a_holder_the_caller_cannot_read_is_not_named() {
             },
             None,
             Some(TaskAttributes {
-                linear_issue: Some("ENG-6598".into()),
+                linear_issue: Some("ENG-5150".into()),
                 ..TaskAttributes::default()
             }),
             None,
@@ -431,7 +431,7 @@ async fn a_holder_the_caller_cannot_read_is_not_named() {
         .await
         .unwrap();
 
-    let ticket = json!({ "linear_issue": "ENG-6598" });
+    let ticket = json!({ "linear_issue": "ENG-5150" });
     let (status, refused) = create_thread(
         &base,
         &room.token,
@@ -479,18 +479,18 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let half = |repo: &str| json!({ "linear_issue": "ENG-6598", "repo": repo });
+    let half = |repo: &str| json!({ "linear_issue": "ENG-5150", "repo": repo });
 
-    let (status, wax) = create_thread(
+    let (status, widgets) = create_thread(
         &base,
         &room.token,
         room.channel,
-        json!({ "title": "wax half", "attributes": half("https://github.com/Example/Wax") }),
+        json!({ "title": "widgets half", "attributes": half("https://github.com/Example/Widgets") }),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED, "{wax}");
+    assert_eq!(status, StatusCode::CREATED, "{widgets}");
     assert_eq!(
-        wax["attributes"]["repo"], "example/wax",
+        widgets["attributes"]["repo"], "example/widgets",
         "stored as owner/name"
     );
     let (status, web) = create_thread(
@@ -511,7 +511,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         &base,
         &room.token,
         room.channel,
-        json!({ "title": "second wax owner", "attributes": half("example/wax") }),
+        json!({ "title": "second widgets owner", "attributes": half("example/widgets") }),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{refused}");
@@ -521,7 +521,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         json!(["linear_issue", "repo"]),
         "{refused}"
     );
-    assert_eq!(refused["holder_thread_id"], wax["id"], "{refused}");
+    assert_eq!(refused["holder_thread_id"], widgets["id"], "{refused}");
     let refused = tool(
         &base,
         &room.token,
@@ -529,8 +529,8 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         json!({
             "thread_id": web["id"],
             "kind": "change",
-            "linear_issue": "ENG-6598",
-            "repo": "example/wax"
+            "linear_issue": "ENG-5150",
+            "repo": "example/widgets"
         }),
     )
     .await;
@@ -541,7 +541,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         "{refused}"
     );
     assert_eq!(
-        refused["error"]["data"]["holder_thread_id"], wax["id"],
+        refused["error"]["data"]["holder_thread_id"], widgets["id"],
         "{refused}"
     );
 
@@ -550,7 +550,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         &base,
         &room.token,
         room.channel,
-        json!({ "title": "no repo", "attributes": { "linear_issue": "ENG-6598" } }),
+        json!({ "title": "no repo", "attributes": { "linear_issue": "ENG-5150" } }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -562,7 +562,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
             json!({
                 "channel_id": room.channel.0,
                 "title": "mcp half",
-                "attributes": { "kind": "change", "linear_issue": "ENG-6598", "repo": "example/api" }
+                "attributes": { "kind": "change", "linear_issue": "ENG-5150", "repo": "example/api" }
             }),
         )
         .await,
@@ -576,8 +576,8 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         &room.token,
         room.channel,
         json!({
-            "title": "red-team the wax half",
-            "attributes": { "kind": "review", "linear_issue": "ENG-6598", "repo": "example/wax" }
+            "title": "red-team the widgets half",
+            "attributes": { "kind": "review", "linear_issue": "ENG-5150", "repo": "example/widgets" }
         }),
     )
     .await;
@@ -590,7 +590,7 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
     // Find-by-attribute filters on repo, read as owner/name.
     let found: Value = reqwest::Client::new()
         .get(format!(
-            "{base}/workspaces/{}/threads?attr.repo=https://github.com/Example/Wax",
+            "{base}/workspaces/{}/threads?attr.repo=https://github.com/Example/Widgets",
             room.ws.0
         ))
         .bearer_auth(&room.token)
@@ -605,12 +605,15 @@ async fn a_ticket_is_held_per_repository_over_rest_and_mcp() {
         .unwrap_or_else(|| panic!("a list: {found}"))
         .iter()
         .map(|thread| {
-            assert_eq!(thread["attributes"]["repo"], "example/wax", "{thread}");
+            assert_eq!(thread["attributes"]["repo"], "example/widgets", "{thread}");
             thread["id"].as_str().unwrap()
         })
         .collect();
     ids.sort_unstable();
-    let mut want = vec![wax["id"].as_str().unwrap(), review["id"].as_str().unwrap()];
+    let mut want = vec![
+        widgets["id"].as_str().unwrap(),
+        review["id"].as_str().unwrap(),
+    ];
     want.sort_unstable();
     assert_eq!(ids, want);
     let refused = reqwest::Client::new()

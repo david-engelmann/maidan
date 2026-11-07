@@ -68,7 +68,7 @@ change.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **Branches:** `main` is prod and `dev` is the default branch (the
-  maintainer, 2026-10-27). Every PR targets `dev`. Only maidan-ca moves
+  maintainer, 2026-10-27). Every PR targets `dev`. Only the release agent moves
   `main`: it fast-forwards `main` to the newest green `dev` commit (no soak
   wait, the maintainer, 2026-10-30), then tags it and deploys it to maidan.world.
   dev.maidan.world and the swarm stack run `dev`.
@@ -93,7 +93,7 @@ change.
 ## Current state (2026-11-03)
 
 - **Releases:** latest **`v434.0.0`** (2026-11-06), one owner per
-  ticket (unique thread attributes), and Pi's waiter on the swarm. A release is cut from the newest `dev`
+  ticket (unique thread attributes). A release is cut from the newest `dev`
   commit whose push CI is green, with no soak wait (the maintainer,
   2026-10-30). Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
@@ -106,7 +106,7 @@ change.
   scan refused the distroless `libssl3`); `v422.0.0` carries both, and was
   published but never deployed; `v423.0.0` carries it.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
-  41): finding and closing threads by attribute (MaidanFadin), and the M13
+  41): finding and closing threads by attribute, and the M13
   alert proof. Then the launch path (Next 23,
   24, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
   #1325 a gate is accepted only by a browser session the person signed in to
@@ -427,7 +427,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   git-ignored; CI runs `trufflehog`.
 - **Don't push to `main` or `dev`.** It is policy: branch protection does not
   apply to admins, so nothing technical stops you. The one exception is
-  maidan-ca's fast-forward promotion of `main` to a tested `dev` commit.
+  the release agent's fast-forward promotion of `main` to a tested `dev` commit.
 - **Don't merge over a red required check** without the maintainer's explicit
   go-ahead for that PR.
 - **Don't add backwards-compatibility shims.** Until the public 1.0 launch gate
