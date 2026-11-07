@@ -34,21 +34,59 @@ export function cacheable(status: number, type: string, cacheControl: string | n
   return !/no-store|private/i.test(cacheControl ?? "");
 }
 
-export type PushPayload = { title: string; body: string; kind?: string; log_id?: string };
+export type PushPayload = { title: string; body: string; kind?: string; log_id?: string; thread_id?: string; url?: string };
 
-/** Read a push message body the way the classic board's worker did. */
+const PHRASES: Record<string, string> = {
+  mention_recorded: "You were mentioned in a thread.",
+  approval_requested: "An approval gate is waiting on you.",
+  review_submitted: "Changes were requested on your work.",
+  message_posted: "New message in a followed thread.",
+  thread_landed: "A followed task landed.",
+  thread_result_set: "A followed member posted a result.",
+  thread_state_changed: "A followed task changed state.",
+  thread_assignment_changed: "Task assignment changed.",
+  member_frozen: "A followed member's availability changed.",
+  member_unfrozen: "A followed member's availability changed.",
+};
+
+const CLAIM = new Set(["claim_expired", "claim_stalled", "claim_unacknowledged", "claim_failed"]);
+
+/** Inbox kinds open the inbox. Approval and claim kinds still land on Needs you. */
+const INBOX_KINDS = new Set(["mention_recorded", "message_posted", "thread_landed", "thread_result_set", "thread_state_changed", "thread_assignment_changed", "member_frozen", "member_unfrozen"]);
+
+function asId(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function humanBody(body: string, kind: string | undefined): string {
+  const trimmed = body.trim();
+  const matched = /^New notification \(([a-z0-9_]+)\)$/.exec(trimmed);
+  const snake = matched?.[1] ?? (trimmed === "" && kind ? kind : "");
+  if (!snake) return body;
+  if (CLAIM.has(snake)) return "A claimed task needs attention.";
+  return PHRASES[snake] ?? `New notification: ${snake.replace(/_/g, " ")}`;
+}
+
+/** Read a push message body the way the classic board's worker did. `log_id` arrives as a number. */
 export function pushPayload(json: (() => unknown) | null, text: (() => string) | null): PushPayload {
   const base: PushPayload = { title: "Maidan", body: "" };
   if (!json) return base;
   try {
     const p = json() as Partial<Record<string, unknown>> | null;
     if (!p || typeof p !== "object") return base;
-    return {
+    const kind = typeof p.kind === "string" ? p.kind : undefined;
+    const out: PushPayload = {
       title: typeof p.title === "string" && p.title ? p.title : "Maidan",
-      body: typeof p.body === "string" ? p.body : "",
-      kind: typeof p.kind === "string" ? p.kind : undefined,
-      log_id: typeof p.log_id === "string" ? p.log_id : undefined,
+      body: humanBody(typeof p.body === "string" ? p.body : "", kind),
     };
+    if (kind) out.kind = kind;
+    const logId = asId(p.log_id);
+    if (logId) out.log_id = logId;
+    if (typeof p.thread_id === "string" && p.thread_id) out.thread_id = p.thread_id;
+    if (typeof p.url === "string" && p.url) out.url = p.url;
+    return out;
   } catch {
     return { ...base, body: text ? text() : "" };
   }
@@ -56,3 +94,20 @@ export function pushPayload(json: (() => unknown) | null, text: (() => string) |
 
 /** Where a notification click lands. */
 export const NOTIFICATION_TARGET = "/ui/#/needs";
+
+function safeConsoleUrl(url: string): boolean {
+  if (!url.startsWith("/ui/#/") || url.includes("//")) return false;
+  for (let i = 0; i < url.length; i++) {
+    const code = url.charCodeAt(i);
+    if (code < 32 || code === 127) return false;
+  }
+  return true;
+}
+
+/** A console path for a push click: an explicit hash, the thread, the inbox, or Needs you. */
+export function notificationTarget(data?: Partial<PushPayload> | null): string {
+  if (data?.url && safeConsoleUrl(data.url)) return data.url;
+  if (data?.thread_id && /^[A-Za-z0-9_-]+$/.test(data.thread_id)) return `/ui/#/threads/t/${data.thread_id}`;
+  if (data?.kind && INBOX_KINDS.has(data.kind)) return "/ui/#/tools/inbox";
+  return NOTIFICATION_TARGET;
+}

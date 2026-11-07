@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SHELL_SCOPE, cacheable, pushPayload, shellKey } from "../src/pwa/policy.ts";
+import { NOTIFICATION_TARGET, SHELL_SCOPE, cacheable, notificationTarget, pushPayload, shellKey } from "../src/pwa/policy.ts";
+import { openNotification, showPush } from "../src/pwa/sw.ts";
 import { applicationServerKey, disablePush, enablePush, type PushDeps, type SubscriptionLike } from "../src/pwa/push.ts";
 
 const O = "https://m.example";
@@ -34,6 +35,60 @@ test("push payloads fall back like the classic worker", () => {
   assert.deepEqual(pushPayload(null, null), { title: "Maidan", body: "" });
   assert.equal(pushPayload(() => ({ title: "Gate", body: "Needs you", log_id: "l1" }), null).log_id, "l1");
   assert.deepEqual(pushPayload(() => { throw new Error("x"); }, () => "plain"), { title: "Maidan", body: "plain" });
+});
+
+test("push payloads keep numeric log ids and humanize only the server's raw body", () => {
+  const numeric = pushPayload(() => ({ title: "Maidan", body: "New notification (mention_recorded)", kind: "mention_recorded", log_id: 42, thread_id: "thr_1" }), null);
+  assert.equal(numeric.log_id, "42");
+  assert.equal(numeric.thread_id, "thr_1");
+  assert.equal(numeric.body, "You were mentioned in a thread.");
+  assert.equal(pushPayload(() => ({ body: "Needs you", log_id: "l1", kind: "mention_recorded" }), null).body, "Needs you");
+  assert.equal(pushPayload(() => ({ body: "", kind: "claim_expired" }), null).body, "A claimed task needs attention.");
+  assert.equal(pushPayload(() => ({ body: "New notification (review_submitted)" }), null).body, "Changes were requested on your work.");
+  assert.equal(pushPayload(() => ({ body: "New notification (thread_landed)" }), null).body, "A followed task landed.");
+  assert.equal(pushPayload(() => ({ body: "New notification (custom_event_kind)" }), null).body, "New notification: custom event kind");
+  assert.equal(pushPayload(() => ({ log_id: Number.NaN, body: "Keep" }), null).log_id, undefined);
+});
+
+test("notification clicks open a safe console path, the thread, the inbox, or Needs you", () => {
+  assert.equal(notificationTarget({ url: "/ui/#/board" }), "/ui/#/board");
+  assert.equal(notificationTarget({ url: "https://evil.example", thread_id: "abc" }), "/ui/#/threads/t/abc");
+  assert.equal(notificationTarget({ url: "/ui/#/ok\n", thread_id: "../x", kind: "message_posted" }), "/ui/#/tools/inbox");
+  assert.equal(notificationTarget({ url: "/ui/#//evil", kind: "approval_requested" }), NOTIFICATION_TARGET);
+  assert.equal(notificationTarget({ kind: "claim_expired" }), NOTIFICATION_TARGET);
+  assert.equal(notificationTarget(null), NOTIFICATION_TARGET);
+});
+
+test("a push is tagged by log id, and a click moves an open console window or opens one", async () => {
+  const shown: { title: string; opts: { body?: string; tag?: string; data?: { log_id?: string } } }[] = [];
+  const origin = "https://m.example";
+  const worker = {
+    location: { origin } as Location,
+    registration: { showNotification: async (title: string, opts: { body?: string; tag?: string; data?: { log_id?: string } }) => void shown.push({ title, opts }) },
+    clients: { claim: async () => undefined, matchAll: async () => [], openWindow: async () => undefined },
+    addEventListener: () => undefined,
+    skipWaiting: async () => undefined,
+  };
+  await showPush(worker, { data: { json: () => ({ body: "New notification (message_posted)", kind: "message_posted", log_id: 7 }), text: () => "" }, waitUntil: () => undefined });
+  assert.equal(shown[0].opts.tag, "maidan-7");
+  assert.equal(shown[0].opts.body, "New message in a followed thread.");
+  assert.equal(shown[0].opts.data?.log_id, "7");
+
+  const navigated: string[] = [];
+  let focused = 0;
+  const client = { url: `${origin}/ui/#/board`, focus: async () => { focused += 1; }, navigate: async (url: string) => { navigated.push(url); client.url = url; } };
+  const hosted = { ...worker, clients: { ...worker.clients, matchAll: async () => [client], openWindow: async (url: string) => { navigated.push(`open:${url}`); } } };
+  await openNotification(hosted, { notification: { close: () => undefined, data: { kind: "message_posted" } }, waitUntil: () => undefined });
+  assert.deepEqual(navigated, [`${origin}/ui/#/tools/inbox`]);
+  assert.equal(focused, 1);
+  assert.equal(client.url, `${origin}/ui/#/tools/inbox`);
+
+  const opened: string[] = [];
+  focused = 0;
+  const alone = { ...worker, clients: { ...worker.clients, matchAll: async () => [], openWindow: async (url: string) => { opened.push(url); } } };
+  await openNotification(alone, { notification: { close: () => undefined, data: { kind: "approval_requested" } }, waitUntil: () => undefined });
+  assert.deepEqual(opened, [`${origin}${NOTIFICATION_TARGET}`]);
+  assert.equal(focused, 0);
 });
 
 test("applicationServerKey decodes base64url", () => {
