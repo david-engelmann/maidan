@@ -84,15 +84,30 @@ fn boot_grace_from_raw(raw: Option<String>) -> Option<Duration> {
 /// Hold every lapsed lease for `grace` from now, on this process's store;
 /// `None` holds nothing. Called once at boot, before the reaper's first tick.
 pub fn start_boot_grace(store: &dyn maidan_store::Store, grace: Option<Duration>) {
-    let Some(grace) = grace.and_then(|g| chrono::Duration::from_std(g).ok()) else {
+    let Some(grace) = grace else {
         return;
     };
-    let Some(until) = chrono::Utc::now().checked_add_signed(grace) else {
+    let now = chrono::Utc::now();
+    let deadline = |grace: Duration| {
+        chrono::Duration::from_std(grace)
+            .ok()
+            .and_then(|grace| now.checked_add_signed(grace))
+    };
+    // A grace too long to represent falls back to the default rather than to
+    // none, which would free every claim the restart cut off.
+    let until = deadline(grace).or_else(|| {
+        tracing::warn!(
+            grace_secs = grace.as_secs(),
+            default_secs = DEFAULT_BOOT_GRACE_SECS,
+            "MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS is out of range; using the default"
+        );
+        deadline(Duration::from_secs(DEFAULT_BOOT_GRACE_SECS))
+    });
+    let Some(until) = until else {
         return;
     };
     store.claim_grace().hold_until(until);
     tracing::info!(
-        grace_secs = grace.num_seconds(),
         until = %until.to_rfc3339(),
         "claim reaper boot grace: lapsed leases are held until it ends"
     );

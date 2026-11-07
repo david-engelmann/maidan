@@ -2954,7 +2954,7 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
                 footprint: Option<maidan_types::Footprint>,
             ) -> Result<Vec<maidan_types::FootprintConflict>, StoreError> {
-                footprints::set(self.pool(), thread_id, footprint).await
+                footprints::set(self.pool(), &self.claim_grace, thread_id, footprint).await
             }
 
             async fn get_thread_footprint(
@@ -3512,7 +3512,7 @@ macro_rules! store_delegations {
 
             async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
                 // Primary read: enforcement must not act on a lagged claim count.
-                wip::count_live_claims(self.pool(), member_id).await
+                wip::count_live_claims(self.pool(), &self.claim_grace, member_id).await
             }
 
             async fn cancel_thread(

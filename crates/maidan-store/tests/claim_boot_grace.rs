@@ -161,6 +161,11 @@ async fn a_lapsed_lease_is_held_through_the_grace_and_reaped_after_it(store: &dy
         (0, 2),
         "the counts agree with claim_next"
     );
+    assert_eq!(
+        store.count_live_claims(q.holder).await.unwrap(),
+        2,
+        "held claims count against the holder's WIP limit"
+    );
 
     // The holder of `back` reaches the server again: its lapsed lease renews
     // by its lease id, and its result is stored.

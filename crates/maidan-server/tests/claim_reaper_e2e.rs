@@ -749,6 +749,18 @@ async fn reaper_waits_out_the_boot_grace(
         "the renewed lease is live"
     );
 
+    // A grace too long to represent falls back to the default, not to none.
+    claim_reaper::start_boot_grace(store.as_ref(), Some(Duration::from_secs(u64::MAX)));
+    let held_until = store.claim_grace().held_until().unwrap();
+    let expected = chrono::Utc::now() + chrono::Duration::seconds(600);
+    assert!(
+        (held_until - expected).num_seconds().abs() < 60,
+        "{held_until}"
+    );
+    store
+        .claim_grace()
+        .hold_until(chrono::Utc::now() - chrono::Duration::seconds(1));
+
     // A grace of 0 holds nothing.
     claim_reaper::start_boot_grace(store.as_ref(), None);
     let claimed = store
