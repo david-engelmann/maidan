@@ -151,7 +151,10 @@ test("a conditional schema labels one-of fields, nullable enums and the copied n
 });
 
 test.describe("catalog on a phone", () => {
-  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  // Measured mid-way through the route's enter translate, a 44px chip on a
+  // fractional row reads 43.999996px. Reduced motion lays the page out still,
+  // and the half-pixel slack below absorbs the rest of the float noise.
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
 
   test("the catalog fits a phone, controls are 44px, and axe finds nothing serious", async ({ page }) => {
     await stubCatalog(page, 200, { tools: TOOLS });
@@ -166,7 +169,7 @@ test.describe("catalog on a phone", () => {
           const name = (e.getAttribute("aria-label") || e.textContent || "").trim().replace(/\s+/g, " ").slice(0, 40);
           return { name, w: r.width, h: r.height };
         })
-        .filter(({ w, h }) => h < 44 || w < 44)
+        .filter(({ w, h }) => h < 43.5 || w < 43.5)
         .map(({ name, w, h }) => `${name} ${Math.round(w)}x${Math.round(h)}`),
     );
     expect(small).toEqual([]);
@@ -182,7 +185,7 @@ test.describe("catalog on a phone", () => {
           const r = e.getBoundingClientRect();
           return { name: (e.textContent || "").trim().slice(0, 40), w: r.width, h: r.height };
         })
-        .filter(({ h }) => h < 44)
+        .filter(({ h }) => h < 43.5)
         .map(({ name, w, h }) => `${name} ${Math.round(w)}x${Math.round(h)}`),
     );
     expect(detailSmall).toEqual([]);

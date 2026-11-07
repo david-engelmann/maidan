@@ -65,7 +65,12 @@ test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test("first-run snippets scroll by keyboard, and another token does not keep this room", async ({ browser }) => {
-    const ctx = await browser.newContext();
+    // A route change fades the page in, and new board cards fade in after it.
+    // An axe pass that lands mid-fade reads text at part opacity and reports
+    // color-contrast; with reduced motion nothing fades, so the scan sees what
+    // a reader sees. The failure names its nodes, should a real one appear.
+    // (A context made here does not inherit test.use, so it is set here.)
+    const ctx = await browser.newContext({ reducedMotion: "reduce" });
     const page = await ctx.newPage();
     await signIn(page, fx.admin_token);
     await page.getByLabel("Channel").selectOption({ label: "quiet" });
@@ -75,7 +80,7 @@ test.describe("on a phone", () => {
     await expect(snippets.nth(1)).toHaveAttribute("tabindex", "0");
     await expect(page.locator("main section").first()).toHaveCSS("opacity", "1");
     const scan = await new AxeBuilder({ page }).analyze();
-    expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    expect(scan.violations.map((v) => `${v.id}: ${v.help} ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
     expect(await sideways(page)).toBeLessThanOrEqual(1);
 
     await signOut(page);
