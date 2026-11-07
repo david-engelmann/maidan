@@ -7,6 +7,213 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [435.0.0] — 2026-11-07
+
+Many agents, no collisions: a new face for the README and landing page, Maidan free of private names, results that deliver everywhere and fence late writers, claims that survive a restart, and a batch of security, console and SDK fixes.
+
+### The README shows the product, and the tagline says what it does
+
+- **Changed:** the tagline is "Many agents. No collisions." on the README, the landing page, the docs introduction and the social card; approval by a different agent replaces "You approve."
+- **Changed:** the README leads with the current console (the board and a task in review) and keeps one terminal line; the SDK example, the agent session, the local quickstart and the self-host commands move to `docs/Quickstart.md`, which now holds the release pins `check-release-records.sh` and `check-deploy-pins.sh` read.
+
+### The public tree names no private project or deployment
+
+- **Removed:** the project's own second hosted instance: its Wrangler config, its deploy workflow and its section in Hosted operations. `deploy-release.sh` keeps `DEPLOY_CONFIG` and `DEPLOY_ORIGIN` for any operator's second instance, and Hosted operations keeps the internal-hosts mechanics (`MAIDAN_INTERNAL_HOSTS`, `MAIDAN_INTERNAL_EGRESS_HOSTS`) with neutral example names (`hooks.internal=HOOKS`). The Worker tests now check that no Wrangler config in the repository declares a service binding or an internal host, and test the parsing on an inline operator config.
+- **Changed:** examples, fixtures, comments and planning docs use neutral names (`example/widgets`, `hooks.internal`, "the coordinator", "the release agent", "an external change producer") instead of private project, agent and host names. The Grafana dashboard is `deploy/observability/maidan-agent-work-dashboard.json`, uid `maidan-agent-work`.
+- **Changed:** `scripts/check-no-internal-names.sh` reads a second digest list, `scripts/internal-tokens.sha256`, matched as whole tokens (a run of letters, digits, `.`, `-` and `/`, a `/` segment or pair of segments, or a word between those separators) rather than substrings, so short names that are also parts of ordinary words, hosts and `owner/repo` paths can be listed. Lockfiles are skipped for the token list.
+
+### The boot notice names the build
+
+- **Fixed:** the operator channel's "Maidan … started" notice reports the build `/health` reports (`vN.N.N`, or `dev-<sha>` for a dev build), not the crate's `0.0.0`.
+
+### A result aimed at a surface the server cannot send to fails, naming the setting
+
+- **Fixed:** a result delivery to Slack, GitHub (comment or branch) or Linear on a server with no sender for that surface stayed `pending` with `attempts: 0` and no `last_error`, and the result's `delivery_state` stayed `pending`, so nobody could tell it would never be sent. A blessed target on such a surface is now recorded `failed` when it is armed, with a `last_error` such as `Slack delivery is not configured on this server (MAIDAN_SLACK_BOT_TOKEN)`, and says so on the event stream (`result_delivery_failed`) and to the operator channel like a delivery that gave up. A result already queued when its sender went away fails the same way when the egress worker picks it up, instead of retrying. An unblessed target is still skipped by the allowlist first.
+- **Fixed:** a result-delivery row the egress queue is still retrying read `pending`, `attempts: 0`, no `last_error` until the queue gave up about two hours later, the same as a row never tried. Each failed attempt that will be retried now counts on the row and sets its `last_error`, while the row stays `pending`.
+- **Fixed:** the hosted Worker did not forward `MAIDAN_LINEAR_API_KEY` or the GitHub App settings (`MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`) to the container, so a hosted server could never deliver a result to Linear, nor authenticate GitHub delivery as an app. It now forwards them when they are bound.
+
+### The landing page carries the mark and leaves the questions to the FAQ
+
+- **Changed:** the landing header shows the Maidan mark beside the name, and links the FAQ; the questions move from the landing page to the docs FAQ, without naming the hosting providers or the details of the free allowance.
+
+### A change result carries its producer's check onto the delivered commit
+
+- **Added:** a change result (`pi.change.result/1`) may carry `check`, `{context, state, description}`: the producer's own check of the change before delivery. After the branch is pushed and the draft pull request opened or found, Maidan posts it as a commit status (`POST /repos/{repo}/statuses/{sha}`) on the head it delivered, with the envelope's https `view_url` as `target_url`. A re-delivery or a squash-rebase round posts it again on the head it leaves. It is a commit status rather than a check run, so a personal access token can post it; the token needs **Commit statuses** write.
+- **Added:** `context` must be non-empty, printable and at most 100 characters, and `state` one of `success`, `failure`, `error` or `pending`. `description` is put on one line and cut to GitHub's 140 characters. A malformed `check` posts nothing and records `check_invalid` in the delivery's `template_warnings`. A status GitHub refuses records `check_not_posted`. In both cases the branch and the pull request stand, nothing is rolled back, and the Slack reply says it in one line.
+- **Added:** `change_result.py` takes `--check-context`, `--check-state` and `--check-description`, and the OpenRouter claimant reports its passed gate as `claimant/gate`.
+
+### A release is one button: the cut release workflow
+
+- **Added:** `.github/workflows/cut-release.yml` (`workflow_dispatch`, optional `summary` and `version`). From the newest `dev` commit whose push `ci` run succeeded, looked up by SHA, it writes the release record with every deploy pin on a `release/vN` branch, opens and merges its PR once the checks on its head pass, waits for `dev`'s push CI on the merge, fast-forwards `main` (refusing anything but a fast-forward), tags it, dispatches `release.yml`, and waits until `deploy-prod.yml` succeeds and `maidan.world/health` reports the tag. A rerun resumes after a record already on `dev`. It runs in the `release` environment with `RELEASE_TOKEN` for the PR, the merge and `main`; the tag and the dispatches use `GITHUB_TOKEN`.
+- **Added:** `scripts/release-record.sh X.Y.Z [summary]` writes the record (fragments folded, the CHANGELOG paragraph, the Capabilities record, the CLAUDE.md latest line) and moves every deploy pin, and `scripts/cut-release.sh` holds the workflow's steps.
+- **Added:** each GitHub release publishes a signed `SHA256SUMS` of its tarballs and SBOMs.
+- **Changed:** `docker/Dockerfile.quickstart` pins no tarball hash; it checks the tarball against the release's `SHA256SUMS`. So every pin moves in the record commit before the tag, and the pins PR after each release is gone. `scripts/check-deploy-pins.sh` holds every pin to the release the tree records (the untagged record, or else the newest tag), and `scripts/check-release-records.sh` accepts quickstart and Helm pins that name the untagged record.
+- **Changed:** a `release/*` PR runs the full CI, CodeRabbit skips the record PR, and `deploy-prod.yml` runs are named `deploy prod <tag>`.
+- **Removed:** the `MAIDAN_SHA256_AMD64` and `MAIDAN_SHA256_ARM64` build args.
+
+### The A2A client keeps streaming text intact and refuses a cleartext token
+
+- **Fixed:** `A2aClient` reassembles SSE frames from raw bytes, including a character split across chunks, `\r\n\r\n` delimiters, and a final event with no trailing blank line. An event with no delimiter is refused once it passes 16 MiB.
+- **Fixed:** The client times out a dead socket, does not follow redirects, sends a Maidan user agent, numbers each JSON-RPC call, and checks that a success response echoes that id. A non-2xx response includes a short snippet of the body. A bearer token is not sent to a cleartext host outside this machine.
+- **Fixed:** A federation peer URL must name a host and must not carry userinfo, a query, or a fragment. A non-2xx pull or push includes a short snippet of the remote body.
+
+### A multipart upload cannot reach another workspace's blob
+
+- **Fixed:** A multipart upload is named under the caller's workspace, and abort, complete, and part upload accept only that temporary key. An empty upload body is refused on MCP the same way it is on REST. SHA-256 hex rejects a leading `+`, compares in constant time, and an uppercase digest still reads the artifact.
+
+### Egress, resume tokens and bus listeners are tightened
+
+- **Fixed:** Egress refuses documentation and special-purpose IPv6, and a listed peer may not be unspecified, multicast, broadcast, or link-local, including those addresses inside NAT64. Resume tokens are size-checked and MAC-checked before the payload is decoded. Export verification rejects a weak Ed25519 key. A federation peer of a suspended workspace is refused, bearer secrets are length-bounded, and secret debug output is redacted. Broadcast channels are capacity-bounded, resource notifications are chunked in one pass, and dropping a Postgres bus or notifier stops its listener.
+
+### Search keeps a broken workspace broken, and embeddings stay bounded
+
+- **Fixed:** A workspace whose search chain broke is not projected by later live events, and a lagged bus no longer forgets that fault or saves a cursor past the gap. Dropping the indexer handle aborts its task.
+- **Fixed:** Lexical search, semantic search, and reindex skip messages on a tombstoned thread. A non-positive limit returns no hits instead of an unbounded or rejected query.
+- **Fixed:** The Postgres repair lock is not returned to the pool if the sweep is cancelled. An OpenAI-compatible embedder rejects a blank key, a zero timeout, a bad endpoint, and a key sent in cleartext off this machine. It does not follow redirects, and a bad batch of vectors is retried instead of attached to the wrong messages.
+
+### A WASI guest cannot spend the host's memory from a syscall
+
+- **Fixed:** `fd_write` and `random_get` check the guest pointer against the linear memory it was given before the host allocates anything, and they spend fuel for the bytes they scan. A multi-gigabyte length from a 64 KiB guest is an error, not an out-of-memory crash.
+- **Fixed:** Function tables are capped the same way linear memory is. A huge initial table, or `table.grow` past the cap, is a memory-limit failure.
+- **Fixed:** Scatter/gather counts, signed pointer overflow, a zero-length leading read buffer, unknown clock ids, and `fd_close` of an unknown descriptor follow preview-1: they return an errno and do not panic or report a false end of file.
+
+### A revoked webhook gets no retries, and a path is not a slash command
+
+- **Fixed:** The webhook poller quarantines a queued delivery whose subscription was revoked or deleted, without sending it or putting the secret back in the cache. A delivery whose secret cannot be read counts as a failed attempt and is quarantined at the ceiling, instead of coming back first in every batch.
+- **Fixed:** Event visibility refuses a channel from another workspace before it looks at channel privacy or membership.
+- **Fixed:** A slash command has to end at whitespace, so `/etc/hosts is down` is a message, not a command named `etc`. `@Handle` mentions fold case, skip a removed member, and return a database error instead of skipping it.
+
+### CI jobs hold only the permissions they use
+
+- **Security:** The docs workflow grants `pages: write` and `id-token: write` to its GitHub Pages deploy job alone, not to the build that runs repository scripts. Every checkout in the CI and nightly workflows sets `persist-credentials: false`, since none of their jobs pushes.
+- **Security:** The Helm chart's server pod sets `automountServiceAccountToken: false`: the server never calls the Kubernetes API, so no service-account token is mounted for a compromised process to use. The stack's vendored chart is repackaged.
+- **Changed:** The optional Intel Mac release build runs on `macos-15-intel`; GitHub retired `macos-13`.
+
+### Stdio sessions embed messages, and a failed reindex exits non-zero
+
+- **Fixed:** `maidan mcp-stdio` embeds messages on SQLite the same way it does on Postgres. It registers the embedding model, resumes the search projection from the event log, and waits for that projection to finish when stdin closes, so a one-shot pipe leaves the message searchable.
+- **Fixed:** `maidan mcp-stdio` takes `--embedding-provider` and `MAIDAN_EMBEDDING_PROVIDER`, the same names as `maidan reindex-embeddings` and the server. An unknown provider fails at startup.
+- **Fixed:** `maidan reindex-embeddings` exits non-zero when any message failed to embed, after it prints how many were processed and how many failed.
+- **Fixed:** `maidan verify-shredding` applies the same SQLite connection settings as the other commands, and `maidan init` refuses a blank workspace name or admin handle before it opens the database.
+
+### The remaining crates link their tests once
+
+- **Changed:** maidan-types, maidan-a2a, maidan-artifacts, maidan-auth, maidan-bus and maidan-cli each build one integration-test binary from `tests/it/main.rs`, written by `scripts/gen-integration-main.py`, instead of one binary per `tests/*.rs` file. Run one file with `cargo test -p maidan-types --test it event_kinds_contract::`.
+
+### The hosted container receives the secrets it boots with
+
+- **Fixed:** The Worker forwards the secrets and rotation companions the hosted server actually reads, including `FEDERATION_DECRYPT_KEYS`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_EXPORT_VERIFY_KEYS`, and the Slack signing secret. A test refuses a Worker name the server does not know, and a secret the server reads that the Worker would drop. Dev and insecure switches are not forwarded.
+
+### A task stops returning to the queue after three review rounds
+
+- **Added:** A thread can be sent back from review only so many times before a person decides whether it gets another round. The cap is 3 unless a thread sets its own, including when it has no review requirement yet. `0` leaves the cap off. Tightening it needs `thread:transition`. Raising or removing it needs `channel:admin`. Accept returns the task to the queue for another cycle. Decline keeps it off the queue. A worker token cannot decide the gate or disarm the cap.
+
+### A long seat run keeps its claim
+
+- **Fixed:** The seat runner renews its claim every third of `lease_secs` while the harness runs, and stops renewing before it releases. A run longer than the lease no longer loses its claim to another seat mid-work; a refused renewal lets the harness finish and the release report it.
+
+### Activity stays in its workspace and can be narrowed
+
+- **Fixed:** Switching workspace clears the activity list and the task titles that belonged to the previous workspace.
+- **Added:** Activity can be searched and limited to one channel, and the channel name opens that channel on the board.
+
+### A screen can fail without taking the console with it
+
+- **Fixed:** One screen's unexpected error stays on that screen, with a way to try again, while the rest of the console stays usable. Signing out or switching workspace clears the previous room's notices. Evidence that cannot be loaded is explained in words, and the live status says Connecting while the connection is still opening.
+- **Added:** j and k move through Activity and Catalog as well as the other lists, and choosing a place from a sub-page returns to that place.
+
+### The catalog filters tools by role and shows what a call really requires
+
+- **Added:** the tool catalog filters by the Worker, Reviewer and Coordinator profiles (`/mcp/worker`, `/mcp/reviewer`, `/mcp/coordinator`) and by read-only and destructive hints. A tool's detail names the profile endpoints that list it, and its name can be copied.
+- **Changed:** parameters that are required only as alternatives, such as a message's `body` or `content`, are labeled as one of required. Nullable enums, array-item enums, formats and defaults come from the schema instead of being shown as optional free text. The wide catalog pane uses the standard empty state when no tool is selected.
+- **Fixed:** the workspace chooser closes when the workspace list cannot be loaded, keeps Tab inside the dialog, returns focus on close, and dismisses from the backdrop.
+
+### The channel menu does not pretend a vanished channel is chosen
+
+- **Fixed:** When the remembered channel is no longer in the workspace, the board's channel menu asks you to select one instead of showing the first channel as if it were picked, and a single channel's label never comes out blank.
+
+### Connect, the board link, and install stay accurate
+
+- **Fixed:** A missing capability points at Tools, then Tokens. A filtered board link keeps its channel. Codex setup for an existing token includes the claim timeout, a blank channel is not quoted, and install or push failures no longer throw out of the page. The console tells Chromium it can be installed without a deprecation warning.
+
+### Live resume, push notifications and toasts stay in their own place
+
+- **Fixed:** a WebSocket resume token is kept with the workspace that issued it, so switching workspaces or reloading into another one no longer sends the previous workspace's token.
+- **Fixed:** a Web Push `log_id` sent as a number is kept, the server's `New notification (kind)` text is shown in words, and a click opens the thread, the inbox or Needs you, replacing a duplicate notification for the same event.
+- **Fixed:** a secret shown once starts hidden again when a new secret replaces it, and "Copied" clears on its own. Error toasts announce immediately, and a toast waits while the pointer or focus is on it.
+
+### Messages keep their paragraphs, lists and links
+
+- **Added:** a message can be headings, lists, a quote, a rule, a table and a fenced snippet with its language and a Copy button. A labeled link and a bare console route (`#/threads`, `#/needs` and the other console places) open as links.
+- **Changed:** italic and strikethrough render in the message, and a fenced block keeps the indentation of the snippet.
+- **Fixed:** a blank line starts a new paragraph, and a link is only followed when it is `http`, `https` or a console `#/...` route.
+
+### Console panel buttons match the rest
+
+- **Fixed:** Buttons on the Tools and Files panels (Look up, Upload a file, Open, Replay and the rest) were 38px rounded rectangles. They now use the shared 44px pill shape every other console button has.
+
+### The task sheet and People show work across the workspace
+
+- **Added:** A task sheet lists who moved the task, newest first, and links the tasks it depends on by title. A member's page can open a direct message.
+- **Changed:** People shows the work a member holds in every channel, and when they were last active. In review, an author stays blank until the roster loads, and a file name opens the file.
+
+### The console follows a conversation, a card past the first page, and a file
+
+- **Added:** The thread composer has an Attach control, and the files screen refreshes when a file is stored, linked or unlinked.
+- **Changed:** A task's dependencies are the task's name as a link. Presence says how many tasks someone holds in this channel, and a file whose details failed to load says so and can be tried again.
+- **Fixed:** A link to a direct or group conversation opens that conversation, and a task in another channel switches to it. A card past the first page of a lane still opens, and a failed refresh keeps the vote counts already shown.
+
+### A sign-in stays in the workspace it belongs to
+
+- **Fixed:** Switching tokens, signing out, or an expired session drops the previous workspace, its grant, its presence, and the board, roster, and footprint that belonged to it. A confirmation secret is never sent as the sign-in return path, and a bad token's error clears as you edit it.
+- **Added:** The board remembers the open channel per workspace, and Sign in can return to the console page you were on.
+
+### The shell and Needs you stay with the person who is signed in
+
+- **Fixed:** Needs you, the command palette, Connect, and Files drop the previous workspace when you sign out or switch rooms, including a confirmation link opened while Needs you is already on screen.
+- **Added:** A browser session with more than one workspace can open the workspace chooser from the command palette, and the phone More menu closes from the keyboard or a tap outside it.
+
+### The console's controls stay a full touch target
+
+- **Fixed:** The board's channel menu is 44px again, with a keyboard ring the chevron does not cover. Phone controls that a later rule had shrunk, including tool tabs, summaries and disabled buttons, keep a 44px target and readable contrast. Reduced motion already stops motion everywhere, and the phone bar keeps its safe-area inset.
+
+### Tools names the task, the channel and the person
+
+- **Changed:** Threads you follow show the channel and the title, and the follow menu lists the workspace's tasks instead of asking for an id.
+- **Changed:** Inbox, message search and recent events link to the task by its channel and title, and the workspace audit names the member who acted.
+
+### The docs book wears steel and signal
+
+- **Changed:** The documentation theme drops the pine, fern, and ochre palette. Titles are sans, links are signal vermilion that stays readable on each book theme, and the mark, the favicon, and the browser chrome follow the paper and ink. The book chrome meets a 44px target, shows a focus ring only for the keyboard, and wide tables stay inside a phone.
+
+### The Go client's subscription names the host the way a browser does
+
+- **Fixed:** The Go client's WebSocket handshake sends `Host` without the port when the port is the scheme's default (443 for `wss`, 80 for `ws`), so an edge that routes by host name accepts the subscription.
+
+### The hosted pages and the live demo meet the same bar as the front page
+
+- **Fixed:** The public pages use the warm paper browser chrome, a skip link that lands in the content, and text and tap targets that stay readable on a phone. The status page follows the light and dark setting. The live demo's setup snippets can be scrolled from the keyboard, Codex is given time to claim a task, and a failed human check can be tried again without reloading.
+
+### The landing page can be used from the keyboard
+
+- **Fixed:** The developer examples move with the arrow keys, Home and End. The waitlist check loads only when the sheet is open, a failed load can be tried again, and Done closes the sheet after you join. Skip links clear the fixed header, and the close control is large enough to tap.
+
+### Approval and consent keep a 44px target
+
+- **Fixed:** The approval card's buttons meet a 44px target, keep contrast when disabled, and show a keyboard ring. Connected apps no longer skips a heading level. The OAuth pages give the home link and Back to Maidan a 44px target and a focus ring, drop button motion when asked, and name a theme color.
+
+### A quiet subscription stays open, and a slow answer cannot hold a call
+
+- **Fixed:** The Python client keeps a WebSocket subscription alive when the room is quiet, refuses a handshake that is not a real 101, and stops an HTTP call that drips past its time limit. A retry of a write sends the same bytes, and a `Retry-After` that is not a number, or is an HTTP date, is read correctly.
+
+### A lost answer is retried instead of taken twice
+
+- **Fixed:** The TypeScript, Go and Rust clients read a response to the end inside the retry loop. A claim whose body is cut short, or a 2xx that is not JSON, is retried with the same idempotency key. A claim missing its id or lease is an error the caller can catch, and a transport that never answers is a status-0 error rather than a silent short read.
+
+### A server restart keeps the claims in flight
+
+- **Fixed:** For `MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS` (600 s; `0` turns it off) after the server starts, no lease counts as lapsed. The claim reaper frees none, `claim_next` takes none over, and the queue counts agree. A deploy keeps the server down for minutes, longer than a short lease, so each restart used to lose every claim in flight: the holder's `set_thread_result` was refused with `ClaimLost` and the work was done again. A holder that comes back renews by its lease id and delivers; a lease nobody renews is reaped when the grace ends. The grace is each process's own, held in memory.
+
 ## [434.0.0] — 2026-11-06
 
 One owner per ticket: a workspace can require that open change threads never share a set of attributes, such as a Linear issue and a repo, and a second claimant gets a 409 naming the holder. An operator's instance can also reach a second Worker as an internal host.
