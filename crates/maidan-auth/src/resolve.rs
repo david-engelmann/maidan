@@ -31,7 +31,18 @@ pub async fn resolve_resource_bearer(
     active_token_context(store, token).await
 }
 
+const MAX_BEARER_LEN: usize = 512;
+
+fn usable_bearer(bearer: &str) -> Result<(), AuthError> {
+    if bearer.is_empty() || bearer.len() > MAX_BEARER_LEN {
+        Err(AuthError::Unauthorized)
+    } else {
+        Ok(())
+    }
+}
+
 async fn active_token(store: &dyn Store, bearer: &str) -> Result<ApiToken, AuthError> {
+    usable_bearer(bearer)?;
     let computed = hash_secret(bearer);
     let token = store.get_active_api_token_by_hash(&computed).await?;
     if !hashes_equal(&token.token_hash, &computed) {
@@ -95,11 +106,13 @@ pub async fn ensure_workspace_active(
 
 /// Resolve a federation peer bearer to a [`Peer`] row.
 pub async fn resolve_peer_bearer(store: &dyn Store, bearer: &str) -> Result<Peer, AuthError> {
+    usable_bearer(bearer)?;
     let computed = hash_secret(bearer);
     let peer = store.get_peer_by_token_hash(&computed).await?;
     if !hashes_equal(&peer.token_hash, &computed) {
         return Err(AuthError::Unauthorized);
     }
+    ensure_workspace_active(store, peer.workspace_id).await?;
     Ok(peer)
 }
 
@@ -118,5 +131,17 @@ fn token_to_context(token: ApiToken) -> AuthContext {
             token.workspace_id,
             token.capabilities,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_or_oversized_bearer_is_refused_before_it_is_hashed() {
+        assert!(usable_bearer("").is_err());
+        assert!(usable_bearer(&"x".repeat(MAX_BEARER_LEN + 1)).is_err());
+        assert!(usable_bearer("maid_ok").is_ok());
     }
 }

@@ -37,6 +37,7 @@ pub struct ShardedBroadcast {
 
 impl ShardedBroadcast {
     pub fn new(capacity: usize) -> Self {
+        let capacity = crate::bounded_broadcast_capacity(capacity);
         let (global, _) = broadcast::channel(capacity);
         Self {
             capacity,
@@ -166,6 +167,14 @@ mod tests {
 
         assert!(global.try_recv().is_ok());
         assert!(global.try_recv().is_ok());
+    }
+
+    #[test]
+    fn a_zero_capacity_does_not_panic() {
+        let bus = ShardedBroadcast::new(0);
+        let _rx = bus.subscribe(&EventFilter::default());
+        let huge = ShardedBroadcast::new(crate::MAX_BROADCAST_CAP + 10);
+        let _rx = huge.subscribe(&EventFilter::default());
     }
 
     #[tokio::test]

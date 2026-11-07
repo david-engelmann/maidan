@@ -45,6 +45,33 @@ pub use traits::EventBus;
 /// event bus and the presence/resource notifiers.
 pub const DEFAULT_BROADCAST_CAP: usize = 1024;
 
+/// The most slots one broadcast channel may hold. Larger values panic inside
+/// tokio or pre-allocate a huge buffer per workspace shard.
+pub const MAX_BROADCAST_CAP: usize = 65_536;
+
+pub(crate) fn bounded_broadcast_capacity(capacity: usize) -> usize {
+    capacity.clamp(1, MAX_BROADCAST_CAP)
+}
+
+/// Aborts background listener tasks when the last bus or notifier clone drops.
+pub(crate) struct AbortOnDrop {
+    handles: Vec<tokio::task::AbortHandle>,
+}
+
+impl AbortOnDrop {
+    pub(crate) fn new(handles: Vec<tokio::task::AbortHandle>) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self { handles })
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        for handle in &self.handles {
+            handle.abort();
+        }
+    }
+}
+
 /// Resolve the broadcast-channel capacity from `MAIDAN_BUS_BROADCAST_CAP`,
 /// falling back to [`DEFAULT_BROADCAST_CAP`]. A larger cap lets a slow
 /// subscriber lag further before the broadcast channel drops the oldest frames
@@ -57,9 +84,12 @@ pub fn broadcast_cap_from_env() -> usize {
 /// The capacity a raw `MAIDAN_BUS_BROADCAST_CAP` value asks for, or the
 /// default when it is unset, zero or not a number.
 fn broadcast_cap(raw: Option<&str>) -> usize {
-    raw.and_then(|s| s.parse::<usize>().ok())
+    raw.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<usize>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(DEFAULT_BROADCAST_CAP)
+        .min(MAX_BROADCAST_CAP)
 }
 
 #[cfg(test)]
@@ -78,5 +108,17 @@ mod broadcast_cap_tests {
         assert_eq!(broadcast_cap(None), DEFAULT_BROADCAST_CAP);
         assert_eq!(broadcast_cap(Some("-3")), DEFAULT_BROADCAST_CAP);
         assert_eq!(broadcast_cap(Some("lots")), DEFAULT_BROADCAST_CAP);
+        assert_eq!(broadcast_cap(Some("  ")), DEFAULT_BROADCAST_CAP);
+    }
+
+    #[test]
+    fn whitespace_is_trimmed_and_a_huge_cap_is_clamped() {
+        assert_eq!(broadcast_cap(Some("  5  ")), 5);
+        assert_eq!(broadcast_cap(Some("999999999")), MAX_BROADCAST_CAP);
+        assert_eq!(bounded_broadcast_capacity(0), 1);
+        assert_eq!(
+            bounded_broadcast_capacity(MAX_BROADCAST_CAP + 1),
+            MAX_BROADCAST_CAP
+        );
     }
 }

@@ -908,6 +908,9 @@ mod webhook_deliveries_cutoff_e2e;
 #[path = "../webhook_replay_tenant_scope_e2e.rs"]
 mod webhook_replay_tenant_scope_e2e;
 
+#[path = "../webhook_revocation_e2e.rs"]
+mod webhook_revocation_e2e;
+
 #[path = "../webhooks_e2e.rs"]
 mod webhooks_e2e;
 

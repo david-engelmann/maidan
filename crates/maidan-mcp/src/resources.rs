@@ -6,6 +6,7 @@
 //! - `maidan://threads/{id}` — full thread transcript (up to 100 messages).
 //! - `maidan://digests/{thread_id}` — the thread's current digest (C10).
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use maidan_artifacts::Sha256;
@@ -91,18 +92,18 @@ pub async fn read(
 
     let payload = match kind {
         "artifacts" => {
-            if id_str.len() != 64 {
-                return Err(McpError::InvalidParams(
-                    "artifact sha256 must be 64 hex chars".into(),
-                ));
-            }
+            // Same decoder as `validate_uri`: uppercase hex is a real digest,
+            // stored and queried in canonical lowercase.
+            let sha =
+                Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+            let canonical = sha.to_hex();
             // Access is gated by the caller (server::resources_read →
             // artifact_ref_exists). `size_bytes` is
             // authoritative metadata, so the blob is never loaded just to
             // report its length.
             let meta = match viewer {
-                Some(ws) => store.get_artifact_for_workspace(ws, id_str).await?,
-                None => store.get_artifact_by_sha(id_str).await?,
+                Some(ws) => store.get_artifact_for_workspace(ws, &canonical).await?,
+                None => store.get_artifact_by_sha(&canonical).await?,
             };
             json!({
                 "artifact": meta,
@@ -194,6 +195,28 @@ pub async fn read(
             }
         ]
     }))
+}
+
+/// The URI to authorize, store, and match. An artifact digest is rewritten to
+/// canonical lowercase hex so `resources/read`, `resources/subscribe`, and a
+/// later `ResourceUpdate` all name the same resource. Anything else is
+/// returned unchanged, including a digest that does not parse.
+pub fn canonical_uri(uri: &str) -> Cow<'_, str> {
+    let Ok((kind, id_str)) = parse_uri(uri) else {
+        return Cow::Borrowed(uri);
+    };
+    if kind != "artifacts" {
+        return Cow::Borrowed(uri);
+    }
+    let Ok(sha) = Sha256::from_hex(id_str) else {
+        return Cow::Borrowed(uri);
+    };
+    let canonical = sha.to_hex();
+    if canonical == id_str {
+        Cow::Borrowed(uri)
+    } else {
+        Cow::Owned(format!("{URI_PREFIX}artifacts/{canonical}"))
+    }
 }
 
 pub fn validate_uri(uri: &str) -> Result<(), McpError> {

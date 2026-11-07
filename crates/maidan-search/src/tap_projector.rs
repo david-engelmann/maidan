@@ -117,6 +117,12 @@ impl SearchTap {
         !self.faults.is_empty()
     }
 
+    /// Whether this workspace's chain already broke. Live events for it must
+    /// not be projected onto the diverged index.
+    pub fn is_workspace_faulted(&self, workspace_id: WorkspaceId) -> bool {
+        self.faults.contains_key(&workspace_id)
+    }
+
     /// Whether this workspace's chain position is already known in memory.
     pub fn has_link(&self, workspace_id: WorkspaceId) -> bool {
         self.last_link.contains_key(&workspace_id)
@@ -132,6 +138,14 @@ impl SearchTap {
     /// Seed the resume point. `0` means walk from genesis (a rebuild).
     pub fn resume_at(&mut self, last_event_id: i64) {
         self.history_hw = last_event_id;
+    }
+
+    /// Resume after a lagged bus without forgetting which workspaces already
+    /// broke. `last_link` is cleared so the next backfill re-seeds each
+    /// healthy workspace from the log at `watermark`. Faults stay.
+    pub fn resume_lag_at(&mut self, watermark: i64) {
+        self.last_link.clear();
+        self.history_hw = watermark;
     }
 
     /// A resume cursor in a pruned gap must rebuild, never clamp.

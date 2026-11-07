@@ -5,8 +5,9 @@ use std::{
     time::Duration,
 };
 
-use maidan_bus::InMemoryBus;
-use maidan_search::{backfill_search, Indexer, LoggingHandler, SearchTap};
+use async_trait::async_trait;
+use maidan_bus::{EventBus, InMemoryBus};
+use maidan_search::{backfill_search, EventHandler, Indexer, LoggingHandler, SearchTap};
 use maidan_store::{prelude::*, run_sqlite_migrations, SqliteStore};
 use maidan_types::{
     EventKind, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
@@ -374,4 +375,209 @@ async fn a_resumed_backfill_still_catches_a_tamper_after_the_cursor() {
         !projected.lock().unwrap().contains(&posted.id),
         "and the tampered row must not be projected"
     );
+}
+
+struct Bodies(Mutex<Vec<String>>, std::sync::atomic::AtomicBool);
+
+#[async_trait]
+impl EventHandler for Bodies {
+    async fn handle(&self, event: &maidan_types::Event) {
+        if let maidan_types::Event::MessagePosted { message, .. } = event {
+            self.0.lock().unwrap().push(message.body.clone());
+            if message.body == "block-me" {
+                while !self.1.load(std::sync::atomic::Ordering::Relaxed) {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_faulted_workspace_is_not_projected_live_or_after_lag() {
+    let (store, pool) = sqlite().await;
+    let broken = seed_with_message(&store).await;
+    let ws = broken.workspace_id.unwrap();
+    let early = store
+        .list_events_after(ws, 0, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == EventKind::MemberJoined)
+        .unwrap();
+    let mut payload = early.payload.clone();
+    payload["kind"] = serde_json::json!("message_posted");
+    sqlx::query("UPDATE maidan_events SET payload = ? WHERE id = ?")
+        .bind(payload.to_string())
+        .bind(early.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (healthy_ws, _) = store
+        .create_workspace_with_event(NewWorkspace {
+            name: "healthy".into(),
+        })
+        .await
+        .unwrap();
+    let (member, _) = store
+        .create_member_with_event(NewMember {
+            workspace_id: healthy_ws.id,
+            handle: "b".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let (ch, _) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: healthy_ws.id,
+            name: "c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let (th, _) = store
+        .create_thread_with_event(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let (_, healthy_posted) = store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: th.id,
+                author_id: member.id,
+                body: "healthy hello".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    let store: Arc<dyn Store> = Arc::new(store);
+    let bus = Arc::new(InMemoryBus::with_capacity(2));
+    let seen = Arc::new(Bodies(
+        Mutex::new(Vec::new()),
+        std::sync::atomic::AtomicBool::new(false),
+    ));
+    let indexer = Indexer::new(bus.clone(), seen.clone())
+        .with_log(store.clone())
+        .spawn();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !indexer.rebuild_needed.load(Ordering::Relaxed) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the tampered workspace must request a rebuild");
+    assert_eq!(store.tap_cursor("search").await.unwrap(), 0);
+
+    let (_, block) = store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: th.id,
+                author_id: member.id,
+                body: "block-me".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    bus.publish(maidan_types::BusEnvelope::from_stored(&block).unwrap())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !seen.0.lock().unwrap().iter().any(|b| b == "block-me") {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the healthy workspace's live message must be projected");
+
+    let broken_thread = store
+        .list_events_after(ws, 0, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == EventKind::ThreadCreated)
+        .unwrap();
+    let thread_id = broken_thread.thread_id.expect("thread");
+    let author = store
+        .list_events_after(ws, 0, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == EventKind::MemberJoined)
+        .unwrap()
+        .payload;
+    let _ = (author, healthy_posted);
+    let members = store.list_members(ws).await.unwrap();
+    let (_, hidden) = store
+        .post_message_with_event(
+            NewMessage {
+                thread_id,
+                author_id: members[0].id,
+                body: "secret-a".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    bus.publish(maidan_types::BusEnvelope::from_stored(&hidden).unwrap())
+        .await
+        .unwrap();
+    for i in 0..6 {
+        bus.publish(maidan_types::BusEnvelope {
+            log_id: 50_000 + i,
+            event: maidan_types::Event::MessagePosted {
+                occurred_at: chrono::Utc::now(),
+                workspace_id: healthy_ws.id,
+                channel_id: ch.id,
+                thread_id: th.id,
+                dm_conversation_id: None,
+                message: maidan_types::Message {
+                    id: maidan_types::MessageId::new(),
+                    thread_id: th.id,
+                    author_id: member.id,
+                    body: format!("flood-{i}"),
+                    metadata: serde_json::json!({}),
+                    content: None,
+                    posted_at: chrono::Utc::now(),
+                    edited_at: None,
+                    tombstoned_at: None,
+                },
+                sealed: None,
+            },
+            attribution: None,
+            trace: None,
+        })
+        .await
+        .unwrap();
+    }
+    seen.1.store(true, std::sync::atomic::Ordering::Relaxed);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let bodies = seen.0.lock().unwrap().clone();
+    assert!(
+        bodies.iter().any(|b| b == "healthy hello"),
+        "healthy history is projected: {bodies:?}"
+    );
+    assert!(
+        !bodies.iter().any(|b| b == "secret-a"),
+        "the broken workspace stays unprojected: {bodies:?}"
+    );
+    assert!(indexer.rebuild_needed.load(Ordering::Relaxed));
+    assert_eq!(store.tap_cursor("search").await.unwrap(), 0);
+    indexer.shutdown().await;
 }

@@ -8,7 +8,7 @@
 //! anchor). Fail closed on every mismatch.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use maidan_types::{
     canonical_json, hex_decode, hex_encode, reject_export_secrets, statement_value, SignedExport,
     SignedExportError, TokenPolicy, SIGNED_EXPORT_ALG, SIGNED_EXPORT_TYPE,
@@ -135,9 +135,12 @@ pub fn verify_export(
         .map_err(|_| ExportVerifyError::BadSignatureLength)?;
     let verifying =
         VerifyingKey::from_bytes(&pk_bytes).map_err(|_| ExportVerifyError::BadPublicKey)?;
+    if verifying.is_weak() {
+        return Err(ExportVerifyError::BadPublicKey);
+    }
     let signature = Signature::from_bytes(&sig_arr);
     verifying
-        .verify(&hash, &signature)
+        .verify_strict(&hash, &signature)
         .map_err(|_| ExportVerifyError::BadSignature)
 }
 
@@ -273,6 +276,19 @@ mod tests {
             Err(ExportVerifyError::Envelope(
                 SignedExportError::ForbiddenField(_)
             ))
+        ));
+    }
+
+    #[test]
+    fn a_weak_public_key_is_rejected() {
+        let mut signed = sign_export(&test_key(), payload()).unwrap();
+        signed.public_key = "00".repeat(32);
+        signed.signature = "11".repeat(64);
+        let hash = statement_hash(&signed).unwrap();
+        signed.content_sha256 = hex_encode(&hash);
+        assert!(matches!(
+            verify_export(&signed, None),
+            Err(ExportVerifyError::BadPublicKey)
         ));
     }
 

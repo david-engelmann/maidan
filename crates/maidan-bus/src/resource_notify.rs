@@ -81,7 +81,7 @@ impl InMemoryResourceNotifier {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        let (tx, _) = broadcast::channel(capacity);
+        let (tx, _) = broadcast::channel(crate::bounded_broadcast_capacity(capacity));
         Self { tx }
     }
 }
@@ -114,6 +114,8 @@ impl ResourceNotifier for InMemoryResourceNotifier {
 pub struct PostgresResourceNotifier {
     pool: PgPool,
     local: broadcast::Sender<Vec<ResourceUpdate>>,
+    #[allow(dead_code)]
+    tasks: std::sync::Arc<crate::AbortOnDrop>,
 }
 
 impl PostgresResourceNotifier {
@@ -124,7 +126,7 @@ impl PostgresResourceNotifier {
         let listener_tx = tx.clone();
         let mut listener = PgListener::connect_with(&pool).await?;
         listener.listen(RESOURCE_CHANNEL).await?;
-        tokio::spawn(async move {
+        let listener_task = tokio::spawn(async move {
             loop {
                 match listener.recv().await {
                     Ok(note) => match serde_json::from_str::<Vec<ResourceUpdate>>(note.payload()) {
@@ -151,7 +153,11 @@ impl PostgresResourceNotifier {
             }
         });
 
-        Ok(Self { pool, local: tx })
+        Ok(Self {
+            pool,
+            local: tx,
+            tasks: crate::AbortOnDrop::new(vec![listener_task.abort_handle()]),
+        })
     }
 
     pub fn channel() -> &'static str {
@@ -167,6 +173,9 @@ impl ResourceNotifier for PostgresResourceNotifier {
         }
         for batch in chunk_within_limit(updates, PAYLOAD_LIMIT) {
             let payload = serde_json::to_string(&batch)?;
+            if payload.len() > PAYLOAD_LIMIT {
+                return Err(BusError::PayloadTooLarge(payload.len()));
+            }
             sqlx::query("SELECT pg_notify($1, $2)")
                 .bind(RESOURCE_CHANNEL)
                 .bind(&payload)
@@ -189,19 +198,17 @@ impl ResourceNotifier for PostgresResourceNotifier {
 fn chunk_within_limit(updates: Vec<ResourceUpdate>, limit: usize) -> Vec<Vec<ResourceUpdate>> {
     let mut batches: Vec<Vec<ResourceUpdate>> = Vec::new();
     let mut current: Vec<ResourceUpdate> = Vec::new();
+    // `[]` is two bytes; each later item adds a comma plus its own JSON.
+    let mut current_len = 2usize;
     for update in updates {
-        current.push(update);
-        // `[...]` JSON length; cheap upper-bound check via re-serialization.
-        let len = serde_json::to_string(&current)
-            .map(|s| s.len())
-            .unwrap_or(0);
-        if len > limit
-            && current.len() > 1
-            && let Some(last) = current.pop()
-        {
+        let item = serde_json::to_string(&update).unwrap_or_default();
+        let extra = item.len() + usize::from(!current.is_empty());
+        if !current.is_empty() && current_len + extra > limit {
             batches.push(std::mem::take(&mut current));
-            current.push(last);
+            current_len = 2;
         }
+        current_len += item.len() + usize::from(!current.is_empty());
+        current.push(update);
     }
     if !current.is_empty() {
         batches.push(current);
@@ -249,6 +256,21 @@ mod tests {
             .publish(vec![update("maidan://workspaces/x")])
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn chunk_accounts_for_each_item_once() {
+        let updates = vec![update("maidan://threads/1"), update("maidan://threads/2")];
+        let batches = chunk_within_limit(updates.clone(), 40);
+        let joined: usize = batches
+            .iter()
+            .map(|batch| serde_json::to_string(batch).unwrap().len())
+            .sum();
+        assert!(joined >= serde_json::to_string(&updates).unwrap().len());
+        let huge = update(&format!("maidan://threads/{}", "x".repeat(PAYLOAD_LIMIT)));
+        let alone = chunk_within_limit(vec![huge], PAYLOAD_LIMIT);
+        assert_eq!(alone.len(), 1);
+        assert!(serde_json::to_string(&alone[0]).unwrap().len() > PAYLOAD_LIMIT);
     }
 
     #[test]

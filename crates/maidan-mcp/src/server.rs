@@ -1109,13 +1109,19 @@ impl McpServer {
                 // Artifacts are deduped across tenants, so gate the read on
                 // the caller's per-workspace access ref. A missing ref is
                 // NotFound (no cross-tenant existence oracle), like REST.
-                (Some("artifacts"), Some(sha))
+                // The ref is stored as canonical lowercase hex; an uppercase
+                // digest in the URI is the same artifact.
+                (Some("artifacts"), Some(sha)) => {
+                    let owned = maidan_artifacts::Sha256::from_hex(sha)
+                        .map(|digest| digest.to_hex())
+                        .unwrap_or_else(|_| sha.to_string());
                     if !self
                         .store
-                        .artifact_ref_exists(auth.workspace_id, sha)
-                        .await? =>
-                {
-                    return Err(McpError::NotFound);
+                        .artifact_ref_exists(auth.workspace_id, &owned)
+                        .await?
+                    {
+                        return Err(McpError::NotFound);
+                    }
                 }
                 _ => {}
             }
@@ -1144,9 +1150,13 @@ impl McpServer {
                 caching::resource_read(uri),
             ));
         }
-        self.authorize_resource(uri, auth).await?;
-        let read = resources::read(&self.store, uri, auth).await?;
-        Ok(caching::with_hint(read, caching::resource_read(uri)))
+        let canonical = resources::canonical_uri(uri);
+        self.authorize_resource(canonical.as_ref(), auth).await?;
+        let read = resources::read(&self.store, canonical.as_ref(), auth).await?;
+        Ok(caching::with_hint(
+            read,
+            caching::resource_read(canonical.as_ref()),
+        ))
     }
 
     async fn resources_subscribe(
@@ -1163,11 +1173,13 @@ impl McpServer {
             )
             .map_err(McpError::from)?;
         }
-        let uri = params
+        let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
-        resources::validate_uri(uri)?;
+        resources::validate_uri(raw)?;
+        let canonical = resources::canonical_uri(raw);
+        let uri = canonical.as_ref();
         self.authorize_resource(uri, auth).await?;
         let at_limit = || {
             McpError::InvalidParams(format!(
@@ -1220,11 +1232,13 @@ impl McpServer {
             )
             .map_err(McpError::from)?;
         }
-        let uri = params
+        let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
-        resources::validate_uri(uri)?;
+        resources::validate_uri(raw)?;
+        let canonical = resources::canonical_uri(raw);
+        let uri = canonical.as_ref();
         let subscriber = Subscriber::new(auth, session.clone());
         let removed = if subscriber.session == McpSession::Stateless {
             self.store
@@ -9923,6 +9937,12 @@ mod tests {
         );
         let resp_a = server.handle(req(uri.clone()), &auth_a).await;
         assert!(resp_a.result.is_some() && resp_a.error.is_none());
+        let upper = format!("maidan://artifacts/{}", sha.to_ascii_uppercase());
+        let resp_upper = server.handle(req(upper), &auth_a).await;
+        assert!(
+            resp_upper.result.is_some() && resp_upper.error.is_none(),
+            "uppercase digest must resolve for the workspace that holds it, got {resp_upper:?}"
+        );
     }
 
     #[tokio::test]
@@ -10445,7 +10465,7 @@ mod tests {
             .unwrap()
             .id;
         let member_b = add_member(&server, ws_b, "bob").await;
-        let sha = "b".repeat(64);
+        let sha = "ab".repeat(32);
         server
             .store
             .upsert_artifact(NewArtifact {
@@ -10466,12 +10486,19 @@ mod tests {
         let auth_b = member_auth(member_b, ws_b);
         let mut listen_a = server.listen(&auth_a, McpSession::Stateless).await;
         let mut listen_b = server.listen(&auth_b, McpSession::Stateless).await;
-        for auth in [&auth_a, &auth_b] {
-            assert!(subscribe_in(&server, auth, &McpSession::Stateless, &uri)
+        // A subscribes with the uppercase digest. The stored subscription is
+        // the canonical URI, which is what an upload publishes.
+        let upper = format!("maidan://artifacts/{}", sha.to_ascii_uppercase());
+        assert!(
+            subscribe_in(&server, &auth_a, &McpSession::Stateless, &upper)
                 .await
                 .error
-                .is_none());
-        }
+                .is_none()
+        );
+        assert!(subscribe_in(&server, &auth_b, &McpSession::Stateless, &uri)
+            .await
+            .error
+            .is_none());
 
         server
             .publish_resource_uris(vec![ResourceUpdate::new(ws_a, uri.clone())])

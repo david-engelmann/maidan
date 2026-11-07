@@ -181,7 +181,7 @@ impl Indexer {
         });
         IndexerHandle {
             shutdown: shutdown_tx,
-            join,
+            join: Some(join),
             last_event_unix_ms,
             rebuild_needed,
         }
@@ -328,16 +328,22 @@ async fn consume(
                             continue;
                         }
                         watermark = watermark.max(envelope.log_id);
-                        let span = tracing::info_span!("search_index", log_id = envelope.log_id);
-                        if let Some(parent) = envelope.trace.as_ref() {
-                            maidan_observability::adopt_remote_parent(&span, parent);
+                        let faulted = envelope
+                            .event
+                            .workspace_id()
+                            .is_some_and(|ws| tap.is_workspace_faulted(ws));
+                        if !faulted {
+                            let span = tracing::info_span!("search_index", log_id = envelope.log_id);
+                            if let Some(parent) = envelope.trace.as_ref() {
+                                maidan_observability::adopt_remote_parent(&span, parent);
+                            }
+                            let trace = envelope.trace.clone();
+                            maidan_store::trace::maybe_scope(trace, async {
+                                handler.handle(&envelope.event).await;
+                            })
+                            .instrument(span)
+                            .await;
                         }
-                        let trace = envelope.trace.clone();
-                        maidan_store::trace::maybe_scope(trace, async {
-                            handler.handle(&envelope.event).await;
-                        })
-                        .instrument(span)
-                        .await;
                         publish_progress(processed_log_id, rebuild_flag, watermark);
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
@@ -357,11 +363,10 @@ async fn consume(
                             skipped,
                             watermark, "indexer bus subscriber lagged; re-verifying log"
                         );
-                        tap = SearchTap::new();
-                        // Resume rather than re-walk. This is the livelock:
-                        // a full walk here overflows the broadcast again,
-                        // which lands right back in this arm.
-                        tap.resume_at(watermark);
+                        // Keep the workspaces that already broke. A fresh tap
+                        // would forget them, clear the rebuild flag, and save
+                        // a cursor past the gap.
+                        tap.resume_lag_at(watermark);
                         match backfill_search(store, &mut tap, |row| async {
                             project_row(handler, row).await
                         })
@@ -400,7 +405,7 @@ async fn consume(
 
 pub struct IndexerHandle {
     shutdown: mpsc::Sender<()>,
-    join: tokio::task::JoinHandle<()>,
+    join: Option<tokio::task::JoinHandle<()>>,
     pub last_event_unix_ms: Arc<AtomicI64>,
     /// Set when the tap contract fails closed (gap, chain break, lagged
     /// without a log). Operators rebuild from the messages table; the
@@ -409,10 +414,22 @@ pub struct IndexerHandle {
 }
 
 impl IndexerHandle {
-    pub async fn shutdown(self) {
+    pub async fn shutdown(mut self) {
         let _ = self.shutdown.send(()).await;
-        if let Err(err) = self.join.await {
+        if let Some(join) = self.join.as_mut()
+            && let Err(err) = join.await
+        {
             error!(error = %err, "indexer task join failed");
+        }
+        // Taken so Drop does not abort a task that already finished.
+        self.join = None;
+    }
+}
+
+impl Drop for IndexerHandle {
+    fn drop(&mut self) {
+        if let Some(join) = self.join.take() {
+            join.abort();
         }
     }
 }
@@ -486,5 +503,120 @@ mod tests {
         };
         project_row(&handler, shredded).await.unwrap();
         assert_eq!(handler.0.lock().await.len(), 1);
+    }
+
+    struct Block {
+        started: Arc<AtomicBool>,
+        dropped: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl EventHandler for Block {
+        async fn handle(&self, _event: &Event) {
+            struct Mark(Arc<AtomicBool>);
+            impl Drop for Mark {
+                fn drop(&mut self) {
+                    self.0.store(true, Ordering::Relaxed);
+                }
+            }
+            self.started.store(true, Ordering::Relaxed);
+            let _mark = Mark(self.dropped.clone());
+            std::future::pending::<()>().await;
+        }
+    }
+
+    fn posted() -> Event {
+        let thread_id = maidan_types::ThreadId::new();
+        Event::MessagePosted {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: maidan_types::WorkspaceId::new(),
+            channel_id: maidan_types::ChannelId::new(),
+            thread_id,
+            dm_conversation_id: None,
+            message: maidan_types::Message {
+                id: maidan_types::MessageId::new(),
+                thread_id,
+                author_id: maidan_types::MemberId::new(),
+                body: "block".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+                posted_at: chrono::Utc::now(),
+                edited_at: None,
+                tombstoned_at: None,
+            },
+            sealed: None,
+        }
+    }
+
+    async fn wait_flag(flag: &AtomicBool) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("timed out");
+    }
+
+    #[tokio::test]
+    async fn dropping_the_handle_aborts_a_blocked_handler() {
+        let bus = Arc::new(maidan_bus::InMemoryBus::with_capacity(8));
+        let started = Arc::new(AtomicBool::new(false));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let handler = Arc::new(Block {
+            started: started.clone(),
+            dropped: dropped.clone(),
+        });
+        let indexer = Indexer::new(bus.clone(), handler).spawn();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !started.load(Ordering::Relaxed) {
+                bus.publish(maidan_types::BusEnvelope {
+                    log_id: 1,
+                    event: posted(),
+                    attribution: None,
+                    trace: None,
+                })
+                .await
+                .unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("handler never started");
+        drop(indexer);
+        wait_flag(&dropped).await;
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_shutdown_aborts_the_task() {
+        let bus = Arc::new(maidan_bus::InMemoryBus::with_capacity(8));
+        let started = Arc::new(AtomicBool::new(false));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let handler = Arc::new(Block {
+            started: started.clone(),
+            dropped: dropped.clone(),
+        });
+        let indexer = Indexer::new(bus.clone(), handler).spawn();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !started.load(Ordering::Relaxed) {
+                bus.publish(maidan_types::BusEnvelope {
+                    log_id: 1,
+                    event: posted(),
+                    attribution: None,
+                    trace: None,
+                })
+                .await
+                .unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("handler never started");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), indexer.shutdown())
+                .await
+                .is_err()
+        );
+        wait_flag(&dropped).await;
     }
 }

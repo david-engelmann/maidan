@@ -31,6 +31,24 @@ proptest! {
     }
 }
 
+#[test]
+fn from_hex_rejects_plus_and_canonicalizes_uppercase() {
+    use std::hash::{Hash, Hasher};
+
+    assert!(Sha256::from_hex(&"+a".repeat(32)).is_err());
+    let sha = Sha256::compute(b"property");
+    let parsed = Sha256::from_hex(&sha.to_hex().to_ascii_uppercase()).unwrap();
+    assert_eq!(parsed, sha);
+    assert_eq!(parsed.to_hex(), sha.to_hex());
+
+    fn digest(value: &Sha256) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+    assert_eq!(digest(&sha), digest(&parsed));
+}
+
 #[tokio::test]
 async fn random_payloads_round_trip() {
     let dir = tempfile::tempdir().expect("tempdir");
