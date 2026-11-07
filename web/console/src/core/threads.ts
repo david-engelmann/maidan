@@ -37,8 +37,22 @@ export function parseConv(hash: string): ConvRef | null {
   if (parts[0] !== "threads" || !parts[2]) return null;
   const id = decodeURIComponent(parts[2]);
   if (parts[1] === "t") return { kind: "task", id };
-  if (parts[1] === "dm") return { kind: "dm", id };
+  // Activity and search link a DM as /dm/; an older link uses /d/.
+  if (parts[1] === "dm" || parts[1] === "d") return { kind: "dm", id };
   if (parts[1] === "g") return { kind: "group", id };
+  return null;
+}
+
+/**
+ * A task-shaped link (`#/threads/t/{thread_id}`) that is really a DM or a
+ * group DM. The conversation id is the DM's id, not the thread id the event
+ * carried. A 1:1 match wins over a group that somehow shares the thread.
+ */
+export function directThreadRef(threadId: string, dms: readonly Dm[], groups: readonly GroupDm[]): ConvRef | null {
+  const dm = dms.find((d) => d.thread_id === threadId);
+  if (dm) return { kind: "dm", id: dm.id };
+  const g = groups.find((row) => row.thread_id === threadId);
+  if (g) return { kind: "group", id: g.id };
   return null;
 }
 
@@ -59,8 +73,8 @@ export function settleMembers<T extends Map<string, Member>>(members: T): T {
   return members;
 }
 /** Whether the member read behind this map is still out. */
-export function membersPending(members: Map<string, Member>): boolean {
-  return members.size === 0 && !settled.has(members);
+export function membersPending(members: ReadonlyMap<string, Member>): boolean {
+  return members.size === 0 && !settled.has(members as Map<string, Member>);
 }
 
 /** A member's name. Until the member list has loaded this is "", so screens
@@ -603,6 +617,28 @@ export class ThreadsApi {
     if (!g) throw new ThreadsError("The server did not return the conversation");
     return g;
   }
+}
+
+export type TallyRead<T> = { id: string; rows: T[]; failed: boolean };
+
+/**
+ * Fold a reload's per-message reads onto the tallies already shown. A failed
+ * read keeps the previous tally instead of wiping it, and `stale` is set when
+ * that happens after the conversation had loaded.
+ */
+export function mergeReads<T>(prev: Record<string, T[]>, reads: readonly TallyRead<T>[], hadData: boolean): { next: Record<string, T[]>; stale: boolean } {
+  const next: Record<string, T[]> = {};
+  let stale = false;
+  for (const r of reads) {
+    const prior = prev[r.id];
+    if (r.failed && (hadData || (prior?.length ?? 0) > 0)) {
+      next[r.id] = prior ?? [];
+      if (hadData) stale = true;
+    } else {
+      next[r.id] = r.failed ? [] : r.rows;
+    }
+  }
+  return { next, stale };
 }
 
 export type VoteRow = { message_id?: string; member_id: string; kind: string; confidence?: number | null; created_at?: string };

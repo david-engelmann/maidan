@@ -2,6 +2,7 @@
 // lane a task sits in, what its card says, who closed it, and the reads and
 // writes behind the lanes. Fetch and the clock are passed in, so it is tested.
 import { guarded, apiPath, bearerRefusal, headers, uiPath, writeInit, failure, ApiError, type Credentials, type CredentialMode } from "./api.ts";
+import { membersPending } from "./threads.ts";
 
 export { bearerRefusal } from "./api.ts";
 
@@ -16,6 +17,8 @@ export const LANES: ReadonlyArray<{ key: LaneKey; title: string; short: string }
 
 export type Thread = {
   id: string;
+  /** Present on a thread read, so a deep link can switch to the task's channel. */
+  channel_id?: string | null;
   title?: string | null;
   state: string;
   assignee_id?: string | null;
@@ -211,28 +214,63 @@ export function byAgent(threads: Thread[], gates: Record<string, Gate>, members:
 export type PresenceWord = "online" | "away" | "offline";
 export type PresenceEntry = { id: string; name: string; status: "online" | "away"; agent: boolean; holding: number };
 
-/** Who is here now: online before away, agents before people, then by name. Offline members are left out. */
-export function presenceStrip(members: ReadonlyMap<string, Member>, presence: ReadonlyMap<string, PresenceWord>, threads: Thread[]): PresenceEntry[] {
+/** Live updates are not flowing, so a presence chip would be a guess. */
+export function liveUpdatesDown(live: { kind: string } | null | undefined): boolean {
+  return live?.kind === "reconnecting" || live?.kind === "refused" || live?.kind === "closed";
+}
+
+/**
+ * Who is here now. Online before away, a known agent before a known person,
+ * anyone the roster has not loaded last, then by name and id. Offline members
+ * are left out. While live updates are down the strip is empty: the board
+ * must not claim people are here.
+ */
+export function presenceStrip(members: ReadonlyMap<string, Member>, presence: ReadonlyMap<string, PresenceWord>, threads: Thread[], live?: { kind: string } | null): PresenceEntry[] {
+  if (liveUpdatesDown(live)) return [];
+  const pending = membersPending(members);
   const held = new Map<string, number>();
   for (const t of threads) if (t.assignee_id && t.state !== "closed" && t.state !== "archived") held.set(t.assignee_id, (held.get(t.assignee_id) ?? 0) + 1);
-  const out: PresenceEntry[] = [];
+  const out: Array<PresenceEntry & { known: boolean }> = [];
   for (const [id, status] of presence) {
     if (status === "offline") continue;
     const m = members.get(id);
-    out.push({ id, name: m?.name ?? id.slice(0, 8), status, agent: m?.kind === "agent", holding: held.get(id) ?? 0 });
+    out.push({ id, name: m ? m.name : pending ? "" : id.slice(0, 8), status, agent: m?.kind === "agent", holding: held.get(id) ?? 0, known: Boolean(m) });
   }
-  return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) || (a.agent === b.agent ? 0 : a.agent ? -1 : 1) || a.name.localeCompare(b.name));
+  out.sort(
+    (a, b) =>
+      (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) ||
+      (a.known === b.known ? 0 : a.known ? -1 : 1) ||
+      (a.agent === b.agent ? 0 : a.agent ? -1 : 1) ||
+      a.name.localeCompare(b.name) ||
+      a.id.localeCompare(b.id),
+  );
+  return out.map(({ id, name, status, agent, holding }) => ({ id, name, status, agent, holding }));
 }
 
-/** What a presence chip says after the name, for its tooltip and a screen reader. */
+/** What a presence chip says after the name, for its tooltip and a screen reader. Holdings are this channel's tasks. */
 export function presenceWords(p: Pick<PresenceEntry, "status" | "holding">): string {
-  return `${p.status}, ${p.holding ? `holding ${p.holding} task${p.holding === 1 ? "" : "s"}` : "free"}`;
+  const load = p.holding ? `holding ${p.holding} task${p.holding === 1 ? "" : "s"} in this channel` : "free";
+  return `${p.status}, ${load}`;
 }
 
 /** Cards a lane renders before "Show more"; each step adds this many again. */
 export const LANE_PAGE = 60;
 /** Past this many cards in a lane, cards skip layout animation. */
 export const ANIMATE_UP_TO = 40;
+
+/**
+ * The window that includes `openId` when it sits at or past `baseLimit`.
+ * The next page multiple covers it, so a deep-linked card past the first
+ * page still renders. A card already inside the window leaves the limit alone.
+ */
+export function limitForOpen(cards: ReadonlyArray<{ thread: { id: string } }>, baseLimit: number, openId: string | null | undefined, pageSize = LANE_PAGE): number {
+  const base = Math.max(0, Math.floor(baseLimit));
+  if (!openId) return base;
+  const i = cards.findIndex((c) => c.thread.id === openId);
+  if (i < base) return base;
+  const page = Math.max(1, Math.floor(pageSize));
+  return Math.max(base, Math.ceil((i + 1) / page) * page);
+}
 
 /** The first `limit` cards and how many wait behind them. */
 export function windowed<T>(cards: T[], limit: number): { shown: T[]; hidden: number } {
@@ -387,9 +425,9 @@ export class BoardApi {
       if (tv) return badgeFromThread(tv);
       this.threadVotesMissing = true;
     }
-    const messages = await this.getOr404<Array<{ id: string }>>(`/threads/${threadId}/messages?limit=50`);
+    const messages = await this.getOr404<Array<{ id: string }>>(`/threads/${threadId}/messages?limit=500`);
     // A full page may not be every message, and a partial count would mislead.
-    if (!messages || messages.length >= 50) return null;
+    if (!messages || messages.length >= 500) return null;
     const rows: VoteKindRow[] = [];
     for (const m of messages) {
       const votes = await this.getOr404<VoteKindRow[]>(`/messages/${m.id}/votes`);
@@ -520,8 +558,27 @@ export function voteWords(b: VoteBadge): string {
   return parts.join(", ");
 }
 
-/** Which cards get a badge: review-lane cards first, at most `cap` reads. */
+/**
+ * How many badge reads the board used to start. A lane renders `LANE_PAGE`
+ * cards, so the cap no longer decides which of those cards are counted.
+ */
 export const VOTE_BADGE_CAP = 40;
-export function badgeTargets(lanes: Record<LaneKey, Card[]>, cap = VOTE_BADGE_CAP): string[] {
-  return [...lanes.review, ...lanes.working].slice(0, cap).map((c) => c.thread.id);
+
+/** A rendered window per lane. A number is the old combined cap, for a caller that asks for one. */
+export type BadgeWindow = { review?: number; working?: number };
+
+/**
+ * Which cards get a badge: the rendered review cards, then the rendered
+ * working cards. The default window is a lane page, so cards 41–60 count too.
+ */
+export function badgeTargets(lanes: Record<LaneKey, Card[]>, cap: number | BadgeWindow = { review: LANE_PAGE, working: LANE_PAGE }): string[] {
+  if (typeof cap === "number") return [...lanes.review, ...lanes.working].slice(0, cap).map((c) => c.thread.id);
+  const review = lanes.review.slice(0, cap.review ?? LANE_PAGE);
+  const working = lanes.working.slice(0, cap.working ?? LANE_PAGE);
+  return [...review, ...working].map((c) => c.thread.id);
+}
+
+/** Vote badges for the review and working cards a view actually renders. */
+export function shownBadgeTargets(cards: readonly Card[]): string[] {
+  return cards.filter((c) => c.chrome.lane === "review" || c.chrome.lane === "working").map((c) => c.thread.id);
 }

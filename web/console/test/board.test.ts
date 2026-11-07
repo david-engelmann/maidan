@@ -153,6 +153,6 @@ test("a refused close is the newest refusal notice for a task in review", async 
 test("a presence chip reads its name, status and load as one sentence", () => {
   // The chip renders the name, then ", " + these words in the same span.
   assert.equal(`david-engelmann44, ${presenceWords({ status: "online", holding: 0 })}`, "david-engelmann44, online, free");
-  assert.equal(presenceWords({ status: "away", holding: 1 }), "away, holding 1 task");
-  assert.equal(presenceWords({ status: "online", holding: 3 }), "online, holding 3 tasks");
+  assert.equal(presenceWords({ status: "away", holding: 1 }), "away, holding 1 task in this channel");
+  assert.equal(presenceWords({ status: "online", holding: 3 }), "online, holding 3 tasks in this channel");
 });

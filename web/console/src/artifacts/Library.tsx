@@ -2,7 +2,8 @@
 // a preview, its metadata and the tasks it came from.
 import { useEffect, useMemo, useState } from "react";
 import { BoardApi } from "../core/board.ts";
-import { KIND_LABEL, fileKind, fileName, mediaType, filterFiles, gatherFiles, textPreviewable, type FileRow } from "../core/files.ts";
+import { liveBus } from "../core/bus.ts";
+import { FILE_REFRESH_KINDS, KIND_LABEL, fileKind, fileName, mediaType, filterFiles, gatherFiles, textPreviewable, type FileRow } from "../core/files.ts";
 import { convHash } from "../core/threads.ts";
 import { formatBytes, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
@@ -32,15 +33,38 @@ export function Library() {
     await eachLimited(tasks, 6, async (t) => { linked.set(t.id, await api.linked(t.id)); });
     const shas = [...new Set([...linked.values()].flat())];
     const metas = new Map<string, ArtifactMeta | null>();
-    await eachLimited(shas, 6, async (s) => { metas.set(s, await api.artifact(s).catch(() => null)); });
-    return gatherFiles(tasks, linked, metas);
+    const failed = new Set<string>();
+    await eachLimited(shas, 6, async (s) => {
+      try {
+        metas.set(s, await api.artifact(s));
+      } catch {
+        failed.add(s);
+        metas.set(s, null);
+      }
+    });
+    return gatherFiles(tasks, linked, metas, failed);
   });
+  const reloadFiles = files.reload;
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = liveBus.listen((m) => {
+      if (m.type !== "resync" && !FILE_REFRESH_KINDS.has(m.frame.kind ?? "")) return;
+      if (timer) clearTimeout(timer);
+      // A store event for the bytes can land a moment before the thread link.
+      timer = setTimeout(() => void reloadFiles(), 300);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [reloadFiles]);
   const [view, setView] = useState<"grid" | "list">(() => (localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"));
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const pick = (v: "grid" | "list") => { setView(v); localStorage.setItem(VIEW_KEY, v); };
   const rows = filterFiles(files.value ?? [], q);
   const chosen = rows.find((r) => r.sha === open) ?? null;
+  const metaFailed = (files.value ?? []).some((f) => f.metaFailed);
   return (
     <section className="card tool-panel files" aria-labelledby="files-h">
       <div className="files-bar">
@@ -54,6 +78,12 @@ export function Library() {
           </div>
         </div>
       </div>
+      {metaFailed ? (
+        <p className="muted small" role="status">
+          Some file details could not be loaded.{" "}
+          <button type="button" className="chip-btn" onClick={() => void files.reload()}>Retry metadata</button>
+        </p>
+      ) : null}
       {files.status === "loading" ? (
         <ul className={`files-${view}`} aria-busy="true" aria-label="Loading files">
           {[0, 1, 2, 3].map((i) => <li key={i} className="file-tile file-ghost" />)}
@@ -103,7 +133,7 @@ function FileTile({ api, file, list, on, onOpen }: { api: ToolsApi; file: FileRo
         {list ? null : <span className="file-thumb">{img && broken !== img ? <img src={img} alt="" onError={() => setBroken(img)} /> : <span className="file-glyph">{KIND_LABEL[kind]}</span>}</span>}
         <span className="file-text">
           <b className="file-name">{fileName(file)}</b>
-          <small className="muted">{[KIND_LABEL[kind], formatBytes(file.meta?.size_bytes)].filter(Boolean).join(" · ")}</small>
+          <small className="muted">{file.metaFailed ? "Metadata unavailable" : [KIND_LABEL[kind], formatBytes(file.meta?.size_bytes)].filter(Boolean).join(" · ")}</small>
           <small className="muted file-from">From {from}</small>
         </span>
       </button>
@@ -126,8 +156,8 @@ function FileDetail({ api, file, onClose }: { api: ToolsApi; file: FileRow; onCl
       {text.value ? <pre className="file-pre">{text.value}</pre> : null}
       {text.status === "error" || failed || broken === file.sha ? <p className="muted small" role="status">No preview: the store does not have this file's bytes any more.</p> : null}
       <dl className="facts">
-        <div><dt>Type</dt><dd>{mediaType(file.meta) || "Unknown"}</dd></div>
-        <div><dt>Size</dt><dd>{formatBytes(file.meta?.size_bytes) || "Unknown"}</dd></div>
+        <div><dt>Type</dt><dd>{file.metaFailed ? "Metadata unavailable" : mediaType(file.meta) || "Unknown"}</dd></div>
+        <div><dt>Size</dt><dd>{file.metaFailed ? "Metadata unavailable" : formatBytes(file.meta?.size_bytes) || "Unknown"}</dd></div>
         {when ? <div><dt>Added</dt><dd>{when}</dd></div> : null}
         {file.meta?.kind ? <div><dt>Kind</dt><dd>{file.meta.kind.replace(/_/g, " ")}</dd></div> : null}
         <div><dt>sha256</dt><dd className="mono-id break">{file.sha}</dd></div>
