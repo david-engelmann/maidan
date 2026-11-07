@@ -259,3 +259,152 @@ fn paging_helpers_ask_for_no_more_than_the_servers_page_size() {
     assert_eq!(events.len(), MAX_PAGE_SIZE + 1);
     assert!(seen.lock().unwrap()[0].target.contains("limit=500"));
 }
+
+fn read_http(stream: &mut std::net::TcpStream) -> (String, Option<String>) {
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let target = line.split_whitespace().nth(1).unwrap_or("").to_string();
+    let (mut key, mut len) = (None, 0usize);
+    loop {
+        let mut h = String::new();
+        reader.read_line(&mut h).unwrap();
+        if h == "\r\n" || h.is_empty() {
+            break;
+        }
+        let (name, value) = h.split_once(':').unwrap();
+        let value = value.trim().to_string();
+        match name.to_ascii_lowercase().as_str() {
+            "idempotency-key" => key = Some(value),
+            "content-length" => len = value.parse().unwrap_or(0),
+            _ => {}
+        }
+    }
+    let mut body = vec![0; len];
+    if len > 0 {
+        reader.read_exact(&mut body).unwrap();
+    }
+    (target, key)
+}
+
+/// A claim server that records one claim per idempotency key. The first
+/// request is cut off after the key is stored; later requests return it whole.
+fn claim_server() -> (String, Arc<Mutex<usize>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let claims = Arc::new(Mutex::new(0usize));
+    let count = claims.clone();
+    std::thread::spawn(move || {
+        let mut seen = std::collections::HashMap::<String, String>::new();
+        let mut n = 0usize;
+        loop {
+            let (mut stream, _) = listener.accept().unwrap();
+            let (_target, key) = read_http(&mut stream);
+            let key = key.unwrap_or_default();
+            n += 1;
+            if !seen.contains_key(&key) {
+                let id = format!("thr-{}", seen.len() + 1);
+                seen.insert(key.clone(), id);
+                *count.lock().unwrap() += 1;
+            }
+            let id = seen.get(&key).unwrap().clone();
+            let full = format!(
+                r#"{{"id":"{id}","claim_lease_id":"lease-1","state":"open","channel_id":"c","created_at":"2020-01-01T00:00:00Z","updated_at":"2020-01-01T00:00:00Z","pin":{{"uri":"maidan:event/1","content_hash":"abc"}}}}"#
+            );
+            if n == 1 {
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 200\r\nconnection: close\r\n\r\n{\"id\":\"",
+                );
+                drop(stream);
+            } else {
+                let out = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{full}",
+                    full.len()
+                );
+                let _ = stream.write_all(out.as_bytes());
+            }
+            if n >= 2 {
+                break;
+            }
+        }
+    });
+    (format!("http://{addr}"), claims)
+}
+
+#[test]
+fn a_cut_short_claim_retries_under_the_same_key_and_is_taken_once() {
+    let (base, claims) = claim_server();
+    let (c, _) = client(&base);
+    let claim = c.claim_next_thread("c", None).unwrap().unwrap();
+    assert_eq!(claim.id, "thr-1");
+    assert_eq!(claim.claim_lease_id.as_deref(), Some("lease-1"));
+    assert_eq!(*claims.lock().unwrap(), 1);
+}
+
+#[test]
+fn a_cut_short_artifact_retries_for_the_whole_body() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for n in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_http(&mut stream);
+            if n == 0 {
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-length: 200\r\nconnection: close\r\n\r\nhello",
+                );
+                drop(stream);
+            } else {
+                let body = "hello-artifact-bytes!!";
+                let out = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(out.as_bytes());
+            }
+        }
+    });
+    let (c, _) = client(&format!("http://{addr}"));
+    let bytes = c.artifacts().get("abc").unwrap();
+    assert_eq!(bytes, b"hello-artifact-bytes!!");
+}
+
+#[test]
+fn a_non_json_claim_retries_then_is_undecodable() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let keys = Arc::new(Mutex::new(Vec::<String>::new()));
+    let log = keys.clone();
+    std::thread::spawn(move || {
+        for n in 0..4 {
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
+            let (_target, key) = read_http(&mut stream);
+            log.lock().unwrap().push(key.unwrap_or_default());
+            let body = if n < 3 { "<html>proxy</html>" } else { "null" };
+            let out = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(out.as_bytes());
+        }
+    });
+    let (c, _) = client(&format!("http://{addr}"));
+    let err = c.claim_next_thread("c", None).unwrap_err();
+    assert!(matches!(err, MaidanError::Decode(_)), "{err:?}");
+    let keys = keys.lock().unwrap().clone();
+    assert!(keys.len() >= 2, "{keys:?}");
+    assert!(keys.iter().all(|k| k == &keys[0] && !k.is_empty()));
+}
+
+#[test]
+fn a_claim_missing_its_lease_is_undecodable() {
+    let (base, _) = serve(vec![ok(
+        200,
+        json!({"id": "thr", "state": "open", "channel_id": "c"}),
+    )]);
+    let (c, _) = client(&base);
+    let err = c.claim_next_thread("c", None).unwrap_err();
+    assert!(matches!(err, MaidanError::Decode(_)), "{err:?}");
+}

@@ -159,6 +159,47 @@ func (e *PlanConflictError) Unwrap() error           { return e.APIError }
 func (e *ClaimLostError) Unwrap() error              { return e.APIError }
 func (e *UnknownProblemError) Unwrap() error         { return e.APIError }
 
+// UnreadableResponseError is a 2xx answer this client cannot read: cut short,
+// not JSON, or missing what its model needs. It is not a problem type the
+// server documents. Status is the answer's HTTP status. Cause is the decode
+// error when there was one.
+type UnreadableResponseError struct {
+	*APIError
+	Cause error
+}
+
+func (e *UnreadableResponseError) Error() string {
+	if e.APIError != nil && e.APIError.Detail != "" {
+		return e.APIError.Detail
+	}
+	return "maidan: unreadable response"
+}
+
+func (e *UnreadableResponseError) Unwrap() []error {
+	if e.Cause != nil {
+		return []error{e.APIError, e.Cause}
+	}
+	return []error{e.APIError}
+}
+
+// TransportError is no answer after the last try. Status on APIError is 0.
+// Cause is the error from the transport, so errors.Is still sees it.
+type TransportError struct {
+	*APIError
+	Cause error
+}
+
+func (e *TransportError) Error() string {
+	if e.APIError != nil && e.APIError.Detail != "" {
+		return e.APIError.Detail
+	}
+	return "maidan: no answer"
+}
+
+func (e *TransportError) Unwrap() []error {
+	return []error{e.APIError, e.Cause}
+}
+
 // ProblemTypes maps each problem type the server documents to the error the
 // client returns for it.
 var ProblemTypes = map[string]func(*APIError) error{

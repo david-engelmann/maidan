@@ -173,10 +173,23 @@ func isWrite(method string) bool {
 	return false
 }
 
+func noAnswer(method, path string, attempt int, cause error) error {
+	return &TransportError{
+		APIError: &APIError{
+			Status: 0,
+			Detail: fmt.Sprintf("%s %s: no answer after %d tries: %v", method, path, attempt+1, cause),
+		},
+		Cause: cause,
+	}
+}
+
 // send issues a request with retries and returns the last answer. A write
 // carries one Idempotency-Key across all its attempts, so a retry after a lost
-// response gets the first answer back instead of writing twice.
-func (c *Client) send(method, path, contentType string, body []byte) (*http.Response, []byte, error) {
+// response gets the first answer back instead of writing twice. A body that
+// ends early, and (when jsonAnswer) a 2xx that is not JSON, are the same kind
+// of lost answer. No answer after the last try is a TransportError whose
+// APIError status is 0.
+func (c *Client) send(method, path, contentType string, body []byte, jsonAnswer bool) (*http.Response, []byte, error) {
 	key := ""
 	if isWrite(method) {
 		key = NewIdempotencyKey()
@@ -204,17 +217,32 @@ func (c *Client) send(method, path, contentType string, body []byte) (*http.Resp
 		resp, err := c.HTTP.Do(req)
 		if err != nil {
 			if attempt >= c.MaxRetries {
-				return nil, nil, err
+				return nil, nil, noAnswer(method, path, attempt, err)
 			}
 			sleep(RetryDelay(attempt, "", mrand.Float64))
 			continue
 		}
-		raw, _ := io.ReadAll(resp.Body)
+		raw, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if readErr != nil {
+			if attempt >= c.MaxRetries {
+				return nil, nil, noAnswer(method, path, attempt, readErr)
+			}
+			sleep(RetryDelay(attempt, "", mrand.Float64))
+			continue
+		}
 		c.captureRoomLSN(resp.Header)
-		if attempt < c.MaxRetries && retryable(resp.StatusCode, raw) {
+		notJSON := jsonAnswer && resp.StatusCode >= 200 && resp.StatusCode < 300 &&
+			resp.StatusCode != http.StatusNoContent && len(bytes.TrimSpace(raw)) > 0 && !json.Valid(raw)
+		if attempt < c.MaxRetries && (notJSON || retryable(resp.StatusCode, raw)) {
 			sleep(RetryDelay(attempt, resp.Header.Get("Retry-After"), mrand.Float64))
 			continue
+		}
+		if notJSON {
+			return resp, raw, &UnreadableResponseError{APIError: &APIError{
+				Status: resp.StatusCode,
+				Detail: fmt.Sprintf("%s %s: HTTP %d answer is not JSON", method, path, resp.StatusCode),
+			}}
 		}
 		return resp, raw, nil
 	}
@@ -231,7 +259,7 @@ func (c *Client) do(method, path string, body any) (json.RawMessage, error) {
 		}
 		payload, contentType = b, "application/json"
 	}
-	resp, raw, err := c.send(method, path, contentType, payload)
+	resp, raw, err := c.send(method, path, contentType, payload, true)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +274,7 @@ func (c *Client) do(method, path string, body any) (json.RawMessage, error) {
 
 // doRaw is do for non-JSON bodies/responses (artifact bytes).
 func (c *Client) doRaw(method, path string, body []byte) ([]byte, json.RawMessage, error) {
-	resp, raw, err := c.send(method, path, "", body)
+	resp, raw, err := c.send(method, path, "", body, method != http.MethodGet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -282,7 +310,13 @@ func call[T any](c *Client, method, path string, body any) (*T, error) {
 	}
 	var v T
 	if err := decodeJSON(raw, &v); err != nil {
-		return nil, fmt.Errorf("maidan: decoding %s %s: %w", method, path, err)
+		return nil, &UnreadableResponseError{
+			APIError: &APIError{
+				Status: http.StatusOK,
+				Detail: fmt.Sprintf("maidan: decoding %s %s: %v", method, path, err),
+			},
+			Cause: err,
+		}
 	}
 	return &v, nil
 }
@@ -506,7 +540,22 @@ func (c *Client) ClaimNextThread(channelID string, opts *ClaimOptions) (*Claimed
 	if opts != nil && opts.LeaseSecs > 0 {
 		body["lease_secs"] = opts.LeaseSecs
 	}
-	return call[ClaimedThread](c, http.MethodPost, "/channels/"+channelID+"/threads/claim-next", body)
+	claim, err := call[ClaimedThread](c, http.MethodPost, "/channels/"+channelID+"/threads/claim-next", body)
+	if err != nil || claim == nil {
+		return claim, err
+	}
+	lease := ""
+	if claim.ClaimLeaseID != nil {
+		lease = *claim.ClaimLeaseID
+	}
+	if claim.ID == "" || lease == "" {
+		detail := fmt.Sprintf("POST /channels/%s/threads/claim-next: claim without a string id and claim_lease_id", channelID)
+		if claim.ID != "" {
+			detail += fmt.Sprintf("; thread %s is held until its lease lapses", claim.ID)
+		}
+		return nil, &UnreadableResponseError{APIError: &APIError{Status: http.StatusOK, Detail: detail}}
+	}
+	return claim, nil
 }
 
 // RenewClaim is the holder-only lease heartbeat.
@@ -540,7 +589,10 @@ func (s *ArtifactsService) Upload(data []byte, kind ArtifactKind) (*Artifact, er
 	}
 	var a Artifact
 	if err := decodeJSON(raw, &a); err != nil {
-		return nil, fmt.Errorf("maidan: decoding POST %s: %w", path, err)
+		return nil, &UnreadableResponseError{
+			APIError: &APIError{Status: http.StatusOK, Detail: fmt.Sprintf("maidan: decoding POST %s: %v", path, err)},
+			Cause:    err,
+		}
 	}
 	return &a, nil
 }

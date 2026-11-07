@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -212,5 +214,143 @@ func TestPagingHelpersAskForNoMoreThanTheServersPageSize(t *testing.T) {
 		if got := pageSize(in); got != want {
 			t.Fatalf("pageSize(%d) = %d, want %d", in, got, want)
 		}
+	}
+}
+
+func cutShort(w http.ResponseWriter) {
+	hj, _ := w.(http.Hijacker)
+	conn, bufrw, _ := hj.Hijack()
+	_, _ = bufrw.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 200\r\nContent-Type: application/json\r\n\r\n{\"id\":\"")
+	bufrw.Flush()
+	conn.Close()
+}
+
+func TestClaimRetriesCutShortBodyOnce(t *testing.T) {
+	claims := map[string]string{}
+	var mu sync.Mutex
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("Idempotency-Key")
+		mu.Lock()
+		keys = append(keys, key)
+		first := len(keys) == 1
+		if _, ok := claims[key]; !ok {
+			claims[key] = fmt.Sprintf("thr-%d", len(claims)+1)
+		}
+		id := claims[key]
+		mu.Unlock()
+		if first {
+			cutShort(w)
+			return
+		}
+		body := fmt.Sprintf(`{"id":%q,"claim_lease_id":"lease-1","state":"open","channel_id":"c"}`, id)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "t")
+	c.Sleep = func(time.Duration) {}
+	claim, err := c.ClaimNextThread("c", nil)
+	if err != nil || claim.ID != "thr-1" || claim.ClaimLeaseID == nil || *claim.ClaimLeaseID != "lease-1" {
+		t.Fatalf("%+v %v", claim, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(claims) != 1 || len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+		t.Fatalf("claims %v keys %v", claims, keys)
+	}
+}
+
+func TestArtifactGetRetriesCutShortBody(t *testing.T) {
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		if n == 1 {
+			cutShort(w)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "hello-artifact-bytes!!")
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "t")
+	c.Sleep = func(time.Duration) {}
+	got, err := c.Artifacts.Get("abc")
+	if err != nil || string(got) != "hello-artifact-bytes!!" {
+		t.Fatalf("%q %v", got, err)
+	}
+	if n != 2 {
+		t.Fatalf("requests %d", n)
+	}
+}
+
+func TestCutShortClaimThatNeverRecoversIsUnreadable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "<html>proxy</html>")
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "t")
+	c.Sleep = func(time.Duration) {}
+	_, err := c.ClaimNextThread("c", nil)
+	var unread *UnreadableResponseError
+	var api *APIError
+	if !errors.As(err, &unread) || !errors.As(err, &api) || api.Status != http.StatusOK {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestExhaustedTransportUnwrapsToStatusZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, _ := w.(http.Hijacker)
+		conn, _, _ := hj.Hijack()
+		conn.Close()
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "t")
+	c.MaxRetries = 0
+	c.Sleep = func(time.Duration) {}
+	_, err := c.ClaimNextThread("c", nil)
+	var api *APIError
+	var uerr *url.Error
+	if !errors.As(err, &api) || api.Status != 0 || !errors.As(err, &uerr) {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestDriftedClaimIsUnreadable(t *testing.T) {
+	for _, body := range []string{`{}`, `{"id":"thr"}`, `{"id":1,"claim_lease_id":"lease"}`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, body)
+		}))
+		c := New(srv.URL, "t")
+		c.MaxRetries = 0
+		c.Sleep = func(time.Duration) {}
+		_, err := c.ClaimNextThread("c", nil)
+		var unread *UnreadableResponseError
+		var api *APIError
+		if !errors.As(err, &unread) || !errors.As(err, &api) {
+			t.Fatalf("%s: %v", body, err)
+		}
+		srv.Close()
+	}
+}
+
+func TestFinalCutShortUnwrapsUnexpectedEOF(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cutShort(w)
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "t")
+	c.MaxRetries = 0
+	c.Sleep = func(time.Duration) {}
+	_, err := c.Artifacts.Get("abc")
+	var api *APIError
+	if !errors.As(err, &api) || api.Status != 0 || !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("%v", err)
 	}
 }
