@@ -27,8 +27,8 @@ changelog_version="$(first_match '^## \[([0-9]+\.[0-9]+\.[0-9]+)\]( .*)?$' CHANG
 # Backticks and asterisks are regex literals here, not shell interpolation.
 # shellcheck disable=SC2016
 guide_version="$(first_match '.*latest \*\*`v([0-9]+\.[0-9]+\.[0-9]+)`\*\*.*' CLAUDE.md)"
-server_image_version="$(first_match '.*ghcr\.io/david-engelmann/maidan-server:v([0-9]+\.[0-9]+\.[0-9]+).*' README.md)"
-cli_image_version="$(first_match '^MAIDAN_TAG=v([0-9]+\.[0-9]+\.[0-9]+)$' README.md)"
+server_image_version="$(first_match '.*ghcr\.io/david-engelmann/maidan-server:v([0-9]+\.[0-9]+\.[0-9]+).*' docs/Quickstart.md)"
+cli_image_version="$(first_match '^MAIDAN_TAG=v([0-9]+\.[0-9]+\.[0-9]+)$' docs/Quickstart.md)"
 
 for value_name in capability_version changelog_version guide_version server_image_version cli_image_version; do
   value="${!value_name}"
@@ -39,8 +39,8 @@ expected="$capability_version"
 for record in \
   "CHANGELOG.md:$changelog_version" \
   "CLAUDE.md:$guide_version" \
-  "README server image:$server_image_version" \
-  "README CLI image:$cli_image_version"; do
+  "Quickstart server image:$server_image_version" \
+  "Quickstart CLI image:$cli_image_version"; do
   name="${record%%:*}"
   version="${record#*:}"
   [[ "$version" == "$expected" ]] || \
@@ -61,23 +61,23 @@ done
   die "compose.quickstart.yaml pins v$quickstart_compose but Dockerfile.quickstart pins v$quickstart_arg"
 [[ "$helm_prod" == "$quickstart_arg" ]] || \
   die "helm values-prod.yaml pins v$helm_prod but the quickstart pins v$quickstart_arg"
-# The README quickstart clones main, whose compose file pins the newest
+# The quickstart (docs/Quickstart.md) clones main, whose compose file pins the newest
 # release. A release tag's own tree still pins the release before it (the pin
 # can only move once the tag's tarballs exist), so cloning a tag runs an older
 # binary than its scripts expect.
-readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' README.md || true)"
-[[ -n "$readme_clones" ]] || die "could not find the README quickstart's git clone"
+readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' docs/Quickstart.md || true)"
+[[ -n "$readme_clones" ]] || die "could not find docs/Quickstart.md's git clone"
 # Allow only the default-branch form, so no clone option (--branch, -b,
 # --revision, …) can select a tag.
 while IFS= read -r clone; do
   [[ "$clone" =~ ^[[:space:]]*git\ clone(\ --depth[\ =]1)?\ https://github\.com/david-engelmann/maidan(\.git)?(\ \&\&\ cd\ maidan)?[[:space:]]*$ ]] || \
-    die "the README quickstart must clone main with no branch, tag or revision option: $clone"
+    die "the quickstart must clone main with no branch, tag or revision option: $clone"
 done <<<"$readme_clones"
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
   die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
 
-if rg -n 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md >/dev/null; then
-  die "README executable examples must use an immutable version tag, not :latest"
+if rg -n 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md docs/Quickstart.md >/dev/null; then
+  die "README and quickstart examples must use an immutable version tag, not :latest"
 fi
 
 heading_count=0

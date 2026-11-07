@@ -16,7 +16,7 @@
 #   listings/registry/server.json         its version and its package version
 #   listings/toolhive/server.json,
 #   listings/docker/server.yaml           the image they name
-#   README.md, docs/Production.md         every ghcr.io/david-engelmann/maidan-{server,
+#   docs/Quickstart.md, docs/Production.md every ghcr.io/david-engelmann/maidan-{server,
 #                                         cli,postgres}:vN.N.N and MAIDAN_TAG=vN.N.N
 #   docs/Pi.md                            its image pins, MAIDAN_TAG=vN.N.N and the
 #                                         release link the native install downloads
@@ -59,10 +59,10 @@ while read -r version; do
 done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 [[ -n "$best" ]] || die "no CHANGELOG section has its tag here (fetch the tags: fetch-depth: 0)"
 expected="v${best}"
-# The release record (scripts/check-release-records.sh) moves README's server
+# The release record (scripts/check-release-records.sh) moves the quickstart's server
 # image and MAIDAN_TAG to the release it records before that release is
 # tagged, so the record commit itself can pass CI and be promoted. Those two
-# README pins may name the record's version while its tag does not exist yet:
+# quickstart pins may name the record's version while its tag does not exist yet:
 # the Capabilities head, when it is newer than every tagged section and has a
 # CHANGELOG section of its own.
 record="$(grep -m 1 -oE '^## \[v[0-9]+\.[0-9]+\.[0-9]+\]' docs/Capabilities.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
@@ -124,8 +124,8 @@ pin helm/maidan-stack/values-prod.yaml 2 "^    tag: ${v}$"
 pin docker/Dockerfile.quickstart 1 "^ARG MAIDAN_VERSION=${v}$"
 pin compose.quickstart.yaml 1 "MAIDAN_VERSION: \\$\\{MAIDAN_VERSION:-${v}\\}"
 pin k8s/overlays/prod/kustomization.yaml 2 "^    newTag: ${v}$"
-pin README.md 0 "${image}" "$record_ok"
-pin README.md 1 "^MAIDAN_TAG=${v}$" "$record_ok"
+pin docs/Quickstart.md 0 "${image}" "$record_ok"
+pin docs/Quickstart.md 1 "^MAIDAN_TAG=${v}$" "$record_ok"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
 # The catalog listings under listings/ name the published image too: the
 # registry entry's package version, and the image in ToolHive and Docker.
