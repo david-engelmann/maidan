@@ -44,6 +44,19 @@ export function sameOriginReturn(raw: string | null): string {
   return "/ui/";
 }
 
+/**
+ * The path Sign in puts in `return_to`. The server keeps a same-origin path
+ * (`safe_return_to`): `#` is not a control character, so `/ui/#/needs` is
+ * accepted once the query value is percent-encoded. A bare board is the
+ * console itself. A confirmation link's one-time token never goes in the query.
+ */
+export function signInReturnTo(hash: string): string {
+  if (/^#\/?confirm-approval=/.test(hash)) return "/ui/#/needs";
+  if (hash === "" || hash === "#" || hash === "#/" || hash === "#/board") return "/ui/";
+  const route = hash.startsWith("#") ? hash : `#${hash}`;
+  return sameOriginReturn(`/ui/${route}`);
+}
+
 export type SignupCheck = {
   /** The server sent the browser here to name the workspace (and pass Turnstile). */
   active: boolean;

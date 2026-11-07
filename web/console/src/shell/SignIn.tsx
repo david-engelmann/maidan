@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from "rea
 import { useSession } from "../hooks/useSession.ts";
 import { Mark } from "./icons.tsx";
 import { noTokenHelp, noWorkspaceText } from "../core/firstRun.ts";
-import { isWorkspaceInvite, readSignupCheck, workspaceNameRefusal } from "../core/signup.ts";
+import { isWorkspaceInvite, readSignupCheck, signInReturnTo, workspaceNameRefusal } from "../core/signup.ts";
 
 export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const { session, store } = useSession();
@@ -43,7 +43,7 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
       ) : null}
       {oidcLoginPath ? (
         <div className="edit-actions">
-          <a className="button ink" href={`${oidcLoginPath}?return_to=/ui/`}>Sign in</a>
+          <a className="button ink" href={`${oidcLoginPath}?return_to=${encodeURIComponent(signInReturnTo(window.location.hash))}`}>Sign in</a>
         </div>
       ) : null}
       {showCreate ? (
@@ -62,7 +62,17 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
       ) : null}
       <form className="sign-in-token" onSubmit={(e) => void submit(e)}>
         <label htmlFor="sign-in-token">{oidcLoginPath ? "Or paste a token" : "Paste a token"}</label>
-        <input id="sign-in-token" type="password" autoComplete="off" spellCheck={false} value={secret} onChange={(e) => setSecret(e.target.value)} />
+        <input
+          id="sign-in-token"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={secret}
+          onChange={(e) => {
+            setSecret(e.target.value);
+            if (error) setError(null);
+          }}
+        />
         <button type="submit" className="button ink" disabled={busy || !secret.trim()}>{busy ? "Signing in…" : "Sign in with token"}</button>
       </form>
       {error || session.error ? <p className="err small" role="alert">{error ?? session.error}</p> : null}
@@ -170,17 +180,29 @@ function loadTurnstile(): Promise<void> {
   if (window.turnstile) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile='signup']");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("turnstile")), { once: true });
+    // A script that already failed is still in the document and will never
+    // load. Drop it so this attempt can add a fresh one.
+    if (existing?.dataset.turnstileState === "error") existing.remove();
+    const pending = document.querySelector<HTMLScriptElement>("script[data-turnstile='signup']");
+    if (pending) {
+      pending.addEventListener("load", () => resolve(), { once: true });
+      pending.addEventListener("error", () => failTurnstile(pending, reject), { once: true });
       return;
     }
     const script = document.createElement("script");
     script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     script.async = true;
     script.dataset.turnstile = "signup";
+    script.dataset.turnstileState = "loading";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("turnstile"));
+    script.onerror = () => failTurnstile(script, reject);
     document.head.appendChild(script);
   });
+}
+
+/** A dead Turnstile tag must leave the document, or the next mount waits on it forever. */
+function failTurnstile(script: HTMLScriptElement, reject: (err: Error) => void): void {
+  script.dataset.turnstileState = "error";
+  script.remove();
+  reject(new Error("turnstile"));
 }
