@@ -1,4 +1,6 @@
 name: deploy prod
+# The cut release workflow finds this run by its name.
+run-name: deploy prod ${{ github.event.release.tag_name || inputs.tag }}
 
 # maidan.world runs a release on Cloudflare Containers (deploy/cloudflare/,
 # wrangler.prod.jsonc; docs/Hosted Operations.md). Publishing a

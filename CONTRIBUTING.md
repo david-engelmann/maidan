@@ -151,14 +151,17 @@ contributions follows from it:
 
 ## How a release is cut
 
-Tagging is the maintainer's call. The full procedure is in
+Tagging is the maintainer's call, delegated to the coordinator, and it is one
+button: the `cut release` workflow. The full procedure is in
 [`docs/Operations.md`](docs/Operations.md); in outline:
 
-1. The release record lands: a Capabilities section and a CHANGELOG entry for
-   the version, and the README and CLAUDE.md pins moved to it.
-   `scripts/check-release-records.sh` fails if they disagree.
-2. A promotion fast-forwards `main` to a tested `dev` commit, and an annotated
-   tag `vX.0.0` goes on that commit.
+1. The release record lands through a `release/vX.0.0` PR the workflow opens
+   and merges: a Capabilities section and a CHANGELOG entry for the version,
+   the CLAUDE.md latest line, and every deploy pin moved to it.
+   `scripts/check-release-records.sh` and `scripts/check-deploy-pins.sh` fail
+   if they disagree.
+2. Once `dev`'s push CI is green on it, the workflow fast-forwards `main` to
+   that commit and puts the annotated tag `vX.0.0` on it.
 3. `release.yml` builds binaries and multi-arch images, runs the blocking trivy
    scan, signs images and artifacts keylessly with cosign, smoke-tests the
    published image, and publishes the GitHub Release.

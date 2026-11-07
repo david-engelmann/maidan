@@ -20,6 +20,10 @@ reviews:
     auto_incremental_review: true
     # Review every push; the default pauses after five reviewed commits.
     auto_pause_after_reviewed_commits: 0
+    # The cut release workflow writes and merges the release record itself;
+    # nobody is there to answer a review of it.
+    ignore_title_keywords:
+      - "docs(release): the v"
   pre_merge_checks:
     # Doc comments are written where the why is not obvious, not to a quota.
     docstrings:

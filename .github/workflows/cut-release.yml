@@ -1,0 +1,278 @@
+name: cut release
+
+# One button for a release (docs/Operations.md, "Cutting a release"). From the
+# newest dev commit whose push ci is green it writes the release record, every
+# deploy pin included (scripts/release-record.sh), lands it on dev through a
+# release/vN PR, waits for dev's push ci on the merge, fast-forwards main, tags
+# it, and starts release.yml, which builds and publishes the release and then
+# dispatches deploy-prod.yml. The run ends when maidan.world reports the tag.
+#
+# Tokens. A push, PR, merge or tag made with GITHUB_TOKEN starts no workflow,
+# and GITHUB_TOKEN can neither create a PR here (Actions may not create pull
+# requests) nor pass dev's required review or main's lock (only an admin
+# bypasses them; enforce_admins is off). So the steps that must start CI or
+# pass protection use RELEASE_TOKEN, an admin's fine-grained token kept in the
+# `release` environment, which only dev may deploy from:
+#   - push release/vN and open its PR, so the PR's ci runs;
+#   - merge it with --admin, so dev's push ci runs on the merge;
+#   - fast-forward main, so main's push ci and the docs deploy run.
+# Everything else uses GITHUB_TOKEN. The tag is created with GITHUB_TOKEN on
+# purpose, so its push starts nothing, and release.yml is started by an
+# explicit `gh workflow run` (a dispatch from GITHUB_TOKEN does start a run):
+# one release run, never a push-triggered one and a dispatched one.
+# release.yml dispatches deploy-prod.yml itself; this run waits for both.
+#
+# A rerun after a failure resumes. If dev already holds the vN record, the
+# record job is skipped and the run goes on from dev's ci, accepting main
+# already at the commit. If vN is already tagged (a failed release or deploy),
+# run it with version=N.0.0: it checks that main holds the tag and starts
+# release.yml for it again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      summary:
+        description: "One sentence for the CHANGELOG and Capabilities record (default: written from the changelog fragments)"
+        required: false
+        default: ""
+      version:
+        description: "X.Y.Z to cut (default: the next major after the newest tag)"
+        required: false
+        default: ""
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REPO: ${{ github.repository }}
+
+jobs:
+  plan:
+    name: plan the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      base: ${{ steps.plan.outputs.base }}
+      record_sha: ${{ steps.plan.outputs.record_sha }}
+      tagged: ${{ steps.plan.outputs.tagged }}
+    steps:
+      - name: dispatched from dev
+        run: |
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::run cut release from dev, not ${GITHUB_REF}"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: version, base commit, and a record already on dev
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.version }}
+        run: |
+          version="$(bash scripts/cut-release.sh next-version "$WANT")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          tagged="$(bash scripts/cut-release.sh tagged "$version")"
+          record_sha="$(bash scripts/cut-release.sh record-on-dev "$version")"
+          if [ -n "$tagged" ]; then
+            echo "v${version} is already tagged on ${tagged}; resuming at the release"
+            echo "tagged=${tagged}" >> "$GITHUB_OUTPUT"
+            echo "record_sha=${tagged}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$record_sha" ]; then
+            echo "dev already holds the v${version} record (${record_sha}); resuming after it"
+            echo "record_sha=${record_sha}" >> "$GITHUB_OUTPUT"
+          else
+            base="$(bash scripts/cut-release.sh green-base)"
+            echo "cutting v${version} from ${base}"
+            echo "base=${base}" >> "$GITHUB_OUTPUT"
+          fi
+
+  record:
+    name: land the release record
+    needs: plan
+    if: needs.plan.outputs.record_sha == ''
+    runs-on: ubuntu-latest
+    # The PR's ci (the full run: release/* branches get the heavy jobs) can
+    # sit queued behind other PRs.
+    timeout-minutes: 300
+    environment: release
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      merge_sha: ${{ steps.merge.outputs.sha }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      BASE: ${{ needs.plan.outputs.base }}
+    steps:
+      - name: the release token is configured
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::the 'release' environment has no RELEASE_TOKEN; docs/Operations.md ('The release token') says what it is and how to store it: gh secret set RELEASE_TOKEN --env release -R ${REPO}"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.base }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+      - name: install the record scripts' tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: write the record and move every pin
+        env:
+          SUMMARY: ${{ inputs.summary }}
+        run: |
+          git switch -c "release/v${VERSION}"
+          bash scripts/release-record.sh "$VERSION" "$SUMMARY"
+          git add -u
+          git status --short
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "docs(release): the v${VERSION} record" -m "Written by the cut release workflow (run ${GITHUB_RUN_ID})."
+          git push -q -u origin "release/v${VERSION}"
+          echo "HEAD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: open the PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          body="$(mktemp)"
+          {
+            echo "The v${VERSION} release record, written by the cut release workflow from ${BASE}: the CHANGELOG section (the fragments folded in), the Capabilities record, the CLAUDE.md latest line, and every deploy pin."
+            echo
+            echo "Run: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}. It merges this PR when the checks pass, then promotes and tags it."
+            echo
+            echo "## Retrospective (PR-level)"
+            echo
+            echo "Written by the workflow; the release retro, if any, belongs to the clusters it carries."
+          } > "$body"
+          url="$(gh pr create -R "$REPO" --base dev --head "release/v${VERSION}" \
+            --title "docs(release): the v${VERSION} record" --body-file "$body" --label full-ci | tail -n 1)"
+          echo "opened ${url}"
+          echo "PR=${url##*/}" >> "$GITHUB_ENV"
+      - name: wait for the PR's checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/cut-release.sh wait-checks "$HEAD_SHA"
+      - name: merge it
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          gh pr merge "$PR" -R "$REPO" --squash --admin --match-head-commit "$HEAD_SHA"
+          sha=""
+          for _ in 1 2 3 4 5 6; do
+            sha="$(gh pr view "$PR" -R "$REPO" --json state,mergeCommit --jq 'select(.state == "MERGED") | .mergeCommit.oid')"
+            [ -n "$sha" ] && break
+            sleep 10
+          done
+          [ -n "$sha" ] || { echo "::error::the record PR did not merge"; exit 1; }
+          echo "merged as ${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+  promote:
+    name: promote main and tag
+    needs: [plan, record]
+    if: >-
+      always() && needs.plan.result == 'success' &&
+      (needs.record.result == 'success' ||
+       (needs.record.result == 'skipped' && needs.plan.outputs.record_sha != ''))
+    runs-on: ubuntu-latest
+    # dev's push ci runs the report-only jobs too, and queues behind PRs.
+    timeout-minutes: 300
+    environment: release
+    permissions:
+      contents: write # the tag
+      actions: write # dispatching release.yml
+    outputs:
+      sha: ${{ steps.ci.outputs.sha }}
+      since: ${{ steps.release.outputs.since }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      RECORD: ${{ needs.record.outputs.merge_sha || needs.plan.outputs.record_sha }}
+      TAGGED: ${{ needs.plan.outputs.tagged }}
+    steps:
+      - name: the release token is configured
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::the 'release' environment has no RELEASE_TOKEN; docs/Operations.md ('The release token') says what it is and how to store it: gh secret set RELEASE_TOKEN --env release -R ${REPO}"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          persist-credentials: false
+      - name: wait for dev's push ci
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "$TAGGED" ]; then
+            # The tag fixed the commit; a newer green one is not this release.
+            git fetch -q origin main
+            git merge-base --is-ancestor "$TAGGED" origin/main ||
+              { echo "::error::v${VERSION} is tagged on ${TAGGED}, which main does not hold"; exit 1; }
+            sha="$TAGGED"
+          else
+            sha="$(bash scripts/cut-release.sh wait-dev-ci "$RECORD")"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+      - name: fast-forward main
+        if: needs.plan.outputs.tagged == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          SHA: ${{ steps.ci.outputs.sha }}
+        run: bash scripts/cut-release.sh promote "$SHA"
+      - name: tag it and start the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.ci.outputs.sha }}
+        run: |
+          title="$(git show "${SHA}:docs/Capabilities.md" | grep -m 1 -E '^## \[v' | sed -E 's/^## \[v[^]]*\]\([^)]*\) — //')"
+          bash scripts/cut-release.sh tag "$SHA" "v${VERSION}" "$title"
+          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "since=${since}" >> "$GITHUB_OUTPUT"
+          gh workflow run release.yml -R "$REPO" --ref "v${VERSION}" -f tag="v${VERSION}"
+          echo "release.yml started for v${VERSION}"
+
+  publish:
+    name: wait for the release and maidan.world
+    needs: [plan, promote]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      SHA: ${{ needs.promote.outputs.sha }}
+      SINCE: ${{ needs.promote.outputs.since }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/cut-release.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: the release publishes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/cut-release.sh wait-run release.yml SHA "$SHA" "$SINCE"
+      - name: deploy-prod succeeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/cut-release.sh wait-run deploy-prod.yml TITLE "deploy prod v${VERSION}" "$SINCE"
+      - name: maidan.world reports the release
+        run: bash scripts/cut-release.sh health "v${VERSION}"

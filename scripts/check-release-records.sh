@@ -47,10 +47,10 @@ for record in \
     die "$name names v$version, but docs/Capabilities.md starts at v$expected"
 done
 
-# The quickstart and the Helm production overlay pull a *published* release, so
-# they pin a tag that exists — not the Capabilities head, which a close PR may
-# prepare before its tag is cut. All three must agree: the compose default
-# overrides the Dockerfile ARG, and they drifted 88 clusters apart once.
+# The quickstart and the Helm production overlay pull a release: a tag that
+# exists, or the release this tree records, whose record moves every pin before
+# its tag is cut (scripts/release-record.sh). All three must agree: the compose
+# default overrides the Dockerfile ARG, and they drifted 88 clusters apart once.
 quickstart_arg="$(first_match '^ARG MAIDAN_VERSION=v([0-9]+\.[0-9]+\.[0-9]+)$' docker/Dockerfile.quickstart)"
 quickstart_compose="$(first_match '.*MAIDAN_VERSION: \$\{MAIDAN_VERSION:-v([0-9]+\.[0-9]+\.[0-9]+)\}.*' compose.quickstart.yaml)"
 helm_prod="$(first_match '^  tag: v([0-9]+\.[0-9]+\.[0-9]+)$' helm/maidan/values-prod.yaml)"
@@ -61,10 +61,8 @@ done
   die "compose.quickstart.yaml pins v$quickstart_compose but Dockerfile.quickstart pins v$quickstart_arg"
 [[ "$helm_prod" == "$quickstart_arg" ]] || \
   die "helm values-prod.yaml pins v$helm_prod but the quickstart pins v$quickstart_arg"
-# The quickstart (docs/Quickstart.md) clones main, whose compose file pins the newest
-# release. A release tag's own tree still pins the release before it (the pin
-# can only move once the tag's tarballs exist), so cloning a tag runs an older
-# binary than its scripts expect.
+# The quickstart (docs/Quickstart.md) clones main, whose compose file pins the
+# newest release: main only moves to a tagged release commit, which pins itself.
 readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' docs/Quickstart.md || true)"
 [[ -n "$readme_clones" ]] || die "could not find docs/Quickstart.md's git clone"
 # Allow only the default-branch form, so no clone option (--branch, -b,
@@ -73,8 +71,12 @@ while IFS= read -r clone; do
   [[ "$clone" =~ ^[[:space:]]*git\ clone(\ --depth[\ =]1)?\ https://github\.com/david-engelmann/maidan(\.git)?(\ \&\&\ cd\ maidan)?[[:space:]]*$ ]] || \
     die "the quickstart must clone main with no branch, tag or revision option: $clone"
 done <<<"$readme_clones"
-git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
-  die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
+if ! git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null; then
+  # Before its tag, only the release this tree records; a tag-triggered check
+  # never gets this exception.
+  [[ -z "$requested_tag" && "$quickstart_arg" == "$expected" ]] || \
+    die "the quickstart and Helm pin v$quickstart_arg, which is neither a tag nor the release recorded here (v$expected)"
+fi
 
 if rg -n 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md docs/Quickstart.md >/dev/null; then
   die "README and quickstart examples must use an immutable version tag, not :latest"
