@@ -55,13 +55,25 @@ export function refusal(status, why, { type = "", retryAfter = null, onSandbox =
     return `The demo is starting or being updated. Try again in about ${START_RETRY_SECS} seconds.`;
   }
   if (status === 404) return "This demo is not taking new sandboxes right now.";
+  if (status >= 500) {
+    if (/human check/i.test(why)) return sentence(why);
+    return "The sandbox could not be started. Try again.";
+  }
   return why || `The sandbox could not be started (${status}). Try again.`;
+}
+
+function sentence(why) {
+  const text = why.trim();
+  const lead = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(lead) ? lead : `${lead}.`;
 }
 
 export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => window.location.assign(href)) {
   let adminToken = "";
   let turnstileToken = "";
   let turnstileWidget = null;
+  let turnstileFailed = false;
+  const copyTimers = new WeakMap();
 
   async function loadTurnstile() {
     let siteKey = null;
@@ -71,17 +83,35 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     } catch {
       siteKey = null;
     }
-    if (!siteKey) return;
     const holder = $(doc, "turnstile");
+    if (!siteKey) {
+      if (holder) holder.hidden = true;
+      return;
+    }
+    if (holder) holder.hidden = true;
+    const script = doc.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    try {
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+        doc.head.appendChild(script);
+      });
+    } catch {
+      script.remove?.();
+      if (holder) holder.hidden = true;
+      turnstileFailed = true;
+      throw new Error("turnstile");
+    }
+    if (!window.turnstile?.render) {
+      script.remove?.();
+      if (holder) holder.hidden = true;
+      turnstileFailed = true;
+      return;
+    }
+    turnstileFailed = false;
     holder.hidden = false;
-    await new Promise((resolve, reject) => {
-      const script = doc.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true;
-      script.onload = resolve;
-      script.onerror = reject;
-      doc.head.appendChild(script);
-    });
     turnstileWidget = window.turnstile.render(holder, {
       sitekey: siteKey,
       action: "sandbox",
@@ -108,6 +138,18 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
   async function start() {
     const button = $(doc, "start");
     const status = $(doc, "start-status");
+    if (turnstileFailed) {
+      try {
+        await loadTurnstile();
+      } catch {
+        say(status, "The human check did not load. Reload the page to try again.", true);
+        return;
+      }
+      if (turnstileFailed) {
+        say(status, "The human check did not load. Reload the page to try again.", true);
+        return;
+      }
+    }
     if (turnstileWidget !== null && !turnstileToken) {
       say(status, "Complete the human check first.", true);
       return;
@@ -143,6 +185,8 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     button.hidden = true;
     $(doc, "turnstile").hidden = true;
     $(doc, "ready").hidden = false;
+    const heroNotice = $(doc, "hero-notice");
+    if (heroNotice) heroNotice.hidden = true;
     $(doc, "ready-title").focus();
   }
 
@@ -185,10 +229,14 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     }
     button.textContent = ok ? "Copied" : "Select and copy";
     button.classList.toggle("done", ok);
-    setTimeout(() => {
+    const previous = copyTimers.get(button);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(() => {
       button.textContent = "Copy";
       button.classList.remove("done");
+      copyTimers.delete(button);
     }, ok ? 1400 : 4000);
+    copyTimers.set(button, timer);
   }
 
   function mount() {

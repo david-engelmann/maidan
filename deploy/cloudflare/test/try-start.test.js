@@ -45,6 +45,10 @@ function element(id) {
     focus() {
       this.focused = true;
     },
+    addEventListener(_type, fn) {
+      this.listeners ??= [];
+      this.listeners.push(fn);
+    },
   };
 }
 
@@ -110,6 +114,10 @@ test("refusal keeps the daily cap for a sandbox 503 and treats every other 503 a
   assert.equal(refusal(503, "", { onSandbox: true }), STARTING);
   assert.equal(refusal(429, "slow down", { onSandbox: true }), "You have started the most sandboxes one address may this hour. Try again later.");
   assert.equal(refusal(404, "", { onSandbox: true }), "This demo is not taking new sandboxes right now.");
+  assert.equal(refusal(400, "That email is not accepted."), "That email is not accepted.");
+  assert.equal(refusal(500, "panic at db.rs:12"), "The sandbox could not be started. Try again.");
+  assert.equal(refusal(502, "complete the human check first"), "Complete the human check first.");
+  assert.equal(refusal(502, "the upstream failed"), "The sandbox could not be started. Try again.");
 });
 
 test("start() says the demo is full only for the sandbox cap", async () => {
@@ -198,4 +206,92 @@ test("start() still names the hourly limit, a closed demo, and a network failure
   await offline.app.start();
   assert.equal(offline.el("start-status").textContent, "Could not reach the demo. Check your connection and try again.");
   assert.equal(offline.el("start").disabled, false);
+});
+
+test("a second copy click replaces the reset timer instead of restoring Copy early", async () => {
+  const ui = page();
+  ui.el("agent-token").textContent = "mdn_agent";
+  const button = element("copy-token");
+  button.dataset.copy = "agent-token";
+  const listeners = [];
+  button.addEventListener = (_type, fn) => listeners.push(fn);
+  const scheduled = [];
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn, ms) => {
+    const id = scheduled.length + 1;
+    scheduled.push({ id, fn, ms, cleared: false });
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    const timer = scheduled.find((item) => item.id === id);
+    if (timer) timer.cleared = true;
+  };
+  const clipboard = globalThis.navigator?.clipboard;
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async () => {} },
+  });
+  ui.doc.querySelectorAll = () => [button];
+  ui.doc.head = { appendChild() {} };
+  ui.doc.createElement = () => ({});
+  try {
+    createTryPage(ui.doc, async () => new Response("{}", { status: 200 })).mount();
+    await listeners[0]();
+    await listeners[0]();
+    assert.equal(button.textContent, "Copied");
+    assert.equal(scheduled.length, 2);
+    assert.equal(scheduled[0].cleared, true);
+    assert.equal(scheduled[1].cleared, false);
+    scheduled[1].fn();
+    assert.equal(button.textContent, "Copy");
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+    if (clipboard) Object.defineProperty(globalThis.navigator, "clipboard", { configurable: true, value: clipboard });
+  }
+});
+
+test("a failed human check stays hidden and the start button tries again", async () => {
+  const ui = page();
+  const scripts = [];
+  ui.doc.head = { appendChild(script) { scripts.push(script); } };
+  ui.doc.createElement = () => ({ remove() { this.removed = true; } });
+  ui.doc.querySelectorAll = () => [];
+  const previous = globalThis.window;
+  globalThis.window = {};
+  let configCalls = 0;
+  const app = createTryPage(ui.doc, async (url) => {
+    if (url === "/try-config.json") {
+      configCalls += 1;
+      return new Response(JSON.stringify({ turnstile_site_key: "site-key" }), { status: 200 });
+    }
+    return new Response(JSON.stringify(minted), { status: 201, headers: { "content-type": "application/json" } });
+  });
+  try {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
+    app.mount();
+    await flush();
+    assert.equal(ui.el("turnstile").hidden, true);
+    scripts[0].onerror();
+    await flush();
+    assert.equal(scripts[0].removed, true);
+    assert.equal(ui.el("turnstile").hidden, true);
+    assert.match(ui.el("start-status").textContent, /did not load/);
+    const pending = app.start();
+    await flush();
+    globalThis.window.turnstile = {
+      render(_el, opts) {
+        opts.callback("tok");
+        return "widget-1";
+      },
+    };
+    scripts.at(-1).onload();
+    await pending;
+    assert.equal(configCalls, 2);
+    assert.equal(ui.el("ready").hidden, false);
+    assert.equal(ui.el("agent-token").textContent, "mdn_agent");
+  } finally {
+    globalThis.window = previous;
+  }
 });

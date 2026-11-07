@@ -27,6 +27,10 @@ test("a healthy instance says all systems are working, with each part", async ()
   for (const label of ["Database", "Artifact storage", "Live updates", "Search index"]) assert.match(html, new RegExp(label));
   assert.match(html, /version 1\.2\.3/);
   assert.doesNotMatch(html, /<script|<style|style=/);
+  assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /name="color-scheme" content="light dark"/);
+  assert.match(html, /name="theme-color" content="#f6f3ec" media="\(prefers-color-scheme: light\)"/);
+  assert.match(html, /name="theme-color" content="#17160f" media="\(prefers-color-scheme: dark\)"/);
 });
 
 test("a part in trouble is named, but its error text never shows", async () => {

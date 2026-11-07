@@ -9,7 +9,7 @@
   --panel: #e9e4d9;
   --ink: #151411;
   --muted: #5c5850;
-  --faint: #6f6a61;
+  --faint: #59554d;
   --line: rgba(21, 20, 17, 0.12);
   --signal: #e8501c;
   --signal-ink: #a83a0d;
@@ -34,6 +34,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 :focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+main:focus:not(:focus-visible) { outline: none; }
 .skip {
   position: absolute;
   left: var(--safe-x);
@@ -74,6 +75,7 @@ body {
 .brand {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 0.5rem;
   color: var(--ink);
   text-decoration: none;
@@ -149,6 +151,9 @@ th {
   font-size: 0.88rem;
 }
 .legal { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+.legal a { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
+.small { color: var(--faint); font-size: 0.9rem; }
+.small code { overflow-wrap: anywhere; }
 .foot a { color: var(--ink); text-decoration: none; }
 .foot a:hover { text-decoration: underline; }
 code {
@@ -159,7 +164,7 @@ code {
    cell breaks only at its hyphens. */
 p code { overflow-wrap: anywhere; }
 /* A problem type's link lands on its row. */
-tr[id] { scroll-margin-top: 1.5rem; }
+tr[id], h2[id] { scroll-margin-top: calc(var(--safe-top) + 4.5rem); }
 tr:target td { background: rgba(232, 80, 28, 0.1); }
 @media (max-width: 40rem) {
   table, thead, tbody, tr, th, td { display: block; }
