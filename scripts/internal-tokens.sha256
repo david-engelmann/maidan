@@ -1,0 +1,23 @@
+# Internal names that are matched as whole tokens, not substrings, because
+# each is also part of ordinary words (or is a host or a repository path). Kept
+# as digests so this file does not name them either. One per line: the name's
+# length in characters, then the SHA-256 of the name in lowercase.
+# scripts/check-no-internal-names.sh reads it (the lint job in CI) and says
+# what counts as a whole token.
+#
+# To add a name:  printf %s 'name' | tr '[:upper:]' '[:lower:]' | shasum -a 256
+# and prepend its length.
+3 57abfafa3540c266d66af8bc0f676ee80278eee7422ea08856adcb293d381395
+4 8326e09ce4e90a419a510ed74895cf6713f2fb42b0b3ffc126527ec2b9e95872
+9 d3956a8a6737bf8e4331f55df6c698ce6e496d0752db8401abdc9e20bf6b9eb4
+10 9701de7c3beb6af2833289a4553a2df45c2d975e29e4cf366513f4c0bbd50ddf
+16 ecc9b654fac50f26716bc6c0d4aaff30363136f6f0865d2ae3367c9c2daee61d
+18 4cba090a25164f70155469e41acbae366347e4a39cdea53ef625daa707f19e7e
+14 5ee8cb78405baee78e05bafed069b531254c5a970d3bc79b76e828cb4ba09373
+11 30701a91b046175be9255c25dbff210b1a35c4f68b53c7afffe127f3d79c3f79
+9 6c2e23f313aa6b1d8cd4c307a45ce8fe78ee7d49ef7579582b5f7b64b5d44618
+12 78f691d24dc96ef5f4aa5d6098e24edf00f01f8261044692349c554ad8defa82
+13 5793f8aa0405725f54d89e9d50b9a3e8c6b9565222dffbf3181eaea9406a180c
+13 e4dc00b4e787d10993e167c58589bbb4c10f86a78cbf99fae0a451f207d70617
+10 4bfc3cb38bb9695ca849777e5b19970941e5a19d8e3a7a7bfe243b98bd691c35
+20 ffed48d16f8001bca8c71c0fb05a1e5f3efa818ce75729d3131bd591e4070804

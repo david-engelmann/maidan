@@ -197,10 +197,10 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    releases, review by a second model family on the exact head, CI, merge
    queue and deploy tracking, and a ledger per provider and harness. The
    stack runs any `main` commit whose required checks passed. Ramp step 1
-   (four concurrent claimants on wax) ran on `v415`; the limit at step 2 was
+   (four concurrent claimants on one repository) ran on `v415`; the limit at step 2 was
    agent-ready tickets, not capacity. A seat runner keeps session seats
    claiming under capped runs (#1612), and on 2026-10-24/25 a Codex seat
-   delivered wax changes and ran some twenty second-family red-team reviews
+   delivered changes and ran some twenty second-family red-team reviews
    through Maidan, posting each verdict on its pull request. Next (Open
    Work, Next 36 to Next 41): finding and closing threads by attribute, the
    rest of Program C, and a day at 8 concurrent claimants with no stuck

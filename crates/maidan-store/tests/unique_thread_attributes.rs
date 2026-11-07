@@ -187,11 +187,11 @@ async fn the_setting_reads_back_as_set_and_clears(store: Arc<dyn Store>) {
 async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "per-repo").await;
     keep_unique(store.as_ref(), room.ws, tickets_per_repo()).await;
-    let wax = create(
+    let widgets = create(
         store.as_ref(),
         room.channel,
-        "wax half",
-        Some(ticket_in("ENG-6598", "https://github.com/Example/Wax")),
+        "widgets half",
+        Some(ticket_in("ENG-5150", "https://github.com/Example/Widgets")),
     )
     .await
     .unwrap();
@@ -199,25 +199,25 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         store.as_ref(),
         room.channel,
         "web half",
-        Some(ticket_in("ENG-6598", "example/web")),
+        Some(ticket_in("ENG-5150", "example/web")),
     )
     .await
     .expect("the same ticket in another repository");
     let refused = create(
         store.as_ref(),
         room.channel,
-        "second wax owner",
-        Some(ticket_in("ENG-6598", "example/wax")),
+        "second widgets owner",
+        Some(ticket_in("ENG-5150", "example/widgets")),
     )
     .await
     .expect_err("the same ticket in the same repository");
     assert!(
         refused
             .to_string()
-            .contains("linear_issue ENG-6598, repo example/wax"),
+            .contains("linear_issue ENG-5150, repo example/widgets"),
         "{refused}"
     );
-    assert_eq!(held_under(refused, &[LinearIssue, Repo]), wax.id);
+    assert_eq!(held_under(refused, &[LinearIssue, Repo]), widgets.id);
 
     // Missing `repo`, a thread is not held to the set, either way round.
     for title in ["no repo", "no repo again"] {
@@ -225,7 +225,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
             store.as_ref(),
             room.channel,
             title,
-            Some(ticket("ENG-6598")),
+            Some(ticket("ENG-5150")),
         )
         .await
         .expect("a thread without repo is not constrained");
@@ -235,7 +235,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         room.channel,
         "repo only",
         Some(TaskAttributes {
-            repo: Some("example/wax".into()),
+            repo: Some("example/widgets".into()),
             ..TaskAttributes::default()
         }),
     )
@@ -251,7 +251,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
             "red-team",
             Some(TaskAttributes {
                 kind,
-                ..ticket_in("ENG-6598", "example/wax")
+                ..ticket_in("ENG-5150", "example/widgets")
             }),
         )
         .await
@@ -263,7 +263,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         "review first",
         Some(TaskAttributes {
             kind: TaskKind::Review,
-            ..ticket_in("ENG-8000", "example/wax")
+            ..ticket_in("ENG-8000", "example/widgets")
         }),
     )
     .await
@@ -272,7 +272,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         store.as_ref(),
         room.channel,
         "change after its review",
-        Some(ticket_in("ENG-8000", "example/wax")),
+        Some(ticket_in("ENG-8000", "example/widgets")),
     )
     .await
     .expect("an open review holds nothing");
@@ -282,7 +282,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
     let filter = maidan_store::store::ThreadAttributeFilter::from_pairs([
         (
             "repo".to_string(),
-            "https://github.com/Example/Wax".to_string(),
+            "https://github.com/Example/Widgets".to_string(),
         ),
         ("kind".to_string(), "change".to_string()),
     ])
@@ -304,8 +304,8 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         .collect();
     assert_eq!(
         titles,
-        vec!["wax half", "repo only", "change after its review"],
-        "the changes in example/wax, oldest first"
+        vec!["widgets half", "repo only", "change after its review"],
+        "the changes in example/widgets, oldest first"
     );
     assert!(maidan_store::store::ThreadAttributeFilter::from_pairs([(
         "repo".to_string(),
@@ -318,22 +318,22 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
         .await
         .unwrap();
     let refused = store
-        .set_thread_attributes(later.id, ticket_in("ENG-6598", "example/wax"))
+        .set_thread_attributes(later.id, ticket_in("ENG-5150", "example/widgets"))
         .await
         .expect_err("the pair is held");
-    assert_eq!(held_under(refused, &[LinearIssue, Repo]), wax.id);
+    assert_eq!(held_under(refused, &[LinearIssue, Repo]), widgets.id);
     store
-        .set_thread_attributes(later.id, ticket_in("ENG-6598", "example/api"))
+        .set_thread_attributes(later.id, ticket_in("ENG-5150", "example/api"))
         .await
         .expect("a third repository is free");
 
     // Closing the holder frees the pair.
-    close(store.as_ref(), wax.id, room.worker).await;
+    close(store.as_ref(), widgets.id, room.worker).await;
     create(
         store.as_ref(),
         room.channel,
         "rework",
-        Some(ticket_in("ENG-6598", "example/wax")),
+        Some(ticket_in("ENG-5150", "example/widgets")),
     )
     .await
     .expect("a closed holder holds nothing");
@@ -347,7 +347,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
                 store.as_ref(),
                 channel,
                 &format!("pair racer {n}"),
-                Some(ticket_in("ENG-7000", "example/wax")),
+                Some(ticket_in("ENG-7000", "example/widgets")),
             )
             .await
         })
@@ -378,7 +378,7 @@ async fn a_held_ticket_refuses_a_second_thread_and_names_the_holder(store: Arc<d
         store.as_ref(),
         room.channel,
         "pi draft",
-        Some(ticket("ENG-6598")),
+        Some(ticket("ENG-5150")),
     )
     .await
     .unwrap();
@@ -386,11 +386,11 @@ async fn a_held_ticket_refuses_a_second_thread_and_names_the_holder(store: Arc<d
         store.as_ref(),
         room.channel,
         "laptop session",
-        Some(ticket("ENG-6598")),
+        Some(ticket("ENG-5150")),
     )
     .await
     .expect_err("the ticket is held");
-    assert!(refused.to_string().contains("ENG-6598"), "{refused}");
+    assert!(refused.to_string().contains("ENG-5150"), "{refused}");
     assert_eq!(held_by(refused), first.id);
     let titles: Vec<_> = store
         .list_threads(room.channel)

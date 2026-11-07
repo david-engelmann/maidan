@@ -1570,12 +1570,12 @@ than one server setting.
 ### `main` is prod; work lands on `dev` (2026-10-27)
 
 **Decision.** `dev` is the default branch, and every PR targets it, gated by
-the same eight required checks. `main` is what maidan.world runs. maidan-ca
-promotes by fast-forwarding `main` to a `dev` commit whose required checks
+the same eight required checks. `main` is what maidan.world runs. The release
+agent promotes by fast-forwarding `main` to a `dev` commit whose required checks
 passed (the newest green one: the maintainer dropped the day-long swarm soak
 on 2026-10-30). It then tags that commit
 and deploys the release to maidan.world without asking again. The
-maintainer chose this on 2026-10-27, with maidan-ca promoting.
+maintainer chose this on 2026-10-27, with the release agent promoting.
 dev.maidan.world and the swarm stack run `dev`.
 
 **Why.** Until then, every merge to `main` was a release candidate for prod,

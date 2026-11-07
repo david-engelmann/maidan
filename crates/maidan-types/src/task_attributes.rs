@@ -263,7 +263,7 @@ impl UniqueAttributeKey {
 }
 
 /// A held key set and its values, as a refusal names them:
-/// `linear_issue ENG-6598, repo example/wax`.
+/// `linear_issue ENG-5150, repo example/widgets`.
 pub fn describe_held(held: &[(UniqueAttributeKey, String)]) -> String {
     held.iter()
         .map(|(key, value)| format!("{} {value}", key.as_str()))
@@ -564,19 +564,19 @@ mod unique_attribute_tests {
     #[test]
     fn a_thread_is_held_to_a_set_only_when_it_gives_every_key() {
         let both = TaskAttributes {
-            linear_issue: Some("ENG-6598".into()),
-            repo: Some("https://github.com/Example/Wax.git".into()),
+            linear_issue: Some("ENG-5150".into()),
+            repo: Some("https://github.com/Example/Widgets.git".into()),
             ..TaskAttributes::default()
         }
         .validated()
         .unwrap();
-        assert_eq!(both.repo.as_deref(), Some("example/wax"));
+        assert_eq!(both.repo.as_deref(), Some("example/widgets"));
         assert_eq!(
             UniqueAttributeKey::values_of(&[LinearIssue, Repo], &both),
-            Some(vec!["ENG-6598", "example/wax"])
+            Some(vec!["ENG-5150", "example/widgets"])
         );
         let ticket_only = TaskAttributes {
-            linear_issue: Some("ENG-6598".into()),
+            linear_issue: Some("ENG-5150".into()),
             ..TaskAttributes::default()
         };
         assert_eq!(
@@ -585,14 +585,14 @@ mod unique_attribute_tests {
         );
         assert_eq!(
             UniqueAttributeKey::values_of(&[LinearIssue], &ticket_only),
-            Some(vec!["ENG-6598"])
+            Some(vec!["ENG-5150"])
         );
         assert_eq!(
             describe_held(&[
-                (LinearIssue, "ENG-6598".into()),
-                (Repo, "example/wax".into())
+                (LinearIssue, "ENG-5150".into()),
+                (Repo, "example/widgets".into())
             ]),
-            "linear_issue ENG-6598, repo example/wax"
+            "linear_issue ENG-5150, repo example/widgets"
         );
         let blank = TaskAttributes {
             repo: Some("  ".into()),

@@ -9,7 +9,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [434.0.0] — 2026-11-06
 
-One owner per ticket: a workspace can require that open change threads never share a set of attributes, such as a Linear issue and a repo, and a second claimant gets a 409 naming the holder. The swarm also reaches Pi's waiter as an internal host.
+One owner per ticket: a workspace can require that open change threads never share a set of attributes, such as a Linear issue and a repo, and a second claimant gets a 409 naming the holder. An operator's instance can also reach a second Worker as an internal host.
 
 ### One open thread per ticket and repository: unique thread attributes
 
@@ -31,7 +31,7 @@ One owner per ticket: a workspace can require that open change threads never sha
 
 ### Pi's waiter is an internal host on the swarm
 
-- **Added:** the swarm binds `PI` to Pi's waiter Worker and maps `pi.internal`, so a `thread_ready` webhook to `http://pi.internal/wake` reaches it over a service binding instead of the public internet.
+- **Added:** an operator's instance can bind a second Worker and map its `.internal` name, so a `thread_ready` webhook to that name reaches it over a service binding instead of the public internet.
 
 ## [433.0.0] — 2026-11-06
 
@@ -56,7 +56,7 @@ Internal hosts: the hosted Maidan sends webhooks to our own Cloudflare Workers o
 ### Internal hosts: webhooks to our own Workers over service bindings
 
 - **Added:** `MAIDAN_INTERNAL_EGRESS_HOSTS` names, exactly, the hostnames under `.internal` that a webhook or other operator-supplied target may use over plain `http://`. The egress guard refuses every unlisted `.internal` name at registration and at delivery, and does not judge a listed name's address, which the platform answers. Plain HTTP to a public host keeps the public-address rule, and private addresses still need `MAIDAN_PRIVATE_EGRESS_HOSTS`.
-- **Added:** the Cloudflare Worker's `MAIDAN_INTERNAL_HOSTS` (`seats.internal=SEATS`) routes the container's calls to each mapped `.internal` name to a service binding (`outboundByHost`), so the server reaches our own Workers without either having a public API. Only names under `.internal` whose binding the config declares are mapped; every other host keeps the container's internet egress. The server is handed only the `MAIDAN_INTERNAL_EGRESS_HOSTS` names the Worker routes. The swarm config binds `SEATS` to `maidan-wax-seats`; prod and dev declare none. See [Internal hosts](docs/Hosted%20Operations.md#internal-hosts).
+- **Added:** the Cloudflare Worker's `MAIDAN_INTERNAL_HOSTS` (`hooks.internal=HOOKS`) routes the container's calls to each mapped `.internal` name to a service binding (`outboundByHost`), so the server reaches our own Workers without either having a public API. Only names under `.internal` whose binding the config declares are mapped; every other host keeps the container's internet egress. The server is handed only the `MAIDAN_INTERNAL_EGRESS_HOSTS` names the Worker routes. Prod and dev declare none. See [Internal hosts](docs/Hosted%20Operations.md#internal-hosts).
 
 ## [430.0.0] — 2026-11-06
 
@@ -142,7 +142,7 @@ The launch release: what a stranger meets on maidan.world.
 
 ### The release deploy can target another hosted instance
 
-- **Added:** `deploy/cloudflare/deploy-release.sh` takes `DEPLOY_CONFIG` and `DEPLOY_ORIGIN`, so the same signed-release deploy that serves maidan.world can deploy a second instance. `wrangler.swarm.jsonc` describes one: `swarm.maidan.world`, the project's own agent swarm, kept apart from the public instance.
+- **Added:** `deploy/cloudflare/deploy-release.sh` takes `DEPLOY_CONFIG` and `DEPLOY_ORIGIN`, so the same signed-release deploy that serves maidan.world can deploy a second instance. An operator keeps the second instance's Wrangler config, apart from the public instance's.
 
 ### The landing page shows the product
 
@@ -224,7 +224,7 @@ maidan.world.
 
 ### The Python SDK and the example seat runner reach maidan.world
 
-- **Fixed:** the Python SDK sends `User-Agent: maidan-python/<version>` on every request, and the example seat runner sends `maidan-seat-runner/1`. Both used urllib's default `Python-urllib/3.x` agent, which Cloudflare refuses with error 1010 (a 403) in front of maidan.world, so every call from them failed there. The wax seats' queue checks had read as unreachable since they moved to maidan.world.
+- **Fixed:** the Python SDK sends `User-Agent: maidan-python/<version>` on every request, and the example seat runner sends `maidan-seat-runner/1`. Both used urllib's default `Python-urllib/3.x` agent, which Cloudflare refuses with error 1010 (a 403) in front of maidan.world, so every call from them failed there. The review seats' queue checks had read as unreachable since they moved to maidan.world.
 
 ### The hosted Worker passes the GitHub token to the server
 
@@ -769,7 +769,7 @@ hosted launch surfaces, plus the release fix below.
 
 ### Swarm dashboard
 
-- **Added:** `deploy/observability/maidan-swarm-dashboard.json`, a Grafana dashboard for swarm throughput, verdict mix, cost, claim latency and delivery failures on `job="maidan-server"`.
+- **Added:** `deploy/observability/maidan-agent-work-dashboard.json`, a Grafana dashboard for swarm throughput, verdict mix, cost, claim latency and delivery failures on `job="maidan-server"`.
 
 ### Swarm observability: thread traces and claim latency
 
@@ -1595,7 +1595,7 @@ C (fleet profiles, digests, task-class routing, PayerStamp).
 
 ### Red-team reports separate proven from unproven findings; a review result names its kind
 
-- **Changed:** The red-team runbook keeps `BLOCKING` for findings proven at the head (a failing test, or file:line evidence) and adds an `UNPROVEN` section, `unproven: missing <fact>` with no severity, so a speculative finding never blocks a merge. The seat runner's review prompt now asks for `result_kind`: without it Maidan stores the result but arms no delivery (#1649), which lost two wax verdicts on 2026-10-26. The seat runner README says a thread needs a footprint with at least one item, since an empty list clears it.
+- **Changed:** The red-team runbook keeps `BLOCKING` for findings proven at the head (a failing test, or file:line evidence) and adds an `UNPROVEN` section, `unproven: missing <fact>` with no severity, so a speculative finding never blocks a merge. The seat runner's review prompt now asks for `result_kind`: without it Maidan stores the result but arms no delivery (#1649), which lost two review verdicts on 2026-10-26. The seat runner README says a thread needs a footprint with at least one item, since an empty list clears it.
 
 ### Turnstile docs name the siteverify egress it needs
 

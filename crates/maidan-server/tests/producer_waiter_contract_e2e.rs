@@ -1,20 +1,19 @@
-//! The producer's waiter, on the wire it uses. This mirrors the producer's own
-//! contract check (which runs its real waiter image against a throwaway Maidan
-//! before a deploy) inside Maidan's own CI, so a Maidan change that breaks that
-//! client fails here first.
+//! An external change producer's waiter, on the wire it uses. A producer that
+//! claims Maidan work through its own MCP client is a contract: its requests
+//! are pinned here, inside Maidan's own CI, so a Maidan change that breaks
+//! such a client fails here first rather than in the producer's deployment.
 //!
-//! On 2026-10-12 a stricter MCP revision check refused every request the
-//! producer's waiter sent, and its deployment crash-looped. Every Maidan test
-//! passed, because none of them spoke the way a real client does. The requests
-//! below copy the producer's client (its MCP HTTP transport and its waiter,
-//! version 1.16.2): the endpoint, the headers, the JSON-RPC envelope, the tool
-//! names, the argument names, the order of the calls, the REST result write
-//! and the fields the waiter reads from each reply.
+//! Every other Maidan test can pass while a real client is refused, because
+//! none of them speaks the way that client does: a stricter MCP revision check
+//! once refused every request such a waiter sent. The requests below copy a
+//! client built on an MCP HTTP transport: the endpoint, the headers, the
+//! JSON-RPC envelope, the tool names, the argument names, the order of the
+//! calls, the REST result write and the fields the waiter reads from each
+//! reply.
 //!
 //! A change to any of these calls or fields, including a reply field the
-//! waiter parses, is a breaking change for the producer. Tell its maintainers
-//! before deploying it, so the client can move first; don't just update this
-//! test.
+//! waiter parses, is a breaking change for producers. Announce it before
+//! deploying, so clients can move first; don't just update this test.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -31,12 +30,11 @@ use sha2::Digest;
 /// not to `/mcp/streamable`.
 const WAITER_MCP_ENDPOINT: &str = "/mcp";
 
-/// The revision the waiter's client (1.16.2) asks for in `initialize`
-/// (its `CLIENT_PROTOCOL_VERSION`).
+/// The revision a fixed client asks for in `initialize`.
 const WAITER_REVISION: &str = "2025-11-25";
 
-/// The revision the 1.16.1 client claimed, without the `_meta` it requires: the
-/// requests Maidan began refusing on 2026-10-12.
+/// The revision an older client claimed, without the `_meta` it requires: the
+/// requests Maidan refuses.
 const STATELESS_REVISION: &str = "2026-07-28";
 
 struct Maidan {
@@ -227,7 +225,7 @@ impl WaiterMcp {
                 "initialize",
                 json!({
                     "protocolVersion": WAITER_REVISION,
-                    "clientInfo": { "name": "pi-mcp", "version": "1.16.2" },
+                    "clientInfo": { "name": "producer-mcp", "version": "2.0.0" },
                     "capabilities": { "tools": {} },
                 }),
             )
@@ -492,7 +490,7 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
     client
         .call_tool(
             "mark_unclaimable",
-            json!({ "thread_id": tid, "reason": "pi-waiter: completed" }),
+            json!({ "thread_id": tid, "reason": "producer waiter: completed" }),
         )
         .await;
     client
@@ -542,10 +540,10 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
     assert!(!change.is_changed(), "a no_change result commits nothing");
 }
 
-/// The 1.16.2 client's fix, pinned: a client that handshakes on `2025-11-25` and sends
-/// no `_meta` is served. The 1.16.1 client claimed `2026-07-28` in the header without
-/// the `_meta` that revision requires, and Maidan refuses that: the contract
-/// that broke the waiter on 2026-10-12. Both MCP endpoints keep both rules.
+/// The fixed client, pinned: a client that handshakes on `2025-11-25` and sends
+/// no `_meta` is served. An older client claimed `2026-07-28` in the header
+/// without the `_meta` that revision requires, and Maidan refuses that: the
+/// contract that broke such a waiter. Both MCP endpoints keep both rules.
 #[tokio::test]
 async fn a_2025_11_25_client_without_meta_is_served_and_a_2026_claim_without_it_is_refused() {
     let maidan = spawn().await;
@@ -562,7 +560,7 @@ async fn a_2025_11_25_client_without_meta_is_served_and_a_2026_claim_without_it_
                 "initialize",
                 json!({
                     "protocolVersion": STATELESS_REVISION,
-                    "clientInfo": { "name": "pi-mcp", "version": "1.16.1" },
+                    "clientInfo": { "name": "producer-mcp", "version": "1.0.0" },
                     "capabilities": { "tools": {} },
                 }),
             ),

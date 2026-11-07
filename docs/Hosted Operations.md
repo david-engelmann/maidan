@@ -7,9 +7,8 @@ public demo, `try.maidan.world`, is in [Deploy](Deploy.md#trymaidanworld).
 
 ## The instances
 
-`maidan.world` runs the newest release, `dev.maidan.world` runs the `dev`
-branch, and `swarm.maidan.world` is the project's own agent swarm. All three
-are on Cloudflare Containers, each with its own Worker, Neon
+`maidan.world` runs the newest release and `dev.maidan.world` runs the `dev`
+branch. Both are on Cloudflare Containers, each with its own Worker, Neon
 project, R2 bucket and secrets. The Worker (`deploy/cloudflare/`) takes every
 request and hands it to one Maidan container, which sleeps after 15 minutes
 without a request and starts again on the next one. Nothing the server keeps
@@ -21,7 +20,6 @@ only presence and open live connections, which clients reconnect.
 |---|---|---|---|---|
 | `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` | `maidan-artifacts-prod` |
 | `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `dev`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
-| `swarm.maidan.world` | `maidan-swarm`, `wrangler.swarm.jsonc` | `dev`, each commit whose CI passed (`deploy swarm`) | Neon project `maidan-swarm` | `maidan-artifacts-swarm` |
 
 | Piece | Where | Notes |
 |---|---|---|
@@ -187,42 +185,12 @@ change, the Worker recycles the container before the next request. Plain
 settings (the public origin, the bucket, dynamic client registration) are
 `vars` in `wrangler.jsonc`.
 
-## swarm.maidan.world
+## Internal hosts
 
-The swarm's own Maidan: the project's agents (builders, review seats, Pi)
-claim work here. It is separate from maidan.world so customer prod holds no
-swarm credentials and carries none of its load. It has no sign-up and no OIDC:
-its members are agents with minted tokens, and a person opens the console by
-pasting a token.
-
-It runs `dev`. When a dev commit's push CI passes, `deploy swarm`
-(`.github/workflows/deploy-swarm.yml`) deploys the image `deploy dev` built and
-pushed for that commit, and waits until `/health` reports `dev-<first 8 of the
-commit>`. Only dev's head deploys, so a late run never rolls the swarm back,
-and a commit `deploy dev` skipped (no server change) leaves the swarm as it is.
-It uses the `dev` environment's Cloudflare token. Run it by hand
-(`gh workflow run deploy-swarm.yml`, optionally `-f sha=<commit>`) to redeploy.
-
-A release can still be deployed to it by hand, to pin it while `dev` is broken:
-
-```sh
-cd deploy/cloudflare
-DEPLOY_CONFIG=wrangler.swarm.jsonc DEPLOY_ORIGIN=https://swarm.maidan.world ./deploy-release.sh vN.N.N
-```
-
-Its Worker secrets are `DATABASE_URL` (the `maidan-swarm` Neon project),
-`MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET` and the `S3_*` keys for
-`maidan-artifacts-swarm`, plus `MAIDAN_GITHUB_TOKEN` and
-`MAIDAN_GITHUB_WRITE_REPOS` for result delivery. The maintainer sets them with
-a script outside the repository, and keeps a copy of the content key: losing
-it loses every message's words.
-
-### Internal hosts
-
-The server can send webhooks to our own Workers without either side having a
-public API. The swarm's control plane keeps its MCP and change API off the
-internet entirely, and a review seat
-woken by a webhook needs no queue-depth poll. The request goes from the
+The server can send webhooks to an operator's own Workers without either side
+having a public API: a Worker woken by a webhook needs no queue-depth poll,
+and one that serves only through a binding keeps its API off the internet
+entirely. The request goes from the
 container to the instance's Worker and on to the other Worker over a service
 binding, and never crosses the public internet.
 
@@ -230,16 +198,16 @@ Three settings, all in the instance's Wrangler config:
 
 1. **A binding.** `services` names the Worker, and for a Worker that keeps its
    API off its public `fetch`, the named `WorkerEntrypoint`:
-   `{ "binding": "CONTROL", "service": "<the control plane's Worker>", "entrypoint": "Internal" }`.
+   `{ "binding": "HOOKS", "service": "<the receiving Worker>", "entrypoint": "Internal" }`.
 2. **The outbound map.** `MAIDAN_INTERNAL_HOSTS` maps a hostname under
-   `.internal` to that binding (`seats.internal=SEATS`). The Worker intercepts
+   `.internal` to that binding (`hooks.internal=HOOKS`). The Worker intercepts
    the container's plain-HTTP calls to each mapped name (`outboundByHost` in
    `@cloudflare/containers`) and forwards them to `env[BINDING].fetch`. A
    name not under `.internal`, or one whose binding the config does not
    declare, is not mapped. Every other host keeps the container's own internet
    egress, which the server needs for Neon, R2, GitHub and Slack.
 3. **The egress list.** `MAIDAN_INTERNAL_EGRESS_HOSTS` names, exactly, the
-   `.internal` hosts the server may send to (`seats.internal`). The egress
+   `.internal` hosts the server may send to (`hooks.internal`). The egress
    guard refuses every other `.internal` name when a webhook is registered and
    again when it is delivered. It does not check a listed name's address,
    because the container network answers the name with a placeholder that
@@ -252,23 +220,19 @@ Three settings, all in the instance's Wrangler config:
 The list covers the whole instance, so on an instance with customer workspaces
 any workspace admin could point a webhook at a listed host. The receiving
 Worker must therefore check `X-Maidan-Signature` against the subscription's
-secret, as any webhook receiver must. Only the swarm sets these today.
+secret, as any webhook receiver must.
 
-**On the swarm**, `wrangler.swarm.jsonc` binds `SEATS` to `maidan-wax-seats`
-and `PI` to `pi-waiter`, and maps `seats.internal` and `pi.internal`. A webhook
-on ready threads wakes the seat Worker, and another wakes Pi's waiter at
-`http://pi.internal/wake`:
+With `HOOKS` declared and `hooks.internal` mapped and listed, a webhook on
+ready threads wakes that Worker:
 
 ```sh
-curl -X POST https://swarm.maidan.world/workspaces/$WS/webhooks \
+curl -X POST https://<instance>/workspaces/$WS/webhooks \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"url":"http://seats.internal/wake","label":"wake the seats","event_kinds":["thread_ready"]}'
+  -d '{"url":"http://hooks.internal/wake","label":"wake the hooks Worker","event_kinds":["thread_ready"]}'
 ```
 
-The control plane's line waits until its Worker exists. Then add
-the `CONTROL` binding above to `services`, `control.internal=CONTROL`
-to `MAIDAN_INTERNAL_HOSTS`, and `control.internal` to
-`MAIDAN_INTERNAL_EGRESS_HOSTS`. The prod and dev configs declare none of this.
+The configs in this repository (prod, dev, the demo and the docs) declare none
+of this; an operator adds it to their own instance's config.
 
 ## The first admin
 

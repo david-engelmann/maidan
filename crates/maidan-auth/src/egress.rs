@@ -195,7 +195,7 @@ pub fn parse_internal_egress_hosts(raw: &str) -> Vec<String> {
 /// The `.internal` hosts this instance may send to
 /// (`MAIDAN_INTERNAL_EGRESS_HOSTS`). On Cloudflare Containers the Worker maps
 /// each to a service binding (`MAIDAN_INTERNAL_HOSTS`), so a webhook to
-/// `http://seats.internal/wake` reaches our own Worker without crossing the
+/// `http://hooks.internal/wake` reaches our own Worker without crossing the
 /// public internet. Exact names only; an unlisted `.internal` name is refused.
 pub fn internal_egress_hosts() -> Vec<String> {
     std::env::var(INTERNAL_EGRESS_HOSTS_ENV)
@@ -417,7 +417,7 @@ mod tests {
             "http://[4000::1]/x",
             "http://localhost/x",
             "http://api.localhost/x",
-            "http://seats.internal/x",
+            "http://hooks.internal/x",
         ] {
             assert!(parse_egress_target(raw).is_err(), "accepted {raw}");
         }
@@ -491,21 +491,21 @@ mod tests {
     fn the_internal_list_keeps_only_bare_names_under_internal() {
         assert_eq!(
             parse_internal_egress_hosts(
-                " Seats.Internal. , control.internal, internal, .internal, 10.0.0.5, \
+                " Hooks.Internal. , worker.internal, internal, .internal, 10.0.0.5, \
                  http://a.internal, a.internal:80, *.internal, a..internal, example.com, \
                  internal.example.com, a_b.internal, ,"
             ),
-            vec!["seats.internal", "control.internal"]
+            vec!["hooks.internal", "worker.internal"]
         );
     }
 
     #[test]
     fn a_listed_internal_host_is_allowed_over_plain_http() {
-        let internal = parse_internal_egress_hosts("seats.internal");
+        let internal = parse_internal_egress_hosts("hooks.internal");
         for raw in [
-            "http://seats.internal/wake",
-            "http://SEATS.internal./wake?thread=1",
-            "https://seats.internal/wake",
+            "http://hooks.internal/wake",
+            "http://HOOKS.internal./wake?thread=1",
+            "https://hooks.internal/wake",
         ] {
             assert_eq!(
                 access(raw, &internal).ok(),
@@ -517,19 +517,19 @@ mod tests {
         let placeholder: [SocketAddr; 1] = ["169.254.0.7:80".parse().expect("placeholder")];
         assert!(ensure_allowed_addresses(&placeholder, PrivateAccess::Internal).is_ok());
         assert!(matches!(
-            access("http://u:p@seats.internal/wake", &internal),
+            access("http://u:p@hooks.internal/wake", &internal),
             Err(EgressTargetError::Credentials)
         ));
     }
 
     #[test]
     fn nothing_but_a_listed_internal_name_opens() {
-        let internal = parse_internal_egress_hosts("seats.internal");
+        let internal = parse_internal_egress_hosts("hooks.internal");
         // An unlisted `.internal` name, even one that ends like a listed one.
         for raw in [
-            "http://control.internal/mcp",
-            "http://evil.seats.internal/wake",
-            "http://seats.internal.example.com/wake",
+            "http://worker.internal/mcp",
+            "http://evil.hooks.internal/wake",
+            "http://hooks.internal.example.com/wake",
         ] {
             let result = access(raw, &internal);
             if raw.ends_with(".com/wake") {
@@ -544,11 +544,11 @@ mod tests {
         }
         // With no list, every `.internal` name is refused, as `.localhost` is.
         assert!(matches!(
-            access("http://seats.internal/wake", &[]),
+            access("http://hooks.internal/wake", &[]),
             Err(EgressTargetError::NonPublic)
         ));
         assert!(matches!(
-            parse_egress_target("http://seats.internal/wake"),
+            parse_egress_target("http://hooks.internal/wake"),
             Err(EgressTargetError::NonPublic)
         ));
         // Plain http to a public host keeps today's rule: allowed, but with
@@ -569,9 +569,9 @@ mod tests {
             );
         }
         // The peer list does not hand an internal name the unchecked pass.
-        let peers = hosts("seats.internal");
+        let peers = hosts("hooks.internal");
         assert_eq!(
-            validate_with_peers("http://seats.internal/wake", &peers)
+            validate_with_peers("http://hooks.internal/wake", &peers)
                 .map(|(_, a)| a)
                 .ok(),
             Some(PrivateAccess::ListedPeer)
@@ -583,15 +583,15 @@ mod tests {
     /// target never widens what another may register.
     #[test]
     fn every_workspace_is_held_to_the_same_internal_list() {
-        let internal = parse_internal_egress_hosts("seats.internal");
+        let internal = parse_internal_egress_hosts("hooks.internal");
         // What two workspaces' admins each try to register, in turn.
         let workspace_a = [
-            ("http://seats.internal/wake", true),
+            ("http://hooks.internal/wake", true),
             ("http://admin.internal/x", false),
         ];
         let workspace_b = [
-            ("http://seats.internal/wake", true),
-            ("http://control.internal/x", false),
+            ("http://hooks.internal/wake", true),
+            ("http://worker.internal/x", false),
             ("http://admin.internal/x", false),
         ];
         for (target, allowed) in workspace_a.into_iter().chain(workspace_b) {

@@ -3,8 +3,8 @@
 # it. deploy-prod runs it for the new tag, and again for the tag that was
 # running when the new one fails its checks. Needs CLOUDFLARE_API_TOKEN and
 # CLOUDFLARE_ACCOUNT_ID; runs from deploy/cloudflare. DEPLOY_CONFIG and
-# DEPLOY_ORIGIN pick another instance than maidan.world (wrangler.swarm.jsonc
-# and https://swarm.maidan.world for the swarm's own Maidan).
+# DEPLOY_ORIGIN pick another instance than maidan.world: a second Wrangler
+# config kept beside this script and the origin that instance serves.
 set -euo pipefail
 tag=${1:?usage: deploy-release.sh vN.N.N}
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $tag" >&2; exit 1; }

@@ -1,6 +1,6 @@
 # Observability
 
-`maidan-swarm-dashboard.json` is a Grafana dashboard (schema 39) for a maidan
+`maidan-agent-work-dashboard.json` is a Grafana dashboard (schema 39) for a maidan
 server scraped by Prometheus. The `job` variable (default `maidan-server`) picks the scrape job. Import it through
 **Dashboards → New → Import** and pick your Prometheus data source.
 

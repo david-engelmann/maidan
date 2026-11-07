@@ -521,8 +521,8 @@ What the rule does not cover:
 
 A ticket should have one owner at a time in each repository. When the router
 stamps a thread with its Linear issue, nothing else stops a second path from
-opening another thread on the same work: ENG-6598 got a hosted Pi draft and a
-laptop session pull request at once. A ticket often has deliberate halves in
+opening another thread on the same work: one ticket can get a hosted agent's
+draft and a laptop session's pull request at once. A ticket often has deliberate halves in
 two repositories (a pull request in a web app and one in its API), so the rule that stops
 two owners is per ticket **and** repository, and a workspace makes it a
 refusal.
@@ -531,13 +531,13 @@ refusal.
 ticket carries `linear_issue` and `repo`:
 
 ```json
-{ "kind": "change", "engine": "pi", "linear_issue": "ENG-6598", "repo": "example/wax" }
+{ "kind": "change", "engine": "pi", "linear_issue": "ENG-5150", "repo": "example/widgets" }
 ```
 
 `repo` is `owner/name` (a GitHub URL is read as its `owner/name`, and any case
 is folded). A thread missing either attribute is not held to the rule, so a
 router that leaves out `repo` gets no protection. Find-by-attribute filters on
-it too: `GET /workspaces/{id}/threads?attr.repo=example/wax`, or MCP
+it too: `GET /workspaces/{id}/threads?attr.repo=example/widgets`, or MCP
 `find_threads` with `attr.repo`.
 
 **The setting.** `PUT /workspaces/{id}/unique-thread-attributes` with

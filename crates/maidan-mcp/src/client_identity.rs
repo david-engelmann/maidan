@@ -98,7 +98,7 @@ async fn credential_client(
 /// The registered OAuth client a token was issued to.
 ///
 /// TODO(Next 23, #1324/#1337): `main` has no OAuth client registry yet: the
-/// authorization server lives on Muse's branch under
+/// authorization server lives on another branch under
 /// `crates/maidan-server/src/oauth/`, which this lane does not touch. When it
 /// lands, key this on the token's issuing client (the client id the token row
 /// records, reached from `auth.token_id`) and return the client's registered

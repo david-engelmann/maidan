@@ -244,7 +244,7 @@ pub struct PreviousRead {
 /// back is said once two reads in a row agree on it and it differs from what
 /// was last said. GitHub's merge state flickers between `BLOCKED` and
 /// `CLEAN` while checks and the merge queue settle, and a gate said on every
-/// read flapped with it (WAX-D-080). A real change is said one read later.
+/// read flapped with it. A real change is said one read later.
 pub fn gate_to_say(reasons: Option<&[String]>, previous: &PreviousRead) -> Option<Vec<String>> {
     let reasons = reasons?;
     let held = previous.gate.as_deref() == Some(reasons);

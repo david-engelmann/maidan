@@ -6,9 +6,9 @@
 
 // Internal hosts: names under `.internal` that the container calls over plain
 // HTTP and one of our own Workers answers through a service binding, so a
-// webhook to the review seats or the control plane never crosses the public internet
-// and neither Worker needs a public API. `MAIDAN_INTERNAL_HOSTS` maps each
-// name to a binding (`seats.internal=SEATS,control.internal=CONTROL`).
+// webhook to another Worker never crosses the public internet and that Worker
+// needs no public API. `MAIDAN_INTERNAL_HOSTS` maps each name to a binding
+// (`hooks.internal=HOOKS,worker.internal=WORKER`).
 // A name not under `.internal`, or one whose binding this deploy does not
 // declare, is left out: every other host keeps the container's own internet
 // egress, which the server needs for Neon, R2, GitHub and Slack.

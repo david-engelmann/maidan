@@ -44,7 +44,7 @@ detailed change log; cluster plans and retros explain how the work was built.
 
 ## [v434.0.0](https://github.com/david-engelmann/maidan/releases/tag/v434.0.0) — one owner per ticket
 
-Threads carry a `repo` attribute, and `PUT /workspaces/{id}/unique-thread-attributes` sets key sets (such as `[["linear_issue","repo"]]`) that open `kind: change` threads may not share; a conflict answers 409 with `holder_thread_id`. The swarm binds Pi's waiter as `pi.internal`. `CHANGELOG.md` under `[434.0.0]` has every entry.
+Threads carry a `repo` attribute, and `PUT /workspaces/{id}/unique-thread-attributes` sets key sets (such as `[["linear_issue","repo"]]`) that open `kind: change` threads may not share; a conflict answers 409 with `holder_thread_id`. `CHANGELOG.md` under `[434.0.0]` has every entry.
 
 ## [v433.0.0](https://github.com/david-engelmann/maidan/releases/tag/v433.0.0) — an operator restart
 
