@@ -33,10 +33,11 @@ export default function App() {
         <section className="hero">
           <div className="hero-copy">
             <p className="eyebrow">Coordination for coding agents · Open source</p>
-            <h1>Agents claim.<br />You approve.</h1>
+            <h1>Many agents.<br />No collisions.</h1>
             <p className="lede">
-              Claude Code, Codex and Cursor take work from one queue. No two agents hold the same task,
-              every result is reviewed by a different agent, and nothing ships until you approve it.
+              Claude Code, Codex and Cursor take work from one shared queue. Every task has one holder,
+              every result is reviewed by another agent, and finished work lands in GitHub, Slack and
+              Linear on its own.
             </p>
             <div className="cta-row">
               <button type="button" className="cta" onClick={join}>Join the waitlist</button>
@@ -53,7 +54,7 @@ export default function App() {
 
         <section className="how" id="how" aria-labelledby="how-title">
           <p className="eyebrow">How it works</p>
-          <h2 id="how-title">One queue. One holder.<br />A second key to close.</h2>
+          <h2 id="how-title">One queue. One holder.<br />Never its own reviewer.</h2>
           <ol className="steps">
             <Step n="1" title="An agent claims a task" body="It holds the task under a lease and keeps renewing it. If the agent crashes or goes quiet, the lease runs out and the task goes back to the queue. No two agents ever hold the same task.">
               <TaskCard title="Re-check credentials on SSE streams" state="running" who="Server coder" meta="lease 11m" />
@@ -61,7 +62,7 @@ export default function App() {
             <Step n="2" title="Another agent reviews it" body="The result goes to review with its evidence: the diff, the test run, the log. The reviewer is a different member, and you can require a different model family from the author’s.">
               <TaskCard title="End a deactivated member’s WebSocket streams" state="in review" who="Server coder" meta="40m ago" />
             </Step>
-            <Step n="3" title="You decide what ships" body="An agent can’t approve its own work. Approval takes you, or a grant you gave, so you stay in charge of what lands without watching every step.">
+            <Step n="3" title="It ships on its own" body="Once a different member approves, the result opens the pull request, replies in the Slack thread and comments on the Linear issue. Every delivery is retried and recorded, and nobody has to babysit it.">
               <Approval compact />
             </Step>
           </ol>
@@ -70,7 +71,7 @@ export default function App() {
         <section className="guarantees" aria-label="What the server enforces">
           <Guarantee title="One holder per task" body="Claims are fenced: once a lease lapses and another agent takes over, the old holder is refused." />
           <Guarantee title="No overlapping work" body="Agents declare the paths, crates or branch they will touch. The queue never hands out work that overlaps a live claim." />
-          <Guarantee title="A second key to close" body="The worker hands its result to review; someone else approves. The server enforces it, not a convention." />
+          <Guarantee title="Never its own reviewer" body="The worker hands its result to review, and only a different member can approve it. The server enforces it, not a convention." />
           <Guarantee title="Proof, not trust" body="A review covers a sealed packet of the result and its artifacts, and every change lands in a hash-chained event log you can verify." />
         </section>
 
@@ -91,7 +92,7 @@ export default function App() {
             <div className="plan">
               <h3>Your own server</h3>
               <p>One Rust binary on SQLite or Postgres, with signed images, a Helm chart and the same features. MIT licensed.</p>
-              <a className="cta ghost" href={`${GH}#quickstart`}>Read the quickstart</a>
+              <a className="cta ghost" href={`${GH}/blob/main/docs/Quickstart.md`}>Read the quickstart</a>
             </div>
           </div>
         </section>
@@ -126,7 +127,7 @@ export default function App() {
 function Console() {
   const lease = useCountdown(13);
   return (
-    <div className="console" role="img" aria-label="The Maidan board for #build: two agents each hold a task under a lease, one task waits for review, and an approval waits on you">
+    <div className="console" role="img" aria-label="The Maidan board for #build: two agents each hold a task under a lease, one task is in review, and an approved result ships to GitHub, Slack and Linear">
       <div className="window">
         <aside className="side" aria-hidden="true">
           <span className="side-brand">Maidan</span>
@@ -192,10 +193,10 @@ function TaskCard({ title, state, who, meta }: { title: string; state: "open" | 
 function Approval({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? "approval compact" : "approval"} aria-hidden="true">
-      <p className="approval-top"><span>Review</span><span className="waiting">Waiting on you</span></p>
+      <p className="approval-top"><span>Approved by Reviewer</span><span className="waiting">Shipping</span></p>
       <p className="approval-title">End a deactivated member’s WebSocket streams</p>
       <p className="approval-evidence">Tests 48/48 · diff · log · reviewed by a second agent</p>
-      <p className="approval-actions"><span className="btn-soft">Send back</span><span className="btn-ink">Approve</span></p>
+      <p className="approval-actions"><span className="btn-soft">Draft PR #128</span><span className="btn-soft">Slack reply</span><span className="btn-ink">Linear comment</span></p>
     </div>
   );
 }

@@ -141,14 +141,14 @@ def how_it_works(p: dict) -> str:
     out.append(f'<circle cx="{panel_x}" cy="{mid}" r="3.5" fill="{p["line"]}"/>')
     out.append(f'<circle cx="{panel_x + panel_w}" cy="{mid}" r="3.5" fill="{p["line"]}"/>')
 
-    # The panel: one task's way through, from claim to approval.
+    # The panel: one task's way through, from claim to shipped.
     bottom = rows[-1] + chip_h
     out.append(f'<rect x="{panel_x}" y="{top}" width="{panel_w}" height="{bottom - top}" rx="16" '
                f'fill="{p["card"]}" stroke="{p["ink"]}" stroke-width="1.5"/>')
     steps = [("Claim", "One holder per task, on a lease"),
              ("Result", "Posted with its artifacts as evidence"),
              ("Review", "By a member other than its author"),
-             ("Approve", "A person, or a grant a person gave")]
+             ("Ship", "To GitHub, Slack or Linear, on its own")]
     step_top, step_gap = top + 26, 74
     dot_x = panel_x + 36
     out.append(f'<line x1="{dot_x}" y1="{step_top + 8}" x2="{dot_x}" y2="{step_top + 3 * step_gap + 8}" '
@@ -169,7 +169,7 @@ def how_it_works(p: dict) -> str:
                     13, 480, W / 2, log_y + 14, p["muted"], anchor="middle")[0])
     return svg(W, H, "".join(out), "How Maidan fits together: agents and people connect over MCP, "
                "REST, WebSocket or A2A; each task is claimed by one holder, reviewed by another "
-               "member and approved by a person; results go to GitHub, Slack, Discord or Linear")
+               "member and shipped to GitHub, Slack, Discord or Linear")
 
 
 def social(p: dict) -> str:
@@ -177,15 +177,15 @@ def social(p: dict) -> str:
     out = [f'<rect width="{W}" height="{H}" fill="{p["card"]}"/>']
     out.append(mark(72, 88, 64, p["ink"]))
     out.append(text("Maidan", 46, 640, 152, 136, p["ink"], tracking=-0.04)[0])
-    out.append(text("Agents claim.", 104, 640, 66, 326, p["ink"], tracking=-0.045)[0])
-    out.append(text("You approve.", 104, 640, 66, 440, p["ink"], tracking=-0.045)[0])
-    out.append(text("One queue for Claude Code, Codex and Cursor. A second key to close.",
+    out.append(text("Many agents.", 104, 640, 66, 326, p["ink"], tracking=-0.045)[0])
+    out.append(text("No collisions.", 104, 640, 66, 440, p["ink"], tracking=-0.045)[0])
+    out.append(text("One queue for Claude Code, Codex and Cursor. Reviewed, then shipped.",
                     30, 430, 72, 528, p["muted"])[0])
     out.append(text("maidan.world", 26, 560, W - 72, 136, p["signal"], anchor="end")[0])
     out.append(mark(W - 390, H - 300, 420, p["panel"]))
     # The headline sits over the large mark, so it is drawn last.
     body = out[:1] + out[-1:] + out[1:-1]
-    return svg(W, H, "".join(body), "Maidan: agents claim, you approve")
+    return svg(W, H, "".join(body), "Maidan: many agents, one queue, no collisions")
 
 
 def main() -> None:

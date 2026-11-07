@@ -70,12 +70,12 @@ fn the_documented_crate_count_matches_the_workspace() {
     );
 }
 
-/// The README tells a reader to pin a tag and then shows one. A tag that has
+/// The quickstart tells a reader to pin a tag and then shows one. A tag that has
 /// aged out is worse than no example: it reads as the current release and is
 /// sixty releases behind. The newest CHANGELOG entry is the in-repo stand-in
 /// for "latest release" — a retro writes it before the tag is cut.
 #[test]
-fn the_readme_image_pin_is_the_current_release() {
+fn the_quickstart_image_pin_is_the_current_release() {
     let changelog = read("CHANGELOG.md");
     let newest = changelog
         .lines()
@@ -87,45 +87,46 @@ fn the_readme_image_pin_is_the_current_release() {
         })
         .expect("CHANGELOG.md should have a released `## [X.Y.Z]` heading");
 
-    let readme = read("README.md");
-    let pinned = readme
+    let quickstart = read("docs/Quickstart.md");
+    let pinned = quickstart
         .split("ghcr.io/david-engelmann/maidan-server:v")
         .nth(1)
         .and_then(|rest| rest.split_whitespace().next())
-        .expect("README.md should show a pinned `maidan-server:vX.Y.Z` image");
+        .expect("docs/Quickstart.md should show a pinned `maidan-server:vX.Y.Z` image");
 
     assert_eq!(
         pinned, newest,
-        "README pins maidan-server:v{pinned}; newest release in CHANGELOG.md is {newest}"
+        "docs/Quickstart.md pins maidan-server:v{pinned}; newest release in CHANGELOG.md is {newest}"
     );
 }
 
-/// The README's agent-session transcript states the size of `tools/list`.
+/// The quickstart's agent-session transcript states the size of `tools/list`.
 #[test]
-fn the_readme_transcript_tool_count_matches_the_catalog() {
+fn the_quickstart_transcript_tool_count_matches_the_catalog() {
     let catalog: Vec<String> =
         serde_json::from_str(&read("contracts/mcp-tool-names.json")).expect("parse tool names");
-    let readme = read("README.md");
-    let claimed = readme
+    let quickstart = read("docs/Quickstart.md");
+    let claimed = quickstart
         .split(" tools in tools/list")
         .next()
         .and_then(|before| before.rsplit("// ").next())
         .and_then(|n| n.trim().parse::<usize>().ok())
-        .expect("README.md should say `// N tools in tools/list`");
+        .expect("docs/Quickstart.md should say `// N tools in tools/list`");
     assert_eq!(
         claimed,
         catalog.len(),
-        "README.md says {claimed} tools in tools/list; contracts/mcp-tool-names.json has {}",
+        "docs/Quickstart.md says {claimed} tools in tools/list; contracts/mcp-tool-names.json has {}",
         catalog.len()
     );
 }
 
-/// The docs site's introduction repeats the README's diagram and agent
-/// session, so a newcomer who arrives at the site sees them too. A copy that
-/// drifts from the README is worse than none.
+/// The docs site's introduction repeats the README's diagram and the
+/// quickstart's agent session, so a newcomer who arrives at the site sees them
+/// too. A copy that drifts from its source is worse than none.
 #[test]
 fn the_book_introduction_shows_the_readme_diagram_and_session_unchanged() {
     let readme = read("README.md");
+    let quickstart = read("docs/Quickstart.md");
     let intro = read("book/src/introduction.md");
     for art in ["how-it-works-light.svg", "how-it-works-dark.svg"] {
         assert!(readme.contains(art), "README.md should show {art}");
@@ -147,7 +148,7 @@ fn the_book_introduction_shows_the_readme_diagram_and_session_unchanged() {
     };
     assert_eq!(
         block(&intro),
-        block(&readme),
-        "book/src/introduction.md's agent session differs from README.md's"
+        block(&quickstart),
+        "book/src/introduction.md's agent session differs from docs/Quickstart.md's"
     );
 }

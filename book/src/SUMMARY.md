@@ -4,6 +4,7 @@
 
 # Integrate
 
+- [Quickstart](docs/Quickstart.md)
 - [Integrating with Maidan](docs/Integration.md)
 - [Integration reference](docs/Integration-Reference.md)
 - [Running an agent swarm](docs/Swarms.md)

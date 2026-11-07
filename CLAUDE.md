@@ -44,7 +44,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 
 ```sh
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
-bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
+bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the quickstart agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
 bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
@@ -156,7 +156,7 @@ Working beside other agents (several PRs are usually open at once):
   (the `changelog (released sections)` job) check the shape, duplicates, and
   that the newest tagged section gains nothing after its tag.
 - **Counters that two PRs can bump by the same line:** the MCP tool count in
-  `docs/Protocols.md`, `README.md` and `book/src/introduction.md`, and
+  `docs/Protocols.md`, `docs/Quickstart.md` and `book/src/introduction.md`, and
   migration numbers. Git merges two identical edits into one, so after a
   rebase recount rather than trusting the number, and take the next free
   migration number on `main` plus the open PRs. A conflict in a
@@ -248,7 +248,7 @@ writes `docs/Retros/Cluster N.md`, prepends a source record to
 `docs/Capabilities.md`, adds its entries to `CHANGELOG.md` under
 `[Unreleased]`, and updates Open Work. Tagging is separate: when the maintainer
 cuts a release, `scripts/check-release-records.sh` (the `release-record` job)
-requires Capabilities, CHANGELOG, this file's "latest" line and the README pins
+requires Capabilities, CHANGELOG, this file's "latest" line and the quickstart pins
 to agree on it.
 
 ## PR workflow
@@ -371,8 +371,8 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **Cutting a release means bumping every deploy pin in one PR** (Helm prod
   values for both charts, the stack's twice: server and `maidan-postgres`;
   the quickstart compose file and Dockerfile's
-  `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in the
-  README and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
+  `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in
+  `docs/Quickstart.md` and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
   with that version, but `scripts/check-deploy-pins.sh` does not check them:
   it checks `MAIDAN_VERSION` and the other pins it lists, and goes red (the
   `deploy pins` job) while any differs from the newest tagged CHANGELOG
