@@ -1,8 +1,9 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use maidan_types::{
-    ApprovalConfirmation, ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy,
-    ApprovalRisk, ConfirmOutcome, Event, GateDecisionVia, MemberId, NewApprovalConfirmation,
-    NewApprovalGate, StoredEvent, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+    ApprovalConfirmation, ApprovalGate, ApprovalGateId, ApprovalGateKind, ApprovalGateState,
+    ApprovalPolicy, ApprovalRisk, ConfirmOutcome, Event, GateDecisionVia, MemberId,
+    NewApprovalConfirmation, NewApprovalGate, StoredEvent, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+    REVIEW_ROUND_HELD_REASON,
 };
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
@@ -14,7 +15,7 @@ use crate::thread_access::readable_row;
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at, risk, \
      decided_via_client, decided_via_client_version, model_asked, decided_via_source, \
-     decided_via_client_id";
+     decided_via_client_id, kind";
 
 /// The `created_at` text form: always millisecond `...Z`, so rows and cursors
 /// compare correctly as strings.
@@ -58,6 +59,35 @@ async fn create_in_tx(
     .bind(&now)
     .bind(crate::attribution::delegate_acting_for(gate.requested_by).map(|m| m.0))
     .bind(gate.risk.as_str())
+    .fetch_one(&mut **tx)
+    .await?;
+    row_to_gate(&row)
+}
+
+/// Open a pending review-round cap on `thread_id` inside the caller's transaction.
+pub(crate) async fn open_review_round_cap(
+    tx: &mut Transaction<'_, Sqlite>,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    requested_by: MemberId,
+    prompt: &str,
+) -> Result<ApprovalGate, StoreError> {
+    let id = ApprovalGateId::new();
+    let now = ts(Utc::now());
+    let row = sqlx::query(&format!(
+        "INSERT INTO maidan_approval_gates
+             (id, workspace_id, thread_id, requested_by, prompt, state, created_at,
+              requested_actor_id, risk, kind)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 'high', 'review_round_cap')
+         RETURNING {GATE_COLUMNS}"
+    ))
+    .bind(id.0)
+    .bind(workspace_id.0)
+    .bind(thread_id.0)
+    .bind(requested_by.0)
+    .bind(prompt)
+    .bind(&now)
+    .bind(crate::attribution::delegate_acting_for(requested_by).map(|m| m.0))
     .fetch_one(&mut **tx)
     .await?;
     row_to_gate(&row)
@@ -198,8 +228,10 @@ pub async fn resolve(
     state: ApprovalGateState,
     content: Option<&serde_json::Value>,
 ) -> Result<Option<ApprovalGate>, StoreError> {
-    let mut conn = pool.acquire().await?;
-    resolve_on(&mut conn, id, resolved_by, state, content, None).await
+    let mut tx = pool.begin().await?;
+    let gate = resolve_on(&mut tx, id, resolved_by, state, content, None).await?;
+    tx.commit().await?;
+    Ok(gate)
 }
 
 async fn resolve_on(
@@ -233,7 +265,32 @@ async fn resolve_on(
     .bind(id.0)
     .fetch_optional(&mut *conn)
     .await?;
-    row.as_ref().map(row_to_gate).transpose()
+    let gate = row.as_ref().map(row_to_gate).transpose()?;
+    if let Some(gate) = &gate
+        && gate.kind == ApprovalGateKind::ReviewRoundCap
+        && matches!(
+            gate.state,
+            ApprovalGateState::Declined | ApprovalGateState::Cancelled
+        )
+        && let Some(thread_id) = gate.thread_id
+    {
+        let now = ts(Utc::now());
+        sqlx::query(
+            "INSERT INTO maidan_thread_unclaimable (thread_id, reason, marked_by, marked_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (thread_id) DO UPDATE SET
+                 reason = excluded.reason,
+                 marked_by = excluded.marked_by,
+                 marked_at = excluded.marked_at",
+        )
+        .bind(thread_id.0)
+        .bind(REVIEW_ROUND_HELD_REASON)
+        .bind(resolved_by.0)
+        .bind(&now)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(gate)
 }
 
 /// See the Postgres twin.
@@ -516,5 +573,6 @@ fn row_to_gate(row: &sqlx::sqlite::SqliteRow) -> Result<ApprovalGate, StoreError
             row.get("decided_via_source"),
             row.get::<bool, _>("model_asked"),
         ),
+        kind: ApprovalGateKind::parse(&row.get::<String, _>("kind")).unwrap_or_default(),
     })
 }

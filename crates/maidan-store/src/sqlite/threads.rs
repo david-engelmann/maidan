@@ -323,6 +323,7 @@ pub async fn assign(
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     // A reassignment ends the claim it replaces. Charge it before the write
     // clears the working clock; a free thread charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
@@ -458,6 +459,7 @@ pub async fn assign_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let previous = sqlx::query(
         "SELECT assignee_id FROM maidan_threads WHERE id = ? AND tombstoned_at IS NULL",
     )
@@ -703,6 +705,7 @@ pub async fn claim(
     // never held the thread.
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
@@ -753,6 +756,7 @@ pub async fn claim_with_event(
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(

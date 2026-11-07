@@ -25,4 +25,4 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "chaos: ops=${MAIDAN_CHAOS_OPS:-50} kill_every=${MAIDAN_CHAOS_KILL_EVERY:-10} delay_ms=${MAIDAN_CHAOS_DELAY_MS:-50}"
-cargo test -p maidan-bus --test chaos --release -- --ignored --nocapture
+cargo test -p maidan-bus --test it chaos:: --release -- --ignored --nocapture

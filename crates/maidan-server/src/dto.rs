@@ -341,10 +341,13 @@ pub struct SetMemoryBlockValue {
 }
 
 /// Set a thread's review requirement: `required_count` distinct qualifying
-/// approvals before it can `close`.
+/// approvals before it can `close`. `max_rounds` is how many send-backs one
+/// cycle allows before a person decides. Omit it to leave the cap as it is.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetReviewRequirement {
     pub required_count: i64,
+    #[serde(default)]
+    pub max_rounds: Option<i64>,
 }
 
 /// Name a reviewer for a thread — the eligible set (empty = open review).

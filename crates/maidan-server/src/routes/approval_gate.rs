@@ -14,13 +14,13 @@
 use axum::{extract::State, http::HeaderMap, Extension, Json};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{APPROVAL_GRANT, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{APPROVAL_GRANT, CHANNEL_ADMIN, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_store::approval_policy::CONFIRM_LINK_TTL_SECONDS_RANGE;
 use maidan_types::{
-    ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy, AuditScope, ConfirmOutcome,
-    MemberKind, NewAuditEvent, WorkspaceId,
+    ApprovalGate, ApprovalGateId, ApprovalGateKind, ApprovalGateState, ApprovalPolicy, AuditScope,
+    ConfirmOutcome, MemberKind, NewAuditEvent, WorkspaceId,
 };
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -96,6 +96,46 @@ async fn acceptance_credential(
         ));
     }
     Ok(())
+}
+
+const ROUND_CAP_REFUSAL: &str = "only a person or channel admin can decide a review-round cap gate";
+
+/// Who may decide a review-round cap. Accepting needs a person's signed-in
+/// session or `approval:grant`, and the person who sent the work back may
+/// still accept. Declining or cancelling also allows `channel:admin`. A
+/// worker token does neither.
+async fn decide_round_cap(
+    state: &AppState,
+    auth: &AuthContext,
+    session: Option<&SessionContext>,
+    headers: &HeaderMap,
+    target: ApprovalGateState,
+) -> ApiResult<()> {
+    if auth.bypass {
+        return Ok(());
+    }
+    let person = acceptance_credential(state, auth, session, headers).await;
+    match target {
+        ApprovalGateState::Accepted => round_cap_refusal(person),
+        ApprovalGateState::Declined | ApprovalGateState::Cancelled => {
+            if auth.has_capability(CHANNEL_ADMIN) {
+                return Ok(());
+            }
+            round_cap_refusal(person)
+        }
+        ApprovalGateState::Pending => Err(ApiError::BadRequest(
+            "action must be accept, decline, or cancel".into(),
+        )),
+    }
+}
+
+/// A missing credential is the round-cap refusal. A store failure stays a
+/// store failure: folding it into 403 hides the outage from the caller.
+fn round_cap_refusal(result: ApiResult<()>) -> ApiResult<()> {
+    match result {
+        Err(ApiError::Forbidden(_)) => Err(ApiError::Forbidden(ROUND_CAP_REFUSAL.into())),
+        other => other,
+    }
 }
 
 /// List a workspace's pending approval gates, each with its `request_state`.
@@ -192,10 +232,15 @@ pub async fn answer_approval_gate(
     if !verify_request_state(&body.request_state, gate.id, secret) {
         return Err(ApiError::Forbidden("invalid request_state".into()));
     }
-    // Nobody accepts a gate they asked for, whichever identity they asked or
-    // answer under, and whatever credential they hold. Declining or
-    // cancelling your own request is not approving it, and stays open.
-    if target == ApprovalGateState::Accepted && !auth.bypass {
+    // A review-round cap is the server asking a person whether another round
+    // should run. The reviewer who sent the work back may still decide it.
+    // A worker token may not.
+    if gate.kind == ApprovalGateKind::ReviewRoundCap {
+        decide_round_cap(&state, &auth, session.as_deref(), &headers, target).await?;
+    } else if target == ApprovalGateState::Accepted && !auth.bypass {
+        // Nobody accepts a gate they asked for, whichever identity they asked or
+        // answer under, and whatever credential they hold. Declining or
+        // cancelling your own request is not approving it, and stays open.
         let asked = [Some(gate.requested_by), gate.requested_actor_id];
         let answering = [auth.member_id, auth.actor_id];
         if answering.iter().any(|m| asked.contains(&Some(*m))) {
@@ -303,6 +348,8 @@ const CONFIRM_NEEDS: &str = "confirming a model's approval request needs the sig
 /// holding that token could otherwise finish the confirmation itself. The link is
 /// bound to the member whose credential the model used, so only that person's
 /// session can spend it, and nobody confirms acceptance of their own request.
+/// A review-round cap is the exception: the person who sent the work back is
+/// the requester, and that same person is who the confirmation link is for.
 /// The gate is recorded as decided via the client the model asked through.
 ///
 /// A link that is unknown, someone else's, for another workspace, used or
@@ -345,7 +392,12 @@ pub async fn confirm_approval_gate(
         .ok_or(ApiError::NotFound)?;
     let asked = [Some(gate.requested_by), gate.requested_actor_id];
     let answering = [auth.member_id, auth.actor_id];
-    if answering.iter().any(|m| asked.contains(&Some(*m))) {
+    // The cap gate's requester is the reviewer the link was sent to. Refusing
+    // them here leaves the gate pending forever when they confirm from the
+    // console. Every other gate still refuses a self-grant.
+    if gate.kind != ApprovalGateKind::ReviewRoundCap
+        && answering.iter().any(|m| asked.contains(&Some(*m)))
+    {
         return Err(ApiError::Forbidden(
             "an approval cannot be granted by whoever requested it".into(),
         ));

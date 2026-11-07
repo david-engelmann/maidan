@@ -39,31 +39,43 @@ pub async fn set_review_requirement(
     if body.required_count < 0 {
         return Err(ApiError::BadRequest("required_count must be >= 0".into()));
     }
+    if body.max_rounds.is_some_and(|n| n < 0) {
+        return Err(ApiError::BadRequest("max_rounds must be >= 0".into()));
+    }
     // Raising `k` is a tightening any transitioner may do. Lowering it — `0`
     // included, which disarms the gate — is the waiver, and needs
-    // `channel:admin`. The early read gives a clear 403; the store decides
-    // again inside the write, where a concurrent change cannot outrun it.
-    let current = state
-        .store
-        .get_review_requirement(thread_id)
-        .await?
-        .map(|r| r.required_count)
-        .unwrap_or(0);
-    if body.required_count < current {
+    // `channel:admin`. The same split applies to the send-back cap: a tighter
+    // cap is a transition, and raising or removing it is the waiver. The early
+    // read gives a clear 403; the store decides again inside the write, where
+    // a concurrent change cannot outrun it.
+    let current = state.store.get_review_requirement(thread_id).await?;
+    let current_count = current.as_ref().map(|r| r.required_count).unwrap_or(0);
+    let current_rounds = current
+        .as_ref()
+        .map(|r| r.max_rounds)
+        .unwrap_or(DEFAULT_MAX_REVIEW_ROUNDS);
+    if body.required_count < current_count {
+        cap(&auth, CHANNEL_ADMIN)?;
+    }
+    if body
+        .max_rounds
+        .is_some_and(|next| max_rounds_loosens(current_rounds, next))
+    {
         cap(&auth, CHANNEL_ADMIN)?;
     }
     let allow_lower = cap(&auth, CHANNEL_ADMIN).is_ok();
     let actor = auth.actor_id;
-    let (_, req) = state
+    let change = state
         .store
         .set_review_requirement_audited(
             thread_id,
             body.required_count,
+            body.max_rounds,
             allow_lower,
-            Box::new(move |(from, req)| review_requirement_event(workspace_id, actor, *from, req)),
+            Box::new(move |change| review_requirement_event(workspace_id, actor, change)),
         )
         .await?;
-    Ok(Json(req))
+    Ok(Json(change.requirement))
 }
 
 /// The record of a review-requirement write. A lowering is the waiver and keeps
@@ -71,13 +83,16 @@ pub async fn set_review_requirement(
 fn review_requirement_event(
     workspace_id: WorkspaceId,
     actor: MemberId,
-    from: i64,
-    req: &ThreadReviewRequirement,
+    change: &ReviewRequirementChange,
 ) -> NewAuditEvent {
+    let req = &change.requirement;
+    let count_lower = req.required_count < change.previous_count;
+    let rounds_lower = req.max_rounds != change.previous_max_rounds
+        && max_rounds_loosens(change.previous_max_rounds, req.max_rounds);
     NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
         actor_id: Some(actor),
-        action: if req.required_count < from {
+        action: if count_lower || rounds_lower {
             "review_requirement.lower"
         } else {
             "review_requirement.set"
@@ -85,7 +100,12 @@ fn review_requirement_event(
         .into(),
         target_kind: Some("thread".into()),
         target_id: Some(req.thread_id.0),
-        metadata: serde_json::json!({ "from": from, "to": req.required_count }),
+        metadata: serde_json::json!({
+            "from": change.previous_count,
+            "to": req.required_count,
+            "previous_max_rounds": change.previous_max_rounds,
+            "max_rounds": req.max_rounds,
+        }),
     }
 }
 

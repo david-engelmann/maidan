@@ -8,7 +8,7 @@ use maidan_types::{
     AllowedEgressTarget, AppId, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
     ChannelMemberRole, EgressTargetId, Member, MemberFreeze, MemberId, NewAuditEvent,
     NewEgressTarget, NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent,
-    ThreadId, ThreadReviewRequirement, WorkspaceId,
+    ThreadId, WorkspaceId,
 };
 use sqlx::PgPool;
 
@@ -106,9 +106,10 @@ pub async fn set_review_requirement(
     pool: &PgPool,
     thread_id: ThreadId,
     required_count: i64,
+    max_rounds: Option<i64>,
     allow_lower: bool,
-    audit_for: AuditFor<(i64, ThreadReviewRequirement)>,
-) -> Result<(i64, ThreadReviewRequirement), StoreError> {
+    audit_for: AuditFor<maidan_types::ReviewRequirementChange>,
+) -> Result<maidan_types::ReviewRequirementChange, StoreError> {
     let mut tx = pool.begin().await?;
     // Serialize every write to this thread's requirement, the first included:
     // with no row yet there is nothing else to lock.
@@ -116,15 +117,32 @@ pub async fn set_review_requirement(
         .bind(thread_id.0)
         .fetch_optional(&mut *tx)
         .await?;
-    let previous = reviews::get_requirement_on(&mut tx, thread_id)
-        .await?
-        .map(|r| r.required_count)
-        .unwrap_or(0);
-    if required_count < previous && !allow_lower {
+    let existing = reviews::get_requirement_on(&mut tx, thread_id).await?;
+    let previous_count = existing.as_ref().map(|r| r.required_count).unwrap_or(0);
+    let previous_max_rounds = existing
+        .as_ref()
+        .map(|r| r.max_rounds)
+        .unwrap_or(maidan_types::DEFAULT_MAX_REVIEW_ROUNDS);
+    if required_count < previous_count && !allow_lower {
         return Err(StoreError::Conflict(crate::REVIEW_LOWER_REFUSAL.into()));
     }
-    let requirement = reviews::set_requirement_on(&mut tx, thread_id, required_count).await?;
-    let change = (previous, requirement);
+    if let Some(next) = max_rounds {
+        if next < 0 {
+            return Err(StoreError::InvalidInput("max_rounds must be >= 0".into()));
+        }
+        if maidan_types::max_rounds_loosens(previous_max_rounds, next) && !allow_lower {
+            return Err(StoreError::Conflict(
+                crate::REVIEW_ROUND_LOOSEN_REFUSAL.into(),
+            ));
+        }
+    }
+    let requirement =
+        reviews::set_requirement_on(&mut tx, thread_id, required_count, max_rounds).await?;
+    let change = maidan_types::ReviewRequirementChange {
+        previous_count,
+        previous_max_rounds,
+        requirement,
+    };
     audit::append_scoped(
         &mut tx,
         crate::audit_scope::AuditOwner::Thread(thread_id),
@@ -140,8 +158,24 @@ pub async fn clear_review_requirement(
     thread_id: ThreadId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, crate::audit_scope::AuditOwner::Thread(thread_id), |tx| reviews::clear_requirement_on(&mut tx, thread_id).await?,
-        cleared => cleared.then_some(event))
+    let mut tx = pool.begin().await?;
+    // The audited setter locks the thread before it reads the cap. A clear
+    // that does not take the same lock can land between that read and write.
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let cleared = reviews::clear_requirement_on(&mut tx, thread_id).await?;
+    if cleared {
+        audit::append_scoped(
+            &mut tx,
+            crate::audit_scope::AuditOwner::Thread(thread_id),
+            event,
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(cleared)
 }
 
 pub async fn remove_reviewer(

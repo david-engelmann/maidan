@@ -21,6 +21,8 @@ use crate::error::McpError;
 struct SetRequirementArgs {
     thread_id: uuid::Uuid,
     required_count: i64,
+    #[serde(default)]
+    max_rounds: Option<i64>,
 }
 
 /// Set (upsert) a thread's review requirement — `required_count` distinct
@@ -36,13 +38,17 @@ pub(super) async fn set_review_requirement(
             "required_count must be >= 0".into(),
         ));
     }
+    if a.max_rounds.is_some_and(|n| n < 0) {
+        return Err(McpError::InvalidParams("max_rounds must be >= 0".into()));
+    }
     let thread_id = ThreadId(a.thread_id);
     // A gate ratchets. Raising `k` is a tightening any transitioner may do;
     // lowering it — `0` included, which disarms the gate — is the waiver, and
-    // answers to `channel:admin`. The dispatch capability is static per tool,
-    // so the direction has to be checked here.
-    // The store makes the decision inside the write, where a concurrent change
-    // cannot turn a raise into a lowering; this only says who may lower.
+    // answers to `channel:admin`. The send-back cap works the same way: a
+    // tighter cap is a transition, and raising or removing it is the waiver.
+    // The dispatch capability is static per tool, so the direction has to be
+    // checked here. The store makes the decision inside the write, where a
+    // concurrent change cannot turn a raise into a lowering.
     let allow_lower = auth.bypass
         || maidan_auth::require_observed_capability(
             auth,
@@ -50,21 +56,41 @@ pub(super) async fn set_review_requirement(
             maidan_auth::capability::CHANNEL_ADMIN,
         )
         .is_ok();
+    let current = store.get_review_requirement(thread_id).await?;
+    let current_count = current.as_ref().map(|r| r.required_count).unwrap_or(0);
+    let current_rounds = current
+        .as_ref()
+        .map(|r| r.max_rounds)
+        .unwrap_or(maidan_types::DEFAULT_MAX_REVIEW_ROUNDS);
+    if !allow_lower && a.required_count < current_count {
+        return Err(McpError::Forbidden(
+            "lowering a review requirement needs the channel:admin capability".into(),
+        ));
+    }
+    if !allow_lower
+        && a.max_rounds
+            .is_some_and(|next| maidan_types::max_rounds_loosens(current_rounds, next))
+    {
+        return Err(McpError::Forbidden(
+            "raising or removing a review-round cap needs the channel:admin capability".into(),
+        ));
+    }
     let actor = auth.actor_id;
     let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
-    let (_, req) = store
+    let change = store
         .set_review_requirement_audited(
             thread_id,
             a.required_count,
+            a.max_rounds,
             allow_lower,
-            Box::new(move |(from, req)| {
-                let mut event = review_requirement_event(workspace_id, actor, *from, req);
+            Box::new(move |change| {
+                let mut event = review_requirement_event(workspace_id, actor, change);
                 event.metadata["surface"] = json!("mcp");
                 event
             }),
         )
         .await?;
-    Ok(content_json(&req))
+    Ok(content_json(&change.requirement))
 }
 
 /// The record of a review-requirement write, as REST writes it: a lowering is
@@ -72,13 +98,16 @@ pub(super) async fn set_review_requirement(
 fn review_requirement_event(
     workspace_id: maidan_types::WorkspaceId,
     actor: MemberId,
-    from: i64,
-    req: &maidan_types::ThreadReviewRequirement,
+    change: &maidan_types::ReviewRequirementChange,
 ) -> maidan_types::NewAuditEvent {
+    let req = &change.requirement;
+    let count_lower = req.required_count < change.previous_count;
+    let rounds_lower = req.max_rounds != change.previous_max_rounds
+        && maidan_types::max_rounds_loosens(change.previous_max_rounds, req.max_rounds);
     maidan_types::NewAuditEvent {
         scope: maidan_types::AuditScope::Workspace(workspace_id),
         actor_id: Some(actor),
-        action: if req.required_count < from {
+        action: if count_lower || rounds_lower {
             "review_requirement.lower"
         } else {
             "review_requirement.set"
@@ -86,7 +115,12 @@ fn review_requirement_event(
         .into(),
         target_kind: Some("thread".into()),
         target_id: Some(req.thread_id.0),
-        metadata: json!({ "from": from, "to": req.required_count }),
+        metadata: json!({
+            "from": change.previous_count,
+            "to": req.required_count,
+            "previous_max_rounds": change.previous_max_rounds,
+            "max_rounds": req.max_rounds,
+        }),
     }
 }
 

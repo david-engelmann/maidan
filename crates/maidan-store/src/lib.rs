@@ -131,6 +131,11 @@ pub const SIGNUP_IDENTITY_TAKEN: &str =
 /// and the caller may not. Checked in the write's transaction.
 pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
+
+/// Why a review-round cap write was refused: it would raise or remove the cap
+/// and the caller may not. Checked in the write's transaction.
+pub const REVIEW_ROUND_LOOSEN_REFUSAL: &str =
+    "raising or removing a review-round cap needs the channel:admin capability";
 mod attestation;
 pub mod automation_deliveries;
 pub mod blob_reap_retry;

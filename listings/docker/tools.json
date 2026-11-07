@@ -581,7 +581,7 @@
       "name": "wait_for_memory_block"
     },
     {
-      "description": "Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.",
+      "description": "Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. max_rounds is how many send-backs one cycle allows before a person decides whether it goes around again (default 3; 0 leaves it uncapped). Omit max_rounds to leave the cap as it is. Tightening the cap needs thread:transition. Raising or removing it needs channel:admin. Requires thread:transition.",
       "name": "set_review_requirement"
     },
     {
