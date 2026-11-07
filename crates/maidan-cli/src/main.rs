@@ -9,9 +9,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{resolve_bearer, AuthContext};
 use maidan_bus::InMemoryBus;
 use maidan_mcp::{run_stdio, McpServer};
-use maidan_search::{
-    EmbeddingHandler, Indexer, LoggingHandler, PostgresSearch, Search, SqliteSearch,
-};
+use maidan_search::{EmbeddingHandler, Indexer, PostgresSearch, Search, SqliteSearch};
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
 };
@@ -59,6 +57,12 @@ enum Commands {
         /// setting it to `0` turns it off instead of quietly turning it on.
         #[arg(long)]
         allow_insecure_no_auth: bool,
+        /// Embedding model provider, the same names as `reindex-embeddings`
+        /// and the server. `hash-v1` is local. `openai-compatible` reads
+        /// `MAIDAN_EMBEDDING_ENDPOINT`, `MAIDAN_EMBEDDING_MODEL` and the other
+        /// `MAIDAN_EMBEDDING_*` variables. An unknown name fails at startup.
+        #[arg(long, env = "MAIDAN_EMBEDDING_PROVIDER", default_value = "hash-v1")]
+        embedding_provider: String,
     },
     /// Re-embed all live messages for the configured provider model.
     #[command(name = "reindex-embeddings")]
@@ -175,7 +179,16 @@ async fn run() -> anyhow::Result<()> {
             database_url,
             artifact_root,
             allow_insecure_no_auth,
-        } => run_mcp_stdio(&database_url, &artifact_root, allow_insecure_no_auth).await,
+            embedding_provider,
+        } => {
+            run_mcp_stdio(
+                &database_url,
+                &artifact_root,
+                allow_insecure_no_auth,
+                &embedding_provider,
+            )
+            .await
+        }
         Commands::ReindexEmbeddings {
             database_url,
             embedding_provider,
@@ -294,11 +307,24 @@ async fn run_rotate_workspace_key(
     Ok(())
 }
 
+/// A blank workspace name or admin handle must fail before any connection
+/// is opened. The store inserts whatever string it is given.
+fn reject_blank_identity(workspace_name: &str, admin_handle: &str) -> anyhow::Result<()> {
+    if workspace_name.trim().is_empty() {
+        anyhow::bail!("workspace name must not be empty");
+    }
+    if admin_handle.trim().is_empty() {
+        anyhow::bail!("admin handle must not be empty");
+    }
+    Ok(())
+}
+
 async fn run_init(
     database_url: &str,
     workspace_name: &str,
     admin_handle: &str,
 ) -> anyhow::Result<()> {
+    reject_blank_identity(workspace_name, admin_handle)?;
     // Before touching the database: a missing KEK refuses with nothing written.
     let content_keys = content_keyring().await?;
     let store = open_store(database_url, content_keys).await?;
@@ -451,11 +477,90 @@ async fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> 
         .map_err(anyhow::Error::msg)
 }
 
+/// Highest search-event id strictly after `start`. `Some(0)` means nothing
+/// newer needs projecting, so the caller must not wait for the old cursor.
+/// `None` means the deadline passed mid-walk. The deadline is checked before
+/// every query, and the caller polls the probe with no further reads.
+async fn highest_search_event_id(
+    store: &dyn Store,
+    start: i64,
+    deadline: tokio::time::Instant,
+) -> anyhow::Result<Option<i64>> {
+    let mut after = start;
+    let mut highest: Option<i64> = None;
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
+        match store
+            .oldest_event_after_of_kinds(after, maidan_types::SEARCH_PROJECTOR_KINDS)
+            .await
+            .context("read search events")?
+        {
+            Some((id, _)) => {
+                highest = Some(id);
+                after = id;
+            }
+            None => return Ok(Some(highest.unwrap_or(0))),
+        }
+    }
+}
+
+/// `mcp-stdio` used to drop the indexer the moment stdin closed, which aborted
+/// an embed still in flight. Wait until the projector has handled message
+/// events posted after the search cursor, or two seconds, whichever comes first.
+async fn wait_for_search_projection(
+    store: &dyn Store,
+    processed_log_id: &std::sync::atomic::AtomicI64,
+    deadline: tokio::time::Instant,
+) {
+    use std::sync::atomic::Ordering;
+    let start = processed_log_id.load(Ordering::Relaxed).max(
+        store
+            .tap_cursor(maidan_search::SEARCH_TAP_SURFACE)
+            .await
+            .unwrap_or(0),
+    );
+    let target = match highest_search_event_id(store, start, deadline).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            tracing::warn!("search event walk timed out before mcp-stdio exit");
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "could not read search events before mcp-stdio exit"
+            );
+            return;
+        }
+    };
+    loop {
+        if processed_log_id.load(Ordering::Relaxed) >= target {
+            return;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!(
+                processed = processed_log_id.load(Ordering::Relaxed),
+                target,
+                "search indexer still behind at mcp-stdio exit"
+            );
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
 async fn run_mcp_stdio(
     database_url: &str,
     artifact_root: &Path,
     allow_insecure_no_auth: bool,
+    embedding_provider_name: &str,
 ) -> anyhow::Result<()> {
+    // A bad provider name fails before the database is opened, same as
+    // `reindex-embeddings`.
+    let embedding_provider =
+        maidan_search::provider_from_name(embedding_provider_name).context("embedding provider")?;
     let content_keys = content_keyring().await?;
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let (store, search) = match dialect {
@@ -494,20 +599,28 @@ async fn run_mcp_stdio(
     )
     .await?;
 
-    let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
-        Arc::new(maidan_search::HashV1Provider);
+    search
+        .ensure_model(embedding_provider.as_ref())
+        .await
+        .context("register embedding model")?;
     let bus = Arc::new(InMemoryBus::with_capacity(256));
-    let indexer_handler: Arc<dyn maidan_search::EventHandler> = match dialect {
-        Dialect::Sqlite => Arc::new(LoggingHandler::default()),
-        Dialect::Postgres => Arc::new(EmbeddingHandler::new(
-            store.clone(),
-            search.clone(),
-            embedding_provider.clone(),
-        )),
-    };
-    let _indexer = Indexer::new(bus.clone(), indexer_handler).spawn();
-    let server = McpServer::new(store, artifacts, search, embedding_provider).with_event_bus(bus);
-    tokio::task::spawn_blocking(move || {
+    let indexer_handler: Arc<dyn maidan_search::EventHandler> = Arc::new(EmbeddingHandler::new(
+        store.clone(),
+        search.clone(),
+        embedding_provider.clone(),
+    ));
+    // The caller keeps `processed_log_id`. The handle does not expose it, and
+    // dropping the handle aborts the task before an in-flight embed finishes.
+    let processed_log_id = Arc::new(std::sync::atomic::AtomicI64::new(0));
+    let indexer = Indexer::new(bus.clone(), indexer_handler)
+        .with_log(store.clone())
+        .spawn_with_probes(
+            Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            processed_log_id.clone(),
+        );
+    let server =
+        McpServer::new(store.clone(), artifacts, search, embedding_provider).with_event_bus(bus);
+    let joined = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -515,9 +628,19 @@ async fn run_mcp_stdio(
         rt.block_on(run_stdio(&server, &auth))
             .map_err(anyhow::Error::from)
     })
-    .await
-    .context("stdio task join")?
-    .context("mcp stdio")?;
+    .await;
+    // One budget for the walk, the wait, and shutdown. A remote embedder's
+    // own timeout is longer than this, and shutdown must not outlive it.
+    let drain_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    wait_for_search_projection(store.as_ref(), &processed_log_id, drain_deadline).await;
+    let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
+    if tokio::time::timeout(remaining, indexer.shutdown())
+        .await
+        .is_err()
+    {
+        tracing::warn!("timed out waiting for search indexer shutdown at mcp-stdio exit");
+    }
+    joined.context("stdio task join")?.context("mcp stdio")?;
     Ok(())
 }
 
@@ -530,7 +653,7 @@ async fn run_reindex_embeddings(
         maidan_search::provider_from_name(provider_name).context("embedding provider")?;
     let workspace = workspace_id.map(maidan_types::WorkspaceId);
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
-    match dialect {
+    let report = match dialect {
         Dialect::Sqlite => {
             let pool = connect_sqlite(database_url, 4).await?;
             maidan_store::configure_sqlite_pool(&pool)
@@ -540,14 +663,9 @@ async fn run_reindex_embeddings(
                 .await
                 .context("migrate sqlite")?;
             let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool.clone()));
-            let report =
-                maidan_search::reindex_sqlite(&pool, search.as_ref(), &provider, workspace, None)
-                    .await
-                    .context("reindex")?;
-            println!(
-                "reindex complete: processed={} failed={}",
-                report.processed, report.failed
-            );
+            maidan_search::reindex_sqlite(&pool, search.as_ref(), &provider, workspace, None)
+                .await
+                .context("reindex")?
         }
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
@@ -559,15 +677,20 @@ async fn run_reindex_embeddings(
                 .await
                 .context("migrate postgres")?;
             let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool.clone()));
-            let report =
-                maidan_search::reindex_postgres(&pool, search.as_ref(), &provider, workspace, None)
-                    .await
-                    .context("reindex")?;
-            println!(
-                "reindex complete: processed={} failed={}",
-                report.processed, report.failed
-            );
+            maidan_search::reindex_postgres(&pool, search.as_ref(), &provider, workspace, None)
+                .await
+                .context("reindex")?
         }
+    };
+    println!(
+        "reindex complete: processed={} failed={}",
+        report.processed, report.failed
+    );
+    if report.failed > 0 {
+        anyhow::bail!(
+            "reindex incomplete: {} message(s) failed to embed",
+            report.failed
+        );
     }
     Ok(())
 }
@@ -580,6 +703,9 @@ async fn run_verify_shredding(
     let residue = match Dialect::from_url(database_url).context("detect dialect")? {
         Dialect::Sqlite => {
             let pool = connect_sqlite(database_url, 1).await?;
+            maidan_store::configure_sqlite_pool(&pool)
+                .await
+                .context("configure sqlite pragmas")?;
             maidan_store::find_shred_residue_sqlite(&pool, workspace).await
         }
         Dialect::Postgres => {
@@ -668,5 +794,18 @@ mod stdio_auth_tests {
     #[test]
     fn the_flag_alone_serves_unrestricted() {
         assert_eq!(plan_stdio_auth(None, true), StdioAuth::Unrestricted);
+    }
+}
+
+#[cfg(test)]
+mod init_input_tests {
+    use super::reject_blank_identity;
+
+    #[test]
+    fn a_blank_workspace_name_or_admin_handle_is_refused() {
+        assert!(reject_blank_identity("  ", "admin").is_err());
+        assert!(reject_blank_identity("maidan", " \t").is_err());
+        assert!(reject_blank_identity("", "").is_err());
+        assert!(reject_blank_identity("maidan", "admin").is_ok());
     }
 }
