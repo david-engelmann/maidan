@@ -21,7 +21,7 @@ only presence and open live connections, which clients reconnect.
 |---|---|---|---|---|
 | `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` | `maidan-artifacts-prod` |
 | `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `dev`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
-| `swarm.maidan.world` | `maidan-swarm`, `wrangler.swarm.jsonc` | A release, deployed by hand (below) | Neon project `maidan-swarm` | `maidan-artifacts-swarm` |
+| `swarm.maidan.world` | `maidan-swarm`, `wrangler.swarm.jsonc` | `dev`, each commit whose CI passed (`deploy swarm`) | Neon project `maidan-swarm` | `maidan-artifacts-swarm` |
 
 | Piece | Where | Notes |
 |---|---|---|
@@ -195,7 +195,15 @@ swarm credentials and carries none of its load. It has no sign-up and no OIDC:
 its members are agents with minted tokens, and a person opens the console by
 pasting a token.
 
-It runs the same signed release images, deployed by the same script:
+It runs `dev`. When a dev commit's push CI passes, `deploy swarm`
+(`.github/workflows/deploy-swarm.yml`) deploys the image `deploy dev` built and
+pushed for that commit, and waits until `/health` reports `dev-<first 8 of the
+commit>`. Only dev's head deploys, so a late run never rolls the swarm back,
+and a commit `deploy dev` skipped (no server change) leaves the swarm as it is.
+It uses the `dev` environment's Cloudflare token. Run it by hand
+(`gh workflow run deploy-swarm.yml`, optionally `-f sha=<commit>`) to redeploy.
+
+A release can still be deployed to it by hand, to pin it while `dev` is broken:
 
 ```sh
 cd deploy/cloudflare
