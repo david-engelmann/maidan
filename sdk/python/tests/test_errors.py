@@ -1,7 +1,9 @@
 """Unit tests for the problem-type errors and forward-compatible models (no server)."""
 
+import email.utils
 import io
 import json
+import time
 import urllib.error
 from email.message import Message
 
@@ -109,6 +111,20 @@ def test_retry_after_is_kept_on_an_overloaded_503():
     with pytest.raises(OverloadedError) as ei:
         answering(503, body, {"Retry-After": "7"}).threads.get("t")
     assert ei.value.retry_after == 7.0
+
+
+def test_retry_after_rejects_junk_and_reads_a_date():
+    base = "https://maidan.world/problems"
+    with pytest.raises(OverloadedError) as busy:
+        answering(503, {"type": f"{base}/overloaded", "title": "Busy", "status": 503}, {"Retry-After": "nan"}).threads.get("t")
+    assert busy.value.retry_after is None
+    with pytest.raises(OverloadedError) as negative:
+        answering(503, {"type": f"{base}/overloaded", "title": "Busy", "status": 503}, {"Retry-After": "-5"}).threads.get("t")
+    assert negative.value.retry_after is None
+    dated = email.utils.formatdate(time.time() + 7, usegmt=True)
+    with pytest.raises(OverloadedError) as later:
+        answering(503, {"type": f"{base}/overloaded", "title": "Busy", "status": 503}, {"Retry-After": dated}).threads.get("t")
+    assert later.value.retry_after is not None and later.value.retry_after >= 0
 
 
 def test_members_a_model_does_not_declare_are_kept_in_extra():
