@@ -875,6 +875,12 @@ pub struct ChangeResult {
     /// flow's only force write. Anything but a JSON `true` is a normal round,
     /// so a stray string can never ask for a force move.
     pub rebase: bool,
+    /// `branch_head_sha`: the change branch's remote head when the round
+    /// started. A rebase round's diff is the whole branch as it stood then,
+    /// so the force move is leased on it: a commit that landed on the branch
+    /// since would be dropped by the move. Required for a rebase round, which
+    /// is refused without it. `None` when absent or not a full SHA.
+    pub branch_head_sha: Option<String>,
     /// The Linear issue the change is for (`ENG-1234`), as the producer
     /// reports it. Recorded on the pull request, so a later fix that names
     /// the same issue can be matched to it. `None` when absent or not an
@@ -1024,6 +1030,7 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string),
         rebase: obj.get("rebase").and_then(Value::as_bool) == Some(true),
+        branch_head_sha: text("branch_head_sha").filter(|s| is_git_sha(s)),
         linear_issue: text("linear_issue")
             .map(|key| key.trim().to_string())
             .filter(|key| is_issue_key(key)),
@@ -2195,6 +2202,29 @@ mod tests {
             let mut env = change_envelope(json!([]));
             env["rebase"] = value.clone();
             assert_eq!(parse_change_result(&env).unwrap().rebase, want, "{value}");
+        }
+    }
+
+    #[test]
+    fn a_change_result_reads_branch_head_sha_only_when_it_is_a_full_sha() {
+        let env = change_envelope(json!([]));
+        assert_eq!(parse_change_result(&env).unwrap().branch_head_sha, None);
+        for (value, want) in [
+            (json!(SHA), Some(SHA)),
+            (json!("b5e54f9"), None),
+            (json!("not hex at all, but forty characters long"), None),
+            (json!(42), None),
+        ] {
+            let mut env = change_envelope(json!([]));
+            env["branch_head_sha"] = value.clone();
+            assert_eq!(
+                parse_change_result(&env)
+                    .unwrap()
+                    .branch_head_sha
+                    .as_deref(),
+                want,
+                "{value}"
+            );
         }
     }
 

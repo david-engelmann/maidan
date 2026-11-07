@@ -1,0 +1,5 @@
+### A rebase round may build on a base the base branch has since moved past
+
+- **Fixed:** a squash-rebase round (`"rebase": true`) no longer has to name the base branch's exact head. On a busy base a producer's rebase takes long enough that the base moves, and every round was refused. Maidan now accepts `base_sha` when it is on the base branch (GitHub's compare of `base_sha...<base head>` is `ahead` or `identical`) and no older than the base work the branch already holds (the merge base of the branch head and the base head is `base_sha` or one of its ancestors). Each refusal names the rule that failed; the exact head still passes without a compare.
+- **Changed:** a rebase result must carry `branch_head_sha`, the branch head the round started from. Without it the round is refused; when the branch is no longer there it is refused with "the branch moved since this round started (expected X, found Y)", and the force move is leased on it.
+- **Changed:** a rebase round records how far its `base_sha` is behind the base, as a normal round does, instead of 0.

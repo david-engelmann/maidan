@@ -464,6 +464,24 @@ pub struct GitCommit {
     pub message: String,
 }
 
+/// Where one commit stands against another, as
+/// `GET /repos/{repo}/compare/{base}...{head}` says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitComparison {
+    /// `ahead`, `behind`, `identical` or `diverged`: `head` against `base`.
+    pub status: String,
+    /// The newest commit `base` and `head` both contain.
+    pub merge_base: String,
+}
+
+impl GitComparison {
+    /// Whether `base` is `head` or one of its ancestors: `head` is `ahead`
+    /// of it or `identical` to it.
+    pub fn base_is_ancestor(&self) -> bool {
+        matches!(self.status.as_str(), "ahead" | "identical")
+    }
+}
+
 /// One entry of `POST /repos/{repo}/git/trees`. `blob_sha: None` deletes
 /// `path` from the base tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -757,6 +775,16 @@ pub trait GithubGit: Send + Sync {
             ahead: None,
         })
     }
+    /// `GET /repos/{repo}/compare/{base}...{head}` for two commit SHAs:
+    /// whether `base` is an ancestor of `head`, and their merge base. A read,
+    /// for the squash-rebase round's base rules. A SHA GitHub does not know
+    /// answers `not found`.
+    async fn compare_commits(
+        &self,
+        repo: &str,
+        base: &str,
+        head: &str,
+    ) -> Result<GitComparison, GithubError>;
     /// `GET /repos/{repo}/compare/{branch}...{sha}`: whether `sha` is on
     /// `branch` already (behind it or identical). A read, for a pull request
     /// closed without merging whose head a stack tool landed. The default
@@ -1818,6 +1846,35 @@ impl GithubGit for GithubApiClient {
             value.get("status").and_then(serde_json::Value::as_str),
             Some("behind" | "identical")
         ))
+    }
+
+    async fn compare_commits(
+        &self,
+        repo: &str,
+        base: &str,
+        head: &str,
+    ) -> Result<GitComparison, GithubError> {
+        for sha in [base, head] {
+            if !maidan_types::is_git_sha(sha) {
+                return Err(GithubError::Refused(format!("`{sha}` is not a commit")));
+            }
+        }
+        // One commit per page: only the status and the merge base are read,
+        // and a long range would otherwise list up to 250 commits.
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/compare/{base}...{head}?per_page=1"),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(GitComparison {
+            status: field(&value, "/status")?,
+            merge_base: field(&value, "/merge_base_commit/sha")?,
+        })
     }
 
     async fn job_log_tail(

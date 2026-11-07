@@ -180,6 +180,42 @@ impl Fake {
         Some(String::from_utf8(self.blobs[blob].clone()).unwrap())
     }
 
+    /// `sha` and every commit it descends from.
+    fn ancestors(&self, sha: &str) -> HashSet<String> {
+        let mut seen = HashSet::new();
+        let mut todo = vec![sha.to_string()];
+        while let Some(next) = todo.pop() {
+            if let Some(commit) = self.commits.get(&next) {
+                todo.extend(commit.parents.iter().cloned());
+            }
+            seen.insert(next);
+        }
+        seen
+    }
+
+    /// GitHub's compare of `base...head`: `head`'s status against `base`,
+    /// and the newest commit both contain.
+    fn compare(&self, base: &str, head: &str) -> (&'static str, String) {
+        let (of_base, of_head) = (self.ancestors(base), self.ancestors(head));
+        let status = match (base == head, of_head.contains(base), of_base.contains(head)) {
+            (true, _, _) => "identical",
+            (_, true, _) => "ahead",
+            (_, _, true) => "behind",
+            _ => "diverged",
+        };
+        let common: Vec<&String> = of_base.intersection(&of_head).collect();
+        let merge_base = common
+            .iter()
+            .find(|c| {
+                !common
+                    .iter()
+                    .any(|d| d != *c && self.ancestors(d).contains(c.as_str()))
+            })
+            .map(|c| c.to_string())
+            .unwrap_or_default();
+        (status, merge_base)
+    }
+
     fn writes(&self) -> Vec<&String> {
         self.requests
             .iter()
@@ -430,6 +466,18 @@ async fn github(
                 .into_response()
         }
         ("GET", r) if r.starts_with("compare/") => {
+            // Two known commits are compared on the commit graph, as the
+            // rebase's base rules need; a branch name keeps the canned answer.
+            if let Some((base, head)) = r["compare/".len()..].split_once("...")
+                && fake.commits.contains_key(base)
+                && fake.commits.contains_key(head)
+            {
+                let (status, merge_base) = fake.compare(base, head);
+                return reply(
+                    StatusCode::OK,
+                    json!({"status": status, "merge_base_commit": {"sha": merge_base}}),
+                );
+            }
             let head = r.rsplit("...").next().unwrap_or_default();
             let status = if fake.on_base.iter().any(|sha| sha == head) {
                 "behind"
@@ -3831,11 +3879,13 @@ async fn a_fresh_base_delivery_gets_no_notice() {
 
 // ---------------------------------------------------------------- squash-rebase rounds
 
-/// A squash-rebase result: `base_sha` is the base branch's head and `diff`
-/// the whole branch against it.
-fn rebase_change(base_sha: &str, diff: &str) -> Value {
+/// A squash-rebase result: `base_sha` is a commit of the base branch,
+/// `started_from` the branch head the round started from, and `diff` the
+/// whole branch against `base_sha`.
+fn rebase_change(base_sha: &str, started_from: &str, diff: &str) -> Value {
     let mut result = change("changed", base_sha, BRANCH, diff);
     result["rebase"] = json!(true);
+    result["branch_head_sha"] = json!(started_from);
     result
 }
 
@@ -3868,7 +3918,11 @@ async fn delivered_then_base_moved(h: &Harness) -> (String, String) {
 async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_retry_reuses_it() {
     let h = harness().await;
     let (delivered, new_base) = delivered_then_base_moved(&h).await;
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    // The rebase builds on `dev`'s head, which GitHub's compare counts as
+    // behind by nothing.
+    h.fake.lock().unwrap().behind = Some(0);
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
 
     let row = h.delivery(&h.a, "github_branch").await;
@@ -3980,7 +4034,7 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
 async fn a_rebase_round_posts_its_check_on_the_new_head() {
     let h = harness().await;
     let (delivered, new_base) = delivered_then_base_moved(&h).await;
-    let mut result = rebase_change(&new_base, DIFF);
+    let mut result = rebase_change(&new_base, &delivered, DIFF);
     result["check"] = json!({"context": "seat/prepush", "state": "pending"});
     h.route(&h.a, &result, 2).await;
     h.drain().await;
@@ -4004,7 +4058,8 @@ async fn a_rebase_whose_range_comment_fails_still_lands_and_says_it_in_slack() {
     let h = harness().await;
     let (delivered, new_base) = delivered_then_base_moved(&h).await;
     h.fake.lock().unwrap().fail_comments = true;
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
 
     let row = h.delivery(&h.a, "github_branch").await;
@@ -4047,7 +4102,8 @@ async fn a_rebase_over_a_commit_someone_else_pushed_is_refused_naming_both_shas(
         f.refs.insert(BRANCH.into(), foreign.clone());
         (foreign, f.writes().len())
     };
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
     assert_rebase_refused(
         &h,
@@ -4058,21 +4114,131 @@ async fn a_rebase_over_a_commit_someone_else_pushed_is_refused_naming_both_shas(
     .await;
 }
 
+/// The producer rebased onto `dev`'s head, and `dev` moved on while it
+/// worked. Its base is behind the head but newer than what the branch had,
+/// so the move takes the branch forward and is delivered.
 #[tokio::test]
-async fn a_rebase_whose_base_sha_is_not_the_base_head_is_refused() {
+async fn a_rebase_onto_a_base_commit_the_base_has_since_moved_past_is_delivered() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let newer = {
+        let mut f = h.fake.lock().unwrap();
+        let newer = f.commit_files(
+            &[
+                ("README.md", "readme, revised twice on dev\n"),
+                ("src/greeting.txt", GREETING),
+                ("src/bridge/x.rs", BRIDGE),
+            ],
+            vec![new_base.clone()],
+        );
+        f.refs.insert("dev".into(), newer.clone());
+        newer
+    };
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let f = h.fake.lock().unwrap();
+    let head = f.refs[BRANCH].clone();
+    assert_eq!(f.commits[&head].parents, vec![new_base.clone()]);
+    assert_eq!(f.refs["dev"], newer, "the base is left where it moved");
+    assert_eq!(
+        f.forced,
+        vec![(BRANCH.to_string(), delivered.clone(), head.clone())]
+    );
+}
+
+/// The branch already holds `dev`'s newer commit (a first rebase put it
+/// there); a second rebase onto the older base would drop that commit, so it
+/// is refused, naming both.
+#[tokio::test]
+async fn a_rebase_onto_a_base_older_than_the_branch_already_has_is_refused() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let (rebased, writes_before) = {
+        let f = h.fake.lock().unwrap();
+        (f.refs[BRANCH].clone(), f.writes().len())
+    };
+
+    h.route(&h.a, &rebase_change(&h.base_sha, &rebased, DIFF), 3)
+        .await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    for part in [h.base_sha.as_str(), new_base.as_str(), "older"] {
+        assert!(reason.contains(part), "{part:?} not in {reason}");
+    }
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.writes().len(), writes_before, "{:?}", f.writes());
+    assert_eq!(f.forced.len(), 1, "only the first rebase forced");
+    assert_eq!(f.refs[BRANCH], rebased);
+}
+
+/// A commit off to the side of `dev` is no base to rebase onto, however
+/// it relates to the branch.
+#[tokio::test]
+async fn a_rebase_onto_a_commit_not_on_the_base_is_refused() {
+    let h = harness().await;
+    let (delivered, _new_base) = delivered_then_base_moved(&h).await;
+    let (side, writes_before) = {
+        let mut f = h.fake.lock().unwrap();
+        let side = f.commit_files(
+            &[
+                ("README.md", "readme, on a side line\n"),
+                ("src/greeting.txt", GREETING),
+                ("src/bridge/x.rs", BRIDGE),
+            ],
+            vec![h.base_sha.clone()],
+        );
+        (side, f.writes().len())
+    };
+    h.route(&h.a, &rebase_change(&side, &delivered, DIFF), 2)
+        .await;
+    h.drain().await;
+    assert_rebase_refused(&h, writes_before, &delivered, &[&side, "not on `dev`"]).await;
+}
+
+#[tokio::test]
+async fn a_rebase_that_does_not_name_the_head_it_started_from_is_refused() {
     let h = harness().await;
     let (delivered, new_base) = delivered_then_base_moved(&h).await;
     let writes_before = h.fake.lock().unwrap().writes().len();
-    // Built on the old base: a rebase must never move a branch backwards.
-    h.route(&h.a, &rebase_change(&h.base_sha, DIFF), 2).await;
+    let mut result = rebase_change(&new_base, &delivered, DIFF);
+    result.as_object_mut().unwrap().remove("branch_head_sha");
+    h.route(&h.a, &result, 2).await;
     h.drain().await;
     assert_rebase_refused(
         &h,
         writes_before,
         &delivered,
-        &[&h.base_sha, &new_base, "not the head of `dev`"],
+        &["a rebase result must name branch_head_sha, the branch head the round started from"],
     )
     .await;
+}
+
+/// The round started from another head than the branch has now: its diff
+/// does not describe the branch the move would replace.
+#[tokio::test]
+async fn a_rebase_that_started_from_another_head_is_refused_naming_both() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let writes_before = h.fake.lock().unwrap().writes().len();
+    h.route(&h.a, &rebase_change(&new_base, &h.base_sha, DIFF), 2)
+        .await;
+    h.drain().await;
+    let expected = format!(
+        "the branch moved since this round started (expected {}, found {delivered})",
+        h.base_sha
+    );
+    assert_rebase_refused(&h, writes_before, &delivered, &[&expected]).await;
 }
 
 #[tokio::test]
@@ -4086,7 +4252,8 @@ async fn a_rebase_of_a_pull_request_in_the_merge_queue_is_refused() {
         f.pulls[0].labels.push("ready-to-merge".into());
         f.writes().len()
     };
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
     assert_rebase_refused(&h, writes_before, &delivered, &["merge queue"]).await;
 }
@@ -4102,7 +4269,8 @@ async fn a_rebase_with_no_open_pull_request_or_a_diff_that_does_not_apply_writes
         f.refs.insert(BRANCH.into(), lone.clone());
         lone
     };
-    h.route(&h.a, &rebase_change(&h.base_sha, DIFF), 1).await;
+    h.route(&h.a, &rebase_change(&h.base_sha, &lone, DIFF), 1)
+        .await;
     h.drain().await;
     assert_rebase_refused(&h, 0, &lone, &["needs the open pull request"]).await;
 
@@ -4111,7 +4279,8 @@ async fn a_rebase_with_no_open_pull_request_or_a_diff_that_does_not_apply_writes
     let (delivered, new_base) = delivered_then_base_moved(&h).await;
     let writes_before = h.fake.lock().unwrap().writes().len();
     let stale = DIFF.replace("-hello\n", "-goodbye\n");
-    h.route(&h.a, &rebase_change(&new_base, &stale), 2).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, &stale), 2)
+        .await;
     h.drain().await;
     assert_rebase_refused(&h, writes_before, &delivered, &["does not apply"]).await;
 }
@@ -4151,7 +4320,8 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
         .await
         .unwrap();
     let writes_before = h.fake.lock().unwrap().writes().len();
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
     assert_rebase_refused(&h, writes_before, &theirs, &[&theirs, &delivered]).await;
 
@@ -4162,7 +4332,8 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
         &format!("{REPO}@dev"),
     )
     .await;
-    h.route(&h.b, &rebase_change(&new_base, DIFF), 3).await;
+    h.route(&h.b, &rebase_change(&new_base, &theirs, DIFF), 3)
+        .await;
     h.drain().await;
     let row = h.delivery(&h.b, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
@@ -4191,7 +4362,8 @@ async fn only_the_workspace_that_delivered_a_round_may_rebase_a_registered_pull(
     )
     .await;
 
-    h.route(&h.b, &rebase_change(&new_base, DIFF), 2).await;
+    h.route(&h.b, &rebase_change(&new_base, &delivered, DIFF), 2)
+        .await;
     h.drain().await;
     let row = h.delivery(&h.b, "github_branch").await;
     assert_eq!(row.status, status::SKIPPED);
@@ -4203,7 +4375,8 @@ async fn only_the_workspace_that_delivered_a_round_may_rebase_a_registered_pull(
         assert_eq!(f.refs[BRANCH], delivered);
     }
 
-    h.route(&h.a, &rebase_change(&new_base, DIFF), 3).await;
+    h.route(&h.a, &rebase_change(&new_base, &delivered, DIFF), 3)
+        .await;
     h.drain().await;
     let f = h.fake.lock().unwrap();
     assert_eq!(f.forced.len(), 1, "the deliverer rebases: {:?}", f.forced);
