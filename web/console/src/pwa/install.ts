@@ -47,13 +47,18 @@ export async function promptInstall(): Promise<boolean> {
   const d = deferred;
   deferred = null;
   set({ ...state, canPrompt: false });
-  await d.prompt();
-  return (await d.userChoice).outcome === "accepted";
+  try {
+    await d.prompt();
+    return (await d.userChoice).outcome === "accepted";
+  } catch {
+    return false;
+  }
 }
 
 /** The push manager of the console's worker, or null when push is unavailable. */
 export async function consolePushManager(): Promise<PushManager | null> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return null;
-  const reg = (await navigator.serviceWorker.getRegistration("/ui/")) ?? (await navigator.serviceWorker.register("/ui/sw.js", { scope: "/ui/", type: "module" }));
-  return reg.pushManager;
+  const reg = (await navigator.serviceWorker.getRegistration("/ui/").catch(() => null))
+    ?? (await navigator.serviceWorker.register("/ui/sw.js", { scope: "/ui/", type: "module" }).catch(() => null));
+  return reg?.pushManager ?? null;
 }

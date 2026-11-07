@@ -27,7 +27,7 @@ export function writeQuery(q: BoardQuery): string {
   if (q.agent) p.set("agent", q.agent);
   if (q.state) p.set("state", q.state);
   if (q.q.trim()) p.set("q", q.q);
-  if (q.task && q.channel) p.set("channel", q.channel);
+  if ((q.task || filtering(q)) && q.channel) p.set("channel", q.channel);
   if (q.task) p.set("task", q.task);
   const s = p.toString();
   return s ? `#/board?${s}` : "#/board";

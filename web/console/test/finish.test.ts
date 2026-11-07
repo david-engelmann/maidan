@@ -58,7 +58,7 @@ test("connect leads with OAuth sign-in and keeps the token snippets as the fallb
   );
   const all = snippets("https://m.example");
   // Sign-in snippets come first and need nothing pasted in; only the token ones name the placeholder.
-  assert.deepEqual(all.map((s) => s.id), ["url", "claude-oauth", "prompt", "json", "claude"]);
+  assert.deepEqual(all.map((s) => s.id), ["url", "claude-oauth", "prompt", "json", "claude", "codex"]);
   for (const s of all) assert.equal(s.text.includes(TOKEN_PLACEHOLDER), s.token, s.id);
 });
 
