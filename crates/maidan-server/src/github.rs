@@ -629,7 +629,8 @@ pub enum MarkReadyOutcome {
 
 /// The GitHub calls the change flow makes: read a branch and the files a diff
 /// touches, write blobs, a tree and a commit, move the branch, find or open
-/// its draft pull request, and — the deliberate exceptions —
+/// its draft pull request, post the producer's own check as a commit status
+/// on the head it delivered, and — the deliberate exceptions —
 /// [`GithubGit::set_pull_ready`] and [`GithubGit::force_move_branch`].
 /// Nothing else here approves, merges, requests a review, comments, deletes a
 /// branch, force-pushes or touches repository settings, and there is
@@ -712,6 +713,17 @@ pub trait GithubGit: Send + Sync {
         repo: &str,
         pull_number: i64,
         body: &str,
+    ) -> Result<(), GithubError>;
+    /// `POST /repos/{repo}/statuses/{sha}`: the producer's `check` as a
+    /// commit status on `sha`, the head the change flow just delivered. A
+    /// commit status, not a check run, so a personal access token can post
+    /// it. A status says what the producer's check found; it approves and
+    /// blocks nothing by itself.
+    async fn create_commit_status(
+        &self,
+        repo: &str,
+        sha: &str,
+        check: &maidan_types::ChangeCheck,
     ) -> Result<(), GithubError>;
     /// `GET /repos/{repo}/compare/{base_sha}...{branch}`: how many commits
     /// `branch` has gained since `base_sha`, for the stale-base warning.
@@ -1675,6 +1687,25 @@ impl GithubGit for GithubApiClient {
         Ok(())
     }
 
+    async fn create_commit_status(
+        &self,
+        repo: &str,
+        sha: &str,
+        check: &maidan_types::ChangeCheck,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        // The SHA is a path segment: only a full commit SHA is ever sent.
+        if !maidan_types::is_git_sha(sha) {
+            return Err(GithubError::Refused(format!("`{sha}` is not a commit")));
+        }
+        let request = self
+            .request(reqwest::Method::POST, repo, &format!("/statuses/{sha}"))
+            .await?
+            .json(&commit_status_body(check));
+        self.send_json(request).await?;
+        Ok(())
+    }
+
     async fn pull_brief(
         &self,
         repo: &str,
@@ -2101,6 +2132,22 @@ pub(crate) fn check_run_body(check: &GithubCheckRun) -> serde_json::Value {
     });
     if let Some(url) = &check.details_url {
         body["details_url"] = serde_json::json!(url);
+    }
+    body
+}
+
+/// JSON body for `POST /repos/{repo}/statuses/{sha}`. The commit is in the
+/// path, named by the caller as the head it delivered, never one looked up.
+pub(crate) fn commit_status_body(check: &maidan_types::ChangeCheck) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "state": check.state.as_str(),
+        "context": check.context,
+    });
+    if let Some(description) = &check.description {
+        body["description"] = serde_json::json!(description);
+    }
+    if let Some(url) = &check.target_url {
+        body["target_url"] = serde_json::json!(url);
     }
     body
 }

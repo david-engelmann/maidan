@@ -500,6 +500,9 @@ def deliver(args, maidan, key, thread_id, repo, checkout, usage, renewer):
               "--claim-lease-id", renewer.lease_id]
     if attributes.get("linear_issue"):
         helper += ["--linear-issue", attributes["linear_issue"]]
+    # Only a change whose gate passed gets this far: say so on the commit.
+    helper += ["--check-context", "claimant/gate", "--check-state", "success",
+               "--check-description", f"{args.gate} passed"]
     built = subprocess.run(helper, capture_output=True, text=True, timeout=300)
     if built.returncode == 0:
         status, answer = maidan.rest("PUT", f"/threads/{thread_id}/result", raw=out_file.read_bytes())

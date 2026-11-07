@@ -880,6 +880,112 @@ pub struct ChangeResult {
     /// the same issue can be matched to it. `None` when absent or not an
     /// issue key.
     pub linear_issue: Option<String>,
+    /// `check`: the producer's own check of the change before it was
+    /// delivered, posted as a commit status on the head Maidan delivers.
+    /// `None` when absent; `Some(Err(reason))` when malformed, which skips the
+    /// status and never the delivery.
+    pub check: Option<Result<ChangeCheck, String>>,
+}
+
+/// The longest commit status `context` a change result may name.
+pub const CHANGE_CHECK_CONTEXT_MAX_CHARS: usize = 100;
+
+/// GitHub's limit on a commit status `description`.
+pub const CHANGE_CHECK_DESCRIPTION_MAX_CHARS: usize = 140;
+
+/// A commit status `state`, as GitHub names them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitStatusState {
+    Success,
+    Failure,
+    Error,
+    Pending,
+}
+
+impl CommitStatusState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Failure => "failure",
+            Self::Error => "error",
+            Self::Pending => "pending",
+        }
+    }
+
+    /// Exactly one of the four lowercase names, as GitHub accepts them.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "success" => Some(Self::Success),
+            "failure" => Some(Self::Failure),
+            "error" => Some(Self::Error),
+            "pending" => Some(Self::Pending),
+            _ => None,
+        }
+    }
+}
+
+/// A change result's `check`: what the producer's own pre-delivery check of
+/// the change said, for a commit status on the delivered head. A commit
+/// status rather than a check run, because a personal access token can post
+/// one and only a GitHub App can create a check run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeCheck {
+    /// The status context, trimmed: non-empty, printable, at most
+    /// [`CHANGE_CHECK_CONTEXT_MAX_CHARS`].
+    pub context: String,
+    pub state: CommitStatusState,
+    /// One line, cut to [`CHANGE_CHECK_DESCRIPTION_MAX_CHARS`]. `None` when
+    /// absent or blank.
+    pub description: Option<String>,
+    /// The envelope's `view_url`, when it is an https URL: where the status
+    /// links to.
+    pub target_url: Option<String>,
+}
+
+/// Read a change result's `check` object, or say why it is unusable.
+fn parse_change_check(value: &Value, target_url: Option<&str>) -> Result<ChangeCheck, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "`check` is not an object".to_string())?;
+    let context = match obj.get("context").and_then(Value::as_str).map(str::trim) {
+        Some(context) if !context.is_empty() => context,
+        _ => return Err("`check.context` is missing or empty".into()),
+    };
+    if context.chars().count() > CHANGE_CHECK_CONTEXT_MAX_CHARS {
+        return Err(format!(
+            "`check.context` is longer than {CHANGE_CHECK_CONTEXT_MAX_CHARS} characters"
+        ));
+    }
+    if context.chars().any(char::is_control) {
+        return Err("`check.context` holds a character that does not print".into());
+    }
+    let state = obj
+        .get("state")
+        .and_then(Value::as_str)
+        .and_then(CommitStatusState::parse)
+        .ok_or_else(|| {
+            "`check.state` is not one of `success`, `failure`, `error` or `pending`".to_string()
+        })?;
+    let description = match obj.get("description") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(text)) => {
+            // GitHub shows the description on one line: line breaks and
+            // other control characters become single spaces.
+            let line = text
+                .split(char::is_control)
+                .flat_map(str::split_whitespace)
+                .collect::<Vec<_>>()
+                .join(" ");
+            (!line.is_empty()).then(|| clip_chars(&line, CHANGE_CHECK_DESCRIPTION_MAX_CHARS))
+        }
+        Some(_) => return Err("`check.description` is not a string".into()),
+    };
+    Ok(ChangeCheck {
+        context: context.to_string(),
+        state,
+        description,
+        target_url: target_url.and_then(https_details_url),
+    })
 }
 
 impl ChangeResult {
@@ -921,6 +1027,10 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
         linear_issue: text("linear_issue")
             .map(|key| key.trim().to_string())
             .filter(|key| is_issue_key(key)),
+        check: obj
+            .get("check")
+            .filter(|check| !check.is_null())
+            .map(|check| parse_change_check(check, waiter.view_url.as_deref())),
     })
 }
 
@@ -1948,6 +2058,125 @@ mod tests {
         let mut review = change_envelope(json!([]));
         review["result_kind"] = json!(EXAMPLE_REVIEW_RESULT_KIND);
         assert!(parse_change_result(&review).is_none());
+    }
+
+    #[test]
+    fn a_change_result_reads_a_valid_check() {
+        let mut env = change_envelope(json!([]));
+        env["check"] =
+            json!({"context": " ci/prepush ", "state": "failure", "description": "2 tests failed"});
+        assert_eq!(
+            parse_change_result(&env).unwrap().check,
+            Some(Ok(ChangeCheck {
+                context: "ci/prepush".into(),
+                state: CommitStatusState::Failure,
+                description: Some("2 tests failed".into()),
+                target_url: None,
+            }))
+        );
+        env["view_url"] = json!("https://runs.example.com/42");
+        let linked = parse_change_result(&env).unwrap().check.unwrap().unwrap();
+        assert_eq!(
+            linked.target_url.as_deref(),
+            Some("https://runs.example.com/42")
+        );
+        env["view_url"] = json!("http://runs.example.com/42");
+        let plain = parse_change_result(&env).unwrap().check.unwrap().unwrap();
+        assert_eq!(plain.target_url, None, "only an https link is sent");
+        for state in ["success", "failure", "error", "pending"] {
+            env["check"] = json!({"context": "ci/prepush", "state": state});
+            let check = parse_change_result(&env).unwrap().check.unwrap().unwrap();
+            assert_eq!(check.state.as_str(), state);
+            assert_eq!(check.description, None);
+        }
+    }
+
+    #[test]
+    fn a_change_result_without_a_check_has_none() {
+        assert_eq!(
+            parse_change_result(&change_envelope(json!([])))
+                .unwrap()
+                .check,
+            None
+        );
+        let mut env = change_envelope(json!([]));
+        env["check"] = Value::Null;
+        assert_eq!(parse_change_result(&env).unwrap().check, None);
+    }
+
+    #[test]
+    fn a_malformed_check_is_recorded_with_its_reason_and_the_change_still_parses() {
+        let long = "c".repeat(CHANGE_CHECK_CONTEXT_MAX_CHARS + 1);
+        for (check, why) in [
+            (json!("success"), "not an object"),
+            (json!({"state": "success"}), "context"),
+            (json!({"context": "  ", "state": "success"}), "context"),
+            (json!({"context": 7, "state": "success"}), "context"),
+            (
+                json!({"context": long, "state": "success"}),
+                "longer than 100",
+            ),
+            (
+                json!({"context": "ci\nprepush", "state": "success"}),
+                "does not print",
+            ),
+            (json!({"context": "ci/prepush"}), "state"),
+            (
+                json!({"context": "ci/prepush", "state": "SUCCESS"}),
+                "state",
+            ),
+            (json!({"context": "ci/prepush", "state": "passed"}), "state"),
+            (
+                json!({"context": "ci/prepush", "state": "success", "description": 3}),
+                "description",
+            ),
+        ] {
+            let mut env = change_envelope(json!([]));
+            env["check"] = check.clone();
+            let change = parse_change_result(&env).expect("the change still parses");
+            assert_eq!(change.base_sha.as_deref(), Some(SHA));
+            let reason = change.check.expect("recorded").expect_err("malformed");
+            assert!(reason.contains(why), "{check}: {reason}");
+        }
+        let at_limit = "c".repeat(CHANGE_CHECK_CONTEXT_MAX_CHARS);
+        let mut env = change_envelope(json!([]));
+        env["check"] = json!({"context": at_limit, "state": "pending"});
+        assert!(matches!(
+            parse_change_result(&env).unwrap().check,
+            Some(Ok(_))
+        ));
+    }
+
+    #[test]
+    fn a_long_check_description_is_cut_to_githubs_limit_on_one_line() {
+        let mut env = change_envelope(json!([]));
+        let long = format!("first line\nsecond {}", "é".repeat(300));
+        env["check"] = json!({"context": "ci/prepush", "state": "success", "description": long});
+        let description = parse_change_result(&env)
+            .unwrap()
+            .check
+            .unwrap()
+            .unwrap()
+            .description
+            .unwrap();
+        assert_eq!(
+            description.chars().count(),
+            CHANGE_CHECK_DESCRIPTION_MAX_CHARS
+        );
+        assert!(
+            description.starts_with("first line second é"),
+            "{description}"
+        );
+        assert!(description.ends_with('…'));
+
+        let exact = "d".repeat(CHANGE_CHECK_DESCRIPTION_MAX_CHARS);
+        env["check"]["description"] = json!(exact.clone());
+        let kept = parse_change_result(&env).unwrap().check.unwrap().unwrap();
+        assert_eq!(kept.description.as_deref(), Some(exact.as_str()));
+
+        env["check"]["description"] = json!("  \n ");
+        let blank = parse_change_result(&env).unwrap().check.unwrap().unwrap();
+        assert_eq!(blank.description, None);
     }
 
     #[test]

@@ -300,6 +300,7 @@ The envelope's fields:
 | `title` | the pull request title (conventions below) |
 | `summary` | the pull request body (conventions below) |
 | `linear_issue` | the tracker key, when there is one |
+| `check` | optional `{context, state, description}`: the gate you ran (`--check-context`, `--check-state`, `--check-description`); Maidan posts it as a commit status on the head it delivers |
 | `deliver_to` | copied from the opening message, plus the `github_branch` target |
 
 For a non-`changed` status the envelope is small: call `set_thread_result`

@@ -8297,7 +8297,7 @@
             "type": "string"
           },
           "template_warnings": {
-            "description": "For a change: what its pull request lacks against the producer's\ntemplate (`missing_testing`, `missing_issue_key`). A flag, not a\nfailure: the change landed either way. Absent when nothing is missing.",
+            "description": "For a change: what its pull request lacks against the producer's\ntemplate (`missing_testing`, `missing_issue_key`), and why the result's\n`check` became no commit status (`check_invalid`, `check_not_posted`).\nA flag, not a failure: the change landed either way. Absent when nothing\nis missing.",
             "items": {
               "type": "string"
             },
