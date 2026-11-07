@@ -84,7 +84,12 @@ tagged() {
 
 record_on_dev() {
   local version="$1"
-  if git show origin/dev:docs/Capabilities.md | grep -m 1 -E '^## \[v[0-9]' | grep -qF "## [v${version}]"; then
+  # Read the file whole first: `grep -m 1` closing the pipe early would kill
+  # `git show` with SIGPIPE, and under pipefail the test would fail even
+  # when the record is there, so a rerun cut the release a second time.
+  local head
+  head="$(git show origin/dev:docs/Capabilities.md | sed -n '/^## \[v[0-9]/{p;q;}')" || true
+  if [[ "$head" == "## [v${version}]"* ]]; then
     git log --first-parent --format=%H -S "## [v${version}](" origin/dev -- docs/Capabilities.md | tail -n 1
   fi
 }
