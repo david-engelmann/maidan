@@ -26,7 +26,7 @@ export type Block =
   | { kind: "table"; header: Inline[][]; rows: Inline[][][] };
 
 // Quote characters are written as \x escapes so source scanners that pair quotes stay in step.
-const FENCE = /^(`{3,}|~{3,})([\w+-]*)[ \t]*$/;
+const FENCE = /^(\x60{3,}|~{3,})([\w+-]*)[ \t]*$/;
 const HEADING = /^(#{1,6})[ \t]+(.*)$/;
 const HR = /^(?:-{3,}|\*{3,}|_{3,})[ \t]*$/;
 const UL = /^[ \t]*[-*][ \t]+(.*)$/;
