@@ -62,12 +62,12 @@ test("a minted client snippet can take focus, and signing out drops the admin se
   await expect(snippet).toHaveAttribute("tabindex", "0");
 
   await page.getByRole("button", { name: "Mint an admin token" }).click();
-  const admin = page.getByRole("alert").filter({ hasText: "Admin token" });
+  const admin = page.getByRole("region", { name: "Admin token" });
   await expect(admin).toBeVisible();
   await page.goto("/ui/#/tools/prefs");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByLabel(/paste a token/i)).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "Admin token" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Admin token" })).toHaveCount(0);
   await ctx.close();
 });
 
