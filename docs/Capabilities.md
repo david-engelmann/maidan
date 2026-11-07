@@ -42,6 +42,54 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v435.0.0](https://github.com/david-engelmann/maidan/releases/tag/v435.0.0) — the README shows the product, and the tagline says what it does, and 40 more
+
+Many agents, no collisions: a new face for the README and landing page, Maidan free of private names, results that deliver everywhere and fence late writers, claims that survive a restart, and a batch of security, console and SDK fixes.
+
+- The README shows the product, and the tagline says what it does
+- The public tree names no private project or deployment
+- The boot notice names the build
+- A result aimed at a surface the server cannot send to fails, naming the setting
+- The landing page carries the mark and leaves the questions to the FAQ
+- A change result carries its producer's check onto the delivered commit
+- A release is one button: the cut release workflow
+- The A2A client keeps streaming text intact and refuses a cleartext token
+- A multipart upload cannot reach another workspace's blob
+- Egress, resume tokens and bus listeners are tightened
+- Search keeps a broken workspace broken, and embeddings stay bounded
+- A WASI guest cannot spend the host's memory from a syscall
+- A revoked webhook gets no retries, and a path is not a slash command
+- CI jobs hold only the permissions they use
+- Stdio sessions embed messages, and a failed reindex exits non-zero
+- The remaining crates link their tests once
+- The hosted container receives the secrets it boots with
+- A task stops returning to the queue after three review rounds
+- A long seat run keeps its claim
+- Activity stays in its workspace and can be narrowed
+- A screen can fail without taking the console with it
+- The catalog filters tools by role and shows what a call really requires
+- The channel menu does not pretend a vanished channel is chosen
+- Connect, the board link, and install stay accurate
+- Live resume, push notifications and toasts stay in their own place
+- Messages keep their paragraphs, lists and links
+- Console panel buttons match the rest
+- The task sheet and People show work across the workspace
+- The console follows a conversation, a card past the first page, and a file
+- A sign-in stays in the workspace it belongs to
+- The shell and Needs you stay with the person who is signed in
+- The console's controls stay a full touch target
+- Tools names the task, the channel and the person
+- The docs book wears steel and signal
+- The Go client's subscription names the host the way a browser does
+- The hosted pages and the live demo meet the same bar as the front page
+- The landing page can be used from the keyboard
+- Approval and consent keep a 44px target
+- A quiet subscription stays open, and a slow answer cannot hold a call
+- A lost answer is retried instead of taken twice
+- A server restart keeps the claims in flight
+
+`CHANGELOG.md` under `[435.0.0]` has every entry.
+
 ## [v434.0.0](https://github.com/david-engelmann/maidan/releases/tag/v434.0.0) — one owner per ticket
 
 Threads carry a `repo` attribute, and `PUT /workspaces/{id}/unique-thread-attributes` sets key sets (such as `[["linear_issue","repo"]]`) that open `kind: change` threads may not share; a conflict answers 409 with `holder_thread_id`. `CHANGELOG.md` under `[434.0.0]` has every entry.
