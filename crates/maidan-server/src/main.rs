@@ -1007,6 +1007,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // left unacknowledged (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`, 120 s) and
     // threads whose agent's wait on a person went unanswered
     // (`MAIDAN_HUMAN_TIMEOUT_SECS`, 3600 s).
+    // The boot grace first, whether or not the reaper runs: `claim_next`
+    // takes lapsed leases over too, and a holder cut off by this restart
+    // should get its claim back (`MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS`, 600 s).
+    maidan_server::claim_reaper::start_boot_grace(
+        state.store.as_ref(),
+        maidan_server::claim_reaper::boot_grace_from_env(),
+    );
     if let Some(reaper_cfg) = maidan_server::claim_reaper::config_from_env() {
         let reaper_state = state.clone();
         tokio::spawn(async move {

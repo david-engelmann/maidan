@@ -43,6 +43,7 @@ fn item_row(row: &sqlx::sqlite::SqliteRow) -> ItemRow {
 /// Replace `thread_id`'s footprint; see the Postgres twin.
 pub async fn set(
     pool: &SqlitePool,
+    grace: &crate::claim_grace::ClaimGrace,
     thread_id: ThreadId,
     footprint: Option<Footprint>,
 ) -> Result<Vec<FootprintConflict>, StoreError> {
@@ -50,7 +51,9 @@ pub async fn set(
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
-    let now = Utc::now().to_rfc3339();
+    // The lease clock, so a claim held through the boot grace still counts
+    // as live and is conflict-checked.
+    let now = grace.lease_clock(Utc::now()).to_rfc3339();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(&format!(
         "SELECT ch.workspace_id, {} AS live

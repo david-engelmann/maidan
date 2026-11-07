@@ -52,8 +52,13 @@ pub async fn get_limit(
 /// Count a member's live claims — the complement of the `claim_next` claimability
 /// predicate (an expired lease is claimable, so it is not live). The `>= now`
 /// mirror of `claim_next`'s `< now` uses the same rfc3339 encoding.
-pub async fn count_live_claims(pool: &SqlitePool, member_id: MemberId) -> Result<i64, StoreError> {
-    let now = Utc::now().to_rfc3339();
+pub async fn count_live_claims(
+    pool: &SqlitePool,
+    grace: &crate::claim_grace::ClaimGrace,
+    member_id: MemberId,
+) -> Result<i64, StoreError> {
+    // The lease clock: a claim held through the boot grace is live work.
+    let now = grace.lease_clock(Utc::now()).to_rfc3339();
     let row = sqlx::query(
         "SELECT COUNT(*) AS n FROM maidan_threads
          WHERE assignee_id = ? AND tombstoned_at IS NULL

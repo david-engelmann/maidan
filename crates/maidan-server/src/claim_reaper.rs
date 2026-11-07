@@ -34,6 +34,13 @@
 //! owner rather than only shown. `lease_lapsing`: the lease lapses within
 //! `MAIDAN_CLAIM_LAPSE_WARN_SECS` (60 s; `0` turns it off), the pre-warning
 //! before this reaper takes the claim back.
+//!
+//! For `MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS` (600 s; `0` turns it off) after
+//! the server starts, no lease counts as lapsed ([`maidan_store::claim_grace`]):
+//! a restart outlasts a short lease, and its holders missed their heartbeats
+//! only because the server was down. The reaper frees nothing and
+//! `claim_next` takes nothing over until the grace ends, and a holder that
+//! comes back renews its claim and delivers its result as usual.
 
 use std::time::Duration;
 
@@ -58,6 +65,53 @@ pub const DEFAULT_ACK_TIMEOUT_SECS: u64 = 120;
 /// Default seconds before a lease lapses that `ClaimStalled`
 /// (`lease_lapsing`) warns.
 pub const DEFAULT_LAPSE_WARN_SECS: u64 = 60;
+
+/// Default seconds after the server starts during which no lease counts as
+/// lapsed: longer than a deploy keeps the server down.
+pub const DEFAULT_BOOT_GRACE_SECS: u64 = 600;
+
+/// `MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS`: unset or unparsable keeps 600 s,
+/// `0` turns the grace off (`None`).
+pub fn boot_grace_from_env() -> Option<Duration> {
+    boot_grace_from_raw(std::env::var("MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS").ok())
+}
+
+fn boot_grace_from_raw(raw: Option<String>) -> Option<Duration> {
+    let secs = secs_or(raw, DEFAULT_BOOT_GRACE_SECS);
+    (secs > 0).then(|| Duration::from_secs(secs))
+}
+
+/// Hold every lapsed lease for `grace` from now, on this process's store;
+/// `None` holds nothing. Called once at boot, before the reaper's first tick.
+pub fn start_boot_grace(store: &dyn maidan_store::Store, grace: Option<Duration>) {
+    let Some(grace) = grace else {
+        return;
+    };
+    let now = chrono::Utc::now();
+    let deadline = |grace: Duration| {
+        chrono::Duration::from_std(grace)
+            .ok()
+            .and_then(|grace| now.checked_add_signed(grace))
+    };
+    // A grace too long to represent falls back to the default rather than to
+    // none, which would free every claim the restart cut off.
+    let until = deadline(grace).or_else(|| {
+        tracing::warn!(
+            grace_secs = grace.as_secs(),
+            default_secs = DEFAULT_BOOT_GRACE_SECS,
+            "MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS is out of range; using the default"
+        );
+        deadline(Duration::from_secs(DEFAULT_BOOT_GRACE_SECS))
+    });
+    let Some(until) = until else {
+        return;
+    };
+    store.claim_grace().hold_until(until);
+    tracing::info!(
+        until = %until.to_rfc3339(),
+        "claim reaper boot grace: lapsed leases are held until it ends"
+    );
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimReaperConfig {
@@ -119,7 +173,8 @@ fn config_from_raw(tick: Option<String>, ack_timeout: Option<String>) -> Option<
 
 /// Reap every lease that lapsed before now, up to [`MAX_PER_TICK`], and
 /// publish each `ClaimExpired` (or `ClaimFailed`, for a claim that ran its
-/// thread out of budget). Returns how many were reaped.
+/// thread out of budget). Returns how many were reaped: none during the boot
+/// grace, which the store enforces.
 pub async fn sweep_once(state: &AppState) -> usize {
     let now = chrono::Utc::now();
     let mut reaped = 0;
@@ -319,6 +374,23 @@ mod tests {
             Some(Duration::from_secs(90))
         );
         assert_eq!(lapse_warn_from_raw(Some("0".into())), None);
+    }
+
+    #[test]
+    fn the_boot_grace_defaults_to_ten_minutes_and_zero_turns_it_off() {
+        assert_eq!(
+            boot_grace_from_raw(None),
+            Some(Duration::from_secs(DEFAULT_BOOT_GRACE_SECS))
+        );
+        assert_eq!(
+            boot_grace_from_raw(Some("garbled".into())),
+            Some(Duration::from_secs(DEFAULT_BOOT_GRACE_SECS))
+        );
+        assert_eq!(
+            boot_grace_from_raw(Some(" 90 ".into())),
+            Some(Duration::from_secs(90))
+        );
+        assert_eq!(boot_grace_from_raw(Some("0".into())), None);
     }
 
     #[test]
