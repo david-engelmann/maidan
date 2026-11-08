@@ -195,7 +195,8 @@ mod status_note_tests {
 
 /// An agent's status declaration on a thread: what it's doing, in one
 /// sentence. Set by the claim holder or owner via `declare_status`; cleared
-/// on a human response or a superseding declaration.
+/// on a human response, a superseding declaration, or the end of the
+/// declarer's claim (a release or a lapsed lease).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadStatusDeclaration {

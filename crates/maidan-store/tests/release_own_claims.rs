@@ -6,15 +6,17 @@
 //! another member's claim, a lease-less assignment, a lapsed lease (the
 //! reaper's) and the member's claims in another workspace are left alone.
 //! Each release is the one `release_claim` makes, so the old process is fenced
-//! out afterwards. On both backends.
+//! out afterwards, and every way a claim ends drops the status its holder
+//! declared. On both backends.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
-    ChannelId, ChannelMemberRole, EventKind, MemberId, MemberKind, NewChannel, NewMember,
-    NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    ChannelId, ChannelMemberRole, DeclaredStatus, EventKind, MemberId, MemberKind, NewChannel,
+    NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
 
 const LEASE_SECS: i64 = 600;
@@ -235,9 +237,89 @@ async fn a_claim_that_changed_hands_is_not_released(store: &dyn Store) {
     assert_eq!(thread.claim_lease_id, b_claim.claim_lease_id);
 }
 
+/// Every way a claim ends without its holder finishing (`release_claim`,
+/// the bulk release, the reaper) drops the status that holder declared, so
+/// the board never shows a departed holder's "working". A status the owner
+/// declared is the owner's and stays.
+async fn a_claim_that_ends_takes_its_holders_status_with_it(store: &dyn Store) {
+    let (ws, channel) = workspace(store, "statuses").await;
+    let a = member(store, ws, "a").await;
+    let owner = member(store, ws, "owner").await;
+    let take = |title: &'static str, lease: i64| async move {
+        let id = thread(store, channel, title).await;
+        let claim = store
+            .claim_next_thread(channel, a, Some(lease), None)
+            .await
+            .unwrap()
+            .expect("a thread is claimable");
+        assert_eq!(claim.id, id, "{title}");
+        claim
+    };
+    let declare = |id: ThreadId, status: DeclaredStatus, who: MemberId| async move {
+        store
+            .declare_thread_status(id, status, format!("{status:?}"), who)
+            .await
+            .unwrap();
+    };
+    let status = |id: ThreadId| async move { store.get_thread_status(id).await.unwrap() };
+
+    let released_one = take("released by its token", LEASE_SECS).await;
+    declare(released_one.id, DeclaredStatus::Working, a).await;
+    let bulk = take("released in bulk", LEASE_SECS).await;
+    declare(bulk.id, DeclaredStatus::Working, a).await;
+    let owned = take("its owner's status", LEASE_SECS).await;
+    store.set_thread_owner(owned.id, Some(owner)).await.unwrap();
+    declare(owned.id, DeclaredStatus::Blocked, owner).await;
+    let lapsing = take("lapsing", 1).await;
+    declare(lapsing.id, DeclaredStatus::NeedsInput, a).await;
+
+    store
+        .release_claim_with_event(released_one.id, a, released_one.claim_lease_id.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        status(released_one.id).await,
+        None,
+        "release_claim drops the holder's status"
+    );
+
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let released: Vec<ThreadId> = store
+        .release_member_claims_with_events(ws, a, Some(NOTE.into()))
+        .await
+        .unwrap()
+        .iter()
+        .map(|(t, _)| t.id)
+        .collect();
+    let mut expected = vec![bulk.id, owned.id];
+    expected.sort_by_key(|id| id.0);
+    assert_eq!(released, expected);
+    assert_eq!(status(bulk.id).await, None, "the bulk release drops it");
+    let kept = status(owned.id).await.expect("the owner's status is kept");
+    assert_eq!(kept.declared_by, owner);
+    assert_eq!(kept.status, DeclaredStatus::Blocked);
+
+    assert_eq!(
+        status(lapsing.id).await.map(|s| s.status),
+        Some(DeclaredStatus::NeedsInput),
+        "a lapsed lease is the reaper's, and so is its status"
+    );
+    store.reap_expired_claims(Utc::now(), 100).await.unwrap();
+    assert_eq!(
+        store.get_thread(lapsing.id).await.unwrap().assignee_id,
+        None
+    );
+    assert_eq!(
+        status(lapsing.id).await,
+        None,
+        "the reaper drops the dead holder's status"
+    );
+}
+
 async fn run_suite(store: &dyn Store) {
     a_restarted_claimant_releases_only_its_own_live_claims(store).await;
     a_claim_that_changed_hands_is_not_released(store).await;
+    a_claim_that_ends_takes_its_holders_status_with_it(store).await;
 }
 
 #[tokio::test]

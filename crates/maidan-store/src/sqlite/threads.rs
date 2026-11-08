@@ -277,6 +277,8 @@ async fn clear_assignee_in_tx(
     row_to_thread(&row)
 }
 
+/// Release the fenced claim, charging its worked time and dropping the status
+/// the holder declared, in the same transaction. See the Postgres twin.
 async fn release_fenced_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
@@ -308,6 +310,7 @@ async fn release_fenced_in_tx(
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
+    super::status::clear_departed_in_tx(tx, thread_id, member_id).await?;
     row_to_thread(&row)
 }
 
@@ -578,8 +581,9 @@ async fn append_claim_expired_event(
 }
 
 /// End a claim whose lease lapsed, after the write that took the thread off
-/// `holder`: charge its worked time to the wall budget, then report it as
-/// failed (over budget) or expired. See the Postgres twin.
+/// `holder`: drop the status it declared, charge its worked time to the wall
+/// budget, then report it as failed (over budget) or expired. See the Postgres
+/// twin.
 async fn end_lapsed_claim_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread: &Thread,
@@ -587,6 +591,7 @@ async fn end_lapsed_claim_in_tx(
     deadline: DateTime<Utc>,
     work_started_at: Option<DateTime<Utc>>,
 ) -> Result<StoredEvent, StoreError> {
+    super::status::clear_departed_in_tx(tx, thread.id, holder).await?;
     let worked = work_started_at.map(|started| (deadline - started).num_seconds().max(0));
     let charged = budget::charge_wall_in_tx(tx, thread.id, worked).await?;
     match charged.and_then(|b| b.exceeded(None).map(|reason| (b, reason))) {
