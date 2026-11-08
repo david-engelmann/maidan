@@ -254,7 +254,18 @@ async fn an_expired_lease_is_lost_before_anyone_takes_it_over(store: &dyn Store)
     );
 
     // A claim taken without a lease has no deadline to pass.
-    let durable = task(store, t.channel).await;
+    // Its own title: a second open "task" would be refused as a duplicate.
+    let durable = store
+        .create_thread(NewThread {
+            channel_id: t.channel,
+            parent_thread_id: None,
+            title: Some("unleased task".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread")
+        .id;
     let claim = store.claim_thread(durable, a).await.expect("claim");
     let lease = claim
         .thread
