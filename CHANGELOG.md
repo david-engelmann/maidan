@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [438.0.0] — 2026-11-08
+
+the Claude-family check on review results, newest-first event reads in the console, display names with joiners, one clock for claim aging, and SQLite writes that take the lock up front.
+
+### The Rust SDK releases a restarted waiter's claims
+
+- **Added:** The Rust SDK (0.3.0, untagged) calls `POST /workspaces/{id}/claims/release-own`: `Client::release_own_claims(workspace_id, note: Option<&str>)` returns `ReleasedClaims { released }`, the thread ids given back to the queue. All four SDKs now have it.
+
+### Every SQLite transaction that writes takes the write lock first
+
+- **Fixed:** on SQLite, any store write that read before it wrote (claiming work, settling a review, appending an audited change, and about 150 others) could fail at once with `database is locked` when another connection committed in between: a deferred transaction cannot upgrade a stale read to a write, and `busy_timeout` does not apply to that. Every SQLite transaction that can write now begins with `BEGIN IMMEDIATE` through one helper, so it waits its turn for the lock instead; boot migrations do too. A source contract (`sqlite_write_lock_contract`) fails on any new deferred transaction in the SQLite store that is not listed as read-only or a savepoint.
+
+### A review's holder is judged again when it writes the result
+
+- **Fixed:** a review seat with no usage reports passed every author-family check and could store and deliver a verdict on its own family's change (#1703). `set_thread_result` (REST and MCP) on a review that names its `author_family` now refuses, with a 409 naming the family, a result when the holder's usage in the workspace names that family (reported before the claim or during it) or when the result itself says that family served it (`served.family`, `served.provider` / `served.model`, or a `route[]` entry's `provider` / `model`, named the way usage records are). Nothing is stored or delivered, the usage report is accepted, and the claim stays held for `release_claim` with `decline: "own_family"`. A result with no evidence of its family is stored as before; Swarms says so. Workspace import restores no thread attributes, usage or results, so it has no family to check. The red-team runbook recommends declaring `served` and reporting usage before the report.
+
+### Activity opens on the newest events, display names keep real joiners, and aging reads one clock
+
+- **Added:** `GET /workspaces/{wid}/events` (and its `/ui/api` twin) takes `order=desc`, which returns the newest events first, and `before_id` to page back from there. `after_id` and `consumer_id` still page forward and are refused with `order=desc` (#1967).
+- **Fixed:** the console's Activity screen reads one newest-first page instead of walking forward from the first event, which on a workspace with more than 5,000 events showed events from the middle of the log. The Tools event list and a board's review refusals read newest first too; the Tools list asks the server for its kind, and offers `thread_state_changed` where it named a kind that does not exist (#1967).
+- **Fixed:** the console's radius test reads every value of a `border-radius` shorthand, and the stray 12px and 18px corners in the stylesheet now come from the radius scale (#1967).
+- **Fixed:** a display name may carry ZWNJ or ZWJ between two letters of the same joining script (Persian, Devanagari and other Indic names), ZWJ inside an emoji sequence, and VS16 right after an emoji or in a keycap. Leading, trailing, doubled or cross-script joiners, joiners beside digits or punctuation or between Latin letters, and a lone VS16 are still refused (#1576).
+- **Fixed:** `claim_next`'s priority aging measures a thread's wait on one clock: on Postgres the database's clock on both sides (a second-family review child now takes its `created_at` from it too), and on SQLite the claim's own `now` (#1586).
+
 ## [437.0.0] — 2026-11-08
 
 deploys without downtime; release_own_claims and its REST twin; an own-family decline sticks; the egress credential guard.

@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v438.0.0](https://github.com/david-engelmann/maidan/releases/tag/v438.0.0) — the Rust SDK releases a restarted waiter's claims, and 3 more
+
+the Claude-family check on review results, newest-first event reads in the console, display names with joiners, one clock for claim aging, and SQLite writes that take the lock up front.
+
+- The Rust SDK releases a restarted waiter's claims
+- Every SQLite transaction that writes takes the write lock first
+- A review's holder is judged again when it writes the result
+- Activity opens on the newest events, display names keep real joiners, and aging reads one clock
+
+`CHANGELOG.md` under `[438.0.0]` has every entry.
+
 ## [v437.0.0](https://github.com/david-engelmann/maidan/releases/tag/v437.0.0) — maidan refuses to deliver a result that holds a credential, and 5 more
 
 deploys without downtime; release_own_claims and its REST twin; an own-family decline sticks; the egress credential guard.
