@@ -1,9 +1,10 @@
 //! Over MCP (#1703): a review seat with no usage is handed a review of its
-//! own family's change; `report_usage` naming that family is accepted, and
-//! then `set_thread_result` is refused, nothing is stored and the claim stays
-//! held for `release_claim` with `decline: "own_family"`. A seat of another
-//! family runs the identical flow and its verdict is stored. A member of
-//! another workspace cannot write a verdict on the review at all.
+//! own family's change. A `set_thread_result` whose envelope says that family
+//! served it is refused; so is any result once `report_usage` (accepted)
+//! names that family. Nothing is stored and the claim stays held for
+//! `release_claim` with `decline: "own_family"`. A seat of another family
+//! runs the identical flow and its verdict is stored. A member of another
+//! workspace cannot write a verdict on the review at all.
 
 use std::sync::Arc;
 
@@ -151,11 +152,39 @@ async fn a_seat_whose_usage_names_the_authors_family_cannot_deliver_the_review()
         }
     };
     let verdict = json!({ "status": "done", "summary": "VERDICT: PASS" });
+    let served_by = |provider: &str, model: &str| {
+        json!({
+            "schema": "maidan.waiter.result/1",
+            "result_kind": "test.redteam/1",
+            "status": "reviewed",
+            "summary": "VERDICT: PASS",
+            "rendered": "VERDICT: PASS",
+            "served": { "provider": provider, "model": model },
+        })
+    };
 
     // The seat has reported nothing, so it is handed the openai review.
     let held = claim(&seat_auth).await;
     assert_eq!(held["id"], json!(review.0));
     let lease = held["claim_lease_id"].clone();
+
+    // Its envelope says an openai model served it: refused before any usage.
+    let declared = server
+        .call_tool(
+            &seat_auth,
+            "set_thread_result",
+            &json!({
+                "thread_id": review.0,
+                "claim_lease_id": lease,
+                "result": served_by("openai", "gpt-5-codex"),
+            }),
+        )
+        .await;
+    assert!(
+        matches!(&declared, Err(McpError::InvalidParams(m))
+            if m.contains("says openai served it") && m.contains("decline own_family")),
+        "{declared:?}"
+    );
 
     let reported = server
         .call_tool(
@@ -176,7 +205,7 @@ async fn a_seat_whose_usage_names_the_authors_family_cannot_deliver_the_review()
         .await;
     assert!(
         matches!(&refused, Err(McpError::InvalidParams(m))
-            if m.contains("openai family") && m.contains("decline own_family")),
+            if m.contains("usage names openai") && m.contains("decline own_family")),
         "{refused:?}"
     );
     assert!(
@@ -228,7 +257,11 @@ async fn a_seat_whose_usage_names_the_authors_family_cannot_deliver_the_review()
         .call_tool(
             &other_auth,
             "set_thread_result",
-            &json!({ "thread_id": review.0, "claim_lease_id": lease, "result": verdict }),
+            &json!({
+                "thread_id": review.0,
+                "claim_lease_id": lease,
+                "result": served_by("anthropic", "claude-opus-4-5"),
+            }),
         )
         .await
         .expect("another family's verdict is stored");

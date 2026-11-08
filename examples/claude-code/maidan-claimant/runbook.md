@@ -403,10 +403,6 @@ it needs), and carry on with step 6.
    reports none, send zeros with `evidence` still set, so the ledger shows
    who worked the thread. `stopped: true` in the answer means the thread's
    budget is spent: stop.
-
-   On a review thread, report before you set the result
-   ([red-team.md](red-team.md), step 7): Maidan stores a review's result only
-   from a holder that has reported usage on it.
 2. `transition_thread` with `action: "start_review"`. Only `open` threads are
    handed out, so this is what keeps the task from coming back to the queue.
    Never `close` it: a reviewer does.

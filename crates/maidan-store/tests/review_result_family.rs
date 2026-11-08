@@ -1,11 +1,11 @@
 //! A review's holder is judged again when it writes the review's result
 //! (#1703), on both backends. Every claim-time check reads a seat's family
 //! from usage it reported before it was handed the review, so a seat with
-//! none is handed its own family's review. Its result is then refused until
-//! it reports usage on the review, and refused for good once that usage
-//! names the author's family; the usage itself is accepted and the claim
-//! stays held, so it can decline. A seat of another family, and a person,
-//! complete the same review. Usage filed under another workspace counts for
+//! none is handed its own family's review. Its result is refused once its
+//! usage, or the result's own `served` or `route`, names the author's
+//! family: nothing is stored, the usage is accepted and the claim stays
+//! held, so it can decline. A result naming another family, or naming none
+//! at all, is stored. Usage filed under another workspace counts for
 //! nothing.
 
 use std::time::Duration;
@@ -137,6 +137,18 @@ fn verdict() -> serde_json::Value {
     json!({"status": "done", "summary": "VERDICT: PASS"})
 }
 
+/// A waiter envelope whose `served` names the model that did the review.
+fn served_by(provider: &str, model: &str) -> serde_json::Value {
+    json!({
+        "schema": "maidan.waiter.result/1",
+        "result_kind": "test.redteam/1",
+        "status": "reviewed",
+        "summary": "VERDICT: PASS",
+        "rendered": "VERDICT: PASS",
+        "served": { "provider": provider, "model": model },
+    })
+}
+
 async fn run_suite<F, Fut>(store: &dyn Store, file: F)
 where
     F: Fn(Filed) -> Fut,
@@ -145,7 +157,7 @@ where
     let w = room(store, "reviews").await;
     let fresh = member(store, w.ws, "fresh", MemberKind::Agent).await;
     let other = member(store, w.ws, "other", MemberKind::Agent).await;
-    let person = member(store, w.ws, "person", MemberKind::Human).await;
+    let quiet = member(store, w.ws, "quiet", MemberKind::Agent).await;
     let first = review(store, w.channel, "first review", "anthropic").await;
     let second = review(store, w.channel, "second review", "anthropic").await;
 
@@ -155,40 +167,40 @@ where
     assert_eq!(held.id, first);
     let lease_held = lease(&held);
 
-    // A verdict before any usage is refused: nothing yet says which family
-    // did the review.
-    let early = store
-        .set_thread_result(first, fresh, lease_held, &verdict())
-        .await;
-    assert!(
-        matches!(&early, Err(StoreError::Conflict(m)) if m.contains("reported no usage")),
-        "{early:?}"
-    );
-
-    // The usage naming the author's family is accepted: the spend stays on
-    // the ledger and the budget.
-    let (entry, _) = store
-        .report_accounted_usage(&usage(
+    // An envelope that says an anthropic model served it is refused: nothing
+    // is stored, so nothing is delivered, and the claim stays held.
+    let declared = store
+        .set_thread_result(
             first,
             fresh,
             lease_held,
-            "claude-opus-4-5",
-            "anthropic",
-        ))
-        .await
-        .expect("the usage report is accepted");
-    assert_eq!(entry.stamp.reporter, fresh);
-    assert!(!entry.stopped);
-
-    // Its verdict is refused, naming the family and the way out; nothing is
-    // stored, so nothing is delivered, and the claim stays held.
-    let refused = store
-        .set_thread_result(first, fresh, lease_held, &verdict())
+            &served_by("anthropic", "claude-opus-4-5"),
+        )
         .await;
     assert!(
-        matches!(&refused, Err(StoreError::Conflict(m))
-            if m.contains("anthropic family") && m.contains("decline own_family")),
-        "{refused:?}"
+        matches!(&declared, Err(StoreError::Conflict(m))
+            if m.contains("says anthropic served it") && m.contains("decline own_family")),
+        "{declared:?}"
+    );
+    // A route through the author's family is refused as well, whatever else
+    // it went through.
+    let routed = store
+        .set_thread_result(
+            first,
+            fresh,
+            lease_held,
+            &json!({
+                "status": "done",
+                "route": [
+                    { "provider": "openai", "model": "gpt-5" },
+                    { "model": "claude-sonnet-4" },
+                ],
+            }),
+        )
+        .await;
+    assert!(
+        matches!(&routed, Err(StoreError::Conflict(m)) if m.contains("says anthropic served it")),
+        "{routed:?}"
     );
     assert!(
         store
@@ -201,16 +213,42 @@ where
     let still = store.get_thread(first).await.expect("thread");
     assert_eq!(still.assignee_id, Some(fresh), "the claim stays held");
     assert_eq!(still.claim_lease_id, Some(lease_held));
+
+    // Usage naming the author's family is accepted, so the spend stays on
+    // the ledger and the budget, and then refuses a result that declares
+    // nothing.
+    let (entry, _) = store
+        .report_accounted_usage(&usage(
+            first,
+            fresh,
+            lease_held,
+            "claude-opus-4-5",
+            "anthropic",
+        ))
+        .await
+        .expect("the usage report is accepted");
+    assert_eq!(entry.stamp.reporter, fresh);
+    assert!(!entry.stopped);
+    let refused = store
+        .set_thread_result(first, fresh, lease_held, &verdict())
+        .await;
+    assert!(
+        matches!(&refused, Err(StoreError::Conflict(m))
+            if m.contains("usage names anthropic") && m.contains("decline own_family")),
+        "{refused:?}"
+    );
+    assert!(store
+        .get_thread_result(first)
+        .await
+        .expect("read result")
+        .is_none());
     store
         .release_claim_with_event(first, fresh, lease_held, Some(ClaimDecline::OwnFamily))
         .await
         .expect("the holder declines it");
-
-    // The usage it reported now refuses it the other anthropic review up
-    // front.
     assert!(
         next(store, w.channel, fresh).await.is_none(),
-        "its usage names its family now"
+        "its usage now refuses it the other anthropic review up front"
     );
 
     // A second workspace. Anthropic usage `other` has filed there counts for
@@ -227,10 +265,10 @@ where
     })
     .await;
 
-    // A seat of another family completes the same review the same way.
+    // A result that says another family served it is stored.
     let taken = next(store, w.channel, other)
         .await
-        .expect("another family takes it");
+        .expect("another seat takes it");
     assert_eq!(taken.id, first);
     let foreign = store
         .set_thread_result(first, stranger, lease(&taken), &verdict())
@@ -239,12 +277,13 @@ where
         matches!(&foreign, Err(StoreError::ClaimLost(_))),
         "a non-holder is answered by the claim fence, got {foreign:?}"
     );
-    store
-        .report_accounted_usage(&usage(first, other, lease(&taken), "gpt-5-codex", "openai"))
-        .await
-        .expect("usage");
     let stored = store
-        .set_thread_result(first, other, lease(&taken), &verdict())
+        .set_thread_result(
+            first,
+            other,
+            lease(&taken),
+            &served_by("openai", "gpt-5-codex"),
+        )
         .await
         .expect("another family's verdict is stored");
     assert_eq!(stored.produced_by, other);
@@ -255,50 +294,38 @@ where
         .expect("a result");
     assert_eq!(read.produced_by, other);
 
-    // A person is no model family and reports no usage: their verdict is
-    // stored.
-    let by_hand = store
-        .claim_thread(second, person)
-        .await
-        .expect("the person takes the other review");
-    assert!(by_hand.claimed);
-    store
-        .set_thread_result(second, person, lease(&by_hand.thread), &verdict())
-        .await
-        .expect("a person's verdict is stored");
-
-    // Usage on this review filed under another workspace is not usage on
-    // it: the seat is still asked to report.
-    let third = review(store, w.channel, "third review", "anthropic").await;
-    let late = member(store, w.ws, "late", MemberKind::Agent).await;
-    let held = next(store, w.channel, late).await.expect("a review");
-    assert_eq!(held.id, third);
+    // A result with no evidence at all is stored: nothing says its family.
+    // Usage on this review filed under another workspace is not evidence.
+    let plainly = next(store, w.channel, quiet).await.expect("a review");
+    assert_eq!(plainly.id, second);
     file(Filed {
         ws: w2.ws.0,
-        thread: third.0,
-        reporter: late.0,
-        model: "gpt-5",
+        thread: second.0,
+        reporter: quiet.0,
+        model: "claude-opus-4",
     })
     .await;
-    let unreported = store
-        .set_thread_result(third, late, lease(&held), &verdict())
-        .await;
-    assert!(
-        matches!(&unreported, Err(StoreError::Conflict(m)) if m.contains("reported no usage")),
-        "{unreported:?}"
-    );
+    store
+        .set_thread_result(second, quiet, lease(&plainly), &verdict())
+        .await
+        .expect("a result that names no family is stored");
 
-    // The rule is the review's: the second workspace's seat, with no usage
-    // anywhere, is asked to report on its own review as well.
+    // The rule is the review's: the second workspace refuses its own seat's
+    // anthropic-routed verdict.
     let own = next(store, w2.channel, stranger)
         .await
         .expect("its own review");
     assert_eq!(own.id, theirs);
     let asked = store
-        .set_thread_result(theirs, stranger, lease(&own), &verdict())
+        .set_thread_result(
+            theirs,
+            stranger,
+            lease(&own),
+            &json!({"status": "done", "route": [{ "provider": "Anthropic", "model": "x" }]}),
+        )
         .await;
     assert!(
-        matches!(&asked, Err(StoreError::Conflict(m)) if m.contains("reported no usage")),
+        matches!(&asked, Err(StoreError::Conflict(m)) if m.contains("says anthropic served it")),
         "{asked:?}"
     );
 
@@ -316,9 +343,14 @@ where
         .id;
     let work = store.claim_thread(plain, fresh).await.expect("claim");
     store
-        .set_thread_result(plain, fresh, lease(&work.thread), &verdict())
+        .set_thread_result(
+            plain,
+            fresh,
+            lease(&work.thread),
+            &served_by("anthropic", "claude-opus-4-5"),
+        )
         .await
-        .expect("plain work takes a result without usage");
+        .expect("plain work takes any result");
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

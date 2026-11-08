@@ -191,8 +191,8 @@ async fn shared_family_of(
     .await?)
 }
 
-/// Refuse storing a review's result from a holder that cannot be shown to be
-/// of a family other than its author's (#1703); see
+/// Refuse storing a review's result when the holder's usage, or the result
+/// itself, names the author's family (#1703); see
 /// [`crate::review_family::result_refusal`]. Runs before the fenced result
 /// write and holds no lock: a usage report that races it is the holder racing
 /// its own result, which is the same as reporting after it.
@@ -201,6 +201,7 @@ pub(crate) async fn refuse_result(
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
+    result: &serde_json::Value,
 ) -> Result<(), StoreError> {
     let Some(row) = sqlx::query(&crate::review_family::result_judgement("$1", "$2", "$3"))
         .bind(member_id.0)
@@ -213,9 +214,8 @@ pub(crate) async fn refuse_result(
     };
     let author: String = row.try_get("author_family")?;
     let shared: Option<String> = row.try_get("shared_family")?;
-    let kind: String = row.try_get("producer_kind")?;
-    let reported: bool = row.try_get("reported")?;
-    match crate::review_family::result_refusal(&author, shared.as_deref(), &kind, reported) {
+    let served = maidan_types::served_families(result);
+    match crate::review_family::result_refusal(&author, shared.as_deref(), &served) {
         Some(refusal) => Err(refusal),
         None => Ok(()),
     }

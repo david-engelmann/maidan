@@ -526,36 +526,43 @@ member's family comes only from its usage reports, and every claim-time check
 reads them as they stood when the thread was handed out: a member with no
 usage yet passes them all and is handed each own-family review once. So the
 result write, the last step before a verdict is stored and delivered, checks
-the holder again on everything it has reported since:
+again, on two kinds of evidence:
 
-- A holder whose usage in the workspace names the author's family, reported
-  before the claim or during it, is refused with a 409 (MCP invalid params)
-  naming the family. Nothing is stored, so nothing is delivered and no
-  review decision is applied. The usage report itself is accepted, so the
-  spend stays on the ledger and the budget, and the claim stays held: the
-  seat releases it with `decline: "own_family"`.
-- An agent that has reported no usage on the review is refused too, until it
-  does. Its usage on the review is the only evidence of the model that did
-  it, and a verdict stored before that evidence would be delivered before
-  anything could judge it. So a review seat reports usage, then sets the
-  result. A person is no model family and reports no usage; a person's
-  review is stored.
-- Only the thread's own workspace is read, and a caller that does not hold
-  the claim is answered by the claim fence (`claim_lost`) before anything
-  about the review's family.
+- **The holder's usage.** Any usage record of the holder in the workspace
+  that names the author's family, reported before the claim or during it.
+- **The result itself.** A producer that runs its model outside Maidan's
+  usage ledger says in the result which model served it: `served.family`,
+  `served.provider` with `served.model`, or a `route[]` entry's `provider`
+  with `model`
+  ([Result Delivery](Result%20Delivery.md#what-maidan-reads-from-the-envelope)).
+  These are named the way a usage record is, so `"provider": "Anthropic"`
+  and `"model": "claude-opus-4-5"` both name `anthropic`.
 
-Nothing else is touched: a change, or a review that names no
-`author_family`, takes its result under the claim fence alone.
+If either names the author's family, the write is refused with a 409 (MCP
+invalid params) naming the family. Nothing is stored, so nothing is
+delivered and no review decision is applied. The usage report itself is
+accepted, so the spend stays on the ledger and the budget, and the claim
+stays held: the seat releases it with `decline: "own_family"`. Only the
+thread's own workspace is read, and a caller that does not hold the claim
+is answered by the claim fence (`claim_lost`) before anything about the
+review's family. A change, or a review that names no `author_family`, takes
+its result under the claim fence alone.
+
+Reporting usage before writing the result is recommended, not required:
+then a seat that turns out to be of the author's family is stopped before
+its verdict is posted.
 
 What the rule does not cover:
 
-- **A family is what the usage report says it is.** A seat that reports a
-  model of another family than the one it ran, or one that names no family
-  Maidan knows, is judged on that report.
-- **A seat that changes families mid-review.** A verdict stored after usage
-  naming another family is not withdrawn by a later report naming the
-  author's: by then it has been delivered. That later usage still refuses
-  the seat every later review of that family.
+- **A result with no evidence is stored.** A holder with no usage naming any
+  family, whose result declares no `served` or `route`, has nothing to judge
+  it by, and its verdict is stored and delivered. A seat that reports its
+  usage after the result is judged on its usage only from then on: that
+  usage refuses it every later review of the family, but not the verdict
+  already delivered.
+- **A family is what the evidence says it is.** A seat that reports, or
+  declares, a model of another family than the one it ran, or one that
+  names no family Maidan knows, is judged on what it said.
 - **Workspace import carries no family to check.** An import restores a
   workspace's members, channels, threads (with their holders) and
   conversation, but no thread attributes, usage records or results. An
