@@ -81,14 +81,16 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
                 .id
         }
     };
-    let task = |channel: ChannelId| {
+    // Distinct titles: identical ones are fingerprinted as duplicates of the
+    // first, and a duplicate is withheld from claim_next.
+    let task = |channel: ChannelId, title: &'static str| {
         let store = store.clone();
         async move {
             store
                 .create_thread(NewThread {
                     channel_id: channel,
                     parent_thread_id: None,
-                    title: Some("task".into()),
+                    title: Some(title.into()),
                     description: None,
                     created_by: None,
                 })
@@ -114,10 +116,10 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
     // The same agent's member in the second workspace: a member belongs to
     // one workspace, so this is how "A" holds work in W2.
     let a_in_w2 = member(w2, "a").await;
-    for _ in 0..3 {
-        task(w_channel).await;
+    for title in ["first", "second", "third"] {
+        task(w_channel, title).await;
     }
-    task(w2_channel).await;
+    task(w2_channel, "elsewhere").await;
     let a_first = claim(w_channel, a).await;
     let a_second = claim(w_channel, a).await;
     let b_claim = claim(w_channel, b).await;
