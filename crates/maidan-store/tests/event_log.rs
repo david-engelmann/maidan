@@ -641,7 +641,7 @@ async fn assignment_with_event_appends_atomically() {
         .claim_lease_id
         .expect("the claim minted a fencing token");
     let (released, release_ev) = store
-        .release_claim_with_event(th.id, actor_id, lease)
+        .release_claim_with_event(th.id, actor_id, lease, None)
         .await
         .expect("release");
     assert_eq!(release_ev.kind, EventKind::ThreadAssignmentChanged);

@@ -104,6 +104,9 @@ mod claim_lane_routing;
 #[path = "../claim_open_only.rs"]
 mod claim_open_only;
 
+#[path = "../claim_own_family_decline.rs"]
+mod claim_own_family_decline;
+
 #[path = "../claim_reaper.rs"]
 mod claim_reaper;
 

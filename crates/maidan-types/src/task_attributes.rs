@@ -384,6 +384,35 @@ pub fn review_family_for(author: Option<&str>) -> Option<&'static str> {
         .find(|family| *family != author)
 }
 
+/// Why a claimant released a claim it will not work, recorded with the
+/// release so `claim_next` does not hand the same thread straight back.
+/// Without it a seat with no usage evidence yet passes the review-family
+/// guard on every pass and is handed the oldest review it just refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ClaimDecline {
+    /// The thread is a review whose change was written by the claimant's own
+    /// model family.
+    OwnFamily,
+}
+
+impl ClaimDecline {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OwnFamily => "own_family",
+        }
+    }
+
+    /// The note the release's assignment event carries, so the event log
+    /// says why the claimant let go.
+    pub fn note(self) -> &'static str {
+        match self {
+            Self::OwnFamily => "declined: the review's change was written by this member's family",
+        }
+    }
+}
+
 /// The most characters an acceptance criterion may hold.
 pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
 
@@ -666,6 +695,17 @@ mod review_family_tests {
         assert_eq!(review_family_for(Some("anthropic")), Some("openai"));
         assert_eq!(review_family_for(Some("openai")), Some("anthropic"));
         assert_eq!(review_family_for(None), None);
+    }
+
+    #[test]
+    fn a_decline_reads_and_writes_as_its_snake_case_name() {
+        let decline: ClaimDecline = serde_json::from_str("\"own_family\"").unwrap();
+        assert_eq!(decline, ClaimDecline::OwnFamily);
+        assert_eq!(
+            serde_json::to_string(&decline).unwrap(),
+            format!("\"{}\"", decline.as_str())
+        );
+        assert!(serde_json::from_str::<ClaimDecline>("\"busy\"").is_err());
     }
 
     #[test]

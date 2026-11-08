@@ -3506,8 +3506,16 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
                 member_id: MemberId,
                 lease_id: ClaimLeaseId,
+                decline: Option<ClaimDecline>,
             ) -> Result<(Thread, StoredEvent), StoreError> {
-                threads::release_claim_with_event(self.pool(), thread_id, member_id, lease_id).await
+                threads::release_claim_with_event(
+                    self.pool(),
+                    thread_id,
+                    member_id,
+                    lease_id,
+                    decline,
+                )
+                .await
             }
 
             async fn release_member_claims_with_events(

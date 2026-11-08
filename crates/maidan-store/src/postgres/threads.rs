@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, ClaimStallReason,
+    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimDecline, ClaimLeaseId, ClaimStallReason,
     DeclaredStatus, Event, MemberId, NewThread, QueueDepth, SpawnAxis, SpawnDenial, StoredEvent,
     Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId, DM_CHANNEL_NAME,
 };
@@ -1392,11 +1392,24 @@ pub async fn release_claim_with_event(
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
+    decline: Option<ClaimDecline>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
+    if let Some(decline) = decline {
+        super::review_family::refuse_unfounded_decline_in_tx(
+            &mut tx, thread_id, member_id, lease_id, decline,
+        )
+        .await?;
+    }
     let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
+    // In the release's transaction and after its fence, so only the holder
+    // of the live lease records a decline, and only with its release.
+    if let Some(decline) = decline {
+        super::review_family::record_decline_in_tx(&mut tx, thread_id, member_id, decline).await?;
+    }
+    let note = decline.map(|decline| decline.note().to_owned());
     let stored =
-        append_assignment_event(&mut tx, &thread, member_id, Some(member_id), None).await?;
+        append_assignment_event(&mut tx, &thread, member_id, Some(member_id), note).await?;
     tx.commit().await?;
     Ok((thread, stored))
 }

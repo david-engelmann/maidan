@@ -506,13 +506,30 @@ may set attributes, the change's author included, can lift or move it. A
 member that has reported no usage in the workspace has no known family and
 is not refused.
 
+A seat that knows its own family declines a review of that family's change
+when it is handed one: `release_claim` with `decline: "own_family"` releases
+the claim and tells `claim_next` not to hand that review to this member
+again. The member's next `claim_next` gets the next eligible thread, or
+nothing, instead of the same review; every other member is still handed it.
+The decline is part of the release, so only the holder of the live lease can
+record one, and only for itself; `release_own_claims` records none. It is
+refused, and nothing is released, on a thread that is not a review naming
+its `author_family`; a token that does not hold the claim is answered not
+found, as a plain release is. It applies to `claim_next` only (a direct claim or assign
+is the caller's choice), and needs no expiry: a review's author family is set
+once, and the next review round is a new review thread. A seat no longer
+needs to report a zero-cost usage record to stop being handed its own
+family's reviews.
+
 What the rule does not cover:
 
 - **A member's family comes only from its past usage.** It is read when the
   thread is handed out. A member with no usage yet, or whose first usage under
   the author's family arrives after it claims, passes the check, and nothing
-  re-checks the holder afterwards. Give each reviewing agent a usage history
-  (or a dedicated member per family) before it takes reviews.
+  re-checks the holder afterwards. Such a member is handed each own-family
+  review once: it declines it (above), and `claim_next` moves on. A member
+  carries no family attribute of its own, so Maidan cannot skip the review
+  before that first decline.
 - **Workspace import does not apply it.** An admin importing a bundle can
   restore a review already held by a member of the author's family; import
   checks only that the holder belongs to the imported workspace.

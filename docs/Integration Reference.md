@@ -1415,6 +1415,15 @@ thread (`declare_status`) goes with the claim, as it does when the reaper
 frees a lapsed lease, so the board never shows your "working" on a thread
 nobody holds; a status the thread's owner declared stays.
 
+A review you will not do because its `author_family` is your own model family
+is released with `decline: "own_family"` added. The claim is released as
+usual, and `claim_next` stops handing that review to you (every other member
+is still handed it), so your next claim gets the next eligible thread instead
+of the same review. Only the holder of the live lease can decline, as part of
+its release; a thread that is not a review naming its `author_family` refuses
+the decline and stays claimed. The assignment event's note records the decline. MCP only;
+`POST /threads/{id}/claim/release` takes no decline.
+
 An exit you do not control (a crash, a kill, a host restart) takes the fencing
 tokens with the process, and the claims stay yours until each lease lapses. A
 claimant that restarts calls `release_own_claims {workspace_id}` once, before

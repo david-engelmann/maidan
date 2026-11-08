@@ -2,8 +2,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    provider_family, review_family_for, Event, MemberId, StoredEvent, TaskAttributes, TaskKind,
-    ThreadId, WorkspaceId,
+    provider_family, review_family_for, ClaimDecline, ClaimLeaseId, Event, MemberId, StoredEvent,
+    TaskAttributes, TaskKind, ThreadId, WorkspaceId,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -189,4 +189,69 @@ async fn shared_family_of(
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
     .await?)
+}
+
+/// Refuse a `decline` the thread cannot carry: an `own_family` decline
+/// needs a review that names its author's family. The lease fence is read
+/// first, so a caller that does not hold the claim learns only `NotFound`,
+/// as a plain release answers it. Called before the release takes the
+/// thread's row lock, so a refusal holds no lock while its transaction waits
+/// to be rolled back; the release's own fence runs again under the lock, and
+/// a review's author family is set once, so the answer cannot go stale.
+pub(crate) async fn refuse_unfounded_decline_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+    decline: ClaimDecline,
+) -> Result<(), StoreError> {
+    let held = sqlx::query(
+        "SELECT a.kind, a.author_family FROM maidan_threads t
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         WHERE t.id = $1 AND t.assignee_id = $2 AND t.claim_lease_id = $3
+           AND t.tombstoned_at IS NULL",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    match decline {
+        ClaimDecline::OwnFamily => {
+            let kind: Option<String> = held.try_get("kind")?;
+            let author: Option<String> = held.try_get("author_family")?;
+            if kind.as_deref() != Some(TaskKind::Review.as_str()) || author.is_none() {
+                return Err(crate::review_family::decline_without_family());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Record that `member_id` declines `thread_id`, so `claim_next` stops handing
+/// it to that member (see [`crate::review_family::declined_by`]). On the
+/// release's transaction, after its lease fence and after
+/// [`refuse_unfounded_decline_in_tx`]: only the holder of the live claim
+/// records a decline, so the member and the thread are in one workspace. A
+/// repeat decline of the same thread keeps one row and moves its time.
+pub(crate) async fn record_decline_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    decline: ClaimDecline,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_claim_declines (thread_id, member_id, reason, declined_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (thread_id, member_id)
+         DO UPDATE SET reason = excluded.reason, declined_at = excluded.declined_at",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(decline.as_str())
+    .bind(Utc::now())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }

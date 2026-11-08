@@ -580,8 +580,9 @@ pub enum Event {
         assignee_id: Option<MemberId>,
         /// Optional handoff note the actor attached when assigning/handing off
         /// — context for the assignee. Carried by a deliberate `assign`, and by
-        /// `release_own_claims` as the reason a restarted claimant let go; a
-        /// pull-claim, unassign or single release has none.
+        /// `release_own_claims` as the reason a restarted claimant let go, and
+        /// by a release with a decline as why the claimant would not work it;
+        /// a pull-claim, unassign or plain single release has none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
         thread: Thread,

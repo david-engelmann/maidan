@@ -55,6 +55,31 @@ pub(crate) fn refused_to(member: &str) -> String {
     format!("({} IS NOT NULL)", shared_family(member, "cand.id"))
 }
 
+/// True when `member` declined `cand` ([`maidan_types::ClaimDecline`]): it
+/// released the thread saying the review's change was written by its own
+/// family. [`refused_to`] reads a member's family from its usage evidence, and
+/// a seat with none yet would otherwise be handed the same review on every
+/// pass. Only `claim_next` reads it, and only for that member and thread:
+/// everyone else is still handed the review, a direct claim or assign is the
+/// caller's explicit choice, and a later review round is a new thread. A
+/// review's author family is set once, so the decline cannot outlive what it
+/// declined.
+pub(crate) fn declined_by(member: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM maidan_claim_declines cd
+                 WHERE cd.thread_id = cand.id AND cd.member_id = {member})"
+    )
+}
+
+/// The refusal an `own_family` decline answers with on a thread that is not a
+/// review naming its author's family: there is no family to have shared.
+pub(crate) fn decline_without_family() -> crate::error::StoreError {
+    crate::error::StoreError::Conflict(
+        "decline own_family: this thread is not a review that names its author_family; release it without decline"
+            .to_owned(),
+    )
+}
+
 /// The `AND` clause an `UPDATE maidan_threads` that hands the row to
 /// `member` carries, so the write itself refuses a seat of the author's
 /// family even if the read before it raced; see [`shared_family`].

@@ -179,7 +179,7 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
     store
-        .release_claim_with_event(release_id, r.holder, release_lease)
+        .release_claim_with_event(release_id, r.holder, release_lease, None)
         .await
         .unwrap();
     store

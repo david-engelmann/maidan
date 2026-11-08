@@ -1977,7 +1977,12 @@ pub async fn release_claim(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let (thread, stored) = state
         .store
-        .release_claim_with_event(thread_id, auth.member_id, ClaimLeaseId(body.claim_lease_id))
+        .release_claim_with_event(
+            thread_id,
+            auth.member_id,
+            ClaimLeaseId(body.claim_lease_id),
+            None,
+        )
         .await?;
     super::publish_stored(&state, stored).await;
     Ok(Json(thread))
