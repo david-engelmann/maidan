@@ -1,0 +1,3 @@
+### Harness Caching covers Anthropic's message threads
+
+- **Added:** `docs/Harness Caching.md` has a "Message threads" section for a harness that uses the Messages API beta while it works Maidan tasks: the harness keeps its own transcript and replays on `thread_not_found`, the context pack is the room part of a replay, `system`, `tools` and a `cachedPrefix` boot go on the create request only, the fixed fields and the limit of 4 `cache_control` breakpoints, the 5-minute expiry that a review or CI pause outlasts, where threads can't be used, cost, and one API key per agent where two agents could continue each other's thread. Checked against Anthropic's page on 2026-11-08.
