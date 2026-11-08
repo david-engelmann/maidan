@@ -7,6 +7,40 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [437.0.0] — 2026-11-08
+
+deploys without downtime; release_own_claims and its REST twin; an own-family decline sticks; the egress credential guard.
+
+### Maidan refuses to deliver a result that holds a credential
+
+- **Security:** before every send to GitHub, Slack or Linear, and before the change flow writes a commit or a pull request, Maidan scans the text it would publish for credential shapes: GitHub tokens, Anthropic and OpenAI-style keys, AWS access key ids, Slack tokens, JSON Web Tokens, PEM private keys and its own `maid_` secrets. A match refuses the send with nothing published, so a key the guard detects does not leak through Maidan even when the producer was prompt-injected by what it reviewed. It is not a guarantee: other shapes, and keys encoded or split to dodge it, still pass, and in a diff's added lines JWTs and PEM keys don't count (they are everyday fixtures). The delivery row is `skipped` with a reason that names the kind and the surface, never the text; the same goes to the log, `maidan_egress_credential_refused_total{surface,kind}` and the operator channel. `MAIDAN_EGRESS_CREDENTIAL_GUARD=off` turns it off, and boot refuses that with `MAIDAN_ENV=production`.
+
+### A restarted claimant frees its own claims at once
+
+- **Added:** MCP `release_own_claims {workspace_id, note?}` (`thread:transition`, in the worker profile) releases every live leased claim the calling member holds in its own workspace, for a claimant that crashed or restarted and lost its fencing tokens. Each claim is released exactly as `release_claim` releases it (worked time charged, assignee, lease and working clock cleared, a `thread_assignment_changed` carrying the note, default "the claimant restarted"), fenced by the lease read in the same transaction, so a claim that changed hands meanwhile is left alone. It has no member argument and refuses a workspace the token was not minted for. A lapsed lease stays the reaper's and a lease-less assignment is kept. Returns `{released}`, the released thread ids; a second call releases nothing. The claimant skill calls it once before the first claim.
+- **Fixed:** `scripts/regen_derived.py` writes the tool count to `docs/Quickstart.md`, where it moved from the README; it stopped with an error before writing the book's count.
+
+### A hosted deploy no longer leaves the server unanswered for minutes
+
+- **Fixed:** a stopping server ends its open streams and exits. On SIGTERM every SSE stream (the event stream, MCP's notification streams, A2A task streams) ends with a `stream_ended` event whose reason is `server restarting`, every WebSocket closes with `1012`, and a request still open 20 seconds after the listener closed is cut. The graceful shutdown used to wait for every connection to finish, so one connected agent kept a replaced container running for minutes, and Cloudflare starts the new image only after the old process exits: prod was unanswered for up to 5 minutes on each release.
+- **Changed:** the hosted Worker holds a request while the container is replaced or restarted, instead of answering `503` at once. It asks the container's `/health` with backoff until it answers, then sends the request again, for up to 90 seconds. Reads are always sent again; a write only when the runtime says it never reached a server and its body (at most 1 MiB, of known length) could be copied. The runtime's other no-server answers ("Failed to start container", "There is no Container instance available") now count as unavailable too, rather than reaching the client as plain text.
+- **Added:** `scripts/measure-deploy-gap.sh` records how long an instance goes unanswered across a deploy (`unanswered`, `longest_outage_s`, `slowest_answer_s`). `deploy dev` and `deploy prod` run it beside each deploy and put the summary on the job page. Hosted Operations, "Deploys without downtime", describes both halves and how to read the number.
+
+### A released claim takes its holder's status with it, and release_own_claims gets a REST twin
+
+- **Added:** `POST /workspaces/{id}/claims/release-own` (optional body `{"note": "..."}`, `thread:transition`) is the REST twin of MCP `release_own_claims`: it releases every live leased claim the calling member holds in its own workspace and answers `{"released": [thread_id, ...]}`. The member is the token's; another workspace is refused with `403`.
+- **Changed:** A claim that ends by `release_claim`, `release_own_claims`, the reaper or a `claim_next` takeover of a lapsed lease drops the status its holder declared, in the same transaction, so the board no longer shows a departed holder's "working". A status the thread's owner declared stays.
+- **Changed:** The MCP server's `instructions` tell a claimant to call `release_own_claims` once per workspace at startup, before its first claim, unless another live process shares its member token.
+- **Added:** The TypeScript, Python and Go SDKs (0.3.0, untagged) call it: `releaseOwnClaims(workspaceId, note?)`, `release_own_claims(workspace_id, note=None)` and `ReleaseOwnClaims(workspaceID, note)`. The Rust SDK does not have it yet.
+
+### claim_next remembers an own-family decline
+
+- **Added:** `release_claim` takes `decline: "own_family"`. A seat that lets go of a review because the change was written by its own model family says so with the release, and `claim_next` (channel and workspace scope) no longer hands that review to that member; every other member is still handed it. Before, the family guard rested on usage evidence alone, so a seat with no usage yet was handed the same oldest own-family review on every pass, and seats reported a zero-cost usage record to stop it. The decline is written in the release's transaction after the lease fence, so only the holder records one, for itself; a thread that is not a review naming its `author_family` refuses it and stays claimed. The assignment event's note records the decline. New table `maidan_claim_declines` (migrations 0224 SQLite, 0225 Postgres). `release_own_claims` and the REST release record none.
+
+### SQLite invites take the write lock first
+
+- **Fixed:** minting a workspace invite on SQLite could fail with `database is locked` when another connection wrote at the same moment: the transaction read the inviter before it wrote, and SQLite refuses to upgrade a stale read to a write without waiting. It now begins with `BEGIN IMMEDIATE`, as accepting an invite already did.
+
 ## [436.0.0] — 2026-11-08
 
 no-change rounds post their check on the head they ran on; rebases on a moved base; a sturdier release rerun.

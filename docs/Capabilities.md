@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v437.0.0](https://github.com/david-engelmann/maidan/releases/tag/v437.0.0) — maidan refuses to deliver a result that holds a credential, and 5 more
+
+deploys without downtime; release_own_claims and its REST twin; an own-family decline sticks; the egress credential guard.
+
+- Maidan refuses to deliver a result that holds a credential
+- A restarted claimant frees its own claims at once
+- A hosted deploy no longer leaves the server unanswered for minutes
+- A released claim takes its holder's status with it, and release_own_claims gets a REST twin
+- claim_next remembers an own-family decline
+- SQLite invites take the write lock first
+
+`CHANGELOG.md` under `[437.0.0]` has every entry.
+
 ## [v436.0.0](https://github.com/david-engelmann/maidan/releases/tag/v436.0.0) — a release rerun resumes after its record, and 4 more
 
 no-change rounds post their check on the head they ran on; rebases on a moved base; a sturdier release rerun.
