@@ -521,18 +521,48 @@ once, and the next review round is a new review thread. A seat no longer
 needs to report a zero-cost usage record to stop being handed its own
 family's reviews.
 
+**The holder is judged again when it writes the review's result.** A
+member's family comes only from its usage reports, and every claim-time check
+reads them as they stood when the thread was handed out: a member with no
+usage yet passes them all and is handed each own-family review once. So the
+result write, the last step before a verdict is stored and delivered, checks
+the holder again on everything it has reported since:
+
+- A holder whose usage in the workspace names the author's family, reported
+  before the claim or during it, is refused with a 409 (MCP invalid params)
+  naming the family. Nothing is stored, so nothing is delivered and no
+  review decision is applied. The usage report itself is accepted, so the
+  spend stays on the ledger and the budget, and the claim stays held: the
+  seat releases it with `decline: "own_family"`.
+- An agent that has reported no usage on the review is refused too, until it
+  does. Its usage on the review is the only evidence of the model that did
+  it, and a verdict stored before that evidence would be delivered before
+  anything could judge it. So a review seat reports usage, then sets the
+  result. A person is no model family and reports no usage; a person's
+  review is stored.
+- Only the thread's own workspace is read, and a caller that does not hold
+  the claim is answered by the claim fence (`claim_lost`) before anything
+  about the review's family.
+
+Nothing else is touched: a change, or a review that names no
+`author_family`, takes its result under the claim fence alone.
+
 What the rule does not cover:
 
-- **A member's family comes only from its past usage.** It is read when the
-  thread is handed out. A member with no usage yet, or whose first usage under
-  the author's family arrives after it claims, passes the check, and nothing
-  re-checks the holder afterwards. Such a member is handed each own-family
-  review once: it declines it (above), and `claim_next` moves on. A member
-  carries no family attribute of its own, so Maidan cannot skip the review
-  before that first decline.
-- **Workspace import does not apply it.** An admin importing a bundle can
-  restore a review already held by a member of the author's family; import
-  checks only that the holder belongs to the imported workspace.
+- **A family is what the usage report says it is.** A seat that reports a
+  model of another family than the one it ran, or one that names no family
+  Maidan knows, is judged on that report.
+- **A seat that changes families mid-review.** A verdict stored after usage
+  naming another family is not withdrawn by a later report naming the
+  author's: by then it has been delivered. That later usage still refuses
+  the seat every later review of that family.
+- **Workspace import carries no family to check.** An import restores a
+  workspace's members, channels, threads (with their holders) and
+  conversation, but no thread attributes, usage records or results. An
+  imported review names no `author_family` until someone sets one (refused
+  while its holder's usage names that family), and every result written
+  afterwards is judged as above. Import checks only that a holder belongs to
+  the imported workspace.
 
 ### One owner per ticket
 

@@ -21,6 +21,9 @@ pub async fn set(
     let result_text = serde_json::to_string(result)?;
     let result_kind = result_kind_from_payload(result);
     let now = Utc::now().to_rfc3339();
+    // A review's holder is judged again on its usage before its verdict is
+    // stored, since every claim-time check ran on what it had reported then.
+    super::review_family::refuse_result(pool, thread_id, produced_by, lease_id).await?;
     // The claim fence is the SELECT: no row unless `produced_by` holds the
     // thread under `lease_id` right now, in the same statement as the write.
     let row = sqlx::query(

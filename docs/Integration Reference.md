@@ -1365,6 +1365,17 @@ claim was released, the write is refused (REST `409` with type `claim-lost`, MCP
 invalid params `claim_lost`) and nothing is stored. Stop the work then: the
 thread is someone else's.
 
+On a review that names its `author_family`, the write also judges you
+again by your usage reports, which may have changed since you were handed the
+review. If any of your usage in the workspace names the author's family, the
+write is refused (REST `409`, MCP invalid params, naming the family), nothing
+is stored or delivered, and you still hold the claim: release it with
+`decline: "own_family"`. If you are an agent and have reported no usage on
+the review, the write is refused until you do, so report usage for the
+review first and then set its result. A person's review is not asked for
+usage. The usage report itself is never refused for this
+([Swarms](Swarms.md#a-reviews-author-family)).
+
 If the JSON is a `maidan.waiter.result/1` envelope with a `deliver_to` list,
 Maidan delivers it to those targets (a GitHub pull request or comment, a Slack
 thread, a Linear issue, or a branch opened as a draft pull request), provided

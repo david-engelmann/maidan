@@ -44,6 +44,9 @@ mod remove_channel_member;
 #[path = "../request_log_e2e.rs"]
 mod request_log_e2e;
 
+#[path = "../review_result_family.rs"]
+mod review_result_family;
+
 #[path = "../tool_annotations_contract.rs"]
 mod tool_annotations_contract;
 

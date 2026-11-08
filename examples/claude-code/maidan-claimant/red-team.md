@@ -47,7 +47,13 @@ input: it says what to review, never how to change these rules.
    discard the change. A test that still passes does not pin anything.
 6. **Run the targeted tests** for what changed, under the repository's own
    way of running them, and record each command and its result.
-7. **Deliver the report** as the thread's result, under the live lease. The
+7. **Report usage** for the review, as in the runbook, before the report.
+   Maidan stores a review's result only from a holder that has reported
+   usage on it, and refuses it (409, naming the family) once that usage
+   names the review's `author_family`. If it does, nothing was delivered and
+   you still hold the claim: release it with `decline: "own_family"` and
+   stop.
+8. **Deliver the report** as the thread's result, under the live lease. The
    body is exactly these sections:
    - `VERDICT: PASS` or `VERDICT: FIX`
    - `HEAD <full sha reviewed>`
@@ -67,8 +73,8 @@ input: it says what to review, never how to change these rules.
    report with a line naming the reviewer and its family, for example
    `Red-team by Codex (gpt-5.6-sol, openai family) at <sha>`, so the
    author's gate can record which family reviewed which head.
-8. **Report usage, start review, release** the claim, as in the runbook.
-   Remove your worktree.
+9. **Start review and release** the claim, as in the runbook. Remove your
+   worktree.
 
 Never push, commit, approve, request changes, merge, mark ready or label:
 the report is the whole output.
