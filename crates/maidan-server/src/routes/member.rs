@@ -152,9 +152,36 @@ fn joining_script(c: char) -> Option<u32> {
         0x1780..=0x17FF => Some(0x1780),
         _ => None,
     }
-    // Format characters inside those blocks (e.g. U+0600, U+061C) are not
-    // letters a joiner may sit beside.
-    .filter(|_| !is_format_char(c))
+    // Only letters, their vowel signs and a virama may sit beside a joiner:
+    // the blocks also hold digits, punctuation (the danda) and format
+    // characters (U+0600, U+061C), where a joiner only hides something.
+    .filter(|_| c.is_alphabetic() || is_virama(c))
+}
+
+/// The viramas of the scripts [`joining_script`] covers: a virama then ZWJ
+/// asks for a half form, so it is the one non-letter a joiner follows.
+fn is_virama(c: char) -> bool {
+    matches!(
+        c,
+        '\u{094D}'
+            | '\u{09CD}'
+            | '\u{0A4D}'
+            | '\u{0ACD}'
+            | '\u{0B4D}'
+            | '\u{0BCD}'
+            | '\u{0C4D}'
+            | '\u{0CCD}'
+            | '\u{0D4D}'
+            | '\u{0DCA}'
+            | '\u{1039}'
+            | '\u{103A}'
+            | '\u{17D2}'
+    )
+}
+
+/// A keycap emoji's base (`1️⃣` is a digit, VS16, U+20E3).
+fn is_keycap_base(c: char) -> bool {
+    c.is_ascii_digit() || c == '#' || c == '*'
 }
 
 /// An emoji base that VS16 may follow and ZWJ may join.
@@ -187,7 +214,10 @@ fn is_allowed_joiner(chars: &[char], at: usize) -> bool {
     let prev = at.checked_sub(1).and_then(|i| chars.get(i)).copied();
     let next = chars.get(at + 1).copied();
     match chars.get(at).copied() {
-        Some(VS16) => prev.is_some_and(is_emoji_base),
+        Some(VS16) => {
+            prev.is_some_and(is_emoji_base)
+                || (prev.is_some_and(is_keycap_base) && next == Some('\u{20E3}'))
+        }
         Some(joiner @ (ZWNJ | ZWJ)) => {
             let (Some(prev), Some(next)) = (prev, next) else {
                 return false;
@@ -1311,6 +1341,11 @@ mod tests {
             "x\u{FE0F}\u{200D}\u{1F525}",
             "\u{1F468}\u{200D}\u{200D}\u{1F469}",
             "\u{200D}\u{1F468}",
+            // Digits and punctuation of a joining script are not letters.
+            "\u{0661}\u{200C}\u{0662}",
+            "\u{0964}\u{200D}\u{0964}",
+            // VS16 after a digit is a keycap only when the keycap follows.
+            "1\u{FE0F}",
         ] {
             assert!(normalize_display_name(Some(bad)).is_err(), "{bad:?}");
         }
@@ -1328,6 +1363,8 @@ mod tests {
             // Heart on fire: heart VS16 ZWJ fire.
             "\u{2764}\u{FE0F}\u{200D}\u{1F525}",
             "Sam \u{2764}\u{FE0F}",
+            // Keycap one: digit, VS16, combining enclosing keycap.
+            "Agent 1\u{FE0F}\u{20E3}",
         ] {
             assert_eq!(
                 normalize_display_name(Some(good)).unwrap().as_deref(),

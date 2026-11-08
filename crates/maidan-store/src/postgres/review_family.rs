@@ -89,22 +89,22 @@ pub(crate) async fn spawn_in_tx(
     .await?;
     let channel_id: Uuid = place.try_get("channel_id")?;
     let workspace_id: Uuid = place.try_get("workspace_id")?;
-    let now = Utc::now();
+    // The database's clock, like every other thread: claim_next ages a thread
+    // by `created_at` against it (#1586).
     let row = sqlx::query(
-        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_at, updated_at, created_by)
-         VALUES ($1, $2, $3, $4, NULL, $5, $6, $7)
+        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
+         VALUES ($1, $2, $3, $4, NULL, $5)
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(Uuid::now_v7())
     .bind(channel_id)
     .bind(thread_id.0)
     .bind("Second-family review")
-    .bind(now)
-    .bind(now)
     .bind(actor_id.0)
     .fetch_one(&mut **tx)
     .await?;
     let thread = threads::row_to_thread(&row)?;
+    let now = thread.created_at;
     let attributes = TaskAttributes {
         kind: TaskKind::Review,
         ..TaskAttributes::default()

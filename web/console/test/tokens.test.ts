@@ -14,7 +14,7 @@ test("every corner above 4px comes from the radius scale, in every value of a sh
   // Reading only the first value let `var(--r-lg) 18px 0 0` through. A token
   // with a px fallback counts as a literal too: the fallback drifts from the scale.
   const raw = [...css.matchAll(/border(?:-[a-z]+)*-radius:\s*([^;}]+)/g)].flatMap((m) =>
-    [...m[1].replace(/var\(--r-[\w-]+\)/g, "").matchAll(/(\d+(?:\.\d+)?)px/g)]
+    [...m[1].replace(/var\(--r-[\w-]+\)/g, "").matchAll(/(?<![\d.])(\d*\.?\d+)px/g)]
       .filter((px) => Number(px[1]) > 4)
       .map((px) => `${px[0]} in "${m[1].trim()}"`),
   );

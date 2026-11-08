@@ -205,7 +205,7 @@ export function peerRefusal(name: string, baseUrl: string): string | null {
 export const DELIVERY_KINDS = ["all", "webhook", "automation"] as const;
 export const HANDLER_KINDS = ["http", "mcp_tool"] as const;
 export const NOTIFICATION_KINDS = ["message_posted", "mention_recorded", "thread_ready", "thread_result_set", "review_submitted", "claim_expired", "thread_landed"] as const;
-export const EVENT_KINDS = ["message_posted", "mention_recorded", "thread_created", "thread_transitioned", "thread_ready", "thread_result_set", "thread_landed", "claim_expired"] as const;
+export const EVENT_KINDS = ["message_posted", "mention_recorded", "thread_created", "thread_state_changed", "thread_ready", "thread_result_set", "thread_landed", "claim_expired"] as const;
 
 /** The query string the deliveries list reads, by status. */
 export function deliveryQuery(kind: string, status: DeliveryStatus, limit = 50): string {
@@ -547,9 +547,11 @@ export class ToolsApi {
     const rows = await this.get<Array<Record<string, unknown>>>(`/workspaces/${workspace}/events?order=desc&limit=200`);
     return rows.reverse();
   }
-  async events(workspace: string, kind: string): Promise<WorkEvent[]> {
-    const rows = await this.get<WorkEvent[]>(`/workspaces/${workspace}/events?order=desc&limit=200`);
-    return rows.filter((e) => !kind || e.kind === kind).slice(0, 50);
+  /** The newest 50 events of one kind, newest first; the server filters, so an older match is never cut off by newer events of other kinds. */
+  events(workspace: string, kind: string): Promise<WorkEvent[]> {
+    const q = new URLSearchParams({ order: "desc", limit: "50" });
+    if (kind) q.set("types", kind);
+    return this.get<WorkEvent[]>(`/workspaces/${workspace}/events?${q}`);
   }
   /** Not allowed when the credential lacks federation:admin, which a browser session always does. */
   peers(workspace: string): Promise<Allowed<Peer[]>> {

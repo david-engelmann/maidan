@@ -452,10 +452,11 @@ export class BoardApi {
   async refusals(workspaceId: string, channelId: string, threads: Thread[]): Promise<Map<string, string>> {
     const wanted = new Set(threads.filter((th) => th.state === "in_review").map((th) => th.id));
     if (!wanted.size) return new Map();
-    // Newest first, so a long channel's latest refusals are in the page.
+    // Newest first, so a long channel's latest refusals are in the page; then
+    // back to log order, so a timestamp tie still goes to the later event.
     const q = new URLSearchParams({ types: "message_posted", channel_id: channelId, limit: "500", order: "desc" });
     try {
-      return latestRefusals(await this.get<MessageEvent[]>(`/workspaces/${workspaceId}/events?${q}`), wanted);
+      return latestRefusals((await this.get<MessageEvent[]>(`/workspaces/${workspaceId}/events?${q}`)).reverse(), wanted);
     } catch {
       return new Map();
     }

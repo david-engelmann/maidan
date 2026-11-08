@@ -859,10 +859,12 @@ async fn claim_next_in_tx(
             // A lease lapsed when its deadline is before the lease clock: `now`,
             // or during the boot grace a time before every deadline.
             now: "$12::timestamptz",
-            // A thread's `created_at` is the database's `DEFAULT NOW()`, so its
-            // age reads the database clock too: the app clock (`$11`) can
-            // drift from it.
-            hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
+            // A thread's `created_at` is the database's clock, so its age reads
+            // the database clock too: the app clock (`$11`) can drift from it.
+            // The statement's time, not the transaction's, since the claim may
+            // wait on the claim lock first.
+            hours_waiting:
+                "FLOOR(EXTRACT(EPOCH FROM (statement_timestamp() - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
             warm_hold_since: "$9::timestamptz",
             warm_ttl_since: "$10::timestamptz",
