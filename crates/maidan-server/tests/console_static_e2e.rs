@@ -66,6 +66,10 @@ async fn console_index_is_the_built_shell_under_a_strict_csp() {
         assert!(!csp.contains("script-src 'self' 'unsafe-inline'"), "{csp}");
         let body = resp.text().await.expect("body");
         assert!(body.contains(r#"src="/ui/app.js""#), "{body}");
+        assert!(
+            body.contains(r#"<script src="/ui/theme.js"></script>"#),
+            "{body}"
+        );
         assert!(body.contains(r#"href="/ui/style.css""#), "{body}");
         assert!(
             body.contains(r#"href="/ui/manifest.webmanifest""#),
@@ -96,6 +100,7 @@ async fn console_assets_are_pinned_names_only() {
     for (name, kind) in [
         ("app.js", "text/javascript"),
         ("vendor.js", "text/javascript"),
+        ("theme.js", "text/javascript"),
         ("style.css", "text/css"),
         ("geist.woff2", "font/woff2"),
         ("icon.png", "image/png"),

@@ -38,6 +38,21 @@ export function missingPreloads(html, entry, base) {
   return [...chunks].filter((c) => !preloaded.has(c)).sort();
 }
 
+/**
+ * Why the theme would flash, or null: public/theme.js must load as a plain,
+ * blocking script ahead of the stylesheet, so the stored theme is on <html>
+ * before the first paint.
+ * @param {string} html @param {string} base
+ * @returns {string | null}
+ */
+export function themeLoadsLate(html, base) {
+  const boot = html.search(new RegExp(`<script src="${base}theme\\.js"></script>`));
+  if (boot < 0) return `does not load ${base}theme.js as a plain script`;
+  const sheet = html.search(/<link\b[^>]*\brel="stylesheet"/i);
+  if (sheet >= 0 && sheet < boot) return `loads its stylesheet before ${base}theme.js`;
+  return null;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const path =
     process.argv[2] ??
@@ -54,10 +69,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   const base = /<script\b[^>]*\bsrc="([^"]*\/)app\.js"/.exec(html)?.[1] ?? "/";
+  const late = themeLoadsLate(html, base);
+  if (late) {
+    console.error(`Theme check: ${path} ${late}`);
+    process.exit(1);
+  }
   const entry = readFileSync(path.replace(/index\.html$/, "app.js"), "utf8");
-  const late = missingPreloads(html, entry, base);
-  if (late.length > 0) {
-    console.error(`Preload check: ${path} does not modulepreload ${late.join(", ")}, which app.js imports`);
+  const unloaded = missingPreloads(html, entry, base);
+  if (unloaded.length > 0) {
+    console.error(`Preload check: ${path} does not modulepreload ${unloaded.join(", ")}, which app.js imports`);
     process.exit(1);
   }
   console.log(`CSP check passed: ${path}`);

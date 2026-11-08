@@ -20,6 +20,7 @@ import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommand
 import { clearPaletteIndex } from "./paletteIndex.ts";
 import { ROUTES, navigate, phoneTabs, usePlace, useRoute, type Route, type RouteId } from "./router.ts";
 import { EmptyState } from "./EmptyState.tsx";
+import { THEME_CHOICES, setChoice } from "../core/theme.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
 const NO_FILTER = {};
@@ -131,6 +132,13 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
             { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => void store.logout() },
           ] satisfies Command[])
         : []),
+      ...THEME_CHOICES.map((c): Command => ({
+        id: `theme-${c.id}`,
+        title: c.id === "system" ? "Match the system theme" : `${c.label} theme`,
+        hint: c.id === "system" ? "Follow this device's light or dark setting" : `Use the ${c.id} console in this browser`,
+        group: "Appearance",
+        run: () => setChoice(c.id),
+      })),
     ],
     [signedIn, store, browserSession, severalWorkspaces],
   );

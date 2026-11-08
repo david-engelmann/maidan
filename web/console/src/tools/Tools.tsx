@@ -6,7 +6,7 @@
 // Search finds messages; Workspace renames, switches, and adds channels,
 // tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ago, BoardApi, type Thread } from "../core/board.ts";
 import { liveBus } from "../core/bus.ts";
 import { PeopleApi, type Person } from "../core/people.ts";
@@ -56,6 +56,8 @@ import { useSession } from "../hooks/useSession.ts";
 import { MODE_LINE } from "../core/api.ts";
 import { capabilityCard } from "../core/session.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
+import { useTheme } from "../hooks/useTheme.ts";
+import { THEME_CHOICES } from "../core/theme.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
 import { peekPaletteIndex } from "../shell/paletteIndex.ts";
@@ -1052,6 +1054,34 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
   );
 }
 
+/** Dark, Light or System for this browser. Dark until someone picks. */
+function Appearance() {
+  const [choice, choose] = useTheme();
+  // A radio group is one tab stop; the arrow keys move the choice, as they do
+  // in a native one.
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const at = THEME_CHOICES.findIndex((c) => c.id === choice);
+    const next = THEME_CHOICES[(at + step + THEME_CHOICES.length) % THEME_CHOICES.length];
+    choose(next.id);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-choice="${next.id}"]`)?.focus();
+  };
+  return (
+    <Panel title="Appearance">
+      <p className="muted small" id="theme-why">Kept in this browser. System follows your device's light or dark setting.</p>
+      <div className="seg theme-pick" role="radiogroup" aria-label="Theme" aria-describedby="theme-why" onKeyDown={onKey}>
+        {THEME_CHOICES.map((c) => (
+          <button key={c.id} type="button" role="radio" data-choice={c.id} aria-checked={choice === c.id} tabIndex={choice === c.id ? 0 : -1} className={choice === c.id ? "on" : undefined} onClick={() => choose(c.id)}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function Device({ api, me }: { api: ToolsApi; me: string | null }) {
   const install = useSyncExternalStore(installStore.subscribe, installStore.getSnapshot);
   const [busy, setBusy] = useState(false);
@@ -1094,6 +1124,7 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
   };
   return (
     <>
+      <Appearance />
       <Panel title="Install">
         {install.installed ? (
           <p className="muted">The console is installed on this device.</p>

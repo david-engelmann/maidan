@@ -401,6 +401,11 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   Bumping the Chainguard MinIO digest in compose means bumping it in `k8s/`
   and `helm/maidan-stack/values.yaml` too; `check-deploy-contract.sh` (in the
   `lint` job) fails while they differ.
+- **A console colour is a token in both palettes.** `web/console/src/styles.css`
+  paints only from the `:root[data-theme="dark"]` and `:root[data-theme="light"]`
+  blocks; `test/tokens.test.ts` fails on a colour literal anywhere else and on
+  a token one palette lacks, and `test/contrast.test.ts` checks AA in both.
+  Dark is the default, set before the first paint by `public/theme.js`.
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports unused under
   `--no-default-features`) and `check-agent-contract.sh` (it greps paths).

@@ -1422,6 +1422,12 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/console/dist/vendor.js"),
             ),
+            // Sets the stored theme on <html> before the first paint
+            // (web/console/public/theme.js).
+            "theme.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/theme.js"),
+            ),
             "style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../static/console/dist/style.css"),
