@@ -337,8 +337,8 @@ owner. Use a fine-grained token with **Contents** and **Pull requests** (read
 and write) on exactly the repositories it may write to, and nothing else. For
 CI notices (`ci_failed`, `checks_done`) add **Actions** and **Commit
 statuses**, read-only; for a change result's `check`, which Maidan posts as a
-commit status on the head it delivered, make **Commit statuses** read and
-write. Only a GitHub App can create check runs; with a token, the summary
+commit status on the head it delivered (or, for a `no_change` round, the
+head the check ran on), make **Commit statuses** read and write. Only a GitHub App can create check runs; with a token, the summary
 comment carries the verdict.
 
 **A GitHub App instead.** Set `MAIDAN_GITHUB_APP_ID`,

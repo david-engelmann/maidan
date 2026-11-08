@@ -32,9 +32,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressSurface,
-    EgressTarget, ExternalRef, GithubReviewComment, NewEgressOutbox, ResultAttachment,
-    ResultDelivery, ThreadId, WaiterResult, WorkspaceId, CHANGE_RESULT_KIND,
+    parse_change_result, parse_waiter_result, status, ChangeResult, DeliverTarget, EgressKind,
+    EgressSurface, EgressTarget, ExternalRef, GithubReviewComment, NewEgressOutbox,
+    ResultAttachment, ResultDelivery, ThreadId, WaiterResult, WorkspaceId, CHANGE_RESULT_KIND,
 };
 use tracing::{debug, warn};
 
@@ -252,6 +252,7 @@ pub async fn route_thread_result(
         .deliver_to
         .iter()
         .partition(|t| matches!(t, DeliverTarget::GithubBranch { .. }));
+    let change = parse_change_result(&stored.result);
     for target in branches.into_iter().chain(others) {
         if let Err(err) = route_one(
             state,
@@ -260,6 +261,7 @@ pub async fn route_thread_result(
             thread_id,
             stored.produced_at,
             &waiter,
+            change.as_ref(),
             target,
         )
         .await
@@ -311,6 +313,7 @@ async fn route_one(
     thread_id: ThreadId,
     revision: DateTime<Utc>,
     waiter: &WaiterResult,
+    change: Option<&ChangeResult>,
     target: &DeliverTarget,
 ) -> Result<(), String> {
     match target.to_egress_target() {
@@ -339,7 +342,10 @@ async fn route_one(
                 .is_egress_target_allowed(workspace_id, egress.surface(), &selector)
                 .await
                 .map_err(|e| e.to_string())?;
-            if let Some(reason) = allowed.then(|| no_change_reason(&egress, waiter)).flatten() {
+            if let Some(reason) = allowed
+                .then(|| no_change_reason(&egress, waiter, change))
+                .flatten()
+            {
                 skip_routable(state, thread_id, &egress, revision, &reason).await
             } else if let Some(reason) = allowed
                 .then(|| unconfigured_reason(state, egress.surface()))
@@ -399,8 +405,14 @@ pub fn unconfigured_reason(state: &AppState, surface: EgressSurface) -> Option<S
 }
 
 /// Why a blessed `github_branch` target still gets no GitHub write: only a
-/// [`CHANGE_RESULT_KIND`] with status `changed` is committed.
-fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<String> {
+/// [`CHANGE_RESULT_KIND`] with status `changed` is committed, and only a
+/// `no_change` one carrying a `check` and `branch_head_sha` posts a commit
+/// status ([`ChangeResult::is_check_only`]).
+fn no_change_reason(
+    target: &EgressTarget,
+    waiter: &WaiterResult,
+    change: Option<&ChangeResult>,
+) -> Option<String> {
     if !matches!(target, EgressTarget::GithubBranch { .. }) {
         return None;
     }
@@ -415,6 +427,9 @@ fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<Stri
             "status `{}`: the rebase stopped on conflicts, so no GitHub write",
             waiter.status
         ));
+    }
+    if change.is_some_and(ChangeResult::is_check_only) {
+        return None;
     }
     (waiter.status != maidan_types::CHANGE_STATUS_CHANGED).then(|| {
         format!(
@@ -478,7 +493,8 @@ fn compact_reason(reason: &str) -> String {
 /// Build the reply to a [`CHANGE_RESULT_KIND`] from its
 /// `github_branch` deliveries: the commit and pull request when one landed,
 /// the recorded reason when it did not, and the status alone when the producer reported
-/// anything other than `changed`.
+/// anything other than `changed`, with what became of a `no_change` round's
+/// `check` when it carried one.
 pub async fn change_reply(
     state: &AppState,
     workspace_id: WorkspaceId,
@@ -503,6 +519,7 @@ pub async fn change_reply_at(
     ) else {
         return ChangeReply::NotAChange;
     };
+    let gave_up = now - stored.produced_at > CHANGE_REPLY_MAX_WAIT;
     let mut lines = Vec::new();
     if !change.is_changed() {
         lines.push(if change.status == maidan_types::CHANGE_STATUS_REBASE_CONFLICT {
@@ -516,6 +533,21 @@ pub async fn change_reply_at(
                 change.status
             )
         });
+        if change.is_check_only() {
+            let Some(posted) = check_only_lines(
+                state,
+                thread_id,
+                &waiter,
+                &change,
+                stored.produced_at,
+                gave_up,
+            )
+            .await
+            else {
+                return ChangeReply::Waiting;
+            };
+            lines.extend(posted);
+        }
         // The cause, so the thread gets one end notice that says why. A
         // producer's own detail wins over its summary, as the consuming app reads it.
         if let Some(reason) = change.error_detail.as_deref().or(change.summary.as_deref()) {
@@ -523,7 +555,6 @@ pub async fn change_reply_at(
         }
         return ChangeReply::Ready(lines.join("\n"));
     }
-    let gave_up = now - stored.produced_at > CHANGE_REPLY_MAX_WAIT;
     let unsettled = |repo: &str, branch: &str| {
         format!(
             "Nothing has landed on `{branch}` in {repo} after {} hours; the delivery status has the latest.",
@@ -597,6 +628,71 @@ pub async fn change_reply_at(
         lines.push("The result named no `github_branch` target, so nothing was committed.".into());
     }
     ChangeReply::Ready(lines.join("\n"))
+}
+
+/// What became of a `no_change` round's commit status on each
+/// `github_branch` target, read from its delivery row as a changed round's
+/// reply is. `None` while a delivery has not finished.
+async fn check_only_lines(
+    state: &AppState,
+    thread_id: ThreadId,
+    waiter: &WaiterResult,
+    change: &ChangeResult,
+    produced_at: DateTime<Utc>,
+    gave_up: bool,
+) -> Option<Vec<String>> {
+    let mut lines = Vec::new();
+    for target in &waiter.deliver_to {
+        let DeliverTarget::GithubBranch { repo, branch, .. } = target else {
+            continue;
+        };
+        let not_posted =
+            |why: &str| format!("No commit status was posted on `{branch}` in {repo}: {why}");
+        let settling = "the delivery has not settled; the delivery status has the latest.";
+        let Some(egress) = target.to_egress_target() else {
+            lines.push(not_posted("the target is not usable."));
+            continue;
+        };
+        let row = match state.store.get_result_delivery(thread_id, &egress).await {
+            Ok(Some(row)) if row.armed_revision >= produced_at => row,
+            Ok(_) => {
+                lines.push(not_posted("the delivery was not recorded."));
+                continue;
+            }
+            Err(_) if gave_up => {
+                lines.push(not_posted(settling));
+                continue;
+            }
+            Err(_) => return None,
+        };
+        match row.status.as_str() {
+            status::PENDING if gave_up => lines.push(not_posted(settling)),
+            status::PENDING => return None,
+            status::DELIVERED => lines.push(
+                crate::change_flow::check_note(&row.template_warnings)
+                    .unwrap_or_else(|| check_posted_line(change, repo, branch)),
+            ),
+            _ => lines.push(not_posted(
+                row.last_error
+                    .as_deref()
+                    .unwrap_or("the delivery did not land"),
+            )),
+        }
+    }
+    Some(lines)
+}
+
+/// The line for a `no_change` round's check that went on the head it ran on.
+fn check_posted_line(change: &ChangeResult, repo: &str, branch: &str) -> String {
+    match (change.check.as_ref(), change.branch_head_sha.as_deref()) {
+        (Some(Ok(check)), Some(sha)) => format!(
+            "Commit status `{}` {} posted on {} of `{branch}` in {repo}.",
+            check.context,
+            check.state.as_str(),
+            sha.get(..7).unwrap_or(sha)
+        ),
+        _ => format!("Commit status posted on `{branch}` in {repo}."),
+    }
 }
 
 async fn skip_routable(
@@ -870,6 +966,61 @@ mod tests {
     use maidan_types::{
         FindingLineRange, GithubDiffSide, WaiterFinding, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
     };
+
+    /// A `no_change` change result aimed at a branch, with `extra` fields.
+    fn no_change_with(extra: serde_json::Value) -> serde_json::Value {
+        let mut value = serde_json::json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": CHANGE_RESULT_KIND,
+            "status": "no_change",
+            "branch": "feature/agent-x",
+            "deliver_to": [
+                {"surface": "github_branch", "repo": "example/app", "branch": "feature/agent-x", "base": "dev"},
+            ],
+        });
+        if let (Some(value), Some(extra)) = (value.as_object_mut(), extra.as_object()) {
+            value.extend(extra.clone());
+        }
+        value
+    }
+
+    fn branch_reason(value: &serde_json::Value) -> Option<String> {
+        let waiter = parse_waiter_result(value).unwrap();
+        let change = parse_change_result(value);
+        let target = EgressTarget::GithubBranch {
+            repo: "example/app".into(),
+            branch: "feature/agent-x".into(),
+        };
+        no_change_reason(&target, &waiter, change.as_ref())
+    }
+
+    #[test]
+    fn a_no_change_round_with_a_check_and_its_head_goes_to_the_branch_and_nothing_else_does() {
+        let head = "1111111111111111111111111111111111111111";
+        let check = serde_json::json!({"context": "seat/prepush", "state": "success"});
+        let both = no_change_with(serde_json::json!({"check": check, "branch_head_sha": head}));
+        assert_eq!(branch_reason(&both), None);
+        // A malformed check is still delivered, so its row says why nothing
+        // was posted.
+        let malformed =
+            no_change_with(serde_json::json!({"check": {"context": ""}, "branch_head_sha": head}));
+        assert_eq!(branch_reason(&malformed), None);
+        let old = "status `no_change`: nothing to commit, so no GitHub write";
+        for value in [
+            no_change_with(serde_json::json!({})),
+            no_change_with(serde_json::json!({"check": check})),
+            no_change_with(serde_json::json!({"branch_head_sha": head})),
+            no_change_with(serde_json::json!({"check": check, "branch_head_sha": "b5e54f9"})),
+        ] {
+            assert_eq!(branch_reason(&value).as_deref(), Some(old), "{value}");
+        }
+        for status in ["seat_error", "content_blocked"] {
+            let mut value = both.clone();
+            value["status"] = serde_json::json!(status);
+            let reason = branch_reason(&value).unwrap();
+            assert!(reason.contains(status), "{reason}");
+        }
+    }
 
     fn waiter(status: &str, rendered: Option<&str>, summary: Option<&str>) -> WaiterResult {
         WaiterResult {
