@@ -348,6 +348,7 @@ async fn github_client_maps_non_success_to_api_error() {
         GithubError::Api {
             status,
             rate_limited,
+            ..
         } => {
             assert_eq!(status, 404);
             assert!(!rate_limited, "a plain 404 carries no rate-limit headers");
@@ -376,6 +377,7 @@ async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
         GithubError::Api {
             status,
             rate_limited,
+            ..
         } => {
             assert_eq!(status, 403);
             assert!(rate_limited);
@@ -386,6 +388,65 @@ async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
         }
         other => panic!("expected Api error, got {other:?}"),
     }
+}
+
+/// The 2026-11-08 outbox rows read only `status 403`: nobody could tell a
+/// secondary rate limit from a missing permission. The error now carries
+/// GitHub's own message and its `retry-after`, and never the token.
+#[tokio::test]
+async fn github_client_keeps_githubs_message_and_retry_after_on_a_rate_limited_403() {
+    let (base, _rec) = spawn_with_headers(
+        StatusCode::FORBIDDEN,
+        json!({
+            "message": "You have exceeded a secondary rate limit (token ghp-secret)",
+            "documentation_url": "https://docs.github.com/rest/overview/rate-limits",
+        }),
+        &[("retry-after", "120")],
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
+    let err = client
+        .post_comment("acme/widgets", 1, "x")
+        .await
+        .unwrap_err();
+    assert_eq!(err.retry_after(), Some(120));
+    assert!(
+        !err.is_misconfiguration(),
+        "a rate limit must not disable the link"
+    );
+    let text = err.to_string();
+    assert!(
+        text.starts_with(
+            "github api error: status 403 (rate limited): You have exceeded a secondary rate limit"
+        ),
+        "{text}"
+    );
+    assert!(!text.contains("ghp-secret"), "the token leaked: {text}");
+    assert!(
+        !text.contains("docs.github.com"),
+        "only the message is kept: {text}"
+    );
+}
+
+/// A permission failure names itself, and stays a misconfiguration.
+#[tokio::test]
+async fn github_client_keeps_githubs_message_on_a_permission_403() {
+    let (base, _rec) = spawn(
+        StatusCode::FORBIDDEN,
+        json!({ "message": "Resource not accessible by integration" }),
+    )
+    .await;
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
+    let err = client
+        .post_comment("acme/widgets", 1, "x")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "github api error: status 403: Resource not accessible by integration"
+    );
+    assert_eq!(err.retry_after(), None);
+    assert!(err.is_misconfiguration());
 }
 
 /// `GET /repos/{repo}/issues/{n}/comments` — the marker recovery scan.
@@ -521,6 +582,7 @@ async fn github_client_maps_a_create_review_500_to_a_transient_api_error() {
         GithubError::Api {
             status,
             rate_limited,
+            ..
         } => {
             assert_eq!(*status, 500);
             assert!(!*rate_limited);
@@ -551,6 +613,7 @@ async fn github_client_does_not_treat_a_rate_limited_create_review_403_as_a_misc
         GithubError::Api {
             status,
             rate_limited,
+            ..
         } => {
             assert_eq!(*status, 403);
             assert!(*rate_limited);
