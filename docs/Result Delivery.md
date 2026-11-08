@@ -516,6 +516,30 @@ token instead and authored by the app's bot account.
   GitHub comment or a `<!channel>` in Slack would ping real people from
   attacker-controlled bytes. Maidan defuses these. Producers do not need to.
 
+### Credential guard
+
+A producer that reviews untrusted content can be prompt-injected into pasting
+a credential it can read into its result. Before every send, Maidan scans the
+text it is about to publish for credential shapes: the rendered GitHub
+comment, inline review and check run, the Slack message, the Linear comment,
+a relayed projector message or notice, and for a change the pull request
+title and body, the commit message, the commit status and the diff's added
+lines. The shapes are GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`,
+`github_pat_`), Anthropic and OpenAI-style API keys (`sk-ant-`, `sk-`), AWS
+access key ids (`AKIA`, `ASIA`), Slack tokens (`xoxb-` and the like), JSON Web
+Tokens, PEM private key headers, and Maidan's own `maid_` secrets.
+
+A match refuses the whole send, before the first post or write: nothing
+reaches the surface, the delivery row is `skipped` and is not retried, and
+`last_error` names the kind of credential, the part that held it and the
+surface, as in `refused: the comment holds what looks like a GitHub token
+(gh*_…); nothing was sent to GitHub`. The matched text is never recorded: not
+in the row, the log line, the `maidan_egress_credential_refused_total{surface,
+kind}` counter or the operator alert (`MAIDAN_OPS_ALERT_CHANNEL`), which says
+the same. Read the thread before replaying it. An operator whose producers
+publish key-shaped fixtures on purpose can set
+`MAIDAN_EGRESS_CREDENTIAL_GUARD=off`.
+
 ---
 
 ## Idempotency
@@ -670,6 +694,7 @@ can tell the task's own thread where its result did not go.
   transcripts. **Only `rendered`, `summary`, and structured `findings`.**
 - Anything at all when `status` is not `reviewed` (beyond the failure notice).
 - Anything to a target the workspace has not blessed.
+- Text that looks like it holds a credential ([Credential guard](#credential-guard)).
 
 Maidan does not run agents, does not render reviews, and is not a CI product.
 The close-gate reads only `findings[].severity` (`critical` →

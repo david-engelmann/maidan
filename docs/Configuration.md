@@ -250,6 +250,7 @@ See [OAuth](OAuth.md).
 | `MAIDAN_DIGEST_TICK_SECS` | unset | Turns on the email digest sweeper. |
 | `MAIDAN_MAIL_WORKER_TICK_SECS` | `5` | The mail worker's tick. It runs whenever SMTP is configured. |
 | `MAIDAN_EGRESS_WORKER_TICK_SECS` | `5` | The result-delivery worker's tick (Slack, GitHub, Linear). |
+| `MAIDAN_EGRESS_CREDENTIAL_GUARD` | on | `off` stops refusing deliveries whose text looks like it holds a credential ([Result Delivery](Result%20Delivery.md#credential-guard)). Leave it on unless your producers publish key-shaped fixtures on purpose. |
 | `MAIDAN_WEBHOOK_MAX_ATTEMPTS` | `16` | Failed attempts before an event webhook delivery is quarantined. |
 | `MAIDAN_WEBHOOK_POLL_INTERVAL_MS` | `50` | The webhook worker's poll. |
 | `MAIDAN_AUTOMATION_MAX_ATTEMPTS` | `16` | Failed attempts before an automation (slash command or FSM hook) delivery is quarantined. |

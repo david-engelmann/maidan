@@ -420,6 +420,17 @@ pub fn record_github_egress(outcome: &str) {
     counter!("maidan_github_egress_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// Sends the credential guard refused (`crate::egress_guard`), by
+/// `surface` and the `kind` of credential the text looked like holding.
+pub fn record_egress_credential_refused(surface: &str, kind: &'static str) {
+    counter!(
+        "maidan_egress_credential_refused_total",
+        "surface" => delivery_surface(surface),
+        "kind" => kind,
+    )
+    .increment(1);
+}
+
 /// Inline pull-request review posts: `sent` (GitHub accepted the review),
 /// `skipped` (no `head_sha`, no usable findings, or not `reviewed`), `failed`
 /// (GitHub rejected; the 379 summary comment still landed).
