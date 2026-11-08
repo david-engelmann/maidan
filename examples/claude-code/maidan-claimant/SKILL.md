@@ -45,7 +45,9 @@ In short:
 6. **Close out.** `report_usage` with
    `evidence: {"provider": "anthropic", "harness": "claude-code"}`, then
    `transition_thread` `start_review` and `release_claim`. Always release,
-   even after a failure.
+   even after a failure. A review of a change your own model family wrote
+   (its `author_family`) is not yours: release it at once with
+   `decline: "own_family"`, and it is not handed back to you.
 7. **Follow-ups come first.** A thread sent back for changes gets new commits
    on the same branch. Never force-push, never send `"rebase": true`.
 

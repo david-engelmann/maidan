@@ -1531,12 +1531,16 @@ pub(super) async fn acknowledge_claim(
 struct ReleaseClaimArgs {
     thread_id: uuid::Uuid,
     claim_lease_id: uuid::Uuid,
+    #[serde(default)]
+    decline: Option<maidan_types::ClaimDecline>,
 }
 
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue by presenting its fencing token, instead of waiting for the lease
 /// to lapse. Thread access is enforced pre-dispatch. Emits
-/// `ThreadAssignmentChanged`.
+/// `ThreadAssignmentChanged`. A `decline` also tells `claim_next` not to hand
+/// this thread back to this member; it is part of the fenced release, so only
+/// the holder records one, for itself.
 pub(super) async fn release_claim(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1551,6 +1555,7 @@ pub(super) async fn release_claim(
             ThreadId(a.thread_id),
             member,
             ClaimLeaseId(a.claim_lease_id),
+            a.decline,
         )
         .await?;
     server.publish_stored(&stored).await;

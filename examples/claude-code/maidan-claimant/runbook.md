@@ -407,7 +407,10 @@ it needs), and carry on with step 6.
    handed out, so this is what keeps the task from coming back to the queue.
    Never `close` it: a reviewer does.
 3. `release_claim` with `thread_id` and `claim_lease_id`. Always, on every
-   exit you control, including a failed run.
+   exit you control, including a failed run. A review you will not do because
+   its `author_family` is your own model family is released with
+   `decline: "own_family"` as well, so it is not handed back to you
+   ([red-team.md](red-team.md), step 1).
 
 Then go back to step 1 for the next task, or stop if the person asked you to.
 

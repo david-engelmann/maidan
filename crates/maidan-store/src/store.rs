@@ -3133,11 +3133,20 @@ pub trait AssignmentStore: Send + Sync {
 
     /// Release a claim and append its `ThreadAssignmentChanged` event
     /// atomically. The previous assignee is the caller.
+    ///
+    /// With a `decline`, the holder also says it will not work this thread,
+    /// and `claim_next` stops handing it to this member (other members are
+    /// unaffected). The decline is written in the release's transaction, so
+    /// only the holder of the live lease can record one. An `own_family`
+    /// decline needs a review that names its author's family; on any other
+    /// thread it is refused with `Conflict` and nothing is released. The
+    /// event's note says why the claimant let go.
     async fn release_claim_with_event(
         &self,
         thread_id: ThreadId,
         member_id: MemberId,
         lease_id: ClaimLeaseId,
+        decline: Option<ClaimDecline>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
     /// Release every live leased claim `member_id` holds in `workspace_id`,

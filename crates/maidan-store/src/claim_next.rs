@@ -25,6 +25,10 @@
 //! result was produced: a reopen or a reviewer's request for changes is the
 //! explicit re-queue. Without this, a finished task nobody closed is re-handed
 //! the moment its claim lapses.
+//! A review whose change was written by the claimer's model family is not
+//! handed to it: neither when its usage evidence names that family
+//! ([`crate::review_family::refused_to`]) nor after it released the review
+//! with an `own_family` decline ([`crate::review_family::declined_by`]).
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -145,6 +149,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
     let warm = warm_for(member);
     let warming = sibling_warming(now, warm_hold_since, warm_ttl_since, later_than);
     let refused = crate::review_family::refused_to(member);
+    let declined = crate::review_family::declined_by(member);
     let claimable = claimability::claimable(&ThreadSql {
         now,
         lapsed_worked_secs,
@@ -170,6 +175,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            )
            AND {served}
            AND NOT {refused}
+           AND NOT {declined}
            AND {readable}
            AND NOT {warming}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,

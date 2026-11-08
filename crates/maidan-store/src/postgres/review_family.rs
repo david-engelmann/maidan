@@ -2,8 +2,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    provider_family, review_family_for, Event, MemberId, StoredEvent, TaskAttributes, TaskKind,
-    ThreadId, WorkspaceId,
+    provider_family, review_family_for, ClaimDecline, Event, MemberId, StoredEvent, TaskAttributes,
+    TaskKind, ThreadId, WorkspaceId,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -189,4 +189,57 @@ async fn shared_family_of(
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
     .await?)
+}
+
+/// Refuse a `decline` the thread cannot carry: an `own_family` decline
+/// needs a review that names its author's family. Called before the release
+/// takes the thread's row lock, so a refusal holds no lock while its
+/// transaction waits to be rolled back; a review's author family is set once,
+/// so the answer cannot go stale before the release.
+pub(crate) async fn refuse_unfounded_decline_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    decline: ClaimDecline,
+) -> Result<(), StoreError> {
+    match decline {
+        ClaimDecline::OwnFamily => {
+            let author: Option<Option<String>> = sqlx::query_scalar(
+                "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = $1",
+            )
+            .bind(thread_id.0)
+            .fetch_optional(&mut **tx)
+            .await?;
+            if author.flatten().is_none() {
+                return Err(crate::review_family::decline_without_family());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Record that `member_id` declines `thread_id`, so `claim_next` stops handing
+/// it to that member (see [`crate::review_family::declined_by`]). On the
+/// release's transaction, after its lease fence and after
+/// [`refuse_unfounded_decline_in_tx`]: only the holder of the live claim
+/// records a decline, so the member and the thread are in one workspace. A
+/// repeat decline of the same thread keeps one row and moves its time.
+pub(crate) async fn record_decline_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    decline: ClaimDecline,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_claim_declines (thread_id, member_id, reason, declined_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (thread_id, member_id)
+         DO UPDATE SET reason = excluded.reason, declined_at = excluded.declined_at",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(decline.as_str())
+    .bind(Utc::now())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
