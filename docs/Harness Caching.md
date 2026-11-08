@@ -100,6 +100,146 @@ gateway's spend be joined to the thread's outcome, which only Maidan knows.
 | `tensorzero` | body `tensorzero::episode_id` | The OpenAI-compatible endpoint's name for the episode |
 | `tensorzero-native` | body `episode_id` | TensorZero's own inference API. Either form must be a UUIDv7 ("If you must supply your own, generate a UUIDv7", TensorZero, "Episodes"). Maidan thread ids are UUIDv7; the helper refuses any other id |
 
+## Message threads
+
+Anthropic's Messages API has a beta, message threads (beta header
+`message-threads-2026-08-12`), in which a request sends only the new turns and
+the API holds the rest of the conversation in memory for a short time
+(https://platform.claude.com/docs/en/build-with-claude/message-threads).
+Maidan makes no model calls, so it never creates or continues one; the harness
+or your own client owns the thread. This section says how a threaded harness
+should treat Maidan's bytes while it works a task. Every fact about threads
+below was checked against that page on 2026-11-08; where a line is our
+reading and not the page's, it says so.
+
+Two things are called a thread here. A Maidan thread is the task and its
+durable record. A provider thread is one agent's conversation, held by the API
+for minutes and dropped without notice. Neither stands in for the other.
+
+### Your transcript, Maidan's pack
+
+- **The harness keeps its own transcript.** The page says the application
+  "stays the source of truth for the conversation": keep your own copy of
+  every message and build the replay path from the start. No response says
+  whether the API stored the turn; the next continue request finds out.
+- **`thread_not_found` means replay.** A continue the API cannot serve returns
+  404 with `error.details.error_code` set to `thread_not_found`, and does not
+  say why. The page's causes: the thread expired; the API served the previous
+  turn but did not store it (a response that ends in a tool call cut off by
+  `max_tokens`, for one); a fallback model wrote the previous response; the
+  previous response is still generating; the request comes from another
+  organization or workspace, or from another user or service account than the
+  one that created the thread; or the new messages add something the stored
+  conversation can't take, such as the first image. Recover by sending the
+  full conversation from your copy in a new create request, with `system` and
+  `tools`. A model that does not exist is also a 404, so read the `error_code`
+  before you replay.
+- **The room part of a replay comes from Maidan.** The context pack from
+  `get_thread_context` or `GET /threads/{id}/context` is the durable source for
+  what the room said, and the boot from `channels.boot` for the channel's
+  shared prefix. A provider thread is never the record of a task: it holds no
+  more than what one agent sent, and it is gone within the hour. To catch up,
+  ask for a delta with `since_prefix_sha` and `message_cursor`. A cursor and a
+  sha that do not rebuild the same prefix get the full replacement prefix,
+  never a slice that would not hash (`frame_delta` in
+  `crates/maidan-types/src/pack.rs`).
+
+### Create and continue
+
+- **System and tools go on the create request only.** "Sending either one on a
+  continue request, even as `null`, returns a 400 error." The boot prefix from
+  `cachedPrefix` (`cached_prefix`, `CachedPrefix`) belongs in the create
+  request's `system` and nowhere else; a continue omits it. To change `system`
+  or `tools`, for a new boot sha after a decision was accepted or a new tool,
+  start a new thread: a create request with the full conversation.
+- **Room updates are not this agent's turns.** What other agents post in the
+  Maidan thread reaches a model only if the harness puts it in a message. A
+  harness that does owns the order: a thread is append-only, each response
+  `id` can be continued once, and the API does not check new messages against
+  the ones it holds, so a message sent again can appear twice. Append a room
+  update in the next user turn after the response it follows, never into an
+  earlier turn. A change to the pack's stable layers (a new prefix sha) is a
+  create, not an append.
+
+### Fingerprinted fields and breakpoints
+
+The API keeps "a fingerprint of the fixed fields" with the thread and checks
+every later request against it. The fixed fields are `model`, `tool_choice`,
+`thinking`, `mcp_servers` (apart from each server's authorization token),
+`context_management`, `output_config`, the `skills` in `container`, the
+top-level `cache_control`, and the set of `anthropic-beta` values. A different
+value returns 400 with the code `thread_fingerprint_mismatch`, and the message
+names the fields. Sending `fallbacks` on some requests of a thread and not on
+others is the same error.
+
+"A request with `thread` can carry at most 4 `cache_control` breakpoints." The
+top-level `cache_control` counts as one, and breakpoints on the create
+request's `system` and `tools` count again on every continue request;
+breakpoints on earlier stored messages do not. One too many returns 400 with
+`thread_unsupported_request`. Maidan's helpers already spend breakpoints:
+`cachedPrefix` for `anthropic` marks the boot prefix with one, and a harness
+usually marks its own tools and system. Count them before the create, since
+what the create puts on `system` and `tools` is charged against every later
+turn. When you replay, remove the breakpoints on earlier messages from your
+copy and keep one on the last block, as the page says.
+
+### Time-outs
+
+A thread "expires 5 minutes after its last request", each stored response
+restarts the 5 minutes, and the API deletes it no more than 1 hour after its
+last use. A Maidan task waits on people and machines: a review, an approval
+gate, a CI run. Those almost always outlast 5 minutes. So resuming a task is
+normally a replay, a new create request built from your transcript and a fresh
+pack. A live continue is the fast path inside one burst of work, not the plan.
+
+### Where threads can't be used
+
+- **What the page excludes.** Message threads are not ZDR eligible: the API
+  holds a thread in memory, encrypted under a server-managed key, and deletes
+  it no more than 1 hour after its last use. Organizations with HIPAA
+  readiness or with Inference hooks turned on can't use threads. Neither can
+  Message Batches (the item ends with an `invalid_request_error`), token
+  counting (a 400; count the full conversation instead, with `system` and
+  `tools`), compaction (a 400 with the `compaction` parameter or a
+  `compaction` block; compaction on demand is not available), or context
+  editing other than `clear_thinking_20251015` with `keep: "all"`. The page
+  lists the Claude API, Claude Platform on AWS, Claude Models on Google Cloud
+  (Anthropic managed) and Microsoft Foundry as where threads run.
+- **Gateways.** The page doesn't cover them; this is Maidan's reading. A
+  proxy that drops the `thread` field can still answer 200.
+  A continue carries only the new turns, without `system` or `tools`, so the
+  model then answers with no memory of the conversation, and nothing in the
+  response says so. Before threading through a gateway, check that it forwards
+  the field and the beta header, and test a continue whose answer depends on
+  an earlier turn.
+- **Provider SDK helpers.** The SDK thread helper replays the full
+  conversation once by itself on `thread_not_found`, `thread_already_continued`
+  or `thread_continue_in_flight`, and keeps its copy in memory only while the
+  helper object exists. "The SDK's beta tool runner also uses a thread by
+  default, which you can turn off when you create the runner." A harness built
+  on either may already thread and replay underneath you. Its copy dies with
+  the process, so keep your own transcript when the task must outlive it.
+
+### Cost
+
+"Threads do not change pricing or rate limits", and "a thread does not cache
+your prompt for you. Prompt caching works as it does without a thread: you
+choose where the cache breakpoints go." A thread makes each request smaller
+and the time to first token steadier; it does not make tokens cheaper. The
+boot prefix, the breakpoints and the cache keys above stay the cost lever.
+
+### One identity per thread
+
+The page ties a thread to the organization, the workspace and the user or
+service account that created it, and a thread created with a legacy workspace
+key stays with that key. Whatever holds that identity and a response `id` can
+continue the thread, and each `id` can be continued once. In a Maidan swarm
+where two agents share one API key, either can continue the other's thread, by
+a bug or a leaked id, and the owner's next continue then fails with
+`thread_already_continued` and has to replay. Where that matters, give each
+agent its own key or service account, and keep provider response ids out of
+Maidan messages, which every member of the channel can read.
+
 ## Recipes
 
 Each recipe says where Maidan's bytes land in the harness's prompt (L0 the
@@ -219,6 +359,7 @@ From the source at OpenHands/software-agent-sdk `fad6377` (v1.50.1).
 ## Sources
 
 - Anthropic, "Prompt caching": https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+- Anthropic, "Message threads": https://platform.claude.com/docs/en/build-with-claude/message-threads
 - AWS, "Prompt caching for faster model inference": https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
 - OpenAI, "Prompt caching": https://developers.openai.com/api/docs/guides/prompt-caching
 - Mistral, "Prompt caching": https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching
