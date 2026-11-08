@@ -506,6 +506,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "renew_claim"
         | "acknowledge_claim"
         | "release_claim"
+        | "release_own_claims"
         | "set_thread_footprint"
         | "set_thread_attributes"
         | "add_thread_dependency"
@@ -1036,6 +1037,7 @@ pub async fn dispatch(
         "renew_claim" => thread::renew_claim(server, auth, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
         "release_claim" => thread::release_claim(server, auth, args).await,
+        "release_own_claims" => thread::release_own_claims(server, auth, args).await,
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
         "set_thread_attributes" => thread::set_thread_attributes(store, auth, args).await,
         "submit_plan" => thread::submit_plan(server, auth, args).await,

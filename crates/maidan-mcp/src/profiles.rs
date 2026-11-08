@@ -41,6 +41,7 @@ pub const WORKER_TOOLS: &[&str] = &[
     "list_active_claims",
     "post_message",
     "release_claim",
+    "release_own_claims",
     "renew_claim",
     "report_usage",
     "request_approval",

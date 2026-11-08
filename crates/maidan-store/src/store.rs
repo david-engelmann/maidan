@@ -3140,6 +3140,26 @@ pub trait AssignmentStore: Send + Sync {
         lease_id: ClaimLeaseId,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
+    /// Release every live leased claim `member_id` holds in `workspace_id`,
+    /// for a claimant that restarted and lost its fencing tokens. Each claim
+    /// is released exactly as [`Self::release_claim_with_event`] releases it
+    /// (worked time charged, assignee, lease and working clock cleared, a
+    /// `ThreadAssignmentChanged` carrying `note`), fenced by the lease read in
+    /// the same transaction, so a claim that changed hands meanwhile is left
+    /// alone. The set is what the reaper would free once the leases lapsed: an
+    /// open or in-review, untombstoned thread whose lease is live (by the boot
+    /// grace's clock); a lapsed lease is the reaper's, and a lease-less
+    /// assignment is a coordinator's decision, not a claim. A thread the member
+    /// can no longer read is left as `release_claim` would refuse it. Returns the
+    /// released threads with their events, in thread id order; empty when the
+    /// member holds none.
+    async fn release_member_claims_with_events(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        note: Option<String>,
+    ) -> Result<Vec<(Thread, StoredEvent)>, StoreError>;
+
     /// Count a member's *live* claims: threads assigned to them that are
     /// non-terminal, non-tombstoned, and whose lease has not expired (a
     /// durable, no-lease assignment counts; an expired lease does not — it is a

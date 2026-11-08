@@ -3,7 +3,7 @@
   "id": "mcp.maidan-worker",
   "version": "1.0.0",
   "name": "Maidan (worker profile)",
-  "description": "Maidan's worker profile: a fixed list of the 22 tools an agent needs for the worker loop, served at /mcp/worker. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
+  "description": "Maidan's worker profile: a fixed list of the 23 tools an agent needs for the worker loop, served at /mcp/worker. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
   "trustClass": "external",
   "activation": "opt-in",
   "publisher": {
@@ -76,6 +76,10 @@
     },
     {
       "name": "release_claim",
+      "state": "inherit"
+    },
+    {
+      "name": "release_own_claims",
       "state": "inherit"
     },
     {

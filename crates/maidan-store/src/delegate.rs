@@ -3510,6 +3510,22 @@ macro_rules! store_delegations {
                 threads::release_claim_with_event(self.pool(), thread_id, member_id, lease_id).await
             }
 
+            async fn release_member_claims_with_events(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                note: Option<String>,
+            ) -> Result<Vec<(Thread, StoredEvent)>, StoreError> {
+                threads::release_member_claims_with_events(
+                    self.pool(),
+                    &self.claim_grace,
+                    workspace_id,
+                    member_id,
+                    note,
+                )
+                .await
+            }
+
             async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
                 // Primary read: enforcement must not act on a lagged claim count.
                 wip::count_live_claims(self.pool(), &self.claim_grace, member_id).await

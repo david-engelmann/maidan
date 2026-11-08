@@ -1412,6 +1412,20 @@ parallel id. Nested work that shares the value is attributed together
 queue at once and clears the working clock. Call it on every exit you control —
 finished, shutting down, redeploying, giving up.
 
+An exit you do not control (a crash, a kill, a host restart) takes the fencing
+tokens with the process, and the claims stay yours until each lease lapses. A
+claimant that restarts calls `release_own_claims {workspace_id}` once, before
+its first claim: every live leased claim its member holds in that workspace
+goes back to the queue at once, each released exactly as `release_claim`
+releases it, and the answer is `{released: [thread_id, ...]}`. There is no
+member argument; it releases only the caller's own claims, and `workspace_id`
+must be the token's workspace. A claim that changed hands meanwhile is left
+alone, a lapsed lease is left to the reaper, a lease-less assignment
+(`assign_thread`) is kept, and so is a claim on a thread you can no longer read
+(as `release_claim` would refuse it). The old process, should it come back, has its next
+`renew_claim` or result write refused. Skip the call when another live process
+acts as the same member: it would release that process's claims too. MCP only.
+
 **Finished work goes to review before you let go.** `claim_next_thread` hands out
 only `open` threads, so once the result is set, call `transition_thread
 {thread_id, action: "start_review"}` and then release. A thread released while

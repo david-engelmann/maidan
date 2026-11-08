@@ -32,6 +32,9 @@ mod mcp_capability_map_contract;
 #[path = "../mcp_reference_current.rs"]
 mod mcp_reference_current;
 
+#[path = "../release_own_claims.rs"]
+mod release_own_claims;
+
 #[path = "../remove_channel_member.rs"]
 mod remove_channel_member;
 

@@ -37,6 +37,7 @@ fn acting_identity_is_absent_from_public_tool_schemas() {
         ("renew_claim", "member_id"),
         ("acknowledge_claim", "member_id"),
         ("release_claim", "member_id"),
+        ("release_own_claims", "member_id"),
         ("post_message", "author_id"),
         ("edit_message", "editor_id"),
         ("cast_vote", "member_id"),

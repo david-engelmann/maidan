@@ -386,6 +386,9 @@ mod recipes;
 #[path = "../reindex_jobs.rs"]
 mod reindex_jobs;
 
+#[path = "../release_own_claims.rs"]
+mod release_own_claims;
+
 #[path = "../replication.rs"]
 mod replication;
 

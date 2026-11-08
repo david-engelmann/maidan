@@ -575,6 +575,34 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Release own claims"
+      },
+      "description": "Release every live claim you hold in your workspace at once, for a claimant that restarted: its fencing tokens died with the old process, so release_claim cannot be called, and without this each task waits out its lease. Call it once per workspace at process start, before the first claim, and only when no other live process acts as the same member. Releases only the calling member's claims (there is no member argument), each exactly as release_claim does: the assignment, lease and working clock are cleared, a thread_assignment_changed carries the note, and the thread returns to the queue. A claim that changed hands meanwhile is left alone, a lapsed lease is left to the reaper, and the old process's next renew_claim or result write is refused. Returns {released}, the ids of the threads released, empty when you hold none.",
+      "inputSchema": {
+        "properties": {
+          "note": {
+            "description": "why the claims were released, kept on each thread's assignment event, at most 2000 characters. Omitted, \"the claimant restarted\"",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "your own workspace (whoami's workspace_id)",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ],
+        "type": "object"
+      },
+      "name": "release_own_claims"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,

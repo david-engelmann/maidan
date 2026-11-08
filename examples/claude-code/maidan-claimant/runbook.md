@@ -91,6 +91,16 @@ they do not, stop and say so: this is not a seat token.
 `gpt-5.6-sol`, named with `-m`; never `gpt-6-astra`. You report the model
 in step 6, so a run on any other model shows up in the ledger.
 
+**Free what an earlier run left.** A run that crashed or was killed took its
+fencing tokens with it, so it could not release its claims, and they stay
+this seat's until each lease lapses (up to the hour step 1 asks for). Once,
+before the first claim, call `release_own_claims` with `whoami`'s
+`workspace_id`. Every live claim this seat holds in the workspace goes back
+to the queue at once; the answer lists them (`released`, empty when there
+were none). It only ever touches this seat's own claims. Skip it when another
+live session uses the same seat token: it would release that session's claims
+too, and its next renewal would be refused.
+
 ## 0b. Before every claim: the toolchain
 
 A seat that cannot build the repository still claims work, and each claim it
