@@ -528,7 +528,7 @@ async fn screen_change(req: &ChangeRequest<'_>) -> Option<String> {
             "current state",
             change.current_state.as_deref().unwrap_or_default(),
         ),
-        ("diff", added.as_str()),
+        (crate::egress_guard::DIFF_PART, added.as_str()),
         ("commit status", status.as_str()),
     ];
     crate::egress_guard::screen(&target, req.thread_id, parts).await

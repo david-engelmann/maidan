@@ -528,6 +528,9 @@ lines. The shapes are GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`,
 `github_pat_`), Anthropic and OpenAI-style API keys (`sk-ant-`, `sk-`), AWS
 access key ids (`AKIA`, `ASIA`), Slack tokens (`xoxb-` and the like), JSON Web
 Tokens, PEM private key headers, and Maidan's own `maid_` secrets.
+In a diff's added lines, JSON Web Tokens and PEM private keys don't count: they
+are everyday test fixtures. A provider key or a Maidan token in a diff still
+refuses the round.
 
 A match refuses the whole send, before the first post or write: nothing
 reaches the surface, the delivery row is `skipped` and is not retried, and

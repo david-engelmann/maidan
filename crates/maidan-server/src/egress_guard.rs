@@ -94,11 +94,38 @@ impl CredentialKind {
 
 /// The first credential shape in `text`, if any.
 pub fn credential_kind(text: &str) -> Option<CredentialKind> {
+    credential_kind_where(text, |_| true)
+}
+
+/// The first credential shape in `text` that `counts` keeps. Scanning on past
+/// a shape that does not count, rather than stopping at it, keeps a test
+/// fixture early in a diff from hiding a live key after it.
+fn credential_kind_where(text: &str, counts: fn(CredentialKind) -> bool) -> Option<CredentialKind> {
     let bytes = text.as_bytes();
     (0..bytes.len()).find_map(|at| {
         let before = at.checked_sub(1).map(|i| bytes[i]);
-        shape_at(&bytes[at..], before)
+        shape_at(&bytes[at..], before).filter(|kind| counts(*kind))
     })
+}
+
+/// The part of a change round that is source code: the diff's added lines.
+pub const DIFF_PART: &str = "diff";
+
+/// Whether `kind` counts in source code. JWTs and PEM private keys are
+/// everyday test fixtures (a signed token to verify, a throwaway TLS key), and
+/// refusing every round that adds one would stop ordinary work; a provider
+/// key or a Maidan token has no such use, so those still refuse it.
+fn counts_in_code(kind: CredentialKind) -> bool {
+    !matches!(kind, CredentialKind::Jwt | CredentialKind::PrivateKey)
+}
+
+/// The shape in one named part of a send, as [`screen`] judges it.
+fn kind_in_part(part: &str, text: &str) -> Option<CredentialKind> {
+    if part == DIFF_PART {
+        credential_kind_where(text, counts_in_code)
+    } else {
+        credential_kind(text)
+    }
 }
 
 /// Whether the guard is on: it is unless the operator wrote `off`.
@@ -129,7 +156,7 @@ pub async fn screen<'a>(
     }
     let (part, kind) = parts
         .into_iter()
-        .find_map(|(part, text)| credential_kind(text).map(|kind| (part, kind)))?;
+        .find_map(|(part, text)| kind_in_part(part, text).map(|kind| (part, kind)))?;
     let surface = target.surface();
     let reason = refusal(part, kind, surface);
     tracing::warn!(
@@ -486,5 +513,21 @@ mod tests {
             "refused: the comment holds what looks like a GitHub token (gh*_…); nothing was sent to GitHub"
         );
         assert!(!reason.contains(&token));
+    }
+
+    #[test]
+    fn a_diff_may_add_a_jwt_or_pem_fixture_but_not_a_provider_key() {
+        let jwt = format!("eyJ{}.eyJ{}.{}", "a".repeat(16), "b".repeat(16), "c".repeat(16));
+        let pem = format!("-----BEGIN {}PRIVATE KEY-----", "RSA ");
+        let ghp = format!("ghp_{}", "a".repeat(36));
+        assert_eq!(kind_in_part(DIFF_PART, &format!("+let t = \"{jwt}\";")), None);
+        assert_eq!(kind_in_part(DIFF_PART, &format!("+{pem}")), None);
+        // A fixture first does not hide a live key after it.
+        assert_eq!(
+            kind_in_part(DIFF_PART, &format!("+{jwt}\n+token = {ghp}")),
+            Some(CredentialKind::Github)
+        );
+        // Anywhere else a JWT still refuses the send.
+        assert_eq!(kind_in_part("summary", &jwt), Some(CredentialKind::Jwt));
     }
 }
