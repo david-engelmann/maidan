@@ -113,6 +113,56 @@ pub async fn list_events_for_shape(
     Ok(out)
 }
 
+/// [`list_events_for_shape`] newest first: matching events with
+/// `id < before_id`, highest `id` first, until `limit` readable rows or the
+/// log's start. No cursor check: it reads back from the head, so no retained
+/// floor can make it too old. Hidden rows are skipped the same way, so a page
+/// is never short while older readable events remain.
+pub async fn list_events_for_shape_newest_first(
+    store: &dyn Store,
+    shape: &ProjectorShape,
+    before_id: i64,
+    limit: i64,
+    mut visible: Option<&mut maidan_auth::EventVisibility<'_>>,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut out = Vec::new();
+    let mut before = before_id;
+    let page_size = limit.max(1);
+    loop {
+        let page = store
+            .list_events_matching_before(
+                shape.workspace_id,
+                shape.channel_id,
+                shape.thread_id,
+                &shape.types,
+                before,
+                page_size,
+            )
+            .await?;
+        if page.is_empty() {
+            break;
+        }
+        let short = (page.len() as i64) < page_size;
+        for row in page {
+            before = row.id;
+            let readable = match visible.as_deref_mut() {
+                Some(v) => v.allows(&row).await?,
+                None => true,
+            };
+            if readable && shape.matches_stored(&row) {
+                out.push(row);
+                if (out.len() as i64) >= limit {
+                    return Ok(out);
+                }
+            }
+        }
+        if short {
+            break;
+        }
+    }
+    Ok(out)
+}
+
 pub fn federation_consumer_id(peer_id: maidan_types::PeerId) -> String {
     format!("federation:{}", peer_id.0)
 }

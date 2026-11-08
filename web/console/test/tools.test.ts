@@ -137,8 +137,16 @@ test("server-wide reindex and audit need a bearer token", async () => {
 });
 
 test("events filter by kind and show the newest first", async () => {
-  const { api } = tools([{ body: [{ kind: "a", id: 1 }, { kind: "b", id: 2 }, { kind: "a", id: 3 }] }]);
+  const { api, calls } = tools([{ body: [{ kind: "a", id: 3 }, { kind: "b", id: 2 }, { kind: "a", id: 1 }] }]);
   assert.deepEqual((await api.events("w", "a")).map((e) => (e as { id: number }).id), [3, 1]);
+  assert.match(calls[0].url, /[?&]order=desc(&|$)/);
+});
+
+test("recent events read one newest-first page and hand it back oldest first", async () => {
+  const { api, calls } = tools([{ body: [{ id: 9 }, { id: 8 }, { id: 7 }] }]);
+  assert.deepEqual((await api.recentEvents("w")).map((e) => e.id), [7, 8, 9]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/workspaces\/w\/events\?order=desc&limit=200$/);
 });
 
 test("a 422 shows the server's own sentence", async () => {

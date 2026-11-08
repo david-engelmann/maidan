@@ -1082,6 +1082,7 @@ fn requires_credential(op: &Operation) -> bool {
         maidan_types::TokenPolicy,
         MarkAllRead,
         SearchMode,
+        EventOrder,
         MintApiToken,
         MintApiTokenResponse,
         AttenuateToken,

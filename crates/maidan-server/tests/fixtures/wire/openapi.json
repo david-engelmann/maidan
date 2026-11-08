@@ -3247,6 +3247,14 @@
         ],
         "type": "object"
       },
+      "EventOrder": {
+        "description": "Which way a workspace event list runs. A screen showing recent activity\nwants the newest page in one read, not a walk forward from the first event.",
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "type": "string"
+      },
       "EvidenceAttestation": {
         "description": "One piece of evidence and the tier it was given at the hand-off.",
         "properties": {
@@ -33234,6 +33242,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`asc` (default) pages forward from `after_id`; `desc` returns the newest\nevents first and pages back with `before_id`.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventOrder"
+            }
+          },
+          {
+            "description": "With `order=desc`: only events with an id below this one, the last id of\nthe previous page. Absent reads from the newest event.",
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -40431,6 +40458,25 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "`asc` (default) pages forward from `after_id`; `desc` returns the newest\nevents first and pages back with `before_id`.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/EventOrder"
+            }
+          },
+          {
+            "description": "With `order=desc`: only events with an id below this one, the last id of\nthe previous page. Absent reads from the newest event.",
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
             }
           }
         ],

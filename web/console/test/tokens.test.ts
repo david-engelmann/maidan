@@ -10,8 +10,14 @@ const defined = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
 // Set at runtime from script (viewport, keyboard, composer, drag position, font).
 const RUNTIME = new Set(["--vv-top", "--vv-h", "--composer-h", "--kb", "--left", "--font"]);
 
-test("every corner above 4px comes from the radius scale", () => {
-  const raw = [...css.matchAll(/border-radius:\s*(\d+)px/g)].map((m) => Number(m[1])).filter((n) => n > 4);
+test("every corner above 4px comes from the radius scale, in every value of a shorthand", () => {
+  // Reading only the first value let `var(--r-lg) 18px 0 0` through. A token
+  // with a px fallback counts as a literal too: the fallback drifts from the scale.
+  const raw = [...css.matchAll(/border(?:-[a-z]+)*-radius:\s*([^;}]+)/g)].flatMap((m) =>
+    [...m[1].replace(/var\(--r-[\w-]+\)/g, "").matchAll(/(\d+(?:\.\d+)?)px/g)]
+      .filter((px) => Number(px[1]) > 4)
+      .map((px) => `${px[0]} in "${m[1].trim()}"`),
+  );
   assert.deepEqual(raw, []);
 });
 

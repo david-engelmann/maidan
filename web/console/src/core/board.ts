@@ -452,7 +452,8 @@ export class BoardApi {
   async refusals(workspaceId: string, channelId: string, threads: Thread[]): Promise<Map<string, string>> {
     const wanted = new Set(threads.filter((th) => th.state === "in_review").map((th) => th.id));
     if (!wanted.size) return new Map();
-    const q = new URLSearchParams({ types: "message_posted", channel_id: channelId, limit: "500" });
+    // Newest first, so a long channel's latest refusals are in the page.
+    const q = new URLSearchParams({ types: "message_posted", channel_id: channelId, limit: "500", order: "desc" });
     try {
       return latestRefusals(await this.get<MessageEvent[]>(`/workspaces/${workspaceId}/events?${q}`), wanted);
     } catch {

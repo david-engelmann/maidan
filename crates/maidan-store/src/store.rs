@@ -3928,6 +3928,20 @@ pub trait EventStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// [`Store::list_events_matching`] newest first: matching rows with
+    /// `id < before_id`, highest `id` first. A reader that wants the latest
+    /// page would otherwise walk the whole log forward from the start to
+    /// reach it. `i64::MAX` reads from the newest row.
+    async fn list_events_matching_before(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        kinds: &[EventKind],
+        before_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Like [`Store::list_events_after`] but only rows inserted at or before
     /// `stable_before` (the at-least-once reconcile read).
     async fn list_events_after_stable(

@@ -1343,6 +1343,23 @@ pub async fn list_events(
     if q.after_id < 0 {
         return Err(ApiError::BadRequest("after_id must be non-negative".into()));
     }
+    let newest_first = q.order.unwrap_or_default() == EventOrder::Desc;
+    if newest_first {
+        // A newest-first read has no forward cursor: mixing one in would
+        // silently mean two different pages, so it is refused instead.
+        if q.after_id != 0 || q.consumer_id.is_some() {
+            return Err(ApiError::BadRequest(
+                "order=desc pages with before_id; after_id and consumer_id page forward".into(),
+            ));
+        }
+        if q.before_id.is_some_and(|id| id < 0) {
+            return Err(ApiError::BadRequest(
+                "before_id must be non-negative".into(),
+            ));
+        }
+    } else if q.before_id.is_some() {
+        return Err(ApiError::BadRequest("before_id needs order=desc".into()));
+    }
     let types = match q.types.as_deref() {
         Some(s) => parse_projector_types(s).map_err(ApiError::BadRequest)?,
         None => Vec::new(),
@@ -1370,14 +1387,26 @@ pub async fn list_events(
     let mut visibility = auth
         .as_ref()
         .map(|Extension(auth)| maidan_auth::EventVisibility::new(state.store.as_ref(), auth));
-    let events = crate::delivery::list_events_for_shape(
-        state.store.as_ref(),
-        &shape,
-        after_id,
-        q.limit.clamp(1, 500),
-        visibility.as_mut(),
-    )
-    .await
+    let limit = q.limit.clamp(1, 500);
+    let events = if newest_first {
+        crate::delivery::list_events_for_shape_newest_first(
+            state.store.as_ref(),
+            &shape,
+            q.before_id.unwrap_or(i64::MAX),
+            limit,
+            visibility.as_mut(),
+        )
+        .await
+    } else {
+        crate::delivery::list_events_for_shape(
+            state.store.as_ref(),
+            &shape,
+            after_id,
+            limit,
+            visibility.as_mut(),
+        )
+        .await
+    }
     .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
     // A whole-log reader (peer, bypass) gets each event sealed as hashed, with
     // its live content key, so it can verify the chain and still read the

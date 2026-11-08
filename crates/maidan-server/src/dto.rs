@@ -1109,6 +1109,24 @@ pub struct ListEventsQuery {
     /// a too-old watermark is 409 `must_refetch`, not a clamp.
     #[serde(default)]
     pub consumer_id: Option<String>,
+    /// `asc` (default) pages forward from `after_id`; `desc` returns the newest
+    /// events first and pages back with `before_id`.
+    #[serde(default)]
+    pub order: Option<EventOrder>,
+    /// With `order=desc`: only events with an id below this one, the last id of
+    /// the previous page. Absent reads from the newest event.
+    #[serde(default)]
+    pub before_id: Option<i64>,
+}
+
+/// Which way a workspace event list runs. A screen showing recent activity
+/// wants the newest page in one read, not a walk forward from the first event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EventOrder {
+    #[default]
+    Asc,
+    Desc,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

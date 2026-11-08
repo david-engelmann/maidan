@@ -308,7 +308,9 @@ not in a header, because many WebSocket clients cannot set headers:
   log, you get a `cursor_too_old` frame with `must_refetch: true` and the
   socket closes. Fetch the snapshot it names; never skip ahead silently.
 - **Backfill over HTTP** with `GET /workspaces/{wid}/events?after_id=N&limit=100`,
-  which returns the same events as JSON.
+  which returns the same events as JSON. For the latest events without a
+  cursor, `?order=desc&limit=100` returns the newest first; page back with
+  `before_id` set to the last id you got.
 
 Ignore a `kind` you do not recognize: new kinds are added without notice, and
 a breaking change gets a new `$type` version. An MCP agent can block on one
