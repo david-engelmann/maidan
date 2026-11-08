@@ -47,8 +47,10 @@ test("an existing token includes Codex, and a filtered board keeps its channel",
   const boardScan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(boardScan.violations.map((v) => v.id)).toEqual([]);
   // Chromium logs a resource error for the first-run HEAD /support probe when
-  // that route is absent. That probe lives outside this change.
-  const unexpected = notes.filter((n) => !/\/support :: Failed to load resource/.test(n));
+  // that route is absent. That probe lives outside this change. The suite
+  // blocks the service worker (playwright.config.ts), and Playwright says so
+  // when the console registers it.
+  const unexpected = notes.filter((n) => !/\/support :: Failed to load resource/.test(n) && !/Service Worker registration blocked by Playwright/.test(n));
   expect(unexpected.filter((n) => /apple-mobile-web-app-capable/i.test(n))).toEqual([]);
   expect(unexpected).toEqual([]);
 });
