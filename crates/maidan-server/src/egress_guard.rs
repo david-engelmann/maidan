@@ -412,8 +412,9 @@ mod tests {
     #[test]
     fn a_text_of_repeated_prefixes_is_scanned_in_linear_time() {
         // An uncapped scan from every prefix would read about a billion
-        // bytes here; the capped one reads a few million.
-        for prefix in ["sk-", "eyJ", "ghp_", "xoxb-", "maid_"] {
+        // bytes here; the capped one reads a few million. (`xoxb-` repeated
+        // is itself Slack-shaped, and the match ends the scan at once.)
+        for prefix in ["sk-", "eyJ", "ghp_", "maid_"] {
             let text = prefix.repeat(20_000);
             let started = std::time::Instant::now();
             assert_eq!(kind(&text), None, "{prefix}");
