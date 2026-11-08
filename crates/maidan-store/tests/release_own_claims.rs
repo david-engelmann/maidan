@@ -274,7 +274,12 @@ async fn a_claim_that_ends_takes_its_holders_status_with_it(store: &dyn Store) {
     declare(lapsing.id, DeclaredStatus::NeedsInput, a).await;
 
     store
-        .release_claim_with_event(released_one.id, a, released_one.claim_lease_id.unwrap())
+        .release_claim_with_event(
+            released_one.id,
+            a,
+            released_one.claim_lease_id.unwrap(),
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(
