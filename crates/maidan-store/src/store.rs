@@ -3149,7 +3149,8 @@ pub trait AssignmentStore: Send + Sync {
     /// alone. The set is what the reaper would free once the leases lapsed: an
     /// open or in-review, untombstoned thread whose lease is live (by the boot
     /// grace's clock); a lapsed lease is the reaper's, and a lease-less
-    /// assignment is a coordinator's decision, not a claim. Returns the
+    /// assignment is a coordinator's decision, not a claim. A thread the member
+    /// can no longer read is left as `release_claim` would refuse it. Returns the
     /// released threads with their events, in thread id order; empty when the
     /// member holds none.
     async fn release_member_claims_with_events(

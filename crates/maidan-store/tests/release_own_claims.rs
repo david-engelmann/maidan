@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
-    ChannelId, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
-    ThreadId, WorkspaceId,
+    ChannelId, ChannelMemberRole, EventKind, MemberId, MemberKind, NewChannel, NewMember,
+    NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
 
 const LEASE_SECS: i64 = 600;
@@ -103,6 +103,25 @@ async fn a_restarted_claimant_releases_only_its_own_live_claims(store: &dyn Stor
     assert_eq!(a_lapsing.id, lapsing);
     let a_elsewhere_claim = claim(other_channel, a_elsewhere, LEASE_SECS).await;
     assert_eq!(a_elsewhere_claim.id, elsewhere);
+    // A claim in a private channel a was then removed from: release_claim
+    // would refuse it, so the bulk release leaves it to lapse too.
+    let private = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "private".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap()
+        .id;
+    store
+        .add_channel_member(private, a, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let unreadable = thread(store, private, "a's, unreadable later").await;
+    assert_eq!(claim(private, a, LEASE_SECS).await.id, unreadable);
+    store.remove_channel_member(private, a).await.unwrap();
     tokio::time::sleep(Duration::from_millis(1500)).await;
 
     // The member's claims are all in its own workspace, so naming another
@@ -136,7 +155,21 @@ async fn a_restarted_claimant_releases_only_its_own_live_claims(store: &dyn Stor
     }
 
     let held = |id: ThreadId| async move { store.get_thread(id).await.unwrap().assignee_id };
+    assert!(
+        store
+            .get_thread_budget(second)
+            .await
+            .unwrap()
+            .map_or(0, |b| b.used_wall_secs)
+            >= 1,
+        "the acknowledged claim's worked time is charged"
+    );
     assert_eq!(held(bs).await, Some(b), "another member's claim is kept");
+    assert_eq!(
+        held(unreadable).await,
+        Some(a),
+        "a claim on a thread a can no longer read is kept"
+    );
     assert_eq!(
         held(assigned).await,
         Some(a),

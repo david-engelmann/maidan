@@ -146,6 +146,24 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
         Some(a_in_w2)
     );
 
+    // A note longer than the cap is refused before anything is released.
+    let long = server
+        .call_tool(
+            &auth_a,
+            "release_own_claims",
+            &json!({ "workspace_id": w.0, "note": "x".repeat(2001) }),
+        )
+        .await;
+    assert!(
+        matches!(long, Err(McpError::InvalidParams(_))),
+        "an over-long note must be refused, got {long:?}"
+    );
+    for claimed in [&a_first, &a_second] {
+        let thread = store.get_thread(claimed.id).await.unwrap();
+        assert_eq!(thread.assignee_id, Some(a), "still held after the refusal");
+        assert_eq!(thread.claim_lease_id, claimed.claim_lease_id);
+    }
+
     let out = release(w).await.unwrap();
     let expected: BTreeSet<String> = [a_first.id, a_second.id]
         .iter()
@@ -177,24 +195,12 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
             &json!({
                 "thread_id": a_first.id.0,
                 "claim_lease_id": a_first.claim_lease_id.unwrap().0,
+                "lease_secs": 60,
             }),
         )
         .await;
     assert!(
         matches!(renew, Err(McpError::NotFound)),
         "the stale lease must not renew, got {renew:?}"
-    );
-
-    // A note longer than the cap is refused before anything is released.
-    let long = server
-        .call_tool(
-            &auth_a,
-            "release_own_claims",
-            &json!({ "workspace_id": w.0, "note": "x".repeat(2001) }),
-        )
-        .await;
-    assert!(
-        matches!(long, Err(McpError::InvalidParams(_))),
-        "an over-long note must be refused, got {long:?}"
     );
 }

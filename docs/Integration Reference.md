@@ -1420,8 +1420,9 @@ goes back to the queue at once, each released exactly as `release_claim`
 releases it, and the answer is `{released: [thread_id, ...]}`. There is no
 member argument; it releases only the caller's own claims, and `workspace_id`
 must be the token's workspace. A claim that changed hands meanwhile is left
-alone, a lapsed lease is left to the reaper, and a lease-less assignment
-(`assign_thread`) is kept. The old process, should it come back, has its next
+alone, a lapsed lease is left to the reaper, a lease-less assignment
+(`assign_thread`) is kept, and so is a claim on a thread you can no longer read
+(as `release_claim` would refuse it). The old process, should it come back, has its next
 `renew_claim` or result write refused. Skip the call when another live process
 acts as the same member: it would release that process's claims too. MCP only.
 

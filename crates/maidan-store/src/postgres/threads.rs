@@ -1411,20 +1411,24 @@ pub async fn release_member_claims_with_events(
     // Locked in id order so two callers cannot deadlock on each other's rows,
     // and a concurrent renew or result write waits for this release instead
     // of racing it. A row that changed hands while we waited no longer matches
-    // and is left out.
-    let held = sqlx::query(
+    // and is left out. A thread the member can no longer read is left too, as
+    // `release_claim` refuses it: its lease lapses as before.
+    let readable = crate::thread_access::readable_thread("t.id", "$1", "$2", "$4");
+    let held = sqlx::query(&format!(
         "SELECT t.id, t.claim_lease_id FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          WHERE c.workspace_id = $1 AND t.assignee_id = $2
            AND t.claim_lease_id IS NOT NULL
            AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $3
            AND t.tombstoned_at IS NULL AND t.state NOT IN ('closed', 'archived')
+           AND {readable}
          ORDER BY t.id
          FOR UPDATE OF t",
-    )
+    ))
     .bind(workspace_id.0)
     .bind(member_id.0)
     .bind(grace.lease_clock(chrono::Utc::now()))
+    .bind(DM_CHANNEL_NAME)
     .fetch_all(&mut *tx)
     .await?;
     let mut released = Vec::with_capacity(held.len());
