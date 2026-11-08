@@ -227,10 +227,10 @@ impl GithubAppAuth {
         if !status.is_success() {
             let rate_limited = is_rate_limited(resp.headers());
             if rate_limited || status.is_server_error() || status.as_u16() == 429 {
-                return Err(GithubError::Api {
-                    status: status.as_u16(),
-                    rate_limited,
-                });
+                return Err(crate::github::api_error_from(resp, |text| {
+                    crate::github::redact(text, &jwt)
+                })
+                .await);
             }
             // Not an `Api` error: a 404 here means the installation is gone,
             // not that the comment or pull request a caller asked about is,

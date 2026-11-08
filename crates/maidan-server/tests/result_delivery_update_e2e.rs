@@ -96,6 +96,8 @@ impl GithubSender for RecordingGithub {
             return Err(GithubError::Api {
                 status: 404,
                 rate_limited: false,
+                detail: String::new(),
+                retry_after: None,
             });
         };
         found.body = text.into();
@@ -562,6 +564,8 @@ async fn a_result_401_dead_letters_without_disabling_the_projector_link() {
     *h.github.fail_post.lock().unwrap() = Some(GithubError::Api {
         status: 401,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
 
     set_result(

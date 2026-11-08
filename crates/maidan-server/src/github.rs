@@ -304,7 +304,10 @@ pub enum GithubError {
     /// until the operator fixes it.
     #[error("github write refused: {0}")]
     Refused(String),
-    #[error("github api error: status {status}")]
+    /// The text keeps the `github api error: status N` prefix that dashboards
+    /// and stored `last_error` rows match on, and adds what tells a secondary
+    /// rate limit from a missing permission (both are 403s).
+    #[error("github api error: status {status}{}", api_error_suffix(*rate_limited, detail))]
     Api {
         status: u16,
         /// Whether GitHub said this was a rate limit rather than a permission
@@ -312,10 +315,110 @@ pub enum GithubError {
         /// same status as a genuinely revoked token, so the status alone cannot
         /// tell them apart — the response headers can.
         rate_limited: bool,
+        /// GitHub's own `message` from the error body, as one short line with
+        /// the client's secrets cut out: never a header, a token or the
+        /// request. Empty when the answer had no body to read.
+        detail: String,
+        /// The seconds GitHub's `retry-after` header asked the caller to
+        /// wait, so a retry does not land inside the same rate-limit window.
+        retry_after: Option<u64>,
     },
 }
 
+/// The longest [`GithubError::Api`] detail kept, in characters. GitHub's
+/// messages are a sentence; anything longer is not worth a `last_error` row.
+pub const GITHUB_ERROR_DETAIL_MAX_CHARS: usize = 200;
+
+/// How much of an error body is read looking for GitHub's `message`. An
+/// error body is a small JSON object; this bounds what a misbehaving proxy
+/// in front of GitHub can make the client buffer.
+const GITHUB_ERROR_BODY_MAX_BYTES: usize = 16 * 1024;
+
+fn api_error_suffix(rate_limited: bool, detail: &str) -> String {
+    let limited = if rate_limited { " (rate limited)" } else { "" };
+    if detail.is_empty() {
+        limited.to_string()
+    } else {
+        format!("{limited}: {detail}")
+    }
+}
+
+/// `message` as one safe line: control characters (a newline included)
+/// become spaces, runs of whitespace collapse, and the result is cut to
+/// [`GITHUB_ERROR_DETAIL_MAX_CHARS`] characters, never inside one.
+pub(crate) fn clean_error_detail(message: &str) -> String {
+    let spaced: String = message
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let line = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= GITHUB_ERROR_DETAIL_MAX_CHARS {
+        return line;
+    }
+    let mut cut: String = line.chars().take(GITHUB_ERROR_DETAIL_MAX_CHARS).collect();
+    cut.push('…');
+    cut
+}
+
+/// The `message` field of a GitHub error body, when the body is JSON that
+/// has one. Nothing else in the body is kept.
+pub(crate) fn error_body_message(body: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    value
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+/// `retry-after` in seconds. GitHub sends the delta-seconds form; an
+/// HTTP-date, or anything else, reads as absent.
+pub(crate) fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok())
+}
+
+/// The [`GithubError::Api`] for a non-success response: its status, the
+/// rate-limit headers, and GitHub's `message`. `redact` runs over the message
+/// before it is cut, so a secret the body echoed cannot survive in part. The
+/// body is read only up to [`GITHUB_ERROR_BODY_MAX_BYTES`]; a body that cannot
+/// be read leaves the detail empty, and the status still reports the failure.
+pub(crate) async fn api_error_from(
+    mut resp: reqwest::Response,
+    redact: impl Fn(&str) -> String,
+) -> GithubError {
+    let status = resp.status().as_u16();
+    let rate_limited = is_rate_limited(resp.headers());
+    let retry_after = retry_after_secs(resp.headers());
+    let mut body = Vec::new();
+    while body.len() < GITHUB_ERROR_BODY_MAX_BYTES {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => body.extend_from_slice(&chunk),
+            Ok(None) | Err(_) => break,
+        }
+    }
+    let detail = error_body_message(&body)
+        .map(|message| clean_error_detail(&redact(&message)))
+        .unwrap_or_default();
+    GithubError::Api {
+        status,
+        rate_limited,
+        detail,
+        retry_after,
+    }
+}
+
 impl GithubError {
+    /// How long GitHub asked the caller to wait before trying again, in
+    /// seconds: `retry-after` on an API error, else nothing.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            Self::Api { retry_after, .. } => *retry_after,
+            Self::Http(_) | Self::Refused(_) => None,
+        }
+    }
+
     /// Whether this failure is a misconfiguration rather than a transient
     /// fault: a wrong or revoked token (401), a missing permission (403), a
     /// repo or issue that isn't there (404). Retrying cannot fix any of them,
@@ -1038,10 +1141,7 @@ impl GithubSender for GithubApiClient {
             .await
             .map_err(|e| self.http_error(e))?;
         if !resp.status().is_success() {
-            return Err(GithubError::Api {
-                status: resp.status().as_u16(),
-                rate_limited: is_rate_limited(resp.headers()),
-            });
+            return Err(self.api_error(resp).await);
         }
         // The comment exists from here on, so no decoding problem below may be
         // reported as a failure: a retry would post a second comment.
@@ -1078,10 +1178,7 @@ impl GithubSender for GithubApiClient {
         if resp.status().is_success() {
             return Ok(());
         }
-        Err(GithubError::Api {
-            status: resp.status().as_u16(),
-            rate_limited: is_rate_limited(resp.headers()),
-        })
+        Err(self.api_error(resp).await)
     }
 
     async fn list_issue_comments(
@@ -1105,10 +1202,7 @@ impl GithubSender for GithubApiClient {
                 .await
                 .map_err(|e| self.http_error(e))?;
             if !resp.status().is_success() {
-                return Err(GithubError::Api {
-                    status: resp.status().as_u16(),
-                    rate_limited: is_rate_limited(resp.headers()),
-                });
+                return Err(self.api_error(resp).await);
             }
             let batch: Vec<serde_json::Value> =
                 resp.json().await.map_err(|e| self.http_error(e))?;
@@ -1160,10 +1254,7 @@ impl GithubSender for GithubApiClient {
         if resp.status().is_success() {
             return Ok(());
         }
-        Err(GithubError::Api {
-            status: resp.status().as_u16(),
-            rate_limited: is_rate_limited(resp.headers()),
-        })
+        Err(self.api_error(resp).await)
     }
 
     fn posts_check_runs(&self) -> bool {
@@ -1186,10 +1277,7 @@ impl GithubSender for GithubApiClient {
         if resp.status().is_success() {
             return Ok(());
         }
-        Err(GithubError::Api {
-            status: resp.status().as_u16(),
-            rate_limited: is_rate_limited(resp.headers()),
-        })
+        Err(self.api_error(resp).await)
     }
 }
 
@@ -1272,11 +1360,21 @@ impl GithubApiClient {
 
     /// A transport error, with the token cut out in case anything echoed it.
     fn http_error(&self, err: impl std::fmt::Display) -> GithubError {
-        let text = err.to_string();
-        GithubError::Http(match &self.auth {
-            GithubAuth::Token(token) => redact(&text, token),
-            GithubAuth::App(app) => app.redact(&text),
-        })
+        GithubError::Http(self.redact_secret(&err.to_string()))
+    }
+
+    /// `text` with this client's token (or the app's secrets) cut out.
+    fn redact_secret(&self, text: &str) -> String {
+        match &self.auth {
+            GithubAuth::Token(token) => redact(text, token),
+            GithubAuth::App(app) => app.redact(text),
+        }
+    }
+
+    /// A non-success response as a [`GithubError::Api`], GitHub's message
+    /// kept with this client's secrets cut out of it.
+    async fn api_error(&self, resp: reqwest::Response) -> GithubError {
+        api_error_from(resp, |text| self.redact_secret(text)).await
     }
 
     /// The checks on `head_sha` read from the Actions and commit-status
@@ -1371,10 +1469,7 @@ impl GithubApiClient {
     ) -> Result<serde_json::Value, GithubError> {
         let resp = request.send().await.map_err(|e| self.http_error(e))?;
         if !resp.status().is_success() {
-            return Err(GithubError::Api {
-                status: resp.status().as_u16(),
-                rate_limited: is_rate_limited(resp.headers()),
-            });
+            return Err(self.api_error(resp).await);
         }
         resp.json().await.map_err(|e| self.http_error(e))
     }
@@ -1547,10 +1642,7 @@ impl GithubGit for GithubApiClient {
             return Ok(None);
         }
         if !resp.status().is_success() {
-            return Err(GithubError::Api {
-                status: resp.status().as_u16(),
-                rate_limited: is_rate_limited(resp.headers()),
-            });
+            return Err(self.api_error(resp).await);
         }
         resp.bytes()
             .await
@@ -1896,10 +1988,7 @@ impl GithubGit for GithubApiClient {
             .await
             .map_err(|e| self.http_error(e))?;
         if !resp.status().is_success() {
-            return Err(GithubError::Api {
-                status: resp.status().as_u16(),
-                rate_limited: is_rate_limited(resp.headers()),
-            });
+            return Err(self.api_error(resp).await);
         }
         // Streamed, keeping only the end, so a long log never sits in memory
         // whole; the client's timeout bounds how long that takes.
@@ -2451,11 +2540,15 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             GithubError::Api {
                 status: 403,
                 rate_limited: true,
+                detail: String::new(),
+                retry_after: None,
             }
         } else if types.contains(&"NOT_FOUND") || value.pointer("/data/repository").is_some() {
             GithubError::Api {
                 status: 404,
                 rate_limited: false,
+                detail: String::new(),
+                retry_after: None,
             }
         } else {
             GithubError::Http(format!(
@@ -2823,7 +2916,109 @@ mod tests {
         GithubError::Api {
             status,
             rate_limited,
+            detail: String::new(),
+            retry_after: None,
         }
+    }
+
+    fn api_with(status: u16, rate_limited: bool, detail: &str) -> GithubError {
+        GithubError::Api {
+            status,
+            rate_limited,
+            detail: detail.to_string(),
+            retry_after: None,
+        }
+    }
+
+    #[test]
+    fn an_api_error_says_whether_github_rate_limited_it_and_what_github_said() {
+        assert_eq!(
+            api_with(403, true, "You have exceeded a secondary rate limit").to_string(),
+            "github api error: status 403 (rate limited): You have exceeded a secondary rate limit"
+        );
+        assert_eq!(
+            api_with(403, false, "Resource not accessible by integration").to_string(),
+            "github api error: status 403: Resource not accessible by integration"
+        );
+        assert_eq!(
+            api(403, true).to_string(),
+            "github api error: status 403 (rate limited)"
+        );
+    }
+
+    #[test]
+    fn an_api_error_without_a_body_reads_as_it_always_did() {
+        assert_eq!(api(404, false).to_string(), "github api error: status 404");
+        assert_eq!(api(502, false).to_string(), "github api error: status 502");
+    }
+
+    #[test]
+    fn the_message_is_the_only_part_of_an_error_body_kept() {
+        let body = br#"{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest","status":"403"}"#;
+        assert_eq!(
+            error_body_message(body).as_deref(),
+            Some("Resource not accessible by integration")
+        );
+        assert_eq!(error_body_message(br#"{"errors":[]}"#), None);
+        assert_eq!(error_body_message(br#"{"message":42}"#), None);
+        assert_eq!(error_body_message(b"<html>bad gateway</html>"), None);
+        assert_eq!(error_body_message(b""), None);
+    }
+
+    #[test]
+    fn an_error_detail_loses_its_control_characters_and_stays_one_line() {
+        assert_eq!(
+            clean_error_detail("Validation Failed\r\n\tref\u{1b}[31m  exists\u{7f}"),
+            "Validation Failed ref [31m exists"
+        );
+        assert_eq!(clean_error_detail("  \n "), "");
+    }
+
+    #[test]
+    fn a_long_error_detail_is_cut_on_a_character_boundary() {
+        // Multi-byte characters straddle every byte offset a naive slice
+        // would cut at; the cut counts characters, so none is split.
+        let long = "é".repeat(GITHUB_ERROR_DETAIL_MAX_CHARS + 50);
+        let cut = clean_error_detail(&long);
+        assert_eq!(cut.chars().count(), GITHUB_ERROR_DETAIL_MAX_CHARS + 1);
+        assert!(cut.ends_with('…'));
+        assert!(cut.starts_with(&"é".repeat(GITHUB_ERROR_DETAIL_MAX_CHARS)));
+        let exact = "a".repeat(GITHUB_ERROR_DETAIL_MAX_CHARS);
+        assert_eq!(
+            clean_error_detail(&exact),
+            exact,
+            "at the limit nothing is cut"
+        );
+    }
+
+    #[test]
+    fn retry_after_reads_delta_seconds_and_nothing_else() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(retry_after_secs(&headers), None);
+        headers.insert(
+            "retry-after",
+            reqwest::header::HeaderValue::from_static(" 60 "),
+        );
+        assert_eq!(retry_after_secs(&headers), Some(60));
+        headers.insert(
+            "retry-after",
+            reqwest::header::HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
+        );
+        assert_eq!(retry_after_secs(&headers), None);
+    }
+
+    #[test]
+    fn only_an_api_error_carries_a_retry_after() {
+        let limited = GithubError::Api {
+            status: 403,
+            rate_limited: true,
+            detail: String::new(),
+            retry_after: Some(90),
+        };
+        assert_eq!(limited.retry_after(), Some(90));
+        assert!(!limited.is_misconfiguration());
+        assert_eq!(GithubError::Http("reset".into()).retry_after(), None);
+        assert_eq!(GithubError::Refused("no".into()).retry_after(), None);
     }
 
     #[test]
@@ -3160,7 +3355,8 @@ mod tests {
             err,
             GithubError::Api {
                 status: 403,
-                rate_limited: true
+                rate_limited: true,
+                ..
             }
         ));
         assert!(!err.is_misconfiguration());

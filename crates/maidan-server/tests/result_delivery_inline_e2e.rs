@@ -687,6 +687,8 @@ async fn a_review_422_leaves_the_summary_delivered() {
     *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
         status: 422,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -718,6 +720,8 @@ async fn a_review_404_on_a_non_pr_issue_leaves_the_summary_delivered() {
     *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
         status: 404,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -832,6 +836,8 @@ async fn a_review_5xx_leaves_the_summary_delivered_and_replay_posts_the_review()
     *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
         status: 500,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -903,6 +909,8 @@ async fn a_review_403_does_not_disable_a_projector_issue_link() {
     *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
         status: 403,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -930,6 +938,8 @@ async fn a_rate_limited_review_403_does_not_disable_a_projector_issue_link() {
     *h.github.fail_review.lock().unwrap() = Some(GithubError::Api {
         status: 403,
         rate_limited: true,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -1041,6 +1051,8 @@ async fn a_check_run_403_leaves_the_summary_delivered_and_the_link_enabled() {
     *h.github.fail_check.lock().unwrap() = Some(GithubError::Api {
         status: 403,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,
@@ -1068,6 +1080,8 @@ async fn a_check_run_422_leaves_the_summary_delivered() {
     *h.github.fail_check.lock().unwrap() = Some(GithubError::Api {
         status: 422,
         rate_limited: false,
+        detail: String::new(),
+        retry_after: None,
     });
     set_result(
         &h,

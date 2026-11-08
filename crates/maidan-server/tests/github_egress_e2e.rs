@@ -5,8 +5,10 @@
 //! The relay is durable: `route_message_to_github` enqueues
 //! and the egress worker posts, so each case sweeps the queue before asserting.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
@@ -16,8 +18,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ExternalRef, MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewMessage, NewThread,
-    NewWorkspace,
+    EgressKind, EgressTarget, ExternalRef, MemberKind, NewChannel, NewEgressOutbox,
+    NewGithubIssueLink, NewMember, NewMessage, NewThread, NewWorkspace,
 };
 use serde_json::json;
 
@@ -78,6 +80,14 @@ impl GithubSender for MockSender {
 }
 
 async fn setup() -> (AppState, Arc<MockSender>, Arc<dyn Store>) {
+    let sender = Arc::new(MockSender {
+        sent: Mutex::new(Vec::new()),
+    });
+    let (state, store) = state_over(sender.clone()).await;
+    (state, sender, store)
+}
+
+async fn state_over(sender: Arc<dyn GithubSender>) -> (AppState, Arc<dyn Store>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -90,11 +100,8 @@ async fn setup() -> (AppState, Arc<MockSender>, Arc<dyn Store>) {
     std::mem::forget(dir);
     let bus = Arc::new(InMemoryBus::with_capacity(16));
     let mut state = AppState::for_tests(store.clone(), artifacts, bus, search);
-    let sender = Arc::new(MockSender {
-        sent: Mutex::new(Vec::new()),
-    });
-    state.attach_github_sender(sender.clone());
-    (state, sender, store)
+    state.attach_github_sender(sender);
+    (state, store)
 }
 
 async fn post(
@@ -234,5 +241,134 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         sender.sent.lock().unwrap().len(),
         1,
         "an unlinked thread does not relay to GitHub"
+    );
+}
+
+/// A sender GitHub answers with a secondary rate limit on every post.
+struct RateLimitedSender {
+    posts: AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl GithubSender for RateLimitedSender {
+    async fn post_comment(
+        &self,
+        _repo: &str,
+        _issue_number: i64,
+        _text: &str,
+    ) -> Result<Option<ExternalRef>, GithubError> {
+        self.posts.fetch_add(1, Ordering::SeqCst);
+        Err(GithubError::Api {
+            status: 403,
+            rate_limited: true,
+            detail: "You have exceeded a secondary rate limit".into(),
+            retry_after: Some(900),
+        })
+    }
+
+    async fn update_comment(&self, _: &str, _: i64, _: &str) -> Result<(), GithubError> {
+        unreachable!("the projector egress never updates")
+    }
+
+    async fn list_issue_comments(
+        &self,
+        _: &str,
+        _: i64,
+    ) -> Result<Vec<maidan_server::github::GithubIssueComment>, GithubError> {
+        unreachable!("the projector egress never lists comments")
+    }
+
+    async fn create_check_run(
+        &self,
+        _: &str,
+        _: &maidan_types::GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        unreachable!("the projector egress never creates a check run")
+    }
+
+    async fn create_review(
+        &self,
+        _: &str,
+        _: i64,
+        _: &str,
+        _: &[maidan_types::GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        unreachable!("the projector egress never creates a review")
+    }
+}
+
+/// The 2026-11-08 swarm rows retried a secondary rate limit on the 30s
+/// backoff and failed four times inside GitHub's window. A rate-limited 403
+/// is a retry, never a disabled link, and the retry waits out `retry-after`.
+#[tokio::test]
+async fn a_rate_limited_post_is_retried_no_sooner_than_githubs_retry_after() {
+    let sender = Arc::new(RateLimitedSender {
+        posts: AtomicUsize::new(0),
+    });
+    let (state, store) = state_over(sender.clone()).await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("issue-42".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .enqueue_egress(NewEgressOutbox {
+            workspace_id: ws.id,
+            thread_id: thread.id,
+            source_log_id: 1,
+            target: EgressTarget::Github {
+                repo: "o/r".into(),
+                issue_number: 42,
+            },
+            body: "shipping it".into(),
+            kind: EgressKind::Projector,
+        })
+        .await
+        .unwrap();
+
+    let before = Utc::now();
+    assert_eq!(
+        sweep_once(&state).await,
+        maidan_server::egress_worker::EgressSweepStats {
+            retried: 1,
+            ..Default::default()
+        },
+        "a rate limit is retried, not dead-lettered or disabled"
+    );
+    assert_eq!(sender.posts.load(Ordering::SeqCst), 1);
+    // The first backoff alone is 30s; ten minutes on, it would be due.
+    assert!(
+        store
+            .claim_next_due_egress(before + chrono::Duration::seconds(600), 60)
+            .await
+            .unwrap()
+            .is_none(),
+        "rescheduled inside GitHub's retry-after window"
+    );
+    assert!(
+        store
+            .claim_next_due_egress(Utc::now() + chrono::Duration::seconds(901), 60)
+            .await
+            .unwrap()
+            .is_some(),
+        "due once the retry-after window has passed"
     );
 }

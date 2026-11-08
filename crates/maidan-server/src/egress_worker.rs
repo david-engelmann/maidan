@@ -121,6 +121,16 @@ fn backoff_for(attempts: i64) -> Duration {
     Duration::from_secs(secs)
 }
 
+/// The wait before the next try: the backoff, or the surface's
+/// `retry-after` when that is longer. A retry inside GitHub's rate-limit
+/// window only fails again and spends an attempt, so the backoff never
+/// undercuts it; the cap still bounds it, so a huge `retry-after` cannot park
+/// a delivery for longer than the backoff ever would.
+fn retry_delay(attempts: i64, retry_after: Option<u64>) -> Duration {
+    let asked = Duration::from_secs(retry_after.unwrap_or(0).min(BACKOFF_CAP_SECS));
+    backoff_for(attempts).max(asked)
+}
+
 /// Outcome tallies for a sweep (for tests / logging). `disabled` counts the
 /// deliveries that dead-lettered because their link was turned off — a subset of
 /// the dead-lettered ones, called out because it is the actionable kind.
@@ -160,6 +170,22 @@ const WAITING_RECHECK_SECS: i64 = 5;
 struct DeliveryFailure {
     message: String,
     misconfiguration: bool,
+    /// The seconds the surface asked for before the next try (GitHub's
+    /// `retry-after`): the reschedule waits at least this long.
+    retry_after: Option<u64>,
+}
+
+impl DeliveryFailure {
+    /// A failed GitHub call. A rate-limited 403 is not a misconfiguration
+    /// ([`crate::github::GithubError::is_misconfiguration`]), so it is
+    /// rescheduled, and no sooner than GitHub's `retry-after`.
+    fn github(err: crate::github::GithubError) -> Self {
+        Self {
+            message: err.to_string(),
+            misconfiguration: err.is_misconfiguration(),
+            retry_after: err.retry_after(),
+        }
+    }
 }
 
 /// Post one claimed delivery through the sender for its surface.
@@ -214,6 +240,7 @@ async fn deliver_projector(
                 return Err(DeliveryFailure {
                     message: "no slack sender configured".into(),
                     misconfiguration: false,
+                    retry_after: None,
                 });
             };
             // Top-level: the projector egress relays a Maidan message into the
@@ -229,6 +256,7 @@ async fn deliver_projector(
                     Err(DeliveryFailure {
                         message: err.to_string(),
                         misconfiguration: err.is_misconfiguration(),
+                        retry_after: None,
                     })
                 }
             }
@@ -238,6 +266,7 @@ async fn deliver_projector(
                 return Err(DeliveryFailure {
                     message: "no github sender configured".into(),
                     misconfiguration: false,
+                    retry_after: None,
                 });
             };
             match sender.post_comment(repo, *issue_number, body).await {
@@ -247,10 +276,7 @@ async fn deliver_projector(
                 }
                 Err(err) => {
                     crate::metrics::record_github_egress("failed");
-                    Err(DeliveryFailure {
-                        message: err.to_string(),
-                        misconfiguration: err.is_misconfiguration(),
-                    })
+                    Err(DeliveryFailure::github(err))
                 }
             }
         }
@@ -259,6 +285,7 @@ async fn deliver_projector(
         EgressTarget::GithubBranch { .. } | EgressTarget::Linear { .. } => Err(DeliveryFailure {
             message: format!("{} is not a projector surface", target.surface()),
             misconfiguration: true,
+            retry_after: None,
         }),
     }
 }
@@ -281,6 +308,7 @@ async fn deliver_result(
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
+                retry_after: None,
             });
         }
     };
@@ -369,6 +397,7 @@ async fn deliver_result(
         EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
             message: "github_branch is delivered by the change flow".into(),
             misconfiguration: true,
+            retry_after: None,
         }),
     }
 }
@@ -390,6 +419,7 @@ async fn deliver_notice(
             .map_err(|err| DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
+                retry_after: None,
             })
     };
     if let EgressTarget::Slack {
@@ -410,12 +440,14 @@ async fn deliver_notice(
         return Err(DeliveryFailure {
             message: format!("{} takes no notice", target.surface()),
             misconfiguration: true,
+            retry_after: None,
         });
     };
     let Some(sender) = state.linear_sender.as_ref() else {
         return Err(DeliveryFailure {
             message: "no linear sender configured".into(),
             misconfiguration: false,
+            retry_after: None,
         });
     };
     if !allowed(maidan_types::EgressSurface::Linear).await? {
@@ -441,6 +473,7 @@ fn linear_failure(err: crate::linear::LinearError) -> DeliveryFailure {
     DeliveryFailure {
         message: err.to_string(),
         misconfiguration: err.is_misconfiguration(),
+        retry_after: None,
     }
 }
 
@@ -466,6 +499,7 @@ async fn linear_result(
         return Err(DeliveryFailure {
             message: "no linear sender configured".into(),
             misconfiguration: false,
+            retry_after: None,
         });
     };
     let found = sender.issue(issue).await.map_err(linear_failure)?;
@@ -557,10 +591,7 @@ async fn clear_stale_queue_label(
     let Some(label) = state.merge_queue_labels.label_for(repo) else {
         return Ok(());
     };
-    let failure = |err: crate::github::GithubError| DeliveryFailure {
-        message: err.to_string(),
-        misconfiguration: err.is_misconfiguration(),
-    };
+    let failure = DeliveryFailure::github;
     let Some(pull) = git.open_pull(repo, branch).await.map_err(failure)? else {
         return Ok(());
     };
@@ -636,12 +667,14 @@ async fn github_branch_result(
         return Err(DeliveryFailure {
             message: "no github sender configured".into(),
             misconfiguration: false,
+            retry_after: None,
         });
     };
     let Some(git) = sender.git() else {
         return Err(DeliveryFailure {
             message: "the github sender cannot write branches".into(),
             misconfiguration: true,
+            retry_after: None,
         });
     };
     let stored = match state.store.get_thread_result(entry.thread_id).await {
@@ -655,6 +688,7 @@ async fn github_branch_result(
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
+                retry_after: None,
             });
         }
     };
@@ -715,6 +749,7 @@ async fn github_branch_result(
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
+                retry_after: None,
             });
         }
     }
@@ -821,10 +856,7 @@ async fn github_branch_result(
         Ok(crate::change_flow::ChangeOutcome::Refused(reason)) => Ok(Sent::Refused(reason)),
         Err(err) => {
             crate::metrics::record_github_egress("failed");
-            Err(DeliveryFailure {
-                message: err.to_string(),
-                misconfiguration: err.is_misconfiguration(),
-            })
+            Err(DeliveryFailure::github(err))
         }
     }
 }
@@ -841,10 +873,7 @@ async fn delivered_head(
     let pull = git
         .open_pull(repo, branch)
         .await
-        .map_err(|err| DeliveryFailure {
-            message: err.to_string(),
-            misconfiguration: err.is_misconfiguration(),
-        })?;
+        .map_err(DeliveryFailure::github)?;
     let Some(pull) = pull else {
         return Ok(None);
     };
@@ -855,6 +884,7 @@ async fn delivered_head(
         .map_err(|err| DeliveryFailure {
             message: err.to_string(),
             misconfiguration: false,
+            retry_after: None,
         })?;
     Ok(head.map(|commit_sha| crate::change_flow::DeliveredHead {
         pull_number: pull.number,
@@ -925,6 +955,7 @@ async fn github_result(
         return Err(DeliveryFailure {
             message: "no github sender configured".into(),
             misconfiguration: false,
+            retry_after: None,
         });
     };
     let reference =
@@ -960,10 +991,7 @@ async fn deliver_github_result_comment(
             }
             Err(err) => {
                 crate::metrics::record_github_egress("failed");
-                return Err(DeliveryFailure {
-                    message: err.to_string(),
-                    misconfiguration: err.is_misconfiguration(),
-                });
+                return Err(DeliveryFailure::github(err));
             }
         }
     }
@@ -984,10 +1012,7 @@ async fn deliver_github_result_comment(
                 Err(err) if err.is_not_found() => {}
                 Err(err) => {
                     crate::metrics::record_github_egress("failed");
-                    return Err(DeliveryFailure {
-                        message: err.to_string(),
-                        misconfiguration: err.is_misconfiguration(),
-                    });
+                    return Err(DeliveryFailure::github(err));
                 }
             },
             Ok(None) => {}
@@ -1001,10 +1026,7 @@ async fn deliver_github_result_comment(
         }
         Err(err) => {
             crate::metrics::record_github_egress("failed");
-            Err(DeliveryFailure {
-                message: err.to_string(),
-                misconfiguration: err.is_misconfiguration(),
-            })
+            Err(DeliveryFailure::github(err))
         }
     }
 }
@@ -1182,10 +1204,7 @@ async fn recover_github_comment(
         })),
         Err(err) => {
             crate::metrics::record_github_egress("failed");
-            Err(DeliveryFailure {
-                message: err.to_string(),
-                misconfiguration: err.is_misconfiguration(),
-            })
+            Err(DeliveryFailure::github(err))
         }
     }
 }
@@ -1201,6 +1220,7 @@ async fn slack_result(
         return Err(DeliveryFailure {
             message: "no slack sender configured".into(),
             misconfiguration: false,
+            retry_after: None,
         });
     };
     if let Some(ExternalRef::Slack { ts, .. }) = row.and_then(|r| r.reference()) {
@@ -1221,6 +1241,7 @@ async fn slack_result(
                 return Err(DeliveryFailure {
                     message: err.to_string(),
                     misconfiguration: err.is_misconfiguration(),
+                    retry_after: None,
                 });
             }
         }
@@ -1235,6 +1256,7 @@ async fn slack_result(
             Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: err.is_misconfiguration(),
+                retry_after: None,
             })
         }
     }
@@ -1249,7 +1271,8 @@ async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
 
 /// Record a transient failure: reschedule with backoff, or dead-letter once the
 /// attempts are exhausted. Returns whether it dead-lettered.
-async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> bool {
+async fn record_failure(state: &AppState, entry: &EgressOutbox, failure: &DeliveryFailure) -> bool {
+    let error = failure.message.as_str();
     let dead = entry.attempts >= MAX_ATTEMPTS;
     if dead {
         dead_letter(state, entry, error).await;
@@ -1263,7 +1286,7 @@ async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> 
         return true;
     }
     let retry_at = chrono::Utc::now()
-        + chrono::Duration::from_std(backoff_for(entry.attempts))
+        + chrono::Duration::from_std(retry_delay(entry.attempts, failure.retry_after))
             .unwrap_or_else(|_| chrono::Duration::seconds(BACKOFF_BASE_SECS as i64));
     if let Err(e) = state
         .store
@@ -1735,7 +1758,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 stats.disabled += 1;
             }
             Err(failure) => {
-                if record_failure(state, &entry, &failure.message).await {
+                if record_failure(state, &entry, &failure).await {
                     if entry.kind == EgressKind::Result {
                         record_result_gave_up(state, &entry, &target, &failure.message).await;
                         audit_result_attempt(
@@ -1882,5 +1905,54 @@ mod tests {
         assert_eq!(backoff_for(3), Duration::from_secs(120));
         // Caps at BACKOFF_CAP_SECS and never overflows for large attempt counts.
         assert_eq!(backoff_for(100), Duration::from_secs(BACKOFF_CAP_SECS));
+    }
+
+    #[test]
+    fn a_retry_waits_out_githubs_retry_after_when_it_is_longer_than_the_backoff() {
+        // The first backoff is 30s; GitHub asked for 120s.
+        assert_eq!(retry_delay(1, Some(120)), Duration::from_secs(120));
+        // Five minutes of backoff already outlasts a 60s window.
+        assert_eq!(retry_delay(4, Some(60)), backoff_for(4));
+        assert_eq!(retry_delay(1, None), backoff_for(1));
+        assert_eq!(retry_delay(1, Some(0)), backoff_for(1));
+    }
+
+    #[test]
+    fn a_retry_after_past_the_cap_waits_only_the_cap() {
+        assert_eq!(
+            retry_delay(1, Some(BACKOFF_CAP_SECS * 10)),
+            Duration::from_secs(BACKOFF_CAP_SECS)
+        );
+        assert_eq!(
+            retry_delay(1, Some(u64::MAX)),
+            Duration::from_secs(BACKOFF_CAP_SECS)
+        );
+    }
+
+    #[test]
+    fn a_rate_limited_github_403_is_a_retry_that_carries_its_retry_after() {
+        let failure = DeliveryFailure::github(crate::github::GithubError::Api {
+            status: 403,
+            rate_limited: true,
+            detail: "You have exceeded a secondary rate limit".into(),
+            retry_after: Some(90),
+        });
+        assert!(
+            !failure.misconfiguration,
+            "a rate limit never disables a link"
+        );
+        assert_eq!(failure.retry_after, Some(90));
+        assert_eq!(
+            failure.message,
+            "github api error: status 403 (rate limited): You have exceeded a secondary rate limit"
+        );
+        let denied = DeliveryFailure::github(crate::github::GithubError::Api {
+            status: 403,
+            rate_limited: false,
+            detail: "Resource not accessible by integration".into(),
+            retry_after: None,
+        });
+        assert!(denied.misconfiguration);
+        assert_eq!(denied.retry_after, None);
     }
 }
