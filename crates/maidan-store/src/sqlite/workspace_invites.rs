@@ -46,7 +46,11 @@ pub async fn create_audited(
     // `expires_at > created_at` CHECK agrees with the validation.
     let now = Utc::now();
     let email = validate_new(&new, now)?;
-    let mut tx = pool.begin().await?;
+    // The write lock first: this transaction reads the inviter and then
+    // writes. A deferred one that read before another connection committed
+    // cannot take the write lock afterwards, and SQLite answers `database is
+    // locked` at once instead of waiting out busy_timeout.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let inviter_live: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM maidan_members
                         WHERE id = ?1 AND workspace_id = ?2 AND tombstoned_at IS NULL)",
