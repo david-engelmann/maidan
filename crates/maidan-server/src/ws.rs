@@ -458,9 +458,21 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
     ping_interval.tick().await;
     let credential = request.credential;
     let mut last_check = Instant::now();
+    let mut shutdown = crate::shutdown::subscribe();
 
     loop {
         tokio::select! {
+            // A stopping server closes the socket (1012, service restart)
+            // rather than holding the process open until the client leaves.
+            () = crate::shutdown::begun(&mut shutdown) => {
+                let _ = socket
+                    .send(WsMessage::Close(Some(CloseFrame {
+                        code: 1012,
+                        reason: crate::shutdown::SERVER_RESTARTING.into(),
+                    })))
+                    .await;
+                break;
+            }
             outbound = rx.recv() => {
                 let Some(msg) = outbound else { break; };
                 if last_check.elapsed() >= RECHECK_GAP {

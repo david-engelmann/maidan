@@ -105,15 +105,85 @@ policy pages (`/privacy`, `/terms`, `/support`) from its static assets
 `MAIDAN_SIGNUP_TERMS_URL` link the first two from the waitlist page's footer.
 The Worker adds Support and Status to that footer.
 
-When the container is starting or a deploy is replacing it, a person sees
-"Back in a moment" (`site/unavailable.html`, which retries itself) and an API
-client a `503` `overloaded` problem with `Retry-After`. A problem body the
+While the container is starting or a deploy is replacing it, the Worker holds
+each request until the server answers ([Deploys without
+downtime](#deploys-without-downtime)). Only when nothing answers within 90
+seconds does a person see "Back in a moment" (`site/unavailable.html`, which
+retries itself) and an API client a `503` `overloaded` problem with
+`Retry-After`. A problem body the
 server sends to a browser page (an expired invite, a sign-in for the wrong
 address) is shown as a page with its title, its detail and a support link.
 
 ### Restarting the container
 
 A running Container keeps the environment it started with, so a deploy that changes settings without changing the image doesn't reach it until it restarts. Set `MAIDAN_OPS_RESTART_TOKEN` (a Worker secret, never passed to the server) and `POST /__ops/restart` with `Authorization: Bearer <token>`. The Worker stops the container and answers `202`, and the next request starts a fresh one with the current settings.
+Requests that arrive while it starts are held at the edge, as during a deploy.
+
+### Deploys without downtime
+
+A deploy (a release, a `dev` push or an operator restart) replaces the one
+container in the same Durable Object: Cloudflare sends the running container
+SIGTERM, waits for the process to exit (up to 15 minutes), and only then starts
+the new image. Nothing can answer between the two, so the aim is to make that
+window short and to keep requests waiting through it instead of failing.
+
+Before 2026-11-08 the window was up to 5 minutes on prod. The server's graceful shutdown closed its listener and then waited for
+every connection to finish, and a server-sent event stream, an MCP
+notification stream or a WebSocket never finishes on its own, so the old
+process kept running for as long as a connected agent stayed connected. The
+deploy logs show it: during the v432.0.0 deploy (2026-11-06), `/health` was
+answered `503` within a fraction of a second for 4 minutes 35 seconds, which
+is the Worker's answer when the container is still marked running but nothing
+listens. Without a long stream open, the new version answered 13 to 47 seconds
+after `wrangler deploy` finished (dev, and three of the five prod releases of
+2026-11-06/08).
+
+Two changes close it:
+
+1. **The old server exits in seconds.** On SIGTERM every open stream ends
+   (`stream_ended` with the reason `server restarting`, or WebSocket close
+   `1012`), and any request still open 20 seconds after the listener closed
+   is cut (`crates/maidan-server/src/shutdown.rs`). Clients reconnect.
+2. **The edge holds requests.** When the runtime has no server to hand a
+   request to, the Worker keeps the request, asks the container's `/health`
+   with backoff (0.5 s up to 4 s) until it answers, and then sends the request
+   again, for up to 90 seconds (`deploy/cloudflare/src/hold.js`). A read (GET,
+   HEAD, OPTIONS) is always sent again. A write is sent again only when the
+   runtime said it never reached a server, and only with a body of known length
+   up to 1 MiB, which the Worker copies; any other write gets the `503` at once,
+   because sending it twice could do it twice. Reconnecting streams are reads,
+   so they wait for the new server too.
+
+A client therefore sees a slow answer, not an error, as long as the
+replacement takes under 90 seconds. A cold start against a waking Neon is
+included in that.
+
+Two versions never serve at once: the old process has exited before the new
+one boots and migrates, which is the cutover case in
+[Migrations](Migrations.md). A blue-green deploy, with the new container
+healthy before the old one stops, needs a second running instance (prod's
+`max_instances` is 1 by decision, `deploy/cloudflare/test/cost.test.js`) or the
+`durable_object` scheduling policy, which is in public beta, cannot be set on
+the existing application, and does not work with the `Container` class this
+Worker uses. If it is adopted later, the expand and contract rules in
+Migrations apply to the overlap.
+
+#### Measuring it
+
+`scripts/measure-deploy-gap.sh` asks `/health` once a second, one request at a
+time, and counts a request answered when the body names a version:
+
+```sh
+scripts/measure-deploy-gap.sh --origin https://dev.maidan.world --until-version dev-<first 8 of the commit>
+```
+
+Start it before the deploy (or the restart; omit `--until-version` and pass
+`--for 300`). It stops once the new version has answered five times in a row and
+prints `unanswered` (requests nothing answered), `longest_outage_s`,
+`slowest_answer_s` (the longest a request was held), `longest_gap_s` and the
+versions it saw. No downtime is `unanswered=0`; `slowest_answer_s` is the
+time the replacement took. Both deploy workflows run it beside the deploy and
+put its summary on the job's page, so every deploy records its number.
 
 ### Secrets
 

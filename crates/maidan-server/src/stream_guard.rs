@@ -8,6 +8,11 @@
 //! before a frame goes out (the first, then at most once per [`RECHECK_GAP`]) and every
 //! [`RECHECK_TICK`] while the stream is idle. When the check fails it sends one
 //! last `stream_ended` event that gives the reason, then ends the stream.
+//!
+//! The same wrapper ends the stream, with the reason
+//! [`crate::shutdown::SERVER_RESTARTING`], when the server begins to shut
+//! down: an open stream would otherwise keep a stopped server running
+//! (`crate::shutdown`). The client reconnects to the server that replaces it.
 
 use std::convert::Infallible;
 use std::pin::Pin;
@@ -19,7 +24,10 @@ use futures::{Stream, StreamExt as _};
 use maidan_auth::AuthContext;
 use maidan_store::Store;
 use maidan_types::{ApiTokenId, MemberId, WorkspaceId};
+use tokio::sync::watch;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
+
+use crate::shutdown::{begun, SERVER_RESTARTING};
 
 /// The shortest time between two checks while frames flow. A burst of frames
 /// costs one check, and a deactivated member's stream ends at the first frame
@@ -135,6 +143,8 @@ struct Guard<T, E> {
     /// not get a second's worth of frames first.
     last_check: Option<Instant>,
     tick: Interval,
+    /// Reads `true` once the server begins to shut down.
+    shutdown: watch::Receiver<bool>,
     ended: bool,
 }
 
@@ -144,11 +154,14 @@ impl<T, E: Fn(&'static str) -> T> Guard<T, E> {
         self.last_check = Some(Instant::now());
         match self.credential.recheck(self.store.as_ref()).await {
             Ok(()) => None,
-            Err(reason) => {
-                self.ended = true;
-                Some((self.end_with)(reason))
-            }
+            Err(reason) => Some(self.end(reason)),
         }
+    }
+
+    /// Mark the stream ended and make its last item.
+    fn end(&mut self, reason: &'static str) -> T {
+        self.ended = true;
+        (self.end_with)(reason)
     }
 }
 
@@ -183,6 +196,7 @@ where
         StreamCredential::from_auth(auth),
         inner,
         RECHECK_TICK,
+        crate::shutdown::subscribe(),
         end_with,
     )
 }
@@ -192,6 +206,7 @@ fn guard_with<T, S, E>(
     credential: StreamCredential,
     inner: S,
     tick_every: Duration,
+    shutdown: watch::Receiver<bool>,
     end_with: E,
 ) -> impl Stream<Item = T> + Send + 'static
 where
@@ -208,6 +223,7 @@ where
         end_with,
         last_check: None,
         tick,
+        shutdown,
         ended: false,
     };
     futures::stream::unfold(state, |mut g| async move {
@@ -215,11 +231,25 @@ where
             return None;
         }
         if g.credential == StreamCredential::Open {
-            let next = g.inner.next().await?;
-            return Some((next, g));
+            tokio::select! {
+                biased;
+                () = begun(&mut g.shutdown) => {
+                    let last = g.end(SERVER_RESTARTING);
+                    return Some((last, g));
+                }
+                next = g.inner.next() => {
+                    let next = next?;
+                    return Some((next, g));
+                }
+            }
         }
         loop {
             tokio::select! {
+                biased;
+                () = begun(&mut g.shutdown) => {
+                    let last = g.end(SERVER_RESTARTING);
+                    return Some((last, g));
+                }
                 next = g.inner.next() => {
                     let item = next?;
                     if g.last_check.is_none_or(|at| at.elapsed() >= RECHECK_GAP)
@@ -263,6 +293,61 @@ mod tests {
             StreamCredential::from_auth(&auth),
             StreamCredential::Token(token)
         );
+    }
+
+    async fn unused_store() -> Arc<dyn Store> {
+        // Neither credential below reaches the store before shutdown.
+        let pool = maidan_search::sqlite_pool_options()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        Arc::new(maidan_store::SqliteStore::for_tests(pool))
+    }
+
+    async fn ends_on_shutdown(credential: StreamCredential) {
+        let (tx, rx) = watch::channel(false);
+        // A stream with nothing to send, as an idle notification stream is.
+        let inner = futures::stream::pending::<Frame>();
+        let mut stream = Box::pin(guard_with(
+            unused_store().await,
+            credential,
+            inner,
+            Duration::from_secs(3600),
+            rx,
+            |reason| Ok(ended_event(reason)),
+        ));
+        let idle = tokio::time::timeout(Duration::from_millis(20), stream.next()).await;
+        assert!(
+            idle.is_err(),
+            "an idle stream sent something before shutdown"
+        );
+        tx.send_replace(true);
+        let last = tokio::time::timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("the stream ends once shutdown begins")
+            .expect("with one last frame")
+            .unwrap();
+        let rendered = format!("{last:?}");
+        assert!(rendered.contains(STREAM_ENDED_EVENT), "{rendered}");
+        assert!(rendered.contains(SERVER_RESTARTING), "{rendered}");
+        let after = tokio::time::timeout(Duration::from_secs(1), stream.next())
+            .await
+            .expect("the stream closes after its last frame");
+        assert!(after.is_none(), "frames after stream_ended");
+    }
+
+    #[tokio::test]
+    async fn an_open_stream_ends_when_the_server_shuts_down() {
+        ends_on_shutdown(StreamCredential::Open).await;
+    }
+
+    #[tokio::test]
+    async fn a_checked_stream_ends_when_the_server_shuts_down() {
+        ends_on_shutdown(StreamCredential::Members {
+            workspace_id: WorkspaceId(uuid::Uuid::now_v7()),
+            members: vec![MemberId(uuid::Uuid::now_v7())],
+        })
+        .await;
     }
 
     #[test]
