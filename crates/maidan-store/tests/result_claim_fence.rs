@@ -219,9 +219,10 @@ async fn an_expired_lease_is_lost_before_anyone_takes_it_over(store: &dyn Store)
     );
 
     // A's calls race B's takeover; in either order A is refused and B holds.
+    let a_payload = json!({ "from": "a" });
     let (a_renew, a_result, taken) = tokio::join!(
         store.renew_claim(thread, a, lease_a, 300),
-        store.set_thread_result(thread, a, lease_a, &json!({ "from": "a" })),
+        store.set_thread_result(thread, a, lease_a, &a_payload),
         store.claim_next_thread(t.channel, b, Some(300), None),
     );
     assert!(
