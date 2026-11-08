@@ -3,7 +3,7 @@
 (crates/maidan-mcp/src/tools/catalog.json, which the server parses as tools/list).
 
 The tool names contract, the Docker and ToolHive listings, and the tool counts
-in docs/Protocols.md, README.md and book/src/introduction.md are copies of the
+in docs/Protocols.md, docs/Quickstart.md and book/src/introduction.md are copies of the
 catalog. Two PRs that each add a tool conflict in all of them; resolving takes
 either side of catalog.json and re-running this (scripts/regen.sh runs it).
 """
@@ -34,7 +34,7 @@ write_json("listings/toolhive/server.json", toolhive)
 count = len(names)
 for path, pattern, repl in [
     ("docs/Protocols.md", r"MCP tool count is \*\*\d+\*\*", f"MCP tool count is **{count}**"),
-    ("README.md", r"// \d+ tools in tools/list", f"// {count} tools in tools/list"),
+    ("docs/Quickstart.md", r"// \d+ tools in tools/list", f"// {count} tools in tools/list"),
     ("book/src/introduction.md", r"// \d+ tools in tools/list", f"// {count} tools in tools/list"),
 ]:
     text = (ROOT / path).read_text()

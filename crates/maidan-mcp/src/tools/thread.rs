@@ -1557,6 +1557,59 @@ pub(super) async fn release_claim(
     Ok(content_json(&thread))
 }
 
+/// The note a restarted claimant's releases carry when it gives none.
+const RESTART_RELEASE_NOTE: &str = "the claimant restarted";
+
+/// The longest release note, as an approval note: it lands on every released
+/// thread's assignment event.
+const MAX_RELEASE_NOTE_CHARS: usize = 2000;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReleaseOwnClaimsArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+/// Release every live claim the calling member holds in its workspace, for a
+/// claimant that restarted: the old process's fencing tokens died with it, so
+/// `release_claim` cannot be called, and without this the work would wait out
+/// each lease. There is no member argument: the member is the token's, so a
+/// call can never touch another member's claims. Each release is the one
+/// `release_claim` makes, fenced by the lease the store reads in the same
+/// transaction; the old process's next renew or result write is then refused.
+pub(super) async fn release_own_claims(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ReleaseOwnClaimsArgs = crate::tools::parse_args(args)?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    // Also checked before dispatch; repeated so the handler never acts on a
+    // workspace the token was not minted for, whoever calls it.
+    auth.ensure_workspace(workspace_id)?;
+    let note = match a.note {
+        Some(note) if note.chars().count() > MAX_RELEASE_NOTE_CHARS => {
+            return Err(McpError::InvalidParams(format!(
+                "note: at most {MAX_RELEASE_NOTE_CHARS} characters"
+            )));
+        }
+        Some(note) if !note.trim().is_empty() => note,
+        _ => RESTART_RELEASE_NOTE.to_string(),
+    };
+    let released = server
+        .store
+        .release_member_claims_with_events(workspace_id, auth.member_id, Some(note))
+        .await?;
+    let mut thread_ids = Vec::with_capacity(released.len());
+    for (thread, stored) in &released {
+        server.publish_stored(stored).await;
+        thread_ids.push(thread.id);
+    }
+    Ok(content_json(&json!({ "released": thread_ids })))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetThreadFootprintArgs {

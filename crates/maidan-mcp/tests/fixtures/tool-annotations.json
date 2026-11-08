@@ -3460,6 +3460,25 @@
         "reason": "confined to Maidan's store; no outbound call"
       }
     },
+    "release_own_claims": {
+      "title": "Release own claims",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "release_member_claims_with_events clears each held claim's assignee/lease/working clock and appends ThreadAssignmentChanged per thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "graceful release of the caller's own live leases, returning the threads to the queue; the claim cycle's release, done for every claim the restarted holder lost the token to"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no live claim held by the caller and releases nothing: released is empty, no event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
     "remove_channel_member": {
       "title": "Remove channel member",
       "readOnlyHint": {

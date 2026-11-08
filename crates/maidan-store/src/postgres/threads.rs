@@ -1397,6 +1397,55 @@ pub async fn release_claim_with_event(
     Ok((thread, stored))
 }
 
+/// Release every live leased claim `member_id` holds in `workspace_id`, each
+/// as `release_claim_with_event` releases one, in one transaction. See
+/// [`crate::store::ThreadStore::release_member_claims_with_events`].
+pub async fn release_member_claims_with_events(
+    pool: &PgPool,
+    grace: &ClaimGrace,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    note: Option<String>,
+) -> Result<Vec<(Thread, StoredEvent)>, StoreError> {
+    let mut tx = pool.begin().await?;
+    // Locked in id order so two callers cannot deadlock on each other's rows,
+    // and a concurrent renew or result write waits for this release instead
+    // of racing it. A row that changed hands while we waited no longer matches
+    // and is left out.
+    let held = sqlx::query(
+        "SELECT t.id, t.claim_lease_id FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = $1 AND t.assignee_id = $2
+           AND t.claim_lease_id IS NOT NULL
+           AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $3
+           AND t.tombstoned_at IS NULL AND t.state NOT IN ('closed', 'archived')
+         ORDER BY t.id
+         FOR UPDATE OF t",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(grace.lease_clock(chrono::Utc::now()))
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut released = Vec::with_capacity(held.len());
+    for row in &held {
+        let thread_id = ThreadId(row.get("id"));
+        let lease = ClaimLeaseId(row.get("claim_lease_id"));
+        let thread = match release_fenced_in_tx(&mut tx, thread_id, member_id, lease).await {
+            Ok(thread) => thread,
+            // The fence on the lease we read: a claim that moved on is not ours.
+            Err(StoreError::NotFound) => continue,
+            Err(err) => return Err(err),
+        };
+        let stored =
+            append_assignment_event(&mut tx, &thread, member_id, Some(member_id), note.clone())
+                .await?;
+        released.push((thread, stored));
+    }
+    tx.commit().await?;
+    Ok(released)
+}
+
 pub async fn list_for_workspace(
     pool: &PgPool,
     workspace_id: WorkspaceId,

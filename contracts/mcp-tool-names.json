@@ -181,6 +181,7 @@
   "register_slash_command",
   "register_thread_pull",
   "release_claim",
+  "release_own_claims",
   "remove_channel_member",
   "remove_member_skill",
   "remove_reaction",

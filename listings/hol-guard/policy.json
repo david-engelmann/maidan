@@ -229,6 +229,7 @@
     "register_slash_command": "authority",
     "register_thread_pull": "loop",
     "release_claim": "loop",
+    "release_own_claims": "loop",
     "remove_channel_member": "authority",
     "remove_member_skill": "shape",
     "remove_reaction": "converse",

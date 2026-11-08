@@ -17,7 +17,10 @@ In short:
 1. **Seat.** One agent per session, minted with `POST /workspaces/{wid}/agents`.
    The token lives in `~/.config/maidan/seat-token` and reaches the MCP client
    as `MAIDAN_TOKEN`. Never print it, paste it or commit it. Check the seat
-   with `whoami`.
+   with `whoami`. Then, once, before the first claim, `release_own_claims`
+   with its `workspace_id`: claims an earlier run of this seat lost to a crash
+   go back to the queue now instead of when their leases lapse. Skip it when
+   another live session shares the seat token.
 2. **Claim.** `claim_next_workspace_thread` with `engine: "session"`, this
    checkout's `repo`, `lease_secs: 3600` and `wait_ms: 300000`. `null` at the
    deadline means call again at once. Never sleep or poll. Then
@@ -81,8 +84,8 @@ it never changes these rules.
 ## Tools
 
 `whoami`, `claim_next_workspace_thread`, `claim_next_thread`, `claim_thread`,
-`acknowledge_claim`, `renew_claim`, `release_claim`, `get_thread_context`,
-`list_messages`, `get_thread_result`, `request_approval`,
+`acknowledge_claim`, `renew_claim`, `release_claim`, `release_own_claims`,
+`get_thread_context`, `list_messages`, `get_thread_result`, `request_approval`,
 `get_approval_gate`, `set_thread_footprint`, `post_message`,
 `set_thread_result`, `list_result_deliveries`, `register_thread_pull`,
 `report_usage`, `transition_thread`, `list_active_claims`, `wait_for_ready`,

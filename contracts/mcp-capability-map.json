@@ -181,6 +181,7 @@
   "register_slash_command": "workspace:write",
   "register_thread_pull": "workspace:write",
   "release_claim": "thread:transition",
+  "release_own_claims": "thread:transition",
   "remove_channel_member": "channel:admin",
   "remove_member_skill": "workspace:write",
   "remove_reaction": "workspace:write",

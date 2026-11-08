@@ -2623,6 +2623,34 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `release_own_claims`
+
+**Release own claims.** Release every live claim you hold in your workspace at once, for a claimant that restarted: its fencing tokens died with the old process, so release_claim cannot be called, and without this each task waits out its lease. Call it once per workspace at process start, before the first claim, and only when no other live process acts as the same member. Releases only the calling member's claims (there is no member argument), each exactly as release_claim does: the assignment, lease and working clock are cleared, a thread_assignment_changed carries the note, and the thread returns to the queue. A claim that changed hands meanwhile is left alone, a lapsed lease is left to the reaper, and the old process's next renew_claim or result write is refused. Returns {released}, the ids of the threads released, empty when you hold none.
+
+**Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "note": {
+      "description": "why the claims were released, kept on each thread's assignment event, at most 2000 characters. Omitted, \"the claimant restarted\"",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id)",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_thread_attributes`
 
 **Set thread attributes.** Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.
