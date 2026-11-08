@@ -131,8 +131,8 @@ async fn a_review_released_as_own_family_is_not_handed_back_to_that_seat() {
     };
 
     let held = claim(&seat_auth).await;
-    assert_eq!(held["thread"]["id"], json!(first.0));
-    let lease = held["thread"]["claim_lease_id"].clone();
+    assert_eq!(held["id"], json!(first.0));
+    let lease = held["claim_lease_id"].clone();
 
     // An unknown reason is refused before anything moves.
     let unknown = server
@@ -177,14 +177,14 @@ async fn a_review_released_as_own_family_is_not_handed_back_to_that_seat() {
 
     // The seat is handed the next review, not the one it declined.
     let next = claim(&seat_auth).await;
-    assert_eq!(next["thread"]["id"], json!(second.0));
+    assert_eq!(next["id"], json!(second.0));
     server
         .call_tool(
             &seat_auth,
             "release_claim",
             &json!({
                 "thread_id": second.0,
-                "claim_lease_id": next["thread"]["claim_lease_id"],
+                "claim_lease_id": next["claim_lease_id"],
                 "decline": "own_family",
             }),
         )
@@ -198,5 +198,5 @@ async fn a_review_released_as_own_family_is_not_handed_back_to_that_seat() {
 
     // Another member is still handed the declined review.
     let taken = claim(&other_auth).await;
-    assert_eq!(taken["thread"]["id"], json!(first.0));
+    assert_eq!(taken["id"], json!(first.0));
 }
