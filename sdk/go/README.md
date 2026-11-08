@@ -81,6 +81,7 @@ func main() {
   `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,
   `Workspaces.ListEvents`, `FollowLog` (HTTP backfill then WS), and the `WaitFor*`
   helpers. See the repo's `docs/Client Contract.md`.
+- Restart (0.3.0): `ReleaseOwnClaims(workspaceID, note)` (`POST /workspaces/{id}/claims/release-own`) releases every live claim this token's member holds in the workspace, for a waiter whose old process took its `ClaimLeaseID`s with it, and returns `*ReleasedClaims`. Call it once before the first claim, never while another live process shares the token.
 - Caching (0.3.0): `c.Channels.Boot(cid)` returns the channel's boot prefix as served, with its SHA256 (for `evidence.pack_sha256`). `CachedPrefix(provider, text, ttl)` places it with a cache breakpoint, `CacheKey(workspaceID, group)` and `CacheKeyFields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `GatewaySession(gateway, threadID, path, name)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 Versioned independently of the server. `0.1.0` is the first usable release.

@@ -173,6 +173,27 @@ test("renewClaim extends the lease with the fencing token", async () => {
   assert.ok(renewed.assignment_expires_at > claim.assignment_expires_at);
 });
 
+test("releaseOwnClaims frees this member's claims in its own workspace only", async () => {
+  const { member, channel } = await seed();
+  const claim = await client.claimNextThread(channel.id, { lease_secs: 600 });
+  assert.ok(claim, "a freshly seeded ready thread should be claimable");
+  const other = new Client(BASE, OTHER_TOKEN);
+  await assert.rejects(other.releaseOwnClaims(WORKSPACE), ForbiddenError);
+  await assert.rejects(client.releaseOwnClaims(OTHER_WORKSPACE), ForbiddenError);
+  assert.equal((await client.threads.get(claim.id)).assignee_id, member.id);
+
+  const released = assertShape(await client.releaseOwnClaims(WORKSPACE, "the ts sdk restarted"), "ReleasedClaims");
+  assert.ok(released.released.includes(claim.id), "the claim is released");
+  assert.equal((await client.threads.get(claim.id)).assignee_id ?? null, null);
+  await assert.rejects(
+    client.renewClaim(claim.id, claim.claim_lease_id, 600),
+    MaidanError,
+    "the old lease is fenced out",
+  );
+  const again = await client.releaseOwnClaims(WORKSPACE);
+  assert.ok(!again.released.includes(claim.id), "nothing is released twice");
+});
+
 test("claim-next returns null once the queue is drained", async () => {
   const { member, channel } = await seed();
   await client.claimNextThread(channel.id);

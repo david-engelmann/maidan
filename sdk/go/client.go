@@ -566,6 +566,19 @@ func (c *Client) RenewClaim(threadID, claimLeaseID string, leaseSecs int64) (*Th
 	})
 }
 
+// ReleaseOwnClaims is for a waiter that restarted: it releases every live
+// claim this token's member holds in the workspace, whose fencing tokens died
+// with the old process. Call it once before the first claim, and not while
+// another live process shares the token, or that process's claims go too.
+// An empty note records the server's default.
+func (c *Client) ReleaseOwnClaims(workspaceID, note string) (*ReleasedClaims, error) {
+	body := M{}
+	if note != "" {
+		body["note"] = note
+	}
+	return call[ReleasedClaims](c, http.MethodPost, "/workspaces/"+workspaceID+"/claims/release-own", body)
+}
+
 // --- Messages ---
 
 type MessagesService struct{ c *Client }

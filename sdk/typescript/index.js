@@ -327,6 +327,26 @@ export class Client {
     return raw;
   }
 
+  /**
+   * POST /workspaces/{id}/claims/release-own — for a waiter that restarted:
+   * releases every live claim this token's member holds in the workspace,
+   * whose fencing tokens died with the old process. Call it once before the
+   * first claim, and not while another live process shares the token: it
+   * would release that process's claims too.
+   */
+  async releaseOwnClaims(workspaceId, note) {
+    const path = `/workspaces/${workspaceId}/claims/release-own`;
+    const raw = await this._req("POST", path, note === undefined ? {} : { note });
+    if (!raw || !Array.isArray(raw.released)) {
+      throw new UnreadableResponseError(
+        200,
+        undefined,
+        `POST ${path}: HTTP 200 answer without a released list`,
+      );
+    }
+    return raw;
+  }
+
   async _readableResult(method, path, body) {
     const raw = await this._req(method, path, body);
     if (!raw || typeof raw.thread_id !== "string" || raw.thread_id.length === 0) {

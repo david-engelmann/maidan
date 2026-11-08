@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -203,6 +204,43 @@ func TestRenewClaimExtendsTheLeaseWithTheFencingToken(t *testing.T) {
 	renewed := must(c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 600))
 	if !renewed.AssignmentExpiresAt.After(*claim.AssignmentExpiresAt) {
 		t.Fatalf("lease not extended: %v -> %v", claim.AssignmentExpiresAt, renewed.AssignmentExpiresAt)
+	}
+}
+
+func TestReleaseOwnClaimsFreesThisMembersClaimsInItsOwnWorkspaceOnly(t *testing.T) {
+	c := testClient(t)
+	otherToken, otherWID := os.Getenv("MAIDAN_OTHER_TOKEN"), os.Getenv("MAIDAN_OTHER_WORKSPACE")
+	if otherToken == "" || otherWID == "" {
+		t.Fatal("scripts/sdk-test.sh provisions a second workspace")
+	}
+	wid, memberID, channel, _ := seed(t, c)
+	claim := must(c.ClaimNextThread(channel.ID, &ClaimOptions{LeaseSecs: 600}))
+	if claim == nil {
+		t.Fatal("a freshly seeded ready thread should be claimable")
+	}
+	var fb *ForbiddenError
+	if _, err := New(os.Getenv("MAIDAN_URL"), otherToken).ReleaseOwnClaims(wid, ""); !errors.As(err, &fb) {
+		t.Fatalf("another workspace's token: expected a ForbiddenError, got %v", err)
+	}
+	if _, err := c.ReleaseOwnClaims(otherWID, ""); !errors.As(err, &fb) {
+		t.Fatalf("another workspace: expected a ForbiddenError, got %v", err)
+	}
+	if held := must(c.Threads.Get(claim.ID)); held.AssigneeID == nil || *held.AssigneeID != memberID {
+		t.Fatalf("a refused release changed the claim: %+v", held.AssigneeID)
+	}
+
+	released := must(c.ReleaseOwnClaims(wid, "the go sdk restarted"))
+	if !slices.Contains(released.Released, claim.ID) {
+		t.Fatalf("%s not in %v", claim.ID, released.Released)
+	}
+	if held := must(c.Threads.Get(claim.ID)); held.AssigneeID != nil {
+		t.Fatalf("still held by %s", *held.AssigneeID)
+	}
+	if _, err := c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 600); err == nil {
+		t.Fatal("the old lease still renews")
+	}
+	if again := must(c.ReleaseOwnClaims(wid, "")); slices.Contains(again.Released, claim.ID) {
+		t.Fatal("released twice")
 	}
 }
 
