@@ -95,6 +95,7 @@ pub mod secret_broker;
 pub mod server_card;
 pub mod session;
 pub mod share_consumer;
+pub mod shutdown;
 pub mod slack;
 pub mod slash_commands;
 pub mod stall;

@@ -16,7 +16,6 @@ import {
   isPageNavigation,
   isSitePage,
   HOSTED_FOOTER_LINKS,
-  isContainerUnavailable,
   isOpsRestart,
   isProblemForAPerson,
   problemPage,
@@ -27,6 +26,7 @@ import {
   unavailableProblem,
   withSecurityHeaders,
 } from "./edge.js";
+import { replayableBody, sendHeld } from "./hold.js";
 import { isStatusRequest, statusResponse } from "./status.js";
 import { ContainerEnvSession, envFingerprint, serverEnv } from "./server-env.js";
 
@@ -113,17 +113,24 @@ export default {
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
-    let response;
-    try {
-      response = await getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
-    } catch (err) {
-      console.error("container fetch failed", err);
-      response = null;
-    }
-    // While a deploy replaces the container, or one fails to start, a person
-    // sees a page that says so and retries itself, and a client gets a
-    // problem it knows to retry, not the runtime's own error text.
-    if (response === null || (await isContainerUnavailable(response))) {
+    // While a deploy or a restart replaces the container, the request waits
+    // here for the new one rather than failing (src/hold.js).
+    const body = await replayableBody(request);
+    let response = await sendHeld({
+      method: request.method,
+      body,
+      send: () =>
+        getContainer(env.MAIDAN).fetch(
+          body
+            ? new Request(request.url, { method: request.method, headers, body, redirect: request.redirect })
+            : new Request(request, { headers }),
+        ),
+      probe: () => getContainer(env.MAIDAN).fetch("http://maidan/health"),
+    });
+    // When nothing answered within the hold, a person sees a page that says
+    // so and retries itself, and a client gets a problem it knows to retry,
+    // not the runtime's own error text.
+    if (response === null) {
       if (hasSite && isPageNavigation(request)) {
         const page = await env.ASSETS.fetch(new Request(new URL(UNAVAILABLE_PAGE, request.url)));
         if (page.ok) {

@@ -281,12 +281,19 @@ impl A2aService for GrpcA2a {
             .await
             .map_err(status)?;
         // Ends with UNAUTHENTICATED once the caller's credential no longer
-        // holds (see `crate::stream_guard`).
+        // holds, and UNAVAILABLE, which a client retries, when the server
+        // shuts down (see `crate::stream_guard`).
         let stream = crate::stream_guard::guard_ending(
             self.state.store.clone(),
             &auth,
             events(stream),
-            |reason| Err(Status::unauthenticated(reason)),
+            |reason| {
+                if reason == crate::shutdown::SERVER_RESTARTING {
+                    Err(Status::unavailable(reason))
+                } else {
+                    Err(Status::unauthenticated(reason))
+                }
+            },
         );
         Ok(Response::new(Box::pin(stream)))
     }

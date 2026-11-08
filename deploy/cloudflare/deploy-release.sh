@@ -30,21 +30,40 @@ npx wrangler containers push -c "$config" "maidan-server:$tag"
 # A copy beside the original, so its relative paths resolve the same and a
 # second run (the rollback) starts from the placeholder again.
 cfg=wrangler.release.jsonc
-trap 'rm -f "$cfg"' EXIT
+gap_pid=""
+gap_log=$(mktemp)
+trap 'rm -f "$cfg" "$gap_log"; [ -z "$gap_pid" ] || kill "$gap_pid" 2>/dev/null || true' EXIT
 image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$tag"
 sed "s#\"image\": \"registry.cloudflare.com/ACCOUNT/maidan-server:RELEASE\"#\"image\": \"$image\"#" "$config" > "$cfg"
 grep -q "\"image\": \"$image\"" "$cfg"
+# How long the instance goes unanswered across this deploy, measured beside
+# it and reported, never a reason to fail (docs/Hosted Operations.md,
+# "Deploys without downtime").
+gap=$(dirname "$0")/../../scripts/measure-deploy-gap.sh
+if [ -f "$gap" ]; then
+  bash "$gap" --origin "$origin" --until-version "$tag" --for 600 > "$gap_log" 2>&1 &
+  gap_pid=$!
+fi
 # The first deploy can look for the Durable Object namespace before it is
 # visible (DURABLE_OBJECT_NOT_FOUND); the second finds it.
 npx wrangler deploy -c "$cfg" || { sleep 15; npx wrangler deploy -c "$cfg"; }
 
 got=""
 for _ in $(seq 1 36); do
-  got=$(curl -fsS "$origin/health" | jq -r .version || true)
+  got=$(curl -fsS --max-time 120 "$origin/health" | jq -r .version || true)
   if [ "$got" = "$tag" ]; then echo "$origin runs $tag"; break; fi
   sleep 10
 done
 [ "$got" = "$tag" ] || { echo "$origin answers ${got:-nothing}, not $tag" >&2; exit 1; }
+
+if [ -n "$gap_pid" ]; then
+  wait "$gap_pid" || true
+  gap_pid=""
+  cat "$gap_log"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    { echo "### $origin across the deploy of $tag"; echo '```'; cat "$gap_log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+  fi
+fi
 
 # An anonymous caller reads nothing: a production instance with auth off must
 # never pass.

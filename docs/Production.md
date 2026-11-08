@@ -317,8 +317,11 @@ proxies take a few seconds to notice. On SIGTERM the server reports
 `/health/ready` as `503 {"status":"draining"}`, keeps serving for
 `MAIDAN_SHUTDOWN_DRAIN_SECS`, then stops accepting and finishes in-flight
 requests; liveness stays `200`. The Helm chart and `k8s/base` set a 10 s drain
-and a 45 s grace period (the default elsewhere is no drain). A long-poll MCP
-call still open at the end is cut, and the client retries.
+and a 45 s grace period (the default elsewhere is no drain). Open streams (SSE,
+MCP notification streams, WebSockets) end at SIGTERM, with a `stream_ended`
+event or a `1012` close whose reason is `server restarting`, and the client
+reconnects. Requests still open 20 s after the listener closes are cut, and the
+client retries, so a stopped server exits within the drain plus 20 s.
 
 ## Integrations and egress
 

@@ -1222,6 +1222,8 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             }
         }
         draining.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Open streams end now, so the connections they hold can close.
+        maidan_server::shutdown::begin();
         if !drain.is_zero() {
             tracing::info!(
                 secs = drain.as_secs(),
@@ -1231,13 +1233,30 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         }
     };
 
-    let serve_result = axum::serve(
+    // The graceful shutdown waits for every connection to close. A request
+    // still running SHUTDOWN_GRACE after the listener closed is cut off, so a
+    // stopped server exits and its replacement can start (a Cloudflare
+    // Container starts the new image only once the old process is gone).
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown)
-    .await
-    .context("axum serve");
+    .into_future();
+    let mut stopping = maidan_server::shutdown::subscribe();
+    let serve_result = tokio::select! {
+        result = server => result.context("axum serve"),
+        () = async {
+            maidan_server::shutdown::begun(&mut stopping).await;
+            tokio::time::sleep(drain + maidan_server::shutdown::SHUTDOWN_GRACE).await;
+        } => {
+            tracing::warn!(
+                grace_secs = maidan_server::shutdown::SHUTDOWN_GRACE.as_secs(),
+                "requests still open after the shutdown grace; closing them"
+            );
+            Ok(())
+        }
+    };
 
     // The last counts since the final flush.
     maidan_server::usage_meters::flush_once(&shutdown_state).await;
