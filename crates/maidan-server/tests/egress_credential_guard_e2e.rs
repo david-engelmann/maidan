@@ -22,8 +22,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    status, EgressSurface, Event, ExternalRef, MemberId, MemberKind, NewChannel,
-    NewEgressTarget, NewMember, NewThread, NewWorkspace, ResultDelivery, ThreadId, WorkspaceId,
+    status, EgressSurface, Event, ExternalRef, MemberId, MemberKind, NewChannel, NewEgressTarget,
+    NewMember, NewThread, NewWorkspace, ResultDelivery, ThreadId, WorkspaceId,
     WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
@@ -303,7 +303,12 @@ async fn a_credential_in_an_inline_finding_alone_refuses_the_summary_too() {
     let h = harness("leaky-finding").await;
     let key = format!("AKIA{}", "Q2W3E4R5T6Y7U8I9");
     let body = format!("the deploy script exports {key}");
-    route(&h, &envelope("## Findings\nOne finding.", finding(&body)), 1).await;
+    route(
+        &h,
+        &envelope("## Findings\nOne finding.", finding(&body)),
+        1,
+    )
+    .await;
 
     let stats = egress_worker::sweep_once(&h.state).await;
     assert_eq!(stats.refused, 1, "{stats:?}");
