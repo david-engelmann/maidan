@@ -80,6 +80,7 @@ fn main() -> Result<(), MaidanError> {
   `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`,
   `list_events`, `follow` (HTTP backfill then WS), and the `wait_for_*` helpers. See the
   repo's `docs/Client Contract.md`.
+- Restart (0.3.0): `release_own_claims(workspace_id, note)` (`POST /workspaces/{id}/claims/release-own`, `note: Option<&str>`) releases every live claim this token's member holds in the workspace, for a waiter whose old process took its `claim_lease_id`s with it, and returns `ReleasedClaims` (`released`, the thread ids). Call it once before the first claim, never while another live process shares the token.
 - Caching (0.3.0): `client.channels().boot(cid)` returns the channel's boot prefix as served, with its sha256 (for `evidence.pack_sha256`). `cached_prefix(provider, text, ttl)` places it with a cache breakpoint, `cache_key(workspace_id, group)` and `cache_key_fields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `gateway_session(gateway, thread_id, path, name)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. The hash takes `sha2`, the crate's one new dependency. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 Rust's standard library has no HTTP or TLS client, so this crate takes a small synchronous

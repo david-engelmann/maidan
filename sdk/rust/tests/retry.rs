@@ -18,6 +18,7 @@ enum Reply {
 struct Seen {
     target: String,
     key: Option<String>,
+    body: Vec<u8>,
 }
 
 fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Seen>>>) {
@@ -49,7 +50,7 @@ fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Seen>>>) {
             }
             let mut body = vec![0; len];
             reader.read_exact(&mut body).unwrap();
-            log.lock().unwrap().push(Seen { target, key });
+            log.lock().unwrap().push(Seen { target, key, body });
             match reply {
                 Reply::Hangup => drop(stream),
                 Reply::Status(code, body, headers) => {
@@ -182,6 +183,26 @@ fn a_403_is_not_retried_and_zero_retries_turns_them_off() {
     let c = c.with_max_retries(0);
     assert_eq!(c.channels().list("w").unwrap_err().status(), 503);
     assert_eq!(seen.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn release_own_claims_posts_the_note_only_when_given_and_reads_the_released_ids() {
+    let (base, seen) = serve(vec![
+        ok(200, json!({"released": ["t1", "t2"]})),
+        ok(200, json!({"released": []})),
+    ]);
+    let (c, _) = client(&base);
+    let released = c.release_own_claims("w", Some("restarted")).unwrap();
+    assert_eq!(released.released, vec!["t1".to_string(), "t2".to_string()]);
+    assert!(released.unknown_members().is_empty());
+    assert!(c.release_own_claims("w", None).unwrap().released.is_empty());
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen[0].target, "/workspaces/w/claims/release-own");
+    let first: Value = serde_json::from_slice(&seen[0].body).unwrap();
+    assert_eq!(first, json!({"note": "restarted"}));
+    let second: Value = serde_json::from_slice(&seen[1].body).unwrap();
+    assert_eq!(second, json!({}), "no note means the server's default");
+    assert!(seen[0].key.is_some(), "a release is a write");
 }
 
 #[test]

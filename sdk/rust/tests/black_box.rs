@@ -240,6 +240,49 @@ fn renew_claim_extends_the_lease_with_the_fencing_token() {
 }
 
 #[test]
+fn release_own_claims_frees_this_members_claims_in_its_own_workspace_only() {
+    let Some(base) = base() else {
+        return;
+    };
+    let other_token = std::env::var("MAIDAN_OTHER_TOKEN").unwrap_or_default();
+    let other_wid = std::env::var("MAIDAN_OTHER_WORKSPACE").unwrap_or_default();
+    assert!(
+        !other_token.is_empty() && !other_wid.is_empty(),
+        "scripts/sdk-test.sh provisions a second workspace"
+    );
+    let c = Client::new(&base, token());
+    let (wid, member, ch, _t) = seed(&c, &base);
+    let claim = c
+        .claim_next_thread(&ch.id, Some(600))
+        .unwrap()
+        .expect("a freshly seeded ready thread should be claimable");
+    let lease = claim.claim_lease_id.clone().unwrap();
+    let err = Client::new(&base, other_token)
+        .release_own_claims(&wid, None)
+        .unwrap_err();
+    assert!(matches!(err, MaidanError::Forbidden(_)), "{err:?}");
+    let err = c.release_own_claims(&other_wid, None).unwrap_err();
+    assert!(matches!(err, MaidanError::Forbidden(_)), "{err:?}");
+    assert_eq!(
+        c.threads().get(&claim.id).unwrap().assignee_id.as_deref(),
+        Some(member.as_str()),
+        "a refused release changed the claim"
+    );
+
+    let released = assert_modeled!(c
+        .release_own_claims(&wid, Some("the rust sdk restarted"))
+        .unwrap());
+    assert!(released.released.contains(&claim.id), "{released:?}");
+    assert_eq!(c.threads().get(&claim.id).unwrap().assignee_id, None);
+    assert!(
+        c.renew_claim(&claim.id, &lease, 600).is_err(),
+        "the old lease still renews"
+    );
+    let again = c.release_own_claims(&wid, None).unwrap();
+    assert!(!again.released.contains(&claim.id), "released twice");
+}
+
+#[test]
 fn claim_next_returns_none_once_drained() {
     let Some(base) = base() else {
         return;
