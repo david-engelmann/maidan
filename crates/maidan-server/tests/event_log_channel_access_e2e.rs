@@ -131,6 +131,8 @@ async fn what_reader_sees(ctx: &Ctx, token: &str, ws: WorkspaceId) -> String {
     for path in [
         format!("/workspaces/{}/events?limit=500", ws.0),
         format!("/ui/api/workspaces/{}/events?limit=500", ws.0),
+        format!("/workspaces/{}/events?order=desc&limit=500", ws.0),
+        format!("/ui/api/workspaces/{}/events?order=desc&limit=500", ws.0),
     ] {
         let resp = ctx
             .client
@@ -361,5 +363,218 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
     );
     for words in ["public-words", "private-channel-words", "dm-words"] {
         assert!(alice_sees.contains(words), "alice may see {words}");
+    }
+}
+
+async fn event_ids(ctx: &Ctx, token: &str, path: String) -> Vec<i64> {
+    let resp = ctx
+        .client
+        .get(format!("{}{path}", ctx.base()))
+        .header("Authorization", token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "{path}");
+    let rows: Vec<Value> = resp.json().await.unwrap();
+    rows.iter().map(|row| row["id"].as_i64().unwrap()).collect()
+}
+
+async fn status_of(ctx: &Ctx, token: &str, path: String) -> StatusCode {
+    ctx.client
+        .get(format!("{}{path}", ctx.base()))
+        .header("Authorization", token)
+        .send()
+        .await
+        .unwrap()
+        .status()
+}
+
+#[tokio::test]
+async fn newest_first_pages_back_through_the_log_the_reader_may_see() {
+    let ctx = spawn().await;
+    let store = ctx.store.as_ref();
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let alice = mk_member(store, ws, "alice").await;
+    let carol = mk_member(store, ws, "carol").await;
+    let (alice_t, carol_t) = (mint(store, ws, alice).await, mint(store, ws, carol).await);
+    let secret = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "secret".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    store
+        .add_channel_member(secret.id, alice, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let general = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let mut threads = Vec::new();
+    for channel in [general.id, secret.id] {
+        threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: channel,
+                    parent_thread_id: None,
+                    title: None,
+                    description: None,
+                    created_by: None,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    // Hidden rows sit between and at the head of carol's visible ones, so a
+    // page that stopped at a hidden row would come back short.
+    for n in 0..7 {
+        post(
+            &ctx,
+            &alice_t,
+            format!("/threads/{}/messages", threads[0].0),
+            json!({"body": format!("public-{n}")}),
+        )
+        .await;
+        post(
+            &ctx,
+            &alice_t,
+            format!("/threads/{}/messages", threads[1].0),
+            json!({"body": format!("private-{n}")}),
+        )
+        .await;
+    }
+
+    let forward = event_ids(
+        &ctx,
+        &carol_t,
+        format!("/workspaces/{}/events?limit=500", ws.0),
+    )
+    .await;
+    assert_eq!(forward.len(), 7, "carol sees the public posts only");
+    let newest_first: Vec<i64> = forward.iter().rev().copied().collect();
+
+    let head = event_ids(
+        &ctx,
+        &carol_t,
+        format!("/workspaces/{}/events?order=desc&limit=3", ws.0),
+    )
+    .await;
+    assert_eq!(head, newest_first[..3], "one read returns the newest page");
+
+    let mut paged = Vec::new();
+    let mut before: Option<i64> = None;
+    loop {
+        let path = match before {
+            None => format!("/ui/api/workspaces/{}/events?order=desc&limit=2", ws.0),
+            Some(id) => format!(
+                "/ui/api/workspaces/{}/events?order=desc&limit=2&before_id={id}",
+                ws.0
+            ),
+        };
+        let page = event_ids(&ctx, &carol_t, path).await;
+        if page.is_empty() {
+            break;
+        }
+        assert!(
+            page.len() == 2 || paged.len() + page.len() == 7,
+            "no short page mid-log"
+        );
+        before = page.last().copied();
+        paged.extend(page);
+    }
+    assert_eq!(
+        paged, newest_first,
+        "before_id pages back with no gap or repeat"
+    );
+
+    // The member of the private channel sees both, still newest first.
+    let alice_all = event_ids(
+        &ctx,
+        &alice_t,
+        format!("/workspaces/{}/events?order=desc&limit=500", ws.0),
+    )
+    .await;
+    assert_eq!(alice_all.len(), 14);
+    assert!(alice_all.windows(2).all(|w| w[0] > w[1]));
+
+    // The filters apply the same way newest first.
+    let one_thread = event_ids(
+        &ctx,
+        &alice_t,
+        format!(
+            "/workspaces/{}/events?order=desc&limit=500&thread_id={}&types=message_posted",
+            ws.0, threads[0].0
+        ),
+    )
+    .await;
+    assert_eq!(one_thread, newest_first);
+}
+
+#[tokio::test]
+async fn newest_first_refuses_a_forward_cursor_and_another_tenant() {
+    let ctx = spawn().await;
+    let store = ctx.store.as_ref();
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "globex".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let carol = mk_member(store, ws, "carol").await;
+    let carol_t = mint(store, ws, carol).await;
+    let outsider = mk_member(store, other, "outsider").await;
+    let outsider_t = mint(store, other, outsider).await;
+
+    let base = format!("/workspaces/{}/events", ws.0);
+    for query in [
+        "order=desc&after_id=1",
+        "order=desc&consumer_id=reader",
+        "order=desc&before_id=-1",
+        "before_id=5",
+        "order=sideways",
+    ] {
+        assert_eq!(
+            status_of(&ctx, &carol_t, format!("{base}?{query}")).await,
+            StatusCode::BAD_REQUEST,
+            "{query}"
+        );
+    }
+    assert_eq!(
+        status_of(&ctx, &carol_t, format!("{base}?order=desc")).await,
+        StatusCode::OK
+    );
+    for path in [
+        format!("{base}?order=desc"),
+        format!("/ui/api{base}?order=desc&before_id=100"),
+    ] {
+        assert_eq!(
+            status_of(&ctx, &outsider_t, path.clone()).await,
+            StatusCode::FORBIDDEN,
+            "{path}"
+        );
     }
 }

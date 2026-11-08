@@ -4414,6 +4414,28 @@ macro_rules! store_delegations {
                 .await
             }
 
+            async fn list_events_matching_before(
+                &self,
+                workspace_id: WorkspaceId,
+                channel_id: Option<ChannelId>,
+                thread_id: Option<ThreadId>,
+                kinds: &[EventKind],
+                before_id: i64,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_matching_before(
+                    self.pool(),
+                    Some(&self.keys),
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    kinds,
+                    before_id,
+                    limit,
+                )
+                .await
+            }
+
             async fn list_events_after_stable(
                 &self,
                 workspace_id: WorkspaceId,

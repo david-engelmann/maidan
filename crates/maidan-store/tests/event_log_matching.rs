@@ -1,6 +1,7 @@
-//! `list_events_matching` on both stores: the SQL-filtered event read
-//! behind filtered projector shapes (the notices query), plus the plan
-//! shape that makes it worth having — the 0164 index, used.
+//! `list_events_matching` (and its newest-first twin) on both stores: the
+//! SQL-filtered event read behind filtered projector shapes (the notices
+//! query), plus the plan shape that makes it worth having — the 0164 index,
+//! used.
 //!
 //! The semantic suite's oracle is the old behaviour itself: page
 //! `list_events_after` and drop non-matching rows with
@@ -176,6 +177,34 @@ async fn run_suite(store: &dyn Store) {
             }
             assert_eq!(seen, expected, "paged shape {shape:?}");
         }
+
+        // Newest first: the same matches in reverse, and `before_id` pages
+        // back through them with no gap or repeat.
+        let reversed: Vec<i64> = expected.iter().rev().copied().collect();
+        let got = store
+            .list_events_matching_before(ws.id, *channel_id, *thread_id, kinds, i64::MAX, 10_000)
+            .await
+            .expect("newest-first read");
+        assert_eq!(
+            got.iter().map(|e| e.id).collect::<Vec<_>>(),
+            reversed,
+            "newest first, shape {shape:?}"
+        );
+        let mut seen: Vec<i64> = Vec::new();
+        let mut before = i64::MAX;
+        loop {
+            let page = store
+                .list_events_matching_before(ws.id, *channel_id, *thread_id, kinds, before, 2)
+                .await
+                .expect("paged newest-first read");
+            let Some(last) = page.last() else { break };
+            before = last.id;
+            seen.extend(page.iter().map(|e| e.id));
+            if page.len() < 2 {
+                break;
+            }
+        }
+        assert_eq!(seen, reversed, "paged newest first, shape {shape:?}");
     }
 }
 

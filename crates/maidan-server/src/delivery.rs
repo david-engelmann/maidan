@@ -5,6 +5,12 @@ use maidan_types::{ProjectorShape, StoredEvent, WorkspaceId};
 
 const MAX_CONSUMER_ID_LEN: usize = 256;
 
+/// The fewest rows a page read for a member reads from the store. A small
+/// `limit` over a long run of events the member may not see would otherwise
+/// cost one query per hidden event; rows read past `limit` are read again by
+/// the next page.
+const MIN_STORE_PAGE: i64 = 100;
+
 pub fn validate_consumer_id(consumer_id: &str) -> Result<(), String> {
     if consumer_id.is_empty() {
         return Err("consumer_id must not be empty".into());
@@ -77,7 +83,13 @@ pub async fn list_events_for_shape(
     }
     let mut out = Vec::new();
     let mut after = after_id;
-    let page_size = limit.max(1);
+    // Without a visibility filter every row the store returns is kept, so a
+    // page of `limit` is enough.
+    let page_size = if visible.is_some() {
+        limit.max(MIN_STORE_PAGE)
+    } else {
+        limit.max(1)
+    };
     loop {
         let page = store
             .list_events_matching(
@@ -95,6 +107,62 @@ pub async fn list_events_for_shape(
         let short = (page.len() as i64) < page_size;
         for row in page {
             after = row.id;
+            let readable = match visible.as_deref_mut() {
+                Some(v) => v.allows(&row).await?,
+                None => true,
+            };
+            if readable && shape.matches_stored(&row) {
+                out.push(row);
+                if (out.len() as i64) >= limit {
+                    return Ok(out);
+                }
+            }
+        }
+        if short {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// [`list_events_for_shape`] newest first: matching events with
+/// `id < before_id`, highest `id` first, until `limit` readable rows or the
+/// log's start. No cursor check: it reads back from the head, so no retained
+/// floor can make it too old. Hidden rows are skipped the same way, so a page
+/// is never short while older readable events remain.
+pub async fn list_events_for_shape_newest_first(
+    store: &dyn Store,
+    shape: &ProjectorShape,
+    before_id: i64,
+    limit: i64,
+    mut visible: Option<&mut maidan_auth::EventVisibility<'_>>,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut out = Vec::new();
+    let mut before = before_id;
+    // Without a visibility filter every row the store returns is kept, so a
+    // page of `limit` is enough.
+    let page_size = if visible.is_some() {
+        limit.max(MIN_STORE_PAGE)
+    } else {
+        limit.max(1)
+    };
+    loop {
+        let page = store
+            .list_events_matching_before(
+                shape.workspace_id,
+                shape.channel_id,
+                shape.thread_id,
+                &shape.types,
+                before,
+                page_size,
+            )
+            .await?;
+        if page.is_empty() {
+            break;
+        }
+        let short = (page.len() as i64) < page_size;
+        for row in page {
+            before = row.id;
             let readable = match visible.as_deref_mut() {
                 Some(v) => v.allows(&row).await?,
                 None => true,

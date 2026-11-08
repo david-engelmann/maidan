@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
 import { KEEP, Notices, redact } from "../src/core/notices.ts";
 import { CAPS_REQUIRED, PeopleApi, WORKER_PRESET } from "../src/core/people.ts";
 import {
+  EVENT_KINDS,
   NAME_REQUIRED,
   PEERS_NEED,
   TARGET_REQUIRED,
@@ -136,9 +138,25 @@ test("server-wide reindex and audit need a bearer token", async () => {
   assert.ok(w.calls[0].url.endsWith("/ui/api/operator/reindex-embeddings"));
 });
 
-test("events filter by kind and show the newest first", async () => {
-  const { api } = tools([{ body: [{ kind: "a", id: 1 }, { kind: "b", id: 2 }, { kind: "a", id: 3 }] }]);
-  assert.deepEqual((await api.events("w", "a")).map((e) => (e as { id: number }).id), [3, 1]);
+test("events ask the server for one kind, newest first", async () => {
+  const { api, calls } = tools([{ body: [{ kind: "claim_expired", id: 3 }, { kind: "claim_expired", id: 1 }] }]);
+  assert.deepEqual((await api.events("w", "claim_expired")).map((e) => (e as { id: number }).id), [3, 1]);
+  const q = new URL(calls[0].url, "http://x").searchParams;
+  assert.equal(q.get("order"), "desc");
+  assert.equal(q.get("types"), "claim_expired");
+  assert.equal(q.get("limit"), "50");
+});
+
+test("every event kind the Tools list offers is one the server knows", () => {
+  const known = readFileSync(new URL("../src/core/api.gen.ts", import.meta.url), "utf8").match(/export type EventKind = ([^;]*);/)?.[1] ?? "";
+  for (const kind of EVENT_KINDS) assert.ok(known.includes(`"${kind}"`), kind);
+});
+
+test("recent events read one newest-first page and hand it back oldest first", async () => {
+  const { api, calls } = tools([{ body: [{ id: 9 }, { id: 8 }, { id: 7 }] }]);
+  assert.deepEqual((await api.recentEvents("w")).map((e) => e.id), [7, 8, 9]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/workspaces\/w\/events\?order=desc&limit=200$/);
 });
 
 test("a 422 shows the server's own sentence", async () => {

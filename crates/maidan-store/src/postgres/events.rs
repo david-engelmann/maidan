@@ -204,15 +204,76 @@ pub async fn list_matching(
     after_id: i64,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
+    list_matching_keyset(
+        pool,
+        keys,
+        workspace_id,
+        channel_id,
+        thread_id,
+        kinds,
+        Keyset::After(after_id),
+        limit,
+    )
+    .await
+}
+
+/// [`list_matching`] newest first: rows with `id < before_id`, highest `id`
+/// first. The same index serves it, walked backwards.
+#[allow(clippy::too_many_arguments)]
+pub async fn list_matching_before(
+    pool: &PgPool,
+    keys: Option<&ContentKeyring>,
+    workspace_id: WorkspaceId,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    kinds: &[maidan_types::EventKind],
+    before_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    list_matching_keyset(
+        pool,
+        keys,
+        workspace_id,
+        channel_id,
+        thread_id,
+        kinds,
+        Keyset::Before(before_id),
+        limit,
+    )
+    .await
+}
+
+/// Which side of an `id` a filtered read walks, and so which way it orders.
+#[derive(Clone, Copy)]
+enum Keyset {
+    After(i64),
+    Before(i64),
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn list_matching_keyset(
+    pool: &PgPool,
+    keys: Option<&ContentKeyring>,
+    workspace_id: WorkspaceId,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    kinds: &[maidan_types::EventKind],
+    keyset: Keyset,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
     // Only the filters that are present become predicates. An `$n IS NULL OR`
     // form would let a prepared statement settle on a generic plan, which
     // cannot use the (workspace_id, channel_id, kind, id) index for a filter
     // that might be absent, and would scan the workspace again.
     let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    let (cmp, order, bound) = match keyset {
+        Keyset::After(id) => (">", "ASC", id),
+        Keyset::Before(id) => ("<", "DESC", id),
+    };
     let mut sql = format!(
         "SELECT {EVENT_COLUMNS}
          FROM {EVENTS_FROM}
-         WHERE e.workspace_id = $1 AND e.id > $2"
+         WHERE e.workspace_id = $1 AND e.id {cmp} $2"
     );
     let mut next = 3;
     if channel_id.is_some() {
@@ -227,8 +288,8 @@ pub async fn list_matching(
         sql.push_str(&format!(" AND e.kind = ANY(${next})"));
         next += 1;
     }
-    sql.push_str(&format!(" ORDER BY e.id ASC LIMIT ${next}"));
-    let mut query = sqlx::query(&sql).bind(workspace_id.0).bind(after_id);
+    sql.push_str(&format!(" ORDER BY e.id {order} LIMIT ${next}"));
+    let mut query = sqlx::query(&sql).bind(workspace_id.0).bind(bound);
     if let Some(channel_id) = channel_id {
         query = query.bind(channel_id.0);
     }

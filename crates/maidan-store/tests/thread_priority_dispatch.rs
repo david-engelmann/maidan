@@ -109,11 +109,12 @@ async fn run_ordering(store: &dyn Store) {
 }
 
 /// Aging: a long-waiting low-priority task overtakes a newer higher-priority one.
-/// `backdate` sets a thread's `created_at` (per-backend raw SQL) so the age boost
-/// is deterministic without waiting a real hour.
+/// `backdate` moves a thread's `created_at` that many seconds into the past
+/// (per-backend raw SQL), on the clock that backend's claim ages it by, so the
+/// age boost is deterministic without waiting a real hour.
 async fn run_aging<F, Fut>(store: &dyn Store, backdate: F)
 where
-    F: Fn(ThreadId, chrono::DateTime<Utc>) -> Fut,
+    F: Fn(ThreadId, i64) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let fx = seed(store).await;
@@ -124,11 +125,7 @@ where
         .await
         .expect("p");
     // old_low waited 3 windows → effective rank 0 + 3 = 3 > new_high's 2 + 0.
-    backdate(
-        old_low,
-        Utc::now() - Duration::seconds(3 * AGING_WINDOW_SECS),
-    )
-    .await;
+    backdate(old_low, 3 * AGING_WINDOW_SECS).await;
     assert_eq!(
         claim(store, &fx).await,
         Some(old_low),
@@ -150,11 +147,13 @@ async fn fair_dispatch_orders_by_aged_priority_sqlite() {
     run_sqlite_migrations(&pool).await.expect("migrate");
     let store = SqliteStore::for_tests(pool.clone());
     run_ordering(&store).await;
-    run_aging(&store, |tid, when| {
+    // SQLite threads take `created_at` from the app clock, and the claim ages
+    // them by it.
+    run_aging(&store, |tid, secs_ago| {
         let pool = pool.clone();
         async move {
             sqlx::query("UPDATE maidan_threads SET created_at = ? WHERE id = ?")
-                .bind(when.to_rfc3339())
+                .bind((Utc::now() - Duration::seconds(secs_ago)).to_rfc3339())
                 .bind(tid.0)
                 .execute(&pool)
                 .await
@@ -196,11 +195,16 @@ async fn fair_dispatch_orders_by_aged_priority_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool.clone());
     run_ordering(&store).await;
-    run_aging(&store, |tid, when| {
+    // Postgres threads take `created_at` from the database's `NOW()`, and the
+    // claim ages them by it, so a host clock ahead of or behind the container
+    // does not move the boost (#1586).
+    run_aging(&store, |tid, secs_ago| {
         let pool = pool.clone();
         async move {
-            sqlx::query("UPDATE maidan_threads SET created_at = $1 WHERE id = $2")
-                .bind(when)
+            sqlx::query(
+                "UPDATE maidan_threads SET created_at = NOW() - make_interval(secs => $1::float8) WHERE id = $2",
+            )
+                .bind(secs_ago as f64)
                 .bind(tid.0)
                 .execute(&pool)
                 .await

@@ -131,7 +131,9 @@ string (`0/hex`) as a room head. The two headers answer different
 questions (projector lag vs read-your-writes).
 
 `list_events` accepts projector-shape query params (`after_id`,
-`channel_id`, `thread_id`, `types`, `consumer_id`). `follow` pages
+`channel_id`, `thread_id`, `types`, `consumer_id`). `order=desc` reads
+newest first and pages back with `before_id`; it takes no `after_id` or
+`consumer_id`, since those page forward. `follow` pages
 that route, then cuts over to `subscribe` at the last seen id. A
 409 `must_refetch` is CursorTooOld — never clamp onto the remaining
 log. The problem body (and the WS / MCP SSE frame) may include

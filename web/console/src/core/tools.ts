@@ -205,7 +205,7 @@ export function peerRefusal(name: string, baseUrl: string): string | null {
 export const DELIVERY_KINDS = ["all", "webhook", "automation"] as const;
 export const HANDLER_KINDS = ["http", "mcp_tool"] as const;
 export const NOTIFICATION_KINDS = ["message_posted", "mention_recorded", "thread_ready", "thread_result_set", "review_submitted", "claim_expired", "thread_landed"] as const;
-export const EVENT_KINDS = ["message_posted", "mention_recorded", "thread_created", "thread_transitioned", "thread_ready", "thread_result_set", "thread_landed", "claim_expired"] as const;
+export const EVENT_KINDS = ["message_posted", "mention_recorded", "thread_created", "thread_state_changed", "thread_ready", "thread_result_set", "thread_landed", "claim_expired"] as const;
 
 /** The query string the deliveries list reads, by status. */
 export function deliveryQuery(kind: string, status: DeliveryStatus, limit = 50): string {
@@ -539,25 +539,19 @@ export class ToolsApi {
     return this.get(`/workspaces/${workspace}/task-schedules`);
   }
   /**
-   * The newest workspace events, raw rows, oldest first (the Activity screen).
-   * The server pages oldest first by `after_id`, so walk forward and keep the
-   * last 200. The walk stops at a short page, or after 25 pages as a bound.
+   * The newest 200 workspace events, raw rows, oldest first (the Activity
+   * screen). One newest-first page: walking forward from the first event
+   * showed the middle of a long log, never its end.
    */
   async recentEvents(workspace: string): Promise<Array<Record<string, unknown>>> {
-    let rows: Array<Record<string, unknown>> = [];
-    let after: number | null = null;
-    for (let page = 0; page < 25; page++) {
-      const batch: Array<Record<string, unknown>> = await this.get(`/workspaces/${workspace}/events?limit=200${after === null ? "" : `&after_id=${after}`}`);
-      rows = rows.concat(batch).slice(-200);
-      const last = Number(batch[batch.length - 1]?.id);
-      if (batch.length < 200 || !Number.isFinite(last)) break;
-      after = last;
-    }
-    return rows;
+    const rows = await this.get<Array<Record<string, unknown>>>(`/workspaces/${workspace}/events?order=desc&limit=200`);
+    return rows.reverse();
   }
-  async events(workspace: string, kind: string): Promise<WorkEvent[]> {
-    const rows = await this.get<WorkEvent[]>(`/workspaces/${workspace}/events?limit=200`);
-    return rows.filter((e) => !kind || e.kind === kind).slice(-50).reverse();
+  /** The newest 50 events of one kind, newest first; the server filters, so an older match is never cut off by newer events of other kinds. */
+  events(workspace: string, kind: string): Promise<WorkEvent[]> {
+    const q = new URLSearchParams({ order: "desc", limit: "50" });
+    if (kind) q.set("types", kind);
+    return this.get<WorkEvent[]>(`/workspaces/${workspace}/events?${q}`);
   }
   /** Not allowed when the credential lacks federation:admin, which a browser session always does. */
   peers(workspace: string): Promise<Allowed<Peer[]>> {

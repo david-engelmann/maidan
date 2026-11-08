@@ -650,8 +650,10 @@ async fn claim_next_candidate(
             engine: "?6",
             lane: "?7",
             requeued_after_result: REQUEUED_AFTER_RESULT,
+            // SQLite threads take `created_at` from the app clock, so the age
+            // reads the same `now` the claim does, not SQLite's own 'now'.
             hours_waiting:
-                "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
+                "CAST((strftime('%s', ?10) - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
             warm_hold_since: "?8",
             warm_ttl_since: "?9",
@@ -668,6 +670,7 @@ async fn claim_next_candidate(
         .bind(lane.map(|lane| lane.as_str()))
         .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
         .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
+        .bind(now.to_rfc3339())
         .fetch_optional(&mut **tx)
         .await?)
 }
