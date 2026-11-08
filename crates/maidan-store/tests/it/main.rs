@@ -506,6 +506,9 @@ mod sqlite_roundtrip;
 #[path = "../sqlite_write_contention.rs"]
 mod sqlite_write_contention;
 
+#[path = "../sqlite_write_lock_contract.rs"]
+mod sqlite_write_lock_contract;
+
 #[path = "../task_class_usage.rs"]
 mod task_class_usage;
 

@@ -26,7 +26,7 @@ pub(crate) async fn purge_on(
     keys: &ContentKeyring,
     workspace_id: WorkspaceId,
 ) -> Result<WorkspacePurgeResult, StoreError> {
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
     let now = Utc::now();
 

@@ -22,7 +22,7 @@ pub(crate) async fn create_on(
     let now = Utc::now();
     let artifacts = share_tickets::validate_new(&new, now)?;
     let id = ShareTicketId::new();
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let scope_valid: bool = sqlx::query_scalar(
         "SELECT EXISTS(
             SELECT 1
@@ -210,7 +210,7 @@ pub async fn create_audited(
     new: NewShareTicket,
     audit: crate::AuditFor<ShareTicket>,
 ) -> Result<ShareTicket, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let ticket = create_on(&mut tx, new).await?;
     super::audit::append_scoped(&mut tx, ticket.workspace_id, audit(&ticket)).await?;
     tx.commit().await?;
@@ -225,7 +225,7 @@ pub async fn revoke_audited(
     id: ShareTicketId,
     audit: maidan_types::NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let revoked = revoke_on(&mut tx, workspace_id, id).await?;
     if revoked {
         super::audit::append_scoped(&mut tx, workspace_id, audit).await?;

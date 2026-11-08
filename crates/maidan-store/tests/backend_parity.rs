@@ -52,8 +52,12 @@ const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 /// - `partitions` (Postgres only): creates and lists the monthly partitions of
 ///   the partitioned tables (0162 onward) and drops one for retention. SQLite
 ///   has no table partitioning; its `maintain_partitions` does nothing.
+/// - `tx` (SQLite only): `begin_write`, which opens a transaction that can
+///   write with `BEGIN IMMEDIATE`, so a read before its first write cannot
+///   be overtaken by another connection's commit. Postgres takes row locks as
+///   it writes and has no deferred-upgrade failure to avoid.
 const POSTGRES_ONLY_MODULES: &[&str] = &["partitions", "replication"];
-const SQLITE_ONLY_MODULES: &[&str] = &["pragmas"];
+const SQLITE_ONLY_MODULES: &[&str] = &["pragmas", "tx"];
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR = <repo>/crates/maidan-store

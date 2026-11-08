@@ -146,7 +146,7 @@ pub async fn instantiate(
         .validate_params(&params)
         .map_err(StoreError::InvalidInput)?;
 
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let mut events_out = Vec::new();
 
     let (parent, parent_ev) = insert_thread(

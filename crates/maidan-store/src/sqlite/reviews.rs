@@ -63,7 +63,7 @@ pub async fn set_rounds(
     required_count: i64,
     max_rounds: Option<i64>,
 ) -> Result<ThreadReviewRequirement, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Same critical section as the audited setter: read the thread, then write.
     sqlx::query("SELECT 1 FROM maidan_threads WHERE id = ?")
         .bind(thread_id.0)
@@ -278,7 +278,7 @@ pub async fn submit_review_at_head(
     evidence_root: Option<&str>,
     head_sha: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let submission = submit_review_on(
         &mut tx,
         thread_id,
@@ -704,7 +704,7 @@ pub async fn apply_critical_review_decision(
     // on replay. Each verdict is an event, and a change request notifies the
     // worker, so a verdict already given on the stored result is not given
     // twice. The check, the verdict and the close-gate arm commit together.
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     if verdict_covers_result(&mut tx, thread_id, reviewer_id, decision).await? {
         return Ok(None);
     }

@@ -33,7 +33,7 @@ pub async fn create_with_event(
 ) -> Result<(Workspace, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_workspaces (id, name, created_at, updated_at)
          VALUES (?, ?, ?, ?)
@@ -173,7 +173,7 @@ pub async fn provision(
 
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_workspaces (id, name, created_at, updated_at, origin)
          VALUES (?, ?, ?, ?, ?)

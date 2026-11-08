@@ -53,7 +53,7 @@ async fn cast_in_tx(
 }
 
 pub async fn cast(pool: &SqlitePool, new: NewVote) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     cast_in_tx(&mut tx, &new).await?;
     tx.commit().await?;
     Ok(())
@@ -65,7 +65,7 @@ pub async fn cast_with_event(
     pool: &SqlitePool,
     new: NewVote,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let replaced = cast_in_tx(&mut tx, &new).await?;
     let (workspace_id, _channel_id, thread_id) =
         events::message_scope_in_tx(&mut tx, new.message_id).await?;
@@ -102,7 +102,7 @@ pub async fn retract_with_event(
     member_id: MemberId,
     kind: VoteKind,
 ) -> Result<(bool, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result =
         sqlx::query("DELETE FROM maidan_votes WHERE message_id = ? AND member_id = ? AND kind = ?")
             .bind(message_id.0)

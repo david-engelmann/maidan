@@ -26,7 +26,7 @@ fn ts(t: DateTime<Utc>) -> String {
 /// Open a new `Pending` approval gate. JSON columns are stored as TEXT in
 /// SQLite.
 pub async fn create(pool: &SqlitePool, gate: &NewApprovalGate) -> Result<ApprovalGate, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let gate = create_in_tx(&mut tx, gate).await?;
     tx.commit().await?;
     Ok(gate)
@@ -97,7 +97,7 @@ pub async fn create_with_event(
     pool: &SqlitePool,
     new: &NewApprovalGate,
 ) -> Result<(ApprovalGate, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let gate = create_in_tx(&mut tx, new).await?;
     let channel_id = if let Some(thread_id) = gate.thread_id {
         let (workspace_id, channel_id) =
@@ -228,7 +228,7 @@ pub async fn resolve(
     state: ApprovalGateState,
     content: Option<&serde_json::Value>,
 ) -> Result<Option<ApprovalGate>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let gate = resolve_on(&mut tx, id, resolved_by, state, content, None).await?;
     tx.commit().await?;
     Ok(gate)
@@ -303,7 +303,7 @@ pub async fn resolve_audited(
     via: &GateDecisionVia,
     audit: crate::AuditFor<ApprovalGate>,
 ) -> Result<Option<ApprovalGate>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let gate = resolve_on(&mut tx, id, resolved_by, state, content, Some(via)).await?;
     if let Some(gate) = &gate {
         super::audit::append_scoped(&mut tx, gate.workspace_id, audit(gate)).await?;
@@ -343,7 +343,7 @@ pub async fn set_policy_audited(
     confirm_link_ttl_seconds: Option<u32>,
     audit: crate::AuditFor<ApprovalPolicy>,
 ) -> Result<ApprovalPolicy, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     match (confirm_at, confirm_link_ttl_seconds) {
         (None, None) => {
             sqlx::query("DELETE FROM maidan_approval_policies WHERE workspace_id = ?")
@@ -387,7 +387,7 @@ pub async fn issue_confirmation(
     new: &NewApprovalConfirmation,
     audit: crate::AuditFor<ApprovalConfirmation>,
 ) -> Result<(ApprovalConfirmation, bool), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let inserted = sqlx::query(&format!(
         "INSERT INTO maidan_approval_confirmations
              (gate_id, member_id, workspace_id, actor_id, nonce, token_hash, client_name,
@@ -484,7 +484,7 @@ pub async fn confirm(
     now: DateTime<Utc>,
     audit: crate::AuditFor<ApprovalGate>,
 ) -> Result<ConfirmOutcome, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Spend first, conditionally: the UPDATE is the lock, so the later read
     // and resolve see this transaction's view and no other confirm's.
     let spent = sqlx::query(&format!(

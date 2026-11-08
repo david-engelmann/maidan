@@ -35,7 +35,7 @@ pub async fn create_with_event(
 ) -> Result<(Channel, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_channels (id, workspace_id, name, topic, private, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)

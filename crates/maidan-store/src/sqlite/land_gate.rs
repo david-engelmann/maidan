@@ -135,7 +135,7 @@ pub async fn set_pointer(
     let land = resolve_land(status, land);
     let now = Utc::now().to_rfc3339();
     let actor_id = crate::attribution::delegate_acting_for(recorded_by);
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_thread_land_gate
             (thread_id, status, land, artifact_sha, recorded_by, recorded_at, created_at, updated_at,

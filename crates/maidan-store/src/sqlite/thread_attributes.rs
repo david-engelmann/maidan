@@ -144,7 +144,7 @@ pub async fn set_unique_thread_attributes(
     audit: NewAuditEvent,
 ) -> Result<WorkspaceUniqueThreadAttributes, StoreError> {
     let setting = setting.normalized();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let updated =
         sqlx::query("UPDATE maidan_workspaces SET unique_thread_attributes = ?2 WHERE id = ?1")
             .bind(workspace_id.0)
@@ -205,7 +205,7 @@ pub async fn set_default_engine(
     engine: Option<TaskEngine>,
     audit: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let updated = sqlx::query("UPDATE maidan_workspaces SET default_engine = ?2 WHERE id = ?1")
         .bind(workspace_id.0)
         .bind(engine.map(TaskEngine::as_str))
@@ -242,7 +242,7 @@ pub async fn set_review_children(
     setting: maidan_types::ReviewChildren,
     audit: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let updated = sqlx::query("UPDATE maidan_workspaces SET review_children = ?2 WHERE id = ?1")
         .bind(workspace_id.0)
         .bind(setting.as_str())
@@ -375,7 +375,7 @@ pub async fn set(
     // IMMEDIATE takes the write lock first, so the unique-attribute check
     // after the upsert reads with no other writer able to commit a holder
     // before this transaction does.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     if let Some(named) = attributes.author_family.as_deref() {
         let stored: Option<Option<String>> = sqlx::query_scalar(
             "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = ?",

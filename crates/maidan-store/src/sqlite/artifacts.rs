@@ -62,7 +62,7 @@ async fn begin_sha_write<'a>(
     sha256: &str,
 ) -> Result<Transaction<'a, Sqlite>, StoreError> {
     loop {
-        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = super::tx::begin_write(pool).await?;
         if !reap_in_progress(&mut tx, sha256).await? {
             return Ok(tx);
         }
@@ -304,7 +304,7 @@ pub async fn erase_for_workspace(
     // transaction would pin its read snapshot, and a commit by another
     // connection in between fails the write with "database is locked" at
     // once instead of waiting out busy_timeout.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
     let erasure = erase_ref_in_tx(&mut tx, workspace_id, sha256, audit_for).await?;
     tx.commit().await?;
@@ -470,7 +470,7 @@ pub async fn expire_media_ref(
     audit_for: crate::AuditFor<ArtifactErasure>,
 ) -> Result<Option<ArtifactErasure>, StoreError> {
     // IMMEDIATE for the same reason as `erase_for_workspace`.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     match super::legal_hold::refuse_if_held(&mut tx, workspace_id).await {
         Ok(()) => {}
         Err(StoreError::Conflict(_) | StoreError::NotFound) => return Ok(None),

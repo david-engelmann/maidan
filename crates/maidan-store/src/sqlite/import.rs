@@ -45,7 +45,7 @@ pub(crate) async fn import_on(
     b: &WorkspaceImport,
     origin: WorkspaceOrigin,
 ) -> Result<(), StoreError> {
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
 
     // Every reference must resolve inside the bundle, to the bundle's own
     // workspace. The foreign keys alone would accept any tenant's rows, so

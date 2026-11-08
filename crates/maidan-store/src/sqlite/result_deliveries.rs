@@ -140,7 +140,7 @@ async fn mark_undelivered(
     why: &str,
     count_attempt: bool,
 ) -> Result<Option<StoredEvent>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let now = Utc::now();
     let attempts = if count_attempt {
         ", attempts = attempts + 1"

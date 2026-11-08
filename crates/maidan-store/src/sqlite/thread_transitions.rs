@@ -516,7 +516,7 @@ pub async fn close_abandoned(
     mut audit: NewAuditEvent,
 ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
     use crate::thread_access::readable_thread;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
          FROM maidan_threads WHERE id = ?",
@@ -696,7 +696,7 @@ pub async fn transition(
     actor_id: MemberId,
     action: ThreadAction,
 ) -> Result<ThreadTransitionResult, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
     if action == ThreadAction::RequestChanges {
         let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
@@ -729,7 +729,7 @@ pub async fn transition_with_event(
     actor_id: MemberId,
     action: ThreadAction,
 ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (result, spawned) = transition_in_spawning(&mut tx, thread_id, actor_id, action).await?;
     let mut stored = vec![state_changed_in_tx(&mut tx, actor_id, &result).await?];
     stored.extend(spawned);

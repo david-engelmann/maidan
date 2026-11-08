@@ -125,7 +125,7 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -172,7 +172,7 @@ pub async fn create_with_event(
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -293,7 +293,7 @@ pub async fn purge(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
 /// Remove a tombstoned message outright, refusing one in a workspace under
 /// legal hold: a purge destroys the record, which is what a hold preserves.
 pub(crate) async fn purge_on(conn: &mut SqliteConnection, id: MessageId) -> Result<(), StoreError> {
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let workspace_id: Option<Uuid> = sqlx::query_scalar(
         "SELECT c.workspace_id FROM maidan_messages m
          INNER JOIN maidan_threads t ON m.thread_id = t.id
@@ -405,7 +405,7 @@ pub async fn edit_with_event(
     edit: EditMessage,
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let message = edit_in_tx(&mut tx, id, editor_id, &edit).await?;
     let (workspace_id, channel_id, thread_id) =
         events::message_scope_in_tx(&mut tx, message.id).await?;
@@ -437,7 +437,7 @@ pub async fn edit_with_posted_event(
     edit: EditMessage,
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let message = edit_in_tx(&mut tx, id, editor_id, &edit).await?;
     let (workspace_id, channel_id, thread_id) =
         events::message_scope_in_tx(&mut tx, message.id).await?;
@@ -464,7 +464,7 @@ pub async fn edit_with_posted_event(
 }
 
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::legal_hold::preserve_or_forget(&mut tx, id).await?;
     crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();
@@ -490,7 +490,7 @@ pub async fn tombstone_with_event(
     id: MessageId,
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<StoredEvent, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::legal_hold::preserve_or_forget(&mut tx, id).await?;
     crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();

@@ -110,7 +110,7 @@ pub async fn set_value(
     id: MemoryBlockId,
     value: &str,
 ) -> Result<MemoryBlock, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let existing = sqlx::query(&format!(
         "SELECT {COLS} FROM maidan_memory_blocks WHERE id = ?"
     ))

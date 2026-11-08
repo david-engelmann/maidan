@@ -74,7 +74,9 @@ fn policy_names_the_runner_facts() {
         .split("async fn apply_sqlite")
         .nth(1)
         .expect("apply_sqlite");
-    let begin = sqlite.find("pool.begin()").expect("sqlite begin");
+    // SQLite begins IMMEDIATE (`sqlite::tx::begin_write`): see
+    // `sqlite_write_lock_contract`.
+    let begin = sqlite.find("tx::begin_write(pool)").expect("sqlite begin");
     let sql = sqlite.find("raw_sql(sql)").expect("sqlite sql");
     let insert = sqlite
         .find("INSERT INTO maidan_migrations")

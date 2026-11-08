@@ -36,7 +36,7 @@ pub async fn pin_with_event(pool: &SqlitePool, new: NewPin) -> Result<StoredEven
             "message does not belong to thread".into(),
         ));
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_pins (thread_id, message_id, member_id, created_at)
          VALUES (?, ?, ?, ?)
@@ -84,7 +84,7 @@ pub async fn unpin_with_event(
     message_id: MessageId,
     member_id: MemberId,
 ) -> Result<(bool, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result = sqlx::query("DELETE FROM maidan_pins WHERE thread_id = ? AND message_id = ?")
         .bind(thread_id.0)
         .bind(message_id.0)

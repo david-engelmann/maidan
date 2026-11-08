@@ -365,7 +365,7 @@ pub async fn complete_signup(
 ) -> Result<OidcSignupOutcome, StoreError> {
     let now = Utc::now();
     let email_lower = new.email.to_lowercase();
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
 
     // `BEGIN IMMEDIATE` (above) holds the write lock from the first
     // statement, so two callbacks for one identity serialize and the second

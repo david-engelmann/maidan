@@ -23,7 +23,7 @@ pub(crate) async fn erase_on(
     keys: &ContentKeyring,
     workspace_id: WorkspaceId,
 ) -> Result<WorkspaceEraseResult, StoreError> {
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let purge = purge_workspace::purge_on(&mut tx, keys, workspace_id).await?;
     let deleted = sqlx::query("DELETE FROM maidan_workspaces WHERE id = ?")
         .bind(workspace_id.0)

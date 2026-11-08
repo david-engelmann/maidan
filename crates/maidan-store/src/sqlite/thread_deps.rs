@@ -19,7 +19,7 @@ pub async fn add(
             "a thread cannot depend on itself".into(),
         ));
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Cycle guard: reject if `depends_on` already (transitively) depends on
     // `thread_id`. Walking depends-on edges outward from `depends_on`, if we can
     // reach `thread_id` then adding `thread_id -> depends_on` closes a loop. The

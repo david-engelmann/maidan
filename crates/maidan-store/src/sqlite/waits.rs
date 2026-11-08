@@ -78,7 +78,7 @@ pub async fn claim_next_due(
     now: DateTime<Utc>,
 ) -> Result<Option<ThreadWait>, StoreError> {
     let now_s = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let candidate = sqlx::query(
         "SELECT thread_id FROM maidan_thread_waits
          WHERE fired_at IS NULL AND wait_until <= ?

@@ -52,7 +52,7 @@ pub(crate) async fn freeze_on(
     reason: Option<&str>,
 ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
     let now = Utc::now().to_rfc3339();
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let workspace_id = member_workspace_in_tx(&mut tx, member_id).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_member_freezes (member_id, frozen_at, frozen_by, reason)
@@ -104,7 +104,7 @@ pub(crate) async fn unfreeze_on(
     member_id: MemberId,
     unfrozen_by: MemberId,
 ) -> Result<Option<StoredEvent>, StoreError> {
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let done = sqlx::query("DELETE FROM maidan_member_freezes WHERE member_id = ?")
         .bind(member_id.0)
         .execute(&mut *tx)

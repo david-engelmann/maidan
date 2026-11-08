@@ -95,7 +95,7 @@ pub(crate) async fn revoke_on(
     id: DelegationGrantId,
 ) -> Result<bool, StoreError> {
     let now = chrono::Utc::now();
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let result = sqlx::query("UPDATE maidan_delegation_grants SET revoked_at=?3 WHERE id=?1 AND workspace_id=?2 AND revoked_at IS NULL")
         .bind(id.0).bind(workspace_id.0).bind(now).execute(&mut *tx).await?;
     if result.rows_affected() != 1 {
@@ -208,7 +208,7 @@ pub async fn create_audited(
     new: NewDelegationGrant,
     audit: crate::AuditFor<DelegationGrant>,
 ) -> Result<DelegationGrant, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let grant = create_on(&mut tx, new).await?;
     super::audit::append_scoped(&mut tx, grant.workspace_id, audit(&grant)).await?;
     tx.commit().await?;
@@ -224,7 +224,7 @@ pub async fn revoke_audited(
     id: DelegationGrantId,
     audit: maidan_types::NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let revoked = revoke_on(&mut tx, workspace_id, id).await?;
     super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
@@ -238,7 +238,7 @@ pub async fn set_policy_audited(
     max_grant_days: Option<i64>,
     audit: crate::AuditFor<DelegationPolicy>,
 ) -> Result<DelegationPolicy, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let policy = set_policy_on(&mut tx, workspace_id, max_grant_days).await?;
     super::audit::append_scoped(&mut tx, workspace_id, audit(&policy)).await?;
     tx.commit().await?;

@@ -14,7 +14,7 @@ pub async fn record(
     message_id: MessageId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (workspace_id, _channel_id, _thread_id) =
         events::message_scope_in_tx(&mut tx, message_id).await?;
     members::ensure_in_workspace(&mut tx, workspace_id, member_id).await?;
@@ -39,7 +39,7 @@ pub async fn record_with_event(
     message_id: MessageId,
     member_id: MemberId,
 ) -> Result<StoredEvent, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (workspace_id, _channel_id, thread_id) =
         events::message_scope_in_tx(&mut tx, message_id).await?;
     members::ensure_in_workspace(&mut tx, workspace_id, member_id).await?;

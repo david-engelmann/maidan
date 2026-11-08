@@ -118,7 +118,7 @@ pub async fn record_with_events(
     new: NewPullCi,
 ) -> Result<(Vec<PostedNotice>, Vec<StoredEvent>), StoreError> {
     let repo = new.repo.to_ascii_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let thread: Option<Uuid> = sqlx::query_scalar(
         "SELECT thread_id FROM maidan_change_pulls
          WHERE workspace_id = ?1 AND repo = ?2 AND pull_number = ?3",

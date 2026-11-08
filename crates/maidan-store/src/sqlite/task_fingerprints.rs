@@ -165,7 +165,7 @@ pub async fn clear_duplicate(
     thread_id: ThreadId,
     audit: maidan_types::NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let done =
         sqlx::query("UPDATE maidan_task_fingerprints SET duplicate_of = NULL, cleared_at = ?2 WHERE thread_id = ?1")
             .bind(thread_id.0)

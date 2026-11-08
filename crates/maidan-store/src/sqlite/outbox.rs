@@ -25,7 +25,7 @@ pub async fn claim_pending(
     let now = chrono::Utc::now();
     let cutoff = (now - chrono::Duration::seconds(lease_secs)).to_rfc3339();
     let now_s = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let picked = sqlx::query(&format!(
         "SELECT o.id FROM maidan_outbox o
          WHERE {RELAYABLE}

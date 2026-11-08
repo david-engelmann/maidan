@@ -344,6 +344,12 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.
 - **A new column read by a shared row mapper** must be added to every `SELECT`
   and `RETURNING` that feeds it, across sibling modules.
+- **A SQLite transaction that writes begins with `super::tx::begin_write(pool)`**
+  (or `begin_write_on(conn)`), never `pool.begin()`: a deferred transaction
+  that reads before it writes fails at once with `database is locked` when
+  another connection commits in between, and `busy_timeout` does not help.
+  `sqlite_write_lock_contract` fails on any other `begin` in `src/sqlite/`
+  unless it is listed as read-only or a savepoint, with the reason.
 - **A new route** needs an entry in `contracts/http-capability-map.json`, an
   OpenAPI path (`openapi_well_formed` fails on an undeclared path parameter or
   a dangling `$ref`), and, for a POST, PUT or PATCH, a body clause in

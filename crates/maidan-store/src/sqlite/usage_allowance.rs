@@ -18,7 +18,7 @@ pub async fn mark(
     mark: &OverAllowance,
     admins: &[MemberId],
 ) -> Result<Option<StoredEvent>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let inserted = sqlx::query(
         "INSERT INTO maidan_usage_over_allowance
             (workspace_id, meter, month, quantity, allowance, marked_at)

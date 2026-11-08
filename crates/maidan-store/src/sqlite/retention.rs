@@ -301,7 +301,7 @@ pub async fn prune_workspace_messages(
     cutoff: DateTime<Utc>,
     limit: i64,
 ) -> Result<u64, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     match super::legal_hold::refuse_if_held(&mut tx, workspace_id).await {
         Ok(()) => {}
         Err(StoreError::Conflict(_) | StoreError::NotFound) => return Ok(0),

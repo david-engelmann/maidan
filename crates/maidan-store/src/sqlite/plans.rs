@@ -34,7 +34,7 @@ pub async fn submit(
     }
     spawn_budget(pool, parent_id, &parent, plan.children.len() as i64).await?;
 
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     check_repos_in_tx(&mut tx, parent.workspace_id, &plan.children).await?;
     let now = Utc::now();
     sqlx::query(
@@ -723,7 +723,7 @@ pub async fn release(
     parent_id: ThreadId,
     audit: maidan_types::NewAuditEvent,
 ) -> Result<Vec<ThreadId>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let released: Vec<Uuid> = sqlx::query_scalar(
         "DELETE FROM maidan_thread_blocks
          WHERE note = ?2 AND thread_id IN (
@@ -762,7 +762,7 @@ pub async fn amend(
         spawn_budget(pool, parent_id, &parent, net_adding).await?;
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let amendments: i64 =
         sqlx::query_scalar("SELECT amendments FROM maidan_thread_plans WHERE parent_thread_id = ?")
             .bind(parent_id.0)

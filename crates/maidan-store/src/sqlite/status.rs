@@ -45,7 +45,7 @@ pub async fn declare(
     note: String,
     declared_by: MemberId,
 ) -> Result<(ThreadStatusDeclaration, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Who may speak for the thread: the member holding its claim
     // (`assignee_id`), or the thread's owner. Anyone else gets a refusal,
     // not a silent overwrite of another agent's status.

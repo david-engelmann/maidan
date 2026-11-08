@@ -92,7 +92,7 @@ pub async fn rotate_workspace_key(
     keys: &ContentKeyring,
     workspace_id: Uuid,
 ) -> Result<(Option<Uuid>, Uuid), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let retired: Option<Uuid> = sqlx::query_scalar(
         "UPDATE maidan_workspace_keys SET retired_at = ?
          WHERE workspace_id = ? AND retired_at IS NULL
@@ -225,7 +225,7 @@ pub async fn rewrap(
     let mut pass = RewrapPass::default();
     let mut after = Uuid::nil();
     loop {
-        let mut tx = pool.begin().await?;
+        let mut tx = super::tx::begin_write(pool).await?;
         let rows = sqlx::query(
             "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
          WHERE destroyed_at IS NULL AND wrapping_key_id NOT LIKE ?
@@ -295,7 +295,7 @@ pub async fn rewrap(
     let mut refused = std::collections::HashSet::<Uuid>::new();
     let mut after = Uuid::nil();
     loop {
-        let mut tx = pool.begin().await?;
+        let mut tx = super::tx::begin_write(pool).await?;
         let rows = sqlx::query(
             "SELECT k.id, k.workspace_id, k.workspace_key_id, k.kek_id, k.wrapped_key,
                 wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped

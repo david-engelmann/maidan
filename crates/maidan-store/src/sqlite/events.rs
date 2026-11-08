@@ -70,7 +70,7 @@ pub async fn append(
     event: &Event,
     origin: Option<PeerId>,
 ) -> Result<StoredEvent, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let stored = append_with_keys_in_tx(&mut tx, Some(keys), event, origin).await?;
     tx.commit().await?;
     Ok(stored)

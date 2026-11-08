@@ -44,7 +44,7 @@ pub async fn create(
     pool: &SqlitePool,
     new: &NewIntakeItem,
 ) -> Result<(IntakeItem, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_intake_items
              (id, workspace_id, title, body, source, proposed_by, state, created_at)
@@ -133,7 +133,7 @@ pub async fn triage(
         threads::precheck(pool, thread).await?;
     }
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let mut stored_events = Vec::new();
     // A new thread is inserted in this transaction, before the guarded
     // update: a losing concurrent accept rolls back with its thread.

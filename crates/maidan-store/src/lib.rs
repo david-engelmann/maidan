@@ -218,7 +218,9 @@ pub use sqlite::SqliteStore;
 /// backend serializes through one connection by default (overridable via
 /// `MAIDAN_DB_MAX_CONNECTIONS` for anyone who has arranged writes to avoid the
 /// upgrade deadlock). Postgres, the production/HA backend, is unaffected and
-/// keeps its multi-connection pool.
+/// keeps its multi-connection pool. The store's own transactions that write
+/// now begin `IMMEDIATE` (`sqlite::tx`), so they no longer race to upgrade;
+/// the default stays at one until a multi-connection pool is measured again.
 pub const DEFAULT_SQLITE_MAX_CONNECTIONS: u32 = 1;
 
 /// Applies SQLite PRAGMAs (`foreign_keys`, WAL, 5000 ms `busy_timeout`).

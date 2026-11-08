@@ -40,7 +40,7 @@ pub async fn set_enabled(
     on: bool,
     audit: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let updated =
         sqlx::query("UPDATE maidan_workspaces SET linear_claim_comments = ?2 WHERE id = ?1")
             .bind(workspace_id.0)
@@ -152,7 +152,7 @@ pub async fn record(
     outcome: &str,
     send: Option<NewEgressOutbox>,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let inserted = sqlx::query(
         "INSERT INTO maidan_linear_notices (thread_id, kind, workspace_id, issue, outcome, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
