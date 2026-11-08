@@ -3595,6 +3595,267 @@ async fn a_commit_status_github_refuses_leaves_the_branch_and_pull_request_stand
     );
 }
 
+// ---------------------------------------------------------------- a no_change check
+
+/// A `no_change` round whose producer's check ran on `ran_on`.
+fn no_change_check(ran_on: &str, check: Value) -> Value {
+    let mut result = change("no_change", ran_on, BRANCH, "");
+    result["check"] = check;
+    result["branch_head_sha"] = json!(ran_on);
+    result
+}
+
+fn prepush(state: &str) -> Value {
+    json!({"context": "seat/prepush", "state": state, "description": "make prepush"})
+}
+
+#[tokio::test]
+async fn a_no_change_check_is_posted_on_the_head_it_ran_on_and_nothing_else_is_written() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake
+        .lock()
+        .unwrap()
+        .refs
+        .insert(BRANCH.into(), h.base_sha.clone());
+    h.route(&h.a, &no_change_check(&h.base_sha, prepush("success")), 1)
+        .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.last_error, None);
+    assert!(
+        row.template_warnings.is_empty(),
+        "{:?}",
+        row.template_warnings
+    );
+    {
+        let f = h.fake.lock().unwrap();
+        assert_eq!(
+            f.statuses,
+            vec![(
+                h.base_sha.clone(),
+                json!({
+                    "state": "success",
+                    "context": "seat/prepush",
+                    "description": "make prepush",
+                })
+            )]
+        );
+        let status_post = format!("POST /repos/{REPO}/statuses/{}", h.base_sha);
+        assert_eq!(
+            f.writes(),
+            vec![&status_post],
+            "no commit, ref or pull request write"
+        );
+        assert!(
+            !f.requests.iter().any(|r| r.contains("/pulls")),
+            "no pull request call: {:?}",
+            f.requests
+        );
+        assert_eq!(f.refs[BRANCH], h.base_sha, "the branch is where it was");
+        assert!(f.pulls.is_empty() && f.pull_comments.is_empty());
+    }
+    let reply = h.slack_reply();
+    assert!(reply.contains("nothing was committed"), "{reply}");
+    assert!(
+        reply.contains(&format!(
+            "Commit status `seat/prepush` success posted on {} of `{BRANCH}` in {REPO}.",
+            &h.base_sha[..7]
+        )),
+        "{reply}"
+    );
+}
+
+#[tokio::test]
+async fn a_no_change_check_is_not_posted_once_the_branch_has_moved_or_gone() {
+    // The branch moved on since the check ran.
+    let h = harness().await;
+    h.allow_change().await;
+    let newer = {
+        let mut f = h.fake.lock().unwrap();
+        let newer = f.commit_files(
+            &[("README.md", "readme, again\n")],
+            vec![h.base_sha.clone()],
+        );
+        f.refs.insert(BRANCH.into(), newer.clone());
+        newer
+    };
+    h.route(&h.a, &no_change_check(&h.base_sha, prepush("success")), 1)
+        .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::SKIPPED,
+        "a recorded outcome, not a failure"
+    );
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.starts_with("stale:") && reason.contains(&h.base_sha) && reason.contains(&newer),
+        "{reason}"
+    );
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(
+            f.statuses.is_empty(),
+            "an old check never lands on a newer head"
+        );
+        assert!(f.writes().is_empty(), "{:?}", f.writes());
+        assert_eq!(
+            f.requests
+                .iter()
+                .filter(|r| r.contains("/git/ref/heads/"))
+                .count(),
+            1,
+            "read once and not retried: {:?}",
+            f.requests
+        );
+    }
+    let reply = h.slack_reply();
+    assert!(
+        reply.contains(&format!(
+            "No commit status was posted on `{BRANCH}` in {REPO}: stale:"
+        )),
+        "{reply}"
+    );
+
+    // The branch is gone.
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &no_change_check(&h.base_sha, prepush("failure")), 1)
+        .await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.starts_with("stale:") && reason.contains("gone"),
+        "{reason}"
+    );
+    let f = h.fake.lock().unwrap();
+    assert!(f.statuses.is_empty());
+    assert!(f.writes().is_empty(), "{:?}", f.writes());
+}
+
+#[tokio::test]
+async fn a_no_change_round_missing_its_check_or_head_is_skipped_as_before() {
+    let mut without_check = change("no_change", "", BRANCH, "");
+    without_check["branch_head_sha"] = json!("1111111111111111111111111111111111111111");
+    let mut without_head = change("no_change", "", BRANCH, "");
+    without_head["check"] = prepush("success");
+    let mut short_head = without_head.clone();
+    short_head["branch_head_sha"] = json!("b5e54f9");
+    for (what, result) in [
+        ("no check", without_check),
+        ("no head", without_head),
+        ("a short head", short_head),
+    ] {
+        let h = harness().await;
+        h.allow_change().await;
+        h.route(&h.a, &result, 1).await;
+        h.drain().await;
+        let row = h.delivery(&h.a, "github_branch").await;
+        assert_eq!(row.status, status::SKIPPED, "{what}");
+        assert_eq!(
+            row.last_error.as_deref(),
+            Some("status `no_change`: nothing to commit, so no GitHub write"),
+            "{what}"
+        );
+        assert!(
+            h.fake.lock().unwrap().requests.is_empty(),
+            "{what}: no GitHub call at all"
+        );
+        let reply = h.slack_reply();
+        assert!(reply.contains("nothing was committed"), "{what}: {reply}");
+        assert!(!reply.contains("Commit status"), "{what}: {reply}");
+    }
+}
+
+#[tokio::test]
+async fn a_malformed_no_change_check_posts_nothing_and_records_the_warning() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake
+        .lock()
+        .unwrap()
+        .refs
+        .insert(BRANCH.into(), h.base_sha.clone());
+    let result = no_change_check(&h.base_sha, json!({"context": " ", "state": "passed"}));
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.last_error, None, "a warning is not a failure");
+    assert_eq!(row.template_warnings, vec!["check_invalid"]);
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(f.statuses.is_empty());
+        assert!(f.requests.is_empty(), "{:?}", f.requests);
+    }
+    let reply = h.slack_reply();
+    assert!(
+        reply.contains("Commit status not posted: the result's `check` is malformed."),
+        "{reply}"
+    );
+}
+
+#[tokio::test]
+async fn a_no_change_check_github_refuses_is_a_warning_and_not_retried() {
+    let h = harness().await;
+    h.allow_change().await;
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.refs.insert(BRANCH.into(), h.base_sha.clone());
+        f.fail_statuses = true;
+    }
+    h.route(&h.a, &no_change_check(&h.base_sha, prepush("pending")), 1)
+        .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(row.template_warnings, vec!["check_not_posted"]);
+    assert_eq!(status_requests(&h).len(), 1, "tried once, not retried");
+    let reply = h.slack_reply();
+    assert!(
+        reply.contains("Commit status not posted: GitHub did not take it."),
+        "{reply}"
+    );
+}
+
+#[tokio::test]
+async fn a_no_change_check_for_a_protected_or_non_agent_branch_is_refused_without_github() {
+    for (branch, why) in [
+        ("main", "protected"),
+        ("feature/fix-greeting", "does not match"),
+    ] {
+        let h = harness().await;
+        h.allow_change().await;
+        let mut result = change_into("no_change", &h.base_sha, branch, branch, "dev", "");
+        result["check"] = prepush("success");
+        result["branch_head_sha"] = json!(h.base_sha);
+        h.fake
+            .lock()
+            .unwrap()
+            .refs
+            .insert(branch.into(), h.base_sha.clone());
+        h.route(&h.a, &result, 1).await;
+        h.drain().await;
+
+        let row = h.delivery(&h.a, "github_branch").await;
+        assert_eq!(row.status, status::SKIPPED, "{branch}");
+        let reason = row.last_error.unwrap_or_default();
+        assert!(reason.contains(why), "{branch}: {reason}");
+        let f = h.fake.lock().unwrap();
+        assert!(f.requests.is_empty(), "{branch}: no GitHub call");
+        assert!(f.statuses.is_empty(), "{branch}");
+    }
+}
+
 // ---------------------------------------------------------------- notices
 
 const BRIDGE_DIFF: &str = "diff --git a/src/bridge/x.rs b/src/bridge/x.rs\nindex 1111111..2222222 100644\n--- a/src/bridge/x.rs\n+++ b/src/bridge/x.rs\n@@ -1 +1 @@\n-pub fn bridge() {}\n+pub fn bridge() -> u8 { 1 }\n";

@@ -684,12 +684,16 @@ async fn github_branch_result(
     // Only a squash-rebase needs it: the force move is allowed only while the
     // branch head is still the last commit this flow delivered to the pull
     // request, as recorded for this workspace.
-    let delivered_head = if change.rebase {
+    let delivered_head = if change.rebase && change.is_changed() {
         delivered_head(state, git, entry, repo, branch).await?
     } else {
         None
     };
-    clear_stale_queue_label(state, git, entry, repo, branch).await?;
+    // A `no_change` round only posts its check, which no queue label holds
+    // up, so it leaves the pull request alone.
+    if !change.is_check_only() {
+        clear_stale_queue_label(state, git, entry, repo, branch).await?;
+    }
     let request = crate::change_flow::ChangeRequest {
         repo,
         branch,
@@ -738,6 +742,31 @@ async fn github_branch_result(
                 commit_sha,
                 pull_number: pull.number,
             })))
+        }
+        Ok(crate::change_flow::ChangeOutcome::CheckOnly {
+            head_sha,
+            check_warning,
+        }) => {
+            if check_warning.is_none() {
+                crate::metrics::record_github_egress("sent");
+            }
+            // Recorded before the row is marked delivered, as for a commit,
+            // so the reply reads it; and replacing the last round's flags,
+            // which described a pull request this round never touched.
+            let warnings: Vec<String> = check_warning.map(str::to_string).into_iter().collect();
+            let target = EgressTarget::GithubBranch {
+                repo: repo.to_string(),
+                branch: branch.to_string(),
+            };
+            if let Err(err) = state
+                .store
+                .set_result_delivery_template_warnings(entry.thread_id, &target, &warnings)
+                .await
+            {
+                tracing::warn!(error = %err, thread_id = ?entry.thread_id, "change flow: check warning not recorded");
+            }
+            tracing::info!(thread_id = ?entry.thread_id, repo, branch, head_sha = %head_sha, ?check_warning, "change flow: no_change round's check delivered");
+            Ok(Sent::Landed(None))
         }
         Ok(crate::change_flow::ChangeOutcome::Refused(reason)) => Ok(Sent::Refused(reason)),
         Err(err) => {

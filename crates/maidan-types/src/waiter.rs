@@ -539,9 +539,14 @@ fn findings_contain_critical(value: &Value) -> bool {
 /// [`EXAMPLE_REVIEW_RESULT_KIND`]: compare the string, do not close the set.
 pub const CHANGE_RESULT_KIND: &str = "pi.change.result/1";
 
-/// The only change status that writes to GitHub. `no_change`, `seat_error`
-/// and `content_blocked` are recorded and answered in Slack, never committed.
+/// The only change status that commits. `no_change`, `seat_error` and
+/// `content_blocked` are recorded and answered in Slack, never committed.
 pub const CHANGE_STATUS_CHANGED: &str = "changed";
+
+/// A round that left the branch as it was. It commits nothing, but one that
+/// carries a `check` and `branch_head_sha` gets that check as a commit status
+/// on the head it ran on ([`ChangeResult::is_check_only`]).
+pub const CHANGE_STATUS_NO_CHANGE: &str = "no_change";
 
 /// A squash-rebase round whose rebase hit conflicts in the producer's
 /// checkout. Non-delivering, like `no_change`: the producer routes it to a
@@ -879,7 +884,9 @@ pub struct ChangeResult {
     /// started. A rebase round's diff is the whole branch as it stood then,
     /// so the force move is leased on it: a commit that landed on the branch
     /// since would be dropped by the move. Required for a rebase round, which
-    /// is refused without it. `None` when absent or not a full SHA.
+    /// is refused without it. On a `no_change` round it is the head the
+    /// producer's `check` ran on, where that check is posted. `None` when
+    /// absent or not a full SHA.
     pub branch_head_sha: Option<String>,
     /// The Linear issue the change is for (`ENG-1234`), as the producer
     /// reports it. Recorded on the pull request, so a later fix that names
@@ -997,6 +1004,16 @@ fn parse_change_check(value: &Value, target_url: Option<&str>) -> Result<ChangeC
 impl ChangeResult {
     pub fn is_changed(&self) -> bool {
         self.status == CHANGE_STATUS_CHANGED
+    }
+
+    /// A `no_change` round with something left to deliver: its `check`, as
+    /// a commit status on `branch_head_sha`, the head the check ran on. A
+    /// malformed `check` still counts, so the delivery records why nothing
+    /// was posted rather than skipping in silence.
+    pub fn is_check_only(&self) -> bool {
+        self.status == CHANGE_STATUS_NO_CHANGE
+            && self.check.is_some()
+            && self.branch_head_sha.is_some()
     }
 }
 
@@ -2225,6 +2242,37 @@ mod tests {
                 want,
                 "{value}"
             );
+        }
+    }
+
+    #[test]
+    fn only_a_no_change_round_with_a_check_and_a_head_is_check_only() {
+        let round = |status: &str, check: Option<Value>, head: Option<&str>| {
+            let mut env = change_envelope(json!([]));
+            env["status"] = json!(status);
+            if let Some(check) = check {
+                env["check"] = check;
+            }
+            if let Some(head) = head {
+                env["branch_head_sha"] = json!(head);
+            }
+            parse_change_result(&env).unwrap().is_check_only()
+        };
+        let check = || Some(json!({"context": "seat/prepush", "state": "success"}));
+        assert!(round(CHANGE_STATUS_NO_CHANGE, check(), Some(SHA)));
+        // A malformed check is still delivered, to record why nothing posted.
+        let malformed = Some(json!({"context": "", "state": "passed"}));
+        assert!(round(CHANGE_STATUS_NO_CHANGE, malformed, Some(SHA)));
+        assert!(!round(CHANGE_STATUS_NO_CHANGE, None, Some(SHA)));
+        assert!(!round(CHANGE_STATUS_NO_CHANGE, check(), None));
+        assert!(!round(CHANGE_STATUS_NO_CHANGE, check(), Some("b5e54f9")));
+        for status in [
+            CHANGE_STATUS_CHANGED,
+            "seat_error",
+            "content_blocked",
+            CHANGE_STATUS_REBASE_CONFLICT,
+        ] {
+            assert!(!round(status, check(), Some(SHA)), "{status}");
         }
     }
 

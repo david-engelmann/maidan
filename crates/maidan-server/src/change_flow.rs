@@ -47,6 +47,14 @@
 //! run, because a personal access token can post one. A malformed `check`
 //! or a status GitHub refuses never fails the delivery: it is logged and
 //! recorded as a warning on the delivery row.
+//!
+//! A `no_change` round that carries a `check` and `branch_head_sha` gets
+//! that status too, on `branch_head_sha`, the head its check ran on, and
+//! nothing else is written: no commit, no pull request, no comment, no body
+//! edit. It passes the same target rules as a changed round, and the branch
+//! head is re-read immediately before the post. A branch that moved or is
+//! gone gets nothing, recorded as a stale refusal: an old check never lands
+//! on a newer head.
 
 use maidan_types::{ChangeResult, ThreadId};
 use sha2::{Digest, Sha256};
@@ -77,6 +85,14 @@ pub enum ChangeOutcome {
         /// Why the result's `check` did not become a commit status
         /// ([`CHECK_INVALID`] or [`CHECK_NOT_POSTED`]); `None` when it did, or
         /// when the result carries no `check`.
+        check_warning: Option<&'static str>,
+    },
+    /// A `no_change` round's `check` went to `head_sha`, the head it ran on
+    /// and the branch head when it was posted; nothing else was written.
+    CheckOnly {
+        head_sha: String,
+        /// Why the `check` did not become a commit status, as for
+        /// [`ChangeOutcome::Committed`]; `None` when it did.
         check_warning: Option<&'static str>,
     },
     /// Nothing more will be written; the reason is recorded.
@@ -338,6 +354,9 @@ pub async fn deliver_change(
         return refused(reason);
     }
     let change = req.change;
+    if change.is_check_only() {
+        return deliver_check_only(git, req).await;
+    }
     if !change.is_changed() {
         return refused(format!(
             "status `{}`: there is nothing to commit",
@@ -500,6 +519,76 @@ async fn post_check(
                 Some(CHECK_NOT_POSTED)
             }
         },
+    }
+}
+
+/// A `no_change` round: post its `check` on `branch_head_sha`, the head the
+/// producer's check ran on, and write nothing else. The caller has already
+/// held the target to the change rules.
+async fn deliver_check_only(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+) -> Result<ChangeOutcome, GithubError> {
+    let refused = |reason: String| Ok(ChangeOutcome::Refused(reason));
+    let change = req.change;
+    let Some(ran_on) = change.branch_head_sha.as_deref() else {
+        return refused(
+            "a `no_change` result needs a full `branch_head_sha` for its check to go on".into(),
+        );
+    };
+    let Some(check) = change.check.as_ref() else {
+        return refused("a `no_change` result without a `check` has nothing to post".into());
+    };
+    // A producer may leave `branch` out of a round that changed nothing; one
+    // that names another branch ran its check somewhere else.
+    if let Some(branch) = change.branch.as_deref().filter(|b| *b != req.branch) {
+        return refused(format!(
+            "the result is for branch `{branch}`, not the target branch `{}`",
+            req.branch
+        ));
+    }
+    let check = match check {
+        Ok(check) => check,
+        Err(reason) => {
+            tracing::warn!(repo = req.repo, branch = req.branch, reason = %reason, "change flow: the no_change result's check is malformed; no commit status posted");
+            return Ok(ChangeOutcome::CheckOnly {
+                head_sha: ran_on.to_string(),
+                check_warning: Some(CHECK_INVALID),
+            });
+        }
+    };
+    // Read just before the post: a check that ran on an older head says
+    // nothing about the commit the branch is at now.
+    let observed = git.branch_head(req.repo, req.branch).await?;
+    let head = match check_head(req.branch, ran_on, observed) {
+        Ok(head) => head,
+        Err(reason) => return refused(reason),
+    };
+    let check_warning = match git.create_commit_status(req.repo, &head, check).await {
+        Ok(()) => None,
+        Err(err) => {
+            tracing::warn!(repo = req.repo, sha = %head, context = %check.context, error = %err, "change flow: commit status not posted");
+            Some(CHECK_NOT_POSTED)
+        }
+    };
+    Ok(ChangeOutcome::CheckOnly {
+        head_sha: head,
+        check_warning,
+    })
+}
+
+/// The head a `no_change` round's check may be posted on: the branch head
+/// read just now, when it is still `ran_on`, the head the check ran on.
+/// Otherwise the stale refusal, naming both heads.
+fn check_head(branch: &str, ran_on: &str, observed: Option<String>) -> Result<String, String> {
+    match observed {
+        Some(head) if head.eq_ignore_ascii_case(ran_on) => Ok(head),
+        Some(head) => Err(format!(
+            "stale: branch `{branch}` moved from {ran_on} to {head} since the check ran, so its commit status was not posted"
+        )),
+        None => Err(format!(
+            "stale: branch `{branch}` is gone, so the check that ran on {ran_on} was not posted"
+        )),
     }
 }
 
@@ -1000,6 +1089,37 @@ mod tests {
             branch_head_sha: None,
             check: None,
         }
+    }
+
+    const RAN_ON: &str = "1111111111111111111111111111111111111111";
+    const NEWER: &str = "2222222222222222222222222222222222222222";
+
+    #[test]
+    fn a_no_change_check_goes_only_on_the_head_it_ran_on() {
+        assert_eq!(
+            check_head("feature/agent-x", RAN_ON, Some(RAN_ON.to_string())),
+            Ok(RAN_ON.to_string())
+        );
+        // A producer may send the hex in upper case; GitHub's own spelling
+        // is what the status goes on.
+        assert_eq!(
+            check_head(
+                "feature/agent-x",
+                &RAN_ON.to_uppercase(),
+                Some(RAN_ON.to_string())
+            ),
+            Ok(RAN_ON.to_string())
+        );
+        let moved = check_head("feature/agent-x", RAN_ON, Some(NEWER.to_string())).unwrap_err();
+        assert!(
+            moved.starts_with("stale:") && moved.contains(RAN_ON) && moved.contains(NEWER),
+            "{moved}"
+        );
+        let gone = check_head("feature/agent-x", RAN_ON, None).unwrap_err();
+        assert!(
+            gone.starts_with("stale:") && gone.contains("gone") && gone.contains(RAN_ON),
+            "{gone}"
+        );
     }
 
     #[test]
