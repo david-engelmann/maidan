@@ -144,7 +144,7 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
     // No body at all: the claimant's two live claims go back to the queue.
     let (status, body) = release_own(&h, &bearer, ws, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let mut expected = vec![first.id, second.id];
+    let mut expected = [first.id, second.id];
     expected.sort_by_key(|id| id.0);
     assert_eq!(
         ids(&body),
