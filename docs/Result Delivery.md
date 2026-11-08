@@ -704,7 +704,7 @@ can tell the task's own thread where its result did not go.
   transcripts. **Only `rendered`, `summary`, and structured `findings`.**
 - Anything at all when `status` is not `reviewed` (beyond the failure notice).
 - Anything to a target the workspace has not blessed.
-- Text that holds a credential in a shape the guard knows ([Credential guard](#credential-guard), which lists what it does not catch).
+- Text in which the credential guard, while on, detects a credential ([Credential guard](#credential-guard): JWTs and PEM keys in a diff's added lines are not counted, and other shapes are not detected).
 
 Maidan does not run agents, does not render reviews, and is not a CI product.
 The close-gate reads only `findings[].severity` (`critical` →
