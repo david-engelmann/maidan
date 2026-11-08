@@ -171,6 +171,36 @@ pub(crate) async fn refuse_same_family_in_tx(
     }
 }
 
+/// Refuse storing a review's result when the holder's usage, or the result
+/// itself, names the author's family (#1703); see
+/// [`crate::review_family::result_refusal`]. Runs before the fenced result
+/// write and holds no lock: a usage report that races it is the holder racing
+/// its own result, which is the same as reporting after it.
+pub(crate) async fn refuse_result(
+    pool: &sqlx::SqlitePool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+    result: &serde_json::Value,
+) -> Result<(), StoreError> {
+    let Some(row) = sqlx::query(&crate::review_family::result_judgement("?1", "?2", "?3"))
+        .bind(member_id.0)
+        .bind(thread_id.0)
+        .bind(lease_id.0)
+        .fetch_optional(pool)
+        .await?
+    else {
+        return Ok(());
+    };
+    let author: String = row.try_get("author_family")?;
+    let shared: Option<String> = row.try_get("shared_family")?;
+    let served = maidan_types::served_families(result);
+    match crate::review_family::result_refusal(&author, shared.as_deref(), &served) {
+        Some(refusal) => Err(refusal),
+        None => Ok(()),
+    }
+}
+
 /// Refuse a `decline` the thread cannot carry: an `own_family` decline
 /// needs a review that names its author's family. The lease fence is read
 /// first, so a caller that does not hold the claim learns only `NotFound`,

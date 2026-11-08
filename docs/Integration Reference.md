@@ -1365,6 +1365,18 @@ claim was released, the write is refused (REST `409` with type `claim-lost`, MCP
 invalid params `claim_lost`) and nothing is stored. Stop the work then: the
 thread is someone else's.
 
+On a review that names its `author_family`, the write also judges you
+again, since you were handed the review on the usage you had reported then.
+If any of your usage in the workspace names the author's family, or the
+result says the author's family served it (`served` or `route`, see
+[Result Delivery](Result%20Delivery.md#what-maidan-reads-from-the-envelope)),
+the write is refused (REST `409`, MCP invalid params, naming the family),
+nothing is stored or delivered, and you still hold the claim: release it with
+`decline: "own_family"`. A result with neither is stored. Reporting usage
+before the result is recommended, so a mistaken claim is caught before the
+verdict is posted; the usage report itself is never refused for this
+([Swarms](Swarms.md#a-reviews-author-family)).
+
 If the JSON is a `maidan.waiter.result/1` envelope with a `deliver_to` list,
 Maidan delivers it to those targets (a GitHub pull request or comment, a Slack
 thread, a Linear issue, or a branch opened as a draft pull request), provided

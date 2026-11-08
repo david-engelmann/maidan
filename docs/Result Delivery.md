@@ -55,6 +55,8 @@ field never breaks delivery.
 | `view_url` | no | A backlink appended to every delivery. |
 | `pr` | no | A human back-reference echoed into the delivered body. |
 | `head_sha` | for inline comments | GitHub `commit_id`. 40- or 64-char hex. Absent or unusable ⇒ no inline review (the summary comment still posts). **Never resolved from the live PR head.** |
+| `served` | no | Which model served the result: `family`, or `provider` with `model`. Read on a review that names its `author_family`: if it names that family, the result is refused and nothing is stored ([Swarms](Swarms.md#a-reviews-author-family)). Named the way a usage record is, so `claude-opus-4-5` is `anthropic`. Read on any result, enveloped or not. |
+| `route` | no | A list of `{provider, model}` the result went through. Read like `served`: any entry naming the review's `author_family` refuses the result. Entries that are not objects, or name no family Maidan knows, are skipped. |
 | `findings` | no | Read twice. For [inline comments](#inline-findings), each usable finding needs `file`, `body` and `line_range`. For the [close-gate](#close-gate), any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a producer holding the `review` skill is a `request_changes`; a critical finding without `file`, `body` or `line_range` still counts. Other finding fields stay in the stored JSON, unread. |
 
 `run_id` is **not** a delivery-routing field. Maidan keeps it as the thread's

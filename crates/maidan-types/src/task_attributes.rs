@@ -373,6 +373,39 @@ pub fn provider_family(provider: Option<&str>, model: &str) -> Option<&'static s
         .map(|(family, _, _)| *family)
 }
 
+/// The provider families a result says served it, named the way
+/// [`provider_family`] names a usage record: `served.family`,
+/// `served.provider` with `served.model`, and each `route[]` entry's
+/// `provider` with `model`. A producer that runs its model outside Maidan's
+/// usage ledger, such as an external waiter, says here which model did the
+/// work, so a review's result write can refuse one naming the author's
+/// family. Read on any result, enveloped or not; a field that is absent, not
+/// a string, or names no family Maidan knows is skipped, so a result that
+/// declares nothing names no family. Sorted, without repeats.
+pub fn served_families(result: &serde_json::Value) -> Vec<&'static str> {
+    use serde_json::Value;
+    let named = |entry: &Value| {
+        let provider = entry.get("provider").and_then(Value::as_str);
+        let model = entry.get("model").and_then(Value::as_str).unwrap_or("");
+        provider_family(provider, model)
+    };
+    let mut families = Vec::new();
+    if let Some(served) = result.get("served") {
+        let declared = served
+            .get("family")
+            .and_then(Value::as_str)
+            .and_then(|family| provider_family(Some(family), ""));
+        families.extend(declared);
+        families.extend(named(served));
+    }
+    if let Some(route) = result.get("route").and_then(Value::as_array) {
+        families.extend(route.iter().filter_map(named));
+    }
+    families.sort_unstable();
+    families.dedup();
+    families
+}
+
 /// The family a change by `author` is reviewed by: the first family that is
 /// not the author's. `None` when the author's family is unknown, since a
 /// review cannot be routed away from a family nobody named.
@@ -684,6 +717,27 @@ mod review_family_tests {
             Some("deepseek")
         );
         assert_eq!(provider_family(None, "llama-3"), None);
+    }
+
+    #[test]
+    fn a_result_names_the_families_that_served_it() {
+        let result = serde_json::json!({
+            "schema": "maidan.waiter.result/1",
+            "served": { "family": "OpenAI", "provider": "anthropic", "model": "claude-opus-4-5" },
+            "route": [
+                { "provider": "xai", "model": "grok-4" },
+                { "model": "gpt-5-codex" },
+                { "provider": "local", "model": "llama-3" },
+                "not an entry"
+            ],
+        });
+        assert_eq!(served_families(&result), vec!["anthropic", "openai", "xai"]);
+        assert!(served_families(&serde_json::json!({"status": "done"})).is_empty());
+        assert!(served_families(&serde_json::json!({"served": "claude", "route": {}})).is_empty());
+        assert_eq!(
+            served_families(&serde_json::json!({"served": {"family": "Gemini"}})),
+            vec!["google"]
+        );
     }
 
     #[test]
