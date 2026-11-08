@@ -345,6 +345,28 @@ impl Client {
         )
     }
 
+    /// `POST /workspaces/{id}/claims/release-own`, for a waiter that
+    /// restarted: releases every live claim this token's member holds in the
+    /// workspace, whose fencing tokens died with the old process. Call it once
+    /// before the first claim, and not while another live process shares the
+    /// token, or that process's claims go too. `None` records the server's
+    /// default note.
+    pub fn release_own_claims(
+        &self,
+        workspace_id: &str,
+        note: Option<&str>,
+    ) -> Result<ReleasedClaims> {
+        let body = match note {
+            Some(note) => json!({ "note": note }),
+            None => json!({}),
+        };
+        self.send_as(
+            "POST",
+            &format!("/workspaces/{workspace_id}/claims/release-own"),
+            Some(&body),
+        )
+    }
+
     // --- HTTP core ---
 
     /// Send with retries and return the last answer. A write carries one

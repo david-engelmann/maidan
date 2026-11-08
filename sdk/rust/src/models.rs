@@ -346,6 +346,14 @@ impl std::ops::Deref for ClaimedThread {
 }
 
 model! {
+    /// What [`crate::Client::release_own_claims`] gave back to the queue, in
+    /// thread id order.
+    ReleasedClaims {
+        released: Vec<String>,
+    }
+}
+
+model! {
     ThreadResult {
         thread_id: String,
         /// The producer's JSON, as it was set.

@@ -81,7 +81,7 @@ Create body: `{ "name", "private": false }`.
 | `threads.get_result` | `GET /threads/{id}/result` | `workspace:read` | |
 | `claim_next_thread` | `POST /channels/{cid}/threads/claim-next` | `thread:transition` | **Hero.** Readiness + skill + lease aware |
 | `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat |
-| `release_own_claims` | `POST /workspaces/{id}/claims/release-own` | `thread:transition` | 0.3.0. A restarted waiter frees every live claim its token's member holds in the workspace, once, before its first claim. Optional body `{ "note" }`; answers `{ "released": [...] }`. TypeScript, Python and Go; not yet in the Rust SDK |
+| `release_own_claims` | `POST /workspaces/{id}/claims/release-own` | `thread:transition` | 0.3.0. A restarted waiter frees every live claim its token's member holds in the workspace, once, before its first claim. Optional body `{ "note" }`; answers `{ "released": [...] }`. In all four SDKs |
 
 ### Messages
 
