@@ -47,6 +47,8 @@ SERVER_TYPES = [
     "footprint-conflict",
     "plan-conflict",
     "claim-lost",
+    "thread-ended",
+    "gone",
 ]
 
 

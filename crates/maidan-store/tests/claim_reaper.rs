@@ -142,7 +142,11 @@ async fn a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store: &dyn Store) 
 
     // The dead holder comes back to a claim it no longer has.
     let fenced = |r: Result<Thread, StoreError>| matches!(r, Err(StoreError::NotFound));
-    assert!(fenced(store.renew_claim(held.id, dead, stale, 60).await));
+    // A renewal is told its claim is lost, so it stops the work.
+    assert!(matches!(
+        store.renew_claim(held.id, dead, stale, 60).await,
+        Err(StoreError::ClaimLost(_))
+    ));
     assert!(fenced(store.acknowledge_claim(held.id, dead, stale).await));
     assert!(fenced(store.release_claim(held.id, dead, stale).await));
 }

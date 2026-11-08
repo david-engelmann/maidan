@@ -13,6 +13,7 @@ use crate::error::StoreError;
 /// payload — a namespaced string, not an enum.
 pub async fn set(
     pool: &PgPool,
+    grace: &crate::claim_grace::ClaimGrace,
     thread_id: ThreadId,
     produced_by: MemberId,
     lease_id: ClaimLeaseId,
@@ -25,6 +26,10 @@ pub async fn set(
     super::review_family::refuse_result(pool, thread_id, produced_by, lease_id, result).await?;
     // The claim fence is the SELECT: no row unless `produced_by` holds the
     // thread under `lease_id` right now, in the same statement as the write.
+    // A lease that expired is lost even before the reaper frees it, on the
+    // clock `claim_next` reads to take it over. The row lock orders the
+    // write against a concurrent takeover: whichever commits first, the
+    // other sees its row.
     let row = sqlx::query(
         "INSERT INTO maidan_thread_results
              (thread_id, result, produced_by, result_kind, produced_actor_id)
@@ -32,6 +37,8 @@ pub async fn set(
          FROM maidan_threads t
          WHERE t.id = $1 AND t.assignee_id = $3 AND t.claim_lease_id = $6
            AND t.tombstoned_at IS NULL
+           AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= $7)
+         FOR UPDATE OF t
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
@@ -52,6 +59,7 @@ pub async fn set(
             .0,
     )
     .bind(lease_id.0)
+    .bind(grace.lease_clock(Utc::now()))
     .fetch_optional(pool)
     .await?;
     match row {

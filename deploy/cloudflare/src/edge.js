@@ -88,6 +88,8 @@ export const PROBLEM_TYPES = new Set([
   "footprint-conflict",
   "plan-conflict",
   "claim-lost",
+  "thread-ended",
+  "gone",
   "payload-too-large",
   "unsupported-media-type",
   "idempotency-key-reused",

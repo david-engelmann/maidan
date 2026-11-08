@@ -1304,8 +1304,8 @@ pub async fn mark_thread_unclaimable(
 /// it from dispatch and end any live claim; see
 /// [`maidan_store::Store::cancel_thread`]. Needs `workspace:write`; with it a
 /// caller may cancel a thread it created, and with `thread:transition` as well
-/// any thread it can reach. A repeat answers `200` with the first cancel; a thread
-/// that closed some other way is `409`.
+/// any thread it can reach. A repeat answers `200` with the first cancel and
+/// `replayed: true`; a thread that closed some other way is `409`.
 pub async fn cancel_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1911,7 +1911,8 @@ async fn publish_claim(
 }
 
 /// Extend a claimed thread's lease (heartbeat), for the current assignee only.
-/// `NotFound` if the caller isn't the holder.
+/// `409 claim-lost` if the caller does not hold the thread under a live lease,
+/// including one that expired before anything reaped it.
 pub async fn renew_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

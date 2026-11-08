@@ -590,8 +590,10 @@ pub trait SkillStore: Send + Sync {
 
     /// Everyone who has ever held `thread_id`, oldest first.
     async fn list_thread_workers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
-    /// Skills a task (thread) requires. `add` idempotent + empty- reject;
-    /// `remove` conditional; `list` ordered by skill. Skill routing:
+    /// Skills a task (thread) requires. `add` idempotent + empty- reject, and
+    /// refused on a thread that is gone ([`StoreError::Gone`]) or closed or
+    /// archived ([`StoreError::Ended`]); `remove` conditional; `list` ordered
+    /// by skill. Skill routing:
     /// `claim_next` only takes a task whose required skills the claimer holds.
     async fn add_thread_required_skill(
         &self,
@@ -616,7 +618,7 @@ pub trait ThreadResultStore: Send + Sync {
     ///
     /// Fenced by the claim: `produced_by` must hold the thread under
     /// `lease_id`, its live lease, checked in the write itself. A lease that
-    /// lapsed and was taken over, or released, is
+    /// expired (reaped, taken over, or neither yet) or was released is
     /// [`StoreError::ClaimLost`] and nothing is stored, so a slow seat
     /// cannot land a result over the seat that holds the work now.
     async fn set_thread_result(
@@ -2627,7 +2629,10 @@ pub trait AssignmentStore: Send + Sync {
     /// the thread holds a live claim and the footprint would overlap another
     /// live claim in its workspace and repository, nothing is stored and the
     /// overlapped claim items come back; an empty list means it was stored.
-    /// See [`maidan_types::footprint`].
+    /// An open thread nobody holds may carry one, which `claim_next` reads
+    /// before handing it out; a thread that is gone is [`StoreError::Gone`],
+    /// and one closed or archived [`StoreError::Ended`], since it is never
+    /// dispatched again. See [`maidan_types::footprint`].
     async fn set_thread_footprint(
         &self,
         thread_id: ThreadId,
@@ -2706,6 +2711,16 @@ pub trait AssignmentStore: Send + Sync {
         pull_number: i64,
         commit_sha: &str,
     ) -> Result<Option<String>, StoreError>;
+    /// The thread whose work opened agent pull request `pull_number` of
+    /// `repo` in `workspace_id`: the one the change flow tracks it under,
+    /// else the one whose result was last delivered to it. `None` when the
+    /// change flow knows no such pull request there.
+    async fn change_pull_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<ThreadId>, StoreError>;
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
@@ -3097,10 +3112,12 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
     /// Extend a claimed thread's lease (heartbeat), only for the current
-    /// assignee holding the matching fencing token. `NotFound` if the thread is
-    /// gone, the caller isn't the holder, or `lease_id` doesn't match the
-    /// thread's current claim — so a stale holder whose claim was reclaimed by
-    /// the next owner can no longer extend a lease it no longer holds.
+    /// assignee holding the matching fencing token under a lease that has not
+    /// expired. `NotFound` if the thread does not exist;
+    /// [`StoreError::ClaimLost`] if the caller isn't the holder, `lease_id`
+    /// doesn't match the thread's current claim, or the lease expired, even
+    /// before the reaper or the next claimer reached it — so a stale holder
+    /// can never extend a lease it no longer holds.
     async fn renew_claim(
         &self,
         thread_id: ThreadId,

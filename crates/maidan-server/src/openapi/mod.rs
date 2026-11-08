@@ -20,7 +20,7 @@ use crate::land_gate_advisor::{
     LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
 };
 use crate::openapi::responses::{
-    BadRequest, Conflict, Forbidden, IdempotencyKeyReused, InternalServerError, NotFound,
+    BadRequest, Conflict, Forbidden, Gone, IdempotencyKeyReused, InternalServerError, NotFound,
     Overloaded, PayloadTooLarge, TooManyRequests, Unauthorized, UnsupportedMediaType,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
@@ -704,6 +704,7 @@ fn requires_credential(op: &Operation) -> bool {
         Forbidden,
         NotFound,
         Conflict,
+        Gone,
         PayloadTooLarge,
         UnsupportedMediaType,
         TooManyRequests,

@@ -662,6 +662,11 @@ pub fn claim_next_thread() {}
 pub fn claim_next_workspace_thread() {}
 
 /// Renew a claim
+///
+/// Only the holder of the live lease renews. A lease that expired is lost,
+/// even before the reaper frees it or another claimer takes the thread, as is
+/// one that was taken over or released: 409 `claim-lost`, and the caller
+/// should stop the work.
 #[utoipa::path(
     post,
     path = "/threads/{id}/claim/renew",
@@ -674,6 +679,7 @@ pub fn claim_next_workspace_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     )
 )]
 pub fn renew_claim() {}
@@ -1489,6 +1495,8 @@ pub fn unlink_github_issue() {}
         (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Not the mark-ready app, or the PR fails the change-flow guards", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 409, description = "The pull request's task is closed or archived (type `thread-ended`)", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 410, description = "The pull request's task is gone (type `gone`)", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
@@ -1502,10 +1510,12 @@ pub fn mark_pull_ready() {}
     request_body = crate::routes::EnqueueRequest,
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "The pull request carries the merge-queue label", body = crate::routes::EnqueueResponse),
+        (status = 200, description = "The pull request carries the merge-queue label; `already` says it carried it before this call, which changed nothing", body = crate::routes::EnqueueResponse),
         (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Not the mark-ready app, no label for the repository, or the PR fails a guard (draft, fork, base, allowlist, or a head that is not the delivered commit)", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 409, description = "The pull request's task is closed or archived (type `thread-ended`)", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 410, description = "The pull request's task is gone (type `gone`)", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
@@ -1535,7 +1545,7 @@ pub fn enqueue_status() {}
     params(crate::routes::EnqueueRequest),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "The label is off; `reason` says when it was not on", body = crate::routes::EnqueueResponse),
+        (status = 200, description = "The label is off; `already` and `reason` say when it was not on", body = crate::routes::EnqueueResponse),
         (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Not the mark-ready app, no label for the repository, or the PR fails a guard", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),

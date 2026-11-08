@@ -1544,7 +1544,8 @@ pub fn claim_thread() {}
 /// reason, ends any live claim (the holder's next renew is refused) and posts
 /// the reason on the thread. Needs `workspace:write`; with it a caller may
 /// cancel a thread it created, and with `thread:transition` as well any thread
-/// it can reach. A repeat answers 200 with the first cancel.
+/// it can reach. A repeat answers 200 with the first cancel and `replayed:
+/// true`, and changes nothing.
 #[utoipa::path(post, path = "/threads/{id}/cancel", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = CancelThread,
@@ -1800,6 +1801,10 @@ pub fn get_thread_priority() {}
 pub fn list_messages() {}
 
 /// Post a message to a thread
+///
+/// A closed thread still takes messages, so people can discuss the work after
+/// it closes. An archived thread is refused with 409 `thread-ended`, and a
+/// deleted one with 410 `gone`; nothing is posted.
 #[utoipa::path(post, path = "/threads/{tid}/messages", tag = "messages",
     params(("tid" = Uuid, Path, description = "Thread id")),
     request_body = CreateMessage,
@@ -1810,6 +1815,7 @@ pub fn list_messages() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
+        (status = 410, response = Gone),
     ))]
 pub fn post_message() {}
 
@@ -2686,6 +2692,9 @@ pub fn list_member_skills() {}
 pub fn remove_member_skill() {}
 
 /// Require a skill on a thread
+///
+/// A required skill steers dispatch, so a closed or archived thread refuses it
+/// with 409 `thread-ended`, and a deleted one with 410 `gone`.
 #[utoipa::path(post, path = "/threads/{id}/required-skills", tag = "skills",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = AddSkill,
@@ -2695,6 +2704,8 @@ pub fn remove_member_skill() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 410, response = Gone),
     ))]
 pub fn add_thread_required_skill() {}
 
@@ -2740,6 +2751,11 @@ pub fn remove_thread_required_skill() {}
 pub fn set_thread_result() {}
 
 /// Set a thread's claim footprint
+///
+/// An open thread nobody holds may carry a footprint, which `claim_next` reads
+/// before handing it out. A closed or archived thread is never dispatched
+/// again, so it refuses one with 409 `thread-ended`, and a deleted thread with
+/// 410 `gone`.
 #[utoipa::path(put, path = "/threads/{id}/footprint", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = Footprint,
@@ -2750,6 +2766,7 @@ pub fn set_thread_result() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
+        (status = 410, response = Gone),
     ))]
 pub fn set_thread_footprint() {}
 

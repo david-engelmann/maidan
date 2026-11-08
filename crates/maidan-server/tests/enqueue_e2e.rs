@@ -126,6 +126,10 @@ struct Harness {
     fake: Shared,
     app_bearer: String,
     member_bearer: String,
+    store: Arc<dyn Store>,
+    /// The thread whose result was delivered to pull request 7.
+    thread: maidan_types::ThreadId,
+    bot: maidan_types::MemberId,
 }
 
 async fn token(
@@ -276,6 +280,9 @@ async fn spawn(pull: FakePull) -> Harness {
         fake,
         app_bearer,
         member_bearer,
+        store,
+        thread: thread.id,
+        bot: bot.id,
     }
 }
 
@@ -336,11 +343,13 @@ async fn a_ready_delivered_pull_request_is_labelled_once() {
     assert_eq!(code, StatusCode::OK, "{body}");
     assert_eq!(body["label"], LABEL);
     assert_eq!(body["applied"], json!(true));
+    assert_eq!(body["already"], json!(false));
     assert_eq!(status(&h).await["applied"], json!(true));
 
-    // Again: already labelled, no second write.
+    // Again: already labelled, no second write, and the answer says so.
     let (code, body) = enqueue(&h, &h.app_bearer, REPO).await;
     assert_eq!(code, StatusCode::OK, "{body}");
+    assert_eq!(body["already"], json!(true));
     assert_eq!(body["reason"], "already labelled");
     let posts = h.fake.lock().unwrap().label_posts.clone();
     assert_eq!(posts.len(), 1);
@@ -403,12 +412,37 @@ async fn dequeue_takes_the_label_off_whatever_the_head_now_is() {
     let (code, body) = dequeue(&h).await;
     assert_eq!(code, StatusCode::OK, "{body}");
     assert_eq!(body["applied"], json!(false));
+    assert_eq!(body["already"], json!(false));
     assert_eq!(status(&h).await["applied"], json!(false));
     assert_eq!(h.fake.lock().unwrap().label_deletes.len(), 1);
 
-    // Again: not labelled, no second write.
+    // Again: not labelled, no second write, and the answer says so.
     let (code, body) = dequeue(&h).await;
     assert_eq!(code, StatusCode::OK, "{body}");
+    assert_eq!(body["already"], json!(true));
     assert_eq!(body["reason"], "was not labelled");
     assert_eq!(h.fake.lock().unwrap().label_deletes.len(), 1);
+}
+
+/// A cancelled task's pull request is not queued for merge: the enqueue is
+/// a 409, never an `applied` answer, and GitHub is not written.
+#[tokio::test]
+async fn an_ended_tasks_pull_request_is_refused_409_and_left_unlabelled() {
+    let h = spawn(ready(DELIVERED)).await;
+    h.store
+        .cancel_thread(
+            h.thread,
+            h.bot,
+            "superseded",
+            maidan_types::CancelAuthority::Transition,
+        )
+        .await
+        .unwrap();
+    let (code, body) = enqueue(&h, &h.app_bearer, REPO).await;
+    assert_eq!(code, StatusCode::CONFLICT, "{body}");
+    assert_eq!(
+        body["type"],
+        json!("https://maidan.world/problems/thread-ended")
+    );
+    assert!(h.fake.lock().unwrap().label_posts.is_empty());
 }

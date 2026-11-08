@@ -486,9 +486,15 @@ macro_rules! store_delegations {
                 lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                let stored =
-                    thread_results::set(self.pool(), thread_id, produced_by, lease_id, result)
-                        .await?;
+                let stored = thread_results::set(
+                    self.pool(),
+                    &self.claim_grace,
+                    thread_id,
+                    produced_by,
+                    lease_id,
+                    result,
+                )
+                .await?;
                 $crate::result_metrics::record(result);
                 if let Ok(thread) = threads::get(self.pool(), thread_id).await {
                     $crate::result_metrics::record_claim_duration(
@@ -3043,6 +3049,15 @@ macro_rules! store_delegations {
                 .await
             }
 
+            async fn change_pull_thread(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<ThreadId>, StoreError> {
+                change_metrics::pull_thread(self.pool(), workspace_id, repo, pull_number).await
+            }
+
             async fn mark_change_pull_ready(
                 &self,
                 workspace_id: WorkspaceId,
@@ -3480,7 +3495,15 @@ macro_rules! store_delegations {
                 lease_id: ClaimLeaseId,
                 lease_secs: i64,
             ) -> Result<Thread, StoreError> {
-                threads::renew_claim(self.pool(), thread_id, member_id, lease_id, lease_secs).await
+                threads::renew_claim(
+                    self.pool(),
+                    &self.claim_grace,
+                    thread_id,
+                    member_id,
+                    lease_id,
+                    lease_secs,
+                )
+                .await
             }
 
             async fn acknowledge_claim(

@@ -43,6 +43,10 @@ pub struct ThreadCancellation {
 pub struct CancelledThread {
     pub thread: Thread,
     pub cancellation: ThreadCancellation,
+    /// `true` when the thread was cancelled before this call: nothing
+    /// changed, and `cancellation` is the first cancel's record. `false` on
+    /// the cancel that closed it.
+    pub replayed: bool,
 }
 
 /// What a cancel did.

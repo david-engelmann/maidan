@@ -186,9 +186,17 @@ async fn a_lapsed_lease_is_held_through_the_grace_and_reaped_after_it(store: &dy
         .await
         .expect("the result is not refused with ClaimLost");
 
-    // The grace ends: the lease nobody renewed is reaped, the renewed one is
-    // live and left alone.
+    // The grace ends: the lease nobody renewed is lost at once, before the
+    // reaper reaches it; then it is reaped, and the renewed one is live and
+    // left alone.
     end_grace(store);
+    let late = store
+        .renew_claim(gone.id, q.holder, gone.claim_lease_id.unwrap(), 300)
+        .await;
+    assert!(
+        matches!(late, Err(StoreError::ClaimLost(_))),
+        "an expired lease does not renew once the grace ends: {late:?}"
+    );
     let events = store.reap_expired_claims(Utc::now(), 100).await.unwrap();
     assert_eq!(
         events

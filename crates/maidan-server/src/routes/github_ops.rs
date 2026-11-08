@@ -60,8 +60,37 @@ impl MarkReadyGuardPass {
 #[derive(Debug)]
 pub enum MarkReadyGuard {
     Refused(String),
+    /// The task whose work opened the pull request is closed, archived or
+    /// gone: [`maidan_store::StoreError::Ended`] or
+    /// [`maidan_store::StoreError::Gone`], answered 409 or 410.
+    ThreadEnded(maidan_store::StoreError),
     Store(maidan_store::StoreError),
     Github(GithubError),
+}
+
+/// Refuse a merge-path action on a pull request whose task has ended: a
+/// cancelled or abandoned task's pull request must not move on as if the
+/// work still counted. A pull request the change flow does not track has no
+/// task to read, and the other guards decide.
+pub(super) async fn refuse_ended_task(
+    store: &dyn maidan_store::Store,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+    what: &str,
+) -> Result<(), MarkReadyGuard> {
+    let Some(thread_id) = store
+        .change_pull_thread(workspace_id, repo, pull_number)
+        .await
+        .map_err(MarkReadyGuard::Store)?
+    else {
+        return Ok(());
+    };
+    let thread = store
+        .get_thread(thread_id)
+        .await
+        .map_err(MarkReadyGuard::Store)?;
+    maidan_store::thread_liveness::refuse_ended(&thread, what).map_err(MarkReadyGuard::ThreadEnded)
 }
 
 /// The one guard path for the mark-ready flip (Decisions, 2026-10-06): a
@@ -86,6 +115,14 @@ pub async fn flip_pull_ready_guarded(
     repo: &str,
     pull_number: i64,
 ) -> Result<MarkReadyOutcome, MarkReadyGuard> {
+    refuse_ended_task(
+        store,
+        workspace_id,
+        repo,
+        pull_number,
+        "marking its pull request ready",
+    )
+    .await?;
     let brief = git
         .pull_brief(repo, pull_number)
         .await
@@ -353,6 +390,21 @@ pub async fn mark_pull_ready(
             )
             .await;
             return Err(ApiError::Forbidden(reason));
+        }
+        Err(MarkReadyGuard::ThreadEnded(err)) => {
+            let reason = err.to_string();
+            audit_mark_ready(
+                &state,
+                &auth,
+                &repo,
+                pull_number,
+                None,
+                None,
+                "refused",
+                Some(&reason),
+            )
+            .await;
+            return Err(err.into());
         }
         Err(MarkReadyGuard::Store(err)) => {
             let reason = format!("allowlist check failed: {err}");

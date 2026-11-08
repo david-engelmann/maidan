@@ -198,7 +198,7 @@ async fn a_restarted_claimant_releases_only_its_own_live_claims(store: &dyn Stor
     // The old process is fenced out of what it held.
     assert!(matches!(
         store.renew_claim(second, a, a_second_lease, 60).await,
-        Err(StoreError::NotFound)
+        Err(StoreError::ClaimLost(_))
     ));
     assert!(matches!(
         store

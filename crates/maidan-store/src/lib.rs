@@ -181,6 +181,7 @@ pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod thread_access;
+pub mod thread_liveness;
 mod thread_results;
 pub mod trace;
 pub mod usage_meters;

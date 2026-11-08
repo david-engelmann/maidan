@@ -1472,8 +1472,9 @@ struct RenewClaimArgs {
 /// Extend a claimed thread's lease (heartbeat), only for the current assignee
 /// holding the matching fencing token. `claim_lease_id` is the value from the
 /// claiming response's `Thread.claim_lease_id`; a stale holder presents an
-/// outdated token and is rejected. Thread access is enforced pre-dispatch (the
-/// `thread_id` arg).
+/// outdated token, or one whose lease expired, and is refused with
+/// [`crate::error::CLAIM_LOST_CODE`]. Thread access is enforced pre-dispatch
+/// (the `thread_id` arg).
 pub(super) async fn renew_claim(
     server: &crate::server::McpServer,
     auth: &AuthContext,

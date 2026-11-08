@@ -25,6 +25,10 @@ pub async fn post_message(
     // `resolve_thread_context` + `ensure_workspace` + `ensure_thread_access`).
     let ctx =
         maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
+    // A post to a deleted thread is 410 and one to an archived thread 409,
+    // never a 201 nobody will read. A closed thread still takes messages:
+    // people discuss the work after it closes.
+    maidan_store::thread_liveness::refuse_post(&state.store.get_thread(ctx.thread_id).await?)?;
     // A content-only post derives its searchable `body` from the blocks; an
     // explicit `body` is respected verbatim.
     let content = body.content.clone();

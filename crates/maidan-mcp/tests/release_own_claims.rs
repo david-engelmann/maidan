@@ -200,7 +200,7 @@ async fn a_restarted_claimant_releases_only_its_own_claims_in_its_own_workspace(
         )
         .await;
     assert!(
-        matches!(renew, Err(McpError::NotFound)),
+        matches!(renew, Err(McpError::ClaimLost(_))),
         "the stale lease must not renew, got {renew:?}"
     );
 }

@@ -1318,30 +1318,62 @@ pub async fn report_stalled_claims(
     Ok(events)
 }
 
-/// Extend a claim's lease (heartbeat), only for the current assignee.
-/// `NotFound` if the thread is gone or the caller isn't the holder.
+/// Extend a claim's lease (heartbeat), only for the current assignee whose
+/// lease is still live. A lease that expired is lost even before the reaper
+/// frees it: `claim_next` may already have handed the thread on, so renewing
+/// it would let two members believe they hold it. `NotFound` if the thread
+/// does not exist; `ClaimLost` if the caller does not hold it under a live
+/// `lease_id`.
 pub async fn renew_claim(
     pool: &PgPool,
+    grace: &ClaimGrace,
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
     lease_secs: i64,
 ) -> Result<Thread, StoreError> {
-    let expires = chrono::Utc::now() + chrono::Duration::seconds(lease_secs);
+    let now = chrono::Utc::now();
+    let expires = now + chrono::Duration::seconds(lease_secs);
+    // The deadline is compared with the clock `claim_next` reads to call it
+    // lapsed (the app clock, through the boot grace), so the two never both
+    // see the same lease as theirs.
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignment_expires_at = $1, updated_at = $5
          WHERE id = $2 AND assignee_id = $3 AND claim_lease_id = $4 AND tombstoned_at IS NULL
+           AND (assignment_expires_at IS NULL OR assignment_expires_at >= $6)
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(expires)
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
-    .bind(chrono::Utc::now())
+    .bind(now)
+    .bind(grace.lease_clock(now))
     .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    .await?;
+    match row {
+        Some(row) => row_to_thread(&row),
+        None => Err(fence_refusal(pool, thread_id, lease_id).await?),
+    }
+}
+
+/// Why a claim-fenced write found no row: the thread does not exist, or the
+/// caller's lease is not its live claim.
+async fn fence_refusal(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    lease_id: ClaimLeaseId,
+) -> Result<StoreError, StoreError> {
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM maidan_threads WHERE id = $1)")
+            .bind(thread_id.0)
+            .fetch_one(pool)
+            .await?;
+    Ok(if exists {
+        crate::thread_results::claim_lost(lease_id)
+    } else {
+        StoreError::NotFound
+    })
 }
 
 /// Stamp the working clock: the current holder acknowledges the claim and

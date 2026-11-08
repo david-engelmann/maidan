@@ -31,6 +31,16 @@
         },
         "description": "The caller is authenticated but lacks the capability or access this needs."
       },
+      "Gone": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        },
+        "description": "The thread this request aims at is gone (type `problems/gone`); nothing was written, and it will not come back."
+      },
       "IdempotencyKeyReused": {
         "content": {
           "application/problem+json": {
@@ -1195,13 +1205,18 @@
           "cancellation": {
             "$ref": "#/components/schemas/ThreadCancellation"
           },
+          "replayed": {
+            "description": "`true` when the thread was cancelled before this call: nothing\nchanged, and `cancellation` is the first cancel's record. `false` on\nthe cancel that closed it.",
+            "type": "boolean"
+          },
           "thread": {
             "$ref": "#/components/schemas/Thread"
           }
         },
         "required": [
           "thread",
-          "cancellation"
+          "cancellation",
+          "replayed"
         ],
         "type": "object"
       },
@@ -3120,6 +3135,10 @@
       },
       "EnqueueResponse": {
         "properties": {
+          "already": {
+            "description": "`true` when the pull request was already in the state asked for, so\nthis call changed nothing: an enqueue of a pull request that already\ncarried the label, or a dequeue of one that did not. Always `false`\non a status read.",
+            "type": "boolean"
+          },
           "applied": {
             "description": "Whether the pull request carries the label now.",
             "type": "boolean"
@@ -3142,7 +3161,8 @@
         "required": [
           "number",
           "label",
-          "applied"
+          "applied",
+          "already"
         ],
         "type": "object"
       },
@@ -21959,7 +21979,7 @@
                 }
               }
             },
-            "description": "The label is off; `reason` says when it was not on"
+            "description": "The label is off; `already` and `reason` say when it was not on"
           },
           "400": {
             "content": {
@@ -22150,7 +22170,7 @@
                 }
               }
             },
-            "description": "The pull request carries the merge-queue label"
+            "description": "The pull request carries the merge-queue label; `already` says it carried it before this call, which changed nothing"
           },
           "400": {
             "content": {
@@ -22186,7 +22206,24 @@
             "description": "No such pull request"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The pull request's task is closed or archived (type `thread-ended`)"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The pull request's task is gone (type `gone`)"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -22299,7 +22336,24 @@
             "description": "No such pull request"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The pull request's task is closed or archived (type `thread-ended`)"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The pull request's task is gone (type `gone`)"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -25103,7 +25157,7 @@
     },
     "/threads/{id}/cancel": {
       "post": {
-        "description": "Closes the task without its work being done, parks it from dispatch with the\nreason, ends any live claim (the holder's next renew is refused) and posts\nthe reason on the thread. Needs `workspace:write`; with it a caller may\ncancel a thread it created, and with `thread:transition` as well any thread\nit can reach. A repeat answers 200 with the first cancel.",
+        "description": "Closes the task without its work being done, parks it from dispatch with the\nreason, ends any live claim (the holder's next renew is refused) and posts\nthe reason on the thread. Needs `workspace:write`; with it a caller may\ncancel a thread it created, and with `thread:transition` as well any thread\nit can reach. A repeat answers 200 with the first cancel and `replayed:\ntrue`, and changes nothing.",
         "operationId": "cancel_thread",
         "parameters": [
           {
@@ -25442,6 +25496,7 @@
     },
     "/threads/{id}/claim/renew": {
       "post": {
+        "description": "Only the holder of the live lease renews. A lease that expired is lost,\neven before the reaper frees it or another claimer takes the thread, as is\none that was taken over or released: 409 `claim-lost`, and the caller\nshould stop the work.",
         "operationId": "renew_claim",
         "parameters": [
           {
@@ -26897,6 +26952,7 @@
         ]
       },
       "put": {
+        "description": "An open thread nobody holds may carry a footprint, which `claim_next` reads\nbefore handing it out. A closed or archived thread is never dispatched\nagain, so it refuses one with 409 `thread-ended`, and a deleted thread with\n410 `gone`.",
         "operationId": "set_thread_footprint",
         "parameters": [
           {
@@ -26963,6 +27019,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -29011,6 +29070,7 @@
         ]
       },
       "post": {
+        "description": "A required skill steers dispatch, so a closed or archived thread refuses it\nwith 409 `thread-ended`, and a deleted one with 410 `gone`.",
         "operationId": "add_thread_required_skill",
         "parameters": [
           {
@@ -29063,6 +29123,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -31259,6 +31322,7 @@
         ]
       },
       "post": {
+        "description": "A closed thread still takes messages, so people can discuss the work after\nit closes. An archived thread is refused with 409 `thread-ended`, and a\ndeleted one with 410 `gone`; nothing is posted.",
         "operationId": "post_message",
         "parameters": [
           {
@@ -31318,6 +31382,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"

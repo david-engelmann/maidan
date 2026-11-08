@@ -254,6 +254,9 @@ mod event_emission_e2e;
 #[path = "../event_log_channel_access_e2e.rs"]
 mod event_log_channel_access_e2e;
 
+#[path = "../explicit_delivery_states_e2e.rs"]
+mod explicit_delivery_states_e2e;
+
 #[path = "../explorer_e2e.rs"]
 mod explorer_e2e;
 

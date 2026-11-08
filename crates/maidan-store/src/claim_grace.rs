@@ -9,10 +9,11 @@
 //! So for a while after the server starts no lease counts as lapsed: the
 //! reaper frees none (`reap_expired_claims` returns nothing), `claim_next`
 //! takes none over, and the queue counts agree with `claim_next`. Renewal
-//! and the result fence never read the clock, only the holder and its
-//! fencing token, so a holder that comes back within the grace renews and
-//! finishes as if the outage had not happened. A holder that never comes
-//! back loses its claim when the grace ends.
+//! and the result fence read the same lease clock, so a holder that comes
+//! back within the grace renews and finishes as if the outage had not
+//! happened. A holder that never comes back loses its claim when the grace
+//! ends: from then on its lapsed lease is refused (`ClaimLost`) whether or
+//! not the reaper or another claimer has reached it yet.
 //!
 //! The grace is this process's: each replica holds from its own start, and
 //! nothing is stored.

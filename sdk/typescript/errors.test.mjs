@@ -46,6 +46,8 @@ const SERVER_TYPES = [
   "footprint-conflict",
   "plan-conflict",
   "claim-lost",
+  "thread-ended",
+  "gone",
 ];
 
 test("every problem type the server documents has its own error class", () => {
