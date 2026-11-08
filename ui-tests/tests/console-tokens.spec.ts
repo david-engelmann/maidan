@@ -115,8 +115,9 @@ test.describe("a rotation racing a sign-out", () => {
   // The confirm button and the Preferences view animate in, and a click on a
   // moving target waits for it to settle, with no action timeout, as long as
   // the test lasts. Reduced motion holds them still, and the action timeout
-  // makes a click that still cannot land fail on its own line.
-  test.use({ reducedMotion: "reduce", actionTimeout: 8_000 });
+  // makes a click that still cannot land fail on its own line. The trace
+  // keeps the failed attempt, which the retry would otherwise replace.
+  test.use({ reducedMotion: "reduce", actionTimeout: 8_000, trace: "retain-on-failure" });
 
   test("a rotation that lands after the page signed out does not sign it back in", async ({ page, request }) => {
     const own = await mint(request, `stale-${Date.now()}`, ["workspace:read", "token:admin"]);

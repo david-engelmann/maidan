@@ -1472,10 +1472,15 @@ jobs:
       - name: run playwright
         working-directory: ui-tests
         run: npx playwright test
-      - name: upload report on failure
-        if: failure()
+      # Also when a retry passed: a flaky test's failed attempt is the only
+      # record of what hung, and retries otherwise throw it away (#2126). A
+      # failed attempt leaves a screenshot, so a clean run uploads nothing.
+      - name: upload report on a failed attempt
+        if: ${{ !cancelled() && hashFiles('ui-tests/test-results/**/*.png') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: ui-tests/playwright-report/
+          path: |
+            ui-tests/playwright-report/
+            ui-tests/test-results/
           retention-days: 7
