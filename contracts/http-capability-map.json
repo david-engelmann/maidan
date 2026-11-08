@@ -912,6 +912,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/workspaces/{id}/claims/release-own",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{id}/deferred",
     "capability": "workspace:read",

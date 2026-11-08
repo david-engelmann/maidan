@@ -1557,13 +1557,6 @@ pub(super) async fn release_claim(
     Ok(content_json(&thread))
 }
 
-/// The note a restarted claimant's releases carry when it gives none.
-const RESTART_RELEASE_NOTE: &str = "the claimant restarted";
-
-/// The longest release note, as an approval note: it lands on every released
-/// thread's assignment event.
-const MAX_RELEASE_NOTE_CHARS: usize = 2000;
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReleaseOwnClaimsArgs {
@@ -1589,15 +1582,7 @@ pub(super) async fn release_own_claims(
     // Also checked before dispatch; repeated so the handler never acts on a
     // workspace the token was not minted for, whoever calls it.
     auth.ensure_workspace(workspace_id)?;
-    let note = match a.note {
-        Some(note) if note.chars().count() > MAX_RELEASE_NOTE_CHARS => {
-            return Err(McpError::InvalidParams(format!(
-                "note: at most {MAX_RELEASE_NOTE_CHARS} characters"
-            )));
-        }
-        Some(note) if !note.trim().is_empty() => note,
-        _ => RESTART_RELEASE_NOTE.to_string(),
-    };
+    let note = release_note(a.note).map_err(McpError::InvalidParams)?;
     let released = server
         .store
         .release_member_claims_with_events(workspace_id, auth.member_id, Some(note))
@@ -1607,7 +1592,9 @@ pub(super) async fn release_own_claims(
         server.publish_stored(stored).await;
         thread_ids.push(thread.id);
     }
-    Ok(content_json(&json!({ "released": thread_ids })))
+    Ok(content_json(&ReleasedClaims {
+        released: thread_ids,
+    }))
 }
 
 #[derive(Deserialize)]

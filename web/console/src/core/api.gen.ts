@@ -290,6 +290,8 @@ export type ReindexJob = { embedding_model: string; error?: string | null; faile
 export type ReindexJobStatus = "running" | "completed" | "failed";
 export type RelationKind = string;
 export type ReleaseClaim = { claim_lease_id: string; };
+export type ReleasedClaims = { released: ThreadId[]; };
+export type ReleaseOwnClaims = { note?: string | null; };
 export type RemoveReaction = { emoji: string; };
 export type RenameThread = { title: string; };
 export type RenameWorkspace = { name?: string; };
@@ -822,6 +824,7 @@ export type ApiRoute =
   | "POST /workspaces"
   | "POST /workspaces/export/verify"
   | "POST /workspaces/import"
+  | "POST /workspaces/{id}/claims/release-own"
   | "POST /workspaces/{id}/legal-holds"
   | "POST /workspaces/{id}/pull-watches"
   | "POST /workspaces/{id}/purge"

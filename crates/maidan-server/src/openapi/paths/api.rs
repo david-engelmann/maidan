@@ -2878,6 +2878,18 @@ pub fn list_workspace_threads() {}
     ))]
 pub fn list_active_claims() {}
 
+/// Release every live claim you hold in the workspace
+#[utoipa::path(post, path = "/workspaces/{id}/claims/release-own", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = ReleaseOwnClaims,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ReleasedClaims, description = "The calling member's live leased claims in the workspace, released back to the queue"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn release_own_claims() {}
+
 /// List the threads the claim queue is holding back, and why
 #[utoipa::path(get, path = "/workspaces/{id}/deferred", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id")),
