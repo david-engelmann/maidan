@@ -2,40 +2,55 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// WCAG 1.4.11: a status dot is a graphic that carries meaning (offline, open),
-// so it needs 3:1 against every surface it sits on, in light and in dark.
+// WCAG AA for the pairs every screen is made of, in both themes: body and
+// muted text on each surface (4.5:1), status ink used as text (4.5:1), and the
+// status dots that carry meaning as a graphic (1.4.11, 3:1).
 
 const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-function darkRanges(): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  for (const m of css.matchAll(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{/g)) {
-    let depth = 1;
-    let i = (m.index ?? 0) + m[0].length;
-    for (; i < css.length && depth > 0; i++) depth += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
-    out.push([m.index ?? 0, i]);
+/** Top-level rules as [selector, body], skipping every at-rule block (media, print, keyframes). */
+export function topLevelRules(source: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  let depth = 0;
+  let head = "";
+  let body = "";
+  let atRule = false;
+  for (const c of source) {
+    if (c === "{") {
+      if (depth === 0) {
+        atRule = head.trim().startsWith("@");
+        body = "";
+      } else if (depth === 1 && !atRule) body += c;
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        if (!atRule) out.push([head.trim(), body]);
+        head = "";
+      }
+    } else if (depth === 0) {
+      head += c;
+      if (c === ";") head = "";
+    } else if (!atRule) body += c;
   }
   return out;
 }
 
-function depthAt(at: number): number {
-  let depth = 0;
-  for (let i = 0; i < at; i++) depth += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
-  return depth;
+/** Whether a rule's selector list reaches <html data-theme={scheme}>. */
+function reachesRoot(selector: string, scheme: "light" | "dark"): boolean {
+  return selector.split(",").some((s) => {
+    const part = s.trim();
+    return part === ":root" || part === `:root[data-theme="${scheme}"]`;
+  });
 }
 
-// Light is the top-level :root blocks; dark adds the :root blocks inside a
-// prefers-color-scheme: dark query. Print and other media are left out.
+// The cascade on <html data-theme={scheme}>: every top-level :root rule that
+// reaches it, in source order, the later one winning.
 export function tokens(scheme: "light" | "dark"): Map<string, string> {
-  const dark = darkRanges();
   const out = new Map<string, string>();
-  for (const pass of scheme === "light" ? [false] : [false, true]) {
-    for (const b of css.matchAll(/:root\s*\{([^}]*)\}/g)) {
-      const at = b.index ?? 0;
-      const inDark = dark.some(([s, e]) => at > s && at < e);
-      if (pass ? !inDark : depthAt(at) !== 0) continue;
-      for (const d of b[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) out.set(d[1], d[2].trim());
-    }
+  for (const [selector, body] of topLevelRules(css)) {
+    if (!reachesRoot(selector, scheme)) continue;
+    for (const d of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) out.set(d[1], d[2].trim());
   }
   return out;
 }
@@ -56,27 +71,46 @@ export function ratio(a: string, b: string): number {
   return (x + 0.05) / (y + 0.05);
 }
 
-for (const scheme of ["light", "dark"] as const) {
-  test(`${scheme}: idle status dots reach 3:1 on every surface`, () => {
-    const t = tokens(scheme);
-    for (const bg of ["--paper", "--paper-2", "--card", "--elev-2"]) {
-      const r = ratio(hex(t, "--idle"), hex(t, bg));
-      assert.ok(r >= 3, `--idle on ${bg} is ${r.toFixed(2)}:1`);
-    }
-  });
+const SURFACES = ["--paper", "--paper-2", "--card", "--elev-1", "--elev-2", "--elev-3"];
+
+function holds(scheme: "light" | "dark", fgs: string[], bgs: string[], min: number): string[] {
+  const t = tokens(scheme);
+  return fgs.flatMap((fg) =>
+    bgs.map((bg) => [fg, bg, ratio(hex(t, fg), hex(t, bg))] as const).filter(([, , r]) => r < min).map(([f, b, r]) => `${f} on ${b} is ${r.toFixed(2)}:1`),
+  );
 }
 
 for (const scheme of ["light", "dark"] as const) {
-  test(`${scheme}: vote ink reaches 4.5:1 on every surface a vote sits on`, () => {
-    const t = tokens(scheme);
-    for (const fg of ["--vote-yes", "--vote-no"]) {
-      for (const bg of ["--paper", "--paper-2", "--card", "--elev-2", "--elev-3"]) {
-        const r = ratio(hex(t, fg), hex(t, bg));
-        assert.ok(r >= 4.5, `${fg} on ${bg} is ${r.toFixed(2)}:1`);
-      }
-    }
+  test(`${scheme}: text and muted text reach 4.5:1 on every surface`, () => {
+    assert.deepEqual(holds(scheme, ["--ink", "--muted"], SURFACES, 4.5), []);
+  });
+
+  test(`${scheme}: status ink used as text reaches 4.5:1 on every surface`, () => {
+    assert.deepEqual(holds(scheme, ["--signal-ink", "--ok", "--danger", "--review", "--vote-yes", "--vote-no"], SURFACES, 4.5), []);
+  });
+
+  test(`${scheme}: idle status dots reach 3:1 on every surface`, () => {
+    assert.deepEqual(holds(scheme, ["--idle"], SURFACES, 3), []);
+  });
+
+  test(`${scheme}: the primary action, toasts and avatars keep their label at 4.5:1`, () => {
+    assert.deepEqual(
+      [
+        ...holds(scheme, ["--primary-ink"], ["--primary-flat"], 4.5),
+        ...holds(scheme, ["--toast-ink"], ["--toast-bg"], 4.5),
+        ...holds(scheme, ["--avatar-agent-ink"], ["--avatar-agent"], 4.5),
+        ...holds(scheme, ["--avatar-human-ink"], ["--avatar-human"], 4.5),
+      ],
+      [],
+    );
   });
 }
+
+test("dark surfaces step up: page, then each elevation lighter than the last", () => {
+  const t = tokens("dark");
+  const steps = ["--paper", "--paper-2", "--elev-1", "--elev-2", "--elev-3"].map((n) => hex(t, n));
+  for (let i = 1; i < steps.length; i++) assert.ok(ratio(steps[i], "#000000") > ratio(steps[i - 1], "#000000"), `${steps[i]} is not above ${steps[i - 1]}`);
+});
 
 test("the offline pip, the open state dot and the live dot use --idle", () => {
   for (const sel of [".live .dot", ".pip", ".state-dot"]) {
@@ -84,4 +118,16 @@ test("the offline pip, the open state dot and the live dot use --idle", () => {
     assert.ok(rule, sel);
     assert.match(rule[2], /background:\s*var\(--idle\)/, sel);
   }
+});
+
+test("print keeps status and vote ink readable on white paper", () => {
+  // Printers drop backgrounds; the dark theme's bright status ink on white was 1.9:1.
+  const at = css.indexOf("@media print");
+  const body = css.slice(css.indexOf("{", css.indexOf(":root", at)) + 1, css.indexOf("}", css.indexOf(":root", at)));
+  const t = new Map([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((d) => [d[1], d[2].trim()] as [string, string]));
+  const short = ["--ink", "--muted", "--signal-ink", "--ok", "--danger", "--review", "--vote-yes", "--vote-no"]
+    .map((n) => [n, t.get(n) ?? "missing"] as const)
+    .filter(([, v]) => !/^#[0-9a-f]{3,6}$/i.test(v) || ratio(v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v, "#ffffff") < 4.5)
+    .map(([n, v]) => `${n}: ${v}`);
+  assert.deepEqual(short, []);
 });

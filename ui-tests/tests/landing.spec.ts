@@ -58,6 +58,22 @@ test("the page loads without the check script and has no serious accessibility g
   expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 });
 
+test("the landing is dark by default and takes the console's stored Light", async ({ page }) => {
+  // /ui/theme.js is the console's own boot script, so one stored choice
+  // themes both, set before the first paint.
+  await openLanding(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS("color", "rgb(236, 235, 231)");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0c0d0f");
+  await page.evaluate(() => window.localStorage.setItem("maidan_console_theme", "light"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("body")).toHaveCSS("color", "rgb(21, 20, 17)");
+  const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(scan.violations.map((v) => `light ${v.id}: ${v.help}`)).toEqual([]);
+  await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
+});
+
 test("the example tabs move with the keyboard and wrap", async ({ page }) => {
   await openLanding(page);
   const claude = page.locator("#dev-tab-claude");

@@ -2,7 +2,7 @@
 // fuzzy match, plus two-key "g then letter" jumps between places.
 import { ROUTES, type RouteId } from "./router.ts";
 
-export type CommandGroup = "Go to" | "Actions" | "Channels" | "People" | "Messages" | "Tasks & messages";
+export type CommandGroup = "Go to" | "Actions" | "Appearance" | "Channels" | "People" | "Messages" | "Tasks & messages";
 
 export type Command = { id: string; title: string; hint?: string; group: CommandGroup; keys?: string[]; run: () => void };
 

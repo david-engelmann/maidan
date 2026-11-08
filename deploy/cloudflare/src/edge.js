@@ -269,8 +269,8 @@ export function problemPage(problem, requestId) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${escapeHtml(title)} · Maidan</title>
-<meta name="color-scheme" content="light">
-<meta name="theme-color" content="#f2eee6">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0d0f">
 <link rel="stylesheet" href="/site.css">
 </head>
 <body>

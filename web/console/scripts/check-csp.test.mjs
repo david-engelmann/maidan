@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cspViolations, missingPreloads } from "./check-csp.mjs";
+import { cspViolations, missingPreloads, themeLoadsLate } from "./check-csp.mjs";
 
 test("an external module script and stylesheet pass", () => {
   const html = '<link rel="stylesheet" href="/ui/style.css"><script type="module" crossorigin src="/ui/app.js"></script>';
@@ -27,4 +27,13 @@ test("every chunk the entry imports must be preloaded", () => {
   const html = '<script type="module" src="/x/app.js"></script><link rel="modulepreload" crossorigin href="/x/vendor.js">';
   assert.deepEqual(missingPreloads(html, entry, "/x/"), ["extra.js"]);
   assert.deepEqual(missingPreloads(html + '<link rel="modulepreload" href="/x/extra.js">', entry, "/x/"), []);
+});
+
+test("the theme script must load, plainly, before the stylesheet", () => {
+  const sheet = '<link rel="stylesheet" href="/ui/style.css">';
+  const boot = '<script src="/ui/theme.js"></script>';
+  assert.equal(themeLoadsLate(boot + sheet, "/ui/"), null);
+  assert.match(themeLoadsLate(sheet + boot, "/ui/") ?? "", /stylesheet before/);
+  assert.match(themeLoadsLate(sheet, "/ui/") ?? "", /does not load/);
+  assert.match(themeLoadsLate('<script type="module" src="/ui/theme.js"></script>' + sheet, "/ui/") ?? "", /does not load/);
 });

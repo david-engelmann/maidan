@@ -35,7 +35,9 @@ npm run report        # open the HTML report after a run
 
 `npm run capture` writes the README and docs screenshots into
 `docs/assets/screens/` from `crates/maidan-server/examples/capture_server.rs`
-(`capture.config.ts`: 1440 px wide, light mode, a fixed clock). Each shot
+(`capture.config.ts`: 1440 px wide, a fixed clock). Each screen is shot in the
+light theme under the name the README links and in the dark theme, the
+console's default, with a `-dark` suffix. Each shot
 asserts what it must show first, so a screen that does not render fails and
 its PNG is not written.
 

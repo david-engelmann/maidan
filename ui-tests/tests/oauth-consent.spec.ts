@@ -147,8 +147,9 @@ test.describe("on a phone", () => {
     });
     await pendingConsent(page, request);
 
-    for (const scheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    // Dark by default; the light palette a page opts into passes as well.
+    for (const scheme of ["dark", "light"] as const) {
+      await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), scheme);
       const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
       expect(scan.violations.map((v) => `${scheme} ${v.id}`)).toEqual([]);
       const order = await new AxeBuilder({ page }).withRules(["heading-order"]).analyze();
@@ -158,13 +159,10 @@ test.describe("on a phone", () => {
       expect(await shortOf44(page, 'button[name="approved"]')).toEqual([]);
       await expect(page.locator("button").first()).toHaveCSS("transition-duration", "0s");
     }
-    const theme = await page.locator('meta[name="theme-color"]').evaluateAll((els) =>
-      els.map((el) => `${el.getAttribute("media")} ${el.getAttribute("content")}`),
-    );
-    expect(theme).toEqual([
-      "(prefers-color-scheme: light) #f2eee6",
-      "(prefers-color-scheme: dark) #121110",
-    ]);
+    const theme = await page.locator('meta[name="theme-color"]').evaluateAll((els) => els.map((el) => el.getAttribute("content")));
+    expect(theme).toEqual(["#0c0d0f"]);
+    await page.evaluate(() => document.documentElement.removeAttribute("data-theme"));
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(236, 235, 231)");
 
     await page.click('button[name="approved"][value="true"]');
     await page.waitForURL(/chrome-error|chromewebdata|client\.example/);
@@ -172,8 +170,9 @@ test.describe("on a phone", () => {
     await expect(page.locator("h1")).toHaveText("Connected apps");
     await expect(page.locator("section.app h2").first()).toBeVisible();
 
-    for (const scheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    // Dark by default; the light palette a page opts into passes as well.
+    for (const scheme of ["dark", "light"] as const) {
+      await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), scheme);
       const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
       expect(scan.violations.map((v) => `${scheme} ${v.id}`)).toEqual([]);
       const order = await new AxeBuilder({ page }).withRules(["heading-order"]).analyze();

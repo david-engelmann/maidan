@@ -10,6 +10,14 @@ const defined = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
 // Set at runtime from script (viewport, keyboard, composer, drag position, font).
 const RUNTIME = new Set(["--vv-top", "--vv-h", "--composer-h", "--kb", "--left", "--font"]);
 
+/** The body of the one palette block for a theme. */
+function palette(scheme: "dark" | "light"): string {
+  const head = scheme === "dark" ? ':root, :root[data-theme="dark"] {' : ':root[data-theme="light"] {';
+  const at = css.indexOf(head);
+  assert.ok(at >= 0, `${scheme} palette block`);
+  return css.slice(at + head.length, css.indexOf("}", at));
+}
+
 test("every corner above 4px comes from the radius scale, in every value of a shorthand", () => {
   // Reading only the first value let `var(--r-lg) 18px 0 0` through. A token
   // with a px fallback counts as a literal too: the fallback drifts from the scale.
@@ -26,16 +34,16 @@ test("every custom property a rule reads is defined or set at runtime", () => {
   assert.deepEqual([...new Set(missing)], []);
 });
 
-test("the review colour is a token with a dark twin, not a fallback literal", () => {
+test("the review colour is a token with a twin in each palette, not a fallback literal", () => {
   assert.ok(!/var\(--review,/.test(css));
-  const dark = css.slice(css.indexOf("prefers-color-scheme: dark"));
-  assert.match(dark, /--review:\s*#/);
+  assert.match(palette("dark"), /--review:\s*#/);
+  assert.match(palette("light"), /--review:\s*#/);
 });
 
 test("in dark mode a board card sits a step above its lane, and the lane above the page", () => {
-  const dark = css.slice(css.lastIndexOf("@media (prefers-color-scheme: dark)"));
-  const bg = (sel: string) => dark.match(new RegExp(`${sel.replace(/[.]/g, "\\.")} \\{[^}]*background: var\\((--[\\w-]+)\\)`))?.[1];
-  assert.equal(bg(".lanes.wide .lane"), "--elev-1");
+  const bg = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.]/g, "\\.")} \\{[^}]*background: var\\((--[\\w-]+)\\)`))?.[1];
+  assert.equal(bg(".lanes.wide .lane"), "--lane-bg");
+  assert.match(palette("dark"), /--lane-bg: var\(--elev-1\);/);
   assert.equal(bg(".task"), "--elev-2");
 });
 
@@ -83,10 +91,30 @@ test("one button style: .button and .btn share the height and the pill shape", (
   }
 });
 
-test("dark mode sets its tokens in one :root block, not two that disagree", () => {
-  const blocks = [...css.matchAll(/@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/g)];
-  assert.equal(blocks.length, 1);
-  assert.match(blocks[0][1], /--elev-1:/);
+test("each theme sets its palette in one block, and the system choice is the script's, not a media query's", () => {
+  // A second prefers-color-scheme block once fought the data-theme one; the
+  // script resolves System to dark or light before the first paint.
+  assert.equal(css.match(/:root, :root\[data-theme="dark"\] \{/g)?.length, 1);
+  assert.equal(css.match(/:root\[data-theme="light"\] \{/g)?.length, 1);
+  assert.doesNotMatch(css, /prefers-color-scheme/);
+  assert.match(palette("dark"), /color-scheme: dark;/);
+  assert.match(palette("light"), /color-scheme: light;/);
+});
+
+test("both palettes set the same tokens, so neither theme falls back to the other's colour", () => {
+  const names = (scheme: "dark" | "light") => [...palette(scheme).matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]).sort();
+  assert.deepEqual(names("light"), names("dark"));
+});
+
+test("no colour is written outside the token blocks", () => {
+  // A hard-coded colour does not change with the theme: the swarm tile's
+  // bright steel stayed bright in dark until every one moved into a token.
+  const rules = css.replace(/(?<=^|[{};])\s*:root[^{]*\{[^}]*\}/g, "");
+  const literals = [...rules.matchAll(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(|\b(?:white|black)\b(?!-)/gi)].map((m) => {
+    const line = rules.slice(0, m.index).split("\n").length;
+    return `${m[0]} near "${rules.split("\n")[line - 1].trim().slice(0, 80)}"`;
+  });
+  assert.deepEqual(literals, []);
 });
 
 test("Activity's Pause and Resume use the shared button style", () => {

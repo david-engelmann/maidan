@@ -1,11 +1,39 @@
 /* Policy pages. No scripts and no inline styles: the Worker CSP is
-   default-src 'none' and style-src 'self'. The materials are the landing's
-   (web/landing/src/styles.css): warm paper, ink, and one signal orange. */
+   default-src 'none' and style-src 'self'. The palettes are the console's
+   (web/console/src/styles.css): graphite and one signal orange by default,
+   the landing's warm paper and ink in light. With no script there is no
+   stored choice to read, so a page is dark unless it sets data-theme. */
 /* The landing's Geist, served by the container at a fixed name. */
 @font-face { font-family: Geist; src: url("/landing/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --safe-top: max(0.7rem, env(safe-area-inset-top));
+  --safe-bot: max(1.1rem, env(safe-area-inset-bottom));
+  --safe-x: max(1.15rem, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0d0f;
+  --page-bg: radial-gradient(1100px 560px at 88% -14%, rgba(255, 112, 52, 0.075), transparent 62%), radial-gradient(900px 640px at -8% 108%, rgba(118, 138, 178, 0.07), transparent 60%), #0c0d0f;
+  --panel: #16171b;
+  --ink: #ecebe7;
+  --muted: #9fa3ab;
+  --faint: #959aa2;
+  --line: rgba(236, 240, 248, 0.09);
+  --signal: #ff6a2b;
+  --signal-ink: #ff9b6e;
+  --danger: #ff6f64;
+  --glass: rgba(12, 13, 15, 0.82);
+  --target: rgba(255, 106, 43, 0.12);
+  --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
+  --primary-ink: #1b0b03;
+  --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
+  --mark-ink: #ff6a2b;
+}
+:root[data-theme="light"] {
   color-scheme: light;
   --bg: #f2eee6;
+  --page-bg: #f2eee6;
   --panel: #e9e4d9;
   --ink: #151411;
   --muted: #5c5850;
@@ -14,13 +42,52 @@
   --signal: #e8501c;
   --signal-ink: #a83a0d;
   --danger: #b4231a;
-  --sans: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --safe-top: max(0.7rem, env(safe-area-inset-top));
-  --safe-bot: max(1.1rem, env(safe-area-inset-bottom));
-  --safe-x: max(1.15rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  --glass: rgba(242, 238, 230, 0.86);
+  --target: rgba(232, 80, 28, 0.1);
+  --primary: #151411;
+  --primary-ink: #f2eee6;
+  --primary-shadow: none;
+  --mark-ink: #151411;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --bg: #f2eee6;
+    --page-bg: #f2eee6;
+    --panel: #e9e4d9;
+    --ink: #151411;
+    --muted: #5c5850;
+    --faint: #59554d;
+    --line: rgba(21, 20, 17, 0.12);
+    --signal: #e8501c;
+    --signal-ink: #a83a0d;
+    --danger: #b4231a;
+    --glass: rgba(242, 238, 230, 0.86);
+    --target: rgba(232, 80, 28, 0.1);
+    --primary: #151411;
+    --primary-ink: #f2eee6;
+    --primary-shadow: none;
+    --mark-ink: #151411;
+  }
+}
+/* Printers drop backgrounds, so a printed page is ink on white. */
+@media print {
+  :root, :root[data-theme] {
+    color-scheme: light;
+    --bg: #fff;
+    --page-bg: #fff;
+    --panel: #fff;
+    --ink: #111;
+    --muted: #444;
+    --faint: #444;
+    --line: #ccc;
+    --signal-ink: #111;
+    --glass: #fff;
+    --mark-ink: #111;
+  }
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 body {
   margin: 0;
   min-height: 100dvh;
@@ -30,7 +97,8 @@ body {
   font-size: 17px;
   line-height: 1.65;
   color: var(--ink);
-  background: var(--bg);
+  background: var(--page-bg);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 :focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
@@ -40,8 +108,8 @@ main:focus:not(:focus-visible) { outline: none; }
   left: var(--safe-x);
   top: var(--safe-top);
   transform: translateY(-160%);
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--primary);
+  color: var(--primary-ink);
   text-decoration: none;
   font-weight: 700;
   padding: 0.5rem 0.75rem;
@@ -67,7 +135,7 @@ main:focus:not(:focus-visible) { outline: none; }
   max-width: none;
   padding-top: calc(var(--safe-top) + 0.35rem);
   padding-bottom: 0.75rem;
-  background: rgba(242, 238, 230, 0.86);
+  background: var(--glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   box-shadow: inset 0 -1px 0 var(--line);
@@ -82,15 +150,16 @@ main:focus:not(:focus-visible) { outline: none; }
   font-weight: 640;
   letter-spacing: -0.04em;
 }
-.mark { width: 1.5rem; height: 1.5rem; color: var(--ink); }
+.mark { width: 1.5rem; height: 1.5rem; color: var(--mark-ink); }
 .signin {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
   padding: 0 0.9rem;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--primary);
+  color: var(--primary-ink);
+  box-shadow: var(--primary-shadow);
   font-size: 0.92rem;
   font-weight: 560;
   text-decoration: none;
@@ -165,7 +234,7 @@ code {
 p code { overflow-wrap: anywhere; }
 /* A problem type's link lands on its row. */
 tr[id], h2[id] { scroll-margin-top: calc(var(--safe-top) + 4.5rem); }
-tr:target td { background: rgba(232, 80, 28, 0.1); }
+tr:target td { background: var(--target); }
 @media (max-width: 40rem) {
   table, thead, tbody, tr, th, td { display: block; }
   thead { display: none; }
@@ -179,6 +248,6 @@ tr:target td { background: rgba(232, 80, 28, 0.1); }
   }
   td { border: 0; padding: 0.18rem 0; }
   td:first-child { font-weight: 650; }
-  tr:target { background: rgba(232, 80, 28, 0.1); }
+  tr:target { background: var(--target); }
   tr:target td { background: transparent; }
 }

@@ -28,6 +28,9 @@ fn build_web(manifest: &Path, name: &str) {
     let web = manifest.join("../../web").join(name);
     let dist = manifest.join("static").join(name).join("dist");
     println!("cargo:rerun-if-changed={}", web.join("src").display());
+    // public/ is copied into dist as it is: the console's theme.js, icons
+    // and manifest live there.
+    println!("cargo:rerun-if-changed={}", web.join("public").display());
     println!(
         "cargo:rerun-if-changed={}",
         web.join("index.html").display()
@@ -84,6 +87,7 @@ fn build_web(manifest: &Path, name: &str) {
 fn source_hash(web: &Path) -> String {
     let mut acc = 0xcbf29ce484222325u64;
     hash_path(&web.join("src"), &mut acc);
+    hash_path(&web.join("public"), &mut acc);
     for name in [
         "index.html",
         "vite.config.ts",

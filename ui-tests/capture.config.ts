@@ -20,7 +20,9 @@ export default defineConfig({
   use: {
     ...devices["Desktop Chrome"],
     baseURL: BASE,
-    // The screenshot bar in docs/UI Design.md: 1440 px wide, light mode.
+    // The screenshot bar in docs/UI Design.md: 1440 px wide. The console's
+    // theme is its own stored choice, which capture.spec.ts sets per shot;
+    // the media scheme only matters to a System choice.
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
     colorScheme: "light",

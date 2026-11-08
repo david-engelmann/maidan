@@ -1,6 +1,7 @@
 //! The look shared by the server-rendered OAuth pages: consent and connected
 //! apps. They are the first Maidan screens a person meets when an outside app
-//! connects, so they carry the console's paper-and-ink tokens and the mark.
+//! connects, so they carry the console's tokens and the mark. Dark, as the
+//! console is by default: with no script, a page cannot read a stored choice.
 //!
 //! The stylesheet is one inline `<style>` element. The page CSP keeps
 //! `style-src 'self'` and admits that element by its SHA-256 alone, so no
@@ -14,14 +15,15 @@ use sha2::{Digest, Sha256};
 use crate::app::OAUTH_PAGE_CSP;
 
 const CSS: &str = r#"
-:root{color-scheme:light dark;--paper:#f2eee6;--card:#faf8f3;--ink:#151411;--muted:#5c5850;--line:rgba(21,20,17,.12);--line-strong:rgba(21,20,17,.22);--hover:rgba(21,20,17,.05);--signal:#e8501c;--danger:#b4231a;--hi:#fdfcf9;--sans:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace;--ring:0 0 0 3px color-mix(in srgb,var(--signal) 35%,transparent)}
-@media (prefers-color-scheme:dark){:root{--paper:#121110;--card:#1a1917;--ink:#e9e5dc;--muted:#9d988e;--line:rgba(233,229,220,.08);--line-strong:rgba(233,229,220,.14);--hover:rgba(236,232,223,.06);--signal:#f06a35;--danger:#f07267;--hi:rgba(255,255,255,.04)}}
+:root,:root[data-theme="dark"]{color-scheme:dark;--paper:#0c0d0f;--card:#16171b;--ink:#ecebe7;--muted:#9fa3ab;--line:rgba(236,240,248,.09);--line-strong:rgba(236,240,248,.16);--hover:rgba(236,240,248,.055);--signal:#ff6a2b;--danger:#ff6f64;--hi:rgba(255,255,255,.055);--mark:#ff6a2b;--primary:linear-gradient(180deg,#ff7b40,#f45a1d);--primary-line:#f45a1d;--primary-ink:#1b0b03;--card-shadow:0 1px 0 var(--hi) inset,0 30px 80px -30px rgba(0,0,0,.9);--page-bg:radial-gradient(900px 480px at 85% -10%,rgba(255,112,52,.08),transparent 62%),#0c0d0f}
+:root[data-theme="light"]{color-scheme:light;--paper:#f2eee6;--card:#faf8f3;--ink:#151411;--muted:#5c5850;--line:rgba(21,20,17,.12);--line-strong:rgba(21,20,17,.22);--hover:rgba(21,20,17,.05);--signal:#e8501c;--danger:#b4231a;--hi:#fdfcf9;--mark:#151411;--primary:#151411;--primary-line:#151411;--primary-ink:#f2eee6;--card-shadow:0 1px 0 var(--hi) inset,0 30px 80px -40px rgba(21,20,17,.45);--page-bg:#f2eee6}
+:root{--sans:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace;--ring:0 0 0 3px color-mix(in srgb,var(--signal) 35%,transparent)}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
-body{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:max(16px, 6vh, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left))}
+body{background:var(--page-bg);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:max(16px, 6vh, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left))}
 .brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.01em;min-height:44px;min-width:44px;padding:8px 12px;margin-bottom:12px;border-radius:999px;color:var(--ink);text-decoration:none}
-.brand svg{width:22px;height:22px}
-main{width:100%;max-width:480px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 0 var(--hi) inset,0 30px 80px -40px rgba(21,20,17,.45);padding:28px}
+.brand svg{width:22px;height:22px;color:var(--mark)}
+main{width:100%;max-width:480px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--card-shadow);padding:28px}
 main.wide{max-width:560px}
 h1{font-size:22px;line-height:1.25;letter-spacing:-.02em;margin:0 0 8px;font-weight:600}
 h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin:24px 0 8px}
@@ -40,7 +42,7 @@ ul.caps code{font:12px var(--mono);color:var(--muted);white-space:nowrap}
 button{flex:1;height:44px;padding:0 18px;border-radius:999px;font:600 15px var(--sans);cursor:pointer;border:1px solid var(--line-strong);background:transparent;color:var(--ink);transition:background .12s}
 button:hover{background:var(--hover)}
 button:focus-visible{outline:none;box-shadow:var(--ring)}
-button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.primary{background:var(--primary);color:var(--primary-ink);border-color:var(--primary-line)}
 button.primary:hover{opacity:.9}
 button.danger{flex:0 0 auto;color:var(--danger)}
 .foot{font-size:13px;color:var(--muted);text-align:center;margin-top:16px}
@@ -79,7 +81,7 @@ pub(super) fn render(title: &str, class: &str, body: &str) -> String {
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f2eee6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)"><meta name="referrer" content="no-referrer"><title>{title} · Maidan</title><style>{CSS}</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#0c0d0f"><meta name="referrer" content="no-referrer"><title>{title} · Maidan</title><style>{CSS}</style></head>
 <body>
 <a class="brand" href="/ui/">{MARK}<span>Maidan</span></a>
 <main class="{class}">

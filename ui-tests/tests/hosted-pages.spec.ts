@@ -96,7 +96,7 @@ test.describe("on a phone", () => {
 
 const SITE_PAGES = ["privacy.html", "problems.html", "support.html", "terms.html", "not-found.html", "unavailable.html"];
 
-test("the hosted pages use warm paper, a working skip link, and pass axe", async ({ page }) => {
+test("the hosted pages are dark by default, have a working skip link, and pass axe in dark and light", async ({ page }) => {
   const files: Record<string, { body: string; type: string }> = {
     "/site.css": { body: text(resolve(SITE, "site.css")), type: "text/css; charset=utf-8" },
   };
@@ -111,8 +111,9 @@ test("the hosted pages use warm paper, a working skip link, and pass axe", async
   for (const name of [...SITE_PAGES.map((n) => `/${n.replace(".html", "")}`), "/problem"]) {
     await page.goto(`${fx.base_url}${name}`);
     await expect(page.locator("main#content")).toBeVisible();
-    await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "light");
-    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f2eee6");
+    await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "dark");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0c0d0f");
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(236, 235, 231)");
     await page.locator(".skip").focus();
     await page.keyboard.press("Enter");
     await expect(page.locator("main#content")).toBeFocused();
@@ -120,6 +121,11 @@ test("the hosted pages use warm paper, a working skip link, and pass axe", async
     // The unavailable page reloads itself on purpose. That refresh is the retry.
     const violations = scan.violations.filter((v) => !(name === "/unavailable" && v.id === "meta-refresh"));
     expect(violations.map((v) => `${name} ${v.id}: ${v.help}`)).toEqual([]);
+    // The light palette a page opts into with data-theme passes as well.
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(21, 20, 17)");
+    const light = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(light.violations.filter((v) => !(name === "/unavailable" && v.id === "meta-refresh")).map((v) => `${name} light ${v.id}: ${v.help}`)).toEqual([]);
   }
 });
 
