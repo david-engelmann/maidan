@@ -119,3 +119,15 @@ test("the offline pip, the open state dot and the live dot use --idle", () => {
     assert.match(rule[2], /background:\s*var\(--idle\)/, sel);
   }
 });
+
+test("print keeps status and vote ink readable on white paper", () => {
+  // Printers drop backgrounds; the dark theme's bright status ink on white was 1.9:1.
+  const at = css.indexOf("@media print");
+  const body = css.slice(css.indexOf("{", css.indexOf(":root", at)) + 1, css.indexOf("}", css.indexOf(":root", at)));
+  const t = new Map([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((d) => [d[1], d[2].trim()] as [string, string]));
+  const short = ["--ink", "--muted", "--signal-ink", "--ok", "--danger", "--review", "--vote-yes", "--vote-no"]
+    .map((n) => [n, t.get(n) ?? "missing"] as const)
+    .filter(([, v]) => !/^#[0-9a-f]{3,6}$/i.test(v) || ratio(v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v, "#ffffff") < 4.5)
+    .map(([n, v]) => `${n}: ${v}`);
+  assert.deepEqual(short, []);
+});

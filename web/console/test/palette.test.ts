@@ -229,3 +229,24 @@ test("one channel is a label and any other count keeps the menu", () => {
   assert.equal(channelControl(0), "menu");
   assert.equal(channelControl(2), "menu");
 });
+
+test("the theme commands are found by a search, not only on an empty palette", () => {
+  const theme = (id: string, title: string) => ({ id, title, group: "Appearance" as const, run: () => {} });
+  const commands = [...routeCommands(() => {}), theme("theme-light", "Light theme"), theme("theme-system", "Match the system theme")];
+  const run = (query: string) =>
+    paletteItems({
+      commands,
+      query,
+      channels: [],
+      people: [],
+      tasks: [],
+      hits: [],
+      me: "me",
+      jumpChannel: () => {},
+      openPerson: () => {},
+      openSelf: () => {},
+      openThread: () => {},
+    }).map((c) => c.id);
+  assert.ok(run("light theme").includes("theme-light"));
+  assert.ok(run("system").includes("theme-system"));
+});

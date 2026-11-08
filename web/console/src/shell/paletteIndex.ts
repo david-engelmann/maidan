@@ -193,6 +193,7 @@ export function paletteItems(input: {
   return [
     ...byGroup(input.commands, q, "Go to"),
     ...byGroup(input.commands, q, "Actions"),
+    ...byGroup(input.commands, q, "Appearance"),
     ...matchNamed(channelCommands(input.channels, input.jumpChannel), q, /^#+/),
     ...matchNamed(peopleCommands(input.people, input.me, input.openPerson, input.openSelf), q, /^@+/),
     ...found,

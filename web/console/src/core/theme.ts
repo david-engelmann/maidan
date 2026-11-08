@@ -82,9 +82,13 @@ export function startTheme(): () => void {
   const onSystem = () => {
     if (getChoice() === "system") applyTheme("system");
   };
+  // Another tab changed the theme (key is ours) or cleared storage (key is
+  // null). Read what is stored now rather than the event's newValue: events
+  // queue, and an older one must not undo a newer choice.
   const onStorage = (e: StorageEvent) => {
-    if (e.key !== THEME_KEY) return;
-    current = parseChoice(e.newValue);
+    if (e.key !== null && e.key !== THEME_KEY) return;
+    if (e.storageArea !== null && e.storageArea !== window.localStorage) return;
+    current = readChoice();
     applyTheme(current);
     for (const fn of listeners) fn();
   };

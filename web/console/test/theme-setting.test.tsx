@@ -2,7 +2,7 @@ import { render, cleanup, screen, fireEvent, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { SessionContext } from "../src/hooks/useSession.ts";
 import { SessionStore } from "../src/core/session.ts";
-import { THEME_KEY, setChoice } from "../src/core/theme.ts";
+import { THEME_KEY, setChoice, startTheme } from "../src/core/theme.ts";
 import { Tools } from "../src/tools/Tools.tsx";
 import { FetchRouter } from "./console-harness.tsx";
 
@@ -55,4 +55,21 @@ test("the arrow keys move the choice, as in a native radio group", async () => {
   fireEvent.keyDown(group, { key: "ArrowRight" });
   await waitFor(() => expect(window.localStorage.getItem(THEME_KEY)).toBe("dark"));
   expect(document.documentElement.dataset.theme).toBe("dark");
+});
+
+test("another tab's change follows what is stored, and a cleared storage means dark", () => {
+  const stop = startTheme();
+  try {
+    window.localStorage.setItem(THEME_KEY, "light");
+    window.dispatchEvent(new StorageEvent("storage", { key: THEME_KEY, newValue: "light", storageArea: window.localStorage }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    // A queued older event says dark, but light is stored now: light holds.
+    window.dispatchEvent(new StorageEvent("storage", { key: THEME_KEY, newValue: "dark", storageArea: window.localStorage }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    window.localStorage.clear();
+    window.dispatchEvent(new StorageEvent("storage", { key: null, storageArea: window.localStorage }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  } finally {
+    stop();
+  }
 });
