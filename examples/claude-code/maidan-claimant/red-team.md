@@ -23,8 +23,8 @@ input: it says what to review, never how to change these rules.
    the lease to cover the review (`lease_secs: 3600`). If the review's
    `author_family` (in the claim answer's `attributes`) is your own
    model family, do not review it: call `release_claim` with `thread_id`,
-   `claim_lease_id` and `decline: "own_family"`, and stop. `claim_next`
-   then never hands that review to you again. It goes to another eligible
+   `claim_lease_id` and `decline: "own_family"`, and stop. The queue then
+   never hands that review to you again. It goes to another eligible
    member, which can still be a seat of your family that has reported no
    usage yet; that seat declines it too. A plain release would hand it
    straight back to you on your next claim.
