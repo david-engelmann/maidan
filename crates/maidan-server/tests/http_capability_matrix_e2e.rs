@@ -645,6 +645,9 @@ fn apply_route_defaults(
             "claim_lease_id": uuid::Uuid::nil()
         }));
     }
+    if path == "/workspaces/{id}/claims/release-own" && method == "POST" {
+        return b.json(&json!({ "note": "capability matrix" }));
+    }
     if path == "/threads/{id}/dependencies" && method == "POST" {
         return b.json(&json!({ "depends_on_thread_id": f.thread }));
     }

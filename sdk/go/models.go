@@ -207,6 +207,12 @@ type ClaimedThread struct {
 	Pin StrongRef `json:"pin"`
 }
 
+// ReleasedClaims is what ReleaseOwnClaims gave back to the queue, in thread
+// id order.
+type ReleasedClaims struct {
+	Released []string `json:"released"`
+}
+
 type ThreadResult struct {
 	ThreadID string `json:"thread_id"`
 	// Result is the producer's JSON as it was set; unmarshal it into your type.

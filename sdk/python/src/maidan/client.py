@@ -37,6 +37,7 @@ from .models import (
     Member,
     Message,
     MintedToken,
+    ReleasedClaims,
     StoredEvent,
     Thread,
     ThreadContext,
@@ -433,6 +434,17 @@ class Client:
             f"/threads/{thread_id}/claim/renew",
             {"claim_lease_id": claim_lease_id, "lease_secs": lease_secs},
         )
+
+    def release_own_claims(self, workspace_id: str, note: Optional[str] = None) -> ReleasedClaims:
+        """POST /workspaces/{id}/claims/release-own — for a waiter that restarted.
+
+        Releases every live claim this token's member holds in the workspace:
+        their ``claim_lease_id`` fencing tokens died with the old process. Call
+        it once before the first claim, and not while another live process
+        shares the token, or that process's claims are released too.
+        """
+        body = {} if note is None else {"note": note}
+        return self._model(ReleasedClaims, "POST", f"/workspaces/{workspace_id}/claims/release-own", body)
 
     def _capture_room_lsn(self, headers: Any) -> None:
         raw = None

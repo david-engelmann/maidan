@@ -1983,6 +1983,37 @@ pub async fn release_claim(
     Ok(Json(thread))
 }
 
+/// Release every live claim the calling member holds in the workspace, for a
+/// claimant that restarted and lost its fencing tokens; the REST twin of MCP
+/// `release_own_claims`. The member is the token's, never a body field, so a
+/// call cannot touch another member's claims, and the workspace must be the
+/// token's. Each release is the one `release_claim` makes (a
+/// `ThreadAssignmentChanged` carrying `note`), fenced by the lease the store
+/// reads in the same transaction.
+pub async fn release_own_claims(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiOptionalJson(body): ApiOptionalJson<ReleaseOwnClaims>,
+) -> ApiResult<Json<ReleasedClaims>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let workspace_id = WorkspaceId(id);
+    ensure_workspace(&auth, workspace_id)?;
+    let note = release_note(body.note).map_err(ApiError::BadRequest)?;
+    let released = state
+        .store
+        .release_member_claims_with_events(workspace_id, auth.member_id, Some(note))
+        .await?;
+    let mut thread_ids = Vec::with_capacity(released.len());
+    for (thread, stored) in released {
+        thread_ids.push(thread.id);
+        publish_stored(&state, stored).await;
+    }
+    Ok(Json(ReleasedClaims {
+        released: thread_ids,
+    }))
+}
+
 /// Add a task-dependency edge: the path thread depends on
 /// `depends_on_thread_id`. Both threads must be in the same workspace and
 /// visible to the caller. `thread:transition` — dependency wiring is a workflow

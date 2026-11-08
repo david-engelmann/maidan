@@ -8052,6 +8052,34 @@
         ],
         "type": "object"
       },
+      "ReleaseOwnClaims": {
+        "additionalProperties": false,
+        "description": "Release every live claim the calling member holds in the workspace, for a\nclaimant that restarted. `note` lands on each release's assignment event.",
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ReleasedClaims": {
+        "description": "The claims a release of the caller's own claims gave back to the queue, in\nthread id order; empty when it held none.",
+        "properties": {
+          "released": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "released"
+        ],
+        "type": "object"
+      },
       "RemoveReaction": {
         "additionalProperties": false,
         "properties": {
@@ -11820,7 +11848,7 @@
         "type": "string"
       },
       "ThreadStatusDeclaration": {
-        "description": "An agent's status declaration on a thread: what it's doing, in one\nsentence. Set by the claim holder or owner via `declare_status`; cleared\non a human response or a superseding declaration.",
+        "description": "An agent's status declaration on a thread: what it's doing, in one\nsentence. Set by the claim holder or owner via `declare_status`; cleared\non a human response, a superseding declaration, or the end of the\ndeclarer's claim (a release or a lapsed lease).",
         "properties": {
           "declared_at": {
             "format": "date-time",
@@ -34323,6 +34351,95 @@
           }
         ],
         "summary": "List a workspace's live claims and their footprints",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/workspaces/{id}/claims/release-own": {
+      "post": {
+        "operationId": "release_own_claims",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseOwnClaims"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasedClaims"
+                }
+              }
+            },
+            "description": "The calling member's live leased claims in the workspace, released back to the queue"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Release every live claim you hold in the workspace",
         "tags": [
           "threads"
         ]

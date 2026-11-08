@@ -3034,7 +3034,7 @@ pub trait AssignmentStore: Send + Sync {
     /// distinct threads (`FOR UPDATE SKIP LOCKED` on Postgres; SQLite
     /// serializes writers). Returns the appended events, oldest deadline
     /// first. During the boot grace ([`MetaStore::claim_grace`]) nothing is
-    /// reaped.
+    /// reaped. A status the dead holder declared is dropped with its claim.
     async fn reap_expired_claims(
         &self,
         now: chrono::DateTime<chrono::Utc>,
@@ -3123,7 +3123,9 @@ pub trait AssignmentStore: Send + Sync {
     /// Release a claim (graceful handoff): the current holder returns the
     /// thread to the queue immediately (e.g. a clean shutdown) rather than
     /// letting the lease lapse. Fenced by `(member_id, lease_id)`. `NotFound`
-    /// if the caller isn't the holder or the token is stale.
+    /// if the caller isn't the holder or the token is stale. A status the
+    /// holder declared on the thread is dropped with the claim; one another
+    /// member declared stays.
     async fn release_claim(
         &self,
         thread_id: ThreadId,
@@ -3143,8 +3145,9 @@ pub trait AssignmentStore: Send + Sync {
     /// Release every live leased claim `member_id` holds in `workspace_id`,
     /// for a claimant that restarted and lost its fencing tokens. Each claim
     /// is released exactly as [`Self::release_claim_with_event`] releases it
-    /// (worked time charged, assignee, lease and working clock cleared, a
-    /// `ThreadAssignmentChanged` carrying `note`), fenced by the lease read in
+    /// (worked time charged, assignee, lease and working clock cleared, the
+    /// member's status declaration dropped, a `ThreadAssignmentChanged`
+    /// carrying `note`), fenced by the lease read in
     /// the same transaction, so a claim that changed hands meanwhile is left
     /// alone. The set is what the reaper would free once the leases lapsed: an
     /// open or in-review, untombstoned thread whose lease is live (by the boot

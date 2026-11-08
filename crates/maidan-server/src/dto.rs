@@ -259,6 +259,15 @@ pub struct ReleaseClaim {
     pub claim_lease_id: uuid::Uuid,
 }
 
+/// Release every live claim the calling member holds in the workspace, for a
+/// claimant that restarted. `note` lands on each release's assignment event.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseOwnClaims {
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
 /// Add a task-dependency edge — the thread in the path depends on
 /// `depends_on_thread_id`.
 #[derive(Debug, Deserialize, ToSchema)]

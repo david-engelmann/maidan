@@ -173,6 +173,12 @@ The rules that matter:
 - **Review before you release.** Set the result, call `start_review`, then
   release. A task released while still `open` goes back to the queue and gets
   done again.
+- **After a crash, free what the last run held.** A restarted waiter's old
+  `claim_lease_id`s died with the old process. Before its first claim it calls
+  `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) once, which
+  releases every live claim its member holds in that workspace. Skip it when
+  another live process uses the same token: it would release that one's claims
+  too.
 - **Never close your own work.** Closing is for a reviewer or the owner. The
   server refuses a close by the member who worked the task.
 
