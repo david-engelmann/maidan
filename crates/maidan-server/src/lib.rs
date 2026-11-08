@@ -38,6 +38,7 @@ pub mod digest;
 pub mod dm;
 pub mod dto;
 pub mod egress_body;
+pub mod egress_guard;
 pub mod egress_http;
 pub mod egress_worker;
 pub mod embed_repair;

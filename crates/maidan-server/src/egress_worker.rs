@@ -176,6 +176,22 @@ async fn deliver(
     if entry.kind == EgressKind::Result {
         return deliver_result(state, entry, target).await;
     }
+    // A projector message or a notice is sent exactly as it was queued, so
+    // the queued body is what is screened.
+    let part = if entry.kind == EgressKind::Notice {
+        "notice"
+    } else {
+        "message"
+    };
+    if let Some(reason) = crate::egress_guard::screen(
+        target.surface(),
+        entry.thread_id,
+        [(part, entry.body.as_str())],
+    )
+    .await
+    {
+        return Ok(Sent::Refused(reason));
+    }
     if entry.kind == EgressKind::Notice {
         return deliver_notice(state, entry, target).await;
     }
@@ -275,6 +291,22 @@ async fn deliver_result(
         .unwrap_or_else(|| entry.body.clone());
     match target {
         EgressTarget::Github { repo, issue_number } => {
+            // The inline review and the check run post after the summary and
+            // never undo it, so their text is screened with the summary's:
+            // a credential in any of them refuses the delivery before the
+            // first post.
+            let posts_check_runs = state
+                .github_sender
+                .as_ref()
+                .is_some_and(|sender| sender.posts_check_runs());
+            let extras = github_extra_parts(state, entry.thread_id, posts_check_runs).await;
+            let parts = std::iter::once(("comment", body.as_str()))
+                .chain(extras.iter().map(|(part, text)| (*part, text.as_str())));
+            if let Some(reason) =
+                crate::egress_guard::screen(target.surface(), entry.thread_id, parts).await
+            {
+                return Ok(Sent::Refused(reason));
+            }
             github_result(state, entry, row.as_ref(), repo, *issue_number, &body)
                 .await
                 .map(Sent::Landed)
@@ -296,6 +328,15 @@ async fn deliver_result(
                 }
                 crate::result_delivery::ChangeReply::NotAChange => body,
             };
+            if let Some(reason) = crate::egress_guard::screen(
+                target.surface(),
+                entry.thread_id,
+                [("message", body.as_str())],
+            )
+            .await
+            {
+                return Ok(Sent::Refused(reason));
+            }
             slack_result(state, row.as_ref(), channel_id, thread_ts.as_deref(), &body)
                 .await
                 .map(Sent::Landed)
@@ -314,6 +355,15 @@ async fn deliver_result(
                 }
                 crate::result_delivery::ChangeReply::NotAChange => body,
             };
+            if let Some(reason) = crate::egress_guard::screen(
+                target.surface(),
+                entry.thread_id,
+                [("comment", body.as_str())],
+            )
+            .await
+            {
+                return Ok(Sent::Refused(reason));
+            }
             linear_result(state, entry, row.as_ref(), team_id, issue, &body).await
         }
         EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
@@ -812,6 +862,57 @@ async fn delivered_head(
     }))
 }
 
+/// The text the inline review and the check run would publish for this
+/// result as it is now: what [`post_result_inline_review`] and
+/// [`post_result_check_run`] build. A result that cannot be read gives none;
+/// those posts then skip for the same reason. The check run counts only when
+/// the sender can post one: with a token it is skipped, and its text must not
+/// hold up a clean comment.
+async fn github_extra_parts(
+    state: &AppState,
+    thread_id: maidan_types::ThreadId,
+    posts_check_runs: bool,
+) -> Vec<(&'static str, String)> {
+    let Ok(Some(stored)) = state.store.get_thread_result(thread_id).await else {
+        return Vec::new();
+    };
+    let Some(waiter) = maidan_types::parse_waiter_result(&stored.result) else {
+        return Vec::new();
+    };
+    let mut parts: Vec<(&'static str, String)> =
+        crate::result_delivery::prepare_inline_review(&waiter)
+            .map(|review| {
+                review
+                    .comments
+                    .into_iter()
+                    .map(|comment| ("inline review", review_comment_text(&comment)))
+                    .collect()
+            })
+            .unwrap_or_default();
+    if let Some(check) =
+        maidan_types::github_check_run(&waiter, &stored.result).filter(|_| posts_check_runs)
+    {
+        parts.push(("check run", check_run_text(&check)));
+    }
+    parts
+}
+
+/// What an inline review comment publishes: its path as well as its body.
+fn review_comment_text(comment: &maidan_types::GithubReviewComment) -> String {
+    format!("{}\n{}", comment.path, comment.body)
+}
+
+/// Every producer-written field of a check run, as one text to screen.
+fn check_run_text(check: &maidan_types::GithubCheckRun) -> String {
+    format!(
+        "{}\n{}\n{}\n{}",
+        check.name,
+        check.title,
+        check.summary,
+        check.details_url.as_deref().unwrap_or_default()
+    )
+}
+
 async fn github_result(
     state: &AppState,
     entry: &EgressOutbox,
@@ -931,6 +1032,20 @@ async fn post_result_inline_review(
         crate::metrics::record_github_review("skipped");
         return;
     };
+    // Screened with the summary already; read again here because a newer
+    // result can have replaced the envelope since.
+    let texts: Vec<String> = review.comments.iter().map(review_comment_text).collect();
+    if let Some(kind) = crate::egress_guard::first_credential(texts.iter().map(String::as_str)) {
+        crate::metrics::record_github_review("skipped");
+        crate::egress_guard::report_late_skip(
+            maidan_types::EgressSurface::Github,
+            thread_id,
+            "inline review",
+            kind,
+        )
+        .await;
+        return;
+    }
     if review.truncated {
         tracing::warn!(
             %repo,
@@ -1013,6 +1128,18 @@ async fn post_result_check_run(
     if !sender.posts_check_runs() {
         crate::github::record_github_check_run("skipped");
         tracing::debug!(%repo, "github check run: skipped; a token cannot post check runs");
+        return;
+    }
+    // As for the inline review: screened with the summary, read again here.
+    if let Some(kind) = crate::egress_guard::first_credential([check_run_text(&check).as_str()]) {
+        crate::github::record_github_check_run("skipped");
+        crate::egress_guard::report_late_skip(
+            maidan_types::EgressSurface::Github,
+            thread_id,
+            "check run",
+            kind,
+        )
+        .await;
         return;
     }
     match sender.create_check_run(repo, &check).await {

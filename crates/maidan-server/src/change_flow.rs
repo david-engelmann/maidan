@@ -353,6 +353,9 @@ pub async fn deliver_change(
     if let Err(reason) = maidan_types::check_change_target(req.branch, req.base) {
         return refused(reason);
     }
+    if let Some(reason) = screen_change(req).await {
+        return refused(reason);
+    }
     let change = req.change;
     if change.is_check_only() {
         return deliver_check_only(git, req).await;
@@ -495,6 +498,55 @@ pub async fn deliver_change(
         template_warnings,
         check_warning,
     })
+}
+
+/// Screen everything a round would write to GitHub that a producer or a
+/// person wrote ([`crate::egress_guard`]), before the first write, so a
+/// credential in any of it refuses the round with nothing written. The title
+/// and summary are the pull request's and the commit message's alike; the
+/// branch becomes a ref and the pull request's head. A `no_change` round
+/// writes only its commit status, so only that is screened: a fixture in a
+/// field it never publishes does not hold up its check.
+async fn screen_change(req: &ChangeRequest<'_>) -> Option<String> {
+    let change = req.change;
+    let status = match change.check.as_ref() {
+        Some(Ok(check)) => format!(
+            "{}\n{}\n{}",
+            check.context,
+            check.description.as_deref().unwrap_or_default(),
+            check.target_url.as_deref().unwrap_or_default()
+        ),
+        _ => String::new(),
+    };
+    let surface = maidan_types::EgressSurface::GithubBranch;
+    if change.is_check_only() {
+        let parts = [("commit status", status.as_str())];
+        return crate::egress_guard::screen(surface, req.thread_id, parts).await;
+    }
+    let title = req.title();
+    let added = change.diff.as_deref().map(added_lines).unwrap_or_default();
+    let parts = [
+        ("branch", req.branch),
+        ("title", title.as_str()),
+        ("summary", change.summary.as_deref().unwrap_or_default()),
+        (
+            "current state",
+            change.current_state.as_deref().unwrap_or_default(),
+        ),
+        (crate::egress_guard::DIFF_PART, added.as_str()),
+        ("commit status", status.as_str()),
+    ];
+    crate::egress_guard::screen(surface, req.thread_id, parts).await
+}
+
+/// The lines a diff adds: the only part of it that becomes new text on
+/// GitHub, since its context and removed lines are already in the
+/// repository. File headers (`+++ b/…`) are kept: a path is published too.
+fn added_lines(diff: &str) -> String {
+    diff.lines()
+        .filter(|line| line.starts_with('+'))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Post the result's `check` as a commit status on `head_sha`, the head this
@@ -1093,6 +1145,15 @@ mod tests {
 
     const RAN_ON: &str = "1111111111111111111111111111111111111111";
     const NEWER: &str = "2222222222222222222222222222222222222222";
+
+    #[test]
+    fn only_a_diffs_added_lines_are_screened_as_new_text() {
+        let removed = format!("-key = {}", "x".repeat(8));
+        let diff = format!(
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n context\n{removed}\n+key = env\n"
+        );
+        assert_eq!(added_lines(&diff), "+++ b/a.txt\n+key = env");
+    }
 
     #[test]
     fn a_no_change_check_goes_only_on_the_head_it_ran_on() {

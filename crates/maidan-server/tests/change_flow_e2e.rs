@@ -1284,6 +1284,108 @@ async fn a_diff_that_does_not_apply_is_refused_and_leaves_no_branch() {
 }
 
 #[tokio::test]
+async fn a_change_whose_diff_adds_a_credential_is_refused_with_nothing_written() {
+    let h = harness().await;
+    h.allow_change().await;
+    // Assembled here, so the file holds no string a secrets scanner reads as
+    // a live key.
+    let key = format!("sk-ant-api03-{}", "aB3dE5gH7jK9".repeat(3));
+    let leaky = DIFF.replace("+hello, world\n", &format!("+hello, world {key}\n"));
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, &leaky), 1)
+        .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    assert_eq!(
+        row.last_error.as_deref(),
+        Some("refused: the diff holds what looks like an Anthropic API key (sk-ant-…); nothing was sent to the GitHub branch")
+    );
+    let fake = h.fake.lock().unwrap();
+    assert!(fake.requests.is_empty(), "{:?}", fake.requests);
+    drop(fake);
+    let posts = h.slack_posts();
+    assert_eq!(posts.len(), 1, "{posts:?}");
+    let reply = &posts[0].2;
+    assert!(
+        reply.contains("Nothing was committed") && reply.contains("Anthropic API key"),
+        "the thread hears why: {reply}"
+    );
+    assert!(!reply.contains(&key));
+}
+
+#[tokio::test]
+async fn a_branch_name_shaped_like_a_slack_token_is_never_pushed() {
+    let h = harness().await;
+    h.allow_change().await;
+    // The agent-branch rule allows only lowercase, digits and dashes, which
+    // a Slack token's shape fits.
+    let branch = format!("feature/agent-{}-{}", "xoxb", "1234567890-0987654321");
+    h.route(
+        &h.a,
+        &change_into("changed", &h.base_sha, &branch, &branch, "dev", DIFF),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.starts_with("refused: the branch holds what looks like a Slack token"),
+        "{reason}"
+    );
+    assert!(!reason.contains(&branch));
+    assert!(h.fake.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn a_no_change_round_is_screened_only_on_the_status_it_posts() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake
+        .lock()
+        .unwrap()
+        .refs
+        .insert(BRANCH.into(), h.base_sha.clone());
+    // The diff is never published on a no_change round, so a key in it
+    // must not hold up the check.
+    let key = format!("sk-ant-api03-{}", "aB3dE5gH7jK9".repeat(3));
+    let mut result = no_change_check(&h.base_sha, prepush("success"));
+    result["diff"] = json!(format!("+{key}\n"));
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(h.fake.lock().unwrap().statuses.len(), 1);
+}
+
+#[tokio::test]
+async fn a_change_whose_summary_holds_a_credential_opens_no_pull_request() {
+    let h = harness().await;
+    h.allow_change().await;
+    let token = format!("xoxb-1234567890-{}", "aB3dE5gH7jK9".repeat(2));
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["summary"] = json!(format!("Changes the greeting. Slack: {token}"));
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.starts_with("refused: the summary holds what looks like a Slack token"),
+        "{reason}"
+    );
+    let fake = h.fake.lock().unwrap();
+    assert!(fake.writes().is_empty(), "{:?}", fake.writes());
+    assert!(fake.pulls.is_empty());
+    assert!(!fake.refs.contains_key(BRANCH));
+}
+
+#[tokio::test]
 async fn a_non_changed_status_is_recorded_and_answered_in_slack_with_no_github_write() {
     for status_word in ["no_change", "seat_error", "content_blocked"] {
         let h = harness().await;

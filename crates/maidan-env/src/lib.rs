@@ -68,6 +68,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DEPLOY_HOOK_SECRET_FILE",
     "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
     "MAIDAN_DIGEST_TICK_SECS",
+    "MAIDAN_EGRESS_CREDENTIAL_GUARD",
     "MAIDAN_EGRESS_WORKER_TICK_SECS",
     "MAIDAN_EMAIL_PRESENCE_WINDOW_SECS",
     "MAIDAN_EMBEDDING_API_KEY",
@@ -475,6 +476,7 @@ mod tests {
     const NOT_SECRETS: &[(&str, &str)] = &[
         ("MAIDAN_ALLOW_INSECURE_DEV_KEK", "a switch, not a key"),
         ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
+        ("MAIDAN_EGRESS_CREDENTIAL_GUARD", "a switch"),
         ("MAIDAN_EXPORT_VERIFY_KEYS", "public keys"),
         (
             "MAIDAN_JEV_BASE_URL",
@@ -869,6 +871,10 @@ mod tests {
         (
             "MAIDAN_DIGEST_TICK_SECS",
             "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_EGRESS_CREDENTIAL_GUARD",
+            "dev or insecure switch; never forwarded",
         ),
         (
             "MAIDAN_EGRESS_WORKER_TICK_SECS",

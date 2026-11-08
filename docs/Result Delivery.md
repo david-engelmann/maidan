@@ -516,6 +516,40 @@ token instead and authored by the app's bot account.
   GitHub comment or a `<!channel>` in Slack would ping real people from
   attacker-controlled bytes. Maidan defuses these. Producers do not need to.
 
+### Credential guard
+
+A producer that reviews untrusted content can be prompt-injected into pasting
+a credential it can read into its result. Before every send, Maidan scans the
+text it is about to publish for credential shapes: the rendered GitHub
+comment, inline review (paths and bodies) and check run (when the sender can
+post one), the Slack message, the Linear comment, a relayed projector message
+or notice, and for a change the branch name, the pull request title and body,
+the commit message, the commit status and the diff's added lines. A
+`no_change` round publishes only its commit status, so only that is
+screened. The shapes are GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`,
+`github_pat_`), Anthropic and OpenAI-style API keys (`sk-ant-`, `sk-`), AWS
+access key ids (`AKIA`, `ASIA`), Slack tokens (`xoxb-` and the like), JSON Web
+Tokens, PEM private key headers, and Maidan's own `maid_` secrets.
+In a diff's added lines, JSON Web Tokens and PEM private keys don't count: they
+are everyday test fixtures. A provider key or a Maidan token in a diff still
+refuses the round.
+
+A match refuses the whole send, before the first post or write: nothing
+reaches the surface, the delivery row is `skipped` and is not retried, and
+`last_error` names the kind of credential, the part that held it and the
+surface, as in `refused: the comment holds what looks like a GitHub token
+(gh*_…); nothing was sent to GitHub`. The matched text is never recorded: not
+in the row, the log line, the `maidan_egress_credential_refused_total{surface,
+kind}` counter or the operator alert (`MAIDAN_OPS_ALERT_CHANNEL`), which says
+the same. Read the thread before replaying it. A development stack whose
+producers publish key-shaped text on purpose can set
+`MAIDAN_EGRESS_CREDENTIAL_GUARD=off`; boot refuses that with
+`MAIDAN_ENV=production`.
+
+The guard is a backstop, not a guarantee. A credential in a shape it does not
+know, or one encoded or split to dodge it, still goes out, and so does a JWT
+or PEM key in a diff's added lines. The result itself stays stored in Maidan.
+
 ---
 
 ## Idempotency
@@ -670,6 +704,7 @@ can tell the task's own thread where its result did not go.
   transcripts. **Only `rendered`, `summary`, and structured `findings`.**
 - Anything at all when `status` is not `reviewed` (beyond the failure notice).
 - Anything to a target the workspace has not blessed.
+- Text in which the credential guard, while on, detects a credential ([Credential guard](#credential-guard): JWTs and PEM keys in a diff's added lines are not counted, and other shapes are not detected).
 
 Maidan does not run agents, does not render reviews, and is not a CI product.
 The close-gate reads only `findings[].severity` (`critical` →

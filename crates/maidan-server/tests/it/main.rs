@@ -218,6 +218,9 @@ mod dm_participation_e2e;
 #[path = "../docs_numbers_contract.rs"]
 mod docs_numbers_contract;
 
+#[path = "../egress_credential_guard_e2e.rs"]
+mod egress_credential_guard_e2e;
+
 #[path = "../egress_dlq_e2e.rs"]
 mod egress_dlq_e2e;
 

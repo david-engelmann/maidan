@@ -245,11 +245,25 @@ fn validate_private_egress(production: bool, allowed: bool) -> Result<(), Config
     Ok(())
 }
 
+/// The credential guard (`crate::egress_guard`) stops a prompt-injected
+/// producer publishing a key through Maidan; turning it off is for a
+/// development stack only.
+fn validate_credential_guard(production: bool, switched_off: bool) -> Result<(), ConfigError> {
+    if production && switched_off {
+        return Err(ConfigError::Invalid(
+            crate::egress_guard::GUARD_ENV,
+            "cannot be `off` when MAIDAN_ENV=production".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
     pub fn from_env() -> Result<Self, ConfigError> {
         validate_private_egress(is_production(), env_truthy("MAIDAN_ALLOW_PRIVATE_EGRESS"))?;
+        validate_credential_guard(is_production(), crate::egress_guard::switched_off())?;
         let bind: SocketAddr = std::env::var("MAIDAN_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_string())
             .parse()
@@ -369,6 +383,17 @@ mod tests {
         assert!(matches!(
             validate_private_egress(true, true),
             Err(ConfigError::Invalid("MAIDAN_ALLOW_PRIVATE_EGRESS", _))
+        ));
+    }
+
+    #[test]
+    fn the_credential_guard_cannot_be_switched_off_in_production() {
+        assert!(validate_credential_guard(false, false).is_ok());
+        assert!(validate_credential_guard(false, true).is_ok());
+        assert!(validate_credential_guard(true, false).is_ok());
+        assert!(matches!(
+            validate_credential_guard(true, true),
+            Err(ConfigError::Invalid("MAIDAN_EGRESS_CREDENTIAL_GUARD", _))
         ));
     }
 
