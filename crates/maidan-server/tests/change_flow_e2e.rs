@@ -1315,6 +1315,54 @@ async fn a_change_whose_diff_adds_a_credential_is_refused_with_nothing_written()
 }
 
 #[tokio::test]
+async fn a_branch_name_shaped_like_a_slack_token_is_never_pushed() {
+    let h = harness().await;
+    h.allow_change().await;
+    // The agent-branch rule allows only lowercase, digits and dashes, which
+    // a Slack token's shape fits.
+    let branch = format!("feature/agent-{}-{}", "xoxb", "1234567890-0987654321");
+    h.route(
+        &h.a,
+        &change_into("changed", &h.base_sha, &branch, &branch, "dev", DIFF),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.starts_with("refused: the branch holds what looks like a Slack token"),
+        "{reason}"
+    );
+    assert!(!reason.contains(&branch));
+    assert!(h.fake.lock().unwrap().requests.is_empty());
+}
+
+#[tokio::test]
+async fn a_no_change_round_is_screened_only_on_the_status_it_posts() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake
+        .lock()
+        .unwrap()
+        .refs
+        .insert(BRANCH.into(), h.base_sha.clone());
+    // The diff is never published on a no_change round, so a key in it
+    // must not hold up the check.
+    let key = format!("sk-ant-api03-{}", "aB3dE5gH7jK9".repeat(3));
+    let mut result = no_change_check(&h.base_sha, prepush("success"));
+    result["diff"] = json!(format!("+{key}\n"));
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(h.fake.lock().unwrap().statuses.len(), 1);
+}
+
+#[tokio::test]
 async fn a_change_whose_summary_holds_a_credential_opens_no_pull_request() {
     let h = harness().await;
     h.allow_change().await;

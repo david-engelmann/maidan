@@ -503,11 +503,12 @@ pub async fn deliver_change(
 /// Screen everything a round would write to GitHub that a producer or a
 /// person wrote ([`crate::egress_guard`]), before the first write, so a
 /// credential in any of it refuses the round with nothing written. The title
-/// and summary are the pull request's and the commit message's alike.
+/// and summary are the pull request's and the commit message's alike; the
+/// branch becomes a ref and the pull request's head. A `no_change` round
+/// writes only its commit status, so only that is screened: a fixture in a
+/// field it never publishes does not hold up its check.
 async fn screen_change(req: &ChangeRequest<'_>) -> Option<String> {
     let change = req.change;
-    let title = req.title();
-    let added = change.diff.as_deref().map(added_lines).unwrap_or_default();
     let status = match change.check.as_ref() {
         Some(Ok(check)) => format!(
             "{}\n{}\n{}",
@@ -517,11 +518,15 @@ async fn screen_change(req: &ChangeRequest<'_>) -> Option<String> {
         ),
         _ => String::new(),
     };
-    let target = maidan_types::EgressTarget::GithubBranch {
-        repo: req.repo.to_string(),
-        branch: req.branch.to_string(),
-    };
+    let surface = maidan_types::EgressSurface::GithubBranch;
+    if change.is_check_only() {
+        let parts = [("commit status", status.as_str())];
+        return crate::egress_guard::screen(surface, req.thread_id, parts).await;
+    }
+    let title = req.title();
+    let added = change.diff.as_deref().map(added_lines).unwrap_or_default();
     let parts = [
+        ("branch", req.branch),
         ("title", title.as_str()),
         ("summary", change.summary.as_deref().unwrap_or_default()),
         (
@@ -531,7 +536,7 @@ async fn screen_change(req: &ChangeRequest<'_>) -> Option<String> {
         (crate::egress_guard::DIFF_PART, added.as_str()),
         ("commit status", status.as_str()),
     ];
-    crate::egress_guard::screen(&target, req.thread_id, parts).await
+    crate::egress_guard::screen(surface, req.thread_id, parts).await
 }
 
 /// The lines a diff adds: the only part of it that becomes new text on

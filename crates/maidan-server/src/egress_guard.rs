@@ -29,11 +29,16 @@
 //! characters the credential is made of, sized to keep prose and slugs out;
 //! the server takes no regex dependency for a handful of prefixes.
 //!
-//! `MAIDAN_EGRESS_CREDENTIAL_GUARD=off` turns the guard off, for an operator
-//! whose producers legitimately publish one of these shapes (a fixture key
-//! in a change, say). Anything else, or unset, leaves it on.
+//! `MAIDAN_EGRESS_CREDENTIAL_GUARD=off` turns the guard off, for a
+//! development stack whose producers publish one of these shapes on purpose.
+//! Anything else, or unset, leaves it on, and boot refuses `off` with
+//! `MAIDAN_ENV=production`, like every other switch that drops a defence.
+//!
+//! **What it does not catch:** a credential in a shape it does not know, or
+//! one encoded or split to dodge it; and, in a diff's added lines, JWTs and
+//! PEM keys, which are everyday fixtures there.
 
-use maidan_types::{EgressSurface, EgressTarget, ThreadId};
+use maidan_types::{EgressSurface, ThreadId};
 
 /// The switch that turns the guard off (`off`); on unless it says so.
 pub const GUARD_ENV: &str = "MAIDAN_EGRESS_CREDENTIAL_GUARD";
@@ -128,9 +133,14 @@ fn kind_in_part(part: &str, text: &str) -> Option<CredentialKind> {
     }
 }
 
+/// Whether the operator wrote `off`. Boot refuses that in production.
+pub fn switched_off() -> bool {
+    std::env::var(GUARD_ENV).is_ok_and(|value| value.trim().eq_ignore_ascii_case("off"))
+}
+
 /// Whether the guard is on: it is unless the operator wrote `off`.
 pub fn enabled() -> bool {
-    !std::env::var(GUARD_ENV).is_ok_and(|value| value.trim().eq_ignore_ascii_case("off"))
+    !switched_off()
 }
 
 /// The first credential shape across `texts`, or `None` when the guard is
@@ -143,11 +153,14 @@ pub fn first_credential<'a>(texts: impl IntoIterator<Item = &'a str>) -> Option<
     texts.into_iter().find_map(credential_kind)
 }
 
-/// Screen the named parts of one send to `target`. `None` means send it.
+/// Screen the named parts of one send to `surface`. `None` means send it.
 /// `Some(reason)` means refuse it: the reason is what the delivery records,
 /// and it has been logged, counted and said to the operator channel.
+///
+/// The alert names the thread and the surface, not the target: a selector
+/// the producer chose (a branch name, say) could be the very text refused.
 pub async fn screen<'a>(
-    target: &EgressTarget,
+    surface: EgressSurface,
     thread_id: ThreadId,
     parts: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> Option<String> {
@@ -157,7 +170,6 @@ pub async fn screen<'a>(
     let (part, kind) = parts
         .into_iter()
         .find_map(|(part, text)| kind_in_part(part, text).map(|kind| (part, kind)))?;
-    let surface = target.surface();
     let reason = refusal(part, kind, surface);
     tracing::warn!(
         %thread_id,
@@ -168,13 +180,42 @@ pub async fn screen<'a>(
     );
     crate::metrics::record_egress_credential_refused(surface.as_str(), kind.as_str());
     crate::ops_alert::alert(
-        &format!("egress-credential:{thread_id}:{target}"),
+        &format!("egress-credential:{thread_id}:{}", surface.as_str()),
         &format!(
-            "A delivery was refused: thread {thread_id} to {target}, {reason}. The producer may have been prompt-injected by what it read; look at the thread before replaying it."
+            "A delivery was refused: thread {thread_id} to {}, {reason}. The producer may have been prompt-injected by what it read; look at the thread before replaying it.",
+            surface_name(surface)
         ),
     )
     .await;
     Some(reason)
+}
+
+/// A late check found `kind` in a post that follows a summary already
+/// landed (the inline review, the check run), and the post was skipped:
+/// log, count and tell the operator, by kind only.
+pub async fn report_late_skip(
+    surface: EgressSurface,
+    thread_id: ThreadId,
+    post: &str,
+    kind: CredentialKind,
+) {
+    tracing::warn!(
+        %thread_id,
+        surface = surface.as_str(),
+        kind = kind.as_str(),
+        "egress: credential guard skipped the {post}; it holds what looks like {}",
+        kind.describe()
+    );
+    crate::metrics::record_egress_credential_refused(surface.as_str(), kind.as_str());
+    crate::ops_alert::alert(
+        &format!("egress-credential-late:{thread_id}:{}", surface.as_str()),
+        &format!(
+            "A {post} was not posted: thread {thread_id} to {}, it holds what looks like {}. The summary comment had already landed; look at the thread.",
+            surface_name(surface),
+            kind.describe()
+        ),
+    )
+    .await;
 }
 
 /// The recorded reason: the part, the kind and the surface, never the match.
@@ -309,12 +350,11 @@ fn jwt(s: &[u8]) -> Option<CredentialKind> {
 fn private_key(s: &[u8]) -> Option<CredentialKind> {
     const TAIL: &[u8] = b"PRIVATE KEY-----";
     let rest = s.strip_prefix(b"-----BEGIN ")?;
-    let line_end = rest
-        .iter()
-        .position(|b| *b == b'\n')
-        .unwrap_or(rest.len())
-        .min(64);
-    rest[..line_end]
+    // Bounded before the newline search, so a long line of repeated headers
+    // is not re-read from each one.
+    let head = &rest[..rest.len().min(64)];
+    let line_end = head.iter().position(|b| *b == b'\n').unwrap_or(head.len());
+    head[..line_end]
         .windows(TAIL.len())
         .any(|window| window == TAIL)
         .then_some(CredentialKind::PrivateKey)
@@ -441,7 +481,7 @@ mod tests {
         // An uncapped scan from every prefix would read about a billion
         // bytes here; the capped one reads a few million. (`xoxb-` repeated
         // is itself Slack-shaped, and the match ends the scan at once.)
-        for prefix in ["sk-", "eyJ", "ghp_", "maid_"] {
+        for prefix in ["sk-", "eyJ", "ghp_", "maid_", "-----BEGIN PUBLIC KEY-----"] {
             let text = prefix.repeat(20_000);
             let started = std::time::Instant::now();
             assert_eq!(kind(&text), None, "{prefix}");
@@ -517,10 +557,18 @@ mod tests {
 
     #[test]
     fn a_diff_may_add_a_jwt_or_pem_fixture_but_not_a_provider_key() {
-        let jwt = format!("eyJ{}.eyJ{}.{}", "a".repeat(16), "b".repeat(16), "c".repeat(16));
+        let jwt = format!(
+            "eyJ{}.eyJ{}.{}",
+            "a".repeat(16),
+            "b".repeat(16),
+            "c".repeat(16)
+        );
         let pem = format!("-----BEGIN {}PRIVATE KEY-----", "RSA ");
         let ghp = format!("ghp_{}", "a".repeat(36));
-        assert_eq!(kind_in_part(DIFF_PART, &format!("+let t = \"{jwt}\";")), None);
+        assert_eq!(
+            kind_in_part(DIFF_PART, &format!("+let t = \"{jwt}\";")),
+            None
+        );
         assert_eq!(kind_in_part(DIFF_PART, &format!("+{pem}")), None);
         // A fixture first does not hide a live key after it.
         assert_eq!(
