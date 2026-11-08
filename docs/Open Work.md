@@ -397,6 +397,15 @@ The Maintainer's digest of David's 2026-11-05 reading. These are suggestions, no
 | 10 | One agent daemon across laptop, web and Slack | **No action** | That's the client's concern. Maidan already serves the same thread over MCP, the console and Slack. |
 | 11 | Stage artifacts (intent, spec, plan) with risk-based approvals | **Later** | A convention, not new storage. Stage artifacts become typed thread attributes or artifacts (`stage: intent|spec|plan`), and the approval policy can require a person at a stage's risk tier. Write it into the agent skills first; add server support only if the convention proves out. |
 
+### Third batch (2026-11-08, research rounds 11 to 14)
+
+| # | Item | Disposition | Why |
+|---|---|---|---|
+| 12 | What cancel does to partial work ([LangChain, "Agents Are Going Async"](https://www.langchain.com/blog/agents-are-going-async)) | **Before launch**, documentation-sized | The post names five verbs for async agents: start, check, update, cancel and list. It doesn't say what cancel does to work already done. Maidan should write that down beside release-on-restart (`release_own_claims`, which pi calls at start since 1.18.51) and close as abandoned (#1753). The note covers what happens to a thread's pushed commits, its build box and its lease, and who cleans up each. An integrator meets this before anything else. |
+| 13 | A caller always sees an error, never a success result ([anthropics/claude-code#107175](https://github.com/anthropics/claude-code/issues/107175)) | **Before launch** | A swarm run renewed a lease that had already been reaped. The answer was an HTTP 200 carrying a JSON-RPC error, and the claimant read it as success. Over MCP, the 200 is what the protocol specifies; the rule is that the body is a JSON-RPC error, or a tool result with `isError: true`, and never a success result. A REST call answers non-2xx. Audit every renew, claim and result path, plus the rest of MCP and REST, for an ended lease, a reaped claim and a closed thread, with a test per path. |
+| 14 | One writer per shared record ([Anthropic, "The components of agent memory"](https://www.anthropic.com/research/components-of-agent-memory)) | **With the #13 audit**; it moves before launch only if a record with two writers turns up | The article finds that several agents writing one shared page goes wrong. Check that thread notes, result envelopes and Slack relays each have exactly one writer, and that everyone else appends: events, messages and new result revisions. |
+| 15 | A daily overlap measure: files edited by more than one open branch (the swarm's operator, 2026-11-08) | **Later**, under W (swarm outcomes) | Maidan already holds each thread's repository and branch footprint, so it is the natural source. A daily count of the files touched by more than one open branch shows collision risk before it becomes a merge conflict. It is measured with the swarm's operator, who reads it. |
+
 ## Enhancement thread 2026-09-30: dispositions
 
 The 2026-09-30 entries (28–57) and the supersessions of 27, 28, 29 and 35.
