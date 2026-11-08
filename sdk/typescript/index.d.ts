@@ -292,6 +292,11 @@ export interface ClaimedThread extends Thread {
   pin: StrongRef;
 }
 
+/** What `releaseOwnClaims` gave back to the queue, in thread id order. */
+export interface ReleasedClaims {
+  released: ThreadId[];
+}
+
 export interface ThreadResult {
   thread_id: ThreadId;
   /** The producer's JSON, as it was set. */
@@ -683,6 +688,12 @@ export declare class Client {
     claimLeaseId: string,
     leaseSecs?: number,
   ): Promise<Thread>;
+  /**
+   * Release every live claim this token's member holds in the workspace, for a
+   * waiter that restarted and lost its fencing tokens. Call it once before the
+   * first claim, never while another live process shares the token.
+   */
+  releaseOwnClaims(workspaceId: WorkspaceId, note?: string): Promise<ReleasedClaims>;
 
   subscribe(
     filter: Record<string, unknown>,

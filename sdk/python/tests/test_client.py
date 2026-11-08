@@ -26,6 +26,7 @@ from maidan import (
     MintedToken,
     Model,
     NotFoundError,
+    ReleasedClaims,
     StoredEvent,
     StrongRef,
     Thread,
@@ -129,6 +130,26 @@ def test_claim_returns_the_thread_flattened_not_nested():
     assert claim.claim_lease_id, "the fencing token renew_claim needs"
     assert isinstance(claim.pin, StrongRef)
     assert claim.pin.uri and claim.pin.content_hash
+
+
+def test_release_own_claims_frees_this_members_claims_in_its_own_workspace_only():
+    assert OTHER_TOKEN and OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace"
+    c, _ws, member, channel, _thread = _seed()
+    claim = c.claim_next_thread(channel.id, {"lease_secs": 600})
+    assert claim is not None, "a freshly seeded ready thread should be claimable"
+    with pytest.raises(ForbiddenError):
+        Client(BASE, OTHER_TOKEN).release_own_claims(WORKSPACE)
+    with pytest.raises(ForbiddenError):
+        c.release_own_claims(OTHER_WORKSPACE)
+    assert c.threads.get(claim.id).assignee_id == member["id"]
+
+    released = c.release_own_claims(WORKSPACE, "the py sdk restarted")
+    assert isinstance(released, ReleasedClaims)
+    assert claim.id in released.released
+    assert c.threads.get(claim.id).assignee_id is None
+    with pytest.raises(MaidanError):
+        c.renew_claim(claim.id, claim.claim_lease_id, 600)
+    assert claim.id not in c.release_own_claims(WORKSPACE).released, "nothing is released twice"
 
 
 def test_renew_claim_extends_the_lease_with_the_fencing_token():

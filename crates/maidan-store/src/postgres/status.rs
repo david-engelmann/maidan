@@ -90,6 +90,24 @@ pub async fn declare(
     Ok((declaration, stored))
 }
 
+/// Drop the declaration `member_id` made, on the caller's transaction, when
+/// its claim on the thread ends (a release or a lapsed lease): the board
+/// would otherwise show a holder's "working" on a thread nobody holds. A
+/// declaration someone else made (the owner's "blocked") is theirs and stays.
+/// No event of its own: the release's or the lapse's event moves the board.
+pub(crate) async fn clear_departed_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
+    sqlx::query("DELETE FROM maidan_thread_status WHERE thread_id = $1 AND declared_by = $2")
+        .bind(thread_id.0)
+        .bind(member_id.0)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 /// Clear the declaration without an event. Used when a human responds —
 /// the declaration is superseded by human activity, not by a status change.
 pub async fn clear(

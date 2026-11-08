@@ -325,6 +325,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
+            "/workspaces/{id}/claims/release-own",
+            post(routes::release_own_claims),
+        )
+        .route(
             "/workspaces/{id}/threads",
             get(routes::list_workspace_threads),
         )

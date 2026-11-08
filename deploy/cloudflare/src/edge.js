@@ -106,20 +106,43 @@ export const NOT_FOUND_PAGE = "/not-found";
 export const UNAVAILABLE_PAGE = "/unavailable";
 export const UNAVAILABLE_RETRY_SECS = 20;
 
-// What the Containers runtime answers, as plain text with a 500, when it has no
-// running container to hand a request to: during a deploy's replacement, or a
-// start that failed. The server itself never answers in plain text.
-const NO_CONTAINER = "Error proxying request to container";
+// What the Containers runtime (`@cloudflare/containers`) answers, as plain
+// text, when it has no running server to hand a request to: during a deploy's
+// replacement, an operator restart, or a start that failed. The server itself
+// never answers in plain text. Each prefix says whether the request can have
+// reached a server: "unreached" when the runtime never handed it over (no
+// instance, a start that failed, nothing listening), "unknown" otherwise.
+const NO_CONTAINER = [
+  ["Error proxying request to container", "unknown"],
+  ["Failed to start container", "unreached"],
+  ["There is no Container instance available", "unreached"],
+  ["Container suddenly disconnected", "unknown"],
+];
 
-// Whether the container's answer means there was no container to answer.
-export async function isContainerUnavailable(response) {
+// The proxy error for a container with no listener: the request was never
+// handed over.
+const NOT_LISTENING = /not listening|not running|connection refused/i;
+
+// Whether the container's answer means there was no server to answer: null
+// for a real answer, else "unreached" or "unknown" (see NO_CONTAINER).
+export async function containerUnavailableKind(response) {
   if (response.status < 500 || response.status === 501) {
-    return false;
+    return null;
   }
   if (!(response.headers.get("content-type") ?? "").startsWith("text/plain")) {
-    return false;
+    return null;
   }
-  return (await response.clone().text()).startsWith(NO_CONTAINER);
+  const text = await response.clone().text();
+  const hit = NO_CONTAINER.find(([prefix]) => text.startsWith(prefix));
+  if (!hit) {
+    return null;
+  }
+  return hit[1] === "unknown" && NOT_LISTENING.test(text) ? "unreached" : hit[1];
+}
+
+// Whether the container's answer means there was no server to answer.
+export async function isContainerUnavailable(response) {
+  return (await containerUnavailableKind(response)) !== null;
 }
 
 // The answer for an API client while there is no container: the server's own

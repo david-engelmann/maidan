@@ -98,9 +98,12 @@ pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
 /// and `server/discover`. The first line is what a client keeps when it stores
 /// only that line, at most 250 characters, and the whole text is at most 2048.
 /// Call `whoami` first, then the claim lifecycle (the "waiter loop" in
-/// Integration.md), not just the read/write pair.
+/// Integration.md), not just the read/write pair. A claimant's process dies
+/// with its fencing tokens, so the guide also says to free a previous run's
+/// claims once at startup, and when not to.
 pub const INSTRUCTIONS: &str = "Call `whoami` first. Then `claim_next_thread` or `claim_next_workspace_thread`, `acknowledge_claim`, `get_thread_context`, `report_usage`, `set_thread_result`, `transition_thread`, and `release_claim`.\n\
 A claim is leased: `renew_claim` before `assignment_expires_at`, or the task returns to the queue. `acknowledge_claim`, `renew_claim`, and `release_claim` each send `claim_lease_id`, and you release on every exit you control. A claim that returns null has nothing ready; sleep and ask again, or call `wait_for_ready`. `request_approval` opens a gate and returns; poll `get_approval_gate`.\n\
+At startup, before your first claim, call `release_own_claims` once per workspace: it frees the claims a previous run of yours left leased. Skip it when another live process shares your member token, or you release that process's claims too.\n\
 On `POST /mcp`, `tools/list` includes only tools your token can call. `POST /mcp/worker` and `POST /mcp/reviewer` each serve one fixed list, the same bytes for every caller. A tool your token cannot call is refused when you call it, on every endpoint.";
 
 /// Mark a result final. `2026-07-28` requires `resultType` on every result.

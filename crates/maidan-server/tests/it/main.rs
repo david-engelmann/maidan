@@ -572,6 +572,9 @@ mod references_reverse_e2e;
 #[path = "../reindex_job_e2e.rs"]
 mod reindex_job_e2e;
 
+#[path = "../release_own_claims_e2e.rs"]
+mod release_own_claims_e2e;
+
 #[path = "../request_changes_e2e.rs"]
 mod request_changes_e2e;
 

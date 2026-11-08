@@ -105,6 +105,15 @@ fn instructions_fit_the_cold_start_limits() {
     assert!(first.contains("whoami"), "{first}");
     assert!(first.contains("claim_next_thread"), "{first}");
     assert!(first.contains("release_claim"), "{first}");
+    // A restarted claimant's tokens died with the old process: the guide says
+    // to free its claims at startup, and when sharing a token forbids it.
+    let restart = INSTRUCTIONS
+        .lines()
+        .find(|line| line.contains("`release_own_claims`"))
+        .expect("the guide names release_own_claims");
+    assert!(restart.contains("before your first claim"), "{restart}");
+    assert!(restart.contains("once per workspace"), "{restart}");
+    assert!(restart.contains("shares your member token"), "{restart}");
 }
 
 #[tokio::test]

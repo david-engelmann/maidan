@@ -286,6 +286,14 @@ class ClaimedThread(Thread):
 
 
 @dataclass(kw_only=True)
+class ReleasedClaims(Model):
+    """What :meth:`Client.release_own_claims` gave back to the queue, in thread
+    id order."""
+
+    released: List[str]
+
+
+@dataclass(kw_only=True)
 class ResultDelivery(Model):
     """One ``deliver_to`` target's delivery of a result."""
 

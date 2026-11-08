@@ -272,7 +272,8 @@ async fn clear_assignee_in_tx(
     row_to_thread(&row)
 }
 
-/// Release the fenced claim, charging its worked time in the same transaction.
+/// Release the fenced claim, charging its worked time and dropping the status
+/// the holder declared, in the same transaction.
 async fn release_fenced_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
@@ -304,6 +305,7 @@ async fn release_fenced_in_tx(
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
+    super::status::clear_departed_in_tx(tx, thread_id, member_id).await?;
     row_to_thread(&row)
 }
 
@@ -566,7 +568,8 @@ async fn append_claim_expired_event(
 /// report never counts one. Over budget after the charge, the claim fails as a
 /// report would have failed it (`ClaimFailed` and a DLQ entry); otherwise it
 /// expired (`ClaimExpired`). The caller's write clears the holder, so a lapse
-/// is charged once, whichever of the reaper and `claim_next` frees it.
+/// is charged once, whichever of the reaper and `claim_next` frees it. The
+/// status the holder declared goes with the claim.
 async fn end_lapsed_claim_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread: &Thread,
@@ -574,6 +577,7 @@ async fn end_lapsed_claim_in_tx(
     deadline: DateTime<Utc>,
     work_started_at: Option<DateTime<Utc>>,
 ) -> Result<StoredEvent, StoreError> {
+    super::status::clear_departed_in_tx(tx, thread.id, holder).await?;
     let worked = work_started_at.map(|started| (deadline - started).num_seconds().max(0));
     let charged = budget::charge_wall_in_tx(tx, thread.id, worked).await?;
     match charged.and_then(|b| b.exceeded(None).map(|reason| (b, reason))) {

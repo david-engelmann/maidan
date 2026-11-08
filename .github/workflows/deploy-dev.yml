@@ -119,6 +119,11 @@ jobs:
             -e '/"image_build_context"/d' \
             wrangler.jsonc
           grep -q "\"image\": \"$image\"" wrangler.jsonc
+          # How long dev goes unanswered across this deploy, measured beside
+          # it (docs/Hosted Operations.md, "Deploys without downtime"). The
+          # runner keeps the process across steps until the job ends.
+          bash ../../scripts/measure-deploy-gap.sh --origin https://dev.maidan.world \
+            --until-version "dev-${GITHUB_SHA::8}" --for 600 > "$RUNNER_TEMP/deploy-gap.txt" 2>&1 &
           # A first deploy creates the Durable Object and the container
           # application together, and the application can look for the
           # namespace before it is visible (DURABLE_OBJECT_NOT_FOUND). The
@@ -130,9 +135,19 @@ jobs:
         run: |
           want="dev-${GITHUB_SHA::8}"
           for _ in $(seq 1 36); do
-            got=$(curl -fsS https://dev.maidan.world/health | jq -r .version || true)
+            got=$(curl -fsS --max-time 120 https://dev.maidan.world/health | jq -r .version || true)
             if [ "$got" = "$want" ]; then echo "dev.maidan.world runs $want"; exit 0; fi
             sleep 10
           done
           echo "dev.maidan.world still answers ${got:-nothing}, not $want" >&2
           exit 1
+      # Reported, never a reason to fail: the number Open Work row 47 is
+      # measured by.
+      - name: the deploy's gap in /health answers
+        run: |
+          for _ in $(seq 1 60); do
+            grep -q '^versions=' "$RUNNER_TEMP/deploy-gap.txt" && break
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/deploy-gap.txt"
+          { echo "### dev.maidan.world across this deploy"; echo '```'; cat "$RUNNER_TEMP/deploy-gap.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -81,6 +81,7 @@ Create body: `{ "name", "private": false }`.
 | `threads.get_result` | `GET /threads/{id}/result` | `workspace:read` | |
 | `claim_next_thread` | `POST /channels/{cid}/threads/claim-next` | `thread:transition` | **Hero.** Readiness + skill + lease aware |
 | `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat |
+| `release_own_claims` | `POST /workspaces/{id}/claims/release-own` | `thread:transition` | 0.3.0. A restarted waiter frees every live claim its token's member holds in the workspace, once, before its first claim. Optional body `{ "note" }`; answers `{ "released": [...] }`. TypeScript, Python and Go; not yet in the Rust SDK |
 
 ### Messages
 
@@ -269,6 +270,7 @@ server already fails; patch this table to match.
 | `messages.list` | `list_messages` | `workspace:read` |
 | `threads.context` | `get_thread_context` | `workspace:read` |
 | `renew_claim` | `renew_claim` | `thread:transition` |
+| `release_own_claims` | `release_own_claims` | `thread:transition` |
 | `wait_for_result` | `wait_for_result` | `workspace:read` |
 | `wait_for_mention` | `wait_for_mention` | `workspace:read` |
 | `wait_for_ready` | `wait_for_ready` | `workspace:read` |
