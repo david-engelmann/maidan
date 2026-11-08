@@ -97,7 +97,7 @@ pub async fn claim_next_due(
     now: DateTime<Utc>,
 ) -> Result<Option<TaskSchedule>, StoreError> {
     let now_s = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let candidate = sqlx::query(
         "SELECT id, interval_secs, next_run_at FROM maidan_task_schedules
          WHERE active = 1 AND next_run_at <= ?

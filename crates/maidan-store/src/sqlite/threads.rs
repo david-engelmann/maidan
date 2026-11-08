@@ -25,7 +25,7 @@ pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreEr
     let now = Utc::now();
     // The thread and its default routing land together, so no claimer sees
     // it unrouted.
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_at, updated_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -86,7 +86,7 @@ pub async fn create_with_footprint(
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
     precheck(pool, &new).await?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let created = insert_on(
         &mut tx,
         &new,
@@ -325,7 +325,7 @@ pub async fn assign(
     // In a transaction only so the worker record commits with the assignment.
     // This variant emits no event, so it does not pass through
     // `append_assignment_event` where the other paths record.
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     // A reassignment ends the claim it replaces. Charge it before the write
@@ -461,7 +461,7 @@ pub async fn assign_with_event(
     actor_id: MemberId,
     note: Option<String>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let previous = sqlx::query(
@@ -500,7 +500,7 @@ pub async fn assign_with_event(
 
 /// Clear the assignee. `NotFound` if absent.
 pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let thread = clear_assignee_in_tx(&mut tx, thread_id).await?;
     tx.commit().await?;
     Ok(thread)
@@ -513,7 +513,7 @@ pub async fn unassign_with_event(
     thread_id: ThreadId,
     actor_id: MemberId,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let previous = sqlx::query("SELECT assignee_id FROM maidan_threads WHERE id = ?")
         .bind(thread_id.0)
         .fetch_optional(&mut *tx)
@@ -712,7 +712,7 @@ pub async fn claim(
     // See `assign`: the transaction exists so the worker record commits with
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let stamped = crate::clock::db_now().to_rfc3339();
@@ -763,7 +763,7 @@ pub async fn claim_with_event(
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
@@ -935,7 +935,7 @@ pub async fn claim_next(
     // recovery). SQLite serializes writers so the select-then-update is
     // race-free. The transaction exists so the worker record commits with the
     // claim.
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let Some(candidate) = claim_next_candidate(
         &mut tx,
         ClaimScope::Channel(channel_id),
@@ -1053,7 +1053,7 @@ pub(crate) async fn claim_next_with_event(
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // One microsecond reading for the lease window and for both claim stamps.
     let now = crate::clock::db_now();
     // SQLite serializes writers, so a select-then-update in one tx is race-free.
@@ -1102,7 +1102,7 @@ pub async fn reap_expired_claims(
     if grace.holding(now) {
         return Ok(Vec::new());
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let lapsed = sqlx::query(
         "SELECT id, assignee_id, assignment_expires_at, work_started_at FROM maidan_threads
          WHERE assignee_id IS NOT NULL
@@ -1154,7 +1154,7 @@ pub async fn return_human_timeouts(
     policy: &str,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // SQLite serializes writers, so an answer that clears the declaration
     // either lands before this read or after the commit.
     let candidates = sqlx::query(
@@ -1217,7 +1217,7 @@ pub async fn report_unacknowledged_claims(
            AND assignment_expires_at IS NOT NULL AND assignment_expires_at >= ?
            AND unacknowledged_lease_id IS NOT claim_lease_id
            AND tombstoned_at IS NULL AND state = 'open'";
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let candidates = sqlx::query(&format!(
         "SELECT id, claim_lease_id FROM maidan_threads WHERE {STALE}
          ORDER BY claimed_at ASC, id ASC
@@ -1288,7 +1288,7 @@ pub async fn report_stalled_claims(
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     let (column, filter) = crate::stall::stall_scan(reason);
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let candidates = sqlx::query(&format!(
         "SELECT t.id, t.claim_lease_id, t.work_started_at,{progress},{status}
          FROM maidan_threads t
@@ -1422,7 +1422,7 @@ pub async fn release_claim(
     member_id: MemberId,
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
     tx.commit().await?;
     Ok(thread)
@@ -1437,7 +1437,7 @@ pub async fn release_claim_with_event(
     lease_id: ClaimLeaseId,
     decline: Option<ClaimDecline>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     if let Some(decline) = decline {
         super::review_family::refuse_unfounded_decline_in_tx(
             &mut tx, thread_id, member_id, lease_id, decline,
@@ -1469,7 +1469,7 @@ pub async fn release_member_claims_with_events(
     // The write lock before the read: under a deferred transaction a writer
     // committing between the select and the first release would fail that
     // release with a stale snapshot, and nothing would be released.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // A thread the member can no longer read is left, as `release_claim`
     // refuses it.
     let readable = crate::thread_access::readable_thread("t.id", "?1", "?2", "?4");

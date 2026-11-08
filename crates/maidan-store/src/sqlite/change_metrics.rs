@@ -22,7 +22,7 @@ use crate::error::StoreError;
 /// delivery of the same commit adds nothing.
 pub async fn record_round(pool: &SqlitePool, new: NewChangeRound) -> Result<(), StoreError> {
     let repo = new.repo.to_ascii_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at, linear_issue)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -268,7 +268,7 @@ pub async fn settle(
     pull_number: i64,
 ) -> Result<ChangeSettlement, StoreError> {
     let repo = repo.to_ascii_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let Some(row) = sqlx::query(
         "SELECT p.thread_id, p.merged_at IS NOT NULL AS merged, t.state,
                 t.tombstoned_at IS NOT NULL AS tombstoned, t.owner_id, r.produced_by
@@ -362,7 +362,7 @@ pub async fn settle(
             tx.rollback().await?;
             // The merge stands whatever the thread's gates say, so the close
             // is settled now and the refusal said once, not retried each tick.
-            let mut tx = pool.begin().await?;
+            let mut tx = super::tx::begin_write(pool).await?;
             let claimed = mark_settled(&mut tx, workspace_id, &repo, pull_number).await?;
             tx.commit().await?;
             if claimed == 0 {
@@ -472,7 +472,7 @@ async fn notify_merge(
     repo: &str,
     pull_number: i64,
 ) -> Result<Vec<PostedNotice>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let claimed = sqlx::query(
         "UPDATE maidan_change_pulls SET noticed_at = ?3
          WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4
@@ -589,7 +589,7 @@ pub async fn add_stale_base_notice(
         review_state: None,
         created_at: Utc::now(),
     };
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let posted = insert_notice_in_tx(&mut tx, new.thread_id, notice, &key).await?;
     tx.commit().await?;
     Ok(posted)
@@ -604,7 +604,7 @@ pub async fn record_deploy(
 ) -> Result<Vec<PostedNotice>, StoreError> {
     let repo = deploy.repo.to_ascii_lowercase();
     let sha = deploy.sha.to_ascii_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Every workspace that tracks the pull request hears of it: the hook
     // names a commit, and each tracking workspace merged that commit.
     let matched = sqlx::query(
@@ -1175,7 +1175,7 @@ pub async fn hand_off(
     pull_number: i64,
     rounds: i64,
 ) -> Result<Option<maidan_types::HandedOff>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
     let now = Utc::now();
     let inserted = sqlx::query(
@@ -1268,7 +1268,7 @@ pub async fn register(
     watch_only: bool,
 ) -> Result<DateTime<Utc>, StoreError> {
     let repo = repo.to_ascii_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let claimed: Option<DateTime<Utc>> = sqlx::query_scalar(
         "SELECT created_at FROM maidan_linear_notices WHERE thread_id = ?1 AND kind = 'claim'",
     )

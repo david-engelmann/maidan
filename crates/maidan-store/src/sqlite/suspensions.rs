@@ -17,7 +17,7 @@ pub async fn suspend(
     suspended_by: Option<MemberId>,
     audit: NewAuditEvent,
 ) -> Result<WorkspaceSuspension, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_workspace_suspensions (workspace_id, reason, suspended_by, suspended_at)
          SELECT id, ?2, ?3, ?4 FROM maidan_workspaces WHERE id = ?1
@@ -44,7 +44,7 @@ pub async fn lift(
     workspace_id: WorkspaceId,
     audit: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let deleted = sqlx::query("DELETE FROM maidan_workspace_suspensions WHERE workspace_id = ?1")
         .bind(workspace_id.0)
         .execute(&mut *tx)

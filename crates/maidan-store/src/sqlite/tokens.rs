@@ -296,7 +296,7 @@ pub async fn list_for_member(
 /// unchanged from before.
 #[cfg(feature = "test-support")]
 pub async fn revoke(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = revoke_on(&mut tx, id).await?;
     tx.commit().await?;
     Ok(token)
@@ -392,7 +392,7 @@ pub async fn create_audited(
     new: NewApiToken,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = create_on(&mut tx, new).await?;
     audit_on_tx(&mut tx, audit, &token).await?;
     tx.commit().await?;
@@ -406,7 +406,7 @@ pub async fn create_attenuated_audited(
     parent_token_id: ApiTokenId,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = create_attenuated_on(&mut tx, new, parent_token_id).await?;
     audit_on_tx(&mut tx, audit, &token).await?;
     tx.commit().await?;
@@ -422,7 +422,7 @@ pub async fn create_delegated_audited(
     parent_token_id: Option<ApiTokenId>,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = create_delegated_on(&mut tx, new, grant_id, delegate_id, parent_token_id).await?;
     audit_on_tx(&mut tx, audit, &token).await?;
     tx.commit().await?;
@@ -435,7 +435,7 @@ pub async fn revoke_audited(
     id: ApiTokenId,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = revoke_on(&mut tx, id).await?;
     audit_on_tx(&mut tx, audit, &token).await?;
     tx.commit().await?;
@@ -456,7 +456,7 @@ pub async fn rotate_audited(
 ) -> Result<ApiToken, StoreError> {
     // BEGIN IMMEDIATE takes the write lock up front, so two rotations of one
     // token serialize instead of both reading it live.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let delegated: Option<(Option<Uuid>,)> = sqlx::query_as(
         "SELECT delegation_grant_id FROM maidan_api_tokens
          WHERE id = ?1 AND revoked_at IS NULL",

@@ -46,7 +46,7 @@ pub async fn link(
     sha256: &str,
     linked_by: MemberId,
 ) -> Result<(ThreadArtifact, bool), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let held = sqlx::query(
         "SELECT 1 FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
@@ -146,7 +146,7 @@ pub async fn add_record_with_event(
     record: &NewEvidenceRecord,
     recorded_by: MemberId,
 ) -> Result<(EvidenceRecord, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
     let stored = EvidenceRecord {
         id: Uuid::now_v7(),

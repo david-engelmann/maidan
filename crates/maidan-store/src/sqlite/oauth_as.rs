@@ -342,7 +342,7 @@ pub async fn insert_grant_audited(
     new: NewOAuthGrant,
     audit: crate::AuditFor<OAuthGrant>,
 ) -> Result<OAuthGrant, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let grant = insert_grant_on(&mut tx, new).await?;
     super::audit::append_scoped(&mut tx, grant.workspace_id, audit(&grant))
         .await
@@ -479,7 +479,7 @@ pub async fn mint_token_audited(
     grant_id: OAuthGrantId,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<ApiToken, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = mint_token_on(&mut tx, new, grant_id).await?;
     super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
         .await
@@ -648,7 +648,7 @@ pub async fn mint_token_pair_audited(
             "a refresh token must be issued under the access token's grant".into(),
         ));
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let token = mint_token_on(&mut tx, access, grant_id).await?;
     insert_refresh_on(&mut tx, &refresh).await?;
     super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
@@ -728,7 +728,7 @@ pub async fn revoke_lineage_audited(
     lineage_id: Uuid,
     audit: crate::AuditFor<OAuthLineageRevocation>,
 ) -> Result<OAuthLineageRevocation, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let revoked = revoke_lineage_on(&mut tx, lineage_id).await?;
     super::audit::append_scoped(&mut tx, revoked.workspace_id, audit(&revoked))
         .await
@@ -744,7 +744,7 @@ pub async fn rotate_refresh_token(
     reuse_audit: crate::AuditFor<OAuthLineageRevocation>,
 ) -> Result<OAuthRefreshOutcome, StoreError> {
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // The conditional update is the single-use point: the write lock it takes
     // makes a second presenter wait, then read used_at as set and take the
     // reuse branch below.
@@ -841,7 +841,7 @@ pub async fn revoke_lineage_for_used_code(
     code_hash: &str,
     audit: crate::AuditFor<OAuthLineageRevocation>,
 ) -> Result<Option<OAuthLineageRevocation>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let code = sqlx::query(&format!(
         "SELECT {CODE_COLUMNS} FROM oauth_authorization_codes
          WHERE code_hash = ? AND used_at IS NOT NULL"
@@ -871,7 +871,7 @@ pub async fn revoke_access_token_audited(
     client_id: &str,
     audit: crate::AuditFor<ApiToken>,
 ) -> Result<Option<ApiToken>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "UPDATE maidan_api_tokens SET revoked_at = ?
          WHERE token_hash = ? AND revoked_at IS NULL

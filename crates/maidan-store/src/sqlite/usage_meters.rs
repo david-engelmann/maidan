@@ -14,7 +14,7 @@ pub async fn add(pool: &SqlitePool, batch: &[UsageMeterDay]) -> Result<(), Store
     if batch.is_empty() {
         return Ok(());
     }
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     for row in batch {
         let written = sqlx::query(
             "INSERT INTO maidan_usage_meters (workspace_id, day, meter, quantity)
@@ -76,7 +76,7 @@ fn row_to_day(row: &sqlx::sqlite::SqliteRow) -> Result<Option<UsageMeterDay>, St
 /// Replace each row's day value: for a gauge such as stored bytes, whose day
 /// is its latest measurement.
 pub async fn set(pool: &SqlitePool, batch: &[UsageMeterDay]) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     for row in batch {
         sqlx::query(
             "INSERT INTO maidan_usage_meters (workspace_id, day, meter, quantity)

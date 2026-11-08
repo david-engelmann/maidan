@@ -23,7 +23,7 @@ pub async fn cancel(
     reason: &str,
     authority: CancelAuthority,
 ) -> Result<CancelOutcome, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let outcome = cancel_in_tx(&mut tx, keys, thread_id, actor, reason, authority).await?;
     tx.commit().await?;
     Ok(outcome)

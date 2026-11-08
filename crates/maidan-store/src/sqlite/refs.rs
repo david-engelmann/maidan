@@ -47,7 +47,7 @@ pub async fn create_with_event(
 ) -> Result<(Reference, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)

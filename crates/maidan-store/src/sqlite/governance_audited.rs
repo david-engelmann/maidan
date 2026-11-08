@@ -22,7 +22,7 @@ use crate::{error::StoreError, AuditFor, InstalledApp};
 /// in the same transaction.
 macro_rules! audited {
     ($pool:expr, $owner:expr, |$tx:ident| $change:expr, $result:ident => $event:expr) => {{
-        let mut $tx = $pool.begin().await?;
+        let mut $tx = super::tx::begin_write($pool).await?;
         let $result = $change;
         if let Some(event) = $event {
             audit::append_scoped(&mut $tx, $owner, event).await?;
@@ -40,7 +40,7 @@ pub async fn freeze_member(
     reason: Option<&str>,
     audit_for: AuditFor<(MemberFreeze, u64)>,
 ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let (freeze, released, stored) =
         member_freezes::freeze_on(&mut tx, member_id, frozen_by, reason).await?;
     let change = (freeze, released);
@@ -110,7 +110,7 @@ pub async fn set_review_requirement(
     allow_lower: bool,
     audit_for: AuditFor<maidan_types::ReviewRequirementChange>,
 ) -> Result<maidan_types::ReviewRequirementChange, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let existing = reviews::get_requirement_on(&mut tx, thread_id).await?;
     let previous_count = existing.as_ref().map(|r| r.required_count).unwrap_or(0);
     let previous_max_rounds = existing
@@ -224,7 +224,7 @@ pub async fn install_app(
     // BEGIN IMMEDIATE takes the write lock before the active-installation
     // check, so two installs cannot both pass it; a deferred transaction
     // would let the second fail its lock upgrade with SQLITE_BUSY.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let installed = apps::install_on(&mut tx, workspace_id, app_id, &granted_capabilities).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&installed)).await?;
     tx.commit().await?;

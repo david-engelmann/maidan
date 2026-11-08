@@ -50,7 +50,7 @@ pub async fn create_audited(
     // writes. A deferred one that read before another connection committed
     // cannot take the write lock afterwards, and SQLite answers `database is
     // locked` at once instead of waiting out busy_timeout.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let inviter_live: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM maidan_members
                         WHERE id = ?1 AND workspace_id = ?2 AND tombstoned_at IS NULL)",
@@ -139,7 +139,7 @@ pub async fn revoke_audited(
     id: WorkspaceInviteId,
     audit: maidan_types::NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let revoked = sqlx::query(
         "UPDATE maidan_workspace_invites SET revoked_at = ?3
          WHERE id = ?1 AND workspace_id = ?2 AND revoked_at IS NULL AND accepted_at IS NULL",
@@ -183,7 +183,7 @@ pub async fn accept(
     session_audit: crate::AuditFor<MaidanSession>,
 ) -> Result<WorkspaceInviteAcceptance, StoreError> {
     let email_lower = accept.email.trim().to_lowercase();
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Read after the write lock: an invite that expired while this waited
     // must not be consumed.
     let now = Utc::now();

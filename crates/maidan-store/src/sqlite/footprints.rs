@@ -54,7 +54,7 @@ pub async fn set(
     // The lease clock, so a claim held through the boot grace still counts
     // as live and is conflict-checked.
     let now = grace.lease_clock(Utc::now()).to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
         "SELECT ch.workspace_id, {} AS live
          FROM maidan_threads t JOIN maidan_channels ch ON ch.id = t.channel_id
@@ -169,7 +169,7 @@ pub async fn pause_repo(
     audit_for: AuditFor<RepoPause>,
 ) -> Result<RepoPause, StoreError> {
     let now = Utc::now().to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_repo_pauses (workspace_id, repo, paused_at, paused_by, reason)
          VALUES (?, ?, ?, ?, ?)
@@ -198,7 +198,7 @@ pub async fn resume_repo(
     repo: &str,
     audit: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let removed = sqlx::query("DELETE FROM maidan_repo_pauses WHERE workspace_id = ? AND repo = ?")
         .bind(workspace_id.0)
         .bind(repo)
@@ -287,7 +287,7 @@ pub async fn set_slot_capacity(
     updated_by: MemberId,
     audit: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_slot_capacities (workspace_id, slot, capacity, updated_at, updated_by)
          VALUES (?, ?, ?, ?, ?)
@@ -315,7 +315,7 @@ pub async fn clear_slot_capacity(
     slot: &str,
     audit: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let removed =
         sqlx::query("DELETE FROM maidan_slot_capacities WHERE workspace_id = ? AND slot = ?")
             .bind(workspace_id.0)

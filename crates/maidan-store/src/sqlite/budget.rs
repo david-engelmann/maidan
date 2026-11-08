@@ -186,7 +186,7 @@ pub async fn report_usage(
     thread_id: ThreadId,
     delta: UsageDelta,
 ) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let budget = add_usage_in_tx(&mut tx, thread_id, delta).await?;
 
     let ctx = sqlx::query(
@@ -258,7 +258,7 @@ pub async fn report_accounted_usage(
     new: &NewUsageLedgerEntry,
 ) -> Result<(UsageLedgerEntry, Vec<StoredEvent>), StoreError> {
     new.validate().map_err(StoreError::InvalidInput)?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let ctx = sqlx::query(
         "SELECT t.assignee_id, t.claim_lease_id, t.work_started_at,
                 t.channel_id, c.workspace_id
@@ -489,7 +489,7 @@ pub async fn patch_budget(
     thread_id: ThreadId,
     patch: BudgetPatch,
 ) -> Result<ThreadBudget, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let current = sqlx::query(
         "SELECT max_tokens, max_usd_micros, max_turns, max_wall_secs
          FROM maidan_thread_budgets WHERE thread_id = ?",

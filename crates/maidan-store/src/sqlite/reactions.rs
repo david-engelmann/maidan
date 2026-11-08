@@ -61,7 +61,7 @@ pub async fn add_with_event(
     new: NewReaction,
 ) -> Result<StoredEvent, StoreError> {
     let emoji = normalize_emoji(&new.emoji)?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_reactions (message_id, member_id, emoji, created_at)
          VALUES (?, ?, ?, ?)
@@ -98,7 +98,7 @@ pub async fn remove_with_event(
     emoji: &str,
 ) -> Result<(bool, Option<StoredEvent>), StoreError> {
     let emoji = normalize_emoji(emoji)?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result = sqlx::query(
         "DELETE FROM maidan_reactions
          WHERE message_id = ? AND member_id = ? AND emoji = ?",

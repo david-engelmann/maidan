@@ -51,7 +51,7 @@ pub async fn claim_next_due(
     lease_secs: i64,
 ) -> Result<Option<MailOutbox>, StoreError> {
     let now_s = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let candidate = sqlx::query(
         "SELECT id FROM maidan_mail_outbox
          WHERE status = 'pending' AND next_attempt_at <= ?

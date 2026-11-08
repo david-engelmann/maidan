@@ -170,7 +170,7 @@ async fn apply_sqlite(
         return Ok(());
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = crate::sqlite::tx::begin_write(pool).await?;
     sqlx::raw_sql(sql).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO maidan_migrations (version) VALUES (?)")
         .bind(version)

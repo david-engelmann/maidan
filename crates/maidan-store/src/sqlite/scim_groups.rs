@@ -226,7 +226,7 @@ pub async fn create_audited(
 ) -> Result<ScimGroup, StoreError> {
     let id = ScimGroupId::new();
     let now = Utc::now().to_rfc3339();
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query(
         "INSERT INTO maidan_scim_groups
              (id, workspace_id, display_name, external_id, created_at, updated_at)
@@ -262,7 +262,7 @@ pub async fn update_audited(
     change: ScimGroupChange,
     audit_for: AuditFor<ScimGroupWrite>,
 ) -> Result<Option<ScimGroupWrite>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let Some(current) = get_on(&mut tx, workspace_id, id).await? else {
         return Ok(None);
     };
@@ -308,7 +308,7 @@ pub async fn delete_audited(
     id: ScimGroupId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let done = sqlx::query("DELETE FROM maidan_scim_groups WHERE id = ? AND workspace_id = ?")
         .bind(id.0)
         .bind(workspace_id.0)

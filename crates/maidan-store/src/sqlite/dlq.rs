@@ -12,7 +12,7 @@ const COLS: &str = "id, workspace_id, channel_id, thread_id, member_id, reason, 
 /// `failed_at` is bound rfc3339 (not the `datetime('now')` default) so it reads
 /// back as `DateTime<Utc>` cleanly.
 pub async fn record(pool: &SqlitePool, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let entry = record_in_tx(&mut tx, new).await?;
     tx.commit().await?;
     Ok(entry)

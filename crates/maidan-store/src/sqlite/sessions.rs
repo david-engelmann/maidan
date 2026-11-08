@@ -65,7 +65,7 @@ pub async fn create_audited(
     new: NewMaidanSession,
     audit: crate::AuditFor<MaidanSession>,
 ) -> Result<MaidanSession, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let session = create_on(&mut tx, new).await?;
     super::audit::append_scoped(&mut tx, session.workspace_id, audit(&session)).await?;
     tx.commit().await?;
@@ -111,7 +111,7 @@ pub async fn delete_audited(
     id: SessionId,
     audit: crate::AuditFor<MaidanSession>,
 ) -> Result<MaidanSession, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
         "DELETE FROM maidan_sessions WHERE id = ?
          RETURNING {SESSION_COLUMNS}"

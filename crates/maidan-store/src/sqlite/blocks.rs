@@ -30,7 +30,7 @@ pub async fn set(
     set_by: MemberId,
     note: Option<String>,
 ) -> Result<(ThreadBlock, StoredEvent), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
         "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, set_at, note)
@@ -70,7 +70,7 @@ pub async fn clear_with_event(
     thread_id: ThreadId,
     resolved_by: MemberId,
 ) -> Result<(Option<ThreadBlock>, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "DELETE FROM maidan_thread_blocks WHERE thread_id = ?
          RETURNING thread_id, reason, set_by, set_at, note",

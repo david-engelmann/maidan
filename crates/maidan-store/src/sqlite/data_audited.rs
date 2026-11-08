@@ -18,7 +18,7 @@ pub async fn purge_workspace(
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspacePurgeResult>,
 ) -> Result<WorkspacePurgeResult, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result = purge_workspace::purge_on(&mut tx, keys, workspace_id).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
@@ -31,7 +31,7 @@ pub async fn erase_workspace(
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspaceEraseResult>,
 ) -> Result<WorkspaceEraseResult, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let result = erase_workspace::erase_on(&mut tx, keys, workspace_id).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
@@ -48,7 +48,7 @@ pub async fn import_workspace(
     origin: maidan_types::WorkspaceOrigin,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // A replaced workspace keeps its own origin, read before the erase: a
     // forced restore of an open workspace is still open.
     // So do its metered usage and allowance crossings, which the erase
@@ -75,7 +75,7 @@ pub async fn purge_message(
     id: MessageId,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Scope first: the message, and so its workspace, is gone after the purge.
     audit::append_scoped(&mut tx, crate::audit_scope::AuditOwner::Message(id), event).await?;
     messages::purge_on(&mut tx, id).await?;
@@ -90,7 +90,7 @@ pub async fn place_legal_hold(
     placed_by: Option<MemberId>,
     audit_for: AuditFor<LegalHold>,
 ) -> Result<LegalHold, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let hold = legal_hold::place_on(&mut tx, workspace_id, reason, placed_by).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&hold)).await?;
     tx.commit().await?;
@@ -104,7 +104,7 @@ pub async fn lift_legal_hold(
     hold_id: LegalHoldId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let lifted = legal_hold::lift_on(&mut tx, workspace_id, hold_id).await?;
     if let Some(disposal) = &lifted {
         audit::append_scoped(&mut tx, workspace_id, disposal.recorded_in(event)).await?;
@@ -120,7 +120,7 @@ pub async fn read_preserved_messages(
     workspace_id: WorkspaceId,
     event: NewAuditEvent,
 ) -> Result<Vec<PreservedMessage>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     audit::append_scoped(&mut tx, workspace_id, event).await?;
     let preserved = legal_hold::preserved_on(&mut tx, workspace_id).await?;
     tx.commit().await?;

@@ -62,7 +62,7 @@ pub async fn lift(
     workspace_id: WorkspaceId,
     hold_id: LegalHoldId,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let lifted = lift_on(&mut tx, workspace_id, hold_id).await?;
     tx.commit().await?;
     Ok(lifted.is_some())

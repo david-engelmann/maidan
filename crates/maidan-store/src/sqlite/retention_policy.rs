@@ -51,7 +51,7 @@ pub async fn set_audited(
     audit: crate::AuditFor<RetentionDays>,
 ) -> Result<RetentionDays, StoreError> {
     crate::retention_policy::validate(&days, &instance)?;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     if days.is_unset() {
         sqlx::query("DELETE FROM maidan_retention_policies WHERE workspace_id = ?")
             .bind(workspace_id.0)

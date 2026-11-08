@@ -237,7 +237,7 @@ pub(crate) async fn revoke_installation_on(
     id: AppInstallationId,
 ) -> Result<AppInstallation, StoreError> {
     // The installation and every token minted under it are revoked together.
-    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let mut tx = super::tx::begin_write_on(&mut *conn).await?;
     let now = Utc::now().to_rfc3339();
     let updated = sqlx::query(
         "UPDATE maidan_app_installations

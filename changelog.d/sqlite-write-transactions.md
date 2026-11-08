@@ -1,0 +1,3 @@
+### Every SQLite transaction that writes takes the write lock first
+
+- **Fixed:** on SQLite, any store write that read before it wrote (claiming work, settling a review, appending an audited change, and about 150 others) could fail at once with `database is locked` when another connection committed in between: a deferred transaction cannot upgrade a stale read to a write, and `busy_timeout` does not apply to that. Every SQLite transaction that can write now begins with `BEGIN IMMEDIATE` through one helper, so it waits its turn for the lock instead; boot migrations do too. A source contract (`sqlite_write_lock_contract`) fails on any new deferred transaction in the SQLite store that is not listed as read-only or a savepoint.

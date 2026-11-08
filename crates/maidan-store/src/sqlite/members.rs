@@ -43,7 +43,7 @@ pub async fn create_with_event(
     let id = Uuid::now_v7();
     let now = Utc::now();
     let workspace_id = new.workspace_id;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_members (id, workspace_id, handle, display_name, kind, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -79,7 +79,7 @@ pub async fn create_agent_with_token(
     token_audit: crate::AuditFor<maidan_types::ApiToken>,
 ) -> Result<crate::store::CreatedAgent, StoreError> {
     let workspace_id = new.workspace_id;
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let member = create_on(
         &mut tx,
         NewMember {

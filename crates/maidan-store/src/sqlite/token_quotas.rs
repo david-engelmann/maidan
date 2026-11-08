@@ -8,7 +8,7 @@ pub async fn replace(
     token_id: ApiTokenId,
     quotas: &[TokenQuota],
 ) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     sqlx::query("DELETE FROM maidan_token_quotas WHERE token_id = ?")
         .bind(token_id.0)
         .execute(&mut *tx)

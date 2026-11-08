@@ -20,7 +20,7 @@ pub async fn provision(
     active: bool,
     audit_for: AuditFor<(Member, ScimUser)>,
 ) -> Result<(Member, ScimUser), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let member = members::create_on(&mut tx, new).await?;
     let scim =
         scim_users::create_on(&mut tx, member.id, member.workspace_id, external_id, active).await?;
@@ -43,7 +43,7 @@ pub async fn update_user(
     active: bool,
     event: NewAuditEvent,
 ) -> Result<Option<ScimUser>, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     let Some(scim) = scim_users::update_on(&mut tx, member_id, external_id, active).await? else {
         return Ok(None);
     };
@@ -75,7 +75,7 @@ pub async fn deprovision(
     member_id: MemberId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut tx = super::tx::begin_write(pool).await?;
     // Delete the SCIM row first: it waits behind a sign-in holding that row
     // FOR SHARE, so the sessions ended below include the one that sign-in
     // commits. Ending them first could miss it and leave an orphan (#1716).
