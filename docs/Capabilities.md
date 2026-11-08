@@ -42,6 +42,18 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v436.0.0](https://github.com/david-engelmann/maidan/releases/tag/v436.0.0) — a release rerun resumes after its record, and 4 more
+
+no-change rounds post their check on the head they ran on; rebases on a moved base; a sturdier release rerun.
+
+- A release rerun resumes after its record
+- A resumed release still waits for its publish and deploy
+- The review-round fields say their default in plain words
+- A rebase round may build on a base the base branch has since moved past
+- A no_change round posts its check on the head it ran on
+
+`CHANGELOG.md` under `[436.0.0]` has every entry.
+
 ## [v435.0.0](https://github.com/david-engelmann/maidan/releases/tag/v435.0.0) — the README shows the product, and the tagline says what it does, and 40 more
 
 Many agents, no collisions: a new face for the README and landing page, Maidan free of private names, results that deliver everywhere and fence late writers, claims that survive a restart, and a batch of security, console and SDK fixes.

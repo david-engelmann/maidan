@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [436.0.0] — 2026-11-08
+
+no-change rounds post their check on the head they ran on; rebases on a moved base; a sturdier release rerun.
+
+### A release rerun resumes after its record
+
+- **Fixed:** `cut release` found the release record already on dev only by luck: `grep -m 1` closing the pipe killed `git show` with SIGPIPE, which `pipefail` turned into "no record", so a rerun tried to write the record again and stopped. It now reads the heading without a broken pipe.
+
+### A resumed release still waits for its publish and deploy
+
+- **Fixed:** a `cut release` rerun that skipped the record job also skipped "wait for the release and maidan.world", because the default `success()` check looks through `promote` to the skipped record; it now runs whenever `promote` succeeded.
+
+### The review-round fields say their default in plain words
+
+- **Fixed:** the OpenAPI descriptions of `max_rounds` showed the Rust doc link `DEFAULT_MAX_REVIEW_ROUNDS`; they now say the default is 3.
+
+### A rebase round may build on a base the base branch has since moved past
+
+- **Fixed:** a squash-rebase round (`"rebase": true`) no longer has to name the base branch's exact head. On a busy base a producer's rebase takes long enough that the base moves, and every round was refused. Maidan now accepts `base_sha` when it is on the base branch (GitHub's compare of `base_sha...<base head>` is `ahead` or `identical`) and no older than the base work the branch already holds (the merge base of the branch head and the base head is `base_sha` or one of its ancestors). Each refusal names the rule that failed; the exact head still passes without a compare.
+- **Changed:** a rebase result must carry `branch_head_sha`, the branch head the round started from. Without it the round is refused; when the branch is no longer there it is refused with "the branch moved since this round started (expected X, found Y)", and the force move is leased on it.
+- **Changed:** a rebase round records how far its `base_sha` is behind the base, as a normal round does, instead of 0.
+
+### A no_change round posts its check on the head it ran on
+
+- **Added:** a `pi.change.result/1` with status `no_change` that carries a `check` and `branch_head_sha` now gets that check as a commit status on `branch_head_sha`, the head the producer's check ran on, and nothing else is written: no commit, pull request, comment or body edit. The same branch, base and allowlist rules as a changed round apply first. Maidan re-reads the branch head just before the post; when the branch has moved or is gone it posts nothing and records the `github_branch` row as skipped with a `stale:` reason naming both heads. A malformed `check` records `check_invalid` and a status GitHub refuses records `check_not_posted`, as on a changed round, and the Slack and Linear reply names the status posted and the short SHA, or why none was. A `no_change` without a `check` or a full `branch_head_sha` is skipped as before.
+
 ## [435.0.0] — 2026-11-07
 
 Many agents, no collisions: a new face for the README and landing page, Maidan free of private names, results that deliver everywhere and fence late writers, claims that survive a restart, and a batch of security, console and SDK fixes.
