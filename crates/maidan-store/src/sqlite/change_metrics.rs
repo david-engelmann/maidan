@@ -117,10 +117,11 @@ pub async fn round_previous_head(
     Ok(head.flatten())
 }
 
-/// The thread whose work opened pull request `pull_number` of `repo` in
-/// `workspace_id`: the one the change flow tracks it under, else the one
-/// whose result was last delivered to it (as `delivered_change_head` reads
-/// it). `None` when the change flow knows no such pull request.
+/// The thread answerable for pull request `pull_number` of `repo` in
+/// `workspace_id`: the one whose result was last delivered to it (as
+/// `delivered_change_head` reads it, so the thread behind the head an enqueue
+/// checks), else the one the change flow tracks it under. `None` when the
+/// change flow knows no such pull request.
 pub async fn pull_thread(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -129,11 +130,11 @@ pub async fn pull_thread(
 ) -> Result<Option<ThreadId>, StoreError> {
     let thread: Option<Uuid> = sqlx::query_scalar(
         "SELECT thread_id FROM (
-             SELECT p.thread_id AS thread_id, 0 AS rank, NULL AS at
+             SELECT p.thread_id AS thread_id, 1 AS rank, NULL AS at
              FROM maidan_change_pulls p
              WHERE p.repo = lower(?1) AND p.pull_number = ?2 AND p.workspace_id = ?3
              UNION ALL
-             SELECT rd.thread_id AS thread_id, 1 AS rank, rd.updated_at AS at
+             SELECT rd.thread_id AS thread_id, 0 AS rank, rd.updated_at AS at
              FROM maidan_result_deliveries rd
              JOIN maidan_threads t ON t.id = rd.thread_id
              JOIN maidan_channels c ON c.id = t.channel_id

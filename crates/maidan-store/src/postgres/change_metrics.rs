@@ -116,7 +116,7 @@ pub async fn round_previous_head(
     Ok(head.flatten())
 }
 
-/// The thread whose work opened pull request `pull_number` of `repo` in
+/// The thread answerable for pull request `pull_number` of `repo` in
 /// `workspace_id` — see the SQLite twin.
 pub async fn pull_thread(
     pool: &PgPool,
@@ -126,11 +126,11 @@ pub async fn pull_thread(
 ) -> Result<Option<ThreadId>, StoreError> {
     let thread: Option<Uuid> = sqlx::query_scalar(
         "SELECT thread_id FROM (
-             SELECT p.thread_id AS thread_id, 0 AS rank, NULL::timestamptz AS at
+             SELECT p.thread_id AS thread_id, 1 AS rank, NULL::timestamptz AS at
              FROM maidan_change_pulls p
              WHERE p.repo = lower($1) AND p.pull_number = $2 AND p.workspace_id = $3
              UNION ALL
-             SELECT rd.thread_id AS thread_id, 1 AS rank, rd.updated_at AS at
+             SELECT rd.thread_id AS thread_id, 0 AS rank, rd.updated_at AS at
              FROM maidan_result_deliveries rd
              JOIN maidan_threads t ON t.id = rd.thread_id
              JOIN maidan_channels c ON c.id = t.channel_id

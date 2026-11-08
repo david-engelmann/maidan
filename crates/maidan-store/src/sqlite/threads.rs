@@ -1397,7 +1397,7 @@ pub async fn renew_claim(
 
 /// Why a claim-fenced write found no row: the thread does not exist, or the
 /// caller's lease is not its live claim.
-async fn fence_refusal(
+pub(super) async fn fence_refusal(
     pool: &SqlitePool,
     thread_id: ThreadId,
     lease_id: ClaimLeaseId,

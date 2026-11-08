@@ -2711,10 +2711,10 @@ pub trait AssignmentStore: Send + Sync {
         pull_number: i64,
         commit_sha: &str,
     ) -> Result<Option<String>, StoreError>;
-    /// The thread whose work opened agent pull request `pull_number` of
-    /// `repo` in `workspace_id`: the one the change flow tracks it under,
-    /// else the one whose result was last delivered to it. `None` when the
-    /// change flow knows no such pull request there.
+    /// The thread answerable for agent pull request `pull_number` of `repo`
+    /// in `workspace_id`: the one whose result was last delivered to it (the
+    /// thread behind its current head), else the one the change flow tracks
+    /// it under. `None` when the change flow knows no such pull request there.
     async fn change_pull_thread(
         &self,
         workspace_id: WorkspaceId,

@@ -66,7 +66,7 @@ pub async fn set(
     .await?;
     match row {
         Some(row) => row_to_result(&row),
-        None => Err(crate::thread_results::claim_lost(lease_id)),
+        None => Err(super::threads::fence_refusal(pool, thread_id, lease_id).await?),
     }
 }
 

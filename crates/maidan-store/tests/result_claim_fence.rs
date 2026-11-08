@@ -277,12 +277,18 @@ async fn an_expired_lease_is_lost_before_anyone_takes_it_over(store: &dyn Store)
         .await
         .expect("an unleased claim writes its result");
     // A thread that does not exist is not found, not lost.
+    let missing = ThreadId(uuid::Uuid::now_v7());
     assert!(matches!(
-        store
-            .renew_claim(ThreadId(uuid::Uuid::now_v7()), a, lease, 60)
-            .await,
+        store.renew_claim(missing, a, lease, 60).await,
         Err(StoreError::NotFound)
     ));
+    let missing_result = store
+        .set_thread_result(missing, a, lease, &json!({ "from": "a" }))
+        .await;
+    assert!(
+        matches!(missing_result, Err(StoreError::NotFound)),
+        "{missing_result:?}"
+    );
 }
 
 async fn a_lease_from_another_workspace_fences_nothing(store: &dyn Store) {
