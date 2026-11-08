@@ -406,6 +406,18 @@ The Maintainer's digest of David's 2026-11-05 reading. These are suggestions, no
 | 14 | One writer per shared record ([Anthropic, "The components of agent memory"](https://www.anthropic.com/research/components-of-agent-memory)) | **With the #13 audit**; it moves before launch only if a record with two writers turns up | The article finds that several agents writing one shared page goes wrong. Check that thread notes, result envelopes and Slack relays each have exactly one writer, and that everyone else appends: events, messages and new result revisions. |
 | 15 | A daily overlap measure: files edited by more than one open branch (the swarm's operator, 2026-11-08) | **Later**, under W (swarm outcomes) | Maidan already holds each thread's repository and branch footprint, so it is the natural source. A daily count of the files touched by more than one open branch shows collision risk before it becomes a merge conflict. It is measured with the swarm's operator, who reads it. |
 
+### Fourth batch (2026-11-08, message threads)
+
+Anthropic's [message threads](https://platform.claude.com/docs/en/build-with-claude/message-threads) beta (2026-11-02) lets a client send only the new turns while the API holds the conversation in memory for a few minutes. Maidan makes no model calls, so threads belong to the harness. A proposal to bind provider conversations to claims was weighed against that.
+
+| # | Item | Disposition | Why |
+|---|---|---|---|
+| 16 | A message threads section in Harness Caching | **Now**, docs | Integrators need the rules where they meet Maidan: the harness keeps its own transcript and replays on `thread_not_found`, Maidan's context pack is the durable source for the room part of a replay, and system and prefix content travel only in the create request. It also covers the breakpoint limit the cache helpers already spend against, the short expiry that a review or CI pause outlasts, the accounts and gateways that can't use threads, and one key per agent. |
+| 17 | One context anchor: a message cursor paired with the prefix it was taken under | **Now**, checked in the same PR | It is fixed only if the context builder can return a wrong delta for a cursor and a sha from different prefixes. If the builder already returns the replacement prefix, nothing changes. |
+| 18 | Time to first token and request bytes in the usage ledger, as the harness reports them | **Later**, under C (context economics) | Useful with or without threads. They are the only way a workspace can see in its own data whether threads help it. They are reported, not measured, under the ledger's existing convention, and they need four SDK passes. |
+| 19 | A per-claim conversation binding, a resume verdict over provider state, and a cold- or warm-start word at handoff | **Declined until a harness asks** | Maidan cannot see provider state, and a provider thread expires within minutes, which review and CI pauses outlast. A binding would put durable records about ephemeral conversations into Maidan, with erasure work, for a path no harness here uses. |
+| 20 | A live conformance probe for gateways that ignore threads | **Declined until something here depends on threads** | It is a live, funded and best-effort check, not an offline fixture. It is worth building only once threaded traffic exists. |
+
 ## Enhancement thread 2026-09-30: dispositions
 
 The 2026-09-30 entries (28–57) and the supersessions of 27, 28, 29 and 35.
