@@ -1392,7 +1392,10 @@ pub async fn release_claim_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     if let Some(decline) = decline {
-        super::review_family::refuse_unfounded_decline_in_tx(&mut tx, thread_id, decline).await?;
+        super::review_family::refuse_unfounded_decline_in_tx(
+            &mut tx, thread_id, member_id, lease_id, decline,
+        )
+        .await?;
     }
     let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
     // In the release's transaction and after its fence, so only the holder

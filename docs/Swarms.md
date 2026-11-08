@@ -513,8 +513,9 @@ again. The member's next `claim_next` gets the next eligible thread, or
 nothing, instead of the same review; every other member is still handed it.
 The decline is part of the release, so only the holder of the live lease can
 record one, and only for itself; `release_own_claims` records none. It is
-refused, and nothing is released, on a thread that names no
-`author_family`. It applies to `claim_next` only (a direct claim or assign
+refused, and nothing is released, on a thread that is not a review naming
+its `author_family`; a token that does not hold the claim is answered not
+found, as a plain release is. It applies to `claim_next` only (a direct claim or assign
 is the caller's choice), and needs no expiry: a review's author family is set
 once, and the next review round is a new review thread. A seat no longer
 needs to report a zero-cost usage record to stop being handed its own

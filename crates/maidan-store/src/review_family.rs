@@ -75,7 +75,7 @@ pub(crate) fn declined_by(member: &str) -> String {
 /// review naming its author's family: there is no family to have shared.
 pub(crate) fn decline_without_family() -> crate::error::StoreError {
     crate::error::StoreError::Conflict(
-        "decline own_family: this thread names no author_family, so it is not a review of a change by your family; release it without decline"
+        "decline own_family: this thread is not a review that names its author_family; release it without decline"
             .to_owned(),
     )
 }

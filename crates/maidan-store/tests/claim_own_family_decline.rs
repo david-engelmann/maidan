@@ -202,6 +202,20 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("its other work is unaffected");
     assert_eq!(held.id, plain);
+    // A token that does not hold the claim learns only that, as a plain
+    // release does, before anything about the thread's attributes.
+    let stale = store
+        .release_claim_with_event(
+            plain,
+            fresh,
+            ClaimLeaseId::new(),
+            Some(ClaimDecline::OwnFamily),
+        )
+        .await;
+    assert!(
+        matches!(stale, Err(StoreError::NotFound)),
+        "a stale token is refused as not found, got {stale:?}"
+    );
     let refused = store
         .release_claim_with_event(plain, fresh, lease(&held), Some(ClaimDecline::OwnFamily))
         .await;
@@ -214,6 +228,40 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(kept.claim_lease_id, held.claim_lease_id);
     store
         .release_claim_with_event(plain, fresh, lease(&held), None)
+        .await
+        .expect("plain release");
+
+    // A change that names an author family is still not a review.
+    let change = task(store, w.channel, "a change", false).await;
+    store
+        .set_thread_attributes(
+            change,
+            TaskAttributes {
+                kind: TaskKind::Change,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await
+        .expect("change attributes");
+    let direct = store
+        .claim_thread(change, fresh)
+        .await
+        .expect("direct claim");
+    let refused = store
+        .release_claim_with_event(
+            change,
+            fresh,
+            lease(&direct.thread),
+            Some(ClaimDecline::OwnFamily),
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::Conflict(_))),
+        "only a review takes an own-family decline, got {refused:?}"
+    );
+    store
+        .release_claim_with_event(change, fresh, lease(&direct.thread), None)
         .await
         .expect("plain release");
 
@@ -235,8 +283,8 @@ async fn run_suite(store: &dyn Store) {
         .expect("a repeat decline");
     let held = next(store, w.channel, fresh)
         .await
-        .expect("only the plain work is left for it");
-    assert_eq!(held.id, plain);
+        .expect("its undeclined work is left for it");
+    assert_eq!(held.id, plain, "the oldest thread it did not decline");
 }
 
 #[tokio::test]

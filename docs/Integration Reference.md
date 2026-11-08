@@ -1417,8 +1417,8 @@ is released with `decline: "own_family"` added. The claim is released as
 usual, and `claim_next` stops handing that review to you (every other member
 is still handed it), so your next claim gets the next eligible thread instead
 of the same review. Only the holder of the live lease can decline, as part of
-its release; a thread that names no `author_family` refuses the decline and
-stays claimed. The assignment event's note records the decline. MCP only;
+its release; a thread that is not a review naming its `author_family` refuses
+the decline and stays claimed. The assignment event's note records the decline. MCP only;
 `POST /threads/{id}/claim/release` takes no decline.
 
 An exit you do not control (a crash, a kill, a host restart) takes the fencing
