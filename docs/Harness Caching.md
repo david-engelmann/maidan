@@ -205,8 +205,8 @@ pack. A live continue is the fast path inside one burst of work, not the plan.
   editing other than `clear_thinking_20251015` with `keep: "all"`. The page
   lists the Claude API, Claude Platform on AWS, Claude Models on Google Cloud
   (Anthropic managed) and Microsoft Foundry as where threads run.
-- **Gateways.** This is our reading, not the page's, and UNVERIFIED for any
-  given gateway: a proxy that drops the `thread` field can still answer 200.
+- **Gateways.** The page doesn't cover them; this is Maidan's reading. A
+  proxy that drops the `thread` field can still answer 200.
   A continue carries only the new turns, without `system` or `tools`, so the
   model then answers with no memory of the conversation, and nothing in the
   response says so. Before threading through a gateway, check that it forwards
