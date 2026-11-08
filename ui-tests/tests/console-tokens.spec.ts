@@ -27,6 +27,21 @@ async function pasteIn(page: Page, secret: string, hash: string): Promise<void> 
   await expect(page.locator(".rail:visible, .tabbar:visible").first()).toBeVisible();
 }
 
+// A wait that names itself when it runs out. This test's waits are promises
+// settled by a route handler, and an unbounded one used to spend the whole 30s
+// budget and report only "Test timeout", with no step to look at (#2126).
+async function within<T>(what: string, ms: number, p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not happen within ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([p, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const tokenRow = (page: Page, label: string) => page.locator("li.token", { has: page.locator(".token-head b", { hasText: label }) });
 
 test("a minted secret is shown once, masked, and gone after I have it", async ({ page, request }) => {
@@ -96,62 +111,70 @@ test("rotating the token this page runs on moves the page onto the new secret", 
   await expect(page.getByLabel(/paste a token/i)).toHaveCount(0);
 });
 
-test("a rotation that lands after the page signed out does not sign it back in", async ({ page, request }) => {
-  const own = await mint(request, `stale-${Date.now()}`, ["workspace:read", "token:admin"]);
-  await pasteIn(page, own.secret, `#/people/m/${fx.member_id}`);
-  let release: () => void = () => {};
-  const held = new Promise<void>((r) => (release = r));
-  // The outcome comes from the route handler itself, never from page
-  // request events: signing out navigates the page, and Chromium drops a
-  // paused intercepted request without always emitting requestfailed, which
-  // left the test waiting on an event that never came. route.fetch() sends
-  // the held rotation from the test side, so the server answers whether or
-  // not the page still wants it, and the handler always settles.
-  let settle: (o: "done" | "dropped") => void = () => {};
-  const settled = new Promise<"done" | "dropped">((r) => (settle = r));
-  let caught: () => void = () => {};
-  const routed = new Promise<void>((r) => (caught = r));
-  await page.route("**/tokens/*/rotate", async (route) => {
-    caught();
-    await held;
-    let outcome: "done" | "dropped" = "dropped";
-    try {
-      // fetch waits forever by default. A navigation or sign-out can drop the
-      // paused request, and that used to hold the whole test until its 30s
-      // budget. A miss is the same as a rotation that never landed.
-      const res = await route.fetch({ timeout: 5_000 });
-      outcome = res.ok() ? "done" : "dropped";
-      await route.fulfill({ response: res }).catch(() => {});
-    } catch {
-      await route.abort().catch(() => {});
+test.describe("a rotation racing a sign-out", () => {
+  // The confirm button and the Preferences view animate in, and a click on a
+  // moving target waits for it to settle, with no action timeout, as long as
+  // the test lasts. Reduced motion holds them still, and the action timeout
+  // makes a click that still cannot land fail on its own line.
+  test.use({ reducedMotion: "reduce", actionTimeout: 8_000 });
+
+  test("a rotation that lands after the page signed out does not sign it back in", async ({ page, request }) => {
+    const own = await mint(request, `stale-${Date.now()}`, ["workspace:read", "token:admin"]);
+    await pasteIn(page, own.secret, `#/people/m/${fx.member_id}`);
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    // The outcome comes from the route handler itself, never from page
+    // request events: signing out navigates the page, and Chromium drops a
+    // paused intercepted request without always emitting requestfailed, which
+    // left the test waiting on an event that never came. route.fetch() sends
+    // the held rotation from the test side, so the server answers whether or
+    // not the page still wants it, and the handler always settles.
+    let settle: (o: "done" | "dropped") => void = () => {};
+    const settled = new Promise<"done" | "dropped">((r) => (settle = r));
+    let caught: () => void = () => {};
+    const routed = new Promise<void>((r) => (caught = r));
+    await page.route("**/tokens/*/rotate", async (route) => {
+      caught();
+      await held;
+      let outcome: "done" | "dropped" = "dropped";
+      try {
+        // fetch waits forever by default. A navigation or sign-out can drop the
+        // paused request, and that used to hold the whole test until its 30s
+        // budget. A miss is the same as a rotation that never landed.
+        const res = await route.fetch({ timeout: 5_000 });
+        outcome = res.ok() ? "done" : "dropped";
+        await route.fulfill({ response: res }).catch(() => {});
+      } catch {
+        await route.abort().catch(() => {});
+      }
+      settle(outcome);
+    });
+    const trades: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().endsWith("/auth/session/from-token")) trades.push(r.url());
+    });
+    const row = page.locator("li.token", { has: page.locator(".state-chip", { hasText: "This page" }) });
+    await row.getByRole("button", { name: "Rotate" }).click();
+    await row.getByRole("button", { name: "Rotate: sure?" }).click();
+    // The rotation is held before the page signs out, not merely clicked.
+    await within("the held rotation request", 8_000, routed);
+    // Sign out from Preferences while the rotation is still in flight. A full
+    // reload does not commit in Chromium while that request stays paused, so
+    // the open page changes view instead of loading a new document.
+    await page.evaluate(() => {
+      location.hash = "#/tools/prefs";
+    });
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByLabel(/paste a token/i)).toBeVisible();
+    release();
+    if ((await within("the held rotation settling", 8_000, settled)) === "done") {
+      await expect.poll(() => meStatus(request, own.secret), { message: "the rotation finished" }).toBe(401);
     }
-    settle(outcome);
+    await page.waitForTimeout(500);
+    expect(trades, "the stale rotation installed no session").toEqual([]);
+    await expect(page.getByLabel(/paste a token/i)).toBeVisible();
+    expect(await page.evaluate(async () => (await fetch("/me", { credentials: "include" })).status)).toBe(401);
   });
-  const trades: string[] = [];
-  page.on("request", (r) => {
-    if (r.url().endsWith("/auth/session/from-token")) trades.push(r.url());
-  });
-  const row = page.locator("li.token", { has: page.locator(".state-chip", { hasText: "This page" }) });
-  await row.getByRole("button", { name: "Rotate" }).click();
-  await row.getByRole("button", { name: "Rotate: sure?" }).click();
-  // The rotation is held before the page signs out, not merely clicked.
-  await routed;
-  // Sign out from Preferences while the rotation is still in flight. A full
-  // reload does not commit in Chromium while that request stays paused, so
-  // the open page changes view instead of loading a new document.
-  await page.evaluate(() => {
-    location.hash = "#/tools/prefs";
-  });
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByLabel(/paste a token/i)).toBeVisible();
-  release();
-  if ((await settled) === "done") {
-    await expect.poll(() => meStatus(request, own.secret), { message: "the rotation finished" }).toBe(401);
-  }
-  await page.waitForTimeout(500);
-  expect(trades, "the stale rotation installed no session").toEqual([]);
-  await expect(page.getByLabel(/paste a token/i)).toBeVisible();
-  expect(await page.evaluate(async () => (await fetch("/me", { credentials: "include" })).status)).toBe(401);
 });
 
 test("the mint form will not widen the grant of the token acting", async ({ page, request }) => {

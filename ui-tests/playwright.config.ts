@@ -19,6 +19,13 @@ export default defineConfig({
     baseURL: BASE,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    // The console registers a service worker with a fetch handler. Once it
+    // has claimed a page, Chromium sends that page's requests through it and
+    // page.route never sees them, so whether a stubbed or held request reached
+    // its route depended on how fast the worker activated: the flaky-retry
+    // family of #2126. No spec tests the worker, and it is unit-tested in
+    // web/console/test/pwa.test.ts.
+    serviceWorkers: "block",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
