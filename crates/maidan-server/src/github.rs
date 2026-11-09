@@ -325,6 +325,31 @@ pub enum GithubError {
     },
 }
 
+/// Why a pull request read carries no checks for its head.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChecksUnread {
+    /// GitHub refused this token the checks as a matter of access, not of
+    /// rate: `endpoint` is the call that refused last and `detail` what it
+    /// answered.
+    Denied { endpoint: String, detail: String },
+    /// The Actions read after a refused rollup failed in a way the next pass
+    /// may not: a rate limit, a 5xx, a dropped connection. It says nothing
+    /// about the token's access.
+    Deferred,
+}
+
+/// The call a refused rollup names: the GraphQL field fine-grained tokens
+/// can never be granted, because it carries check runs.
+pub const ROLLUP_ENDPOINT: &str = "GraphQL pullRequest.commits.statusCheckRollup";
+
+/// A failed read of a head's checks, and the call that failed it, so an
+/// alert can name the endpoint rather than a guess at a permission.
+#[derive(Debug)]
+struct ChecksReadError {
+    endpoint: String,
+    error: GithubError,
+}
+
 /// The longest [`GithubError::Api`] detail kept, in characters. GitHub's
 /// messages are a sentence; anything longer is not worth a `last_error` row.
 pub const GITHUB_ERROR_DETAIL_MAX_CHARS: usize = 200;
@@ -435,6 +460,26 @@ impl GithubError {
                 rate_limited: true, ..
             } => false,
             Self::Api { status, .. } => matches!(status, 401 | 403 | 404),
+        }
+    }
+
+    /// Whether GitHub refused this token the resource itself rather than for
+    /// now: a 401, 403 or 404 that is not a rate limit. A secondary rate
+    /// limit is a 403 too, and does not always carry the headers
+    /// `is_rate_limited` reads, so its message is checked as well.
+    pub fn is_permission_refusal(&self) -> bool {
+        match self {
+            Self::Api {
+                status,
+                rate_limited,
+                detail,
+                ..
+            } => {
+                matches!(status, 401 | 403 | 404)
+                    && !*rate_limited
+                    && !detail.to_ascii_lowercase().contains("rate limit")
+            }
+            Self::Http(_) | Self::Refused(_) => false,
         }
     }
 
@@ -698,10 +743,12 @@ pub struct GithubPullSnapshot {
     /// The checks on the head commit; `None` when this read did not carry
     /// them, empty when nothing has reported yet.
     pub checks: Option<Vec<GithubCheck>>,
-    /// GitHub refused this token the head's checks (`FORBIDDEN` on the
-    /// rollup). The read still answers, with no checks, so without this the
-    /// head would look like one nothing has reported on, forever.
-    pub checks_denied: bool,
+    /// Why this read carries no checks for the head, when it knows: GitHub
+    /// refused this token the checks (`FORBIDDEN` on the rollup, and on the
+    /// Actions read after it), or the Actions read failed for now. A refused
+    /// read still answers, with no checks, so without this the head would
+    /// look like one nothing has reported on, forever.
+    pub checks_unread: Option<ChecksUnread>,
     /// What else decides whether it can merge; `None` when this read did not
     /// carry it.
     pub gate: Option<GithubGate>,
@@ -873,7 +920,7 @@ pub trait GithubGit: Send + Sync {
         Ok(GithubPullSnapshot {
             brief: self.pull_brief(repo, pull_number).await?,
             checks: None,
-            checks_denied: false,
+            checks_unread: None,
             gate: None,
             ahead: None,
         })
@@ -1387,11 +1434,12 @@ impl GithubApiClient {
         &self,
         repo: &str,
         head_sha: &str,
-    ) -> Result<Vec<GithubCheck>, GithubError> {
+    ) -> Result<Vec<GithubCheck>, ChecksReadError> {
+        let at = |endpoint: String| move |error: GithubError| ChecksReadError { endpoint, error };
         if !maidan_types::is_git_sha(head_sha) {
-            return Err(GithubError::Refused(format!(
-                "`{head_sha}` is not a commit"
-            )));
+            return Err(at(format!("GET /repos/{repo}/actions/runs"))(
+                GithubError::Refused(format!("`{head_sha}` is not a commit")),
+            ));
         }
         let (runs, mut complete) = self
             .paged(
@@ -1399,7 +1447,8 @@ impl GithubApiClient {
                 &format!("/actions/runs?head_sha={head_sha}"),
                 "workflow_runs",
             )
-            .await?;
+            .await
+            .map_err(at(format!("GET /repos/{repo}/actions/runs")))?;
         let mut jobs = std::collections::HashMap::new();
         for run_id in runs
             .iter()
@@ -1407,13 +1456,15 @@ impl GithubApiClient {
         {
             let (run_jobs, all) = self
                 .paged(repo, &format!("/actions/runs/{run_id}/jobs"), "jobs")
-                .await?;
+                .await
+                .map_err(at(format!("GET /repos/{repo}/actions/runs/{run_id}/jobs")))?;
             complete &= all;
             jobs.insert(run_id, run_jobs);
         }
         let (statuses, all) = self
             .paged(repo, &format!("/commits/{head_sha}/status"), "statuses")
-            .await?;
+            .await
+            .map_err(at(format!("GET /repos/{repo}/commits/{head_sha}/status")))?;
         complete &= all;
         let mut checks = actions_checks_from(&runs, &jobs, &statuses);
         if !complete {
@@ -1898,18 +1949,34 @@ impl GithubGit for GithubApiClient {
             "variables": { "owner": owner, "name": name, "number": pull_number },
         }));
         let mut snapshot = snapshot_from(&self.send_json(request).await?)?;
-        if snapshot.checks_denied {
+        if matches!(snapshot.checks_unread, Some(ChecksUnread::Denied { .. })) {
             // A fine-grained token cannot be granted check runs at all, but
             // it can read Actions and commit statuses: read the head's CI
-            // from those. Still refused, the snapshot stays denied and the
-            // sweep says what the token lacks.
+            // from those. Every run is read down to its jobs, so the required
+            // contexts stay in force: one not yet reported holds the gate.
             let head = snapshot.brief.head_sha.clone();
-            // Every run is read down to its jobs, so the required contexts
-            // stay in force: one not yet reported holds the gate.
-            if let Ok(checks) = self.actions_checks(repo, &head).await {
-                snapshot.checks = Some(checks);
-                snapshot.checks_denied = false;
-            }
+            snapshot.checks_unread = match self.actions_checks(repo, &head).await {
+                Ok(checks) => {
+                    snapshot.checks = Some(checks);
+                    None
+                }
+                // Refused here too: the token cannot see this repository's CI.
+                Err(ChecksReadError { endpoint, error }) if error.is_permission_refusal() => {
+                    Some(ChecksUnread::Denied {
+                        endpoint,
+                        detail: error.to_string(),
+                    })
+                }
+                // A rate limit or an outage says nothing about access. Those
+                // many reads a pass are what trips GitHub's secondary rate
+                // limit, and calling it a refusal raised an alert that
+                // resolved itself minutes later. This read carries no checks.
+                Err(ChecksReadError { endpoint, error }) => {
+                    tracing::debug!(repo, endpoint = %endpoint, error = %error, "pull checks: the Actions read failed for now");
+                    snapshot.checks = None;
+                    Some(ChecksUnread::Deferred)
+                }
+            };
         }
         Ok(snapshot)
     }
@@ -2681,7 +2748,10 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
     Ok(GithubPullSnapshot {
         brief,
         checks,
-        checks_denied: rollup_denied(value),
+        checks_unread: rollup_denied(value).map(|detail| ChecksUnread::Denied {
+            endpoint: ROLLUP_ENDPOINT.into(),
+            detail,
+        }),
         gate: Some(gate),
         // A pull request lists the commits its head has that its base lacks.
         ahead: pull
@@ -2784,13 +2854,13 @@ fn actions_checks_from(
 /// token without Checks and Commit statuses read reads the pull request
 /// fine, and GitHub answers the rollup `null` with a `FORBIDDEN` error beside
 /// the data rather than failing the read.
-fn rollup_denied(value: &serde_json::Value) -> bool {
+fn rollup_denied(value: &serde_json::Value) -> Option<String> {
     value
         .get("errors")
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
-        .any(|error| {
+        .find(|error| {
             error.get("type").and_then(serde_json::Value::as_str) == Some("FORBIDDEN")
                 && error
                     .get("path")
@@ -2799,6 +2869,14 @@ fn rollup_denied(value: &serde_json::Value) -> bool {
                         path.iter()
                             .any(|part| part.as_str() == Some("statusCheckRollup"))
                     })
+        })
+        .map(|error| {
+            clean_error_detail(
+                error
+                    .get("message")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            )
         })
 }
 
@@ -3249,12 +3327,18 @@ mod tests {
             "message": "Resource not accessible by personal access token",
         }]);
         let snapshot = snapshot_from(&denied).unwrap();
-        assert!(snapshot.checks_denied);
+        assert_eq!(
+            snapshot.checks_unread,
+            Some(ChecksUnread::Denied {
+                endpoint: ROLLUP_ENDPOINT.into(),
+                detail: "Resource not accessible by personal access token".into(),
+            })
+        );
         assert_eq!(snapshot.checks, Some(vec![]));
 
         let readable =
             snapshot_from(&snapshot_answer("abc", "abc", serde_json::json!([]))).unwrap();
-        assert!(!readable.checks_denied);
+        assert_eq!(readable.checks_unread, None);
 
         // A refusal elsewhere in the answer is not the checks'.
         let mut other = snapshot_answer("abc", "abc", serde_json::json!([]));
@@ -3262,7 +3346,36 @@ mod tests {
             "type": "FORBIDDEN",
             "path": ["repository", "pullRequest", "baseRef", "branchProtectionRule"],
         }]);
-        assert!(!snapshot_from(&other).unwrap().checks_denied);
+        assert_eq!(snapshot_from(&other).unwrap().checks_unread, None);
+    }
+
+    #[test]
+    fn only_a_refusal_that_is_not_a_rate_limit_counts_as_denied_access() {
+        let api = |status: u16, rate_limited: bool, detail: &str| GithubError::Api {
+            status,
+            rate_limited,
+            detail: detail.into(),
+            retry_after: None,
+        };
+        assert!(api(
+            403,
+            false,
+            "Resource not accessible by personal access token"
+        )
+        .is_permission_refusal());
+        assert!(api(404, false, "Not Found").is_permission_refusal());
+        assert!(api(401, false, "Bad credentials").is_permission_refusal());
+        // GitHub's secondary rate limit is a 403, with or without the headers.
+        assert!(!api(403, true, "").is_permission_refusal());
+        assert!(!api(
+            403,
+            false,
+            "You have exceeded a secondary rate limit. Please wait a few minutes before you try again."
+        )
+        .is_permission_refusal());
+        assert!(!api(429, false, "").is_permission_refusal());
+        assert!(!api(502, false, "Server Error").is_permission_refusal());
+        assert!(!GithubError::Http("connection reset".into()).is_permission_refusal());
     }
 
     #[test]

@@ -124,3 +124,21 @@ test("text hidden for screen readers uses the class the stylesheet defines", () 
   const offenders = walk(join(root, "src"), (p) => p.endsWith(".tsx")).filter((p) => /\bsr-only\b/.test(readFileSync(p, "utf8")));
   assert.deepEqual(offenders, []);
 });
+
+test("on a phone the board's fields and the channel picker are 16px, so iOS does not zoom", () => {
+  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const phone = /\/\* Phones: iOS zooms[^*]*\*\/\s*@media \(max-width: 599px\) \{\s*([^{}]+)\{([^}]+)\}/.exec(css);
+  assert.ok(phone, "the phone field-size block is missing");
+  const sels = phone[1].split(",").map((x) => x.trim());
+  for (const s of [".filter-q input", ".filter-pick select", ".composer-field input", ".channel-pick select", ".content .channel-pick select"]) {
+    assert.ok(sels.includes(s), `${s} is not raised to 16px on a phone`);
+  }
+  assert.match(phone[2], /font-size: var\(--text-input\)/);
+  assert.match(css, /--text-input: 16px;/);
+});
+
+test("at 360px the header title gives way so the header keeps one row", () => {
+  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  assert.match(css, /@media \(max-width: 380px\) \{[\s\S]{0,400}?\.top h1 \{[^}]*flex-basis: 6rem;/);
+  assert.equal(lastValue(".top h1", "flex-basis"), "6rem");
+});

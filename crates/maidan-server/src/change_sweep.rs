@@ -53,7 +53,7 @@ use std::time::Duration;
 
 use maidan_types::{ChangeSettlement, MemberId, PostedNotice, ThreadId, WorkspaceId};
 
-use crate::github::GithubError;
+use crate::github::{ChecksUnread, GithubError, GithubPullSnapshot};
 use crate::state::AppState;
 
 /// Default seconds between sweeps.
@@ -160,11 +160,11 @@ async fn refresh(
             return;
         }
     };
-    // Per repository, whether any pull request read this pass had its
-    // checks refused: the token's access is per repository, and one read
-    // that comes back readable while another is refused (a fallback read
-    // that failed) must not resolve and raise the alert in one pass.
-    let mut checks_denied: std::collections::BTreeMap<String, bool> =
+    // Per repository, what this pass learned about the token's access to
+    // its checks: the access is per repository, and one read that comes back
+    // readable while another is refused must not resolve and raise the
+    // alert in one pass, so a refusal outranks a read.
+    let mut checks_seen: std::collections::BTreeMap<String, RepoChecks> =
         std::collections::BTreeMap::new();
     for (repo, pull_number) in open {
         // Stamped whatever the read says, so a pull request GitHub keeps
@@ -183,13 +183,21 @@ async fn refresh(
                 continue;
             }
         };
-        *checks_denied.entry(repo.clone()).or_default() |= snapshot.checks_denied;
-        if snapshot.checks_denied {
+        let seen = RepoChecks::from_snapshot(&snapshot);
+        if let RepoChecks::Denied { endpoint, detail } = &seen {
             tracing::warn!(
                 repo,
                 pull_number,
+                endpoint = %endpoint,
+                detail = %detail,
                 "change sweep: GitHub refused this token the pull request's checks, and its Actions runs or commit statuses too; no CI notice can fire"
             );
+        }
+        let held = checks_seen
+            .entry(repo.clone())
+            .or_insert(RepoChecks::Unknown);
+        if seen.rank() > held.rank() {
+            *held = seen;
         }
         let brief = &snapshot.brief;
         if brief.open {
@@ -270,33 +278,132 @@ async fn refresh(
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");
         }
     }
-    alert_checks_denied(checks_denied).await;
+    alert_checks_denied(checks_seen).await;
 }
 
-/// Raise the operator alert for each repository whose checks GitHub refused
-/// this pass, and resolve it for each whose checks read. It is a condition,
-/// not an event: it posts once per outage, however many passes and restarts
-/// it lasts, and once more when it clears. A repository with no pull request
-/// read this pass is left as it stands.
-async fn alert_checks_denied(checks_denied: std::collections::BTreeMap<String, bool>) {
-    for (repo, denied) in checks_denied {
+/// What one pass learned about whether GitHub shows the token a
+/// repository's checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RepoChecks {
+    /// No read this pass said: each failed for now, or carried no checks.
+    Unknown,
+    /// A pull request's checks read.
+    Read,
+    /// GitHub refused a pull request's checks as a matter of access:
+    /// `endpoint` is the call that refused, `detail` what it answered.
+    Denied { endpoint: String, detail: String },
+}
+
+impl RepoChecks {
+    fn from_snapshot(snapshot: &GithubPullSnapshot) -> Self {
+        match &snapshot.checks_unread {
+            Some(ChecksUnread::Denied { endpoint, detail }) => Self::Denied {
+                endpoint: endpoint.clone(),
+                detail: detail.clone(),
+            },
+            Some(ChecksUnread::Deferred) => Self::Unknown,
+            None if snapshot.checks.is_some() => Self::Read,
+            None => Self::Unknown,
+        }
+    }
+
+    /// Which of two answers in one pass stands: a refusal, then a read.
+    fn rank(&self) -> u8 {
+        match self {
+            Self::Unknown => 0,
+            Self::Read => 1,
+            Self::Denied { .. } => 2,
+        }
+    }
+}
+
+/// Sweeps in a row, and minutes, a repository's checks must stay refused
+/// before the operator hears of it. A refusal that clears inside that is
+/// not one an operator can act on: on 2026-11-09 the alert fired and
+/// resolved twice in 20 minutes on a token that had every permission.
+const DENIED_PASSES: u32 = 3;
+const DENIED_FOR: Duration = Duration::from_secs(15 * 60);
+
+/// When each repository's run of refused sweeps began and how many it has
+/// lasted. In memory: a fresh process starts the count again, which only
+/// delays the alert for a refusal that persists.
+static DENIED_STREAKS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, u32)>>,
+> = std::sync::OnceLock::new();
+
+/// What a repository's alert does after a pass.
+#[derive(Debug, PartialEq, Eq)]
+enum AlertStep {
+    Raise,
+    Resolve,
+    Hold,
+}
+
+/// Count `seen` into `repo`'s streak at `now`. A read ends the streak and
+/// resolves; a pass that learned nothing leaves both as they stand; a
+/// refusal raises once it has lasted [`DENIED_PASSES`] sweeps and
+/// [`DENIED_FOR`].
+fn next_step(
+    streaks: &mut std::collections::HashMap<String, (std::time::Instant, u32)>,
+    repo: &str,
+    seen: &RepoChecks,
+    now: std::time::Instant,
+) -> AlertStep {
+    match seen {
+        RepoChecks::Unknown => AlertStep::Hold,
+        RepoChecks::Read => {
+            streaks.remove(repo);
+            AlertStep::Resolve
+        }
+        RepoChecks::Denied { .. } => {
+            let (since, passes) = streaks.entry(repo.to_string()).or_insert((now, 0));
+            *passes += 1;
+            if *passes >= DENIED_PASSES && now.duration_since(*since) >= DENIED_FOR {
+                AlertStep::Raise
+            } else {
+                AlertStep::Hold
+            }
+        }
+    }
+}
+
+/// Raise the operator alert for each repository whose checks GitHub has
+/// refused for long enough, and resolve it for each whose checks read. It
+/// is a condition, not an event: it posts once per outage, however many
+/// passes and restarts it lasts, and once more when it clears. A repository
+/// no read this pass spoke for is left as it stands.
+async fn alert_checks_denied(checks_seen: std::collections::BTreeMap<String, RepoChecks>) {
+    let now = std::time::Instant::now();
+    for (repo, seen) in checks_seen {
+        let step = {
+            let mut streaks = DENIED_STREAKS
+                .get_or_init(Default::default)
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            next_step(&mut streaks, &repo, &seen, now)
+        };
         let key = format!("github-checks-denied:{repo}");
-        if denied {
-            crate::ops_alert::raise(
-                &key,
-                &format!(
-                    "GitHub refuses Maidan's token access to the CI on {repo}'s pull requests, so no ci_failed or checks_done notice can fire. A fine-grained token needs Actions: read and Commit statuses: read on {repo} (it cannot be given check runs; a GitHub App or classic token reads them directly)."
-                ),
-            )
-            .await;
-        } else {
-            crate::ops_alert::resolve(
-                &key,
-                &format!(
-                    "Resolved: Maidan's token reads the CI on {repo}'s pull requests again, so ci_failed and checks_done notices fire."
-                ),
-            )
-            .await;
+        match (step, &seen) {
+            (AlertStep::Raise, RepoChecks::Denied { endpoint, detail }) => {
+                crate::ops_alert::raise(
+                    &key,
+                    &format!(
+                        "GitHub has refused Maidan's token the CI on {repo}'s pull requests on every sweep for at least {} minutes, so no ci_failed or checks_done notice can fire. The refusing call is {endpoint}, which answered: {detail}",
+                        DENIED_FOR.as_secs() / 60
+                    ),
+                )
+                .await;
+            }
+            (AlertStep::Resolve, _) => {
+                crate::ops_alert::resolve(
+                    &key,
+                    &format!(
+                        "Resolved: Maidan's token reads the CI on {repo}'s pull requests again, so ci_failed and checks_done notices fire."
+                    ),
+                )
+                .await;
+            }
+            _ => {}
         }
     }
 }
@@ -879,6 +986,124 @@ pub async fn run(state: AppState, interval: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn denied() -> RepoChecks {
+        RepoChecks::Denied {
+            endpoint: "GET /repos/o/r/actions/runs".into(),
+            detail:
+                "github api error: status 403: Resource not accessible by personal access token"
+                    .into(),
+        }
+    }
+
+    #[test]
+    fn a_refusal_that_clears_within_minutes_never_raises_the_alert() {
+        let mut streaks = std::collections::HashMap::new();
+        let t0 = std::time::Instant::now();
+        let minute = Duration::from_secs(60);
+        // Refused, read, refused, read, as on 2026-11-09: never a raise.
+        for (at, seen) in [
+            (0, denied()),
+            (7, RepoChecks::Read),
+            (13, denied()),
+            (15, RepoChecks::Read),
+        ] {
+            assert_ne!(
+                next_step(&mut streaks, "o/r", &seen, t0 + minute * at),
+                AlertStep::Raise
+            );
+        }
+        // Three refusals inside two minutes are not long enough either.
+        for at in 20..23 {
+            assert_eq!(
+                next_step(&mut streaks, "o/r", &denied(), t0 + minute * at),
+                AlertStep::Hold
+            );
+        }
+    }
+
+    #[test]
+    fn a_refusal_that_lasts_three_sweeps_and_fifteen_minutes_raises_until_a_read_resolves() {
+        let mut streaks = std::collections::HashMap::new();
+        let t0 = std::time::Instant::now();
+        let minute = Duration::from_secs(60);
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &denied(), t0),
+            AlertStep::Hold
+        );
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &denied(), t0 + minute * 2),
+            AlertStep::Hold
+        );
+        // A pass that learned nothing (a rate limit) neither counts nor resets.
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &RepoChecks::Unknown, t0 + minute * 4),
+            AlertStep::Hold
+        );
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &denied(), t0 + minute * 14),
+            AlertStep::Hold
+        );
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &denied(), t0 + minute * 16),
+            AlertStep::Raise
+        );
+        // Another repository keeps its own count.
+        assert_eq!(
+            next_step(&mut streaks, "o/other", &denied(), t0 + minute * 16),
+            AlertStep::Hold
+        );
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &RepoChecks::Read, t0 + minute * 18),
+            AlertStep::Resolve
+        );
+        // The read ended the streak: the count starts again.
+        assert_eq!(
+            next_step(&mut streaks, "o/r", &denied(), t0 + minute * 40),
+            AlertStep::Hold
+        );
+    }
+
+    #[test]
+    fn a_rate_limited_actions_read_tells_nothing_and_a_refusal_outranks_a_read() {
+        let brief = crate::github::GithubPullBrief {
+            number: 1,
+            head: "feature/agent-x".into(),
+            base: "dev".into(),
+            draft: false,
+            node_id: "PR_1".into(),
+            same_repo: true,
+            open: true,
+            head_sha: "a".repeat(40),
+            labels: vec![],
+            merged_at: None,
+            closed_at: None,
+            merge_commit_sha: None,
+        };
+        let snapshot =
+            |checks: Option<Vec<crate::github::GithubCheck>>,
+             checks_unread: Option<ChecksUnread>| GithubPullSnapshot {
+                brief: brief.clone(),
+                checks,
+                checks_unread,
+                gate: None,
+                ahead: None,
+            };
+        assert_eq!(
+            RepoChecks::from_snapshot(&snapshot(None, Some(ChecksUnread::Deferred))),
+            RepoChecks::Unknown
+        );
+        assert_eq!(
+            RepoChecks::from_snapshot(&snapshot(Some(vec![]), None)),
+            RepoChecks::Read
+        );
+        assert_eq!(
+            RepoChecks::from_snapshot(&snapshot(None, None)),
+            RepoChecks::Unknown
+        );
+        assert!(denied().rank() > RepoChecks::Read.rank());
+        assert!(RepoChecks::Read.rank() > RepoChecks::Unknown.rank());
+    }
 
     #[test]
     fn the_sweep_is_on_by_default_and_zero_turns_it_off() {
