@@ -77,6 +77,17 @@ test("every result sender's credential reaches the container", () => {
   }
 });
 
+test("the GitHub ingress secret and the CI backstop reach the container", () => {
+  // With the secret the change sweep reads CI only when a GitHub CI event
+  // says it changed; the backstop is how long it waits without one.
+  const env = serverEnv({
+    MAIDAN_GITHUB_WEBHOOK_SECRET: "whsec",
+    MAIDAN_CHANGE_CI_BACKSTOP_SECS: 900,
+  });
+  assert.equal(env.MAIDAN_GITHUB_WEBHOOK_SECRET, "whsec");
+  assert.equal(env.MAIDAN_CHANGE_CI_BACKSTOP_SECS, "900");
+});
+
 test("SERVER_ENV is sorted, unique, and forwards rotation keys and integration secrets", () => {
   const sorted = [...SERVER_ENV].sort();
   assert.deepEqual(SERVER_ENV, sorted);

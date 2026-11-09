@@ -303,3 +303,199 @@ async fn github_pull_request_merged_emits_thread_landed() {
 
     server.abort();
 }
+
+// ---------------------------------------------------------------- CI events
+
+const HEAD_READ: &str = "abababababababababababababababababababab";
+const HEAD_OTHER: &str = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+
+/// A workspace tracking o/r#5, #6, #7 and #8, with #8's CI last read at
+/// [`HEAD_READ`] an hour ago.
+async fn tracking(store: &dyn Store) -> maidan_types::WorkspaceId {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "ci".into() })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "ci".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("ci".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    for pull in [5, 6, 7, 8] {
+        store
+            .register_change_pull(ws.id, thread.id, "o/r", pull, None)
+            .await
+            .unwrap();
+    }
+    store
+        .mark_change_pull_ci_read(
+            ws.id,
+            "o/r",
+            8,
+            HEAD_READ,
+            chrono::Utc::now() - chrono::Duration::hours(1),
+        )
+        .await
+        .unwrap();
+    ws.id
+}
+
+/// The tracked pull requests of o/r with a CI event recorded.
+async fn marked(store: &dyn Store, ws: maidan_types::WorkspaceId) -> Vec<i64> {
+    let mut out = Vec::new();
+    for pull in [5, 6, 7, 8] {
+        let marks = store.change_pull_ci_marks(ws, "o/r", pull).await.unwrap();
+        if marks.and_then(|marks| marks.event_at).is_some() {
+            out.push(pull);
+        }
+    }
+    out
+}
+
+async fn deliver(
+    client: &reqwest::Client,
+    addr: SocketAddr,
+    event: &str,
+    body: &serde_json::Value,
+    signature: Option<&str>,
+) -> StatusCode {
+    let body = body.to_string();
+    let signature = signature
+        .map(str::to_string)
+        .unwrap_or_else(|| sign_payload(SECRET, &body));
+    client
+        .post(format!("http://{addr}/integrations/github/events"))
+        .header("x-github-event", event)
+        .header("x-github-delivery", uuid::Uuid::now_v7().to_string())
+        .header("x-hub-signature-256", signature)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap()
+        .status()
+}
+
+/// `workflow_run`, `check_suite` and `check_run` mark the pull request they
+/// list by number; a `status`, which lists none, marks the one whose CI was
+/// last read at its commit. Each marks only its own.
+#[tokio::test]
+async fn each_ci_event_marks_the_tracked_pull_request_it_names() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = tracking(store.as_ref()).await;
+    assert!(marked(store.as_ref(), ws).await.is_empty());
+
+    let mut expected = Vec::new();
+    for (event, pull) in [("workflow_run", 5), ("check_suite", 6), ("check_run", 7)] {
+        let body = serde_json::json!({
+            "action": "completed",
+            "repository": {"full_name": "O/R"},
+            event: {
+                "head_sha": HEAD_OTHER,
+                "pull_requests": [{"number": pull}],
+            },
+        });
+        assert_eq!(
+            deliver(&client, addr, event, &body, None).await,
+            StatusCode::OK,
+            "{event}"
+        );
+        expected.push(pull);
+        assert_eq!(marked(store.as_ref(), ws).await, expected, "{event}");
+    }
+
+    let status = serde_json::json!({
+        "repository": {"full_name": "o/r"},
+        "sha": HEAD_READ.to_ascii_uppercase(),
+        "state": "success",
+        "context": "lint",
+    });
+    assert_eq!(
+        deliver(&client, addr, "status", &status, None).await,
+        StatusCode::OK
+    );
+    assert_eq!(marked(store.as_ref(), ws).await, vec![5, 6, 7, 8]);
+
+    // A redelivery of the same event is answered the same and marks nothing
+    // new: marking is idempotent.
+    assert_eq!(
+        deliver(&client, addr, "status", &status, None).await,
+        StatusCode::OK
+    );
+    assert_eq!(marked(store.as_ref(), ws).await, vec![5, 6, 7, 8]);
+    server.abort();
+}
+
+/// A CI event with a bad signature is refused and marks nothing.
+#[tokio::test]
+async fn a_ci_event_with_a_bad_signature_is_refused_and_marks_nothing() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = tracking(store.as_ref()).await;
+    let body = serde_json::json!({
+        "repository": {"full_name": "o/r"},
+        "check_suite": {"head_sha": HEAD_READ, "pull_requests": [{"number": 5}]},
+    });
+    assert_eq!(
+        deliver(&client, addr, "check_suite", &body, Some("sha256=deadbeef")).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(marked(store.as_ref(), ws).await.is_empty());
+    server.abort();
+}
+
+/// A CI event for another repository, or for a head and pull request
+/// nothing here tracks, marks nothing.
+#[tokio::test]
+async fn a_ci_event_for_another_repository_or_head_marks_nothing() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = tracking(store.as_ref()).await;
+    let elsewhere = serde_json::json!({
+        "repository": {"full_name": "o/other"},
+        "workflow_run": {"head_sha": HEAD_READ, "pull_requests": [{"number": 5}]},
+    });
+    assert_eq!(
+        deliver(&client, addr, "workflow_run", &elsewhere, None).await,
+        StatusCode::OK
+    );
+    let unknown_head = serde_json::json!({
+        "repository": {"full_name": "o/r"},
+        "check_run": {"head_sha": HEAD_OTHER, "pull_requests": []},
+    });
+    assert_eq!(
+        deliver(&client, addr, "check_run", &unknown_head, None).await,
+        StatusCode::OK
+    );
+    let untracked = serde_json::json!({
+        "repository": {"full_name": "o/r"},
+        "check_suite": {"head_sha": HEAD_OTHER, "pull_requests": [{"number": 99}]},
+    });
+    assert_eq!(
+        deliver(&client, addr, "check_suite", &untracked, None).await,
+        StatusCode::OK
+    );
+    let status = serde_json::json!({
+        "repository": {"full_name": "o/r"},
+        "sha": HEAD_OTHER,
+        "state": "failure",
+    });
+    assert_eq!(
+        deliver(&client, addr, "status", &status, None).await,
+        StatusCode::OK
+    );
+    assert!(marked(store.as_ref(), ws).await.is_empty());
+    server.abort();
+}

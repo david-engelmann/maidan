@@ -3282,6 +3282,52 @@ macro_rules! store_delegations {
                 change_metrics::mark_checked(self.pool(), workspace_id, repo, pull_number, at).await
             }
 
+            async fn mark_change_pull_ci_event(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<u64, StoreError> {
+                change_metrics::mark_ci_event(self.pool(), repo, pull_number, at).await
+            }
+
+            async fn mark_change_pull_ci_event_at_head(
+                &self,
+                repo: &str,
+                head_sha: &str,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<u64, StoreError> {
+                change_metrics::mark_ci_event_at_head(self.pool(), repo, head_sha, at).await
+            }
+
+            async fn mark_change_pull_ci_read(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+                head_sha: &str,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::mark_ci_read(
+                    self.pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                    head_sha,
+                    at,
+                )
+                .await
+            }
+
+            async fn change_pull_ci_marks(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<maidan_types::ChangeCiMarks>, StoreError> {
+                change_metrics::ci_marks(self.pool(), workspace_id, repo, pull_number).await
+            }
+
             async fn list_change_sweep_workspaces(
                 &self,
                 limit: i64,

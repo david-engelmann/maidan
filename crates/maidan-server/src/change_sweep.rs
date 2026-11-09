@@ -38,7 +38,15 @@
 //!
 //! The same read carries the checks on each open pull request's head: the
 //! sweep records them on its thread and says what changed
-//! ([`crate::ci_watch`]).
+//! ([`crate::ci_watch`]). A token that may not read the checks in GraphQL
+//! (a fine-grained one never can) reads them from the Actions and
+//! commit-status APIs instead, several REST calls a pull request. With the
+//! GitHub ingress configured (`MAIDAN_GITHUB_WEBHOOK_SECRET`), GitHub's
+//! `workflow_run`, `check_suite`, `check_run` and `status` events say when
+//! they change, so the sweep spends those calls on a pull request only when
+//! an event arrived since its last read, its head moved, or that read is
+//! older than `MAIDAN_CHANGE_CI_BACKSTOP_SECS` ([`actions_read`]). Without
+//! the ingress no event would ever arrive, so it reads them every pass.
 //!
 //! Where a workspace has turned Linear claim comments on, the sweep also
 //! says a task's claim, and its release when it ends without merging, on the
@@ -53,7 +61,7 @@ use std::time::Duration;
 
 use maidan_types::{ChangeSettlement, MemberId, PostedNotice, ThreadId, WorkspaceId};
 
-use crate::github::{ChecksUnread, GithubError, GithubPullSnapshot};
+use crate::github::{ActionsRead, ChecksUnread, GithubError, GithubPullSnapshot};
 use crate::state::AppState;
 
 /// Default seconds between sweeps.
@@ -70,6 +78,11 @@ pub const REFRESH_LIMIT: i64 = 25;
 
 /// Workspaces visited per tick.
 const WORKSPACES_PER_TICK: i64 = 1000;
+
+/// Default seconds after which the sweep reads a pull request's CI through
+/// the Actions API again though no CI event said it changed: a backstop for
+/// a delivery GitHub or the forwarder dropped.
+pub const DEFAULT_CI_BACKSTOP_SECS: u64 = 1800;
 
 /// What one sweep did.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +119,46 @@ fn stale_base_from_raw(raw: Option<String>) -> i64 {
     raw.and_then(|value| value.trim().parse::<i64>().ok())
         .filter(|commits| *commits > 0)
         .unwrap_or(DEFAULT_STALE_BASE_COMMITS)
+}
+
+/// Read `MAIDAN_CHANGE_CI_BACKSTOP_SECS`. An unset or unparsable value keeps
+/// the 1800 s default; `0` reads CI on every pass, as without the ingress.
+pub fn ci_backstop_from_env() -> Duration {
+    ci_backstop_from_raw(std::env::var("MAIDAN_CHANGE_CI_BACKSTOP_SECS").ok())
+}
+
+fn ci_backstop_from_raw(raw: Option<String>) -> Duration {
+    Duration::from_secs(
+        raw.and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or(DEFAULT_CI_BACKSTOP_SECS),
+    )
+}
+
+/// Whether this pass reads a tracked pull request's CI through the Actions
+/// API, given what the store knows (`marks`). Without a recorded read, or
+/// with a CI event at or after the start of the last one, or a last read
+/// older than `backstop`: yes. Otherwise only if the head moved since.
+pub fn actions_read(
+    marks: Option<&maidan_types::ChangeCiMarks>,
+    now: chrono::DateTime<chrono::Utc>,
+    backstop: Duration,
+) -> ActionsRead {
+    let Some(marks) = marks else {
+        return ActionsRead::Read;
+    };
+    let (Some(read_at), Some(read_head)) = (marks.read_at, marks.read_head.as_ref()) else {
+        return ActionsRead::Read;
+    };
+    // `>=`: the read is stamped with when it began, so an event that
+    // arrived while it ran, or in the same instant, is read again.
+    if marks.event_at.is_some_and(|event| event >= read_at) {
+        return ActionsRead::Read;
+    }
+    // A read stamped in the future (a clock step) is not yet due.
+    if (now - read_at).to_std().is_ok_and(|age| age >= backstop) {
+        return ActionsRead::Read;
+    }
+    ActionsRead::IfHeadMoved(read_head.clone())
 }
 
 fn interval_from_raw(raw: Option<String>) -> Option<Duration> {
@@ -166,6 +219,12 @@ async fn refresh(
     // alert in one pass, so a refusal outranks a read.
     let mut checks_seen: std::collections::BTreeMap<String, RepoChecks> =
         std::collections::BTreeMap::new();
+    // CI events arrive only through the ingress; without it, waiting for one
+    // would leave CI notices to the backstop alone.
+    let event_driven = sweep
+        .as_ref()
+        .is_some_and(|(state, _)| state.github.is_some());
+    let backstop = ci_backstop_from_env();
     for (repo, pull_number) in open {
         // Stamped whatever the read says, so a pull request GitHub keeps
         // failing on cannot hold the front of the queue.
@@ -175,8 +234,29 @@ async fn refresh(
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: check time not recorded");
         }
+        let actions = if sweep.is_none() {
+            // A metrics read records no checks, so the Actions calls would
+            // buy it nothing.
+            ActionsRead::Skip
+        } else if !event_driven {
+            ActionsRead::Read
+        } else {
+            match store
+                .change_pull_ci_marks(workspace_id, &repo, pull_number)
+                .await
+            {
+                Ok(marks) => actions_read(marks.as_ref(), chrono::Utc::now(), backstop),
+                Err(err) => {
+                    tracing::warn!(repo, pull_number, error = %err, "change sweep: CI marks not read; reading CI");
+                    ActionsRead::Read
+                }
+            }
+        };
+        // Taken before the read, so an event that arrives while it runs is
+        // later than it and the next pass reads again.
+        let read_began = chrono::Utc::now();
         // One read a tick serves the close, the ready label and the checks.
-        let snapshot = match git.pull_snapshot(&repo, pull_number).await {
+        let snapshot = match git.pull_snapshot(&repo, pull_number, actions).await {
             Ok(snapshot) => snapshot,
             Err(err) => {
                 tracing::debug!(repo, pull_number, error = %err, "change sweep: pull request not refreshed");
@@ -211,6 +291,24 @@ async fn refresh(
                     &snapshot,
                 )
                 .await;
+                // Only a read that answered counts: one that carried no
+                // checks (skipped, or deferred by a rate limit) leaves the
+                // next pass due, so nothing an event said is lost.
+                let answered = snapshot.checks.is_some()
+                    || matches!(snapshot.checks_unread, Some(ChecksUnread::Denied { .. }));
+                if answered
+                    && let Err(err) = store
+                        .mark_change_pull_ci_read(
+                            workspace_id,
+                            &repo,
+                            pull_number,
+                            &brief.head_sha,
+                            read_began,
+                        )
+                        .await
+                {
+                    tracing::warn!(repo, pull_number, error = %err, "change sweep: CI read not recorded");
+                }
             }
             // A session's pull request is ready when it carries the label;
             // the first sighting stamps it (Maidan's own flip stamps the
@@ -1103,6 +1201,82 @@ mod tests {
         );
         assert!(denied().rank() > RepoChecks::Read.rank());
         assert!(RepoChecks::Read.rank() > RepoChecks::Unknown.rank());
+    }
+
+    #[test]
+    fn the_ci_backstop_defaults_to_half_an_hour_and_zero_reads_every_pass() {
+        assert_eq!(ci_backstop_from_raw(None), Duration::from_secs(1800));
+        assert_eq!(
+            ci_backstop_from_raw(Some("soon".into())),
+            Duration::from_secs(1800)
+        );
+        assert_eq!(
+            ci_backstop_from_raw(Some(" 600 ".into())),
+            Duration::from_secs(600)
+        );
+        let now = chrono::Utc::now();
+        let just_read = maidan_types::ChangeCiMarks {
+            event_at: None,
+            read_at: Some(now),
+            read_head: Some("a".repeat(40)),
+        };
+        assert_eq!(
+            actions_read(
+                Some(&just_read),
+                now,
+                ci_backstop_from_raw(Some("0".into()))
+            ),
+            ActionsRead::Read
+        );
+    }
+
+    #[test]
+    fn actions_are_read_only_after_an_event_a_push_or_the_backstop() {
+        let now = chrono::Utc::now();
+        let backstop = Duration::from_secs(1800);
+        let head = "a".repeat(40);
+        let read = |ago_secs: i64, event: Option<i64>| maidan_types::ChangeCiMarks {
+            event_at: event.map(|ago| now - chrono::Duration::seconds(ago)),
+            read_at: Some(now - chrono::Duration::seconds(ago_secs)),
+            read_head: Some(head.clone()),
+        };
+        // Never read, or tracked nowhere the store knows: read.
+        assert_eq!(actions_read(None, now, backstop), ActionsRead::Read);
+        assert_eq!(
+            actions_read(Some(&maidan_types::ChangeCiMarks::default()), now, backstop),
+            ActionsRead::Read
+        );
+        // Read a minute ago, no event since: only a moved head is read.
+        let quiet = actions_read(Some(&read(60, None)), now, backstop);
+        assert_eq!(quiet, ActionsRead::IfHeadMoved(head.clone()));
+        assert!(!quiet.reads_at(&head));
+        assert!(!quiet.reads_at(&head.to_ascii_uppercase()));
+        assert!(quiet.reads_at(&"b".repeat(40)));
+        // An event before the last read began was what that read saw.
+        assert_eq!(
+            actions_read(Some(&read(60, Some(90))), now, backstop),
+            ActionsRead::IfHeadMoved(head.clone())
+        );
+        // An event after it began, or in the same instant, is read.
+        assert_eq!(
+            actions_read(Some(&read(60, Some(30))), now, backstop),
+            ActionsRead::Read
+        );
+        assert_eq!(
+            actions_read(Some(&read(60, Some(60))), now, backstop),
+            ActionsRead::Read
+        );
+        // A last read as old as the backstop is read again without an event.
+        assert_eq!(
+            actions_read(Some(&read(1799, None)), now, backstop),
+            ActionsRead::IfHeadMoved(head.clone())
+        );
+        assert_eq!(
+            actions_read(Some(&read(1800, None)), now, backstop),
+            ActionsRead::Read
+        );
+        assert!(ActionsRead::Read.reads_at(&head));
+        assert!(!ActionsRead::Skip.reads_at(&head));
     }
 
     #[test]

@@ -247,6 +247,95 @@ pub async fn mark_checked(
     Ok(())
 }
 
+/// Stamp a CI event on each open tracked pull request `pull_number` of
+/// `repo`, in every workspace. Plain overwrite, unlike Postgres's
+/// `GREATEST`: the stamps are RFC 3339 text, which does not compare in time
+/// order across fraction lengths, and two deliveries racing to stamp out of
+/// order cost at most one read deferred to the backstop.
+pub async fn mark_ci_event(
+    pool: &SqlitePool,
+    repo: &str,
+    pull_number: i64,
+    at: DateTime<Utc>,
+) -> Result<u64, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_change_pulls SET ci_event_at = ?3
+         WHERE repo = ?1 AND pull_number = ?2 AND closed_at IS NULL",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(at.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Stamp a CI event on each open tracked pull request of `repo` last read
+/// at `head_sha`, in every workspace.
+pub async fn mark_ci_event_at_head(
+    pool: &SqlitePool,
+    repo: &str,
+    head_sha: &str,
+    at: DateTime<Utc>,
+) -> Result<u64, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_change_pulls SET ci_event_at = ?3
+         WHERE repo = ?1 AND ci_read_head = ?2 AND closed_at IS NULL",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(head_sha.to_ascii_lowercase())
+    .bind(at.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Record the sweep's read of a tracked pull request's CI at `head_sha`.
+pub async fn mark_ci_read(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+    head_sha: &str,
+    at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "UPDATE maidan_change_pulls SET ci_read_at = ?3, ci_read_head = ?4
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?5",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(at.to_rfc3339())
+    .bind(head_sha.to_ascii_lowercase())
+    .bind(workspace_id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// A tracked pull request's CI event and read marks.
+pub async fn ci_marks(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+) -> Result<Option<maidan_types::ChangeCiMarks>, StoreError> {
+    let row = sqlx::query(
+        "SELECT ci_event_at, ci_read_at, ci_read_head FROM maidan_change_pulls
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?3",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| maidan_types::ChangeCiMarks {
+        event_at: row.get::<Option<DateTime<Utc>>, _>("ci_event_at"),
+        read_at: row.get::<Option<DateTime<Utc>>, _>("ci_read_at"),
+        read_head: row.get::<Option<String>, _>("ci_read_head"),
+    }))
+}
+
 /// The workspaces with a tracked pull request still to read or to settle.
 pub async fn list_sweep_workspaces(
     pool: &SqlitePool,

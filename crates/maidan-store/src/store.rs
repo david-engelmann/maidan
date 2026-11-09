@@ -2893,6 +2893,43 @@ pub trait AssignmentStore: Send + Sync {
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
+    /// Stamp `at` as the last CI event on each open tracked pull request
+    /// `pull_number` of `repo`, in every workspace that tracks it: GitHub's
+    /// events name a repository, not a workspace. Returns how many rows it
+    /// stamped.
+    async fn mark_change_pull_ci_event(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, StoreError>;
+    /// Stamp `at` as the last CI event on each open tracked pull request of
+    /// `repo` whose last CI read was at `head_sha`, in every workspace.
+    /// Returns how many rows it stamped.
+    async fn mark_change_pull_ci_event_at_head(
+        &self,
+        repo: &str,
+        head_sha: &str,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, StoreError>;
+    /// Record that the sweep read a tracked pull request's CI at
+    /// `head_sha`, in a read that began at `at`.
+    async fn mark_change_pull_ci_read(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+        head_sha: &str,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    /// The CI event and read marks of a tracked pull request in
+    /// `workspace_id`; `None` when it is not tracked there.
+    async fn change_pull_ci_marks(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<maidan_types::ChangeCiMarks>, StoreError>;
     /// Workspaces with a tracked agent pull request still to read or settle.
     async fn list_change_sweep_workspaces(
         &self,

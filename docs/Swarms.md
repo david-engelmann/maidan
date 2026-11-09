@@ -834,6 +834,23 @@ saying the same:
 A push is a new head, so its checks are news again; the next tick over the
 same head says nothing. A pull request that has closed is not read again.
 
+A token that may not read the checks through GraphQL (a fine-grained token
+never can) reads them from the Actions and commit-status APIs instead: a
+REST call for the head's workflow runs, one for each run's jobs and one for
+the commit statuses, for each pull request. Polled every tick for every open
+pull request, that spent the token's hourly budget. So with the GitHub
+ingress configured (`MAIDAN_GITHUB_WEBHOOK_SECRET`, and GitHub's
+`workflow_run`, `check_suite`, `check_run` and `status` events delivered to
+`POST /integrations/github/events`), CI notices are event-driven: the
+ingress marks the tracked pull requests an event names (by number, or by the
+head their CI was last read at) and makes no GitHub call, and a tick reads a
+pull request's CI only when an event arrived since its last read, its head
+moved, or that read is older than the backstop,
+`MAIDAN_CHANGE_CI_BACKSTOP_SECS` (1800 s by default), which covers a dropped
+delivery. Every tick still makes the one GraphQL read, so closes, merges and
+the ready label are seen as before. Without the ingress no event arrives, and
+every tick reads CI as it always did.
+
 The same read says what else holds the pull request back, and `ci` records
 it: GitHub's `merge_state`, the unresolved review threads (a review bot's
 count too: `unresolved_threads`, and links to the first 20 with who opened

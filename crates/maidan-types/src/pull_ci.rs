@@ -252,6 +252,23 @@ pub fn gate_to_say(reasons: Option<&[String]>, previous: &PreviousRead) -> Optio
     (held && reasons != said).then(|| reasons.to_vec())
 }
 
+/// What the change sweep knows about whether a tracked pull request's CI may
+/// have changed since it last read it. Reading CI through the Actions API
+/// costs several REST calls a pull request, so with the GitHub ingress
+/// configured the sweep reads it only when a CI event arrived since, the
+/// head moved, or the last read is older than the backstop.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChangeCiMarks {
+    /// The last `workflow_run`, `check_suite`, `check_run` or `status`
+    /// event GitHub delivered for the pull request or the head it was last
+    /// read at.
+    pub event_at: Option<DateTime<Utc>>,
+    /// When the sweep's last read of its CI began; `None` before any.
+    pub read_at: Option<DateTime<Utc>>,
+    /// The head that read was at.
+    pub read_head: Option<String>,
+}
+
 fn is_zero(n: &i64) -> bool {
     *n == 0
 }
