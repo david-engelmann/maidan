@@ -59,16 +59,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn record_increments_snapshot() {
-        let stats = HydrateStats::default();
-        stats.record(HydrateResult::NotFound);
-        stats.record(HydrateResult::Ok);
-        let snap = stats.snapshot();
-        assert_eq!(snap.not_found, 1);
-        assert_eq!(snap.ok, 1);
-    }
-
-    #[test]
     fn all_result_labels_accumulate() {
         let stats = HydrateStats::default();
         stats.record(HydrateResult::Ok);

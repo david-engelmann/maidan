@@ -845,17 +845,11 @@ mod ui_edit_history_e2e;
 #[path = "../ui_etag_e2e.rs"]
 mod ui_etag_e2e;
 
-#[path = "../ui_search_e2e.rs"]
-mod ui_search_e2e;
-
 #[path = "../ui_session_e2e.rs"]
 mod ui_session_e2e;
 
 #[path = "../ui_thread_reads_e2e.rs"]
 mod ui_thread_reads_e2e;
-
-#[path = "../ui_tokens_e2e.rs"]
-mod ui_tokens_e2e;
 
 #[path = "../ui_v2_e2e.rs"]
 mod ui_v2_e2e;

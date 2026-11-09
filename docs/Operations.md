@@ -499,6 +499,15 @@ specific commit SHA in `ci.yml`.
 
 ### `unit tests` fails
 
+CI compiles the workspace once, in the `build (tests + binaries)` job: one
+`cargo nextest archive --workspace --tests` holds every lib, bin and
+integration test binary, and `unit tests` runs its `not kind(test)` binaries
+while the four integration shards run `kind(test)`, so each test runs once.
+A red `build` fails both checks. The Playwright jobs, the report-only clients
+(via `MAIDAN_BIN_DIR`) and the compose and scale-out smokes (through `smoke
+image`) run that job's debug binaries; `release image` builds the shipped
+image once for the OTLP smoke and the kind install.
+
 Run `cargo nextest run --workspace --lib --bins --profile ci` locally with
 the same toolchain (`cargo test --workspace --lib --bins` runs the same
 tests without nextest). The job uploads a `junit-unit` artifact naming each

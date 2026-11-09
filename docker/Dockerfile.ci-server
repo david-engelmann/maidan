@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.7
+#
+# CI-only image for the compose and scale-out smokes: the debug maidan-server
+# the ci.yml build job already compiled (default features, so bootstrap on),
+# on the production runtime base. It replaces a release compile per smoke; the
+# shipped image (crates/maidan-server/Dockerfile) is built once, by the
+# release image job, and the OTLP smoke and the kind install run that one.
+# Never published.
+
+# The same runtime base as crates/maidan-server/Dockerfile.
+FROM cgr.dev/chainguard/glibc-dynamic@sha256:671a621016fb33812136dea6182b1db957996d3c8c618187aaf86abd9b14af53
+COPY maidan-server /usr/local/bin/maidan-server
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/maidan-server"]

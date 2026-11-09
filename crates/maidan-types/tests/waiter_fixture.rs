@@ -117,6 +117,9 @@ fn the_authoritative_fixture_routes_to_both_surfaces() {
                 repo: "example/repo".into(),
                 pr: 3915,
             },
+            // A channel id, never a `#name`: a name is mutable, so the channel
+            // it points at can change under both the delivery and the
+            // operator's blessing, and an allowlist keyed on one is not one.
             DeliverTarget::Slack {
                 channel: "C0123ABCDEF".into(),
                 thread_ts: None
@@ -163,22 +166,6 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
     assert_eq!(projected[0].allowlist_selector(), "example/repo");
     // Slack has no such split: a channel id is already what an operator blesses.
     assert_eq!(projected[1].selector(), projected[1].allowlist_selector());
-}
-
-/// The Slack channel must be an **id**, not a `#name`. A name is mutable, so the
-/// channel it points at can change under both the delivery and the operator's
-/// blessing — and an allowlist keyed on one is not an allowlist.
-#[test]
-fn the_fixtures_slack_channel_is_an_id_not_a_name() {
-    let r = parsed();
-    let DeliverTarget::Slack { channel, .. } = &r.deliver_to[1] else {
-        panic!("expected the second target to be slack");
-    };
-    assert!(
-        channel.starts_with('C') || channel.starts_with('G'),
-        "slack channel {channel:?} must be an id"
-    );
-    assert!(!channel.starts_with('#'), "a #name is not addressable");
 }
 
 /// `head_sha` is GitHub `commit_id`, and `line_range` is file-absolute

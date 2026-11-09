@@ -29,7 +29,9 @@ export default defineConfig({
     screenshot: "off",
   },
   webServer: {
-    command: "cargo run --quiet --example capture_server -p maidan-server",
+    // CI runs the harness the build job compiled (CAPTURE_SERVER_BIN).
+    command:
+      process.env.CAPTURE_SERVER_BIN ?? "cargo run --quiet --example capture_server -p maidan-server",
     cwd: "..",
     url: `${BASE}/ui/`,
     reuseExistingServer: false,

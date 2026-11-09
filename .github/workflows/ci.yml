@@ -40,6 +40,22 @@ jobs:
   # the required jobs sat queued behind them and a merge took an hour. They
   # still run on every `dev` commit, and a red one there is a break to fix
   # before the next promotion.
+  #
+  # One build, many runs. The `build` job compiles the workspace once in the
+  # dev/test profile: every test binary (lib, bin and integration, packed with
+  # `cargo nextest archive`), the debug server and CLI, and the two console
+  # harnesses. Nothing downstream compiles the workspace again: `unit tests`
+  # and the integration shards run the archive, the Playwright jobs and the
+  # report-only clients run the binaries, and the compose and scale-out smokes
+  # run an image of the debug server (`smoke image`). The shipped image is
+  # compiled once, by `release image`, for the OTLP smoke and the kind install.
+  # What still compiles on its own does so because its profile or features
+  # differ: clippy (check), bootstrap strip (no default features), the aarch64
+  # cross build, loom, sqlite-vec and coverage (instrumented). In 2026-11 every
+  # one of the eight cargo jobs compiled the workspace cold: 15 per-job cargo
+  # caches and two Docker scopes held 11 GB against the 10 GB Actions cache,
+  # so each run evicted the next one's. The caches below are one per profile
+  # and are written only from `dev`, which every branch can read.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -48,6 +64,9 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       heavy: ${{ steps.filter.outputs.heavy }}
       openwork: ${{ steps.filter.outputs.openwork }}
+      # The integration shard matrix: four on a full run, one (the doc and
+      # contract tests) otherwise.
+      shards: ${{ steps.filter.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,6 +83,7 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "heavy=true" >> "$GITHUB_OUTPUT"
             echo "openwork=true" >> "$GITHUB_OUTPUT"
+            echo "shards=[1,2,3,4]" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Documentation: docs/, book/, and Markdown anywhere. Everything
@@ -96,8 +116,10 @@ jobs:
           # the PR opens, too late for the opened event.)
           if [ "$code" = true ] && { [[ "$HEAD_REF" == batch/* || "$HEAD_REF" == release/* ]] || [ "$FULL_LABEL" = true ]; }; then
             echo "heavy=true" >> "$GITHUB_OUTPUT"
+            echo "shards=[1,2,3,4]" >> "$GITHUB_OUTPUT"
           else
             echo "heavy=false" >> "$GITHUB_OUTPUT"
+            echo "shards=[1]" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -130,11 +152,11 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # One key for every lint run, saved only from main and dev, so a
-          # pull request restores a warm cache instead of compiling from
-          # scratch (#1680), and PR runs don't evict it.
+          # One key for every lint run, saved only from dev (the default
+          # branch, so every PR and main can restore it), so a pull request
+          # restores a warm cache instead of compiling from scratch (#1680).
           shared-key: lint
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - name: landing typecheck and lint
         working-directory: web/landing
         run: |
@@ -172,7 +194,10 @@ jobs:
       - name: deployment contract
         run: ./scripts/check-deploy-contract.sh
       - name: agent contract golden files
-        run: ./scripts/check-agent-contract.sh
+        # The contract tests themselves run once, from the build job's archive
+        # (in the integration shards; on a feature PR, shard 1 runs exactly
+        # these), not compiled again here.
+        run: ./scripts/check-agent-contract.sh --no-cargo
       - name: run caps (scripts/capped)
         run: ./scripts/check-capped.sh
       - name: no internal project names
@@ -194,14 +219,16 @@ jobs:
         run: ./scripts/check-our-domains.sh
 
   # Installs helm/maidan, then helm/maidan-stack with its own Postgres and
-  # MinIO, on the server and maidan-postgres images it builds, and waits for
-  # the stack's /health/ready: migrations on pgvector and a reachable bucket.
+  # MinIO, on the shipped server image (`release image`) and maidan-postgres
+  # (`smoke image`), and waits for the stack's /health/ready: migrations on
+  # pgvector and a reachable bucket. It built both images itself until
+  # 2026-11, an uncached release compile of 15 minutes.
   helm-kind:
     name: helm install (kind)
-    needs: changes
+    needs: [changes, release-image, smoke-image]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -222,7 +249,25 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.14.4
+      - name: download the shipped server image
+        uses: actions/download-artifact@v4
+        with:
+          name: release-image
+          path: images
+      - name: download maidan-postgres
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-images
+          path: images
+      - name: load the images
+        run: |
+          docker load -i images/server-release.tar
+          docker load -i images/postgres.tar
       - name: helm install kind smoke
+        env:
+          SKIP_DOCKER_BUILD: "1"
+          MAIDAN_IMAGE: maidan-server:release
+          STACK_POSTGRES_IMAGE: maidan-postgres:dev
         run: bash scripts/helm-install-kind-smoke.sh
 
   secrets:
@@ -240,14 +285,33 @@ jobs:
           path: .
           extra_args: --only-verified
 
-  test:
-    name: unit tests
+  # The one compile of the workspace in the dev/test profile (see the top of
+  # this file). `cargo nextest archive --tests` builds every lib, bin and
+  # integration test binary in one cargo invocation; until 2026-11 the unit
+  # job built the same libs and lib tests again, and the integration shards
+  # then ran the unit tests a second time.
+  build:
+    name: build (tests + binaries)
+    needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A cold build (no cargo cache) took 6m43s for the archive on 2026-11-09.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # The target dir outgrew the runner's disk in 2026-10 (MinIO then
+      # refused writes in the old single integration job). The runner has
+      # about 88G free; deleting the unused toolchains frees 35G more, and
+      # takes 1.5 to 3.5 minutes, so it runs in the background while the
+      # compile starts.
+      - name: free disk space (in the background)
+        run: |
+          df -h /
+          nohup sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
+            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby >/dev/null 2>&1 &
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -260,21 +324,86 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          # One key for the dev/test profile, saved only from dev (the default
+          # branch, which every branch can restore from).
+          shared-key: test-build
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      - name: build
-        # Only lib+bin targets: the test/bench binaries are compiled by the
-        # `lint` (clippy --all-targets) and `integration` (nextest --tests)
-        # jobs, so linking them here too is redundant and a needless source of
-        # linker pressure.
-        run: cargo build --workspace --lib --bins
+      # A docs-only change still builds everything: its doc contract tests
+      # live in the same binaries.
+      - name: build and archive every test binary
+        run: cargo nextest archive --workspace --tests --profile ci --archive-file nextest-archive.tar.zst
+      - name: upload the test archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive
+          path: nextest-archive.tar.zst
+          retention-days: 1
+          compression-level: 0
+      # `--workspace` keeps the feature set the archive was built with, so
+      # only the two example binaries compile and link here.
+      - name: build the console harnesses
+        if: needs.changes.outputs.code == 'true'
+        run: cargo build --workspace --example ui_test_server --example capture_server
+      - name: pack the binaries
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          mkdir -p bins
+          cp target/debug/maidan-server target/debug/maidan \
+            target/debug/examples/ui_test_server target/debug/examples/capture_server bins/
+          tar -C bins -cf - . | zstd -T0 -3 -o bins.tar.zst
+          ls -l bins bins.tar.zst
+      - name: upload the binaries
+        if: needs.changes.outputs.code == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bins
+          path: bins.tar.zst
+          retention-days: 1
+          compression-level: 0
+      - name: disk at the end of the build
+        if: always()
+        run: df -h /
+
+  test:
+    name: unit tests
+    needs: [changes, build]
+    # Not skipped when the build fails: a skipped required check reports as
+    # passed.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: the build passed
+        env:
+          BUILD: ${{ needs.build.result }}
+        run: |
+          echo "build=$BUILD"
+          [ "$BUILD" = success ]
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: download the test archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
+      # Lib and bin unit tests: every binary in the archive that is not an
+      # integration test. The integration shards run the rest, so each test
+      # runs once. Profiles live in .config/nextest.toml; `ci` runs every
+      # test, applies the slow-test timeout and writes a JUnit report.
       - name: test (unit only)
-        # Profiles live in .config/nextest.toml; `ci` runs every test, applies
-        # the slow-test timeout and writes a JUnit report.
-        run: cargo nextest run --workspace --lib --bins --profile ci
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: >-
+          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
+          --profile ci -E 'not kind(test)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -285,7 +414,7 @@ jobs:
 
   a2a-tck:
     name: a2a tck
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -293,29 +422,26 @@ jobs:
     # source-built server over the JSON-RPC, HTTP+JSON and gRPC bindings. Fails on any
     # TCK failure, a stale exclusion, or a pass count below the recorded floor.
     # Not a required check (docs/Decisions.md); the binding behaviour is also
-    # gated by the required Rust e2e tests.
+    # gated by the required Rust e2e tests. Runs the build job's binaries.
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - name: set up python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: a2a tck
+        env:
+          MAIDAN_BIN_DIR: ${{ runner.temp }}/bins
         run: scripts/a2a-tck.sh
 
   loom:
@@ -344,7 +470,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: loom
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - name: bus models
         run: cargo test -p maidan-bus --features loom --release --lib loom
       - name: presence models
@@ -352,7 +478,7 @@ jobs:
 
   mcp-inspector:
     name: mcp inspector (report-only)
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -368,29 +494,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - uses: actions/setup-node@v4
         with:
           # The Inspector requires Node >= 22.19.
           node-version: "22"
       - name: mcp external verifier
+        env:
+          MAIDAN_BIN_DIR: ${{ runner.temp }}/bins
         run: scripts/mcp-inspector.sh
 
   mcp-conformance:
     name: mcp conformance (report-only)
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -406,25 +529,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: mcp conformance suite
         env:
           MAIDAN_CONFORMANCE_OUT: ${{ github.workspace }}/mcp-conformance-results
+          MAIDAN_BIN_DIR: ${{ runner.temp }}/bins
         run: scripts/mcp-conformance.sh
       - name: upload results
         if: always()
@@ -516,7 +635,7 @@ jobs:
 
   sdk-interop:
     name: sdk interop (report-only)
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -526,23 +645,21 @@ jobs:
     # exercise is already gated by the required Rust e2e tests; this job proves the
     # four clients interop end-to-end, without ever blocking a merge.
     continue-on-error: true
+    # The server and CLI come from the build job; only the Rust SDK compiles
+    # here (its own crate, under the toolchain rust-toolchain.toml pins).
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
+          echo "MAIDAN_BIN_DIR=$RUNNER_TEMP/bins" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -554,8 +671,6 @@ jobs:
           go-version: "1.22"
       - name: install pytest
         run: python -m pip install pytest
-      - name: build server (warm the cache for the suites)
-        run: cargo build --bin maidan-server
       - name: typescript
         run: scripts/sdk-test.sh typescript
       - name: python
@@ -567,7 +682,7 @@ jobs:
 
   mcp-sdk-clients:
     name: mcp sdk clients (report-only)
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -582,12 +697,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -597,80 +714,29 @@ jobs:
         with:
           python-version: "3.12"
       - name: typescript and python SDK clients
+        env:
+          MAIDAN_BIN_DIR: ${{ runner.temp }}/bins
         run: scripts/mcp-sdk-clients.sh typescript python
 
-  # The integration suite is three jobs. `integration build` compiles every
-  # test binary once and packs them with `cargo nextest archive`; three
-  # `integration shard` jobs each run a third of the tests (nextest's hash
-  # partition, so a test always lands on the same shard) against their own
-  # Postgres and MinIO containers; and `integration (testcontainers)` passes
-  # only when the build and every shard passed. That last job keeps the name
-  # the merge gate requires. In 2026-10 the single job took 29-42 minutes:
-  # 12-17 building and 14-22 running.
-  integration-build:
-    name: integration build
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      # The workspace's test binaries reach about 83G here, which left 871M of
-      # the runner's disk. MinIO refuses writes below its free-drive floor, so
-      # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
-      # coverage job, which frees this space first, passed them. The AWS KMS
-      # client (#1534) grew them past the 8G floor again on 2026-10-23, so the
-      # unused toolchains below go too.
-      - name: free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
-            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
-            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
-          docker system prune -af --volumes >/dev/null
-          df -h /
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          # Saved only from main and dev, like every other cargo cache here,
-          # so PR entries do not evict the ones PRs restore from.
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
-      - name: install nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-      # A docs-only change still builds everything: its doc contract tests
-      # live in the same binaries.
-      - name: build and archive integration tests
-        run: cargo nextest archive --workspace --tests --profile ci --archive-file nextest-archive.tar.zst
-      - name: upload the test archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: nextest-archive
-          path: nextest-archive.tar.zst
-          retention-days: 1
-          compression-level: 0
-
+  # The integration suite: four shards each run a quarter of the integration
+  # tests (nextest's hash partition, so a test always lands on the same shard)
+  # from the build job's archive, against their own Postgres and MinIO
+  # containers, and `integration (testcontainers)` passes only when the build
+  # and every shard passed. That last job keeps the name the merge gate
+  # requires. On a feature or docs-only PR one shard runs the tests that read
+  # docs/, book/ or Markdown, and the agent contract tests (the lint job no
+  # longer compiles them). In 2026-10 the single job took 29-42 minutes; in
+  # early 2026-11 the three shards each spent 1.5-3.7 minutes freeing disk
+  # they did not need (88G free, a 760M archive) and re-ran every unit test.
   integration-shard:
-    name: integration shard (${{ matrix.shard }}/3)
-    needs: [changes, integration-build]
+    name: integration shard (${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: [changes, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: ${{ fromJSON(needs.changes.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -678,6 +744,7 @@ jobs:
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
       # 2026-10-09); pull through Google's public mirror of it instead.
       - name: pull Docker Hub images through mirror.gcr.io
+        if: needs.changes.outputs.heavy == 'true'
         run: |
           # Merge into the runner's own daemon.json rather than replace it.
           f=/etc/docker/daemon.json
@@ -685,21 +752,6 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      # The workspace's test binaries reach about 83G here, which left 871M of
-      # the runner's disk. MinIO refuses writes below its free-drive floor, so
-      # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
-      # coverage job, which frees this space first, passed them. The AWS KMS
-      # client (#1534) grew them past the 8G floor again on 2026-10-23, so the
-      # unused toolchains below go too.
-      - name: free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
-            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
-            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
-          docker system prune -af --volumes >/dev/null
-          df -h /
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
@@ -723,23 +775,26 @@ jobs:
       # ubuntu-26.04 mounts /tmp as a tmpfs sized to half the RAM. nextest
       # unpacks the archive into the temp dir, and the test binaries outgrew it
       # ("Disk quota exceeded", 2026-11-02), so the temp dir goes on the disk.
+      # `kind(test)`: the integration test binaries; `unit tests` runs the rest.
       - name: integration tests
         if: needs.changes.outputs.heavy == 'true'
         env:
           TMPDIR: ${{ runner.temp }}
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
-          --profile ci --partition hash:${{ matrix.shard }}/3
-      - name: doc contract tests (docs-only change)
-        # The tests that read docs/, book/ or Markdown; nothing else can be
-        # affected by a docs-only change. Shard 1 runs them all.
-        if: needs.changes.outputs.heavy != 'true' && matrix.shard == 1
+          --profile ci -E 'kind(test)'
+          --partition hash:${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: doc and agent contract tests (feature or docs-only PR)
+        # The tests that read docs/, book/ or Markdown, and the agent contract
+        # tests scripts/check-agent-contract.sh names.
+        if: needs.changes.outputs.heavy != 'true'
         env:
           TMPDIR: ${{ runner.temp }}
-        run: >-
-          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
-          --profile ci -E
-          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
+        run: |
+          contracts="$(bash scripts/check-agent-contract.sh --nextest-filter)"
+          docs='test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
+          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap . \
+            --profile ci -E "$docs | $contracts"
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -750,7 +805,7 @@ jobs:
 
   integration:
     name: integration (testcontainers)
-    needs: [changes, integration-build, integration-shard]
+    needs: [changes, build, integration-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -758,7 +813,7 @@ jobs:
       - name: the build and every shard passed
         env:
           CHANGES: ${{ needs.changes.result }}
-          BUILD: ${{ needs.integration-build.result }}
+          BUILD: ${{ needs.build.result }}
           SHARDS: ${{ needs.integration-shard.result }}
         run: |
           echo "changes=$CHANGES build=$BUILD shards=$SHARDS"
@@ -801,7 +856,7 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       # Reading the dependency graph is enough to prove the default build
       # leaves sqlite-vec out. The unit and lint jobs already compile the
       # default build; compiling it here too took ten of the old fifteen minutes.
@@ -823,9 +878,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    # A release build: 10–11 min on an idle runner, over 15 on a busy one,
-    # where it was killed mid-compile on three PRs in a day.
-    timeout-minutes: 30
+    # The only build without default features. The test build compiles the
+    # server's lib and bins under -D warnings, which is what the release
+    # build here used to prove (10-16 minutes); the shipped feature set is
+    # compiled once, by `release image`.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -842,23 +899,10 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
-      - name: release build and e2e without bootstrap feature
-        run: |
-          cargo build -p maidan-server --release --no-default-features
-          cargo test -p maidan-server --no-default-features --test bootstrap_absent_e2e
-      - name: build and run the release CLI image
-        env:
-          MAIDAN_VERSION: ci
-        run: |
-          cargo build -p maidan-cli --release
-          mkdir -p target/cli-image
-          cp target/release/maidan target/cli-image/maidan
-          cp docker/Dockerfile.cli target/cli-image/Dockerfile
-          docker build --build-arg MAIDAN_VERSION=ci -t maidan-cli:ci target/cli-image
-          test "$(docker image inspect maidan-cli:ci --format '{{.Config.User}}')" = "nonroot:nonroot"
-          test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "ci"
-          test "$(docker run --rm maidan-cli:ci --version)" = "maidan ci"
+          shared-key: no-default-features
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+      - name: e2e without the bootstrap feature
+        run: cargo test -p maidan-server --no-default-features --test bootstrap_absent_e2e
 
   # The release's aarch64 Linux build runs under `cross`, whose container has
   # no node; v420.0.0 never published because build.rs needed npm there and no
@@ -954,7 +998,7 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest + cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
@@ -993,15 +1037,110 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
-  e2e:
-    name: docker compose smoke
+  # The shipped server image (production build args: no bootstrap, otel on),
+  # compiled once per run through a GitHub Actions layer cache. The OTLP
+  # smoke and the kind install run it.
+  release-image:
+    name: release image
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    # A cold image build of the server took 14 m 12 s on a loaded runner on
-    # 2026-10-09, and two runs hit the old 15-minute limit mid-build.
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: build the shipped server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=0
+          tags: maidan-server:release
+          outputs: type=docker,dest=${{ runner.temp }}/server-release.tar
+          cache-from: type=gha,scope=server-bootstrap-0
+          # Written only from dev: the 10 GB Actions cache is otherwise
+          # filled by entries no other branch reads.
+          cache-to: ${{ github.ref == 'refs/heads/dev' && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
+      - name: upload the image
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-image
+          path: ${{ runner.temp }}/server-release.tar
+          retention-days: 1
+
+  # The compose and scale-out smokes' images, built once: maidan-server:dev
+  # from the build job's debug server (default features, so bootstrap on; it
+  # was a release compile of 10-13 minutes in each smoke) and
+  # maidan-postgres:dev. Also the CLI image check that the bootstrap job ran
+  # on a release CLI build of its own.
+  smoke-image:
+    name: smoke image
+    needs: [changes, build]
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
+      - name: download the binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
+      - name: build the images
+        run: |
+          mkdir -p "$RUNNER_TEMP/server-ctx" images
+          cp "$RUNNER_TEMP/bins/maidan-server" "$RUNNER_TEMP/server-ctx/"
+          docker build -t maidan-server:dev -f docker/Dockerfile.ci-server "$RUNNER_TEMP/server-ctx"
+          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+          docker save maidan-server:dev -o images/server-dev.tar
+          docker save maidan-postgres:dev -o images/postgres.tar
+      - name: the CLI image runs as nonroot and reports its version
+        run: |
+          mkdir -p "$RUNNER_TEMP/cli-image"
+          cp "$RUNNER_TEMP/bins/maidan" "$RUNNER_TEMP/cli-image/maidan"
+          docker build --build-arg MAIDAN_VERSION=ci -t maidan-cli:ci -f docker/Dockerfile.cli "$RUNNER_TEMP/cli-image"
+          test "$(docker image inspect maidan-cli:ci --format '{{.Config.User}}')" = "nonroot:nonroot"
+          test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "ci"
+          test "$(docker run --rm maidan-cli:ci --version)" = "$("$RUNNER_TEMP/bins/maidan" --version)"
+      - name: upload the images
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-images
+          path: images
+          retention-days: 1
+
+  e2e:
+    name: docker compose smoke
+    needs: [changes, smoke-image]
+    # Not skipped when the image job fails: a skipped required check reports
+    # as passed.
+    if: ${{ !cancelled() && needs.changes.outputs.heavy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: the images were built
+        env:
+          RESULT: ${{ needs.smoke-image.result }}
+        run: |
+          echo "upstream=$RESULT"
+          [ "$RESULT" = success ]
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -1031,24 +1170,15 @@ jobs:
           python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py examples/openrouter/claimant.py examples/seat-runner/seat_runner.py scripts/eval-land-gate-advisor.py
           python3 -m unittest discover -s examples/seat-runner/tests
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); tomllib.load(open('examples/seat-runner/seats.example.toml','rb')); print('mcp configs valid')"
-      # The server image builds through buildx with a GitHub Actions layer
-      # cache, so the cargo-chef dependency layer is reused across runs
-      # instead of compiled cold (about 12 minutes) in every smoke job.
-      - uses: docker/setup-buildx-action@v3
-      - name: build server image (cached)
-        uses: docker/build-push-action@v6
+      - name: download the smoke images
+        uses: actions/download-artifact@v4
         with:
-          context: .
-          file: crates/maidan-server/Dockerfile
-          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
-          tags: maidan-server:dev
-          load: true
-          cache-from: type=gha,scope=server-bootstrap-1
-          # Written only from main and dev: the 10 GB Actions cache is
-          # otherwise filled by PR-scoped entries no other PR can read.
-          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
-      - name: build images
-        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+          name: smoke-images
+          path: images
+      - name: load the smoke images
+        run: |
+          docker load -i images/server-dev.tar
+          docker load -i images/postgres.tar
       # `--wait` blocks on the services' own health checks, so this step is
       # also what proves those health checks work.
       - name: compose up
@@ -1096,11 +1226,17 @@ jobs:
     # covered by the in-process two_replica_*_e2e tests.
     # NOTE: also add "scale-out smoke" to branch-protection required checks.
     name: scale-out smoke
-    needs: changes
-    if: needs.changes.outputs.heavy == 'true'
+    needs: [changes, smoke-image]
+    if: ${{ !cancelled() && needs.changes.outputs.heavy == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
+      - name: the images were built
+        env:
+          RESULT: ${{ needs.smoke-image.result }}
+        run: |
+          echo "upstream=$RESULT"
+          [ "$RESULT" = success ]
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -1114,22 +1250,15 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      # The server image builds through buildx with a GitHub Actions layer
-      # cache, so the cargo-chef dependency layer is reused across runs
-      # instead of compiled cold (about 12 minutes) in every smoke job.
-      - uses: docker/setup-buildx-action@v3
-      - name: build server image (cached)
-        uses: docker/build-push-action@v6
+      - name: download the smoke images
+        uses: actions/download-artifact@v4
         with:
-          context: .
-          file: crates/maidan-server/Dockerfile
-          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
-          tags: maidan-server:dev
-          load: true
-          cache-from: type=gha,scope=server-bootstrap-1
-          # Written only from main and dev: the 10 GB Actions cache is
-          # otherwise filled by PR-scoped entries no other PR can read.
-          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
+          name: smoke-images
+          path: images
+      - name: load the smoke images
+        run: |
+          docker load -i images/server-dev.tar
+          docker load -i images/postgres.tar
       - name: two-replica scale-out smoke
         env:
           MAIDAN_SMOKE_PREBUILT: "1"
@@ -1141,7 +1270,7 @@ jobs:
     # recovery point between dumps; this is the evidence the PITR procedure in
     # docs/Production.md works. Not (yet) a required check.
     name: pitr drill
-    needs: changes
+    needs: [changes, smoke-image]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1159,10 +1288,15 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      - name: build maidan-postgres
-        run: docker build -f docker/Dockerfile.db -t maidan-postgres:ci docker
+      - name: download maidan-postgres
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-images
+          path: images
       - name: point-in-time recovery drill
-        run: bash scripts/pitr-drill.sh maidan-postgres:ci
+        run: |
+          docker load -i images/postgres.tar
+          bash scripts/pitr-drill.sh maidan-postgres:dev
 
   open-work:
     # docs/Open Work.md's live tables against history: a PR listed as in
@@ -1281,13 +1415,17 @@ jobs:
     # in-process metrics_push unit test.
     # Required check as (v124.0.0).
     name: otlp smoke
-    needs: changes
-    if: needs.changes.outputs.heavy == 'true'
+    needs: [changes, smoke-image, release-image]
+    if: ${{ !cancelled() && needs.changes.outputs.heavy == 'true' }}
     runs-on: ubuntu-latest
-    # Builds the same server image; its last pass on 2026-10-09 took about
-    # 15 minutes, at the old limit.
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
+      - name: the images were built
+        env:
+          RESULT: ${{ needs.smoke-image.result == 'success' && needs.release-image.result }}
+        run: |
+          echo "upstream=$RESULT"
+          [ "$RESULT" = success ]
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -1301,26 +1439,24 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      # The production build args (no bootstrap), so the smoke proves the
-      # image that ships exports OTLP; it only needs /health and /metrics.
-      # The server image builds through buildx with a GitHub Actions layer
-      # cache, so the cargo-chef dependency layer is reused across runs
-      # instead of compiled cold (about 12 minutes) in every smoke job.
-      - uses: docker/setup-buildx-action@v3
-      - name: build server image (cached)
-        uses: docker/build-push-action@v6
+      # The shipped image (production build args: no bootstrap), so the smoke
+      # proves the image that ships exports OTLP; it only needs /health and
+      # /metrics. compose.yaml names it maidan-server:dev.
+      - name: download the shipped server image
+        uses: actions/download-artifact@v4
         with:
-          context: .
-          file: crates/maidan-server/Dockerfile
-          build-args: MAIDAN_ENABLE_BOOTSTRAP=0
-          tags: maidan-server:dev
-          load: true
-          cache-from: type=gha,scope=server-bootstrap-0
-          # Written only from main and dev: the 10 GB Actions cache is
-          # otherwise filled by PR-scoped entries no other PR can read.
-          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
-      - name: build images
-        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+          name: release-image
+          path: images
+      - name: download maidan-postgres
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-images
+          path: images
+      - name: load the images
+        run: |
+          docker load -i images/server-release.tar
+          docker tag maidan-server:release maidan-server:dev
+          docker load -i images/postgres.tar
       - name: otlp end-to-end smoke
         run: bash scripts/otlp-smoke.sh
       - name: collector logs on failure
@@ -1340,7 +1476,7 @@ jobs:
     # set; unset elsewhere they skip. Closes the "LSN routing is CI-untested"
     # gap. Not a required check yet.
     name: replica routing (LSN)
-    needs: changes
+    needs: [changes, build]
     if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1358,19 +1494,14 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      - uses: actions/setup-node@v4
+      - name: install nextest
+        uses: taiki-e/install-action@v2
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+          tool: cargo-nextest
+      - name: download the test archive
+        uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+          name: nextest-archive
       - name: bring up a primary + streaming standby
         run: |
           eval "$(scripts/replica-harness.sh up)"
@@ -1379,17 +1510,21 @@ jobs:
             echo "MAIDAN_REPLICA_URL=$MAIDAN_REPLICA_URL"
           } >> "$GITHUB_ENV"
       - name: LSN read-your-write routing tests (real streaming replication)
-        run: |
-          cargo test -p maidan-store  --test it replication::    -- --ignored --nocapture
-          cargo test -p maidan-store  --test it read_routing::    -- --ignored --nocapture
-          cargo test -p maidan-search --test it replica_routing:: -- --ignored --nocapture
+        # The same binaries the shards ran, not compiled again.
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: >-
+          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
+          --profile ci --run-ignored only --no-capture -E
+          '(binary_id(maidan-store::it) & test(/^(replication|read_routing)::/))
+          | (binary_id(maidan-search::it) & test(/^replica_routing::/))'
       - name: tear down the harness
         if: always()
         run: scripts/replica-harness.sh down
 
   ui-gallery:
     name: ui gallery
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1406,22 +1541,31 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/landing/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
-      - name: build the capture harness
-        run: cargo build --example capture_server -p maidan-server
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - name: install node deps
         working-directory: ui-tests
         run: npm ci
       - name: install chromium
         working-directory: ui-tests
         run: npx playwright install --with-deps chromium
+      # The capture harness reads the landing's index.html from disk (the
+      # assets are embedded); the build job's tree is not here, so build it.
+      - name: build the landing for the harness
+        working-directory: web/landing
+        env:
+          LANDING_OUT: ${{ github.workspace }}/crates/maidan-server/static/landing/dist
+        run: npm ci && npm run build
       - name: take the gallery
         working-directory: ui-tests
+        env:
+          CAPTURE_SERVER_BIN: ${{ runner.temp }}/bins/capture_server
         run: npm run gallery
       - name: upload the gallery
         if: always()
@@ -1433,7 +1577,7 @@ jobs:
 
   ui-tests:
     name: ui tests (playwright)
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1448,29 +1592,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            web/landing/package-lock.json
-            web/console/package-lock.json
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+      - name: download the binaries
+        uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: build the /ui test harness
-        run: cargo build --example ui_test_server -p maidan-server
+          name: bins
+      - name: unpack the binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - name: install node deps
         working-directory: ui-tests
         run: npm ci
       - name: install chromium
         working-directory: ui-tests
         run: npx playwright install --with-deps chromium
+      # The landing specs serve the landing's dist from disk (the server
+      # embeds it at compile time, but the specs route / to the files); the
+      # build job's tree is not here, so build it, as the gallery does.
+      - name: build the landing for the specs
+        working-directory: web/landing
+        env:
+          LANDING_OUT: ${{ github.workspace }}/crates/maidan-server/static/landing/dist
+        run: npm ci && npm run build
       - name: run playwright
         working-directory: ui-tests
+        env:
+          UI_TEST_SERVER_BIN: ${{ runner.temp }}/bins/ui_test_server
         run: npx playwright test
       # Also when a retry passed: a flaky test's failed attempt is the only
       # record of what hung, and retries otherwise throw it away (#2126). A

@@ -1,0 +1,3 @@
+### CI compiles the workspace once per run
+
+- **Changed:** CI builds every test binary, the debug server and CLI, and the console harnesses once, in a `build (tests + binaries)` job, and every other job runs what it built: `unit tests` and four integration shards run one `cargo nextest archive` (each test once; the shards no longer re-run the unit tests), the Playwright jobs and the report-only clients run its binaries, and the compose and scale-out smokes run one image of its server. The shipped image is built once, for the OTLP smoke and the kind install. Cargo and Docker caches are one per profile and saved only from `dev`, so they stop evicting each other from the 10 GB Actions cache. Seven tests that another test fully covered are removed.
