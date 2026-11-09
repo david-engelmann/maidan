@@ -1591,7 +1591,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: download the binaries
         uses: actions/download-artifact@v4
         with:
@@ -1606,6 +1606,14 @@ jobs:
       - name: install chromium
         working-directory: ui-tests
         run: npx playwright install --with-deps chromium
+      # The landing specs serve the landing's dist from disk (the server
+      # embeds it at compile time, but the specs route / to the files); the
+      # build job's tree is not here, so build it, as the gallery does.
+      - name: build the landing for the specs
+        working-directory: web/landing
+        env:
+          LANDING_OUT: ${{ github.workspace }}/crates/maidan-server/static/landing/dist
+        run: npm ci && npm run build
       - name: run playwright
         working-directory: ui-tests
         env:
