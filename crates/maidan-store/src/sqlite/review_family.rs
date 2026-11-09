@@ -203,8 +203,10 @@ pub(crate) async fn refuse_result(
 
 /// Refuse a `decline` the thread cannot carry: an `own_family` decline
 /// needs a review that names its author's family. The lease fence is read
-/// first, so a caller that does not hold the claim learns only `NotFound`,
-/// as a plain release answers it. Called before the release takes the
+/// first, live at `lease_clock` as the release's own fence reads it, so a
+/// caller that does not hold the claim, or whose lease lapsed, learns only
+/// `NotFound` (the release answers it `claim-lost`) before anything about
+/// the thread's attributes. Called before the release takes the
 /// thread's row lock, so a refusal holds no lock while its transaction waits
 /// to be rolled back; the release's own fence runs again under the lock, and
 /// a review's author family is set once, so the answer cannot go stale.
@@ -214,16 +216,19 @@ pub(crate) async fn refuse_unfounded_decline_in_tx(
     member_id: MemberId,
     lease_id: ClaimLeaseId,
     decline: ClaimDecline,
+    lease_clock: chrono::DateTime<Utc>,
 ) -> Result<(), StoreError> {
     let held = sqlx::query(
         "SELECT a.kind, a.author_family FROM maidan_threads t
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
          WHERE t.id = ?1 AND t.assignee_id = ?2 AND t.claim_lease_id = ?3
-           AND t.tombstoned_at IS NULL",
+           AND t.tombstoned_at IS NULL
+           AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?4)",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(lease_clock.to_rfc3339())
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;

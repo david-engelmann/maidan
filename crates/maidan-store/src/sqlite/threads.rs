@@ -1519,7 +1519,12 @@ async fn release_with_event_in_tx(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     if let Some(decline) = decline {
         super::review_family::refuse_unfounded_decline_in_tx(
-            tx, thread_id, member_id, lease_id, decline,
+            tx,
+            thread_id,
+            member_id,
+            lease_id,
+            decline,
+            lease_clock,
         )
         .await?;
     }

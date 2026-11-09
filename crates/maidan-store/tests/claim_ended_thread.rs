@@ -296,6 +296,15 @@ async fn acknowledge_and_release_on_a_dead_lease_answer_claim_lost(store: &dyn S
         matches!(with_event, Err(StoreError::ClaimLost(_))),
         "{with_event:?}"
     );
+    // A decline is judged only for the live holder: a lapsed lease is told
+    // its claim is lost before the thread is found not to be a review.
+    let declined = store
+        .release_claim_with_event(dead, room.worker, lease, Some(ClaimDecline::OwnFamily))
+        .await;
+    assert!(
+        matches!(declined, Err(StoreError::ClaimLost(_))),
+        "{declined:?}"
+    );
     let after = store.get_thread(dead).await.expect("thread");
     assert_eq!(
         after.assignee_id,
