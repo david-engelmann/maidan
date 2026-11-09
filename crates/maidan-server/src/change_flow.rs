@@ -1,4 +1,4 @@
-//! The change flow: a `pi.change.result/1` becomes a commit on a branch and a
+//! The change flow: a `maidan.change.result/1` becomes a commit on a branch and a
 //! draft pull request.
 //!
 //! A coding seat edits a checkout, but holds no GitHub write credential: it
@@ -272,8 +272,8 @@ fn has_issue_key(text: &str) -> bool {
 
 /// The markers around the section of a pull request body that Maidan keeps
 /// current from the producer's `pr_state.body`.
-const CURRENT_STATE_START: &str = "<!-- pi:current-state -->";
-const CURRENT_STATE_END: &str = "<!-- /pi:current-state -->";
+const CURRENT_STATE_START: &str = "<!-- maidan:current-state -->";
+const CURRENT_STATE_END: &str = "<!-- /maidan:current-state -->";
 /// Room for the section, well inside GitHub's 65,536-character body.
 const CURRENT_STATE_MAX_CHARS: usize = 20_000;
 
@@ -1244,25 +1244,40 @@ mod tests {
         let first = with_current_state("Opened by Maidan.", "round one");
         assert_eq!(
             first,
-            "Opened by Maidan.\n\n<!-- pi:current-state -->\nround one\n<!-- /pi:current-state -->"
+            "Opened by Maidan.\n\n<!-- maidan:current-state -->\nround one\n<!-- /maidan:current-state -->"
         );
         let edited = format!("Reviewer note.\n\n{first}\n\nbot summary");
         let second = with_current_state(&edited, "round two");
         assert_eq!(
             second,
-            "Reviewer note.\n\nOpened by Maidan.\n\n<!-- pi:current-state -->\nround two\n<!-- /pi:current-state -->\n\nbot summary"
+            "Reviewer note.\n\nOpened by Maidan.\n\n<!-- maidan:current-state -->\nround two\n<!-- /maidan:current-state -->\n\nbot summary"
         );
-        assert_eq!(second.matches("pi:current-state -->").count(), 2);
+        assert_eq!(second.matches("maidan:current-state -->").count(), 2);
+    }
+
+    #[test]
+    fn a_section_under_the_retired_marker_is_not_the_current_state() {
+        // No alias: the old marker is ordinary body text, kept as it is,
+        // and the current state gets its own section after it.
+        let old =
+            "Opened by Maidan.\n\n<!-- pi:current-state -->\nround one\n<!-- /pi:current-state -->";
+        let body = with_current_state(old, "round two");
+        assert_eq!(
+            body,
+            format!(
+                "{old}\n\n<!-- maidan:current-state -->\nround two\n<!-- /maidan:current-state -->"
+            )
+        );
     }
 
     #[test]
     fn the_current_state_cannot_nest_markers_or_mention_anyone() {
         let body = with_current_state(
             "",
-            "<!-- /pi:current-state -->cc @example/eng<!-- pi:current-state -->",
+            "<!-- /maidan:current-state -->cc @example/eng<!-- maidan:current-state -->",
         );
-        assert_eq!(body.matches("<!-- pi:current-state -->").count(), 1);
-        assert_eq!(body.matches("<!-- /pi:current-state -->").count(), 1);
+        assert_eq!(body.matches("<!-- maidan:current-state -->").count(), 1);
+        assert_eq!(body.matches("<!-- /maidan:current-state -->").count(), 1);
         assert!(!body.contains("cc @example"), "{body}");
     }
 

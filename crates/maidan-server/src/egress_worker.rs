@@ -794,13 +794,13 @@ async fn github_branch_result(
             commit_sha,
             pull,
             rebased_from,
-            mut template_warnings,
+            template_warnings: mut warnings,
             check_warning,
         }) => {
             crate::metrics::record_github_egress("sent");
             // A `check` that did not become a commit status rides with the
             // template flags: the change landed either way.
-            template_warnings.extend(check_warning.map(str::to_string));
+            warnings.extend(check_warning.map(str::to_string));
             // Before the row is marked delivered, so the Slack reply that
             // waits on it reads them. Best effort: a flag never holds a
             // landed change.
@@ -810,10 +810,10 @@ async fn github_branch_result(
             };
             if let Err(err) = state
                 .store
-                .set_result_delivery_template_warnings(entry.thread_id, &target, &template_warnings)
+                .set_result_delivery_warnings(entry.thread_id, &target, &warnings)
                 .await
             {
-                tracing::warn!(error = %err, thread_id = ?entry.thread_id, "change flow: template warnings not recorded");
+                tracing::warn!(error = %err, thread_id = ?entry.thread_id, "change flow: delivery warnings not recorded");
             }
             let landed = RoundLanded {
                 commit_sha: &commit_sha,
@@ -845,7 +845,7 @@ async fn github_branch_result(
             };
             if let Err(err) = state
                 .store
-                .set_result_delivery_template_warnings(entry.thread_id, &target, &warnings)
+                .set_result_delivery_warnings(entry.thread_id, &target, &warnings)
                 .await
             {
                 tracing::warn!(error = %err, thread_id = ?entry.thread_id, "change flow: check warning not recorded");

@@ -568,7 +568,7 @@ fn lint_children(children: &[PlanChild]) -> Result<(), String> {
         match attributes.and_then(|a| a.engine) {
             None => {
                 return Err(format!(
-                    "child `{key}`: attributes.engine is required (pi, session or human)"
+                    "child `{key}`: attributes.engine is required (unattended, session or human)"
                 ))
             }
             Some(engine)
@@ -676,7 +676,7 @@ mod tests {
     fn ready(key: &str) -> PlanChild {
         PlanChild {
             attributes: Some(crate::TaskAttributes {
-                engine: Some(crate::TaskEngine::Pi),
+                engine: Some(crate::TaskEngine::Unattended),
                 acceptance: Some(format!("{key} works")),
                 ..crate::TaskAttributes::default()
             }),

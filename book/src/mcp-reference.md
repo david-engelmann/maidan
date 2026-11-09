@@ -622,7 +622,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         },
         "engine": {
           "enum": [
-            "pi",
+            "unattended",
             "session",
             "human"
           ],
@@ -2440,7 +2440,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "engine": {
       "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
       "enum": [
-        "pi",
+        "unattended",
         "session",
         "human"
       ],
@@ -2486,7 +2486,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "engine": {
       "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
       "enum": [
-        "pi",
+        "unattended",
         "session",
         "human"
       ],
@@ -2660,7 +2660,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_thread_attributes`
 
-**Set thread attributes.** Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.
+**Set thread attributes.** Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (unattended, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so an unattended worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.
 
 **Capability:** `thread:transition`
 
@@ -2687,7 +2687,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "engine": {
       "description": "omit to leave the work unrouted",
       "enum": [
-        "pi",
+        "unattended",
         "session",
         "human"
       ],
@@ -3187,7 +3187,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "engine": {
       "description": "count only threads routed to this engine, as claim_next_workspace_thread's engine. Omitted, any work",
       "enum": [
-        "pi",
+        "unattended",
         "session",
         "human"
       ],
@@ -3289,7 +3289,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "engine": {
       "enum": [
-        "pi",
+        "unattended",
         "session",
         "human"
       ],
@@ -3459,7 +3459,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "engine": {
-      "description": "Only threads routed to this engine (pi, session or human); shorthand for attr.engine.",
+      "description": "Only threads routed to this engine (unattended, session or human); shorthand for attr.engine.",
       "type": "string"
     },
     "lane": {

@@ -1579,7 +1579,7 @@
               },
               {
                 "$ref": "#/components/schemas/TaskEngine",
-                "description": "Only claim a thread routed to this engine (`pi`, `session` or\n`human`), for a worker that serves one kind of work. A thread routed\nto another engine, or not routed at all, is then never claimed."
+                "description": "Only claim a thread routed to this engine (`unattended`, `session` or\n`human`), for a worker that serves one kind of work. A thread routed\nto another engine, or not routed at all, is then never claimed."
               }
             ]
           },
@@ -8291,7 +8291,7 @@
             "type": "object"
           }
         ],
-        "description": "One repository's rollup. Pi is given small and medium work and sessions\nthe risky work, so an engine comparison is read within a size or a risk\ntier, not across the whole repository."
+        "description": "One repository's rollup. Unattended workers are given small and medium\nwork and sessions the risky work, so an engine comparison is read within a\nsize or a risk tier, not across the whole repository."
       },
       "ResultDelivery": {
         "description": "One `(thread, target)` delivery's durable state.",
@@ -8316,6 +8316,13 @@
               "string",
               "null"
             ]
+          },
+          "delivery_warnings": {
+            "description": "What the delivery flagged without failing. For a change: what its pull\nrequest lacks against the producer's template (`missing_testing`,\n`missing_issue_key`), and why the result's `check` became no commit\nstatus (`check_invalid`, `check_not_posted`). A flag, not a failure:\nthe change landed either way. Absent when there is nothing to flag.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "external_ref": {
             "description": "The external object we created, if we could address it — a Slack `ts`, a\nGitHub comment id. `None` means \"post next time\", with the hidden body\nmarker as the recovery path rather than a guess.",
@@ -8363,13 +8370,6 @@
           },
           "surface": {
             "type": "string"
-          },
-          "template_warnings": {
-            "description": "For a change: what its pull request lacks against the producer's\ntemplate (`missing_testing`, `missing_issue_key`), and why the result's\n`check` became no commit status (`check_invalid`, `check_not_posted`).\nA flag, not a failure: the change landed either way. Absent when nothing\nis missing.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
@@ -10551,7 +10551,7 @@
       "TaskEngine": {
         "description": "Who or what a task is meant for. `None` on a thread means nobody has\nrouted it yet; an engine-filtered claim never takes a thread routed to\nanother engine, nor one not routed at all. A workspace's default engine\nroutes the threads created there without one.",
         "enum": [
-          "pi",
+          "unattended",
           "session",
           "human"
         ],
@@ -37030,7 +37030,7 @@
             }
           },
           {
-            "description": "Only tasks routed to this engine (`pi`, `session` or `human`).",
+            "description": "Only tasks routed to this engine (`unattended`, `session` or `human`).",
             "in": "query",
             "name": "engine",
             "required": false,
@@ -37266,7 +37266,7 @@
             }
           },
           {
-            "description": "Only threads routed to this engine (`pi`, `session` or `human`).",
+            "description": "Only threads routed to this engine (`unattended`, `session` or `human`).",
             "in": "query",
             "name": "engine",
             "required": false,
@@ -43797,7 +43797,7 @@
             }
           },
           {
-            "description": "Count only threads routed to this engine (`pi`, `session` or\n`human`). Omitted, any work.",
+            "description": "Count only threads routed to this engine (`unattended`, `session` or\n`human`). Omitted, any work.",
             "in": "query",
             "name": "engine",
             "required": false,

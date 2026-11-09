@@ -1,4 +1,4 @@
-//! The Slack change flow end to end: a `pi.change.result/1` routed through the
+//! The Slack change flow end to end: a `maidan.change.result/1` routed through the
 //! real result-delivery path and egress worker, with the production
 //! `GithubApiClient` pointed at an in-memory fake of GitHub's Git Data and
 //! Pulls APIs, and a recording Slack sender.
@@ -1753,7 +1753,7 @@ async fn a_templated_body_passes_through_and_gets_no_template_warnings() {
     }
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED);
-    assert!(row.template_warnings.is_empty(), "{row:?}");
+    assert!(row.delivery_warnings.is_empty(), "{row:?}");
     let reply = h.slack_reply();
     assert!(reply.contains("Draft PR:"), "{reply}");
     assert!(!reply.contains("PR template"), "{reply}");
@@ -1775,7 +1775,7 @@ async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not
     assert_eq!(row.status, status::DELIVERED);
     assert_eq!(row.last_error, None, "a warning is not a failure");
     assert_eq!(
-        row.template_warnings,
+        row.delivery_warnings,
         vec!["missing_testing", "missing_issue_key"]
     );
     let reply = h.slack_reply();
@@ -1801,7 +1801,7 @@ async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not
         .find(|d| d["surface"] == "github_branch")
         .unwrap();
     assert_eq!(
-        branch["template_warnings"],
+        branch["delivery_warnings"],
         json!(["missing_testing", "missing_issue_key"])
     );
     let slack = rows
@@ -1810,7 +1810,7 @@ async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not
         .iter()
         .find(|d| d["surface"] == "slack")
         .unwrap();
-    assert!(slack.get("template_warnings").is_none(), "{slack}");
+    assert!(slack.get("delivery_warnings").is_none(), "{slack}");
 
     // A later round whose result carries the template does not change the
     // open pull request's title or body, so its warnings stand.
@@ -1822,7 +1822,7 @@ async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED);
     assert_eq!(
-        row.template_warnings,
+        row.delivery_warnings,
         vec!["missing_testing", "missing_issue_key"]
     );
 
@@ -1838,7 +1838,7 @@ async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not
     h.drain().await;
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED);
-    assert!(row.template_warnings.is_empty(), "{row:?}");
+    assert!(row.delivery_warnings.is_empty(), "{row:?}");
     assert!(
         !h.slack_reply().contains("PR template"),
         "{}",
@@ -2054,7 +2054,7 @@ async fn linear_task(h: &Harness, t: &Tenant, issue: &str) -> ThreadId {
             },
             None,
             Some(maidan_types::TaskAttributes {
-                engine: Some(maidan_types::TaskEngine::Pi),
+                engine: Some(maidan_types::TaskEngine::Unattended),
                 linear_issue: Some(issue.into()),
                 ..maidan_types::TaskAttributes::default()
             }),
@@ -2180,10 +2180,11 @@ async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each
     assert_eq!(h.linear.comments().len(), 2);
 }
 
-/// A Pi task past the round limit is handed to a session exactly once: its
-/// claim ends, its engine becomes `session` (a Pi claim skips it), a
-/// `ThreadHandoff` event, a thread message and a Slack line say so, and its
-/// Linear issue gets the packet and then the release. Tenant B is untouched.
+/// An unattended task past the round limit is handed to a session exactly
+/// once: its claim ends, its engine becomes `session` (an unattended claim
+/// skips it), a `ThreadHandoff` event, a thread message and a Slack line say
+/// so, and its Linear issue gets the packet and then the release. Tenant B is
+/// untouched.
 #[tokio::test]
 async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
     let h = harness().await;
@@ -2205,7 +2206,7 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
         .await
         .unwrap();
     let pi = maidan_types::TaskAttributes {
-        engine: Some(maidan_types::TaskEngine::Pi),
+        engine: Some(maidan_types::TaskEngine::Unattended),
         linear_issue: Some(ISSUE.into()),
         ..maidan_types::TaskAttributes::default()
     };
@@ -2271,12 +2272,12 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
                 h.a.channel_id,
                 h.a.member_id,
                 None,
-                Some(maidan_types::TaskEngine::Pi)
+                Some(maidan_types::TaskEngine::Unattended)
             )
             .await
             .unwrap()
             .is_none(),
-        "a Pi claim never takes it again"
+        "an unattended claim never takes it again"
     );
     let handoffs: Vec<_> = h
         .store
@@ -2348,7 +2349,7 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
             .await
             .unwrap()
             .engine,
-        Some(maidan_types::TaskEngine::Pi),
+        Some(maidan_types::TaskEngine::Unattended),
         "tenant B is untouched"
     );
 }
@@ -3489,7 +3490,7 @@ async fn the_pull_request_body_keeps_a_current_state_section_across_rounds() {
     assert!(opened.contains("Changes the greeting"), "{opened}");
     assert!(
         opened.contains(
-            "<!-- pi:current-state -->\nRound one: greets the world.\n<!-- /pi:current-state -->"
+            "<!-- maidan:current-state -->\nRound one: greets the world.\n<!-- /maidan:current-state -->"
         ),
         "{opened}"
     );
@@ -3512,7 +3513,7 @@ async fn the_pull_request_body_keeps_a_current_state_section_across_rounds() {
         "{body}"
     );
     assert!(!body.contains("Round one"), "{body}");
-    assert_eq!(body.matches("<!-- pi:current-state -->").count(), 1);
+    assert_eq!(body.matches("<!-- maidan:current-state -->").count(), 1);
     assert_eq!(f.pulls[0].title, title, "the title is left to people");
 }
 
@@ -3552,11 +3553,11 @@ async fn a_check_is_posted_as_a_commit_status_on_the_delivered_head_after_the_pu
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
     assert_eq!(row.last_error, None);
     assert!(
-        !row.template_warnings
+        !row.delivery_warnings
             .iter()
             .any(|w| w.starts_with("check_")),
         "{:?}",
-        row.template_warnings
+        row.delivery_warnings
     );
     let head = {
         let f = h.fake.lock().unwrap();
@@ -3632,7 +3633,7 @@ async fn a_malformed_check_posts_nothing_and_still_delivers_the_branch_with_a_wa
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
     assert_eq!(row.last_error, None, "a warning is not a failure");
     assert_eq!(
-        row.template_warnings,
+        row.delivery_warnings,
         vec!["missing_testing", "missing_issue_key", "check_invalid"]
     );
     {
@@ -3670,11 +3671,11 @@ async fn a_commit_status_github_refuses_leaves_the_branch_and_pull_request_stand
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
     assert_eq!(row.last_error, None);
     assert!(
-        row.template_warnings
+        row.delivery_warnings
             .iter()
             .any(|w| w == "check_not_posted"),
         "{:?}",
-        row.template_warnings
+        row.delivery_warnings
     );
     let f = h.fake.lock().unwrap();
     let head = f.refs.get(BRANCH).expect("the branch stands").clone();
@@ -3728,9 +3729,9 @@ async fn a_no_change_check_is_posted_on_the_head_it_ran_on_and_nothing_else_is_w
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
     assert_eq!(row.last_error, None);
     assert!(
-        row.template_warnings.is_empty(),
+        row.delivery_warnings.is_empty(),
         "{:?}",
-        row.template_warnings
+        row.delivery_warnings
     );
     {
         let f = h.fake.lock().unwrap();
@@ -3892,7 +3893,7 @@ async fn a_malformed_no_change_check_posts_nothing_and_records_the_warning() {
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
     assert_eq!(row.last_error, None, "a warning is not a failure");
-    assert_eq!(row.template_warnings, vec!["check_invalid"]);
+    assert_eq!(row.delivery_warnings, vec!["check_invalid"]);
     {
         let f = h.fake.lock().unwrap();
         assert!(f.statuses.is_empty());
@@ -3920,7 +3921,7 @@ async fn a_no_change_check_github_refuses_is_a_warning_and_not_retried() {
 
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
-    assert_eq!(row.template_warnings, vec!["check_not_posted"]);
+    assert_eq!(row.delivery_warnings, vec!["check_not_posted"]);
     assert_eq!(status_requests(&h).len(), 1, "tried once, not retried");
     let reply = h.slack_reply();
     assert!(

@@ -2576,8 +2576,8 @@ mod tests {
         assert!(unwrap_content(none).is_null());
         assert!(started.elapsed() < Duration::from_millis(500));
 
-        // Pi work filed during the wait does not end a session claimant's
-        // wait; the session work filed after it is what the claim takes.
+        // Unattended work filed during the wait does not end a session
+        // claimant's wait; the session work filed after it is what the claim takes.
         let file = |title: &'static str, engine: TaskEngine| {
             let store = store.clone();
             let server = &server;
@@ -2608,7 +2608,7 @@ mod tests {
             server.call_tool(&auth, "claim_next_workspace_thread", &waiting),
             async {
                 tokio::time::sleep(Duration::from_millis(150)).await;
-                file("pi work", TaskEngine::Pi).await;
+                file("unattended work", TaskEngine::Unattended).await;
                 tokio::time::sleep(Duration::from_millis(150)).await;
                 file("session work", TaskEngine::Session).await;
             }
@@ -2618,7 +2618,7 @@ mod tests {
         assert_eq!(got["assignee_id"], json!(agent.id.0));
 
         // Waiting with nothing it may claim answers null at its deadline,
-        // though the Pi work is still queued.
+        // though the unattended work is still queued.
         let started = Instant::now();
         let short = claim(300);
         let out = server

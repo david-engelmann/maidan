@@ -93,10 +93,10 @@ async fn engine_of(store: &dyn Store, thread: ThreadId) -> Option<TaskEngine> {
 async fn the_default_engine_reads_back_as_set_and_clears(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "setting", 0).await;
     assert_eq!(store.workspace_default_engine(room.ws).await.unwrap(), None);
-    set_default(store.as_ref(), room.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), room.ws, Some(TaskEngine::Unattended)).await;
     assert_eq!(
         store.workspace_default_engine(room.ws).await.unwrap(),
-        Some(TaskEngine::Pi)
+        Some(TaskEngine::Unattended)
     );
     set_default(store.as_ref(), room.ws, None).await;
     assert_eq!(store.workspace_default_engine(room.ws).await.unwrap(), None);
@@ -110,7 +110,7 @@ async fn the_default_engine_reads_back_as_set_and_clears(store: Arc<dyn Store>) 
 /// a thread given attributes without an engine keeps its other fields.
 async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "untagged", 0).await;
-    set_default(store.as_ref(), room.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), room.ws, Some(TaskEngine::Unattended)).await;
 
     let plain = store
         .create_thread(new_thread(room.channel, "plain"))
@@ -118,7 +118,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
         .unwrap();
     assert_eq!(
         engine_of(store.as_ref(), plain.id).await,
-        Some(TaskEngine::Pi)
+        Some(TaskEngine::Unattended)
     );
 
     let (with_event, _) = store
@@ -127,7 +127,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
         .unwrap();
     assert_eq!(
         engine_of(store.as_ref(), with_event.id).await,
-        Some(TaskEngine::Pi)
+        Some(TaskEngine::Unattended)
     );
 
     let described = TaskAttributes {
@@ -155,7 +155,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
     assert_eq!(
         store.get_thread_attributes(thread.id).await.unwrap(),
         TaskAttributes {
-            engine: Some(TaskEngine::Pi),
+            engine: Some(TaskEngine::Unattended),
             ..described
         },
         "only the engine is filled in"
@@ -165,7 +165,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
 /// An engine named at creation wins over the default.
 async fn an_explicit_engine_wins_over_the_default(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "explicit", 0).await;
-    set_default(store.as_ref(), room.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), room.ws, Some(TaskEngine::Unattended)).await;
     let (thread, _) = store
         .create_thread_with_footprint(
             new_thread(room.channel, "for a session"),
@@ -219,7 +219,7 @@ async fn a_plan_child_without_attributes_gets_the_default(store: Arc<dyn Store>)
         )
         .await
         .unwrap();
-    set_default(store.as_ref(), room.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), room.ws, Some(TaskEngine::Unattended)).await;
     let lease = store
         .claim_thread(parent.id, planner)
         .await
@@ -265,7 +265,7 @@ async fn a_plan_child_without_attributes_gets_the_default(store: Arc<dyn Store>)
     };
     assert_eq!(
         engine_of(store.as_ref(), id("bare")).await,
-        Some(TaskEngine::Pi)
+        Some(TaskEngine::Unattended)
     );
     assert_eq!(
         engine_of(store.as_ref(), id("human")).await,
@@ -302,12 +302,12 @@ async fn a_recipe_thread_gets_the_default(store: Arc<dyn Store>) {
     );
 }
 
-/// With default `pi`, a Pi claimer takes a thread created with no
+/// With default `unattended`, an unattended claimer takes a thread created with no
 /// attributes, and a session claimer never sees it.
 async fn a_pi_claimer_takes_an_untagged_thread_under_a_pi_default(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "claims", 2).await;
     let (pi, session) = (room.agents[0], room.agents[1]);
-    set_default(store.as_ref(), room.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), room.ws, Some(TaskEngine::Unattended)).await;
     let (thread, _) = store
         .create_thread_with_event(new_thread(room.channel, "untagged"))
         .await
@@ -318,13 +318,13 @@ async fn a_pi_claimer_takes_an_untagged_thread_under_a_pi_default(store: Arc<dyn
             .await
             .unwrap()
             .is_none(),
-        "a session claimer must not take pi work"
+        "a session claimer must not take unattended work"
     );
     let claimed = store
-        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Pi))
+        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Unattended))
         .await
         .unwrap()
-        .expect("the untagged thread is pi work");
+        .expect("the untagged thread is unattended work");
     assert_eq!(claimed.id, thread.id);
 }
 
@@ -333,7 +333,7 @@ async fn one_tenants_default_never_reaches_another(store: Arc<dyn Store>) {
     let a = room(store.as_ref(), "tenant-a", 0).await;
     let b = room(store.as_ref(), "tenant-b", 0).await;
     set_default(store.as_ref(), b.ws, Some(TaskEngine::Human)).await;
-    set_default(store.as_ref(), a.ws, Some(TaskEngine::Pi)).await;
+    set_default(store.as_ref(), a.ws, Some(TaskEngine::Unattended)).await;
     assert_eq!(
         store.workspace_default_engine(b.ws).await.unwrap(),
         Some(TaskEngine::Human)
@@ -352,7 +352,7 @@ async fn one_tenants_default_never_reaches_another(store: Arc<dyn Store>) {
         .unwrap();
     assert_eq!(
         engine_of(store.as_ref(), in_a.id).await,
-        Some(TaskEngine::Pi)
+        Some(TaskEngine::Unattended)
     );
 }
 

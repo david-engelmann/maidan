@@ -707,9 +707,9 @@ pub struct RiskRollup {
     pub numbers: SliceNumbers,
 }
 
-/// One repository's rollup. Pi is given small and medium work and sessions
-/// the risky work, so an engine comparison is read within a size or a risk
-/// tier, not across the whole repository.
+/// One repository's rollup. Unattended workers are given small and medium
+/// work and sessions the risky work, so an engine comparison is read within a
+/// size or a risk tier, not across the whole repository.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RepoRollup {
@@ -974,7 +974,7 @@ fn rollup(
         (!mine.is_empty()).then(|| numbers(&mine, round_limit, as_of))
     };
     let by_engine = [
-        Some(crate::TaskEngine::Pi),
+        Some(crate::TaskEngine::Unattended),
         Some(crate::TaskEngine::Session),
         Some(crate::TaskEngine::Human),
         None,
@@ -1529,11 +1529,11 @@ mod tests {
     #[test]
     fn each_rollup_splits_by_engine_size_and_risk_with_cost_and_misroutes() {
         use crate::{TaskEngine, TaskSize};
-        // Pi, small, merged after one round at 300.
-        let mut small = routed(Some(TaskEngine::Pi), Some(TaskSize::S), false, 1);
+        // Unattended, small, merged after one round at 300.
+        let mut small = routed(Some(TaskEngine::Unattended), Some(TaskSize::S), false, 1);
         small.merged_at = Some(at(100));
-        // Pi, medium, still open at the round limit: misrouted.
-        let stuck = routed(Some(TaskEngine::Pi), Some(TaskSize::M), false, 3);
+        // Unattended, medium, still open at the round limit: misrouted.
+        let stuck = routed(Some(TaskEngine::Unattended), Some(TaskSize::M), false, 3);
         // A session, threat-model work, closed unmerged at the round limit:
         // misrouted too.
         let mut abandoned = routed(Some(TaskEngine::Session), Some(TaskSize::L), true, 3);
@@ -1577,7 +1577,7 @@ mod tests {
         assert_eq!(
             engines,
             vec![
-                (Some(TaskEngine::Pi), 2, 1, 1),
+                (Some(TaskEngine::Unattended), 2, 1, 1),
                 (Some(TaskEngine::Session), 2, 1, 1),
                 (None, 1, 0, 0),
             ],
@@ -1697,7 +1697,7 @@ mod tests {
     #[test]
     fn a_slice_serializes_flat_beside_its_key() {
         let mut task = routed(
-            Some(crate::TaskEngine::Pi),
+            Some(crate::TaskEngine::Unattended),
             Some(crate::TaskSize::M),
             false,
             1,
@@ -1707,7 +1707,7 @@ mod tests {
         let json = serde_json::to_value(&m.repos[0]).unwrap();
         assert_eq!(json["tasks"], 1);
         assert_eq!(json["misroute_rate"], 0.0);
-        assert_eq!(json["by_engine"][0]["engine"], "pi");
+        assert_eq!(json["by_engine"][0]["engine"], "unattended");
         assert_eq!(json["by_engine"][0]["merged"], 1);
         assert_eq!(json["by_size"][0]["size"], "M");
         assert_eq!(json["by_risk"][0]["threat_model"], false);

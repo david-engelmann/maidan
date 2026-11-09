@@ -262,14 +262,14 @@ async fn a_scheduled_thread_is_routed_to_the_workspace_default_engine() {
     store
         .set_workspace_default_engine(
             ws.id,
-            Some(TaskEngine::Pi),
+            Some(TaskEngine::Unattended),
             NewAuditEvent {
                 scope: AuditScope::Workspace(ws.id),
                 actor_id: Some(member.id),
                 action: "workspace.default_engine.set".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(ws.id.0),
-                metadata: serde_json::json!({ "engine": "pi" }),
+                metadata: serde_json::json!({ "engine": "unattended" }),
             },
         )
         .await
@@ -296,7 +296,7 @@ async fn a_scheduled_thread_is_routed_to_the_workspace_default_engine() {
             .await
             .unwrap()
             .engine,
-        Some(TaskEngine::Pi),
+        Some(TaskEngine::Unattended),
         "the scheduler names no engine, so the workspace default routes it"
     );
 }

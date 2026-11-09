@@ -123,7 +123,7 @@ mod tests {
             kind,
             issue: "ENG-1".into(),
             title: Some(" Name the venue ".into()),
-            engine: Some(crate::TaskEngine::Pi),
+            engine: Some(crate::TaskEngine::Unattended),
             holder: Some("agent0".into()),
             reason: None,
         }

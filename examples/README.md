@@ -88,7 +88,7 @@ unattended worker does. Both follow one
 `POST /workspaces/{wid}/agents`, connect over MCP with the token from a file,
 claim with `claim_next_workspace_thread` (`engine: "session"`, `wait_ms`),
 work and run the repository's pre-push gate while renewing the claim, hand back
-a `pi.change.result/1` so Maidan opens the draft pull request, then report
+a `maidan.change.result/1` so Maidan opens the draft pull request, then report
 usage, start review and release. A change the flow cannot commit (binary files,
 or over the request limit) goes out as the session's own draft, registered on
 the thread with `register_thread_pull`.
@@ -101,7 +101,7 @@ The same runbook, run from a terminal, one task per run:
 [`openrouter/`](openrouter/), a standard-library runner that puts any
 OpenRouter model (Grok, for example) on a task and runs the Maidan side
 itself. Each claims with `engine: "session"` and `wait_ms`, delivers a
-`pi.change.result/1`, reports usage with `evidence: {provider, harness}`
+`maidan.change.result/1`, reports usage with `evidence: {provider, harness}`
 and releases the claim.
 
 

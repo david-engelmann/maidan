@@ -34,7 +34,7 @@ The loop, in short:
    with a lease longer than it can take, or renew in the background over REST
    while it runs (the runbook's Work step 5). Run the repository's pre-push
    gate (`make prepush` or its equivalent).
-5. Deliver the `pi.change.result/1` envelope built by the helper with
+5. Deliver the `maidan.change.result/1` envelope built by the helper with
    `PUT /threads/{id}/result`. If the helper exits `3`, use the runbook's
    fallback (your own branch and draft, registered with
    `register_thread_pull`).

@@ -78,7 +78,7 @@ async fn find_threads_matches_attributes_and_stays_in_the_callers_workspace() {
                 None,
                 Some(TaskAttributes {
                     kind: TaskKind::Change,
-                    engine: Some(TaskEngine::Pi),
+                    engine: Some(TaskEngine::Unattended),
                     linear_issue: Some("ENG-100".into()),
                     ..TaskAttributes::default()
                 }),
@@ -112,7 +112,7 @@ async fn find_threads_matches_attributes_and_stays_in_the_callers_workspace() {
         .unwrap();
     assert_eq!(ids_of(&out), vec![pi_threads[0].clone()]);
     // The bare shorthand agrees.
-    let out = call(json!({ "engine": "pi" })).await.unwrap();
+    let out = call(json!({ "engine": "unattended" })).await.unwrap();
     assert_eq!(ids_of(&out), vec![pi_threads[0].clone()]);
     // Naming the caller's own workspace explicitly is the same search.
     let out = call(json!({
@@ -127,7 +127,7 @@ async fn find_threads_matches_attributes_and_stays_in_the_callers_workspace() {
     // Garbage filters error rather than widening.
     for args in [
         json!({ "attr": { "engine": "robot" } }),
-        json!({ "attr": { "engnie": "pi" } }),
+        json!({ "attr": { "engnie": "unattended" } }),
         json!({ "attr": { "linear_issue": "not-a-key" } }),
         json!({ "order": "sideways" }),
     ] {

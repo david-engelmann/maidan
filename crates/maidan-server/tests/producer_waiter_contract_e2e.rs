@@ -457,7 +457,7 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
     let envelope = json!({
         "schema": maidan_types::WAITER_RESULT_SCHEMA,
         "status": "no_change",
-        "result_kind": "pi.change.result/1",
+        "result_kind": "maidan.change.result/1",
         "run_id": run_id,
         "cost_usd": 0.0087,
         "deliver_to": [],
@@ -467,7 +467,7 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
         "diff": "",
         "base_sha": "0123456789abcdef0123456789abcdef01234567",
         "summary": "Nothing to change.",
-        "pi.result_attachments": [{
+        "maidan.result_attachments": [{
             "sha256": sha,
             "filename": "after.png",
             "mime_type": "image/png",
@@ -516,9 +516,9 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
         "{result}"
     );
     assert_eq!(result["run_id"], run_id.as_str(), "{result}");
-    assert_eq!(result["result_kind"], "pi.change.result/1", "{result}");
+    assert_eq!(result["result_kind"], "maidan.change.result/1", "{result}");
     assert_eq!(
-        result["pi.result_attachments"], envelope["pi.result_attachments"],
+        result["maidan.result_attachments"], envelope["maidan.result_attachments"],
         "the attachments did not round-trip"
     );
 

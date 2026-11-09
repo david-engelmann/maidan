@@ -27,7 +27,7 @@ What a result can do on each surface:
 - **GitHub:** a summary comment on the pull request or issue, then inline
   review comments for each finding ([Inline findings](#inline-findings)).
 - **GitHub branch:** a commit of the producer's diff and a draft pull request
-  ([The change flow](#the-change-flow-pichangeresult1--github_branch)).
+  ([The change flow](#the-change-flow-maidanchangeresult1--github_branch)).
 - **Slack:** a message, or a reply in a thread.
 - **Linear:** a comment on an issue, with an optional state move
   ([Linear](#linear)).
@@ -58,6 +58,7 @@ field never breaks delivery.
 | `served` | no | Which model served the result: `family`, or `provider` with `model`. Read on a review that names its `author_family`: if it names that family, the result is refused and nothing is stored ([Swarms](Swarms.md#a-reviews-author-family)). Named the way a usage record is, so `claude-opus-4-5` is `anthropic`. Read on any result, enveloped or not. |
 | `route` | no | A list of `{provider, model}` the result went through. Read like `served`: any entry naming the review's `author_family` refuses the result. Entries that are not objects, or name no family Maidan knows, are skipped. |
 | `findings` | no | Read twice. For [inline comments](#inline-findings), each usable finding needs `file`, `body` and `line_range`. For the [close-gate](#close-gate), any finding with `severity` exactly `critical` on a reviewed `example.review.result/1` from a producer holding the `review` skill is a `request_changes`; a critical finding without `file`, `body` or `line_range` still counts. Other finding fields stay in the stored JSON, unread. |
+| `maidan.result_attachments` | no | Files the producer attached, a list of `{sha256, filename, caption}` pointing at artifacts already uploaded. A GitHub delivery links each one by its caption, or its filename when it has none. Read too as an unprefixed `result_attachments` or nested under a `maidan` object. Entries without a full lowercase SHA-256 or a filename are skipped. |
 
 `run_id` is **not** a delivery-routing field. Maidan keeps it as the thread's
 `parent_run_id` ([Run lineage](#run-lineage)). Every other field in the
@@ -179,7 +180,7 @@ An array of target objects. Each names a `surface` plus per-surface detail:
    Slack timestamp makes the target unusable (a recorded skip), rather than
    posting top-level.
 5. **`github_branch` requires `repo` (`owner/name`), `branch` and `base`.** It
-   commits a [`pi.change.result/1`](#the-change-flow-pichangeresult1--github_branch)
+   commits a [`maidan.change.result/1`](#the-change-flow-maidanchangeresult1--github_branch)
    to `branch` and opens a draft pull request against `base`. It is logged as
    `github_branch:<repo>@<branch>`. `branch` must match
    `feature/agent-[a-z0-9][a-z0-9-]*`; `base` must be blessed for the
@@ -282,9 +283,9 @@ API below, and an operator — not the agent — fixes an unblessed target.
 
 ---
 
-## The change flow (`pi.change.result/1` → `github_branch`)
+## The change flow (`maidan.change.result/1` → `github_branch`)
 
-`pi.change.result/1` is the change-result schema: the `result_kind` of a
+`maidan.change.result/1` is the change-result schema: the `result_kind` of a
 result that carries a diff for Maidan to commit.
 
 A coding agent edits a checkout but holds no GitHub write credential. It
@@ -292,7 +293,7 @@ returns the commit it started from and a diff. Maidan, holding the operator's
 token, makes the commit, opens a **draft** pull request, and answers in the
 Slack thread the work started in.
 
-**The envelope.** `result_kind` is `pi.change.result/1`. Besides the usual
+**The envelope.** `result_kind` is `maidan.change.result/1`. Besides the usual
 envelope fields, Maidan reads:
 
 | Field | How Maidan uses it |
@@ -305,8 +306,8 @@ envelope fields, Maidan reads:
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
 | `error_detail` | Optional. Why a run that changed nothing ended. The Slack reply to a status other than `changed` gives it after the status, in place of `summary`, with a cause repeated across retries said once and the whole cut at 600 characters. Without it the reply gives `summary`. |
 | `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message, first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
-| `pr_state` | Optional, `{title, body}`. `body` describes the whole branch against its base as it stands after this round (where `title` and `summary` describe this round). Maidan keeps it in one section of the pull request body, between `<!-- pi:current-state -->` and `<!-- /pi:current-state -->`, replacing only that section on each delivery and appending it when the markers are missing, so edits people and review bots make elsewhere in the body stay. Mentions are defused and the section is capped at 20,000 characters. `pr_state.title` is not read: a title people fixed is never reverted. A failed body edit never fails the delivery. |
-| `check` | Optional, `{context, state, description}`: the producer's own check of the change before delivery. After the branch is pushed and the pull request opened or found, Maidan posts it as a commit status on the head it delivered (`POST /repos/{repo}/statuses/{sha}`, with the envelope's `view_url` as `target_url` when it is https), so a re-delivery or a rebase round posts it again on the head it leaves. `context` is non-empty, printable and at most 100 characters; `state` is `success`, `failure`, `error` or `pending`; `description` is put on one line and cut to 140 characters. A malformed `check` posts nothing and adds `check_invalid` to the row's `template_warnings`; a status GitHub refuses adds `check_not_posted`. Either way the branch and the pull request stand and the Slack reply says so in one line. A commit status, not a check run, because a token can post one. **On a `no_change` round** with `branch_head_sha`, the check goes on `branch_head_sha` and nothing else is written (no commit, pull request, comment or body edit), after the same branch, base and allowlist rules as a changed round. Maidan re-reads the branch head immediately before the post: when the branch has moved or is gone, nothing is posted and the row is skipped with a `stale:` reason naming both heads, so an old check never lands on a newer head. The Slack reply names the status it posted and the short SHA, or why it posted none. |
+| `pr_state` | Optional, `{title, body}`. `body` describes the whole branch against its base as it stands after this round (where `title` and `summary` describe this round). Maidan keeps it in one section of the pull request body, between `<!-- maidan:current-state -->` and `<!-- /maidan:current-state -->`, replacing only that section on each delivery and appending it when the markers are missing, so edits people and review bots make elsewhere in the body stay. Mentions are defused and the section is capped at 20,000 characters. `pr_state.title` is not read: a title people fixed is never reverted. A failed body edit never fails the delivery. |
+| `check` | Optional, `{context, state, description}`: the producer's own check of the change before delivery. After the branch is pushed and the pull request opened or found, Maidan posts it as a commit status on the head it delivered (`POST /repos/{repo}/statuses/{sha}`, with the envelope's `view_url` as `target_url` when it is https), so a re-delivery or a rebase round posts it again on the head it leaves. `context` is non-empty, printable and at most 100 characters; `state` is `success`, `failure`, `error` or `pending`; `description` is put on one line and cut to 140 characters. A malformed `check` posts nothing and adds `check_invalid` to the row's `delivery_warnings`; a status GitHub refuses adds `check_not_posted`. Either way the branch and the pull request stand and the Slack reply says so in one line. A commit status, not a check run, because a token can post one. **On a `no_change` round** with `branch_head_sha`, the check goes on `branch_head_sha` and nothing else is written (no commit, pull request, comment or body edit), after the same branch, base and allowlist rules as a changed round. Maidan re-reads the branch head immediately before the post: when the branch has moved or is gone, nothing is posted and the row is skipped with a `stale:` reason naming both heads, so an old check never lands on a newer head. The Slack reply names the status it posted and the short SHA, or why it posted none. |
 
 **What a `changed` result does**, per `github_branch` target the workspace has
 blessed:
@@ -348,7 +349,7 @@ blessed:
 Maidan reads the pull request as it now stands (the title and body it opened
 with, or the open pull request's own title and body on a later round, since a
 later `title` or `summary` never reaches an open pull request) and records
-what it lacks against the producer's template as `template_warnings` on the
+what it lacks against the producer's template as `delivery_warnings` on the
 `github_branch` delivery row:
 
 - `missing_testing`: no Markdown heading reading `Testing` (any level, any

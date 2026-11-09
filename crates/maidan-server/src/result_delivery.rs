@@ -613,8 +613,8 @@ pub async fn change_reply_at(
                         base_sha,
                     ));
                 }
-                lines.extend(crate::change_flow::template_note(&row.template_warnings));
-                lines.extend(crate::change_flow::check_note(&row.template_warnings));
+                lines.extend(crate::change_flow::template_note(&row.delivery_warnings));
+                lines.extend(crate::change_flow::check_note(&row.delivery_warnings));
             }
             _ => lines.push(format!(
                 "Nothing was committed to `{branch}` in {repo}: {}",
@@ -669,7 +669,7 @@ async fn check_only_lines(
             status::PENDING if gave_up => lines.push(not_posted(settling)),
             status::PENDING => return None,
             status::DELIVERED => lines.push(
-                crate::change_flow::check_note(&row.template_warnings)
+                crate::change_flow::check_note(&row.delivery_warnings)
                     .unwrap_or_else(|| check_posted_line(change, repo, branch)),
             ),
             _ => lines.push(not_posted(
@@ -992,6 +992,23 @@ mod tests {
             branch: "feature/agent-x".into(),
         };
         no_change_reason(&target, &waiter, change.as_ref())
+    }
+
+    #[test]
+    fn a_changed_round_is_committed_only_under_the_maidan_change_kind() {
+        let changed = no_change_with(serde_json::json!({"status": "changed"}));
+        assert_eq!(changed["result_kind"], "maidan.change.result/1");
+        assert_eq!(branch_reason(&changed), None);
+        // No alias: the retired kind is any other result kind, so its diff
+        // is never committed.
+        let retired = no_change_with(serde_json::json!({
+            "status": "changed",
+            "result_kind": "pi.change.result/1",
+        }));
+        assert_eq!(
+            branch_reason(&retired).as_deref(),
+            Some("result kind `pi.change.result/1` carries no change to commit")
+        );
     }
 
     #[test]

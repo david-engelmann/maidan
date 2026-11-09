@@ -51,8 +51,9 @@ impl TaskKind {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TaskEngine {
-    /// An automated Pi worker.
-    Pi,
+    /// An unattended worker: an automated producer that runs a task with
+    /// no person watching.
+    Unattended,
     /// An interactive agent session.
     Session,
     /// A person.
@@ -62,7 +63,7 @@ pub enum TaskEngine {
 impl TaskEngine {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Pi => "pi",
+            Self::Unattended => "unattended",
             Self::Session => "session",
             Self::Human => "human",
         }
@@ -70,7 +71,7 @@ impl TaskEngine {
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "pi" => Some(Self::Pi),
+            "unattended" => Some(Self::Unattended),
             "session" => Some(Self::Session),
             "human" => Some(Self::Human),
             _ => None,
@@ -801,5 +802,24 @@ mod review_family_tests {
         assert_eq!(provider_family(None, "O1-preview"), Some("openai"));
         assert_eq!(provider_family(None, "o5"), None);
         assert_eq!(provider_family(None, "o30x"), None);
+    }
+
+    #[test]
+    fn the_unattended_engine_is_accepted_and_the_retired_pi_value_is_refused() {
+        assert_eq!(
+            TaskEngine::parse("unattended"),
+            Some(TaskEngine::Unattended)
+        );
+        assert_eq!(TaskEngine::Unattended.as_str(), "unattended");
+        let parsed: TaskEngine = serde_json::from_str(r#""unattended""#).unwrap();
+        assert_eq!(parsed, TaskEngine::Unattended);
+        assert_eq!(
+            serde_json::to_string(&TaskEngine::Unattended).unwrap(),
+            r#""unattended""#
+        );
+
+        // No alias: the old value is an unknown engine like any other.
+        assert_eq!(TaskEngine::parse("pi"), None);
+        assert!(serde_json::from_str::<TaskEngine>(r#""pi""#).is_err());
     }
 }

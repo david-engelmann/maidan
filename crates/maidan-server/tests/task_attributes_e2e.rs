@@ -177,14 +177,14 @@ async fn attributes_ride_create_read_and_replace_on_rest_and_mcp() {
         &room,
         json!({
             "title": "review the gateway",
-            "attributes": { "kind": "review", "engine": "pi", "threat_model": true }
+            "attributes": { "kind": "review", "engine": "unattended", "threat_model": true }
         }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
     assert_eq!(
         created["attributes"],
-        json!({ "kind": "review", "engine": "pi", "threat_model": true })
+        json!({ "kind": "review", "engine": "unattended", "threat_model": true })
     );
     let thread_id = created["id"].as_str().unwrap().to_string();
 
@@ -243,7 +243,7 @@ async fn attributes_ride_create_read_and_replace_on_rest_and_mcp() {
             json!({
                 "thread_id": mcp_thread,
                 "kind": "review",
-                "engine": "pi",
+                "engine": "unattended",
                 "threat_model": true
             }),
         )
@@ -253,7 +253,7 @@ async fn attributes_ride_create_read_and_replace_on_rest_and_mcp() {
     let (_status, read) = get_thread(&base, &room.token, &mcp_thread).await;
     assert_eq!(
         read["attributes"],
-        json!({ "kind": "review", "engine": "pi", "threat_model": true })
+        json!({ "kind": "review", "engine": "unattended", "threat_model": true })
     );
 }
 
@@ -297,7 +297,7 @@ async fn a_wrapped_or_unknown_attribute_body_is_refused_and_changes_nothing() {
     let room = room(store.as_ref(), "strict-attrs").await;
     let set = json!({
         "kind": "change",
-        "engine": "pi",
+        "engine": "unattended",
         "acceptance": "the gate passes",
         "linear_issue": "ENG-6023"
     });
@@ -335,7 +335,7 @@ async fn a_wrapped_or_unknown_attribute_body_is_refused_and_changes_nothing() {
     let (status, _) = create_thread(
         &base,
         &room,
-        json!({ "title": "typo", "attributes": { "kind": "change", "engnie": "pi" } }),
+        json!({ "title": "typo", "attributes": { "kind": "change", "engnie": "unattended" } }),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -348,7 +348,7 @@ async fn an_engine_filtered_claim_skips_other_engines() {
     let room = room(store.as_ref(), "claim-engines").await;
     for (title, engine) in [
         ("session work", Some("session")),
-        ("pi work", Some("pi")),
+        ("unattended work", Some("unattended")),
         ("unrouted work", None),
     ] {
         let mut attributes = json!({ "kind": "change" });
@@ -382,15 +382,15 @@ async fn an_engine_filtered_claim_skips_other_engines() {
                 .unwrap()
         }
     };
-    let pi_claim = claim("pi").await;
+    let pi_claim = claim("unattended").await;
     assert_eq!(
-        pi_claim["title"], "pi work",
-        "the pi claim takes the pi task, not the older session or unrouted work: {pi_claim}"
+        pi_claim["title"], "unattended work",
+        "the unattended claim takes the unattended task, not the older session or unrouted work: {pi_claim}"
     );
-    let second = claim("pi").await;
+    let second = claim("unattended").await;
     assert!(
         second.is_null(),
-        "no second pi task exists, so the claim is empty: {second}"
+        "no second unattended task exists, so the claim is empty: {second}"
     );
     let human = claim("human").await;
     assert!(
@@ -409,7 +409,7 @@ async fn another_workspace_cannot_read_or_replace_attributes() {
         &victim,
         json!({
             "title": "victim task",
-            "attributes": { "kind": "review", "engine": "pi", "threat_model": true }
+            "attributes": { "kind": "review", "engine": "unattended", "threat_model": true }
         }),
     )
     .await;
@@ -438,7 +438,7 @@ async fn another_workspace_cannot_read_or_replace_attributes() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         read["attributes"],
-        json!({ "kind": "review", "engine": "pi", "threat_model": true }),
+        json!({ "kind": "review", "engine": "unattended", "threat_model": true }),
         "the victim's attributes are untouched"
     );
 }
@@ -449,7 +449,7 @@ async fn swarm_metrics_carry_attributes_filters_and_the_engine_split() {
     let room = room(store.as_ref(), "metrics").await;
     let mut ids = Vec::new();
     for (n, attributes) in [
-        (1, json!({ "kind": "review", "engine": "pi" })),
+        (1, json!({ "kind": "review", "engine": "unattended" })),
         (2, json!({ "kind": "change" })),
     ] {
         let (status, created) = create_thread(
@@ -504,12 +504,12 @@ async fn swarm_metrics_carry_attributes_filters_and_the_engine_split() {
     let rollup = &all["repos"][0];
     let engines: Vec<&Value> = rollup["by_engine"].as_array().unwrap().iter().collect();
     assert_eq!(engines.len(), 2);
-    assert_eq!(engines[0]["engine"], "pi");
+    assert_eq!(engines[0]["engine"], "unattended");
     assert_eq!(engines[0]["tasks"], 1);
     assert!(engines[1]["engine"].is_null());
     assert_eq!(engines[1]["tasks"], 1);
 
-    let pi_only = metrics("?engine=pi").await;
+    let pi_only = metrics("?engine=unattended").await;
     assert_eq!(pi_only["tasks"].as_array().unwrap().len(), 1);
     let reviews = metrics("?kind=review").await;
     assert_eq!(reviews["tasks"].as_array().unwrap().len(), 1);
@@ -546,7 +546,7 @@ async fn a_producer_sets_priority_size_and_acceptance_at_intake() {
             "priority": 100,
             "attributes": {
                 "kind": "change",
-                "engine": "pi",
+                "engine": "unattended",
                 "size": "S",
                 "acceptance": "The retry test passes."
             }
@@ -614,13 +614,23 @@ async fn a_default_engine_routes_an_untagged_thread_to_its_engine_claimer() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(unset, json!({ "engine": null }));
     // Routing every untagged thread is an operator's call.
-    let (status, _) =
-        default_engine(&base, &room.token, room.ws, Some(json!({ "engine": "pi" }))).await;
+    let (status, _) = default_engine(
+        &base,
+        &room.token,
+        room.ws,
+        Some(json!({ "engine": "unattended" })),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let (status, set) =
-        default_engine(&base, &admin, room.ws, Some(json!({ "engine": "pi" }))).await;
+    let (status, set) = default_engine(
+        &base,
+        &admin,
+        room.ws,
+        Some(json!({ "engine": "unattended" })),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{set}");
-    assert_eq!(set, json!({ "engine": "pi" }));
+    assert_eq!(set, json!({ "engine": "unattended" }));
     let audit = store
         .list_audit_for_workspace(room.ws, 50)
         .await
@@ -628,11 +638,11 @@ async fn a_default_engine_routes_an_untagged_thread_to_its_engine_claimer() {
         .into_iter()
         .find(|row| row.action == "workspace.default_engine.set")
         .expect("the change is audited");
-    assert_eq!(audit.metadata, json!({ "engine": "pi" }));
+    assert_eq!(audit.metadata, json!({ "engine": "unattended" }));
 
     let (status, created) = create_thread(&base, &room, json!({ "title": "untagged" })).await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
-    assert_eq!(created["attributes"]["engine"], "pi", "{created}");
+    assert_eq!(created["attributes"]["engine"], "unattended", "{created}");
     let thread_id = created["id"].as_str().unwrap().to_string();
 
     let claim = |engine: &'static str| {
@@ -654,9 +664,9 @@ async fn a_default_engine_routes_an_untagged_thread_to_its_engine_claimer() {
     let session = claim("session").await;
     assert!(
         session.is_null(),
-        "a session claimer must not take pi work: {session}"
+        "a session claimer must not take unattended work: {session}"
     );
-    let pi = claim("pi").await;
+    let pi = claim("unattended").await;
     assert_eq!(pi["id"], thread_id.as_str(), "{pi}");
 }
 
@@ -696,7 +706,7 @@ async fn another_workspace_cannot_read_or_set_the_default_engine() {
         "the victim's default does not reach another workspace"
     );
 
-    for put in [None, Some(json!({ "engine": "pi" }))] {
+    for put in [None, Some(json!({ "engine": "unattended" }))] {
         let (status, body) = default_engine(&base, &attacker_admin, victim.ws, put).await;
         assert!(
             status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
@@ -720,7 +730,7 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
     let room = room(store.as_ref(), "attrs-pack").await;
     let attributes = json!({
         "kind": "change",
-        "engine": "pi",
+        "engine": "unattended",
         "threat_model": false,
         "size": "M",
         "acceptance": "The bridge retries twice; its test proves it.",
@@ -741,7 +751,7 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
             &base,
             &room.token,
             "claim_next_thread",
-            json!({ "channel_id": room.channel.0, "engine": "pi" }),
+            json!({ "channel_id": room.channel.0, "engine": "unattended" }),
         )
         .await,
     );
@@ -753,7 +763,7 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
             room.channel.0
         ))
         .bearer_auth(&room.token)
-        .json(&json!({ "lease_secs": 600, "engine": "pi" }))
+        .json(&json!({ "lease_secs": 600, "engine": "unattended" }))
         .send()
         .await
         .unwrap()
@@ -776,6 +786,75 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         pack["thread"]["attributes"], over_mcp["attributes"],
         "{pack}"
     );
+}
+
+/// The engine value `unattended` is taken at intake and on a claim, and the
+/// retired `pi` is refused there like any unknown engine: no alias, on REST
+/// and MCP, and a refused claim takes nothing.
+#[tokio::test]
+async fn the_unattended_engine_is_taken_and_the_retired_pi_value_is_refused() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "engine-rename").await;
+    let (status, _) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "old engine", "attributes": { "kind": "change", "engine": "pi" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        store.list_threads(room.channel).await.unwrap().is_empty(),
+        "a refused engine makes no thread"
+    );
+
+    let (status, made) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "new engine", "attributes": { "kind": "change", "engine": "unattended" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(made["attributes"]["engine"], "unattended", "{made}");
+
+    let http = reqwest::Client::new();
+    let claim_url = format!("{base}/channels/{}/threads/claim-next", room.channel.0);
+    let response = http
+        .post(&claim_url)
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600, "engine": "pi" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        response.status().is_client_error(),
+        "a claim naming the retired engine is refused: {}",
+        response.status()
+    );
+    let refused = tool(
+        &base,
+        &room.token,
+        "claim_next_thread",
+        json!({ "channel_id": room.channel.0, "engine": "pi" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    let (_, read) = get_thread(&base, &room.token, made["id"].as_str().unwrap()).await;
+    assert!(
+        read["assignee_id"].is_null(),
+        "a refused claim takes nothing: {read}"
+    );
+
+    let claimed: Value = http
+        .post(&claim_url)
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600, "engine": "unattended" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(claimed["id"], made["id"], "{claimed}");
 }
 
 /// A lane other than batch or flex is refused on every REST and MCP way in,

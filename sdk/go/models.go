@@ -241,7 +241,7 @@ type ResultDelivery struct {
 	HeadSHA           *string    `json:"head_sha,omitempty"`
 	PRNumber          *int64     `json:"pr_number,omitempty"`
 	PRURL             *string    `json:"pr_url,omitempty"`
-	TemplateWarnings  []any      `json:"template_warnings,omitempty"`
+	DeliveryWarnings  []any      `json:"delivery_warnings,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }

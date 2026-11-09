@@ -121,7 +121,7 @@ mod tests {
                 ..base.clone()
             },
             TaskAttributes {
-                engine: Some(TaskEngine::parse("pi").unwrap()),
+                engine: Some(TaskEngine::parse("unattended").unwrap()),
                 ..base.clone()
             },
             TaskAttributes {

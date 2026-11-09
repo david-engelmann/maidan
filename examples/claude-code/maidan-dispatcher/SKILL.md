@@ -22,7 +22,7 @@ Connect as in the claimant runbook's step 0. Call `whoami` first; keep
    | Attribute | What to put |
    |---|---|
    | `kind` | `change` (code or content), `plan` (a planner splits it into children), or `review` |
-   | `engine` | `pi` (an unattended worker), `session` (an interactive session claims it), or `human` |
+   | `engine` | `unattended` (an unattended worker), `session` (an interactive session claims it), or `human` |
    | `acceptance` | how a reviewer checks it is done: the command to run, the behavior to see. Required in practice: without it the review is a guess |
    | `size` | `S`, `M` or `L` |
    | `threat_model` | `true` when the change touches authorization, secrets or tenant boundaries |

@@ -207,7 +207,7 @@ class TaskAttributes(Model):
     #: ``change``, ``plan`` or ``review``.
     kind: str
     threat_model: bool
-    #: ``pi``, ``session`` or ``human``.
+    #: ``unattended``, ``session`` or ``human``.
     engine: Optional[str] = None
     #: ``S``, ``M`` or ``L``.
     size: Optional[str] = None
@@ -312,7 +312,7 @@ class ResultDelivery(Model):
     head_sha: Optional[str] = None
     pr_number: Optional[int] = None
     pr_url: Optional[str] = None
-    template_warnings: Optional[List[Any]] = None
+    delivery_warnings: Optional[List[Any]] = None
 
 
 @dataclass(kw_only=True)

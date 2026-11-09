@@ -109,7 +109,7 @@ fn child(key: &str, deps: &[&str]) -> PlanChild {
         title: format!("do {key}"),
         description: None,
         attributes: Some(TaskAttributes {
-            engine: Some(TaskEngine::Pi),
+            engine: Some(TaskEngine::Unattended),
             acceptance: Some(format!("{key} is done")),
             ..TaskAttributes::default()
         }),

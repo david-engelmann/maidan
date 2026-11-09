@@ -99,8 +99,8 @@ async fn run_suite(store: &dyn Store) {
     for (n, (workspace_scope, engine)) in [
         (false, None),
         (true, None),
-        (false, Some(TaskEngine::Pi)),
-        (true, Some(TaskEngine::Pi)),
+        (false, Some(TaskEngine::Unattended)),
+        (true, Some(TaskEngine::Unattended)),
     ]
     .into_iter()
     .enumerate()
