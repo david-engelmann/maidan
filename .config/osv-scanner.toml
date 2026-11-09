@@ -16,6 +16,17 @@
 id = "RUSTSEC-2023-0071"
 reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no fuzz target; no fixed release"
 
+# fuzz/Cargo.lock. libsqlite3-sys 0.30.1 (bundled SQLite < 3.54) comes in
+# through sqlx-sqlite, as in the root lockfile, where deny.toml accepts the
+# same advisory with the full reason. No fuzz target opens a SQLite
+# database, so none reads a -wal file someone else wrote.
+# No sqlx release allows the fixed 0.39, so revisit by the date or when sqlx
+# allows it.
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0459"
+ignoreUntil = 2027-01-31T00:00:00Z
+reason = "fuzz/Cargo.lock: libsqlite3-sys 0.30.1 via sqlx-sqlite; no fuzz target opens a SQLite database; no sqlx release allows the fixed 0.39"
+
 # fuzz/Cargo.lock and sdk/rust/Cargo.lock. webpki-roots 0.26.11 is a shim
 # that re-exports webpki-roots 1.x, locked at the fixed 1.0.10 in both; the
 # roots it bundles are 1.0.10's.

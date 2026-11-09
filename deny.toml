@@ -20,6 +20,10 @@ id = "RUSTSEC-2026-0387"
 reason = "crypto-bigint 0.5.5 (no fixed 0.5.x release; first fix is 0.7.6) via p256/p384 0.13, now reached only through openidconnect, which verifies ID-token signatures with public keys (no secret to leak). web_push moved to p256 0.14 (crypto-bigint 0.7.x, fixed) on its own, since its VAPID signing uses a long-lived server key where a timing leak would matter. Drop this ignore when openidconnect moves off p256/p384 0.13."
 
 [[advisories.ignore]]
+id = "RUSTSEC-2026-0459"
+reason = "libsqlite3-sys 0.30 (bundled SQLite < 3.54) via sqlx-sqlite and maidan-search's sqlite-vec: uninitialized page-cache memory when a database is opened beside a -wal file a less trusted party wrote. Maidan opens only the operator's DATABASE_URL file and files it creates itself, never a database someone uploads. No sqlx release allows the fixed libsqlite3-sys 0.39 (0.8.6 pins ^0.30.1, 0.9.0 caps it below 0.38). Drop this ignore when sqlx allows 0.39."
+
+[[advisories.ignore]]
 id = "RUSTSEC-2023-0071"
 reason = "rsa via openidconnect for RS256 id_token verify; no fixed release; network timing risk accepted for OIDC (v2.0.2)"
 
