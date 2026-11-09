@@ -610,38 +610,46 @@ async fn each_refused_token_request_answers_its_rfc_6749_error() {
     .await;
     assert_oauth_error(redirect, StatusCode::BAD_REQUEST, "invalid_grant").await;
     for resource in [
-        "",
         "https://maidan.example.com/mcp",
         "https://evil.example/mcp/streamable",
     ] {
-        let mut params = vec![
+        let params = vec![
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),
             ("redirect_uri", REDIRECT),
             ("code_verifier", verifier.as_str()),
+            ("resource", resource),
         ];
-        if !resource.is_empty() {
-            params.push(("resource", resource));
-        }
         let refused = post_form(&h, "/oauth/token", client, &params).await;
         assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_target").await;
     }
     // A wrong guess at any parameter left the code usable.
     let tokens = pair(exchange(&h, client, &code, &verifier).await).await;
 
-    // The authorize step requires the resource too.
-    let authorize = h
-        .no_redirect
-        .get(format!(
+    // The authorize step refuses a resource that is not the MCP endpoint,
+    // and takes an omitted one as the MCP endpoint: claude.ai's connector
+    // names none, and refusing it stopped every claude.ai sign-in.
+    let authorize = |resource: Option<&str>| {
+        let mut url = format!(
             "{}/oauth/authorize?response_type=code&client_id=public-client&redirect_uri={}&code_challenge=abc&code_challenge_method=S256&state=xyz",
             h.base,
             urlencoding::encode(REDIRECT),
-        ))
-        .bearer_auth(&t.bearer)
-        .send()
+        );
+        if let Some(resource) = resource {
+            url.push_str(&format!("&resource={}", urlencoding::encode(resource)));
+        }
+        h.no_redirect.get(url).bearer_auth(&t.bearer).send()
+    };
+    let wrong = authorize(Some("https://maidan.example.com/mcp"))
         .await
         .unwrap();
-    assert_eq!(authorize.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+    let omitted = authorize(None).await.unwrap();
+    assert!(
+        omitted.status().is_redirection(),
+        "an authorize request without a resource goes on to consent, got {}",
+        omitted.status()
+    );
 
     // An expired code is refused.
     let (code, verifier) = code_for(&h, &t, "public-client").await;
@@ -830,13 +838,16 @@ async fn a_refresh_can_narrow_the_scope_but_never_widen_it() {
 }
 
 #[tokio::test]
-async fn a_refresh_must_name_the_resource_its_token_is_bound_to() {
+async fn a_refresh_naming_another_resource_is_refused_and_keeps_its_token() {
     let h = spawn(Some(ORIGIN)).await;
     let t = tenant(&h, "refresh-target").await;
     register(&h, "public-client", None).await;
     let client = Auth::Public("public-client");
     let first = issue(&h, &t, "public-client").await;
-    for resource in ["", "https://maidan.example.com/mcp"] {
+    for resource in [
+        "https://maidan.example.com/mcp",
+        "https://evil.example/mcp/streamable",
+    ] {
         let refused = refresh(&h, client, &first.refresh, &[("resource", resource)]).await;
         assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_target").await;
     }

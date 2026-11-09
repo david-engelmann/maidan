@@ -475,16 +475,18 @@ fn required(value: Option<String>, name: &str) -> Result<String, OAuthError> {
         .ok_or_else(|| OAuthError::invalid_request(format!("{name} is required")))
 }
 
-/// RFC 8707: the request must name the one resource tokens are issued for.
+/// RFC 8707: a request that names a resource must name the one tokens are
+/// issued for. One that names none gets that one: RFC 8707 makes the
+/// parameter optional, and claude.ai's connector sends none at all, so
+/// requiring it refused every claude.ai sign-in (2026-11-09). The token is
+/// bound to the MCP resource either way, so the default widens nothing.
 pub(super) fn require_resource(given: Option<&str>, origin: &str) -> Result<String, OAuthError> {
     let expected = super::metadata::mcp_resource(origin);
     match given.filter(|r| !r.is_empty()) {
+        None => Ok(expected),
         Some(resource) if resource == expected => Ok(expected),
         Some(_) => Err(OAuthError::invalid_target(format!(
             "this server issues tokens only for the resource {expected}"
-        ))),
-        None => Err(OAuthError::invalid_target(format!(
-            "resource is required and must be {expected}"
         ))),
     }
 }
@@ -567,13 +569,19 @@ mod tests {
     #[test]
     fn the_resource_must_be_the_mcp_endpoint_of_the_configured_origin() {
         let origin = "https://maidan.example.com";
-        assert_eq!(
-            require_resource(Some("https://maidan.example.com/mcp/streamable"), origin).unwrap(),
-            "https://maidan.example.com/mcp/streamable"
-        );
-        for bad in [
+        // Named or omitted, the resource is the MCP endpoint.
+        for given in [
+            Some("https://maidan.example.com/mcp/streamable"),
             None,
             Some(""),
+        ] {
+            assert_eq!(
+                require_resource(given, origin).unwrap(),
+                "https://maidan.example.com/mcp/streamable",
+                "{given:?}"
+            );
+        }
+        for bad in [
             Some("https://maidan.example.com/mcp"),
             Some("https://other.example.com/mcp/streamable"),
         ] {
