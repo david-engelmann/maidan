@@ -400,6 +400,80 @@ to its dependents depends on the reason:
 When the closed thread is a plan child, any dependent still waiting on it
 after that is blocked with a notice, and the plan is told once.
 
+## What ending early does to partial work
+
+A task can stop before its work lands in three ways: a producer cancels it,
+someone closes it as abandoned, duplicate or superseded, or a claimant that
+restarted releases what its last run held. Each one changes Maidan's own
+records in one transaction and nothing else. Maidan does not write to the
+repository when a task ends, and it never ran the claimant's build, so
+the claimant cleans up its own machine.
+
+| Ending | Claim and fencing token | Thread | Branch and pull request | Queued deliveries | Result already written | The claimant's build box |
+|---|---|---|---|---|---|---|
+| `cancel_thread` (`POST /threads/{id}/cancel`) | Ended: assignee, lease and `claim_lease_id` cleared, worked time charged | `closed` around every gate, and parked unclaimable with the reason. A closed thread can only be archived, never reopened | Left as they are | Still sent. The cancel's notice message also goes to a linked Slack channel or GitHub issue, like any message | Kept and readable | The claimant's to stop and clean up |
+| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`, not parked. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | Left as they are | Still sent | Kept, and the reason the landing gates still apply | The claimant's to stop and clean up |
+| `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) | Each live leased claim the member holds in the workspace is released, fenced by the lease read in the same transaction, worked time charged. A lapsed lease is left to the reaper, a lease-less assignment to its coordinator | Unchanged, `open` or `in_review`. `claim_next` hands an open one out again at once | Left as they are | Still sent | Kept | What the old process left is the restarted claimant's to clean up before it claims again |
+
+With [Linear claim comments](#claim-and-release-comments-on-linear) on, a
+cancelled or abandoned task whose claim was said there also gets its
+`RELEASED:` comment, because it closed with no merged pull request. A
+release leaves the task open and says nothing on Linear.
+
+### How a claimant learns it should stop
+
+Maidan sends the former holder no message of its own. It finds out in one of
+these ways:
+
+- **Its next fenced call is refused.** `renew_claim` and `set_thread_result`
+  with the old `claim_lease_id` answer `409` `claim-lost` (MCP `-32012`,
+  `data.code` `claim_lost`) and store nothing. After a cancel or a close
+  they answer `claim-lost`, not `thread-ended`, because the lease they name
+  is gone. `acknowledge_claim` and `release_claim` with that lease answer
+  `404` (MCP `-32004`) instead; treat it the same way.
+- **A call the closed thread refuses.** Setting a footprint, requiring a
+  skill, and marking the task's pull request ready or enqueueing it answer
+  `409` `thread-ended` (MCP `-32013`, `data.code` `thread_ended`), and
+  GitHub is not written. A message to a closed thread is still posted.
+- **The live events.** Both closes append `ThreadStateChanged`; a cancel
+  also appends `ThreadCancelled` with its `reason`, and posts the reason as a
+  message with `{"notice": "cancelled"}`. A release appends
+  `ThreadAssignmentChanged` for each thread, carrying its note.
+
+On any of these, stop the build, then clean up the worktree, container or
+branch checkout. Do it promptly: footprints and
+[build slots](#build-slots) count live claims, so the moment the claim ends
+Maidan hands that part of the repository and that slot to the next claimant,
+even while the old build is still running.
+
+### Who cleans up what
+
+- **The claim:** Maidan, in the transaction that ends it.
+- **The thread:** Maidan. A cancelled thread stays parked; clearing the park
+  (`DELETE /threads/{id}/unclaimable`) does not reopen it.
+- **The branch and the pull request:** the producer or a person. Maidan
+  refuses to mark an ended task's pull request ready or to enqueue it, but it
+  does not close the pull request, delete the branch, or take a queued pull
+  request out of the merge queue.
+- **Queued deliveries:** nobody. The egress worker sends what is queued
+  without reading the thread's state.
+- **Results:** they stay, as the record of what was produced.
+- **The build box:** the claimant, always.
+
+Current gaps, read from the code and not yet decided:
+
+- A pull request already in the merge queue when its task is cancelled keeps
+  its label, so the queue can still merge it.
+- A change delivery queued before a cancel can still push its commit and
+  open a draft pull request after it.
+- The explicit claim (`claim_thread`, `POST /threads/{id}/assignee/claim`)
+  checks the park, a block and the work-in-progress limit, but not the
+  thread's state. A thread closed as abandoned is not parked, so it can be
+  claimed while closed.
+- A cancelled or abandoned task's result still appears among its channel's
+  accepted decisions in the context pack, which lists every closed or
+  archived thread's result.
+
 ## Task attributes
 
 A thread can carry attributes that say what kind of work it is, who or what
