@@ -146,9 +146,41 @@ async fn a_condition_that_clears_and_comes_back_posts_again_postgres() {
     a_condition_that_clears_and_comes_back_posts_again(store).await;
 }
 
+/// A raise Slack refused is taken back, so the next pass posts it, even
+/// from a fresh process: a retry queued in memory would die with it.
+async fn a_raise_slack_refused_posts_on_the_next_pass_even_after_a_restart(store: Arc<dyn Store>) {
+    let refused = AlertLog::new(Some(store.clone()));
+    assert!(refused.may_raise(DENIED, "standing", 0).await);
+    assert!(refused.unclaim(DENIED).await);
+    assert!(
+        refused.may_raise(DENIED, "standing", 60).await,
+        "the next pass posts it"
+    );
+    assert!(refused.unclaim(DENIED).await);
+    assert!(
+        AlertLog::new(Some(store))
+            .may_raise(DENIED, "standing", 120)
+            .await,
+        "and so does a fresh process"
+    );
+}
+
+#[tokio::test]
+async fn a_raise_slack_refused_posts_on_the_next_pass_even_after_a_restart_sqlite() {
+    a_raise_slack_refused_posts_on_the_next_pass_even_after_a_restart(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn a_raise_slack_refused_posts_on_the_next_pass_even_after_a_restart_postgres() {
+    let Some((_container, store)) = postgres().await else {
+        return;
+    };
+    a_raise_slack_refused_posts_on_the_next_pass_even_after_a_restart(store).await;
+}
+
 /// A store that does not answer must not cost a post: the condition falls
-/// back to the in-memory window it had before, and its clear is still
-/// owed a resolved line.
+/// back to the in-memory window it had before. Its resolved line waits for
+/// the store, so the pass that clears the row posts it once.
 #[tokio::test]
 async fn an_unreachable_store_falls_back_to_the_in_memory_window() {
     let pool = sqlite_pool().await;
@@ -161,7 +193,30 @@ async fn an_unreachable_store_falls_back_to_the_in_memory_window() {
     );
     assert!(!log.may_raise(DENIED, "standing", REPEAT_SECS - 1).await);
     assert!(log.may_raise(DENIED, "standing", REPEAT_SECS).await);
-    assert!(log.may_resolve(DENIED).await);
-    assert!(!log.may_resolve(DENIED).await);
+    assert!(
+        !log.may_resolve(DENIED).await,
+        "the resolved line waits for the store"
+    );
     assert!(log.may_raise("boot:C0123ABCDE", "v438.0.0", 0).await);
+
+    let memory = AlertLog::new(None);
+    assert!(memory.may_raise(DENIED, "standing", 0).await);
+    assert!(memory.may_resolve(DENIED).await);
+    assert!(!memory.may_resolve(DENIED).await);
+    assert!(
+        memory.may_raise(DENIED, "standing", 60).await,
+        "back again, it posts"
+    );
+}
+
+/// A store that fails just after a post does not repost the condition on
+/// the next pass: the post is in the in-memory window too.
+#[tokio::test]
+async fn a_store_that_fails_after_a_post_does_not_repost_inside_the_window() {
+    let pool = sqlite_pool().await;
+    let log = AlertLog::new(Some(Arc::new(SqliteStore::for_tests(pool.clone()))));
+    assert!(log.may_raise(DENIED, "standing", 0).await);
+    pool.close().await;
+    assert!(!log.may_raise(DENIED, "standing", 120).await);
+    assert!(log.may_raise(DENIED, "standing", REPEAT_SECS).await);
 }

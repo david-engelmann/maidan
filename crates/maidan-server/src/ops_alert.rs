@@ -195,7 +195,11 @@ impl AlertLog {
     pub async fn may_raise(&self, key: &str, value: &str, at: i64) -> bool {
         if let Some(store) = &self.store {
             match store.raise_ops_alert(key, value).await {
-                Ok(post) => return post,
+                // Through the window too: one posted from memory while the
+                // store was down is not posted again the moment it answers,
+                // and one posted here not again if the store then fails.
+                Ok(true) => return self.may_repeat(key, at),
+                Ok(false) => return false,
                 Err(err) => tracing::warn!(
                     error = %err,
                     key,
@@ -208,24 +212,49 @@ impl AlertLog {
 
     /// Whether the cleared condition `key` owes a "resolved" line: it was
     /// raised, in the store or, while the store did not answer, in memory.
-    /// Either way the next raise posts again.
+    /// Either way the next raise posts again. While the store does not
+    /// answer the line waits, so the next pass, clearing it, posts it once.
     pub async fn may_resolve(&self, key: &str) -> bool {
         let in_memory = self
             .sent
             .lock()
-            .map(|mut log| log.remove(key).is_some())
+            .map(|log| log.contains_key(key))
             .unwrap_or(false);
         if let Some(store) = &self.store {
             match store.clear_ops_alert(key).await {
-                Ok(stood) => return stood || in_memory,
-                Err(err) => tracing::warn!(
-                    error = %err,
-                    key,
-                    "operator alert state not cleared"
-                ),
+                Ok(stood) => {
+                    self.forget(key);
+                    return stood || in_memory;
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        key,
+                        "operator alert state not cleared; the resolved line waits"
+                    );
+                    return false;
+                }
             }
         }
+        self.forget(key);
         in_memory
+    }
+
+    /// Take back a raise whose post Slack refused, so the next raise, in
+    /// this process or a fresh one, posts it. False when the store would not
+    /// let go of it.
+    pub async fn unclaim(&self, key: &str) -> bool {
+        self.forget(key);
+        match &self.store {
+            Some(store) => store.clear_ops_alert(key).await.is_ok(),
+            None => true,
+        }
+    }
+
+    fn forget(&self, key: &str) {
+        if let Ok(mut log) = self.sent.lock() {
+            log.remove(key);
+        }
     }
 }
 
@@ -710,15 +739,27 @@ pub async fn alert(key: &str, text: &str) {
     }
 }
 
+/// The stored key of a condition: per channel, so a channel the operator
+/// moves alerts to hears a condition that already stood.
+fn condition_key(key: &str) -> Option<String> {
+    CHANNEL.get().map(|channel| format!("{key}@{channel}"))
+}
+
 /// A condition holds: post `text` once for this outage. It does not post
 /// again while the condition stands, across restarts, until [`resolve`]
 /// sees it clear. A no-op when alerts are off.
 pub async fn raise(key: &str, text: &str) {
-    if CHANNEL.get().is_none() || SENDER.get().is_none() {
+    let Some(key) = condition_key(key).filter(|_| SENDER.get().is_some()) else {
+        return;
+    };
+    if !log().may_raise(&key, STANDING, now()).await || try_post(&key, text).await {
         return;
     }
-    if log().may_raise(key, STANDING, now()).await {
-        post(key, text).await;
+    // The condition raises again next pass, and it is taken back so that
+    // raise posts, in this process or the next: a queued retry would die
+    // with the process, and beside the next raise would post twice.
+    if !log().unclaim(&key).await {
+        queue(&key, text);
     }
 }
 
@@ -726,24 +767,43 @@ pub async fn raise(key: &str, text: &str) {
 /// had been raised, and let the next raise post again. A no-op when alerts
 /// are off.
 pub async fn resolve(key: &str, text: &str) {
-    if CHANNEL.get().is_none() || SENDER.get().is_none() {
+    let Some(key) = condition_key(key).filter(|_| SENDER.get().is_some()) else {
         return;
+    };
+    // A raise still waiting to go is stale once the condition has cleared.
+    if let Ok(mut queue) = pending().lock() {
+        queue.retain(|(queued, _)| *queued != key);
     }
-    if log().may_resolve(key).await {
-        post(key, text).await;
+    if log().may_resolve(&key).await {
+        post(&key, text).await;
     }
 }
 
 /// Post `text` now; a post Slack refuses waits for the next watchdog pass.
 async fn post(key: &str, text: &str) {
+    if !try_post(key, text).await {
+        queue(key, text);
+    }
+}
+
+/// Post `text` now; false when Slack refused it (logged) or alerts are off.
+async fn try_post(key: &str, text: &str) -> bool {
     let (Some(channel), Some(sender)) = (CHANNEL.get(), SENDER.get()) else {
-        return;
+        return false;
     };
-    if let Err(err) = sender.post_message(channel, text, None).await {
-        tracing::warn!(error = %err, key, "operator alert not posted; retrying next pass");
-        if let Ok(mut queue) = pending().lock() {
-            queue_retry(&mut queue, key, text);
+    match sender.post_message(channel, text, None).await {
+        Ok(_) => true,
+        Err(err) => {
+            tracing::warn!(error = %err, key, "operator alert not posted");
+            false
         }
+    }
+}
+
+/// Keep a refused post for the next watchdog pass.
+fn queue(key: &str, text: &str) {
+    if let Ok(mut queue) = pending().lock() {
+        queue_retry(&mut queue, key, text);
     }
 }
 
