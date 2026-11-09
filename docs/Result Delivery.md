@@ -359,11 +359,12 @@ what it lacks against the producer's template as `delivery_warnings` on the
   title or the body.
 
 The Slack reply adds one line, such as `PR template: missing a Testing
-section.`, and the delivery-status API shows the codes; the field is absent
-when nothing is missing. A warning is not a failure: the row is `delivered`,
-`last_error` stays empty, and the pull request stays a draft until it is
-marked ready, as always. Fixing the pull request itself clears the warnings
-on the next round. Apart from defused mentions, `summary` reaches the pull
+section.`, and the delivery-status API shows the codes. The same list holds
+the `check` codes (`check_invalid`, `check_not_posted`), so the field is
+absent only when the round flagged nothing at all. A warning is not a
+failure: the row is `delivered`, `last_error` stays empty, and the pull
+request stays a draft until it is marked ready, as always. Fixing the pull
+request itself clears the template codes on the next round. Apart from defused mentions, `summary` reaches the pull
 request byte for byte, headings and fenced check output included, and a
 `title` such as `[ENG-123] …` is used as given.
 
