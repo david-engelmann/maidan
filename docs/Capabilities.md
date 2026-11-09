@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v439.0.0](https://github.com/david-engelmann/maidan/releases/tag/v439.0.0) — the console is dark by default, with a real light mode beside it, and 2 more
+
+a dark theme by default with a real light mode and a theme switch, GitHub errors that say why, and how a harness uses message threads beside Maidan.
+
+- The console is dark by default, with a real light mode beside it
+- A GitHub API error says what GitHub said, and a rate limit waits out `retry-after`
+- Harness Caching covers Anthropic's message threads
+
+`CHANGELOG.md` under `[439.0.0]` has every entry.
+
 ## [v438.0.0](https://github.com/david-engelmann/maidan/releases/tag/v438.0.0) — the Rust SDK releases a restarted waiter's claims, and 3 more
 
 the Claude-family check on review results, newest-first event reads in the console, display names with joiners, one clock for claim aging, and SQLite writes that take the lock up front.

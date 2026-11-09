@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [439.0.0] — 2026-11-09
+
+a dark theme by default with a real light mode and a theme switch, GitHub errors that say why, and how a harness uses message threads beside Maidan.
+
+### The console is dark by default, with a real light mode beside it
+
+- **Added:** Tools → This device → Appearance offers Dark, Light and System, kept in this browser. The palette also has "Dark theme", "Light theme" and "Match the system theme". `/ui/theme.js`, a plain script ahead of the stylesheet, puts the stored choice on `<html data-theme>` before the first paint, so a Light page does not flash dark. System follows the device while the page is open.
+- **Changed:** The console opens dark when nothing is stored, whatever the system says. The dark palette is drawn for dark rather than inverted. It uses graphite surfaces in steps (page, lane, card, menu), hairlines of light, a faint signal glow behind the title, and status colours lifted for a dark ground. The primary action is the signal orange with dark text, and the mark and the open place are lit. The swarm builder's tile is anodised gunmetal with milled wells, and it no longer stays bright steel in dark. Light keeps the landing's paper and ink.
+- **Changed:** Every colour the console paints comes from the two palette blocks. `test/tokens.test.ts` fails on a colour written anywhere else, and on a token one palette sets and the other does not. `test/contrast.test.ts` holds body, muted and status text to 4.5:1 on every surface, and status dots to 3:1, in both themes.
+- **Changed:** maidan.world's policy, support, problem-type and error pages and the OAuth consent and connected-apps pages use the same dark palette. They run no script, so they cannot read a stored choice. They are dark, and their light palette applies under `data-theme="light"`. The site prints as ink on white.
+- **Changed:** The landing at `/` is dark by default as well. It uses the console's graphite palette and orange primary buttons, and its console mock is drawn dark. It loads the console's own `/ui/theme.js`, so a browser that chose Light in the console sees the light landing.
+
+### A GitHub API error says what GitHub said, and a rate limit waits out `retry-after`
+
+- **Changed:** a GitHub API error keeps GitHub's own `message`, cut to 200 characters with control characters removed and the client's token redacted, and says when GitHub rate-limited the call: `github api error: status 403 (rate limited): You have exceeded a secondary rate limit` or `github api error: status 403: Resource not accessible by integration`. The `github api error: status N` prefix is unchanged, so dashboards and stored `last_error` rows still match. Before, a secondary rate limit and a missing permission both read `github api error: status 403`.
+- **Fixed:** the egress worker reschedules a rate-limited GitHub delivery (projector, result comment or `github_branch`) no sooner than GitHub's `retry-after`, capped at the one-hour backoff cap. On 2026-11-08 two `github_branch` deliveries retried on the 30-second backoff, failed four times inside GitHub's window, and landed on attempt 5.
+
+### Harness Caching covers Anthropic's message threads
+
+- **Added:** `docs/Harness Caching.md` has a "Message threads" section for a harness that uses the Messages API beta while it works Maidan tasks: the harness keeps its own transcript and replays on `thread_not_found`, the context pack is the room part of a replay, `system`, `tools` and a `cachedPrefix` boot go on the create request only, the fixed fields and the limit of 4 `cache_control` breakpoints, the 5-minute expiry that a review or CI pause outlasts, where threads can't be used, cost, and one API key per agent where two agents could continue each other's thread. Checked against Anthropic's page on 2026-11-08.
+
 ## [438.0.0] — 2026-11-08
 
 the Claude-family check on review results, newest-first event reads in the console, display names with joiners, one clock for claim aging, and SQLite writes that take the lock up front.
