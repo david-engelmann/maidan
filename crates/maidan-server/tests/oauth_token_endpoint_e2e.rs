@@ -610,19 +610,16 @@ async fn each_refused_token_request_answers_its_rfc_6749_error() {
     .await;
     assert_oauth_error(redirect, StatusCode::BAD_REQUEST, "invalid_grant").await;
     for resource in [
-        "",
         "https://maidan.example.com/mcp",
         "https://evil.example/mcp/streamable",
     ] {
-        let mut params = vec![
+        let params = vec![
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),
             ("redirect_uri", REDIRECT),
             ("code_verifier", verifier.as_str()),
+            ("resource", resource),
         ];
-        if !resource.is_empty() {
-            params.push(("resource", resource));
-        }
         let refused = post_form(&h, "/oauth/token", client, &params).await;
         assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_target").await;
     }
@@ -830,13 +827,16 @@ async fn a_refresh_can_narrow_the_scope_but_never_widen_it() {
 }
 
 #[tokio::test]
-async fn a_refresh_must_name_the_resource_its_token_is_bound_to() {
+async fn a_refresh_naming_another_resource_is_refused_and_keeps_its_token() {
     let h = spawn(Some(ORIGIN)).await;
     let t = tenant(&h, "refresh-target").await;
     register(&h, "public-client", None).await;
     let client = Auth::Public("public-client");
     let first = issue(&h, &t, "public-client").await;
-    for resource in ["", "https://maidan.example.com/mcp"] {
+    for resource in [
+        "https://maidan.example.com/mcp",
+        "https://evil.example/mcp/streamable",
+    ] {
         let refused = refresh(&h, client, &first.refresh, &[("resource", resource)]).await;
         assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_target").await;
     }

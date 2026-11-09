@@ -43,8 +43,8 @@ pub struct AuthorizeQuery {
     /// allowed when omitted.
     pub scope: Option<String>,
     pub state: String,
-    /// RFC 8707 resource indicator the grant is bound to. Required, and must
-    /// be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`.
+    /// RFC 8707 resource indicator the grant is bound to. When given it must
+    /// be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`; when omitted, that is the one.
     pub resource: Option<String>,
     /// OAuth 2.1 requires `response_type=code`.
     pub response_type: String,
@@ -163,22 +163,13 @@ pub async fn authorize(
     scope.sort();
     scope.dedup();
 
-    // RFC 8707: every grant is for the MCP resource and names it, so the code
-    // and every token minted from it carry the one resource they are bound to.
-    let expected = super::metadata::mcp_resource(origin);
-    match query.resource.as_deref() {
-        Some(resource) if resource == expected => {}
-        Some(_) => {
-            return Err(ApiError::BadRequest(format!(
-                "invalid_target: this server issues tokens only for the resource {expected}"
-            )));
-        }
-        None => {
-            return Err(ApiError::BadRequest(format!(
-                "invalid_target: resource is required and must be {expected}"
-            )));
-        }
-    }
+    // RFC 8707: every grant is for the MCP resource, so the code and every
+    // token minted from it carry the one resource they are bound to. A
+    // request that names no resource gets that one (`require_resource`):
+    // claude.ai's connector names none, and refusing it refused every
+    // claude.ai sign-in.
+    let resource = super::token::require_resource(query.resource.as_deref(), origin)
+        .map_err(|err| ApiError::BadRequest(format!("invalid_target: {}", err.description)))?;
 
     // Store the validated request pending the member's decision. The grant
     // and the code are created only when the member approves on the consent
@@ -192,7 +183,7 @@ pub async fn authorize(
             redirect_uri: query.redirect_uri,
             code_challenge: query.code_challenge,
             scope,
-            resource: query.resource,
+            resource: Some(resource),
             state: query.state,
             expires_at: Utc::now() + chrono::Duration::seconds(PENDING_TTL_SECS),
         })
