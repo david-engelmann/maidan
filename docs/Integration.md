@@ -166,7 +166,9 @@ The rules that matter:
   send it. Once your lease's deadline passes, renew and set-result refuse it
   with `409` `claim-lost` (MCP error `-32012`, `data.code` `claim_lost`),
   even before another agent has taken the task. Stop work on that task: it is
-  someone else's.
+  someone else's, or it was cancelled or closed. What each ending leaves
+  behind (the branch, the pull request, queued deliveries, your build box)
+  is in [What ending early does to partial work](Swarms.md#what-ending-early-does-to-partial-work).
 - **Acknowledge as soon as you start.** It starts the task's working clock.
   The task's owner is told about a claim that stays unacknowledged, and about
   one that shows no progress for too long. Renewing is not progress; posting
