@@ -14,6 +14,16 @@
 //! posted at most once every [`REPEAT_SECS`], so a loop that panics every
 //! tick does not flood the channel.
 //!
+//! A process is not an outage. The hosted container sleeps after 15 idle
+//! minutes and every wake is a fresh process, so a dedupe held in memory
+//! posted "started" on every wake and a standing condition again after each
+//! one (GitHub refusing a repository's checks reposted every 50 minutes
+//! through one outage). A condition alert ([`raise`]) and the boot line
+//! therefore stand in the store ([`AlertLog`]): a condition posts once until
+//! [`resolve`] sees it clear, and the boot line posts only for a build that
+//! has not announced itself yet. When the store does not answer, both fall
+//! back to the in-memory window: a repeat is better than a lost alert.
+//!
 //! Alive is not healthy. A loop whose every tick logs a warning or an error
 //! (a database that refuses its queries, say) still finishes its ticks, so
 //! [`TickWarnings`] counts the warnings each tick logs and the watchdog posts
@@ -49,6 +59,8 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
+
+use maidan_store::Store;
 
 use crate::slack::SlackSender;
 use crate::state::AppState;
@@ -127,8 +139,11 @@ static FAULT: OnceLock<Mutex<Option<(Fault, u32)>>> = OnceLock::new();
 
 static LOOPS: OnceLock<Mutex<HashMap<&'static str, LoopState>>> = OnceLock::new();
 
-/// When each alert key last posted (unix seconds).
-static SENT: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
+/// Which alerts have posted; holds the store once [`run`] starts.
+static LOG: OnceLock<AlertLog> = OnceLock::new();
+
+/// The value a condition alert stands at: it is raised or it is not.
+const STANDING: &str = "standing";
 
 /// Alerts Slack refused, as (key, text), oldest first.
 static PENDING: OnceLock<Mutex<Vec<(String, String)>>> = OnceLock::new();
@@ -141,8 +156,77 @@ fn pending() -> &'static Mutex<Vec<(String, String)>> {
     PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-fn sent() -> &'static Mutex<HashMap<String, i64>> {
-    SENT.get_or_init(|| Mutex::new(HashMap::new()))
+fn log() -> &'static AlertLog {
+    LOG.get_or_init(|| AlertLog::new(None))
+}
+
+/// Which alerts have posted. An event alert ([`alert`]) is windowed in
+/// memory, [`REPEAT_SECS`] per key. A condition alert ([`raise`]) and the
+/// boot line stand in the store, so a fresh process over the same store
+/// posts neither again; with no store, or one that errors, they fall back to
+/// the in-memory window.
+pub struct AlertLog {
+    store: Option<Arc<dyn Store>>,
+    /// When each key last posted from memory (unix seconds).
+    sent: Mutex<HashMap<String, i64>>,
+}
+
+impl AlertLog {
+    /// A log over `store`; `None` keeps everything in memory.
+    pub fn new(store: Option<Arc<dyn Store>>) -> Self {
+        Self {
+            store,
+            sent: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Whether the event alert `key` may post at `at`: once per
+    /// [`REPEAT_SECS`].
+    pub fn may_repeat(&self, key: &str, at: i64) -> bool {
+        self.sent
+            .lock()
+            .map(|mut log| may_send(&mut log, key, at))
+            .unwrap_or(true)
+    }
+
+    /// Whether `key`, standing at `value`, may post: only when it did not
+    /// already stand at `value`. A store that errors falls back to
+    /// [`may_repeat`](Self::may_repeat), so the dedupe never costs a post.
+    pub async fn may_raise(&self, key: &str, value: &str, at: i64) -> bool {
+        if let Some(store) = &self.store {
+            match store.raise_ops_alert(key, value).await {
+                Ok(post) => return post,
+                Err(err) => tracing::warn!(
+                    error = %err,
+                    key,
+                    "operator alert state not written; deduping in memory"
+                ),
+            }
+        }
+        self.may_repeat(key, at)
+    }
+
+    /// Whether the cleared condition `key` owes a "resolved" line: it was
+    /// raised, in the store or, while the store did not answer, in memory.
+    /// Either way the next raise posts again.
+    pub async fn may_resolve(&self, key: &str) -> bool {
+        let in_memory = self
+            .sent
+            .lock()
+            .map(|mut log| log.remove(key).is_some())
+            .unwrap_or(false);
+        if let Some(store) = &self.store {
+            match store.clear_ops_alert(key).await {
+                Ok(stood) => return stood || in_memory,
+                Err(err) => tracing::warn!(
+                    error = %err,
+                    key,
+                    "operator alert state not cleared"
+                ),
+            }
+        }
+        in_memory
+    }
 }
 
 /// Read `MAIDAN_OPS_ALERT_CHANNEL`: a Slack channel id (`C…` or `G…`).
@@ -615,18 +699,46 @@ fn may_send(log: &mut HashMap<String, i64>, key: &str, at: i64) -> bool {
 
 /// Post `text` to the operator channel, unless the same `key` posted in the
 /// last [`REPEAT_SECS`]. A no-op when alerts are off. A post Slack refuses
-/// is logged at WARN and retried on each watchdog pass until it goes.
+/// is logged at WARN and retried on each watchdog pass until it goes. For
+/// an event; a condition that holds until something clears it is [`raise`].
 pub async fn alert(key: &str, text: &str) {
+    if CHANNEL.get().is_none() || SENDER.get().is_none() {
+        return;
+    }
+    if log().may_repeat(key, now()) {
+        post(key, text).await;
+    }
+}
+
+/// A condition holds: post `text` once for this outage. It does not post
+/// again while the condition stands, across restarts, until [`resolve`]
+/// sees it clear. A no-op when alerts are off.
+pub async fn raise(key: &str, text: &str) {
+    if CHANNEL.get().is_none() || SENDER.get().is_none() {
+        return;
+    }
+    if log().may_raise(key, STANDING, now()).await {
+        post(key, text).await;
+    }
+}
+
+/// The condition [`raise`]d under `key` no longer holds: post `text` if it
+/// had been raised, and let the next raise post again. A no-op when alerts
+/// are off.
+pub async fn resolve(key: &str, text: &str) {
+    if CHANNEL.get().is_none() || SENDER.get().is_none() {
+        return;
+    }
+    if log().may_resolve(key).await {
+        post(key, text).await;
+    }
+}
+
+/// Post `text` now; a post Slack refuses waits for the next watchdog pass.
+async fn post(key: &str, text: &str) {
     let (Some(channel), Some(sender)) = (CHANNEL.get(), SENDER.get()) else {
         return;
     };
-    let allowed = sent()
-        .lock()
-        .map(|mut log| may_send(&mut log, key, now()))
-        .unwrap_or(true);
-    if !allowed {
-        return;
-    }
     if let Err(err) = sender.post_message(channel, text, None).await {
         tracing::warn!(error = %err, key, "operator alert not posted; retrying next pass");
         if let Ok(mut queue) = pending().lock() {
@@ -641,6 +753,9 @@ pub async fn run(state: AppState, channel: String) {
     let Some(sender) = state.slack_sender.clone() else {
         return;
     };
+    // Before the sender and channel, so no alert is deduped without it.
+    let _ = LOG.set(AlertLog::new(Some(state.store.clone())));
+    let boot_key = format!("boot:{channel}");
     if SENDER.set(sender).is_err() || CHANNEL.set(channel).is_err() {
         return;
     }
@@ -652,16 +767,18 @@ pub async fn run(state: AppState, channel: String) {
             )
         })
         .unwrap_or_default();
-    alert(
-        "boot",
-        &format!(
-            ":white_check_mark: Maidan {} started; operator alerts reach this channel.{armed}",
-            // The build it is (`/health`'s version: vN.N.N or dev-<sha>), not
-            // the crate's 0.0.0, so the channel says which build came up.
-            crate::version()
-        ),
-    )
-    .await;
+    // The build it is (`/health`'s version: vN.N.N or dev-<sha>), not the
+    // crate's 0.0.0, so the channel says which build came up.
+    let build = crate::version();
+    let boot = format!(
+        ":white_check_mark: Maidan {build} started; operator alerts reach this channel.{armed}"
+    );
+    // A wake of the build that last announced itself says nothing: the
+    // hosted container wakes a fresh process after every idle 15 minutes.
+    // A drill's armed fault always says so; it is never on in production.
+    if !armed.is_empty() || log().may_raise(&boot_key, build, now()).await {
+        post(&boot_key, &boot).await;
+    }
     let watchdog_secs = i64::try_from(WATCHDOG_SECS).unwrap_or(i64::MAX);
     // Every loop registers at boot, so one watchdog pass is long enough to
     // tell a fault aimed at a loop that never started.
