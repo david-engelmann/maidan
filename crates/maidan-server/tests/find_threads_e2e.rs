@@ -260,7 +260,7 @@ async fn find_threads_by_attribute_over_the_wire() {
     // Garbage refuses rather than silently matching everything.
     for query in [
         "attr.engine=robot",
-        "attr.engnie=pi",
+        "attr.engnie=unattended",
         "attr.linear_issue=not-a-key",
         "ref.twin_of=not-a-thread",
         "ref.=00000000-0000-0000-0000-000000000000",

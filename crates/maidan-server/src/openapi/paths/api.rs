@@ -2868,7 +2868,7 @@ pub fn clear_task_duplicate() {}
 #[utoipa::path(get, path = "/workspaces/{id}/threads", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), FindThreadsQuery,
         ("attr.kind" = Option<String>, Query, description = "Task kind: change, plan or review"),
-        ("attr.engine" = Option<String>, Query, description = "Routed engine: pi, session or human"),
+        ("attr.engine" = Option<String>, Query, description = "Routed engine: unattended, session or human"),
         ("attr.threat_model" = Option<bool>, Query, description = "Whether the task needs a threat model"),
         ("attr.size" = Option<String>, Query, description = "Task size: S, M or L"),
         ("attr.linear_issue" = Option<String>, Query, description = "The Linear issue key, e.g. ENG-123"),

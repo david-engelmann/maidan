@@ -729,7 +729,7 @@ mod tests {
                 }),
             ),
             (
-                "goes to a session, not pi",
+                "goes to a session, not unattended",
                 Box::new(|c| {
                     if let Some(a) = c.attributes.as_mut() {
                         a.threat_model = true;

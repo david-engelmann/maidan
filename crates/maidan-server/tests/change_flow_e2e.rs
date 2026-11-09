@@ -2137,9 +2137,10 @@ async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each
     );
     assert_eq!(comments[0].0, ISSUE_ID);
     assert!(
-        comments[0]
-            .2
-            .starts_with(&format!("CLAIM: pi/{} claimed in Maidan by ", task.0)),
+        comments[0].2.starts_with(&format!(
+            "CLAIM: unattended/{} claimed in Maidan by ",
+            task.0
+        )),
         "{}",
         comments[0].2
     );
@@ -2171,7 +2172,7 @@ async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each
     assert_eq!(
         comments[1].2,
         format!(
-            "RELEASED: pi/{} ended without merging: Name the venue",
+            "RELEASED: unattended/{} ended without merging: Name the venue",
             task.0
         )
     );
@@ -2186,7 +2187,7 @@ async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each
 /// so, and its Linear issue gets the packet and then the release. Tenant B is
 /// untouched.
 #[tokio::test]
-async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
+async fn a_non_converging_unattended_task_is_handed_to_a_session_once() {
     let h = harness().await;
     h.allow_change().await;
     h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
@@ -2293,8 +2294,16 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
 
     let comments: Vec<String> = h.linear.comments().into_iter().map(|c| c.2).collect();
     assert_eq!(comments.len(), 3, "{comments:#?}");
-    assert!(comments[0].starts_with("CLAIM: pi/"), "{}", comments[0]);
-    assert!(comments[1].starts_with("HANDOFF: pi/"), "{}", comments[1]);
+    assert!(
+        comments[0].starts_with("CLAIM: unattended/"),
+        "{}",
+        comments[0]
+    );
+    assert!(
+        comments[1].starts_with("HANDOFF: unattended/"),
+        "{}",
+        comments[1]
+    );
     for part in [
         "after 3 rounds without converging",
         &format!(
@@ -2314,7 +2323,7 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
     }
     assert!(
         comments[2].starts_with(&format!(
-            "RELEASED: pi/{} handed off to a session after 3 rounds",
+            "RELEASED: unattended/{} handed off to a session after 3 rounds",
             h.a.thread_id.0
         )),
         "{}",
