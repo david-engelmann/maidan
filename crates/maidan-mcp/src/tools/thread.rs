@@ -516,6 +516,13 @@ pub(super) async fn claim_thread(
     // Unclaimable: a parked thread refuses an explicit claim, just as
     // `claim_next` skips it (the REST 409 analogue).
     if let Some(u) = server.store.get_thread_unclaimable(thread_id).await? {
+        // A cancel parks and closes in one commit, which can land between
+        // the state read above and this one: read the state again so the
+        // caller is told the thread ended, not only that it is parked.
+        maidan_store::thread_liveness::refuse_ended(
+            &server.store.get_thread(thread_id).await?,
+            "a claim",
+        )?;
         return Err(McpError::InvalidParams(format!(
             "thread is parked (unclaimable): {}",
             u.reason
