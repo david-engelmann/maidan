@@ -1555,6 +1555,13 @@ jobs:
       - name: install chromium
         working-directory: ui-tests
         run: npx playwright install --with-deps chromium
+      # The capture harness reads the landing's index.html from disk (the
+      # assets are embedded); the build job's tree is not here, so build it.
+      - name: build the landing for the harness
+        working-directory: web/landing
+        env:
+          LANDING_OUT: ${{ github.workspace }}/crates/maidan-server/static/landing/dist
+        run: npm ci && npm run build
       - name: take the gallery
         working-directory: ui-tests
         env:
