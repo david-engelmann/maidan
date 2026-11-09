@@ -10,6 +10,7 @@ declare global {
         opts: {
           sitekey: string;
           action: string;
+          size?: "normal" | "compact" | "flexible";
           callback: (token: string) => void;
           "expired-callback": () => void;
         },

@@ -1122,7 +1122,9 @@ h1, h2, h3, strong, b { font-weight: 600; }
 /* Narrow phones: nothing wider than the screen. */
 @media (max-width: 380px) {
   :root { --pad: max(0.85rem, env(safe-area-inset-left), env(safe-area-inset-right)); }
-  .top h1 { font-size: var(--text-xl); }
+  /* An 8rem title plus the live chip and Search overran 360px, and the sticky
+     header took a second row. The title gives way and ellipsizes instead. */
+  .top h1 { font-size: var(--text-xl); flex-basis: 6rem; }
   .content { overflow-wrap: anywhere; }
 }
 
@@ -1256,6 +1258,10 @@ h1, h2, h3, strong, b { font-weight: 600; }
 @media (max-width: 599px) {
   .board-bar .new-task { min-height: 44px; }
   .filter-q { flex-basis: 100%; max-width: none; }
+}
+/* Phones: iOS zooms the page into a field under 16px when it takes focus. */
+@media (max-width: 599px) {
+  .filter-q input, .filter-pick select, .composer-field input, .channel-pick select, .content .channel-pick select { font-size: var(--text-input); }
 }
 @media (prefers-reduced-motion: reduce) { .task-composer { animation: none; } }
 .board-filters .filter-pick { flex: 0 0 auto; max-width: 240px; }
