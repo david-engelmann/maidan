@@ -1525,6 +1525,11 @@ pub fn get_thread_usage_rollup() {}
 pub fn report_thread_usage_otel() {}
 
 /// Claim a thread
+///
+/// A thread that is closed or archived is refused with 409 `thread-ended`,
+/// and a deleted one with 410 `gone`; nothing is claimed. A parked or blocked
+/// thread, or a member at the workspace's work-in-progress limit, is 409
+/// `conflict`.
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = ClaimThread,
@@ -1535,6 +1540,7 @@ pub fn report_thread_usage_otel() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
+        (status = 410, response = Gone),
     ))]
 pub fn claim_thread() {}
 

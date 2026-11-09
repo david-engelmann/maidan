@@ -411,8 +411,8 @@ the claimant cleans up its own machine.
 
 | Ending | Claim and fencing token | Thread | Branch and pull request | Queued deliveries | Result already written | The claimant's build box |
 |---|---|---|---|---|---|---|
-| `cancel_thread` (`POST /threads/{id}/cancel`) | Ended: assignee, lease and `claim_lease_id` cleared, worked time charged | `closed` around every gate, and parked unclaimable with the reason. A closed thread can only be archived, never reopened | Left as they are | Still sent. The cancel's notice message also goes to a linked Slack channel or GitHub issue, like any message | Kept and readable | The claimant's to stop and clean up |
-| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`. The close parks nothing, and a park the thread already had stays. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | Left as they are | Still sent | Kept, and the reason the landing gates still apply | The claimant's to stop and clean up |
+| `cancel_thread` (`POST /threads/{id}/cancel`) | Ended: assignee, lease and `claim_lease_id` cleared, worked time charged | `closed` around every gate, and parked unclaimable with the reason. A closed thread can only be archived, never reopened | Left as they are | A change delivery not yet writing to GitHub is skipped (`thread_ended`). Messages are still sent, and the cancel's notice also goes to a linked Slack channel or GitHub issue, like any message | Kept and readable | The claimant's to stop and clean up |
+| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`, and an explicit claim of it is refused (`409` `thread-ended`). The close parks nothing, and a park the thread already had stays. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | Left as they are | A change delivery not yet writing to GitHub is skipped (`thread_ended`). Messages are still sent | Kept, and the reason the landing gates still apply | The claimant's to stop and clean up |
 | `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) | Each live leased claim the member holds in the workspace is released, fenced by the lease read in the same transaction, worked time charged. A lapsed lease is left to the reaper, a lease-less assignment to its coordinator, and a claim on a thread the member can no longer read is kept until its lease lapses | Unchanged, `open` or `in_review`. An open one is back in the queue at once, and `claim_next` hands it out under its usual rules (blocks, required skills, dependencies, declines, order) | Left as they are | Still sent | Kept | What the old process left is the restarted claimant's to clean up before it claims again |
 
 With [Linear claim comments](#claim-and-release-comments-on-linear) on, a
@@ -432,7 +432,7 @@ these ways:
   `data.code` `claim_lost`) and store nothing. After a cancel or a close
   they answer `claim-lost`, not `thread-ended`, because the lease they name
   is gone. `acknowledge_claim` and `release_claim` with that lease answer
-  `404` (MCP `-32004`) instead; treat it the same way.
+  the same `409` `claim-lost`.
 - **A call the closed thread refuses.** Setting a footprint, requiring a
   skill, and marking the task's pull request ready or enqueueing it answer
   `409` `thread-ended` (MCP `-32013`, `data.code` `thread_ended`), and
@@ -463,8 +463,12 @@ even while the old build is still running.
   refuses to mark an ended task's pull request ready or to enqueue it, but it
   does not close the pull request, delete the branch, or take a queued pull
   request out of the merge queue.
-- **Queued deliveries:** nobody. The egress worker sends what is queued
-  without reading the thread's state.
+- **Queued deliveries:** Maidan. A change delivery (the branch commit and
+  the draft pull request) whose task was cancelled or closed as abandoned,
+  or is archived or deleted, is skipped with `thread_ended` if it has not
+  started its GitHub writes when the cancel commits; one already writing
+  can finish. Messages about the task (the cancel notice, the Slack reply)
+  still go out.
 - **Results:** they stay, as the record of what was produced.
 - **The build box:** the claimant, always.
 
@@ -472,12 +476,6 @@ Current gaps, read from the code and not yet decided:
 
 - A pull request already in the merge queue when its task is cancelled keeps
   its label, so the queue can still merge it.
-- A change delivery queued before a cancel can still push its commit and
-  open a draft pull request after it.
-- The explicit claim (`claim_thread`, `POST /threads/{id}/assignee/claim`)
-  checks the park, a block and the work-in-progress limit, but not the
-  thread's state. A close as abandoned parks nothing, so a thread closed
-  that way that was not already parked can be claimed while closed.
 - A cancelled or abandoned task's result still appears among its channel's
   accepted decisions in the context pack, which lists every closed or
   archived thread's result.

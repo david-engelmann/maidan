@@ -190,3 +190,24 @@ async fn get_in_tx(
         cancelled_at: row.get::<DateTime<Utc>, _>("cancelled_at"),
     }))
 }
+
+/// How a thread ended without landing; see
+/// [`crate::Store::thread_unlanded_close`].
+pub async fn unlanded_close(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Option<String>, StoreError> {
+    let how: Option<String> = sqlx::query_scalar(
+        "SELECT how FROM (
+             SELECT 'cancelled' AS how, 0 AS rank
+             FROM maidan_thread_cancellations WHERE thread_id = ?1
+             UNION ALL
+             SELECT reason AS how, 1 AS rank
+             FROM maidan_thread_unlanded_closes WHERE thread_id = ?1
+         ) ORDER BY rank LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(how)
+}

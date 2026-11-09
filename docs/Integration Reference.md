@@ -2096,16 +2096,19 @@ twin's status and problem type) for a client to match on:
 
 | Outcome | REST | MCP `error.code` | `data.code` |
 |---|---|---|---|
-| The lease expired, was taken over or was released: renew, set a result | `409` `claim-lost` | `-32012` | `claim_lost` |
+| The lease expired, was taken over or was released: renew, acknowledge, release, set a result | `409` `claim-lost` | `-32012` | `claim_lost` |
 | The thread is closed or archived and the call does not apply | `409` `thread-ended` | `-32013` | `thread_ended` |
 | The thread was deleted | `410` `gone` | `-32014` | `gone` |
 
 What refuses which:
 
-- **Renew and set a result** need the live lease. An expired lease is lost the
-  moment its deadline passes (outside the boot grace), even before the reaper
-  frees it or another claimer takes the thread. A thread that does not exist
-  is `404`.
+- **Renew, acknowledge, release and set a result** need the live lease. An
+  expired lease is lost the moment its deadline passes (outside the boot
+  grace), even before the reaper frees it or another claimer takes the
+  thread. A thread that does not exist is `404`.
+- **Claim a thread** (`claim_thread`, `POST /threads/{id}/assignee/claim`): a
+  closed or archived thread is `thread-ended`, a deleted one `gone`, before
+  the park, a block or the work-in-progress limit is read.
 - **Post a message**: a closed thread still takes messages, since people
   discuss work after it closes. An archived thread is `thread-ended`, a
   deleted one `gone`.
@@ -2114,6 +2117,14 @@ What refuses which:
   takes a footprint, which `claim_next` reads before handing it out.
 - **Mark ready, enqueue** (the mark-ready app): a pull request whose task is
   closed or archived is `thread-ended`, and GitHub is not written.
+- **A change delivery** (the `github_branch` commit and draft pull request)
+  that has not started its GitHub writes when its task is cancelled, closed
+  as abandoned, archived or deleted writes nothing to GitHub. Its delivery
+  row is `skipped` with a reason that starts `thread_ended`. A delivery
+  already writing when the cancel commits can finish: the thread is read once,
+  just before the first GitHub call. A task closed after its change landed
+  still delivers, and message relays and result replies to Slack, Linear and
+  GitHub comments still go out.
 - **A repeat that changes nothing is still a `200`,** and says so: a second
   cancel answers the first with `replayed: true`, and an enqueue of a pull
   request already labelled (or a dequeue of one that was not) answers

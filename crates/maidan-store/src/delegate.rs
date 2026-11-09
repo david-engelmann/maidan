@@ -3520,7 +3520,14 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_id: ClaimLeaseId,
             ) -> Result<Thread, StoreError> {
-                threads::acknowledge_claim(self.pool(), thread_id, member_id, lease_id).await
+                threads::acknowledge_claim(
+                    self.pool(),
+                    &self.claim_grace,
+                    thread_id,
+                    member_id,
+                    lease_id,
+                )
+                .await
             }
 
             async fn release_claim(
@@ -3529,7 +3536,14 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_id: ClaimLeaseId,
             ) -> Result<Thread, StoreError> {
-                threads::release_claim(self.pool(), thread_id, member_id, lease_id).await
+                threads::release_claim(
+                    self.pool(),
+                    &self.claim_grace,
+                    thread_id,
+                    member_id,
+                    lease_id,
+                )
+                .await
             }
 
             async fn release_claim_with_event(
@@ -3541,6 +3555,7 @@ macro_rules! store_delegations {
             ) -> Result<(Thread, StoredEvent), StoreError> {
                 threads::release_claim_with_event(
                     self.pool(),
+                    &self.claim_grace,
                     thread_id,
                     member_id,
                     lease_id,
@@ -3578,6 +3593,15 @@ macro_rules! store_delegations {
                 authority: CancelAuthority,
             ) -> Result<CancelOutcome, StoreError> {
                 cancel::cancel(self.pool(), &self.keys, thread_id, actor, reason, authority).await
+            }
+
+            async fn thread_unlanded_close(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<String>, StoreError> {
+                // Primary read: the egress worker asks just before it writes
+                // to GitHub, so a lagged replica could miss a cancel.
+                cancel::unlanded_close(self.pool(), thread_id).await
             }
 
             async fn mark_thread_unclaimable(

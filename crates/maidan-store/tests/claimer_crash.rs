@@ -104,7 +104,7 @@ async fn a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store: &dyn Store
 
     // The dead claimer comes back. Every write on its old claim is refused.
     let fenced =
-        |r: Result<maidan_types::Thread, StoreError>| matches!(r, Err(StoreError::NotFound));
+        |r: Result<maidan_types::Thread, StoreError>| matches!(r, Err(StoreError::ClaimLost(_)));
     // A renewal is told its claim is lost, so it stops the work.
     assert!(matches!(
         store.renew_claim(claimed.id, dead, stale_lease, 30).await,

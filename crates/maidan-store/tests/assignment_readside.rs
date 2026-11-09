@@ -218,21 +218,22 @@ async fn run_readside_suite(store: &dyn Store) {
         Some(started),
         "the working clock keeps its first start time on re-acknowledge"
     );
-    // A stale token cannot start the clock, and neither can a non-holder.
+    // A stale token cannot start the clock, and neither can a non-holder:
+    // both are told the claim is lost, as a renewal is.
     assert!(matches!(
         store.acknowledge_claim(leased.id, m2.id, lease1).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
     assert!(matches!(
         store.acknowledge_claim(leased.id, m1.id, lease2).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
 
     // --- release: the holder hands the work back, fenced ---
     // A non-holder presenting a stale token cannot release.
     assert!(matches!(
         store.release_claim(leased.id, m1.id, lease1).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
     // The holder releases: assignee, lease, and working clock all clear.
     let released = store
@@ -245,10 +246,10 @@ async fn run_readside_suite(store: &dyn Store) {
         released.work_started_at, None,
         "release clears the working clock"
     );
-    // Releasing again (no longer held) is a no-op → NotFound.
+    // Releasing again (no longer held) is refused as a lost claim.
     assert!(matches!(
         store.release_claim(leased.id, m2.id, lease2).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
 }
 

@@ -766,6 +766,13 @@ async fn github_branch_result(
     } else {
         None
     };
+    // Read again here, after every other check and before the first GitHub
+    // call, so a cancel that landed while the delivery waited in the queue
+    // stops the commit and the draft pull request. Read once: a cancel that
+    // commits after this point does not stop a delivery already writing.
+    if let Some(reason) = ended_change_reason(state, entry.thread_id).await? {
+        return Ok(Sent::Refused(reason));
+    }
     // Only a squash-rebase needs it: the force move is allowed only while the
     // branch head is still the last commit this flow delivered to the pull
     // request, as recorded for this workspace.
@@ -859,6 +866,60 @@ async fn github_branch_result(
             Err(DeliveryFailure::github(err))
         }
     }
+}
+
+/// Why a change delivery must not write to GitHub, or `None` when it may.
+/// The reason starts with `thread_ended`, so the delivery row, the producer
+/// and the Slack reply all show it.
+///
+/// A thread that is archived or gone takes no more work. A closed one is
+/// told apart by how it closed, not by its state: a producer that lands its
+/// change and closes the task at once reaches this point with the thread
+/// already closed, and that delivery must still go out. A cancel and a
+/// close-abandoned each leave a record of an end without landing, and a
+/// closed thread can never be reopened, so a closed thread with neither
+/// record delivers. Only this branch write reads the thread; a message relay
+/// still goes out, so a cancel's own notice reaches Slack.
+async fn ended_change_reason(
+    state: &AppState,
+    thread_id: maidan_types::ThreadId,
+) -> Result<Option<String>, DeliveryFailure> {
+    let store_failure = |err: maidan_store::StoreError| DeliveryFailure {
+        message: err.to_string(),
+        misconfiguration: false,
+        retry_after: None,
+    };
+    let thread = match state.store.get_thread(thread_id).await {
+        Ok(thread) => thread,
+        Err(maidan_store::StoreError::NotFound) => {
+            return Ok(Some(
+                "thread_ended: the task no longer exists, so nothing was pushed".into(),
+            ));
+        }
+        Err(err) => return Err(store_failure(err)),
+    };
+    let ended = if thread.tombstoned_at.is_some() {
+        Some("was deleted".to_string())
+    } else {
+        match thread.state {
+            maidan_types::ThreadState::Archived => Some("is archived".to_string()),
+            maidan_types::ThreadState::Closed => state
+                .store
+                .thread_unlanded_close(thread_id)
+                .await
+                .map_err(store_failure)?
+                .map(|how| match how.as_str() {
+                    "cancelled" => "was cancelled".to_string(),
+                    reason => format!("was closed as {reason}"),
+                }),
+            _ => None,
+        }
+    };
+    Ok(ended.map(|how| {
+        format!(
+            "thread_ended: the task {how} after this change was queued, so nothing was pushed and no pull request was opened"
+        )
+    }))
 }
 
 /// The newest round recorded for the branch's open pull request in this

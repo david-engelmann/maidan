@@ -172,7 +172,7 @@ async fn run_suite(store: &dyn Store) {
         )
         .await;
     assert!(
-        matches!(refused, Err(StoreError::NotFound)),
+        matches!(refused, Err(StoreError::ClaimLost(_))),
         "only the holder records a decline, got {refused:?}"
     );
     let still = store.get_thread(older).await.expect("thread");
@@ -213,8 +213,8 @@ async fn run_suite(store: &dyn Store) {
         )
         .await;
     assert!(
-        matches!(stale, Err(StoreError::NotFound)),
-        "a stale token is refused as not found, got {stale:?}"
+        matches!(stale, Err(StoreError::ClaimLost(_))),
+        "a stale token is refused as a lost claim, got {stale:?}"
     );
     let refused = store
         .release_claim_with_event(plain, fresh, lease(&held), Some(ClaimDecline::OwnFamily))

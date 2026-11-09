@@ -1235,9 +1235,22 @@ pub async fn claim_thread(
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let member_id = auth.member_id;
+    // An ended thread is refused for that before the park a cancel leaves
+    // on it: un-parking would not make it claimable. The store reads the
+    // state again in the claim's transaction, so a close that lands after
+    // this read is refused the same way.
+    let thread = state.store.get_thread(thread_id).await?;
+    maidan_store::thread_liveness::refuse_ended(&thread, "a claim")?;
     // Unclaimable: a parked thread refuses an explicit claim, just as
     // `claim_next` skips it. Un-park it (DELETE …/unclaimable) to work it.
     if let Some(u) = state.store.get_thread_unclaimable(thread_id).await? {
+        // A cancel parks and closes in one commit, which can land between
+        // the state read above and this one: read the state again so the
+        // caller is told the thread ended, not only that it is parked.
+        maidan_store::thread_liveness::refuse_ended(
+            &state.store.get_thread(thread_id).await?,
+            "a claim",
+        )?;
         return Err(ApiError::Conflict(format!(
             "thread is parked (unclaimable): {}",
             u.reason
@@ -1255,7 +1268,6 @@ pub async fn claim_thread(
     // workspace cap — 409, distinct from `claim_next`'s silent null. Skipped
     // when the member already holds this thread (a re-claim is not a new slot),
     // so a heartbeat-style re-claim never 409s.
-    let thread = state.store.get_thread(thread_id).await?;
     if thread.assignee_id != Some(member_id) {
         let channel = state.store.get_channel(thread.channel_id).await?;
         if super::at_wip_limit(state.store.as_ref(), channel.workspace_id, member_id).await? {
@@ -1939,8 +1951,10 @@ pub async fn renew_claim(
 }
 
 /// Acknowledge a claim and start the working clock, for the current holder
-/// presenting the matching fencing token. `NotFound` if the caller isn't the
-/// holder or the token is stale. Idempotent: the first start time is kept.
+/// presenting the matching fencing token under a live lease. `409
+/// claim-lost` if the caller isn't the holder, the token is stale or the
+/// lease expired, as `renew_claim` answers; `404` only when the thread does
+/// not exist. Idempotent: the first start time is kept.
 pub async fn acknowledge_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -1965,8 +1979,9 @@ pub async fn acknowledge_claim(
 
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue immediately by presenting its fencing token, instead of waiting
-/// for the lease to lapse. `NotFound` if the caller isn't the holder or the
-/// token is stale. Emits `ThreadAssignmentChanged`.
+/// for the lease to lapse. `409 claim-lost` if the caller isn't the holder,
+/// the token is stale or the lease expired, as `renew_claim` answers; `404`
+/// only when the thread does not exist. Emits `ThreadAssignmentChanged`.
 pub async fn release_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

@@ -95,6 +95,9 @@ mod claim_boot_grace;
 #[path = "../claim_deadline.rs"]
 mod claim_deadline;
 
+#[path = "../claim_ended_thread.rs"]
+mod claim_ended_thread;
+
 #[path = "../claim_footprints.rs"]
 mod claim_footprints;
 

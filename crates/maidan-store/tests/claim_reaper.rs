@@ -95,12 +95,15 @@ async fn lapsed(store: &dyn Store, channel: ChannelId, member: MemberId, secs_ag
 
 async fn a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store: &dyn Store) {
     let (channel, dead, next) = setup(store, 1).await;
-    let held = lapsed(store, channel, dead, 5).await;
+    // Acknowledged while the lease is live: a lapsed lease is lost, and
+    // acknowledging it is refused as a renewal is.
+    let held = claim(store, channel, dead, Some(3600)).await;
     let stale = held.claim_lease_id.expect("a claim has a token");
     store
         .acknowledge_claim(held.id, dead, stale)
         .await
         .expect("the holder starts work before it dies");
+    let held = lapse(store, &held, 5).await;
 
     let events = store.reap_expired_claims(Utc::now(), 100).await.unwrap();
     assert_eq!(events.len(), 1, "one lapsed lease, one event");
@@ -141,7 +144,7 @@ async fn a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store: &dyn Store) 
     );
 
     // The dead holder comes back to a claim it no longer has.
-    let fenced = |r: Result<Thread, StoreError>| matches!(r, Err(StoreError::NotFound));
+    let fenced = |r: Result<Thread, StoreError>| matches!(r, Err(StoreError::ClaimLost(_)));
     // A renewal is told its claim is lost, so it stops the work.
     assert!(matches!(
         store.renew_claim(held.id, dead, stale, 60).await,
