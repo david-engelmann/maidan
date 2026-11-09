@@ -412,13 +412,15 @@ the claimant cleans up its own machine.
 | Ending | Claim and fencing token | Thread | Branch and pull request | Queued deliveries | Result already written | The claimant's build box |
 |---|---|---|---|---|---|---|
 | `cancel_thread` (`POST /threads/{id}/cancel`) | Ended: assignee, lease and `claim_lease_id` cleared, worked time charged | `closed` around every gate, and parked unclaimable with the reason. A closed thread can only be archived, never reopened | Left as they are | Still sent. The cancel's notice message also goes to a linked Slack channel or GitHub issue, like any message | Kept and readable | The claimant's to stop and clean up |
-| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`, not parked. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | Left as they are | Still sent | Kept, and the reason the landing gates still apply | The claimant's to stop and clean up |
-| `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) | Each live leased claim the member holds in the workspace is released, fenced by the lease read in the same transaction, worked time charged. A lapsed lease is left to the reaper, a lease-less assignment to its coordinator | Unchanged, `open` or `in_review`. `claim_next` hands an open one out again at once | Left as they are | Still sent | Kept | What the old process left is the restarted claimant's to clean up before it claims again |
+| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`. The close parks nothing, and a park the thread already had stays. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | Left as they are | Still sent | Kept, and the reason the landing gates still apply | The claimant's to stop and clean up |
+| `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) | Each live leased claim the member holds in the workspace is released, fenced by the lease read in the same transaction, worked time charged. A lapsed lease is left to the reaper, a lease-less assignment to its coordinator, and a claim on a thread the member can no longer read is kept until its lease lapses | Unchanged, `open` or `in_review`. An open one is back in the queue at once, and `claim_next` hands it out under its usual rules (blocks, required skills, dependencies, declines, order) | Left as they are | Still sent | Kept | What the old process left is the restarted claimant's to clean up before it claims again |
 
 With [Linear claim comments](#claim-and-release-comments-on-linear) on, a
 cancelled or abandoned task whose claim was said there also gets its
-`RELEASED:` comment, because it closed with no merged pull request. A
-release leaves the task open and says nothing on Linear.
+`RELEASED:` comment, but only when none of its pull requests merged (or a
+handoff was recorded). A cancel does not undo a merge, so a task with a
+merged pull request gets no `RELEASED:` comment. A release leaves the task
+open and says nothing on Linear.
 
 ### How a claimant learns it should stop
 
@@ -438,7 +440,13 @@ these ways:
 - **The live events.** Both closes append `ThreadStateChanged`; a cancel
   also appends `ThreadCancelled` with its `reason`, and posts the reason as a
   message with `{"notice": "cancelled"}`. A release appends
-  `ThreadAssignmentChanged` for each thread, carrying its note.
+  `ThreadAssignmentChanged` for each thread, carrying its note. These kinds
+  also fire for other threads and for ordinary work (a claim is a
+  `ThreadAssignmentChanged` too), so stop only on an event whose `thread_id`
+  is your task and that ends your claim: a `ThreadCancelled`, a
+  `ThreadStateChanged` whose `to_state` is `closed` or `archived`, or a
+  `ThreadAssignmentChanged` whose `previous_assignee_id` is you and whose
+  `assignee_id` is not.
 
 On any of these, stop the build, then clean up the worktree, container or
 branch checkout. Do it promptly: footprints and
@@ -468,8 +476,8 @@ Current gaps, read from the code and not yet decided:
   open a draft pull request after it.
 - The explicit claim (`claim_thread`, `POST /threads/{id}/assignee/claim`)
   checks the park, a block and the work-in-progress limit, but not the
-  thread's state. A thread closed as abandoned is not parked, so it can be
-  claimed while closed.
+  thread's state. A close as abandoned parks nothing, so a thread closed
+  that way that was not already parked can be claimed while closed.
 - A cancelled or abandoned task's result still appears among its channel's
   accepted decisions in the context pack, which lists every closed or
   archived thread's result.
