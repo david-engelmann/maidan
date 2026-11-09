@@ -626,19 +626,30 @@ async fn each_refused_token_request_answers_its_rfc_6749_error() {
     // A wrong guess at any parameter left the code usable.
     let tokens = pair(exchange(&h, client, &code, &verifier).await).await;
 
-    // The authorize step requires the resource too.
-    let authorize = h
-        .no_redirect
-        .get(format!(
+    // The authorize step refuses a resource that is not the MCP endpoint,
+    // and takes an omitted one as the MCP endpoint: claude.ai's connector
+    // names none, and refusing it stopped every claude.ai sign-in.
+    let authorize = |resource: Option<&str>| {
+        let mut url = format!(
             "{}/oauth/authorize?response_type=code&client_id=public-client&redirect_uri={}&code_challenge=abc&code_challenge_method=S256&state=xyz",
             h.base,
             urlencoding::encode(REDIRECT),
-        ))
-        .bearer_auth(&t.bearer)
-        .send()
+        );
+        if let Some(resource) = resource {
+            url.push_str(&format!("&resource={}", urlencoding::encode(resource)));
+        }
+        h.no_redirect.get(url).bearer_auth(&t.bearer).send()
+    };
+    let wrong = authorize(Some("https://maidan.example.com/mcp"))
         .await
         .unwrap();
-    assert_eq!(authorize.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+    let omitted = authorize(None).await.unwrap();
+    assert!(
+        omitted.status().is_redirection(),
+        "an authorize request without a resource goes on to consent, got {}",
+        omitted.status()
+    );
 
     // An expired code is refused.
     let (code, verifier) = code_for(&h, &t, "public-client").await;
