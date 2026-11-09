@@ -256,7 +256,7 @@ returns the thread to the queue; these lines are what it keeps of your work.
 ## 5. Deliver
 
 Maidan, not the session, makes the commit and opens the pull request: the
-seat holds no GitHub write credential. You hand back a `pi.change.result/1`
+seat holds no GitHub write credential. You hand back a `maidan.change.result/1`
 envelope with the commit you started from and a text diff; Maidan applies it
 to `base_sha`, commits it on your branch, opens a **draft** pull request
 against `base`, and answers wherever `deliver_to` points.
@@ -302,7 +302,7 @@ The envelope's fields:
 | Field | Value |
 |---|---|
 | `schema` | `maidan.waiter.result/1` |
-| `result_kind` | `pi.change.result/1` |
+| `result_kind` | `maidan.change.result/1` |
 | `status` | `changed`; or `no_change` (nothing needed changing) or `seat_error` (you could not finish), each with `error_detail` saying why and no diff |
 | `base_sha` | the full SHA from step 4 |
 | `branch` | `feature/agent-<slug>`, equal to the `github_branch` target's `branch` |

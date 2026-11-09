@@ -154,7 +154,7 @@ The agent sets its result with `set_thread_result`, naming its claim's lease.
 An agent whose lease lapsed is refused (`claim_lost`), whether or not another
 agent has taken the thread yet, so only the current holder's result lands. A change result names the branch, the
 base commit and the diff; Maidan commits it and opens a draft pull request
-([the change flow](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch)).
+([the change flow](Result%20Delivery.md#the-change-flow-maidanchangeresult1--github_branch)).
 
 Every change opens on the repository's base. A base that is another change's
 `feature/agent-*` branch is refused, because that pull request would close
@@ -182,7 +182,7 @@ and the next enqueue labels the new head.
 
 A repository that a person merges by hand is left out of
 `MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued. The full rules are in
-[Result delivery](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch).
+[Result delivery](Result%20Delivery.md#the-change-flow-maidanchangeresult1--github_branch).
 
 ## Claim footprints
 
@@ -406,12 +406,12 @@ A thread can carry attributes that say what kind of work it is, who or what
 should do it, and whether it needs a threat model:
 
 ```json
-{ "kind": "change", "engine": "pi", "threat_model": false,
+{ "kind": "change", "engine": "unattended", "threat_model": false,
   "size": "M", "acceptance": "The bridge retries twice; its test proves it." }
 ```
 
 `kind` is `change` (the default), `plan` or `review`. `engine` says which kind
-of worker should take the task: `pi` (an automated worker), `session` (an
+of worker should take the task: `unattended` (an automated worker), `session` (an
 interactive agent session) or `human` (a person). It is absent when nobody has
 routed the work yet. Maidan uses the engine for routing, for the
 [handoff](#handoff-at-non_converging) and for the per-engine metrics; what
@@ -447,17 +447,17 @@ own.
 
 Claiming respects the engine. `claim_next` (HTTP and MCP, channel and
 workspace) takes an optional `engine`, and a claimer that names one is
-handed only work routed to it. A worker that passes `engine: "pi"` is never
+handed only work routed to it. A worker that passes `engine: "unattended"` is never
 handed session or human work, and work nobody routed waits for a claim that
 names no engine.
 
 A workspace can route that work by default. Maidan creates threads that name
 no engine: schedules fire them, inbound A2A messages open them, a message
 becomes one, and a plan child or a REST or MCP create can leave the engine out.
-`PUT /workspaces/{id}/default-engine` with `{ "engine": "pi" }` (`token:admin`,
+`PUT /workspaces/{id}/default-engine` with `{ "engine": "unattended" }` (`token:admin`,
 audited as `workspace.default_engine.set`) routes every thread created in the
-workspace afterwards with no engine to `pi`, in the transaction that creates
-it, so a worker's `claim_next` with `engine: "pi"` is handed it. An engine
+workspace afterwards with no engine to `unattended`, in the transaction that creates
+it, so a worker's `claim_next` with `engine: "unattended"` is handed it. An engine
 named at creation still wins, threads created before keep their routing, and
 `{ "engine": null }` turns the default off. `GET` on the same path reads it
 (`workspace:read`).
@@ -468,20 +468,20 @@ worker and a plan for a session,
 ```http
 POST /channels/{cid}/threads
 { "title": "review the claim queue change",
-  "attributes": { "kind": "review", "engine": "pi", "threat_model": true } }
+  "attributes": { "kind": "review", "engine": "unattended", "threat_model": true } }
 
 POST /channels/{cid}/threads
 { "title": "plan the metering rollout",
   "attributes": { "kind": "plan", "engine": "session" } }
 ```
 
-The automated worker's `claim_next` with `{ "engine": "pi" }` is handed the
+The automated worker's `claim_next` with `{ "engine": "unattended" }` is handed the
 review; the plan waits for a session claim. If the review turns out to
 need a person instead, `PUT /threads/{id}/attributes` with
 `{ "kind": "review", "engine": "human", "threat_model": true }` reroutes
 it whole, and the metrics read for the workspace
-(`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
-that was routed to `pi`.
+(`GET /workspaces/{id}/swarm-metrics?engine=unattended`) counts only the work
+that was routed to `unattended`.
 
 ### A review's author family
 
@@ -586,7 +586,7 @@ refusal.
 ticket carries `linear_issue` and `repo`:
 
 ```json
-{ "kind": "change", "engine": "pi", "linear_issue": "ENG-5150", "repo": "example/widgets" }
+{ "kind": "change", "engine": "unattended", "linear_issue": "ENG-5150", "repo": "example/widgets" }
 ```
 
 `repo` is `owner/name` (a GitHub URL is read as its `owner/name`, and any case
@@ -679,14 +679,14 @@ several replicas sweeping.
 
 ### Handoff at `non_converging`
 
-A task routed to the automated engine (`pi`) that stops converging is handed
+A task routed to the automated engine (`unattended`) that stops converging is handed
 to a session, once. The change sweep flags a task `non_converging` when it is
 still open after the round limit (3), or when its diff grew in each of the
-last three rounds. For a task routed to `pi`, it then:
+last three rounds. For a task routed to `unattended`, it then:
 
 - ends the claim, charging its worked time as any claim end does, so the
   worker's next renew is refused;
-- sets the task's engine to `session`, so a `pi` worker's `claim_next` never
+- sets the task's engine to `session`, so an `unattended` worker's `claim_next` never
   takes it again, and leaves the task open for a session;
 - appends a `ThreadHandoff` event (rounds, repository, pull request, the new
   engine), posts a line in the thread, and queues the same line in the
@@ -843,7 +843,7 @@ when the engine it was routed to could not finish it: it is open and flagged
 it was handed to a session at `non_converging`.
 
 The first seven numbers are repeated for three splits: by the engine each
-task was routed to (`by_engine`: `pi`, `session`, `human`, then unrouted),
+task was routed to (`by_engine`: `unattended`, `session`, `human`, then unrouted),
 by size (`by_size`: `S`, `M`, `L`, then unsized) and by risk tier
 (`by_risk`: standard work, then `threat_model` work). A split leaves out a
 slice with no tasks. If you route work to engines by size or risk, compare

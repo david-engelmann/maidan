@@ -1555,13 +1555,13 @@ macro_rules! store_delegations {
                 result_deliveries::get(self.pool(), thread_id, target).await
             }
 
-            async fn set_result_delivery_template_warnings(
+            async fn set_result_delivery_warnings(
                 &self,
                 thread_id: ThreadId,
                 target: &EgressTarget,
                 warnings: &[String],
             ) -> Result<(), StoreError> {
-                result_deliveries::set_template_warnings(self.pool(), thread_id, target, warnings)
+                result_deliveries::set_delivery_warnings(self.pool(), thread_id, target, warnings)
                     .await
             }
 

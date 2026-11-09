@@ -240,8 +240,8 @@
   {
     "kind": "thread_handoff",
     "disposition": "internal_only",
-    "internal_evidence": "crates/maidan-server/tests/change_flow_e2e.rs#a_non_converging_pi_task_is_handed_to_a_session_once",
-    "note": "The change sweep hands a non-converging Pi task to a session; clients cannot assert one."
+    "internal_evidence": "crates/maidan-server/tests/change_flow_e2e.rs#a_non_converging_unattended_task_is_handed_to_a_session_once",
+    "note": "The change sweep hands a non-converging unattended task to a session; clients cannot assert one."
   },
   {
     "kind": "thread_ready",

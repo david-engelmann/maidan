@@ -142,7 +142,7 @@ async fn find_threads_by_attribute_over_the_wire() {
     let b = room(store.as_ref(), "find-b").await;
 
     let pi_attrs = json!({
-        "kind": "change", "engine": "pi",
+        "kind": "change", "engine": "unattended",
         "linear_issue": "ENG-100", "tier": "A", "lane": "batch"
     });
     let (status, pi) = create_thread(
@@ -177,11 +177,11 @@ async fn find_threads_by_attribute_over_the_wire() {
     let (status, found) = find(&base, &a.token, a.ws, "attr.linear_issue=ENG-100").await;
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(ids(&found), vec![pi["id"].as_str().unwrap()]);
-    assert_eq!(found[0]["attributes"]["engine"], "pi");
+    assert_eq!(found[0]["attributes"]["engine"], "unattended");
     assert_eq!(found[0]["attributes"]["tier"], "A");
 
     // The bare shorthand agrees with the attr. spelling.
-    let (status, found) = find(&base, &a.token, a.ws, "engine=pi").await;
+    let (status, found) = find(&base, &a.token, a.ws, "engine=unattended").await;
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(ids(&found), vec![pi["id"].as_str().unwrap()]);
 
@@ -260,7 +260,7 @@ async fn find_threads_by_attribute_over_the_wire() {
     // Garbage refuses rather than silently matching everything.
     for query in [
         "attr.engine=robot",
-        "attr.engnie=pi",
+        "attr.engnie=unattended",
         "attr.linear_issue=not-a-key",
         "ref.twin_of=not-a-thread",
         "ref.=00000000-0000-0000-0000-000000000000",

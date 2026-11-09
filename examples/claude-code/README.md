@@ -49,7 +49,7 @@ review and releases the claim.
 |---|---|
 | [`maidan-claimant/SKILL.md`](maidan-claimant/SKILL.md) | The skill: when to use it and the loop in short |
 | [`maidan-claimant/runbook.md`](maidan-claimant/runbook.md) | The procedure, with every call's arguments. The [Cursor rule](../cursor/) uses the same text |
-| [`maidan-claimant/change_result.py`](maidan-claimant/change_result.py) | Builds the `pi.change.result/1` envelope from git and checks it against what the change flow accepts. Standard library only, no network |
+| [`maidan-claimant/change_result.py`](maidan-claimant/change_result.py) | Builds the `maidan.change.result/1` envelope from git and checks it against what the change flow accepts. Standard library only, no network |
 | [`mcp.json`](mcp.json) | The `.mcp.json` entry for Maidan |
 
 ### Set it up

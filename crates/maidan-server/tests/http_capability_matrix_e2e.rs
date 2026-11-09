@@ -697,7 +697,7 @@ fn apply_route_defaults(
     if path == "/threads/{id}/attributes" && method == "PUT" {
         return b.json(&json!({
             "kind": "review",
-            "engine": "pi",
+            "engine": "unattended",
             "threat_model": true
         }));
     }

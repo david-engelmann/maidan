@@ -266,7 +266,7 @@ export interface Thread {
 /** A task's attributes: what kind of work it is and who it is routed to. */
 export interface TaskAttributes {
   kind: "change" | "plan" | "review";
-  engine?: "pi" | "session" | "human";
+  engine?: "unattended" | "session" | "human";
   threat_model: boolean;
   size?: "S" | "M" | "L";
   /** How a reviewer verifies the task. */
@@ -331,7 +331,7 @@ export interface ResultDelivery {
   head_sha?: string | null;
   pr_number?: number | null;
   pr_url?: string | null;
-  template_warnings?: unknown[];
+  delivery_warnings?: unknown[];
   created_at: string;
   updated_at: string;
 }

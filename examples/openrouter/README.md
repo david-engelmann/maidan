@@ -23,7 +23,7 @@ What one run does:
 4. Lets the model work until it calls `finish`, then runs the gate
    (`--gate`, default `make prepush`). A failing gate goes back to the
    model once (`--gate-retries`).
-5. Commits, builds the `pi.change.result/1` with the runbook's
+5. Commits, builds the `maidan.change.result/1` with the runbook's
    `change_result.py`, and `PUT`s it, so Maidan opens the draft pull request.
    For a change the flow cannot commit (the helper's exit 3), `--allow-push`
    takes the runbook's fallback: its own branch, a draft via `gh`, and

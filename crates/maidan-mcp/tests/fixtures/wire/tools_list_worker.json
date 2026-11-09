@@ -160,7 +160,7 @@
           "engine": {
             "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
             "enum": [
-              "pi",
+              "unattended",
               "session",
               "human"
             ],
@@ -206,7 +206,7 @@
           "engine": {
             "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
             "enum": [
-              "pi",
+              "unattended",
               "session",
               "human"
             ],
@@ -893,7 +893,7 @@
         "readOnlyHint": false,
         "title": "Set thread attributes"
       },
-      "description": "Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.",
+      "description": "Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (unattended, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so an unattended worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.",
       "inputSchema": {
         "properties": {
           "acceptance": {
@@ -914,7 +914,7 @@
           "engine": {
             "description": "omit to leave the work unrouted",
             "enum": [
-              "pi",
+              "unattended",
               "session",
               "human"
             ],

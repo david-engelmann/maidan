@@ -60,8 +60,9 @@ pub struct LinearNoticeDue {
 }
 
 impl LinearNoticeDue {
-    /// The comment: `CLAIM: pi/<task id> …` or `RELEASED: pi/<task id> …`,
-    /// prefixed with the engine the task is routed to.
+    /// The comment: `CLAIM: unattended/<task id> …` or
+    /// `RELEASED: unattended/<task id> …`, prefixed with the engine the task
+    /// is routed to.
     pub fn body(&self) -> String {
         let task = format!(
             "{}/{}",
@@ -123,7 +124,7 @@ mod tests {
             kind,
             issue: "ENG-1".into(),
             title: Some(" Name the venue ".into()),
-            engine: Some(crate::TaskEngine::Pi),
+            engine: Some(crate::TaskEngine::Unattended),
             holder: Some("agent0".into()),
             reason: None,
         }
@@ -134,7 +135,7 @@ mod tests {
         let nil = uuid::Uuid::nil();
         assert_eq!(
             due(LinearNoticeKind::Claim).body(),
-            format!("CLAIM: pi/{nil} claimed in Maidan by agent0: Name the venue")
+            format!("CLAIM: unattended/{nil} claimed in Maidan by agent0: Name the venue")
         );
         let mut release = due(LinearNoticeKind::Release);
         release.engine = None;

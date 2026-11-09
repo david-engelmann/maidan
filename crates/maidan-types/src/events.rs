@@ -822,9 +822,10 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         review_state: Option<crate::pull_ci::ReviewState>,
     },
-    /// A Pi task that stopped converging was handed to a session: its claim
-    /// ended and its engine became `session`, so a Pi claim never takes it
-    /// again. Said once per task. Locally derived: not federatable.
+    /// An unattended task that stopped converging was handed to a session:
+    /// its claim ended and its engine became `session`, so an unattended claim
+    /// never takes it again. Said once per task. Locally derived: not
+    /// federatable.
     ThreadHandoff {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,

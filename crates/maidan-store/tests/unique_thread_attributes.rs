@@ -512,7 +512,7 @@ async fn setting_attributes_later_is_checked(store: Arc<dyn Store>) {
         "the refused set wrote nothing"
     );
     let restated = TaskAttributes {
-        engine: Some(TaskEngine::Pi),
+        engine: Some(TaskEngine::Unattended),
         ..ticket("ENG-4")
     };
     store
@@ -599,7 +599,7 @@ async fn concurrent_writers_leave_exactly_one_winner(store: Arc<dyn Store>) {
 async fn a_key_not_in_the_list_is_unaffected(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "unlisted").await;
     let same_lane = |issue: &str| TaskAttributes {
-        engine: Some(TaskEngine::Pi),
+        engine: Some(TaskEngine::Unattended),
         lane: Some(TaskLane::Batch),
         acceptance: Some("It passes.".into()),
         ..ticket(issue)

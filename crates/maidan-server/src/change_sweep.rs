@@ -28,8 +28,8 @@
 //! reverts, follow-up fixes and human effort, in one batch per workspace an
 //! hour.
 //!
-//! A Pi task that stops converging (still open after the round limit, or a
-//! diff that grew each round) is handed to a session once
+//! An unattended task that stops converging (still open after the round
+//! limit, or a diff that grew each round) is handed to a session once
 //! ([`hand_off_stuck`]): its claim ends, its engine becomes `session`, a
 //! `ThreadHandoff` event and a thread message say so, and its Slack thread
 //! gets a line. Where the workspace says claims on Linear, its issue gets the
@@ -83,7 +83,7 @@ pub struct SweepStats {
     pub rebase_notices: usize,
     /// Claim and release comments queued for tasks' Linear issues.
     pub linear_notices: usize,
-    /// Non-converging Pi tasks handed to a session.
+    /// Non-converging unattended tasks handed to a session.
     pub handed_off: usize,
     /// CI notices posted on tracked pull requests' threads (`pr_opened`,
     /// `ci_failed`, `checks_done`).
@@ -453,7 +453,8 @@ async fn queue_linear_notice(
     }
 }
 
-/// Hand each non-converging Pi task in `workspace_id` to a session, once.
+/// Hand each non-converging unattended task in `workspace_id` to a session,
+/// once.
 /// Best effort past the handoff itself: the packet, the message and the
 /// Slack line are said after it commits, and a failed one is logged.
 async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut SweepStats) {
@@ -475,7 +476,7 @@ async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut
     );
     for task in metrics.tasks {
         if task.handed_off
-            || task.attributes.engine != Some(maidan_types::TaskEngine::Pi)
+            || task.attributes.engine != Some(maidan_types::TaskEngine::Unattended)
             || !task.flags.contains(&maidan_types::TaskFlag::NonConverging)
         {
             continue;
@@ -517,7 +518,7 @@ async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut
             .flatten()
             .map(|stored| stored.result);
         let line = format!(
-            "Handed to a session: {}#{} did not converge in {rounds} rounds, so its claim ended and Pi will not take it again.",
+            "Handed to a session: {}#{} did not converge in {rounds} rounds, so its claim ended and no unattended worker will take it again.",
             task.repo, task.pull_number
         );
         if let Some(author_id) = handed.author_id {
@@ -583,7 +584,7 @@ async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut
             kind: maidan_types::LinearNoticeKind::Handoff,
             issue,
             title: None,
-            engine: Some(maidan_types::TaskEngine::Pi),
+            engine: Some(maidan_types::TaskEngine::Unattended),
             holder: None,
             reason: Some(handoff_packet(&task, result.as_ref())),
         };

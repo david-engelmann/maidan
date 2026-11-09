@@ -89,13 +89,13 @@ pub struct ResultDelivery {
     pub delivered_revision: Option<DateTime<Utc>>,
     pub attempts: i64,
     pub last_error: Option<String>,
-    /// For a change: what its pull request lacks against the producer's
-    /// template (`missing_testing`, `missing_issue_key`), and why the result's
-    /// `check` became no commit status (`check_invalid`, `check_not_posted`).
-    /// A flag, not a failure: the change landed either way. Absent when nothing
-    /// is missing.
+    /// What the delivery flagged without failing. For a change: what its pull
+    /// request lacks against the producer's template (`missing_testing`,
+    /// `missing_issue_key`), and why the result's `check` became no commit
+    /// status (`check_invalid`, `check_not_posted`). A flag, not a failure:
+    /// the change landed either way. Absent when there is nothing to flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub template_warnings: Vec<String>,
+    pub delivery_warnings: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -155,7 +155,7 @@ mod tests {
             delivered_revision: None,
             attempts: 1,
             last_error: None,
-            template_warnings: Vec::new(),
+            delivery_warnings: Vec::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

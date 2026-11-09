@@ -2,7 +2,7 @@
 """A one-shot Maidan claimant on any OpenRouter model.
 
 Takes one task routed to sessions, has the model do it in this checkout,
-runs the repository's gate, hands back a `pi.change.result/1` so Maidan opens
+runs the repository's gate, hands back a `maidan.change.result/1` so Maidan opens
 the draft pull request, reports what the model cost, starts review and
 releases the claim. The Maidan side follows the shared claimant runbook
 (examples/claude-code/maidan-claimant/runbook.md) in code, so the model only
@@ -37,7 +37,7 @@ MCP_REVISION = "2026-07-28"
 OPENROUTER = "https://openrouter.ai/api/v1"
 HARNESS = "openrouter"
 WAITER_SCHEMA = "maidan.waiter.result/1"
-CHANGE_KIND = "pi.change.result/1"
+CHANGE_KIND = "maidan.change.result/1"
 HERE = Path(__file__).resolve().parent
 DEFAULT_CLAIMANT_DIR = HERE.parent / "claude-code" / "maidan-claimant"
 # OpenRouter model ids start with the vendor's slug; the swarm metrics want

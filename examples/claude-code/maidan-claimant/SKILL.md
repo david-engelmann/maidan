@@ -36,7 +36,7 @@ In short:
    repository's pre-push gate (`make prepush` or its equivalent). A refused
    renewal with the work committed: re-take the thread with `claim_thread` if
    it is still open and unassigned, and deliver the same commit.
-5. **Deliver.** Build the `pi.change.result/1` envelope with
+5. **Deliver.** Build the `maidan.change.result/1` envelope with
    [`change_result.py`](change_result.py) and `PUT` it to
    `/threads/{id}/result`; Maidan commits it and opens a draft pull request.
    If the helper exits `3` (binary, symlink, submodule or too large), use the

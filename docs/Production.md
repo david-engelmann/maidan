@@ -334,7 +334,7 @@ sender is configured: `MAIDAN_GITHUB_TOKEN` (or a GitHub App),
 webhook routes. Maidan never logs a credential and cuts it out of any error it
 records.
 
-**The GitHub token.** The [change flow](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch)
+**The GitHub token.** The [change flow](Result%20Delivery.md#the-change-flow-maidanchangeresult1--github_branch)
 commits a result to a branch and opens a draft pull request as the token's
 owner. Use a fine-grained token with **Contents** and **Pull requests** (read
 and write) on exactly the repositories it may write to, and nothing else. For

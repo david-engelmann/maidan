@@ -190,7 +190,7 @@ impl ThreadAttributeFilter {
                 "engine" => {
                     filter.engine = Some(
                         TaskEngine::parse(&value)
-                            .ok_or_else(|| bad("a task engine (pi, session or human)"))?,
+                            .ok_or_else(|| bad("a task engine (unattended, session or human)"))?,
                     );
                 }
                 "threat_model" => {
@@ -1508,10 +1508,12 @@ pub trait EgressStore: Send + Sync {
         thread_id: ThreadId,
         target: &EgressTarget,
     ) -> Result<Option<ResultDelivery>, StoreError>;
-    /// What the pull request a change delivered lacks against the producer's
-    /// template (`missing_testing`, `missing_issue_key`), replacing the last
-    /// round's. A flag beside the row's status, never a failure.
-    async fn set_result_delivery_template_warnings(
+    /// What a delivery flagged without failing, replacing the last round's:
+    /// for a change, what its pull request lacks against the producer's
+    /// template (`missing_testing`, `missing_issue_key`) and why its `check`
+    /// became no commit status (`check_invalid`, `check_not_posted`). A flag
+    /// beside the row's status, never a failure.
+    async fn set_result_delivery_warnings(
         &self,
         thread_id: ThreadId,
         target: &EgressTarget,

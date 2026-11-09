@@ -106,7 +106,7 @@ async fn assert_attribute_search(store: &dyn Store) {
 
     let pi_issue = TaskAttributes {
         kind: TaskKind::Change,
-        engine: Some(TaskEngine::Pi),
+        engine: Some(TaskEngine::Unattended),
         linear_issue: Some("ENG-100".into()),
         tier: Some(TaskTier::A),
         lane: Some(TaskLane::Batch),
@@ -134,7 +134,7 @@ async fn assert_attribute_search(store: &dyn Store) {
         "review of the issue",
         Some(TaskAttributes {
             kind: TaskKind::Review,
-            engine: Some(TaskEngine::Pi),
+            engine: Some(TaskEngine::Unattended),
             linear_issue: Some("ENG-100".into()),
             ..TaskAttributes::default()
         }),
@@ -194,7 +194,7 @@ async fn assert_attribute_search(store: &dyn Store) {
 
     // A reader who is not in the private channel never sees its threads.
     let mut as_alice = search(ThreadAttributeFilter {
-        engine: Some(TaskEngine::Pi),
+        engine: Some(TaskEngine::Unattended),
         ..Default::default()
     });
     as_alice.reader_id = Some(alice);
@@ -288,7 +288,7 @@ async fn assert_attribute_search(store: &dyn Store) {
             search(ThreadAttributeFilter {
                 kind: Some(TaskKind::Change),
                 linear_issue: Some("ENG-100".into()),
-                engine: Some(TaskEngine::Pi),
+                engine: Some(TaskEngine::Unattended),
                 ..Default::default()
             }),
         )
@@ -346,7 +346,7 @@ async fn assert_attribute_search(store: &dyn Store) {
             ws_a,
             WorkspaceThreadSearch {
                 filter: ThreadAttributeFilter {
-                    engine: Some(TaskEngine::Pi),
+                    engine: Some(TaskEngine::Unattended),
                     ..Default::default()
                 },
                 limit: 2,
@@ -365,7 +365,7 @@ async fn assert_attribute_search(store: &dyn Store) {
             ws_a,
             WorkspaceThreadSearch {
                 filter: ThreadAttributeFilter {
-                    engine: Some(TaskEngine::Pi),
+                    engine: Some(TaskEngine::Unattended),
                     ..Default::default()
                 },
                 after: page1.last().map(|t| t.id),
@@ -430,7 +430,9 @@ async fn assert_attribute_search(store: &dyn Store) {
         ThreadAttributeFilter::from_pairs(vec![("linear_issue".into(), "not-a-key".into())])
             .is_err()
     );
-    assert!(ThreadAttributeFilter::from_pairs(vec![("engnie".into(), "pi".into())]).is_err());
+    assert!(
+        ThreadAttributeFilter::from_pairs(vec![("engnie".into(), "unattended".into())]).is_err()
+    );
     assert!(ThreadAttributeFilter::from_pairs(vec![("engine".into(), "robot".into())]).is_err());
 }
 

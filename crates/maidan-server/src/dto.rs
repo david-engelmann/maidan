@@ -216,7 +216,7 @@ pub struct ClaimNextThread {
     /// that repository. A thread without a footprint is then never claimed.
     #[serde(default)]
     pub repo: Option<String>,
-    /// Only claim a thread routed to this engine (`pi`, `session` or
+    /// Only claim a thread routed to this engine (`unattended`, `session` or
     /// `human`), for a worker that serves one kind of work. A thread routed
     /// to another engine, or not routed at all, is then never claimed.
     #[serde(default)]
@@ -483,7 +483,7 @@ pub struct FindThreadsQuery {
     pub cursor: Option<uuid::Uuid>,
     /// `"oldest"` (default) or `"newest"`: the direction of the keyset walk.
     pub order: Option<String>,
-    /// Only threads routed to this engine (`pi`, `session` or `human`).
+    /// Only threads routed to this engine (`unattended`, `session` or `human`).
     pub engine: Option<String>,
     /// Only threads carrying this review tier (`A` or `B`).
     pub tier: Option<String>,
@@ -500,7 +500,7 @@ pub struct WorkspaceQueueDepthQuery {
     /// Count only threads whose footprint names this repository (`owner/name`
     /// or a GitHub clone URL). Omitted, any work.
     pub repo: Option<String>,
-    /// Count only threads routed to this engine (`pi`, `session` or
+    /// Count only threads routed to this engine (`unattended`, `session` or
     /// `human`). Omitted, any work.
     pub engine: Option<TaskEngine>,
 }
@@ -536,7 +536,7 @@ pub struct SwarmMetricsQuery {
     pub rounds_limit: Option<i64>,
     /// Commits behind at which a round's base is flagged stale (default 50).
     pub behind_limit: Option<i64>,
-    /// Only tasks routed to this engine (`pi`, `session` or `human`).
+    /// Only tasks routed to this engine (`unattended`, `session` or `human`).
     pub engine: Option<TaskEngine>,
     /// Only tasks of this kind (`change`, `plan` or `review`); a task never
     /// described counts as a change.

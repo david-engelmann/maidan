@@ -285,7 +285,7 @@ model! {
         /// `change`, `plan` or `review`.
         kind: String,
         threat_model: bool,
-        /// `pi`, `session` or `human`.
+        /// `unattended`, `session` or `human`.
         engine: Option<String>,
         /// `S`, `M` or `L`.
         size: Option<String>,
@@ -393,7 +393,7 @@ model! {
         #[serde(default)]
         pr_url: Option<String>,
         #[serde(default)]
-        template_warnings: Option<Vec<Value>>,
+        delivery_warnings: Option<Vec<Value>>,
         created_at: String,
         updated_at: String,
     }

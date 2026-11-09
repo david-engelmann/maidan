@@ -442,7 +442,7 @@ async fn filtered_depth(
 /// never counts nor can be counted with a filter.
 #[tokio::test]
 async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit() {
-    use maidan_types::TaskEngine::{Pi, Session};
+    use maidan_types::TaskEngine::{Session, Unattended};
     let h = spawn().await;
     let store = h.store.as_ref();
     let ws_a = workspace(store, "filters-a").await;
@@ -451,12 +451,12 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
     let agent_b = member(store, ws_b, "agent", MemberKind::Agent).await;
     let chan_a = channel(store, ws_a, "work", false).await;
     let chan_b = channel(store, ws_b, "work", false).await;
-    routed_task(store, chan_a, Some("acme/api"), Some(Pi)).await;
+    routed_task(store, chan_a, Some("acme/api"), Some(Unattended)).await;
     routed_task(store, chan_a, Some("acme/api"), Some(Session)).await;
-    routed_task(store, chan_a, Some("acme/web"), Some(Pi)).await;
+    routed_task(store, chan_a, Some("acme/web"), Some(Unattended)).await;
     routed_task(store, chan_a, None, None).await;
     for _ in 0..3 {
-        routed_task(store, chan_b, Some("acme/api"), Some(Pi)).await;
+        routed_task(store, chan_b, Some("acme/api"), Some(Unattended)).await;
     }
     let bearer_a = agent_token(store, ws_a, agent_a).await;
     let bearer_b = agent_token(store, ws_b, agent_b).await;
@@ -481,7 +481,14 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
     )
     .await;
     assert_eq!(url, api, "a clone URL counts as its owner/name");
-    let pi = filtered_depth(&h, &bearer_a, ws_a, "engine=pi", json!({ "engine": "pi" })).await;
+    let pi = filtered_depth(
+        &h,
+        &bearer_a,
+        ws_a,
+        "engine=unattended",
+        json!({ "engine": "unattended" }),
+    )
+    .await;
     assert_eq!(
         pi["ready"], 2,
         "the two pi threads, never the unrouted one: {pi}"
@@ -490,8 +497,8 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
         &h,
         &bearer_a,
         ws_a,
-        "repo=acme/api&engine=pi",
-        json!({ "repo": "acme/api", "engine": "pi" }),
+        "repo=acme/api&engine=unattended",
+        json!({ "repo": "acme/api", "engine": "unattended" }),
     )
     .await;
     assert_eq!(both["ready"], 1, "both filters hold at once: {both}");
@@ -501,7 +508,7 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
             Method::POST,
             &format!("/workspaces/{}/threads/claim-next", ws_a.0),
             &bearer_a,
-            Some(json!({ "repo": "acme/api", "engine": "pi" })),
+            Some(json!({ "repo": "acme/api", "engine": "unattended" })),
         )
         .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -509,8 +516,8 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
         &h,
         &bearer_a,
         ws_a,
-        "repo=acme/api&engine=pi",
-        json!({ "repo": "acme/api", "engine": "pi" }),
+        "repo=acme/api&engine=unattended",
+        json!({ "repo": "acme/api", "engine": "unattended" }),
     )
     .await;
     assert_eq!(
@@ -523,15 +530,18 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
         &h,
         &bearer_b,
         ws_b,
-        "repo=acme/api&engine=pi",
-        json!({ "repo": "acme/api", "engine": "pi" }),
+        "repo=acme/api&engine=unattended",
+        json!({ "repo": "acme/api", "engine": "unattended" }),
     )
     .await;
     assert_eq!(b["ready"], 3, "B counts its own matching work only: {b}");
     let (status, body) = get(
         &h,
         &bearer_a,
-        &format!("/workspaces/{}/queue-depth?repo=acme/api&engine=pi", ws_b.0),
+        &format!(
+            "/workspaces/{}/queue-depth?repo=acme/api&engine=unattended",
+            ws_b.0
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
@@ -539,7 +549,7 @@ async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit(
         &h,
         &bearer_a,
         "get_workspace_queue_depth",
-        json!({ "workspace_id": ws_b.0, "repo": "acme/api", "engine": "pi" }),
+        json!({ "workspace_id": ws_b.0, "repo": "acme/api", "engine": "unattended" }),
     )
     .await;
     assert!(

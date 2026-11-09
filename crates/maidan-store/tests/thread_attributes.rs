@@ -113,7 +113,7 @@ async fn attributes_set_later_replace_the_whole_set(store: Arc<dyn Store>) {
         .create_thread_with_footprint(
             new_thread(room.channel, "task"),
             None,
-            Some(attrs(TaskKind::Change, Some(TaskEngine::Pi), false)),
+            Some(attrs(TaskKind::Change, Some(TaskEngine::Unattended), false)),
             None,
         )
         .await
@@ -146,7 +146,7 @@ async fn an_engine_claim_takes_only_its_own_work(store: Arc<dyn Store>) {
         ("for a session", Some(TaskEngine::Session)),
         ("for a person", Some(TaskEngine::Human)),
         ("unrouted", None),
-        ("for pi", Some(TaskEngine::Pi)),
+        ("for pi", Some(TaskEngine::Unattended)),
     ] {
         store
             .create_thread_with_footprint(
@@ -159,14 +159,14 @@ async fn an_engine_claim_takes_only_its_own_work(store: Arc<dyn Store>) {
             .unwrap();
     }
     let claimed = store
-        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Pi))
+        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Unattended))
         .await
         .unwrap()
-        .expect("the pi task is claimable");
+        .expect("the unattended task is claimable");
     assert_eq!(claimed.title.as_deref(), Some("for pi"));
-    // Nothing else in the channel is pi work.
+    // Nothing else in the channel is unattended work.
     assert!(store
-        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Pi))
+        .claim_next_thread(room.channel, pi, Some(600), Some(TaskEngine::Unattended))
         .await
         .unwrap()
         .is_none());
@@ -182,7 +182,7 @@ async fn an_engine_claim_takes_only_its_own_work(store: Arc<dyn Store>) {
 /// A live claim's entry on the claims list carries the thread's attributes.
 async fn a_live_claim_entry_carries_the_attributes(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "claims", 1).await;
-    let described = attrs(TaskKind::Review, Some(TaskEngine::Pi), true);
+    let described = attrs(TaskKind::Review, Some(TaskEngine::Unattended), true);
     let (thread, _event) = store
         .create_thread_with_footprint(
             new_thread(room.channel, "claimed"),
@@ -217,7 +217,7 @@ async fn a_live_claim_entry_carries_the_attributes(store: Arc<dyn Store>) {
 /// splits by engine.
 async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "metrics", 1).await;
-    let described = attrs(TaskKind::Review, Some(TaskEngine::Pi), false);
+    let described = attrs(TaskKind::Review, Some(TaskEngine::Unattended), false);
     let (review, _event) = store
         .create_thread_with_footprint(
             new_thread(room.channel, "review task"),
@@ -269,7 +269,14 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(plain_pull.attributes, TaskAttributes::default());
 
     let pi_only = store
-        .list_change_pulls(room.ws, None, None, Some(TaskEngine::Pi), None, None)
+        .list_change_pulls(
+            room.ws,
+            None,
+            None,
+            Some(TaskEngine::Unattended),
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(pi_only.len(), 1);
@@ -285,7 +292,7 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
         maidan_types::swarm_metrics(all, maidan_types::FlagLimits::default(), chrono::Utc::now());
     let rollup = &metrics.repos[0];
     assert_eq!(rollup.by_engine.len(), 2);
-    assert_eq!(rollup.by_engine[0].engine, Some(TaskEngine::Pi));
+    assert_eq!(rollup.by_engine[0].engine, Some(TaskEngine::Unattended));
     assert_eq!(rollup.by_engine[0].numbers.tasks, 1);
     assert_eq!(rollup.by_engine[1].engine, None);
     assert_eq!(rollup.by_engine[1].numbers.tasks, 1);
@@ -480,7 +487,7 @@ async fn size_and_acceptance_are_stored_and_checked(store: Arc<dyn Store>) {
     let sized = TaskAttributes {
         size: Some(TaskSize::M),
         acceptance: Some("  The bridge retries twice, and its test proves it.  ".into()),
-        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+        ..attrs(TaskKind::Change, Some(TaskEngine::Unattended), false)
     };
     let (thread, _) = store
         .create_thread_with_footprint(new_thread(room.channel, "sized"), None, Some(sized), None)
@@ -633,7 +640,7 @@ async fn a_tier_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "tiers", 1).await;
     let tier_a = TaskAttributes {
         tier: Some(TaskTier::A),
-        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+        ..attrs(TaskKind::Change, Some(TaskEngine::Unattended), false)
     };
     let (thread, _event) = store
         .create_thread_with_footprint(
@@ -722,7 +729,7 @@ async fn a_lane_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "lanes", 1).await;
     let batch = TaskAttributes {
         lane: Some(TaskLane::Batch),
-        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+        ..attrs(TaskKind::Change, Some(TaskEngine::Unattended), false)
     };
     let (thread, _event) = store
         .create_thread_with_footprint(
@@ -811,7 +818,7 @@ async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
         .create_thread_with_footprint(
             new_thread(room.channel, "change"),
             None,
-            Some(attrs(TaskKind::Change, Some(TaskEngine::Pi), false)),
+            Some(attrs(TaskKind::Change, Some(TaskEngine::Unattended), false)),
             None,
         )
         .await

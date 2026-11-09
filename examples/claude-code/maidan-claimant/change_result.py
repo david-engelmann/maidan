@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a `pi.change.result/1` envelope from a local checkout.
+"""Build a `maidan.change.result/1` envelope from a local checkout.
 
 The session claimant hands Maidan the commit it started from and a text diff;
 Maidan commits it and opens the draft pull request. A diff a model copies by
@@ -31,7 +31,7 @@ import subprocess
 import sys
 
 SCHEMA = "maidan.waiter.result/1"
-RESULT_KIND = "pi.change.result/1"
+RESULT_KIND = "maidan.change.result/1"
 # Maidan writes only these branches (`maidan_types::is_change_branch`).
 CHANGE_BRANCH = re.compile(r"^feature/agent-[a-z0-9][a-z0-9-]*$")
 # `maidan_types::is_issue_key`.

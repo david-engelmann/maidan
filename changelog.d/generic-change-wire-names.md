@@ -1,0 +1,5 @@
+### The change producer's wire values take generic names (breaking)
+
+- **Changed:** **Breaking wire change, with no alias.** The task engine `pi` is now `unattended` (`TaskEngine::Unattended`) on thread attributes, a workspace's default engine, `claim_next` and every engine filter. A change result's `result_kind` is `maidan.change.result/1`, attachments are read from `maidan.result_attachments` (or a nested `maidan` object), and the pull request body's kept section is marked `<!-- maidan:current-state -->`. The old names are refused, or ignored, like any unknown value. A producer must send the new names from this release on.
+- **Changed:** **Breaking API change.** The delivery row's `template_warnings` is now `delivery_warnings`, since it carries the result's check codes as well as the template's. The SDK models follow.
+- **Changed:** migration 0227 (on both backends) widens the engine checks to the new value and renames the column. A thread or workspace still routed to `pi` is left unrouted, not renamed.

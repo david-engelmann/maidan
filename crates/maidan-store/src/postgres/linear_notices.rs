@@ -108,14 +108,14 @@ pub async fn list_due(
         issue: row.get("linear_issue"),
         title: row.get("title"),
         // A handoff moved the task to `session`; its release still names
-        // the engine that held it, and only Pi tasks are handed off.
+        // the engine that held it, and only unattended tasks are handed off.
         engine: if row
             .try_get::<Option<i64>, _>("handoff_rounds")
             .ok()
             .flatten()
             .is_some()
         {
-            Some(TaskEngine::Pi)
+            Some(TaskEngine::Unattended)
         } else {
             row.get::<Option<String>, _>("engine")
                 .and_then(|engine| TaskEngine::parse(&engine))

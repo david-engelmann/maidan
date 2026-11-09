@@ -12,7 +12,7 @@ use maidan_types::{
 
 const COLS: &str = "id, thread_id, surface, selector, status, external_ref, \
                     armed_revision, delivered_revision, attempts, last_error, \
-                    template_warnings, created_at, updated_at";
+                    delivery_warnings, created_at, updated_at";
 
 /// Arm `(thread, target)` for `revision`, returning the row when *this* caller
 /// won the right to deliver it.
@@ -286,7 +286,7 @@ pub async fn prepare_replay(
 /// Record what the pull request a change delivered lacks against the
 /// producer's template, replacing what an earlier round recorded. Empty
 /// clears it. Kept apart from `last_error`, which means "did not land".
-pub async fn set_template_warnings(
+pub async fn set_delivery_warnings(
     pool: &PgPool,
     thread_id: ThreadId,
     target: &EgressTarget,
@@ -294,7 +294,7 @@ pub async fn set_template_warnings(
 ) -> Result<(), StoreError> {
     let codes = (!warnings.is_empty()).then(|| warnings.join(","));
     sqlx::query(
-        "UPDATE maidan_result_deliveries SET template_warnings = $4
+        "UPDATE maidan_result_deliveries SET delivery_warnings = $4
          WHERE thread_id = $1 AND surface = $2 AND selector = $3",
     )
     .bind(thread_id.0)
@@ -321,8 +321,8 @@ fn row_to_delivery(row: &sqlx::postgres::PgRow) -> ResultDelivery {
         delivered_revision: row.get("delivered_revision"),
         attempts: row.get("attempts"),
         last_error: row.get("last_error"),
-        template_warnings: row
-            .get::<Option<String>, _>("template_warnings")
+        delivery_warnings: row
+            .get::<Option<String>, _>("delivery_warnings")
             .map(|codes| codes.split(',').map(str::to_string).collect())
             .unwrap_or_default(),
         created_at: row.get("created_at"),

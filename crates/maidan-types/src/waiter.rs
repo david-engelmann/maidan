@@ -310,7 +310,7 @@ pub struct GithubReviewComment {
     pub body: String,
 }
 
-/// One file a producer attached to its result, under `pi.result_attachments`
+/// One file a producer attached to its result, under `maidan.result_attachments`
 /// in the envelope. The bytes live in Maidan's artifact store; the envelope
 /// carries only the pointer, so a GitHub delivery can link the file instead
 /// of restating it. Extra producer fields on the entry are ignored.
@@ -360,7 +360,7 @@ pub struct WaiterResult {
     /// Findings that have a file, a body, and a valid post-image
     /// [`FindingLineRange`]. Malformed entries are skipped, not an error.
     pub findings: Vec<WaiterFinding>,
-    /// Files the producer attached, from `pi.result_attachments`. A GitHub
+    /// Files the producer attached, from `maidan.result_attachments`. A GitHub
     /// delivery links each one; other surfaces ignore them. Malformed
     /// entries are skipped, not an error.
     pub attachments: Vec<ResultAttachment>,
@@ -534,10 +534,10 @@ fn findings_contain_critical(value: &Value) -> bool {
         })
 }
 
-/// The producer shape for a coding result that becomes a commit:
-/// `pi.change.result/1`, a wire name producers already send. Same rule as
-/// [`EXAMPLE_REVIEW_RESULT_KIND`]: compare the string, do not close the set.
-pub const CHANGE_RESULT_KIND: &str = "pi.change.result/1";
+/// The producer shape for a coding result that becomes a commit. Same rule
+/// as [`EXAMPLE_REVIEW_RESULT_KIND`]: compare the string, do not close the
+/// set. Any other kind is not a change result.
+pub const CHANGE_RESULT_KIND: &str = "maidan.change.result/1";
 
 /// The only change status that commits. `no_change`, `seat_error` and
 /// `content_blocked` are recorded and answered in Slack, never committed.
@@ -1157,13 +1157,17 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         .unwrap_or_default();
 
     // The producer writes the list under the dotted top-level key
-    // `pi.result_attachments` (the cross-repo attachments contract),
+    // `maidan.result_attachments` (the cross-repo attachments contract),
     // which the consuming app also reads, falling back to an unprefixed
-    // key. A nested `pi` object is read last, for a producer that nests it.
+    // key. A nested `maidan` object is read last, for a producer that nests
+    // it.
     let attachments = obj
-        .get("pi.result_attachments")
+        .get("maidan.result_attachments")
         .or_else(|| obj.get("result_attachments"))
-        .or_else(|| obj.get("pi").and_then(|ns| ns.get("result_attachments")))
+        .or_else(|| {
+            obj.get("maidan")
+                .and_then(|ns| ns.get("result_attachments"))
+        })
         .and_then(Value::as_array)
         .map(|entries| entries.iter().filter_map(parse_result_attachment).collect())
         .unwrap_or_default();
@@ -1439,7 +1443,7 @@ mod tests {
             "schema": WAITER_RESULT_SCHEMA,
             "result_kind": "example.review.result/1",
             "status": "reviewed",
-            "pi.result_attachments": [
+            "maidan.result_attachments": [
                 { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
                 { "sha": "b".repeat(64), "filename": "notes.md" },
                 { "sha256": "c".repeat(64), "filename": "extra.bin", "caption": "", "producer_field": 1 }
@@ -1481,7 +1485,7 @@ mod tests {
                 "schema": WAITER_RESULT_SCHEMA,
                 "result_kind": "example.review.result/1",
                 "status": "reviewed",
-                "pi": { "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }] }
+                "maidan": { "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }] }
             }),
         ] {
             let parsed = parse_waiter_result(&value).expect("envelope parses");
@@ -1495,7 +1499,7 @@ mod tests {
             "schema": WAITER_RESULT_SCHEMA,
             "result_kind": "example.review.result/1",
             "status": "reviewed",
-            "pi": {
+            "maidan": {
                 "result_attachments": [
                     { "filename": "no-sha.png" },
                     { "sha256": "d".repeat(64) },
@@ -1512,7 +1516,7 @@ mod tests {
         assert_eq!(parsed.attachments.len(), 1);
         assert_eq!(parsed.attachments[0].filename, "kept.png");
 
-        // No `pi` namespace at all is the normal case, not an error.
+        // No `maidan` namespace at all is the normal case, not an error.
         let bare = json!({
             "schema": WAITER_RESULT_SCHEMA,
             "result_kind": "example.review.result/1",
@@ -2082,6 +2086,49 @@ mod tests {
         let mut review = change_envelope(json!([]));
         review["result_kind"] = json!(EXAMPLE_REVIEW_RESULT_KIND);
         assert!(parse_change_result(&review).is_none());
+    }
+
+    #[test]
+    fn a_change_result_is_read_under_the_maidan_change_kind() {
+        assert_eq!(CHANGE_RESULT_KIND, "maidan.change.result/1");
+        let mut env = change_envelope(json!([]));
+        env["result_kind"] = json!("maidan.change.result/1");
+        assert!(parse_change_result(&env)
+            .expect("a change result")
+            .is_changed());
+    }
+
+    #[test]
+    fn the_retired_change_kind_is_not_a_change_result() {
+        // No alias and no fallback parse: the old kind is just another
+        // result kind, so nothing is committed from it.
+        let mut env = change_envelope(json!([]));
+        env["result_kind"] = json!("pi.change.result/1");
+        assert!(parse_change_result(&env).is_none());
+        let waiter = parse_waiter_result(&env).expect("still a waiter envelope");
+        assert_eq!(waiter.result_kind, "pi.change.result/1");
+    }
+
+    #[test]
+    fn attachments_under_the_retired_key_or_namespace_are_not_read() {
+        let entry = json!([{ "sha256": "a".repeat(64), "filename": "a.png" }]);
+        for value in [
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "pi.result_attachments": entry,
+            }),
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "pi": { "result_attachments": entry },
+            }),
+        ] {
+            let parsed = parse_waiter_result(&value).expect("envelope parses");
+            assert!(parsed.attachments.is_empty(), "{value}");
+        }
     }
 
     #[test]

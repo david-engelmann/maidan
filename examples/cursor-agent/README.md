@@ -3,7 +3,7 @@
 `cursor-agent`, Cursor's command-line agent, works one Maidan task per run
 with the same rule and runbook as the [Cursor editor](../cursor/): it claims
 a task routed to sessions, does it in the checkout, runs the repository's
-pre-push gate, hands back a `pi.change.result/1` so Maidan opens the draft
+pre-push gate, hands back a `maidan.change.result/1` so Maidan opens the draft
 pull request, reports usage and releases the claim. Nothing here is copied
 from the runbook; the run prompt points the agent at it.
 

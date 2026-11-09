@@ -492,7 +492,7 @@ async fn a_reviewed_github_result_links_its_producer_attachments_in_the_summary_
     h.state.public_origin = Some("https://maidan.example.com".to_string());
     bless_github(&h).await;
     let mut result = envelope("reviewed", github_target(), None, json!([]));
-    result["pi.result_attachments"] = json!(
+    result["maidan.result_attachments"] = json!(
         [
             { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
             { "sha256": "b".repeat(64), "filename": "notes.md" },
