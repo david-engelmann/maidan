@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v440.0.0](https://github.com/david-engelmann/maidan/releases/tag/v440.0.0) — a call aimed at a lost claim, an ended thread or a deleted one answers an error, and 3 more
+
+Generic change-producer wire names (unattended engine, maidan.change.result/1), explicit delivery states, ops alerts once per outage.
+
+- A call aimed at a lost claim, an ended thread or a deleted one answers an error
+- An operator alert posts once per outage, and a wake of the same build is silent
+- The change producer's wire values take generic names (breaking)
+- The SQLite WAL advisory is accepted until sqlx allows the fix
+
+`CHANGELOG.md` under `[440.0.0]` has every entry.
+
 ## [v439.0.0](https://github.com/david-engelmann/maidan/releases/tag/v439.0.0) — the console is dark by default, with a real light mode beside it, and 2 more
 
 a dark theme by default with a real light mode and a theme switch, GitHub errors that say why, and how a harness uses message threads beside Maidan.

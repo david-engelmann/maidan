@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [440.0.0] — 2026-11-09
+
+Generic change-producer wire names (unattended engine, maidan.change.result/1), explicit delivery states, ops alerts once per outage.
+
+### A call aimed at a lost claim, an ended thread or a deleted one answers an error
+
+- **Fixed:** a lease is lost the moment its deadline passes (outside the boot grace), not when the reaper frees it. `renew_claim` and the result write on an expired lease used to answer success, and a renewal revived a claim `claim_next` already counted as free; both now answer `409 claim-lost` on both backends, on the same clock `claim_next` reads, and the Postgres result write locks the thread row so it cannot interleave with a takeover.
+- **Changed:** `POST /threads/{id}/claim/renew` with a lease that is not the thread's live claim answers `409 claim-lost` (was `404`); a thread that does not exist is still `404`.
+- **Changed:** over MCP a lost claim is JSON-RPC error `-32012` (was `-32602` invalid params), with `claim_lost` still leading the message and `data: {"code": "claim_lost", "status": 409, "type": ".../claim-lost"}`. An ended thread is `-32013` (`data.code` `thread_ended`) and a deleted one `-32014` (`data.code` `gone`).
+- **Fixed:** `POST /threads/{tid}/messages` and MCP `post_message` refuse an archived thread with `409 thread-ended` and a deleted one with `410 gone`. A closed thread still takes messages, so people can discuss work after it closes.
+- **Fixed:** `PUT /threads/{id}/footprint`, `POST /threads/{id}/required-skills` and their MCP twins refuse a closed or archived thread with `409 thread-ended` (a deleted one `410 gone`). An open thread nobody holds still takes a footprint, which `claim_next` reads before handing it out.
+- **Fixed:** `POST /operator/github/mark-ready` and `POST /operator/github/enqueue` refuse a pull request whose task is closed or archived with `409 thread-ended`, and write nothing to GitHub.
+- **Added:** a repeat cancel answers `replayed: true` (`false` on the cancel that closed the thread), and the enqueue answer carries `already`: `true` when the pull request was already labelled (or, on dequeue, already unlabelled) and the call changed nothing. Two new problem types, `thread-ended` (409) and `gone` (410), on the problems page and in all four SDKs.
+
+### An operator alert posts once per outage, and a wake of the same build is silent
+
+- **Fixed:** The alert that GitHub refuses Maidan's token access to a repository's CI reposted about every 50 minutes through one outage, and "Maidan vN started" posted on every wake with no deploy. The hosted container sleeps after 15 idle minutes and each wake is a fresh process, while the alert dedupe lived only in memory. A standing condition now posts once, is remembered in the database (migration `0226_ops_alerts`), posts a "Resolved" line when it clears, and posts again only if it comes back. The boot line posts only for a build that has not announced itself yet, so a new version or the first boot ever posts and a wake does not. When the database does not answer, both fall back to the 15-minute in-memory window, so an alert is repeated rather than lost. Loop alerts (panic, stall, failing, exited) keep the window.
+- **Fixed:** The alert reads "GitHub refuses Maidan's token access to the CI on …"; it was missing a word.
+
+### The change producer's wire values take generic names (breaking)
+
+- **Changed:** **Breaking wire change, with no alias.** The task engine `pi` is now `unattended` (`TaskEngine::Unattended`) on thread attributes, a workspace's default engine, `claim_next` and every engine filter. A change result's `result_kind` is `maidan.change.result/1`, attachments are read from `maidan.result_attachments` (or a nested `maidan` object), and the pull request body's kept section is marked `<!-- maidan:current-state -->`. The old names are refused, or ignored, like any unknown value. A producer must send the new names from this release on.
+- **Changed:** **Breaking API change.** The delivery row's `template_warnings` is now `delivery_warnings`, since it carries the result's check codes as well as the template's. The SDK models follow.
+- **Changed:** migration 0227 (on both backends) widens the engine checks to the new value and renames the column. A thread or workspace still routed to `pi` is left unrouted, not renamed.
+
+### The SQLite WAL advisory is accepted until sqlx allows the fix
+
+- **Security:** RUSTSEC-2026-0459 (CVE-2026-119375; bundled SQLite before 3.54 can return uninitialized memory when a database is opened beside a `-wal` file a less trusted party wrote) is accepted in `deny.toml` and the OSV scan. Maidan opens only the operator's `DATABASE_URL` file and files it creates itself. The fixed `libsqlite3-sys` 0.39 is outside every sqlx release's range, so the ignore drops when sqlx allows it.
+
 ## [439.0.0] — 2026-11-09
 
 a dark theme by default with a real light mode and a theme switch, GitHub errors that say why, and how a harness uses message threads beside Maidan.
