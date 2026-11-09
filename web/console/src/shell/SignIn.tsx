@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from "rea
 import { useSession } from "../hooks/useSession.ts";
 import { Mark } from "./icons.tsx";
 import { noTokenHelp, noWorkspaceText } from "../core/firstRun.ts";
-import { isWorkspaceInvite, readSignupCheck, signInReturnTo, workspaceNameRefusal } from "../core/signup.ts";
+import { isWorkspaceInvite, readSignupCheck, signInReturnTo, turnstileSize, workspaceNameRefusal } from "../core/signup.ts";
 
 export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const { session, store } = useSession();
@@ -164,6 +164,7 @@ function useSignupTurnstile(siteKey: string | null): { slot: RefObject<HTMLDivEl
       window.turnstile.render(slot.current, {
         sitekey: siteKey,
         action: "signup",
+        size: turnstileSize(slot.current.clientWidth),
         callback: (value) => setToken(value),
         "expired-callback": () => setToken(""),
       });

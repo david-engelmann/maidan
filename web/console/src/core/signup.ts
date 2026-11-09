@@ -21,6 +21,14 @@ export function workspaceNameRefusal(raw: string): string | null {
   return null;
 }
 
+/** Turnstile's normal widget is 300px wide; in a narrower column, as on a 360px phone, it ran past the form. */
+export const TURNSTILE_NORMAL_WIDTH = 300;
+
+/** The Turnstile size that fits a slot `width` pixels wide. */
+export function turnstileSize(width: number): "normal" | "compact" {
+  return width < TURNSTILE_NORMAL_WIDTH ? "compact" : "normal";
+}
+
 /** Unicode category Cc: C0 controls, DEL, and the C1 controls. */
 function isControl(char: string): boolean {
   const code = char.codePointAt(0) ?? 0;

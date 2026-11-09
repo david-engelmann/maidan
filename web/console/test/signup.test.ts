@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isWorkspaceInvite, readSignupCheck, sameOriginReturn, workspaceNameRefusal, WORKSPACE_NAME_MAX } from "../src/core/signup.ts";
+import { isWorkspaceInvite, readSignupCheck, sameOriginReturn, turnstileSize, workspaceNameRefusal, WORKSPACE_NAME_MAX } from "../src/core/signup.ts";
 
 test("a blank workspace name is allowed and a bad one is not", () => {
   assert.equal(workspaceNameRefusal(""), null);
@@ -25,4 +25,12 @@ test("the sign-up check keeps the name, the invite and a same-origin return", ()
   assert.equal(sameOriginReturn("//evil.example"), "/ui/");
   assert.equal(sameOriginReturn("https://evil.example"), "/ui/");
   assert.equal(sameOriginReturn("/ui/?x=1"), "/ui/?x=1");
+});
+
+test("the sign-up check is compact in a column narrower than its normal widget", () => {
+  // The sign-in card's column is 275px on a 360px phone and 297px at 390.
+  assert.equal(turnstileSize(275), "compact");
+  assert.equal(turnstileSize(299), "compact");
+  assert.equal(turnstileSize(300), "normal");
+  assert.equal(turnstileSize(342), "normal");
 });
