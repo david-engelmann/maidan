@@ -1,5 +1,5 @@
 -- The change producer's wire names become generic; see the Postgres twin
--- (0226). Old rows are left unrouted, not renamed.
+-- (0227). Old rows are left unrouted, not renamed.
 --
 -- SQLite cannot alter a CHECK in place. Rather than rebuild two tables (the
 -- workspace table is the parent of most others), each engine column is
