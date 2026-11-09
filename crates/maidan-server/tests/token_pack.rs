@@ -23,13 +23,11 @@ use std::sync::Arc;
 use maidan_server::thread_context::{build_thread_context, ThreadContextLimits};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    estimate_tokens, EditMessage, MemberKind, Message, NewChannel, NewMember, NewMessage,
-    NewThread, NewWorkspace,
+    EditMessage, MemberKind, Message, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };
 
-// The token estimator (`chars/4`) lives in `maidan_types::pack` so the budget
-// fold and this evidence harness share one definition. Its own math is
-// unit-tested there; the round-trip check below stays as a local guard.
+// The token estimator (`chars/4`) lives in `maidan_types::pack` and is
+// unit-tested there, once.
 
 /// naive / pack, guarding against divide-by-zero.
 fn reduction_ratio(naive: usize, pack: usize) -> f64 {
@@ -204,14 +202,6 @@ async fn token_pack_evidence() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn estimate_tokens_is_chars_over_four_rounded_up() {
-        assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("abcd"), 1);
-        assert_eq!(estimate_tokens("abcde"), 2);
-        assert_eq!(estimate_tokens(&"x".repeat(400)), 100);
-    }
 
     #[test]
     fn reduction_ratio_is_naive_over_pack_and_guards_zero() {

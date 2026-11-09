@@ -8,6 +8,7 @@
 # Gives the suites MAIDAN_URL, MAIDAN_TOKEN and MAIDAN_WORKSPACE, and a second
 # workspace's MAIDAN_OTHER_TOKEN and MAIDAN_OTHER_WORKSPACE.
 #         CARGO_TARGET_DIR (the built binaries are read from there).
+#         MAIDAN_BIN_DIR (holds maidan-server and maidan; skip the build if set)
 #
 # Build first, then run the binary, so the health-wait covers only boot (a cold
 # `cargo run` compile would otherwise outlast it).
@@ -20,10 +21,13 @@ lang="${1:-typescript}"
 port="${MAIDAN_SDK_PORT:-8080}"
 base="http://127.0.0.1:${port}"
 
-echo "=== building maidan-server ==="
-cargo build --quiet --bin maidan-server --bin maidan
-# cargo writes under CARGO_TARGET_DIR when it is set, otherwise ./target.
-bin_dir="${CARGO_TARGET_DIR:-target}/debug"
+bin_dir="${MAIDAN_BIN_DIR:-}"
+if [[ -z "$bin_dir" ]]; then
+  echo "=== building maidan-server ==="
+  cargo build --quiet --bin maidan-server --bin maidan
+  # cargo writes under CARGO_TARGET_DIR when it is set, otherwise ./target.
+  bin_dir="${CARGO_TARGET_DIR:-target}/debug"
+fi
 
 sdk_tmp="$(mktemp -d)"
 sdk_db="sqlite://${sdk_tmp}/maidan.db?mode=rwc"

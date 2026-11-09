@@ -39,12 +39,13 @@ fail() {
 }
 
 echo "=== building images ==="
-# CI builds maidan-server:dev beforehand through a cached buildx step.
+# CI loads maidan-server:dev and maidan-postgres:dev from the smoke image job,
+# which builds them once for every smoke.
 if [ "${MAIDAN_SMOKE_PREBUILT:-}" != "1" ]; then
   docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
     -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+  docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
 fi
-docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
 
 echo "=== bringing up two replicas + LB ==="
 "${COMPOSE[@]}" up -d

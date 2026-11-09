@@ -14,7 +14,7 @@ full forms are what CI runs.
 | | Narrow (fast) | Full (what CI runs) |
 |---|---|---|
 | **Build** | `cargo build -p <crate>` | `cargo build --workspace` |
-| **Test** | `cargo test -p <crate>` | `cargo nextest run --workspace --lib --bins --profile ci` and `cargo nextest run --workspace --tests --profile ci` |
+| **Test** | `cargo test -p <crate>` | `cargo nextest archive --workspace --tests --profile ci --archive-file a.tar.zst` once (the `build` job), then `-E 'not kind(test)'` (`unit tests`) and `-E 'kind(test)' --partition hash:N/4` (the shards) on that archive |
 | **Lint** | `cargo clippy -p <crate> --all-targets -- -D warnings` | `cargo clippy --all-targets --workspace -- -D warnings`, then the strict pass below |
 | **Format** | `cargo fmt --all` | `cargo fmt --all --check` |
 | **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
@@ -43,7 +43,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 **Checks that are not `cargo`:**
 
 ```sh
-bash scripts/check-agent-contract.sh     # golden JSON under contracts/
+bash scripts/check-agent-contract.sh     # golden JSON under contracts/ (CI: --no-cargo in lint; the tests run from the archive)
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the quickstart agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the release the tree records
 bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)

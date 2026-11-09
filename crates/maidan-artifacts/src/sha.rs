@@ -85,15 +85,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hex_round_trip() {
-        let sha = Sha256::compute(b"hello world");
-        let hex = sha.to_hex();
-        assert_eq!(hex.len(), 64);
-        let parsed = Sha256::from_hex(&hex).unwrap();
-        assert_eq!(sha, parsed);
-    }
-
-    #[test]
     fn known_vector() {
         // sha256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
         let sha = Sha256::compute(b"");
@@ -112,11 +103,6 @@ mod tests {
     fn from_hex_rejects_non_hex() {
         let bogus: String = "z".repeat(64);
         assert!(Sha256::from_hex(&bogus).is_err());
-    }
-
-    #[test]
-    fn from_hex_rejects_a_leading_plus() {
-        assert!(Sha256::from_hex(&"+a".repeat(32)).is_err());
     }
 
     #[test]

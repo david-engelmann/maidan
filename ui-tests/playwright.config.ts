@@ -29,10 +29,11 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    // `cargo run` reuses the binary if a prior CI step already built it, so this
-    // is instant in CI and a one-time build locally. The example writes the
-    // fixtures to ui-tests/.fixtures.json (relative to the repo root, cwd below).
-    command: "cargo run --quiet --example ui_test_server -p maidan-server",
+    // CI runs the harness the build job compiled (UI_TEST_SERVER_BIN); locally
+    // `cargo run` builds it once. The example writes the fixtures to
+    // ui-tests/.fixtures.json (relative to the repo root, cwd below).
+    command:
+      process.env.UI_TEST_SERVER_BIN ?? "cargo run --quiet --example ui_test_server -p maidan-server",
     cwd: "..",
     url: `${BASE}/ui/`,
     reuseExistingServer: !process.env.CI,
