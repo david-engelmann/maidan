@@ -125,6 +125,10 @@ export declare class FootprintConflictError extends MaidanError {}
 export declare class PlanConflictError extends MaidanError {}
 /** 409 `claim-lost`: the lease is no longer the thread's live claim. */
 export declare class ClaimLostError extends MaidanError {}
+/** 409 `thread-ended`: the thread is closed or archived, and the write does not apply to it. */
+export declare class ThreadEndedError extends MaidanError {}
+/** 410 `gone`: the thread was deleted. */
+export declare class GoneError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export declare class UnknownProblemError extends MaidanError {}
 /** A 2xx answer this client cannot read: cut short, not JSON, or missing a claim's id and lease. */

@@ -18,6 +18,7 @@ var serverProblemTypes = []string{
 	"rate-limited", "bad-gateway", "internal", "overloaded", "idempotency-key-reused",
 	"idempotency-key-in-flight", "cursor-too-old", "event-log-broken",
 	"unprocessable-entity", "media-quota-exceeded", "footprint-conflict", "plan-conflict", "claim-lost",
+	"thread-ended", "gone",
 }
 
 func answering(t *testing.T, status int, body string, headers map[string]string) *Client {

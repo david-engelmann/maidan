@@ -5,7 +5,8 @@
 //! a small model of who holds what. After every step each thread's holder and
 //! fencing token match the model, and so does every member's live-claim
 //! count. A fenced call with a stale token, or from a member that no longer
-//! holds the thread, must change nothing.
+//! holds the thread, must change nothing, and a renewal of an expired lease
+//! is refused as lost even before another member takes the thread.
 
 use std::collections::HashMap;
 
@@ -252,13 +253,20 @@ async fn run(ops: Vec<Op>) {
                     .store
                     .renew_claim(w.threads[thread], w.members[member], lease, 3600)
                     .await;
-                if holds(&model, member, thread, lease) {
+                // An expired lease is lost even before anyone takes the
+                // thread over: renewing it would revive a claim `claim_next`
+                // already counts as free.
+                let live = model
+                    .holders
+                    .get(&thread)
+                    .is_some_and(|h| !(h.leased && h.expired));
+                if holds(&model, member, thread, lease) && live {
                     r.expect("the holder may renew");
                     let h = model.holders.get_mut(&thread).unwrap();
                     h.leased = true;
                     h.expired = false;
                 } else {
-                    assert!(matches!(r, Err(StoreError::NotFound)), "{r:?}");
+                    assert!(matches!(r, Err(StoreError::ClaimLost(_))), "{r:?}");
                 }
             }
             Op::Acknowledge {

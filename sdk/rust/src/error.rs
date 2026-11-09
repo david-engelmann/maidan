@@ -80,6 +80,10 @@ pub enum MaidanError {
     PlanConflict(Box<Problem>),
     /// 409 `claim-lost`: the lease is no longer the thread's live claim.
     ClaimLost(Box<Problem>),
+    /// 409 `thread-ended`: the thread is closed or archived, and the write does not apply to it.
+    ThreadEnded(Box<Problem>),
+    /// 410 `gone`: the thread was deleted.
+    Gone(Box<Problem>),
     /// A problem type this crate does not know, or a body that is not a problem.
     Unknown(Box<Problem>),
     /// No HTTP answer: connect, TLS, socket or WebSocket failure.
@@ -89,7 +93,7 @@ pub enum MaidanError {
 }
 
 /// The problem types the server documents, by the last segment of their URI.
-pub const PROBLEM_TYPES: [&str; 22] = [
+pub const PROBLEM_TYPES: [&str; 24] = [
     "not-found",
     "method-not-allowed",
     "conflict",
@@ -112,6 +116,8 @@ pub const PROBLEM_TYPES: [&str; 22] = [
     "footprint-conflict",
     "plan-conflict",
     "claim-lost",
+    "thread-ended",
+    "gone",
 ];
 
 impl MaidanError {
@@ -170,6 +176,8 @@ impl MaidanError {
             Some("footprint-conflict") => Self::FootprintConflict(problem),
             Some("plan-conflict") => Self::PlanConflict(problem),
             Some("claim-lost") => Self::ClaimLost(problem),
+            Some("thread-ended") => Self::ThreadEnded(problem),
+            Some("gone") => Self::Gone(problem),
             _ => Self::Unknown(problem),
         }
     }
@@ -199,6 +207,8 @@ impl MaidanError {
             | Self::FootprintConflict(p)
             | Self::PlanConflict(p)
             | Self::ClaimLost(p)
+            | Self::ThreadEnded(p)
+            | Self::Gone(p)
             | Self::Unknown(p) => Some(p),
             Self::Transport(_) | Self::Decode(_) => None,
         }

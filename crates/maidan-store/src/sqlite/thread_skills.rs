@@ -5,11 +5,27 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a required skill to a task. Idempotent; empty skill rejected.
+/// Add a required skill to a task. Idempotent; empty skill rejected. A
+/// required skill only steers dispatch, so a thread that is gone, closed or
+/// archived refuses it rather than storing a rule nothing reads.
 pub async fn add(pool: &SqlitePool, thread_id: ThreadId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
     }
+    let mut tx = super::tx::begin_write(pool).await?;
+    let row = sqlx::query(
+        "SELECT state, tombstoned_at IS NOT NULL AS gone FROM maidan_threads WHERE id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    crate::thread_liveness::refuse_ended_column(
+        thread_id,
+        row.get::<&str, _>("state"),
+        row.get("gone"),
+        "a required skill",
+    )?;
     sqlx::query(
         "INSERT INTO maidan_thread_required_skills (thread_id, skill, created_at)
          VALUES (?, ?, ?)
@@ -18,8 +34,9 @@ pub async fn add(pool: &SqlitePool, thread_id: ThreadId, skill: &str) -> Result<
     .bind(thread_id.0)
     .bind(skill)
     .bind(Utc::now().to_rfc3339())
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 

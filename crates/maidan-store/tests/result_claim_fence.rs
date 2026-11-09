@@ -1,6 +1,8 @@
 //! A result write is fenced by the writer's live claim, on both backends: a
 //! seat whose lease lapsed and was taken over cannot land its result over
-//! the new holder's, and a lease from another workspace fences nothing.
+//! the new holder's, a lease that expired is lost before anyone takes the
+//! thread over or the reaper frees it, and a lease from another workspace
+//! fences nothing.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -168,6 +170,127 @@ async fn a_lapsed_seats_result_is_refused_and_the_new_holders_lands(store: &dyn 
     );
 }
 
+/// Between a lease's deadline and the reaper, `claim_next` already counts the
+/// thread as free and may hand it on. A renewal or result in that window
+/// used to answer success and, for a renewal, revive the claim, so two seats
+/// could each believe they held the thread. Now the old holder is told its
+/// claim is lost, however its calls and the takeover interleave.
+async fn an_expired_lease_is_lost_before_anyone_takes_it_over(store: &dyn Store) {
+    let t = tenant(store, "window", 2).await;
+    let (a, b) = (t.seats[0], t.seats[1]);
+    let thread = task(store, t.channel).await;
+    let (claimed, lease_a) = claim(store, t.channel, a, 300).await;
+    assert_eq!(claimed, thread);
+    // A stops renewing: its deadline passes. Nothing has reaped it yet.
+    store
+        .renew_claim(thread, a, lease_a, -5)
+        .await
+        .expect("a live lease renews, here into the past");
+    let held = store.get_thread(thread).await.expect("get");
+    assert_eq!(held.assignee_id, Some(a), "not reaped yet");
+    assert_eq!(held.claim_lease_id, Some(lease_a));
+
+    let renewed = store.renew_claim(thread, a, lease_a, 300).await;
+    assert!(
+        matches!(renewed, Err(StoreError::ClaimLost(_))),
+        "an expired lease does not renew: {renewed:?}"
+    );
+    assert!(
+        is_claim_lost(
+            store
+                .set_thread_result(thread, a, lease_a, &json!({ "from": "a" }))
+                .await
+        ),
+        "an expired lease writes no result"
+    );
+    assert!(store
+        .get_thread_result(thread)
+        .await
+        .expect("get")
+        .is_none());
+    assert!(
+        store
+            .get_thread(thread)
+            .await
+            .expect("get")
+            .assignment_expires_at
+            .is_some_and(|deadline| deadline < chrono::Utc::now()),
+        "the refused renewal did not move the deadline"
+    );
+
+    // A's calls race B's takeover; in either order A is refused and B holds.
+    let a_payload = json!({ "from": "a" });
+    let (a_renew, a_result, taken) = tokio::join!(
+        store.renew_claim(thread, a, lease_a, 300),
+        store.set_thread_result(thread, a, lease_a, &a_payload),
+        store.claim_next_thread(t.channel, b, Some(300), None),
+    );
+    assert!(
+        matches!(a_renew, Err(StoreError::ClaimLost(_))),
+        "{a_renew:?}"
+    );
+    assert!(is_claim_lost(a_result));
+    let taken = taken
+        .expect("claim")
+        .expect("the lapsed thread is claimable");
+    assert_eq!(taken.id, thread);
+    assert_eq!(taken.assignee_id, Some(b));
+    let lease_b = taken.claim_lease_id.expect("a claim carries a lease");
+    store
+        .renew_claim(thread, b, lease_b, 300)
+        .await
+        .expect("the new holder renews");
+    store
+        .set_thread_result(thread, b, lease_b, &json!({ "from": "b" }))
+        .await
+        .expect("the new holder's result lands");
+    assert_eq!(
+        store
+            .get_thread_result(thread)
+            .await
+            .expect("get")
+            .map(|r| r.produced_by),
+        Some(b)
+    );
+
+    // A claim taken without a lease has no deadline to pass.
+    // Its own title: a second open "task" would be refused as a duplicate.
+    let durable = store
+        .create_thread(NewThread {
+            channel_id: t.channel,
+            parent_thread_id: None,
+            title: Some("unleased task".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread")
+        .id;
+    let claim = store.claim_thread(durable, a).await.expect("claim");
+    let lease = claim
+        .thread
+        .claim_lease_id
+        .expect("a claim carries a lease");
+    assert_eq!(claim.thread.assignment_expires_at, None);
+    store
+        .set_thread_result(durable, a, lease, &json!({ "from": "a" }))
+        .await
+        .expect("an unleased claim writes its result");
+    // A thread that does not exist is not found, not lost.
+    let missing = ThreadId(uuid::Uuid::now_v7());
+    assert!(matches!(
+        store.renew_claim(missing, a, lease, 60).await,
+        Err(StoreError::NotFound)
+    ));
+    let missing_result = store
+        .set_thread_result(missing, a, lease, &json!({ "from": "a" }))
+        .await;
+    assert!(
+        matches!(missing_result, Err(StoreError::NotFound)),
+        "{missing_result:?}"
+    );
+}
+
 async fn a_lease_from_another_workspace_fences_nothing(store: &dyn Store) {
     let one = tenant(store, "one", 1).await;
     let two = tenant(store, "two", 1).await;
@@ -214,6 +337,7 @@ async fn a_lease_from_another_workspace_fences_nothing(store: &dyn Store) {
 
 async fn run_suite(store: &dyn Store) {
     a_lapsed_seats_result_is_refused_and_the_new_holders_lands(store).await;
+    an_expired_lease_is_lost_before_anyone_takes_it_over(store).await;
     a_lease_from_another_workspace_fences_nothing(store).await;
 }
 

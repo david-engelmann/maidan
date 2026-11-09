@@ -77,10 +77,10 @@ Create body: `{ "name", "private": false }`.
 | `threads.get` | `GET /threads/{id}` | `workspace:read` | |
 | `threads.context` | `GET /threads/{id}/context` | `workspace:read` | Paginated; used by `examples/rest_maidan.py` |
 | `threads.transition` | `POST /threads/{id}` | `thread:transition` | FSM. Not PATCH. Confirm body against OpenAPI |
-| `threads.set_result` | `PUT /threads/{id}/result` | `thread:transition` | Pair with `wait_for_result` |
+| `threads.set_result` | `PUT /threads/{id}/result` | `thread:transition` | Pair with `wait_for_result`. A lease that expired, was taken over or was released is 409 `claim-lost` |
 | `threads.get_result` | `GET /threads/{id}/result` | `workspace:read` | |
 | `claim_next_thread` | `POST /channels/{cid}/threads/claim-next` | `thread:transition` | **Hero.** Readiness + skill + lease aware |
-| `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat |
+| `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat. A lease past its deadline is 409 `claim-lost` even before anything reaped it; stop the work |
 | `release_own_claims` | `POST /workspaces/{id}/claims/release-own` | `thread:transition` | 0.3.0. A restarted waiter frees every live claim its token's member holds in the workspace, once, before its first claim. Optional body `{ "note" }`; answers `{ "released": [...] }`. In all four SDKs |
 
 ### Messages
@@ -88,7 +88,7 @@ Create body: `{ "name", "private": false }`.
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
 | `messages.list` | `GET /threads/{tid}/messages` | `workspace:read` | |
-| `messages.post` | `POST /threads/{tid}/messages` | `message:post` | Body `{ "body" }`; author is the authenticated member |
+| `messages.post` | `POST /threads/{tid}/messages` | `message:post` | Body `{ "body" }`; author is the authenticated member. A closed thread takes messages; an archived one is 409 `thread-ended`, a deleted one 410 `gone` |
 
 ### Artifacts
 
@@ -182,7 +182,9 @@ Python/TS/Rust should still distinguish it). A 409 with
 `must_refetch: true` / `type: cursor-too-old` is
 `is_cursor_too_old` — fail loud, never clamp the cursor onto
 the remaining log. 403 is missing capability or channel access,
-not "retry."
+not "retry." 409 `claim-lost`, 409 `thread-ended` and 410 `gone` say the
+target moved on (the lease is no longer live, the thread ended, the thread
+was deleted): stop, never retry.
 
 Writes (POST/PUT/PATCH/DELETE) from an authenticated, non-bypass caller
 on the protected router and the `/ui/api` write routes take an optional `Idempotency-Key`
@@ -277,6 +279,12 @@ server already fails; patch this table to match.
 | `wait_for_mention` | `wait_for_mention` | `workspace:read` |
 | `wait_for_ready` | `wait_for_ready` | `workspace:read` |
 | `wait_for_notification` | `wait_for_notification` | `workspace:read` |
+
+Over MCP a target that moved on is a JSON-RPC error with its own code:
+`-32012` for a lost claim, `-32013` for an ended thread and `-32014` for a
+deleted one, each with `data.code` (`claim_lost`, `thread_ended`, `gone`),
+`data.status` and `data.type` naming the REST twin. A lost claim's message
+starts with `claim_lost`, as before.
 
 There is **no** MCP create workspace or member. An agent creates a
 channel with `create_channel` and a thread with `create_thread` (both

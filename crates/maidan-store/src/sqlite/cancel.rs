@@ -54,6 +54,7 @@ pub(crate) async fn cancel_in_tx(
         return Ok(CancelOutcome::AlreadyCancelled(CancelledThread {
             thread,
             cancellation,
+            replayed: true,
         }));
     }
     if thread.state.is_terminal() {
@@ -165,6 +166,7 @@ pub(crate) async fn cancel_in_tx(
                 cancelled_by: actor,
                 cancelled_at: now,
             },
+            replayed: false,
         },
         events: stored,
     })

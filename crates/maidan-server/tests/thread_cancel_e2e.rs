@@ -234,8 +234,10 @@ async fn a_producer_cancels_its_claimed_task_over_http() {
     assert_eq!(done["thread"]["assignee_id"], Value::Null);
     assert_eq!(done["cancellation"]["reason"], "superseded by the new plan");
     assert_eq!(done["cancellation"]["cancelled_by"], json!(producer_id.0));
+    assert_eq!(done["replayed"], json!(false));
 
-    assert_eq!(renew(worker.clone()).await, StatusCode::NOT_FOUND);
+    // The worker's claim ended with the cancel: its next renew is told so.
+    assert_eq!(renew(worker.clone()).await, StatusCode::CONFLICT);
 
     let again = cancel(&base, &producer, &thread, "a second reason").await;
     assert_eq!(again.status(), StatusCode::OK);
@@ -244,6 +246,7 @@ async fn a_producer_cancels_its_claimed_task_over_http() {
         again["cancellation"]["reason"],
         "superseded by the new plan"
     );
+    assert_eq!(again["replayed"], json!(true), "a repeat says it is one");
 
     let thread_id = ThreadId(thread.parse().unwrap());
     let messages = store.list_messages(thread_id, 10).await.unwrap();
@@ -417,6 +420,7 @@ async fn a_producer_cancels_its_task_over_mcp() {
     );
     assert_eq!(done["thread"]["state"], "closed");
     assert_eq!(done["cancellation"]["cancelled_by"], json!(producer_id.0));
+    assert_eq!(done["replayed"], json!(false));
     let again = tool_result(
         &tool(
             &base,
@@ -427,6 +431,7 @@ async fn a_producer_cancels_its_task_over_mcp() {
         .await,
     );
     assert_eq!(again["cancellation"]["reason"], "no longer needed");
+    assert_eq!(again["replayed"], json!(true));
 
     // A `thread:transition` holder cancels a task someone else created.
     let other = tool_result(

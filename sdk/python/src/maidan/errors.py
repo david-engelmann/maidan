@@ -152,6 +152,14 @@ class ClaimLostError(MaidanError):
     """409 ``claim-lost``: the lease is no longer the thread's live claim."""
 
 
+class ThreadEndedError(MaidanError):
+    """409 ``thread-ended``: the thread is closed or archived, and the write does not apply to it."""
+
+
+class GoneError(MaidanError):
+    """410 ``gone``: the thread was deleted."""
+
+
 class UnknownProblemError(MaidanError):
     """A problem ``type`` this client does not know, or a body that is not a problem."""
 
@@ -186,6 +194,8 @@ PROBLEM_TYPES: Dict[str, Type[MaidanError]] = {
     f"{PROBLEM_BASE}footprint-conflict": FootprintConflictError,
     f"{PROBLEM_BASE}plan-conflict": PlanConflictError,
     f"{PROBLEM_BASE}claim-lost": ClaimLostError,
+    f"{PROBLEM_BASE}thread-ended": ThreadEndedError,
+    f"{PROBLEM_BASE}gone": GoneError,
 }
 
 

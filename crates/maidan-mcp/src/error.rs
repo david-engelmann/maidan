@@ -43,6 +43,23 @@ pub enum McpError {
     #[error("this plan already has {} children; nothing was created", .0.len())]
     PlanConflict(Vec<maidan_types::PlannedChild>),
 
+    /// A claim-fenced call named a lease that is not the thread's live claim:
+    /// it expired, was taken over, or was released. Nothing was written. The
+    /// REST twin is a 409 `claim-lost`; the caller should stop the work.
+    #[error("claim_lost: {0}")]
+    ClaimLost(String),
+
+    /// The thread the call aims at is closed or archived, and this call is
+    /// one its ended state refuses. Nothing was written. The REST twin is a
+    /// 409 `thread-ended`.
+    #[error("thread_ended: {0}")]
+    ThreadEnded(String),
+
+    /// The thread the call aims at is gone (tombstoned). Nothing was
+    /// written. The REST twin is a 410 `gone`.
+    #[error("gone: {0}")]
+    Gone(String),
+
     /// A thread write refused because another open thread in the workspace
     /// holds the same value of an attribute the workspace keeps unique;
     /// nothing was written. The REST twin is a 409 `conflict`, and
@@ -68,6 +85,20 @@ pub const PLAN_CONFLICT_CODE: i32 = -32010;
 /// threads, already held by another one. Work in the holder
 /// (`data.holder_thread_id`, when given) or close it first.
 pub const ATTRIBUTE_HELD_CODE: i32 = -32011;
+
+/// JSON-RPC error code for a claim-fenced call whose lease is no longer the
+/// thread's live claim (`data.code` is `claim_lost`). Stop the work; claim
+/// the thread again only if it is still open and unclaimed.
+pub const CLAIM_LOST_CODE: i32 = -32012;
+
+/// JSON-RPC error code for a call the target thread's ended state refuses:
+/// it is closed or archived (`data.code` is `thread_ended`). Retrying does
+/// not help until someone reopens it.
+pub const THREAD_ENDED_CODE: i32 = -32013;
+
+/// JSON-RPC error code for a call aimed at a thread that is gone
+/// (`data.code` is `gone`). It will not come back.
+pub const GONE_CODE: i32 = -32014;
 
 /// JSON-RPC error code for backpressure. In the server-defined range
 /// (-32000..=-32099); a client that recognizes it should back off for
@@ -121,6 +152,33 @@ impl McpError {
                 code: PLAN_CONFLICT_CODE,
                 message: self.to_string(),
                 data: Some(serde_json::json!({ "children": children })),
+            },
+            Self::ClaimLost(_) => JsonRpcError {
+                code: CLAIM_LOST_CODE,
+                message: self.to_string(),
+                data: Some(serde_json::json!({
+                    "code": "claim_lost",
+                    "status": 409,
+                    "type": "https://maidan.world/problems/claim-lost",
+                })),
+            },
+            Self::ThreadEnded(_) => JsonRpcError {
+                code: THREAD_ENDED_CODE,
+                message: self.to_string(),
+                data: Some(serde_json::json!({
+                    "code": "thread_ended",
+                    "status": 409,
+                    "type": "https://maidan.world/problems/thread-ended",
+                })),
+            },
+            Self::Gone(_) => JsonRpcError {
+                code: GONE_CODE,
+                message: self.to_string(),
+                data: Some(serde_json::json!({
+                    "code": "gone",
+                    "status": 410,
+                    "type": "https://maidan.world/problems/gone",
+                })),
             },
             Self::AttributeHeld {
                 key_set, holder, ..
@@ -178,7 +236,12 @@ impl From<maidan_store::StoreError> for McpError {
         match err {
             maidan_store::StoreError::NotFound => Self::NotFound,
             maidan_store::StoreError::InvalidInput(m) => Self::InvalidParams(m),
-            maidan_store::StoreError::ClaimLost(m) => Self::InvalidParams(format!("claim_lost: {m}")),
+            // Not the caller's bad request: the target moved on. A distinct
+            // code, with the literal `claim_lost` kept in the message and in
+            // `data.code` for clients that match on it.
+            maidan_store::StoreError::ClaimLost(m) => Self::ClaimLost(m),
+            maidan_store::StoreError::Ended(m) => Self::ThreadEnded(m),
+            maidan_store::StoreError::Gone(m) => Self::Gone(m),
             // A uniqueness/state conflict is a client error, not an internal
             // one — surface it as invalid params, not -32603 Internal.
             maidan_store::StoreError::Conflict(m) => Self::InvalidParams(m),
@@ -236,6 +299,9 @@ mod tests {
             (McpError::NotFound, -32004),
             (McpError::Unauthorized, -32001),
             (McpError::Forbidden("f".into()), -32003),
+            (McpError::ClaimLost("c".into()), CLAIM_LOST_CODE),
+            (McpError::ThreadEnded("e".into()), THREAD_ENDED_CODE),
+            (McpError::Gone("g".into()), GONE_CODE),
             (
                 McpError::RateLimited {
                     retry_after_ms: 500,
@@ -246,6 +312,29 @@ mod tests {
         for (err, expected_code) in cases {
             assert_eq!(err.to_jsonrpc().code, expected_code, "{err:?}");
         }
+    }
+
+    #[test]
+    fn a_lost_claim_is_its_own_code_and_keeps_the_literal_clients_match_on() {
+        let e = McpError::from(maidan_store::StoreError::ClaimLost("lease x".into())).to_jsonrpc();
+        assert_eq!(e.code, CLAIM_LOST_CODE);
+        assert_ne!(e.code, -32602, "not the caller's bad request");
+        assert!(e.message.contains("claim_lost"), "{}", e.message);
+        let data = e.data.unwrap();
+        assert_eq!(data["code"], "claim_lost");
+        assert_eq!(data["status"], 409);
+    }
+
+    #[test]
+    fn an_ended_or_gone_thread_answers_its_own_code() {
+        let ended = McpError::from(maidan_store::StoreError::Ended("closed".into())).to_jsonrpc();
+        assert_eq!(ended.code, THREAD_ENDED_CODE);
+        assert_eq!(ended.data.unwrap()["code"], "thread_ended");
+        let gone = McpError::from(maidan_store::StoreError::Gone("deleted".into())).to_jsonrpc();
+        assert_eq!(gone.code, GONE_CODE);
+        let data = gone.data.unwrap();
+        assert_eq!(data["code"], "gone");
+        assert_eq!(data["status"], 410);
     }
 
     #[test]

@@ -5,11 +5,27 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-/// Add a required skill to a task — see the SQLite twin.
+/// Add a required skill to a task — see the SQLite twin. The thread row is
+/// locked, so a close cannot land between the check and the insert.
 pub async fn add(pool: &PgPool, thread_id: ThreadId, skill: &str) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
     }
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "SELECT state, tombstoned_at IS NOT NULL AS gone FROM maidan_threads
+         WHERE id = $1 FOR SHARE",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    crate::thread_liveness::refuse_ended_column(
+        thread_id,
+        row.get::<&str, _>("state"),
+        row.get("gone"),
+        "a required skill",
+    )?;
     sqlx::query(
         "INSERT INTO maidan_thread_required_skills (thread_id, skill)
          VALUES ($1, $2)
@@ -17,8 +33,9 @@ pub async fn add(pool: &PgPool, thread_id: ThreadId, skill: &str) -> Result<(), 
     )
     .bind(thread_id.0)
     .bind(skill)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 

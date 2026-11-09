@@ -233,6 +233,9 @@ pub(super) async fn post_message(
     let ctx = resolve_thread_context(store.as_ref(), thread_id)
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    // As REST: a deleted thread is gone and an archived one ended, but a
+    // closed thread still takes messages.
+    maidan_store::thread_liveness::refuse_post(&store.get_thread(thread_id).await?)?;
     let new_message = NewMessage {
         thread_id,
         author_id: auth.member_id,

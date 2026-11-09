@@ -56,7 +56,7 @@ pub async fn set(
     let now = grace.lease_clock(Utc::now()).to_rfc3339();
     let mut tx = super::tx::begin_write(pool).await?;
     let row = sqlx::query(&format!(
-        "SELECT ch.workspace_id, {} AS live
+        "SELECT ch.workspace_id, t.state, t.tombstoned_at IS NOT NULL AS gone, {} AS live
          FROM maidan_threads t JOIN maidan_channels ch ON ch.id = t.channel_id
          WHERE t.id = ?1",
         live_claim("t", "?2")
@@ -66,6 +66,12 @@ pub async fn set(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
+    crate::thread_liveness::refuse_ended_column(
+        thread_id,
+        row.get::<&str, _>("state"),
+        row.get("gone"),
+        "a footprint",
+    )?;
     let workspace_id: Uuid = row.get("workspace_id");
     let live: bool = row.get("live");
     sqlx::query("DELETE FROM maidan_thread_footprints WHERE thread_id = ?")

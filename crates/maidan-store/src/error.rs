@@ -45,11 +45,25 @@ pub enum StoreError {
     },
 
     /// A claim-fenced write from a member that no longer holds the thread
-    /// under the lease it named: the lease lapsed and another member took
-    /// the thread, or the claim was released. Nothing was written. REST 409
-    /// `claim-lost`, MCP InvalidParams.
+    /// under the lease it named: the lease expired (taken over or not), or
+    /// another member took the thread, or the claim was released. Nothing was
+    /// written. REST 409 `claim-lost`, MCP its own error code with
+    /// `data.code` `claim_lost`.
     #[error("claim lost: {0}")]
     ClaimLost(String),
+
+    /// A write aimed at a thread that is gone: tombstoned, kept only as a
+    /// marker. Nothing was written. REST 410 `gone`, MCP its own error code
+    /// with `data.code` `gone`.
+    #[error("gone: {0}")]
+    Gone(String),
+
+    /// A write the thread's ended state refuses: it is closed or archived,
+    /// as the write's own rule says. Nothing was written. REST 409
+    /// `thread-ended`, MCP its own error code with `data.code`
+    /// `thread_ended`.
+    #[error("thread ended: {0}")]
+    Ended(String),
 
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),

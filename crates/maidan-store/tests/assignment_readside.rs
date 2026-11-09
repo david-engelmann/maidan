@@ -194,12 +194,12 @@ async fn run_readside_suite(store: &dyn Store) {
     // "first holder unlocks the next owner's lock" bug is prevented.
     assert!(matches!(
         store.renew_claim(leased.id, m1.id, lease1, 7200).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
     // Even the real holder presenting the wrong (stale) token is rejected.
     assert!(matches!(
         store.renew_claim(leased.id, m2.id, lease1, 7200).await,
-        Err(maidan_store::StoreError::NotFound)
+        Err(maidan_store::StoreError::ClaimLost(_))
     ));
 
     // --- working clock: acknowledge starts it, fenced + idempotent ---

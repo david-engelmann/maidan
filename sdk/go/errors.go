@@ -131,6 +131,12 @@ type PlanConflictError struct{ *APIError }
 // ClaimLostError is a 409 claim-lost: the lease is no longer the thread's live claim.
 type ClaimLostError struct{ *APIError }
 
+// ThreadEndedError is a 409 thread-ended: the thread is closed or archived, and the write does not apply to it.
+type ThreadEndedError struct{ *APIError }
+
+// GoneError is a 410 gone: the thread was deleted.
+type GoneError struct{ *APIError }
+
 // UnknownProblemError is a problem type this client does not know, or a body
 // that is not a problem.
 type UnknownProblemError struct{ *APIError }
@@ -157,6 +163,8 @@ func (e *MediaQuotaExceededError) Unwrap() error     { return e.APIError }
 func (e *FootprintConflictError) Unwrap() error      { return e.APIError }
 func (e *PlanConflictError) Unwrap() error           { return e.APIError }
 func (e *ClaimLostError) Unwrap() error              { return e.APIError }
+func (e *ThreadEndedError) Unwrap() error            { return e.APIError }
+func (e *GoneError) Unwrap() error                   { return e.APIError }
 func (e *UnknownProblemError) Unwrap() error         { return e.APIError }
 
 // UnreadableResponseError is a 2xx answer this client cannot read: cut short,
@@ -225,6 +233,8 @@ var ProblemTypes = map[string]func(*APIError) error{
 	ProblemBase + "footprint-conflict":        func(e *APIError) error { return &FootprintConflictError{e} },
 	ProblemBase + "plan-conflict":             func(e *APIError) error { return &PlanConflictError{e} },
 	ProblemBase + "claim-lost":                func(e *APIError) error { return &ClaimLostError{e} },
+	ProblemBase + "thread-ended":              func(e *APIError) error { return &ThreadEndedError{e} },
+	ProblemBase + "gone":                      func(e *APIError) error { return &GoneError{e} },
 }
 
 // NewProblemError builds the error for a failed response from its status and

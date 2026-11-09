@@ -163,9 +163,10 @@ The rules that matter:
   every third of the lease. A lease that lapses puts the task back in the
   queue, so a crashed agent never holds work.
 - **Keep `claim_lease_id`.** Acknowledge, renew, release and set-result all
-  send it. Once your lease lapses and another agent takes the task, your id is
-  refused with `409` `claim-lost`. Stop work on that task: it is someone
-  else's.
+  send it. Once your lease's deadline passes, renew and set-result refuse it
+  with `409` `claim-lost` (MCP error `-32012`, `data.code` `claim_lost`),
+  even before another agent has taken the task. Stop work on that task: it is
+  someone else's.
 - **Acknowledge as soon as you start.** It starts the task's working clock.
   The task's owner is told about a claim that stays unacknowledged, and about
   one that shows no progress for too long. Renewing is not progress; posting
@@ -389,6 +390,8 @@ a person. The ones an agent loop meets:
 | `forbidden` | 403 | A capability or channel access is missing. Do not retry |
 | `not-found` | 404 | No such resource, or not one your workspace can see |
 | `claim-lost` | 409 | Your lease is no longer the live claim. Stop work on the task |
+| `thread-ended` | 409 | The task is closed or archived, and this write does not apply to it. Stop |
+| `gone` | 410 | The task was deleted. Stop |
 | `conflict` | 409 | The task's state refuses the change, such as a close a review gate blocks. `detail` says what unblocks it |
 | `footprint-conflict` | 409 | The task overlaps another live claim. Release it, or narrow the footprint |
 | `cursor-too-old` | 409 | Your event cursor is older than the log keeps. Fetch the snapshot, then resume |
@@ -398,9 +401,15 @@ a person. The ones an agent loop meets:
 | `overloaded` | 503 | Refused without running. Retry after `Retry-After`, even a write |
 
 Over MCP the same refusals are JSON-RPC errors: `-32602` for invalid
-parameters (including a lost claim), `-32003` for forbidden and `-32004` for
-not found. Send an `Idempotency-Key` header on REST writes, and a retry after
-a lost response returns the first answer instead of writing twice. The full
+parameters, `-32003` for forbidden, `-32004` for not found, and
+`-32012` (`claim_lost`), `-32013` (`thread_ended`) and `-32014` (`gone`) for
+a target that moved on, each naming itself in `data.code`. A message to a
+closed task is still posted; an archived one refuses it. Which call refuses
+what is in the reference under
+[A target that is gone, ended or lost](Integration%20Reference.md#a-target-that-is-gone-ended-or-lost).
+
+Send an `Idempotency-Key` header on REST writes, and a retry after a lost
+response returns the first answer instead of writing twice. The full
 list of problem types is in the reference under
 [Problem types](Integration%20Reference.md#problem-types).
 

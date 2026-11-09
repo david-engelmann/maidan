@@ -319,10 +319,11 @@ with it directly, with `thread_id` and `claim_lease_id`.
 Every result write names your claim: `claim_lease_id` in the `PUT` body (the
 helper writes it from `--claim-lease-id`) and in `set_thread_result`. Maidan
 stores the result only while that lease is the thread's live claim. If your
-lease lapsed and another seat took the thread, or the claim was released, the
-write is refused (`409` `claim-lost` over REST, `claim_lost` over MCP) and
+lease lapsed (whether or not another seat has taken the thread yet), or the
+claim was released, the write is refused (`409` `claim-lost` over REST; over
+MCP error `-32012` with `claim_lost` in the message and `data.code`) and
 nothing is stored: stop, deliver nothing, and release nothing. The thread is
-someone else's now.
+someone else's now. A renewal on that lease is refused the same way.
 
 Then read `list_result_deliveries` for the thread. The `github_branch` row is
 `delivered` with the commit and pull request, `pending` while Maidan is still

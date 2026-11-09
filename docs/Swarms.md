@@ -151,8 +151,8 @@ never holds work. [The agent loop](Integration.md#the-agent-loop) walks
 through the calls.
 
 The agent sets its result with `set_thread_result`, naming its claim's lease.
-An agent whose lease lapsed and was taken over is refused (`claim_lost`), so
-only the current holder's result lands. A change result names the branch, the
+An agent whose lease lapsed is refused (`claim_lost`), whether or not another
+agent has taken the thread yet, so only the current holder's result lands. A change result names the branch, the
 base commit and the diff; Maidan commits it and opens a draft pull request
 ([the change flow](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch)).
 
@@ -351,13 +351,14 @@ In one transaction the cancel:
 - parks it from dispatch (the unclaimable mark, with the reason), so nothing
   reopens it into the queue;
 - ends any live claim. The assignee and lease are cleared and the worked time
-  is charged, so the worker's next `renew_claim` is refused (`404`), and it
-  should stop;
+  is charged, so the worker's next `renew_claim` is refused (`409`
+  `claim-lost`, MCP `-32012`), and it should stop;
 - appends `ThreadStateChanged` and `ThreadCancelled` (`reason`,
   `cancelled_by`), and posts the reason on the thread as a message whose
   metadata is `{"notice": "cancelled"}`.
 
-A second cancel answers `200` with the first one and changes nothing. A thread
+A second cancel answers `200` with the first one and `replayed: true`, and
+changes nothing. A thread
 that closed or was archived some other way answers `409`. A cancel publishes
 no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
 cancelled dependency as finished, as it does any closed one.

@@ -13,6 +13,7 @@ use crate::error::StoreError;
 /// the payload — a namespaced string, not an enum.
 pub async fn set(
     pool: &SqlitePool,
+    grace: &crate::claim_grace::ClaimGrace,
     thread_id: ThreadId,
     produced_by: MemberId,
     lease_id: ClaimLeaseId,
@@ -20,13 +21,16 @@ pub async fn set(
 ) -> Result<ThreadResult, StoreError> {
     let result_text = serde_json::to_string(result)?;
     let result_kind = result_kind_from_payload(result);
-    let now = Utc::now().to_rfc3339();
+    let clock = Utc::now();
+    let now = clock.to_rfc3339();
     // A review's holder is judged again before its verdict is stored, on its
     // usage since and on what the result says served it: every claim-time
     // check ran on the usage it had reported then.
     super::review_family::refuse_result(pool, thread_id, produced_by, lease_id, result).await?;
     // The claim fence is the SELECT: no row unless `produced_by` holds the
     // thread under `lease_id` right now, in the same statement as the write.
+    // A lease that expired is lost even before the reaper frees it — see the
+    // Postgres twin. SQLite has one writer, so no takeover can interleave.
     let row = sqlx::query(
         "INSERT INTO maidan_thread_results
              (thread_id, result, produced_by, produced_at, result_kind, produced_actor_id)
@@ -34,6 +38,7 @@ pub async fn set(
          FROM maidan_threads t
          WHERE t.id = ? AND t.assignee_id = ? AND t.claim_lease_id = ?
            AND t.tombstoned_at IS NULL
+           AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
@@ -56,11 +61,12 @@ pub async fn set(
     .bind(thread_id.0)
     .bind(produced_by.0)
     .bind(lease_id.0)
+    .bind(grace.lease_clock(clock).to_rfc3339())
     .fetch_optional(pool)
     .await?;
     match row {
         Some(row) => row_to_result(&row),
-        None => Err(crate::thread_results::claim_lost(lease_id)),
+        None => Err(super::threads::fence_refusal(pool, thread_id, lease_id).await?),
     }
 }
 

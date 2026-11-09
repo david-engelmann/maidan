@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::github_ops::{
-    github_api_error, require_mark_ready_app, valid_repo_shape, MarkReadyGuard,
+    github_api_error, refuse_ended_task, require_mark_ready_app, valid_repo_shape, MarkReadyGuard,
 };
 use super::ApiResult;
 use crate::error::ApiError;
@@ -38,6 +38,11 @@ pub struct EnqueueResponse {
     pub label: String,
     /// Whether the pull request carries the label now.
     pub applied: bool,
+    /// `true` when the pull request was already in the state asked for, so
+    /// this call changed nothing: an enqueue of a pull request that already
+    /// carried the label, or a dequeue of one that did not. Always `false`
+    /// on a status read.
+    pub already: bool,
     pub reason: Option<String>,
 }
 
@@ -116,6 +121,14 @@ pub async fn enqueue_pull_guarded(
     pull_number: i64,
 ) -> Result<EnqueueOutcome, MarkReadyGuard> {
     let label = label_for(labels, repo)?;
+    refuse_ended_task(
+        store,
+        workspace_id,
+        repo,
+        pull_number,
+        "enqueueing its pull request",
+    )
+    .await?;
     let brief = git
         .pull_brief(repo, pull_number)
         .await
@@ -282,6 +295,7 @@ pub async fn enqueue_pull(
                 number,
                 label,
                 applied: true,
+                already: false,
                 reason: None,
             }))
         }
@@ -291,12 +305,18 @@ pub async fn enqueue_pull(
                 number,
                 label,
                 applied: true,
+                already: true,
                 reason: Some("already labelled".into()),
             }))
         }
         Err(MarkReadyGuard::Refused(reason)) => {
             audit_enqueue(&state, &auth, &repo, pull_number, "refused", Some(&reason)).await;
             Err(ApiError::Forbidden(reason))
+        }
+        Err(MarkReadyGuard::ThreadEnded(err)) => {
+            let reason = err.to_string();
+            audit_enqueue(&state, &auth, &repo, pull_number, "refused", Some(&reason)).await;
+            Err(err.into())
         }
         Err(MarkReadyGuard::Store(err)) => {
             let reason = format!("store: {err}");
@@ -340,6 +360,7 @@ pub async fn enqueue_status(
         number: brief.number,
         label,
         applied,
+        already: false,
         reason: None,
     }))
 }
@@ -385,6 +406,7 @@ pub async fn dequeue_pull(
                 number,
                 label,
                 applied: false,
+                already: !removed,
                 reason: (!removed).then(|| "was not labelled".to_string()),
             }))
         }
@@ -400,6 +422,7 @@ pub async fn dequeue_pull(
             .await;
             Err(ApiError::Forbidden(reason))
         }
+        Err(MarkReadyGuard::ThreadEnded(err)) => Err(err.into()),
         Err(MarkReadyGuard::Store(err)) => Err(ApiError::Internal(format!("store: {err}"))),
         Err(MarkReadyGuard::Github(err)) => Err(github_api_error(err)),
     }

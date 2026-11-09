@@ -116,6 +116,7 @@ async fn the_creator_cancels_an_unclaimed_task(store: Arc<dyn Store>) {
             .unwrap(),
     );
     assert_eq!(done.thread.state, ThreadState::Closed);
+    assert!(!done.replayed, "the cancel that closed it is not a replay");
     assert_eq!(done.cancellation.reason, "superseded");
     assert_eq!(done.cancellation.cancelled_by, room.producer);
     let kinds: Vec<EventKind> = events.iter().map(|e| e.kind).collect();
@@ -175,7 +176,7 @@ async fn a_cancel_ends_the_claim_so_the_holders_renew_is_refused(store: Arc<dyn 
     assert_eq!(done.thread.claim_lease_id, None);
     assert!(matches!(
         store.renew_claim(thread, room.worker, lease, 600).await,
-        Err(StoreError::NotFound)
+        Err(StoreError::ClaimLost(_))
     ));
     assert_eq!(store.get_thread(thread).await.unwrap().assignee_id, None);
 }
@@ -256,6 +257,7 @@ async fn a_repeat_changes_nothing_and_a_finished_task_stays_finished(store: Arc<
         .unwrap()
     {
         CancelOutcome::AlreadyCancelled(again) => {
+            assert!(again.replayed, "a repeat says it changed nothing");
             assert_eq!(again.cancellation.reason, "first");
             assert_eq!(again.thread.state, ThreadState::Closed);
         }

@@ -71,6 +71,12 @@ pub enum ApiError {
     /// longer holds: it lapsed and was taken over, or was released. 409 with
     /// its own type, so a seat stops the work rather than retrying.
     ClaimLost(String),
+    /// A write aimed at a thread that is closed or archived, which this write
+    /// does not take. 409 with its own type, so a client stops rather than
+    /// retrying.
+    ThreadEnded(String),
+    /// A write aimed at a thread that is gone (tombstoned). 410.
+    Gone(String),
     /// A thread write refused because another open thread in the workspace
     /// gives the same values for one of its unique key sets. 409 `conflict`
     /// naming the set in `key_set`, and the holder in `holder_thread_id` only
@@ -105,6 +111,8 @@ impl ApiError {
             Self::FootprintConflict(_) => StatusCode::CONFLICT,
             Self::PlanConflict(_) => StatusCode::CONFLICT,
             Self::ClaimLost(_) => StatusCode::CONFLICT,
+            Self::ThreadEnded(_) => StatusCode::CONFLICT,
+            Self::Gone(_) => StatusCode::GONE,
             Self::AttributeHeld { .. } => StatusCode::CONFLICT,
         }
     }
@@ -132,6 +140,8 @@ impl ApiError {
             Self::FootprintConflict(_) => "Footprint Conflict",
             Self::PlanConflict(_) => "Plan Conflict",
             Self::ClaimLost(_) => "Claim Lost",
+            Self::ThreadEnded(_) => "Thread Ended",
+            Self::Gone(_) => "Gone",
         }
     }
 
@@ -163,6 +173,8 @@ impl ApiError {
             | Self::Internal(msg)
             | Self::UnprocessableEntity(msg)
             | Self::ClaimLost(msg)
+            | Self::ThreadEnded(msg)
+            | Self::Gone(msg)
             | Self::Overloaded(msg)
             | Self::AttributeHeld { detail: msg, .. } => msg.clone(),
             Self::CursorTooOld {
@@ -238,6 +250,8 @@ impl ApiError {
             Self::FootprintConflict(_) => "https://maidan.world/problems/footprint-conflict",
             Self::PlanConflict(_) => "https://maidan.world/problems/plan-conflict",
             Self::ClaimLost(_) => "https://maidan.world/problems/claim-lost",
+            Self::ThreadEnded(_) => "https://maidan.world/problems/thread-ended",
+            Self::Gone(_) => "https://maidan.world/problems/gone",
         }
     }
 
@@ -429,6 +443,8 @@ impl From<StoreError> for ApiError {
             },
             StoreError::InvalidInput(msg) => Self::BadRequest(msg),
             StoreError::ClaimLost(msg) => Self::ClaimLost(msg),
+            StoreError::Ended(msg) => Self::ThreadEnded(msg),
+            StoreError::Gone(msg) => Self::Gone(msg),
             // Named only by a route that has checked the caller may read the
             // holder (`routes::disclose_holder`); by default it stays unnamed.
             StoreError::AttributeHeld { ref held, .. } => Self::AttributeHeld {
@@ -523,6 +539,20 @@ mod tests {
             }
             other => panic!("expected CursorTooOld, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn an_ended_thread_is_409_and_a_gone_one_410_each_with_its_own_type() {
+        let ended = ApiError::from(StoreError::Ended("archived".into()));
+        assert_eq!(ended.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            ended.problem_type(),
+            "https://maidan.world/problems/thread-ended"
+        );
+        let gone = ApiError::from(StoreError::Gone("deleted".into()));
+        assert_eq!(gone.status(), StatusCode::GONE);
+        assert_eq!(gone.problem_type(), "https://maidan.world/problems/gone");
+        assert_eq!(gone.into_response().status(), StatusCode::GONE);
     }
 
     #[test]

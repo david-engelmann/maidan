@@ -29,7 +29,7 @@ fn every_problem_type_the_server_documents_has_its_own_variant() {
             "{segment} shares the variant {variant}"
         );
     }
-    assert_eq!(names.len(), 22);
+    assert_eq!(names.len(), 24);
 }
 
 #[test]

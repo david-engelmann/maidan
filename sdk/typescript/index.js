@@ -92,6 +92,10 @@ export class FootprintConflictError extends MaidanError {}
 export class PlanConflictError extends MaidanError {}
 /** 409 `claim-lost`: the lease is no longer the thread's live claim. */
 export class ClaimLostError extends MaidanError {}
+/** 409 `thread-ended`: the thread is closed or archived, and the write does not apply to it. */
+export class ThreadEndedError extends MaidanError {}
+/** 410 `gone`: the thread was deleted. */
+export class GoneError extends MaidanError {}
 /** A problem `type` this client does not know, or a body that is not a problem. */
 export class UnknownProblemError extends MaidanError {}
 
@@ -127,6 +131,8 @@ export const PROBLEM_TYPES = Object.freeze({
   [`${PROBLEM_BASE}footprint-conflict`]: FootprintConflictError,
   [`${PROBLEM_BASE}plan-conflict`]: PlanConflictError,
   [`${PROBLEM_BASE}claim-lost`]: ClaimLostError,
+  [`${PROBLEM_BASE}thread-ended`]: ThreadEndedError,
+  [`${PROBLEM_BASE}gone`]: GoneError,
 });
 
 /** The error for a failed response: the subclass its problem `type` names. */

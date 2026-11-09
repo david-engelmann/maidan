@@ -32,8 +32,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressSurface, MarkReadyBases, MemberKind, NewApiToken, NewApp, NewAppInstallation,
-    NewEgressTarget, NewMember, NewWorkspace,
+    CancelAuthority, EgressSurface, EgressTarget, MarkReadyBases, MemberKind, NewApiToken, NewApp,
+    NewAppInstallation, NewChannel, NewEgressTarget, NewMember, NewThread, NewWorkspace,
 };
 use serde_json::{json, Value};
 
@@ -710,6 +710,81 @@ async fn mark_ready_refuses_a_closed_pull() {
     assert!(
         h.fake.lock().unwrap().graphql.is_empty(),
         "a closed pull request is never flipped"
+    );
+}
+
+/// A task cancelled or closed some other way: its pull request must not move
+/// toward a merge as if the work still counted.
+#[tokio::test]
+async fn mark_ready_refuses_with_409_when_the_pull_requests_task_has_ended() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    let author = h
+        .store
+        .create_member(NewMember {
+            workspace_id: h.workspace_id,
+            handle: "producer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = h
+        .store
+        .create_channel(NewChannel {
+            workspace_id: h.workspace_id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = h
+        .store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("the change".into()),
+            description: None,
+            created_by: Some(author.id),
+        })
+        .await
+        .unwrap();
+    let delivery = h
+        .store
+        .arm_result_delivery(
+            thread.id,
+            &EgressTarget::GithubBranch {
+                repo: "o/repo".into(),
+                branch: "feature/agent-x".into(),
+            },
+            chrono::Utc::now(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    h.store
+        .mark_result_delivered(
+            delivery.id,
+            Some("1111111111111111111111111111111111111111#7"),
+            chrono::Utc::now(),
+        )
+        .await
+        .unwrap();
+    h.store
+        .cancel_thread(thread.id, author.id, "superseded", CancelAuthority::Creator)
+        .await
+        .unwrap();
+
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(
+        body["type"],
+        json!("https://maidan.world/problems/thread-ended")
+    );
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "an ended task's pull request is never flipped"
     );
 }
 

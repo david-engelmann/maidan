@@ -116,6 +116,41 @@ pub async fn round_previous_head(
     Ok(head.flatten())
 }
 
+/// The thread answerable for pull request `pull_number` of `repo` in
+/// `workspace_id` — see the SQLite twin.
+pub async fn pull_thread(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+) -> Result<Option<ThreadId>, StoreError> {
+    let thread: Option<Uuid> = sqlx::query_scalar(
+        "SELECT thread_id FROM (
+             SELECT p.thread_id AS thread_id, 1 AS rank, NULL::timestamptz AS at
+             FROM maidan_change_pulls p
+             WHERE p.repo = lower($1) AND p.pull_number = $2 AND p.workspace_id = $3
+             UNION ALL
+             SELECT rd.thread_id AS thread_id, 0 AS rank, rd.updated_at AS at
+             FROM maidan_result_deliveries rd
+             JOIN maidan_threads t ON t.id = rd.thread_id
+             JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE c.workspace_id = $3
+               AND rd.surface = 'github_branch' AND rd.status = 'delivered'
+               AND lower(substr(rd.selector, 1, length($1) + 1)) = lower($1) || '@'
+               AND rd.external_ref LIKE '%#' || $4
+         ) found
+         ORDER BY rank, at DESC
+         LIMIT 1",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .bind(workspace_id.0)
+    .bind(pull_number.to_string())
+    .fetch_optional(pool)
+    .await?;
+    Ok(thread.map(ThreadId))
+}
+
 /// Stamp when a tracked pull request was made ready (the first time only).
 pub async fn mark_ready(
     pool: &PgPool,

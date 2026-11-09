@@ -66,6 +66,11 @@ problem_response!(
     "The request conflicts with the resource's current state."
 );
 problem_response!(
+    /// 410: the thread the request aims at is gone (tombstoned).
+    Gone,
+    "The thread this request aims at is gone (type `problems/gone`); nothing was written, and it will not come back."
+);
+problem_response!(
     /// 413: the request body exceeds `MAIDAN_MAX_BODY_BYTES`, or on an artifact
     /// upload `MAIDAN_ARTIFACT_MAX_BODY_BYTES`.
     PayloadTooLarge,
