@@ -24497,6 +24497,7 @@
     },
     "/threads/{id}/assignee/claim": {
       "post": {
+        "description": "A thread that is closed or archived is refused with 409 `thread-ended`,\nand a deleted one with 410 `gone`; nothing is claimed. A parked or blocked\nthread, or a member at the workspace's work-in-progress limit, is 409\n`conflict`.",
         "operationId": "claim_thread",
         "parameters": [
           {
@@ -24556,6 +24557,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -25312,6 +25316,7 @@
     },
     "/threads/{id}/claim/acknowledge": {
       "post": {
+        "description": "Only the holder of the live lease acknowledges. A lease that expired, was\ntaken over or was released answers 409 `claim-lost`, as a renewal does,\nand the caller should stop the work. 404 means the thread does not exist.",
         "operationId": "acknowledge_claim",
         "parameters": [
           {
@@ -25404,6 +25409,7 @@
     },
     "/threads/{id}/claim/release": {
       "post": {
+        "description": "Only the holder of the live lease releases. A lease that expired, was\ntaken over or was released already answers 409 `claim-lost`, as a renewal\ndoes. 404 means the thread does not exist.",
         "operationId": "release_claim",
         "parameters": [
           {

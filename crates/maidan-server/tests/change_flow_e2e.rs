@@ -1284,6 +1284,106 @@ async fn a_diff_that_does_not_apply_is_refused_and_leaves_no_branch() {
 }
 
 #[tokio::test]
+async fn a_change_queued_before_a_cancel_pushes_nothing_while_its_message_relays_still_send() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    // Cancelled while the delivery waits in the queue.
+    let outcome = h
+        .store
+        .cancel_thread(
+            h.a.thread_id,
+            h.a.member_id,
+            "no longer needed",
+            maidan_types::CancelAuthority::Transition,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, maidan_types::CancelOutcome::Cancelled { .. }),
+        "{outcome:?}"
+    );
+    // The cancel's notice, relayed to the linked channel as any message is.
+    h.store
+        .enqueue_egress(maidan_types::NewEgressOutbox {
+            workspace_id: h.a.workspace_id,
+            thread_id: h.a.thread_id,
+            source_log_id: 2,
+            target: EgressTarget::Slack {
+                channel_id: CHANNEL.into(),
+                thread_ts: None,
+            },
+            body: "Cancelled: no longer needed".into(),
+            kind: maidan_types::EgressKind::Projector,
+        })
+        .await
+        .unwrap()
+        .expect("queued");
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.clone().unwrap();
+    assert!(reason.starts_with("thread_ended"), "{reason}");
+    assert!(reason.contains("was cancelled"), "{reason}");
+    {
+        let fake = h.fake.lock().unwrap();
+        assert!(
+            fake.requests.is_empty(),
+            "GitHub was not called: {:?}",
+            fake.requests
+        );
+        assert!(!fake.refs.contains_key(BRANCH), "no branch was pushed");
+        assert!(fake.pulls.is_empty(), "no pull request was opened");
+    }
+
+    // Both Slack messages still go out: the relayed notice, and the result
+    // reply, which says why nothing landed.
+    let posts = h.slack_posts();
+    assert_eq!(posts.len(), 2, "{posts:?}");
+    assert!(
+        posts.iter().any(|(channel, ts, text)| channel == CHANNEL
+            && ts.is_none()
+            && text == "Cancelled: no longer needed"),
+        "{posts:?}"
+    );
+    let reply = posts
+        .iter()
+        .find(|(_, ts, _)| ts.as_deref() == Some(THREAD_TS))
+        .expect("the result reply");
+    assert!(reply.2.contains("Nothing was committed"), "{}", reply.2);
+    assert!(reply.2.contains("thread_ended"), "{}", reply.2);
+    assert_eq!(h.delivery(&h.a, "slack").await.status, status::DELIVERED);
+}
+
+#[tokio::test]
+async fn a_change_whose_task_closed_without_a_cancel_still_delivers() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    // A producer that hands its change in and closes the task at once: the
+    // thread is closed, but nothing says it ended without landing.
+    for action in [
+        maidan_fsm::ThreadAction::StartReview,
+        maidan_fsm::ThreadAction::Close,
+    ] {
+        h.store
+            .transition_thread(h.a.thread_id, h.a.member_id, action)
+            .await
+            .unwrap();
+    }
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let fake = h.fake.lock().unwrap();
+    assert!(fake.refs.contains_key(BRANCH), "the branch was pushed");
+    assert_eq!(fake.pulls.len(), 1, "the draft pull request was opened");
+}
+
+#[tokio::test]
 async fn a_change_whose_diff_adds_a_credential_is_refused_with_nothing_written() {
     let h = harness().await;
     h.allow_change().await;

@@ -273,21 +273,28 @@ async fn clear_assignee_in_tx(
 }
 
 /// Release the fenced claim, charging its worked time and dropping the status
-/// the holder declared, in the same transaction.
+/// the holder declared, in the same transaction. The lease must be live at
+/// `lease_clock`, as `renew_claim` reads it: a lease that lapsed is lost
+/// even before the reaper frees it. `NotFound` when the fence finds no row.
 async fn release_fenced_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
+    lease_clock: DateTime<Utc>,
 ) -> Result<Thread, StoreError> {
+    // The deadline is read under the row lock, so the update below writes
+    // the row this check passed.
     let row = sqlx::query(
         "SELECT work_started_at FROM maidan_threads
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
+           AND (assignment_expires_at IS NULL OR assignment_expires_at >= $4)
          FOR UPDATE",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(lease_clock)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -610,6 +617,32 @@ fn lapsed_claim(
     Some((holder, deadline, row.get("prev_started")))
 }
 
+/// Refuse an explicit claim of a thread that is closed or archived
+/// ([`StoreError::Ended`]) or gone ([`StoreError::Gone`]); `NotFound` when it
+/// does not exist. The row is locked first, in the claim's transaction, so a
+/// close cannot commit between this read and the claim's update. A closed
+/// thread is not always parked (a close as abandoned is not), so the park
+/// check alone let one be claimed.
+async fn refuse_ended_claim_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query(
+        "SELECT state, tombstoned_at IS NOT NULL AS gone FROM maidan_threads
+         WHERE id = $1 FOR UPDATE",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    crate::thread_liveness::refuse_ended_column(
+        thread_id,
+        row.get::<&str, _>("state"),
+        row.get("gone"),
+        "a claim",
+    )
+}
+
 /// Atomic compare-and-set claim: the `assignee_id IS NULL` predicate + row lock
 /// guarantees only one concurrent claimer wins. A `None` result means the row
 /// was already assigned (or absent) — disambiguate with a follow-up read.
@@ -623,6 +656,7 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
+    refuse_ended_claim_in_tx(&mut tx, thread_id).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let row = sqlx::query(&format!(
@@ -669,6 +703,7 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    refuse_ended_claim_in_tx(&mut tx, thread_id).await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::reviews::refuse_round_cap_claim(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
@@ -1145,7 +1180,7 @@ pub async fn return_human_timeouts(
         let holder = MemberId(candidate.get("assignee_id"));
         let lease = ClaimLeaseId(candidate.get("claim_lease_id"));
         let note: String = candidate.get("note");
-        release_fenced_in_tx(&mut tx, thread_id, holder, lease).await?;
+        release_fenced_in_tx(&mut tx, thread_id, holder, lease, now).await?;
         sqlx::query("DELETE FROM maidan_thread_status WHERE thread_id = $1")
             .bind(thread_id.0)
             .execute(&mut *tx)
@@ -1377,78 +1412,126 @@ pub(super) async fn fence_refusal(
 }
 
 /// Stamp the working clock: the current holder acknowledges the claim and
-/// begins work. Fenced by `(assignee_id, claim_lease_id)` — only the live
-/// holder presenting the matching token can start the clock. `COALESCE` keeps
-/// the first start time, so a re-acknowledge within the same claim epoch is
-/// idempotent (a reclaim reset `work_started_at` to NULL, so the next holder
-/// stamps fresh). `NotFound` if the thread is gone, the caller isn't the
-/// holder, or the token is stale.
+/// begins work. Fenced by `(assignee_id, claim_lease_id)` under a live lease,
+/// as `renew_claim` is — only the live holder presenting the matching token
+/// can start the clock, and a lease that lapsed is lost even before the
+/// reaper frees it. `COALESCE` keeps the first start time, so a
+/// re-acknowledge within the same claim epoch is idempotent (a reclaim reset
+/// `work_started_at` to NULL, so the next holder stamps fresh). `NotFound` if
+/// the thread does not exist; `ClaimLost` if the caller does not hold it
+/// under a live `lease_id`.
 pub async fn acknowledge_claim(
     pool: &PgPool,
+    grace: &ClaimGrace,
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
+    // The deadline is compared with the clock `renew_claim` and `claim_next`
+    // read (the app clock, through the boot grace).
     let row = sqlx::query(
         "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, $4), updated_at = $4
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
+           AND (assignment_expires_at IS NULL OR assignment_expires_at >= $5)
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
     .bind(crate::clock::db_now())
+    .bind(grace.lease_clock(chrono::Utc::now()))
     .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    .await?;
+    match row {
+        Some(row) => row_to_thread(&row),
+        None => Err(fence_refusal(pool, thread_id, lease_id).await?),
+    }
 }
 
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue immediately instead of waiting for the lease to lapse — e.g. an
-/// agent shutting down on SIGTERM. Fenced by `(assignee_id, claim_lease_id)`;
-/// clears the assignee, lease, and working clock in one write. `NotFound` if
-/// the caller isn't the holder or the token is stale.
+/// agent shutting down on SIGTERM. Fenced by `(assignee_id, claim_lease_id)`
+/// under a live lease; clears the assignee, lease, and working clock in one
+/// write. `NotFound` if the thread does not exist; `ClaimLost` if the caller
+/// does not hold it under a live `lease_id`, as `renew_claim` answers.
 pub async fn release_claim(
     pool: &PgPool,
+    grace: &ClaimGrace,
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let mut tx = pool.begin().await?;
-    let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
-    tx.commit().await?;
-    Ok(thread)
+    let clock = grace.lease_clock(chrono::Utc::now());
+    match release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id, clock).await {
+        Ok(thread) => {
+            tx.commit().await?;
+            Ok(thread)
+        }
+        Err(StoreError::NotFound) => {
+            tx.rollback().await?;
+            Err(fence_refusal(pool, thread_id, lease_id).await?)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+/// The body of [`release_claim_with_event`], in the caller's transaction:
+/// `NotFound` when the fence finds no live claim under `lease_id`.
+async fn release_with_event_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+    lease_clock: DateTime<Utc>,
+    decline: Option<ClaimDecline>,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    if let Some(decline) = decline {
+        super::review_family::refuse_unfounded_decline_in_tx(
+            tx, thread_id, member_id, lease_id, decline,
+        )
+        .await?;
+    }
+    let thread = release_fenced_in_tx(tx, thread_id, member_id, lease_id, lease_clock).await?;
+    // In the release's transaction and after its fence, so only the holder
+    // of the live lease records a decline, and only with its release.
+    if let Some(decline) = decline {
+        super::review_family::record_decline_in_tx(tx, thread_id, member_id, decline).await?;
+    }
+    let note = decline.map(|decline| decline.note().to_owned());
+    let stored = append_assignment_event(tx, &thread, member_id, Some(member_id), note).await?;
+    Ok((thread, stored))
 }
 
 /// Release a claim and append its `ThreadAssignmentChanged` event in one tx.
-/// The previous assignee is the caller (the fence guarantees it). `NotFound` if
-/// the caller isn't the holder.
+/// The previous assignee is the caller (the fence guarantees it). `NotFound`
+/// if the thread does not exist; `ClaimLost` if the caller does not hold it
+/// under a live `lease_id`.
 pub async fn release_claim_with_event(
     pool: &PgPool,
+    grace: &ClaimGrace,
     thread_id: ThreadId,
     member_id: MemberId,
     lease_id: ClaimLeaseId,
     decline: Option<ClaimDecline>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
-    if let Some(decline) = decline {
-        super::review_family::refuse_unfounded_decline_in_tx(
-            &mut tx, thread_id, member_id, lease_id, decline,
-        )
-        .await?;
+    let clock = grace.lease_clock(chrono::Utc::now());
+    let released =
+        release_with_event_in_tx(&mut tx, thread_id, member_id, lease_id, clock, decline).await;
+    match released {
+        Ok(released) => {
+            tx.commit().await?;
+            Ok(released)
+        }
+        // The fence found no live claim under `lease_id`: told apart from a
+        // thread that does not exist after the rollback, as `renew_claim` is.
+        Err(StoreError::NotFound) => {
+            tx.rollback().await?;
+            Err(fence_refusal(pool, thread_id, lease_id).await?)
+        }
+        Err(err) => Err(err),
     }
-    let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
-    // In the release's transaction and after its fence, so only the holder
-    // of the live lease records a decline, and only with its release.
-    if let Some(decline) = decline {
-        super::review_family::record_decline_in_tx(&mut tx, thread_id, member_id, decline).await?;
-    }
-    let note = decline.map(|decline| decline.note().to_owned());
-    let stored =
-        append_assignment_event(&mut tx, &thread, member_id, Some(member_id), note).await?;
-    tx.commit().await?;
-    Ok((thread, stored))
 }
 
 /// Release every live leased claim `member_id` holds in `workspace_id`, each
@@ -1468,6 +1551,7 @@ pub async fn release_member_claims_with_events(
     // and is left out. A thread the member can no longer read is left too, as
     // `release_claim` refuses it: its lease lapses as before.
     let readable = crate::thread_access::readable_thread("t.id", "$1", "$2", "$4");
+    let clock = grace.lease_clock(chrono::Utc::now());
     let held = sqlx::query(&format!(
         "SELECT t.id, t.claim_lease_id FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
@@ -1481,7 +1565,7 @@ pub async fn release_member_claims_with_events(
     ))
     .bind(workspace_id.0)
     .bind(member_id.0)
-    .bind(grace.lease_clock(chrono::Utc::now()))
+    .bind(clock)
     .bind(DM_CHANNEL_NAME)
     .fetch_all(&mut *tx)
     .await?;
@@ -1489,7 +1573,7 @@ pub async fn release_member_claims_with_events(
     for row in &held {
         let thread_id = ThreadId(row.get("id"));
         let lease = ClaimLeaseId(row.get("claim_lease_id"));
-        let thread = match release_fenced_in_tx(&mut tx, thread_id, member_id, lease).await {
+        let thread = match release_fenced_in_tx(&mut tx, thread_id, member_id, lease, clock).await {
             Ok(thread) => thread,
             // The fence on the lease we read: a claim that moved on is not ours.
             Err(StoreError::NotFound) => continue,

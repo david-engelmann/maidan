@@ -2539,7 +2539,9 @@ pub trait AssignmentStore: Send + Sync {
     /// compare-and-set (`WHERE assignee_id IS NULL`) makes concurrent claims
     /// race-safe: exactly one wins. The claim has no lease. `claimed` is
     /// `false` when it was already assigned; `NotFound` only when the thread
-    /// doesn't exist.
+    /// doesn't exist. A thread that is closed or archived is refused with
+    /// [`StoreError::Ended`] and one that is gone with [`StoreError::Gone`],
+    /// read in the claim's own transaction so a close cannot slip between.
     async fn claim_thread(
         &self,
         thread_id: ThreadId,
@@ -3141,9 +3143,11 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Thread, StoreError>;
 
     /// Stamp the working clock: the current claim-holder acknowledges and
-    /// begins work. Fenced by `(member_id, lease_id)`. Idempotent (the first
-    /// start time wins). `NotFound` if the caller isn't the holder or the token
-    /// is stale.
+    /// begins work. Fenced by `(member_id, lease_id)` under a live lease, on
+    /// the clock and boot grace [`Self::renew_claim`] reads. Idempotent (the
+    /// first start time wins). `NotFound` if the thread does not exist;
+    /// [`StoreError::ClaimLost`] if the caller isn't the holder, the token is
+    /// stale, or the lease expired.
     async fn acknowledge_claim(
         &self,
         thread_id: ThreadId,
@@ -3153,10 +3157,12 @@ pub trait AssignmentStore: Send + Sync {
 
     /// Release a claim (graceful handoff): the current holder returns the
     /// thread to the queue immediately (e.g. a clean shutdown) rather than
-    /// letting the lease lapse. Fenced by `(member_id, lease_id)`. `NotFound`
-    /// if the caller isn't the holder or the token is stale. A status the
-    /// holder declared on the thread is dropped with the claim; one another
-    /// member declared stays.
+    /// letting the lease lapse. Fenced by `(member_id, lease_id)` under a live
+    /// lease, as [`Self::renew_claim`] is. `NotFound` if the thread does not
+    /// exist; [`StoreError::ClaimLost`] if the caller isn't the holder, the
+    /// token is stale, or the lease expired. A status the holder declared on
+    /// the thread is dropped with the claim; one another member declared
+    /// stays.
     async fn release_claim(
         &self,
         thread_id: ThreadId,
@@ -3225,6 +3231,16 @@ pub trait AssignmentStore: Send + Sync {
         reason: &str,
         authority: CancelAuthority,
     ) -> Result<CancelOutcome, StoreError>;
+
+    /// How a thread ended without landing: `cancelled` after a cancel, or
+    /// the close-abandoned reason (`abandoned`, `duplicate`, `superseded`).
+    /// `None` for any other thread, a closed one that landed included, and
+    /// for a thread that does not exist. A closed thread can only be
+    /// archived, never reopened, so the answer does not go stale.
+    async fn thread_unlanded_close(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<String>, StoreError>;
 
     /// Park a thread from dispatch: while marked, `claim_next` skips it and an
     /// explicit claim is refused. Upserts the reason/actor.

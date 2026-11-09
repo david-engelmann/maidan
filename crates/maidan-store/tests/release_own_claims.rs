@@ -204,7 +204,7 @@ async fn a_restarted_claimant_releases_only_its_own_live_claims(store: &dyn Stor
         store
             .release_claim(first, a, a_first.claim_lease_id.unwrap())
             .await,
-        Err(StoreError::NotFound)
+        Err(StoreError::ClaimLost(_))
     ));
 }
 

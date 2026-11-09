@@ -239,6 +239,9 @@ mod egress_worker_e2e;
 #[path = "../email_rest_e2e.rs"]
 mod email_rest_e2e;
 
+#[path = "../ended_thread_claims_e2e.rs"]
+mod ended_thread_claims_e2e;
+
 #[path = "../enqueue_e2e.rs"]
 mod enqueue_e2e;
 

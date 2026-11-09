@@ -685,6 +685,10 @@ pub fn claim_next_workspace_thread() {}
 pub fn renew_claim() {}
 
 /// Acknowledge a claim
+///
+/// Only the holder of the live lease acknowledges. A lease that expired, was
+/// taken over or was released answers 409 `claim-lost`, as a renewal does,
+/// and the caller should stop the work. 404 means the thread does not exist.
 #[utoipa::path(
     post,
     path = "/threads/{id}/claim/acknowledge",
@@ -697,11 +701,16 @@ pub fn renew_claim() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     )
 )]
 pub fn acknowledge_claim() {}
 
 /// Release a claim
+///
+/// Only the holder of the live lease releases. A lease that expired, was
+/// taken over or was released already answers 409 `claim-lost`, as a renewal
+/// does. 404 means the thread does not exist.
 #[utoipa::path(
     post,
     path = "/threads/{id}/claim/release",
@@ -714,6 +723,7 @@ pub fn acknowledge_claim() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     )
 )]
 pub fn release_claim() {}

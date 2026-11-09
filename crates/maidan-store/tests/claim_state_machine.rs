@@ -184,6 +184,13 @@ async fn run(ops: Vec<Op>) {
             .get(&thread)
             .is_some_and(|h| h.member == member && h.lease == lease)
     };
+    // A held lease that has not lapsed; a lease-less claim never lapses.
+    let live = |model: &Model, thread: usize| {
+        model
+            .holders
+            .get(&thread)
+            .is_some_and(|h| !(h.leased && h.expired))
+    };
 
     for op in ops {
         match op {
@@ -235,12 +242,13 @@ async fn run(ops: Vec<Op>) {
                     .store
                     .release_claim(w.threads[thread], w.members[member], lease)
                     .await;
-                if holds(&model, member, thread, lease) {
+                // A lapsed lease is lost, for a release as for a renewal.
+                if holds(&model, member, thread, lease) && live(&model, thread) {
                     r.expect("the holder may release");
                     let old = model.holders.remove(&thread).unwrap();
                     model.stale.insert(thread, old.lease);
                 } else {
-                    assert!(matches!(r, Err(StoreError::NotFound)), "{r:?}");
+                    assert!(matches!(r, Err(StoreError::ClaimLost(_))), "{r:?}");
                 }
             }
             Op::Renew {
@@ -256,11 +264,7 @@ async fn run(ops: Vec<Op>) {
                 // An expired lease is lost even before anyone takes the
                 // thread over: renewing it would revive a claim `claim_next`
                 // already counts as free.
-                let live = model
-                    .holders
-                    .get(&thread)
-                    .is_some_and(|h| !(h.leased && h.expired));
-                if holds(&model, member, thread, lease) && live {
+                if holds(&model, member, thread, lease) && live(&model, thread) {
                     r.expect("the holder may renew");
                     let h = model.holders.get_mut(&thread).unwrap();
                     h.leased = true;
@@ -279,10 +283,10 @@ async fn run(ops: Vec<Op>) {
                     .store
                     .acknowledge_claim(w.threads[thread], w.members[member], lease)
                     .await;
-                if holds(&model, member, thread, lease) {
+                if holds(&model, member, thread, lease) && live(&model, thread) {
                     r.expect("the holder may acknowledge");
                 } else {
-                    assert!(matches!(r, Err(StoreError::NotFound)), "{r:?}");
+                    assert!(matches!(r, Err(StoreError::ClaimLost(_))), "{r:?}");
                 }
             }
             Op::Expire { thread } => {

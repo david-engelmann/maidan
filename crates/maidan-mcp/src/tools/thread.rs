@@ -508,6 +508,11 @@ pub(super) async fn claim_thread(
     let a: ClaimThreadArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let member_id = auth.member_id;
+    // An ended thread is refused for that before the park a cancel leaves
+    // on it (the REST 409 `thread-ended` analogue, `-32013`). The store reads
+    // the state again in the claim's transaction.
+    let thread = server.store.get_thread(thread_id).await?;
+    maidan_store::thread_liveness::refuse_ended(&thread, "a claim")?;
     // Unclaimable: a parked thread refuses an explicit claim, just as
     // `claim_next` skips it (the REST 409 analogue).
     if let Some(u) = server.store.get_thread_unclaimable(thread_id).await? {
@@ -525,7 +530,6 @@ pub(super) async fn claim_thread(
     }
     // WIP limit: refuse a NEW claim past the cap (the REST 409 analogue); a
     // re-claim of a thread the member already holds is exempt.
-    let thread = server.store.get_thread(thread_id).await?;
     if thread.assignee_id != Some(member_id) {
         let channel = server.store.get_channel(thread.channel_id).await?;
         if at_wip_limit(server.store.as_ref(), channel.workspace_id, member_id).await? {
@@ -1502,8 +1506,10 @@ struct AcknowledgeClaimArgs {
 }
 
 /// Acknowledge a claim and start the working clock, for the current holder
-/// presenting the matching fencing token. Idempotent (the first start time
-/// wins). Thread access is enforced pre-dispatch (the `thread_id` arg).
+/// presenting the matching fencing token under a live lease. Idempotent (the
+/// first start time wins). A stale or expired lease is refused with
+/// [`crate::error::CLAIM_LOST_CODE`], as `renew_claim` is. Thread access is
+/// enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn acknowledge_claim(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1538,10 +1544,11 @@ struct ReleaseClaimArgs {
 
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue by presenting its fencing token, instead of waiting for the lease
-/// to lapse. Thread access is enforced pre-dispatch. Emits
-/// `ThreadAssignmentChanged`. A `decline` also tells `claim_next` not to hand
-/// this thread back to this member; it is part of the fenced release, so only
-/// the holder records one, for itself.
+/// to lapse. A stale or expired lease is refused with
+/// [`crate::error::CLAIM_LOST_CODE`], as `renew_claim` is. Thread access is
+/// enforced pre-dispatch. Emits `ThreadAssignmentChanged`. A `decline` also
+/// tells `claim_next` not to hand this thread back to this member; it is part
+/// of the fenced release, so only the holder records one, for itself.
 pub(super) async fn release_claim(
     server: &crate::server::McpServer,
     auth: &AuthContext,
