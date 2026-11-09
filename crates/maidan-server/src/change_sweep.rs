@@ -160,6 +160,12 @@ async fn refresh(
             return;
         }
     };
+    // Per repository, whether any pull request read this pass had its
+    // checks refused: the token's access is per repository, and one read
+    // that comes back readable while another is refused (a fallback read
+    // that failed) must not resolve and raise the alert in one pass.
+    let mut checks_denied: std::collections::BTreeMap<String, bool> =
+        std::collections::BTreeMap::new();
     for (repo, pull_number) in open {
         // Stamped whatever the read says, so a pull request GitHub keeps
         // failing on cannot hold the front of the queue.
@@ -177,19 +183,13 @@ async fn refresh(
                 continue;
             }
         };
+        *checks_denied.entry(repo.clone()).or_default() |= snapshot.checks_denied;
         if snapshot.checks_denied {
             tracing::warn!(
                 repo,
                 pull_number,
                 "change sweep: GitHub refused this token the pull request's checks, and its Actions runs or commit statuses too; no CI notice can fire"
             );
-            crate::ops_alert::alert(
-                &format!("github-checks-denied:{repo}"),
-                &format!(
-                    "GitHub refuses Maidan's token the CI on {repo}'s pull requests, so no ci_failed or checks_done notice can fire. A fine-grained token needs Actions: read and Commit statuses: read on {repo} (it cannot be given check runs; a GitHub App or classic token reads them directly)."
-                ),
-            )
-            .await;
         }
         let brief = &snapshot.brief;
         if brief.open {
@@ -268,6 +268,35 @@ async fn refresh(
             .await
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");
+        }
+    }
+    alert_checks_denied(checks_denied).await;
+}
+
+/// Raise the operator alert for each repository whose checks GitHub refused
+/// this pass, and resolve it for each whose checks read. It is a condition,
+/// not an event: it posts once per outage, however many passes and restarts
+/// it lasts, and once more when it clears. A repository with no pull request
+/// read this pass is left as it stands.
+async fn alert_checks_denied(checks_denied: std::collections::BTreeMap<String, bool>) {
+    for (repo, denied) in checks_denied {
+        let key = format!("github-checks-denied:{repo}");
+        if denied {
+            crate::ops_alert::raise(
+                &key,
+                &format!(
+                    "GitHub refuses Maidan's token access to the CI on {repo}'s pull requests, so no ci_failed or checks_done notice can fire. A fine-grained token needs Actions: read and Commit statuses: read on {repo} (it cannot be given check runs; a GitHub App or classic token reads them directly)."
+                ),
+            )
+            .await;
+        } else {
+            crate::ops_alert::resolve(
+                &key,
+                &format!(
+                    "Resolved: Maidan's token reads the CI on {repo}'s pull requests again, so ci_failed and checks_done notices fire."
+                ),
+            )
+            .await;
         }
     }
 }

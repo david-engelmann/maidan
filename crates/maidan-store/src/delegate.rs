@@ -23,6 +23,14 @@ macro_rules! store_delegations {
                 self.current_wal_lsn().await
             }
 
+            async fn raise_ops_alert(&self, key: &str, value: &str) -> Result<bool, StoreError> {
+                ops_alerts::raise(self.pool(), key, value).await
+            }
+
+            async fn clear_ops_alert(&self, key: &str) -> Result<bool, StoreError> {
+                ops_alerts::clear(self.pool(), key).await
+            }
+
             fn usage_meters(&self) -> ::std::sync::Arc<crate::usage_meters::UsageMeterBuffer> {
                 self.usage_meters.clone()
             }

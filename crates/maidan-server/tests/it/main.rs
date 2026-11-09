@@ -506,6 +506,9 @@ mod operator_audit_e2e;
 #[path = "../operator_status_e2e.rs"]
 mod operator_status_e2e;
 
+#[path = "../ops_alert_dedupe_e2e.rs"]
+mod ops_alert_dedupe_e2e;
+
 #[path = "../outbound_deliveries_cutoff_e2e.rs"]
 mod outbound_deliveries_cutoff_e2e;
 

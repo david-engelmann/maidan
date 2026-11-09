@@ -56,6 +56,7 @@ mod notifications;
 pub(crate) mod oauth_as;
 mod oauth_codes;
 mod oidc;
+mod ops_alerts;
 pub mod outbox;
 pub mod partitions;
 mod peers;

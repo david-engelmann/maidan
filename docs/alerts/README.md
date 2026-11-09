@@ -54,7 +54,8 @@ at ERROR and runs its next tick. A loop turned off exports neither. Every backgr
 A stack that scrapes no `/metrics` can still get the two that matter most
 in Slack: set `MAIDAN_OPS_ALERT_CHANNEL` to a channel id (`C…`, not the
 name) that Maidan's Slack bot is a member of. The server then posts one line
-on boot (proof the route works, every deploy), and one when a loop:
+on boot (proof the route works, every deploy; a restart or a wake of the same
+build is silent), and one when a loop:
 
 - panics in a tick;
 - has not finished a tick for three of its intervals, or has been in one
@@ -65,6 +66,14 @@ on boot (proof the route works, every deploy), and one when a loop:
 
 The watchdog checks every minute. The same alert posts at most once every
 15 minutes, and a post Slack refuses is retried every minute until it goes.
+
+An alert for a standing condition, such as GitHub refusing Maidan's token
+access to a repository's CI, posts once per outage: the database remembers
+it, so neither the next sweep nor a restarted process (the hosted container
+wakes a fresh one after every idle 15 minutes) posts it again. A "Resolved"
+line follows when it clears, and it posts again if it comes back. When the
+database does not answer, these fall back to the 15-minute window, so an
+alert is repeated rather than lost.
 After the host sleeps (a laptop lid), every loop's clock restarts, so a
 suspend is not reported as every loop stalling.
 

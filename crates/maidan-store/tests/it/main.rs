@@ -344,6 +344,9 @@ mod oidc_signup;
 #[path = "../oldest_event_after_of_kinds.rs"]
 mod oldest_event_after_of_kinds;
 
+#[path = "../ops_alerts.rs"]
+mod ops_alerts;
+
 #[path = "../outbox.rs"]
 mod outbox;
 

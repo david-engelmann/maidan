@@ -51,6 +51,18 @@ pub trait MetaStore: Send + Sync {
     /// token stamped on a write. `Some` on Postgres (`pg_current_wal_lsn()`),
     /// `None` on SQLite (no streaming replication, so no token).
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
+
+    /// Stand the operator alert `key` at `value` (a condition alert holds
+    /// one fixed value; the boot notice holds the build). True when it did
+    /// not already stand at `value`, which is when the caller posts: a
+    /// standing alert survives the process, so a restart mid-outage, or a
+    /// wake on the same build, posts nothing.
+    async fn raise_ops_alert(&self, key: &str, value: &str) -> Result<bool, StoreError>;
+
+    /// The condition behind the operator alert `key` cleared. True when it
+    /// stood, which is when a "resolved" line is owed; the next raise posts
+    /// again.
+    async fn clear_ops_alert(&self, key: &str) -> Result<bool, StoreError>;
 }
 
 /// Input for [`WorkspaceStore::provision_workspace`].
