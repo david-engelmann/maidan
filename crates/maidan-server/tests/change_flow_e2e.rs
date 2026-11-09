@@ -140,6 +140,10 @@ struct Fake {
     statuses: Vec<(String, Value)>,
     /// Fail every commit status with a 500.
     fail_statuses: bool,
+    /// Answer the Actions runs and commit-status reads (with none), as for
+    /// a fine-grained token granted Actions and Commit statuses read; they
+    /// 404 otherwise.
+    actions_readable: bool,
 }
 
 impl Fake {
@@ -456,6 +460,15 @@ async fn github(
                 })
                 .collect();
             reply(StatusCode::OK, json!(open))
+        }
+        ("GET", "actions/runs") if fake.actions_readable => reply(
+            StatusCode::OK,
+            json!({"total_count": 0, "workflow_runs": []}),
+        ),
+        ("GET", r)
+            if fake.actions_readable && r.starts_with("commits/") && r.ends_with("/status") =>
+        {
+            reply(StatusCode::OK, json!({"total_count": 0, "statuses": []}))
         }
         ("GET", r) if r.starts_with("actions/jobs/") && r.ends_with("/logs") => {
             let job = &r["actions/jobs/".len()..r.len() - "/logs".len()];
@@ -5788,4 +5801,163 @@ async fn a_refused_checks_read_at_a_new_head_dismisses_the_old_heads_approval() 
     );
     let view = thread_view(&h, &token, thread.0).await;
     assert_eq!(view["ci"][0]["status"], "unreadable", "{view}");
+}
+
+// ------------------------------------------------- CI read on GitHub's events
+
+const WEBHOOK_SECRET: &str = "gh-webhook-secret";
+
+/// How many times the sweep has listed the head's workflow runs: the first
+/// of the Actions reads, made once per CI read.
+fn actions_reads(h: &Harness) -> usize {
+    let wanted = format!("GET /repos/{REPO}/actions/runs");
+    h.fake
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| **r == wanted)
+        .count()
+}
+
+/// A watched pull request whose `statusCheckRollup` GitHub refuses, as for a
+/// fine-grained token, so its CI is read from the Actions API.
+async fn watch_on_actions(h: &Harness, number: i64, branch: &str) {
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(h, number, branch);
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.denied_checks.insert(number);
+        f.actions_readable = true;
+    }
+    let token = write_token(h, h.a.workspace_id, h.a.member_id).await;
+    let (status, watched) = post_json(
+        h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": number}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{watched}");
+}
+
+/// Deliver a signed GitHub event to the ingress, as the forwarder does.
+async fn deliver_event(h: &Harness, event: &str, body: Value) {
+    let body = body.to_string();
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::post("/integrations/github/events")
+            .header("x-github-event", event)
+            .header("x-github-delivery", uuid::Uuid::now_v7().to_string())
+            .header(
+                "x-hub-signature-256",
+                maidan_server::webhooks::sign_payload(WEBHOOK_SECRET, &body),
+            )
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// With the ingress set, a pass reads the Actions API for a pull request
+/// only when a CI event arrived since its last read, its head moved, or that
+/// read is older than the backstop; any other pass makes no Actions call.
+#[tokio::test]
+async fn with_the_ingress_set_actions_are_read_only_after_an_event_a_push_or_the_backstop() {
+    let mut h = harness().await;
+    h.state
+        .attach_github(Arc::new(maidan_server::github::GithubConfig {
+            webhook_secret: WEBHOOK_SECRET.into(),
+            api_token: None,
+            write_repos: Vec::new(),
+        }));
+    watch_on_actions(&h, 92, "feature/events").await;
+
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 1, "the first pass reads the checks");
+    let graphql = |h: &Harness| {
+        h.fake
+            .lock()
+            .unwrap()
+            .requests
+            .iter()
+            .filter(|r| r.as_str() == "POST /graphql")
+            .count()
+    };
+    let snapshots = graphql(&h);
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(
+        actions_reads(&h),
+        1,
+        "no event, no push and no backstop due: no Actions call"
+    );
+    assert!(
+        graphql(&h) > snapshots,
+        "the pass still read the pull request for its close and ready"
+    );
+
+    let head = h.fake.lock().unwrap().refs["feature/events"].clone();
+    deliver_event(
+        &h,
+        "check_suite",
+        json!({
+            "action": "completed",
+            "repository": {"full_name": REPO},
+            "check_suite": {"head_sha": head, "pull_requests": [{"number": 92}]},
+        }),
+    )
+    .await;
+    assert_eq!(actions_reads(&h), 1, "the ingress itself calls no GitHub");
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 2, "a CI event: exactly one read");
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 2, "the event was read once");
+
+    h.store
+        .mark_change_pull_ci_read(
+            h.a.workspace_id,
+            REPO,
+            92,
+            &head,
+            Utc::now()
+                - chrono::Duration::seconds(change_sweep::DEFAULT_CI_BACKSTOP_SECS as i64 + 1),
+        )
+        .await
+        .unwrap();
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 3, "the backstop: one read");
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 3);
+
+    {
+        let mut f = h.fake.lock().unwrap();
+        let pushed = f.commit_files(&[("README.md", "pushed")], vec![head.clone()]);
+        f.refs.insert("feature/events".into(), pushed);
+    }
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 4, "a push: one read at the new head");
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 4);
+}
+
+/// Without the ingress no CI event can arrive, so every pass reads the
+/// Actions API as before. A swarm-metrics read records no checks and reads
+/// none.
+#[tokio::test]
+async fn without_the_ingress_every_pass_reads_actions_and_a_metrics_read_none() {
+    let h = harness().await;
+    watch_on_actions(&h, 93, "feature/polled").await;
+    change_sweep::sweep_once(&h.state).await;
+    change_sweep::sweep_once(&h.state).await;
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(actions_reads(&h), 3, "one read a pass");
+    change_sweep::refresh_open_pulls(&h.state, h.a.workspace_id).await;
+    assert_eq!(
+        actions_reads(&h),
+        3,
+        "the metrics read made no Actions call"
+    );
 }

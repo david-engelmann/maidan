@@ -87,7 +87,10 @@ pub fn write_repos_from_env() -> Vec<String> {
 /// `X-Hub-Signature-256`, `200` for the `ping` setup event, an `issue_comment`
 /// (projected to the linked Maidan thread), a merged `pull_request` (a
 /// `ThreadLanded` fact), a closed-but-unmerged `pull_request` linked to a
-/// thread (one message, not a land), and (with no side effect) any other event.
+/// thread (one message, not a land), a CI event (`workflow_run`,
+/// `check_suite`, `check_run`, `status`: the tracked pull requests it names
+/// are marked for the change sweep to read their CI), and (with no side
+/// effect) any other event.
 pub async fn github_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -122,8 +125,104 @@ pub async fn github_events(
             route_github_pull_request(&state, &payload).await;
             StatusCode::OK.into_response()
         }
+        // CI moved on a head: the change sweep reads it on its next pass.
+        "workflow_run" | "check_suite" | "check_run" | "status" => {
+            mark_ci_event(&state, event, &payload).await;
+            StatusCode::OK.into_response()
+        }
         _ => StatusCode::OK.into_response(),
     }
+}
+
+/// What a CI event names: its repository, the head commit its CI ran on,
+/// and the pull requests GitHub lists it under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CiEventTarget {
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    /// Lowercase; `None` when the payload's is not a commit SHA.
+    pub head_sha: Option<String>,
+    pub pull_numbers: Vec<i64>,
+}
+
+/// The target of a `workflow_run`, `check_suite`, `check_run` or `status`
+/// event, or `None` for another event or a payload without a repository.
+/// The first three carry `head_sha` and `pull_requests` under a key named
+/// for the event; a `status` carries only `sha`, so it is matched by head.
+pub fn ci_event_target(event: &str, payload: &serde_json::Value) -> Option<CiEventTarget> {
+    let repo = payload
+        .pointer("/repository/full_name")
+        .and_then(serde_json::Value::as_str)?
+        .to_ascii_lowercase();
+    let (head, pulls) = match event {
+        "workflow_run" | "check_suite" | "check_run" => {
+            let body = payload.get(event)?;
+            (body.get("head_sha"), body.get("pull_requests"))
+        }
+        "status" => (payload.get("sha"), None),
+        _ => return None,
+    };
+    let head_sha = head
+        .and_then(serde_json::Value::as_str)
+        .filter(|sha| maidan_types::is_git_sha(sha))
+        .map(str::to_ascii_lowercase);
+    let mut pull_numbers: Vec<i64> = pulls
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|pull| pull.get("number").and_then(serde_json::Value::as_i64))
+        .collect();
+    pull_numbers.sort_unstable();
+    pull_numbers.dedup();
+    Some(CiEventTarget {
+        repo,
+        head_sha,
+        pull_numbers,
+    })
+}
+
+/// Mark each open tracked pull request a CI event names, by number and by
+/// the head its CI was last read at, so the change sweep reads its CI on
+/// the next pass. No GitHub call here: the sweep makes the one read, and
+/// GitHub (and the forwarder) wait on this answer.
+///
+/// A duplicate delivery is harmless, so no delivery id is kept: marking
+/// only stamps the time of the latest event, and two stamps before one
+/// sweep pass still make that pass read CI once. An event for a repository
+/// or head nothing tracks marks nothing.
+async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Value) {
+    let Some(target) = ci_event_target(event, payload) else {
+        return;
+    };
+    let at = chrono::Utc::now();
+    let mut marked = 0u64;
+    for pull_number in &target.pull_numbers {
+        match state
+            .store
+            .mark_change_pull_ci_event(&target.repo, *pull_number, at)
+            .await
+        {
+            Ok(rows) => marked += rows,
+            Err(err) => {
+                tracing::warn!(repo = target.repo, pull_number, error = %err, "github CI event: not marked")
+            }
+        }
+    }
+    // GitHub leaves `pull_requests` empty for a fork's head and for a
+    // `status`; the head the sweep last read finds those.
+    if let Some(head) = target.head_sha.as_deref() {
+        match state
+            .store
+            .mark_change_pull_ci_event_at_head(&target.repo, head, at)
+            .await
+        {
+            Ok(rows) => marked += rows,
+            Err(err) => {
+                tracing::warn!(repo = target.repo, head, error = %err, "github CI event: not marked by head")
+            }
+        }
+    }
+    tracing::debug!(repo = target.repo, event, marked, "github CI event");
 }
 
 /// Route an inbound GitHub `pull_request` event: when a PR **linked** to a
@@ -336,6 +435,36 @@ pub enum ChecksUnread {
     /// may not: a rate limit, a 5xx, a dropped connection. It says nothing
     /// about the token's access.
     Deferred,
+}
+
+/// Whether a pull request read may fall back to the Actions and
+/// commit-status APIs when GitHub refuses the token the `statusCheckRollup`.
+/// The rollup comes with the one GraphQL read; the fallback costs a REST call
+/// for the runs, one for each run's jobs and one for the statuses, which,
+/// for every open pull request on every sweep, spent the shared hourly
+/// budget. A token that can read the rollup is not affected either way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionsRead {
+    /// Fall back.
+    Read,
+    /// Do not: the caller does not use the checks, or nothing says they
+    /// changed. The read then carries no checks (`checks` and
+    /// `checks_unread` both `None`), which says nothing about them.
+    Skip,
+    /// Fall back only when the head is not this one, the head the caller
+    /// last read the checks at: a push is news.
+    IfHeadMoved(String),
+}
+
+impl ActionsRead {
+    /// Whether a read whose head is `head` falls back.
+    pub fn reads_at(&self, head: &str) -> bool {
+        match self {
+            Self::Read => true,
+            Self::Skip => false,
+            Self::IfHeadMoved(last) => !last.eq_ignore_ascii_case(head),
+        }
+    }
 }
 
 /// The call a refused rollup names: the GraphQL field fine-grained tokens
@@ -910,12 +1039,15 @@ pub trait GithubGit: Send + Sync {
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError>;
     /// The change sweep's one read of a pull request per tick: its brief and
-    /// the checks on its head, in one GraphQL query. A read. The default
-    /// reads the brief alone, with no checks.
+    /// the checks on its head, in one GraphQL query, falling back to the
+    /// Actions API as `actions` allows when the token may not read the
+    /// checks there. A read. The default reads the brief alone, with no
+    /// checks.
     async fn pull_snapshot(
         &self,
         repo: &str,
         pull_number: i64,
+        _actions: ActionsRead,
     ) -> Result<GithubPullSnapshot, GithubError> {
         Ok(GithubPullSnapshot {
             brief: self.pull_brief(repo, pull_number).await?,
@@ -1940,6 +2072,7 @@ impl GithubGit for GithubApiClient {
         &self,
         repo: &str,
         pull_number: i64,
+        actions: ActionsRead,
     ) -> Result<GithubPullSnapshot, GithubError> {
         let (owner, name) = repo
             .split_once('/')
@@ -1949,7 +2082,15 @@ impl GithubGit for GithubApiClient {
             "variables": { "owner": owner, "name": name, "number": pull_number },
         }));
         let mut snapshot = snapshot_from(&self.send_json(request).await?)?;
-        if matches!(snapshot.checks_unread, Some(ChecksUnread::Denied { .. })) {
+        let rollup_refused = matches!(snapshot.checks_unread, Some(ChecksUnread::Denied { .. }));
+        if rollup_refused && !actions.reads_at(&snapshot.brief.head_sha) {
+            // Not asked to fall back, so this read says nothing about the
+            // checks: neither empty (nothing reported) nor refused (an
+            // access alert), which the rollup's refusal alone would say of
+            // every pull request the caller chose not to spend calls on.
+            snapshot.checks = None;
+            snapshot.checks_unread = None;
+        } else if rollup_refused {
             // A fine-grained token cannot be granted check runs at all, but
             // it can read Actions and commit statuses: read the head's CI
             // from those. Every run is read down to its jobs, so the required
@@ -3501,5 +3642,55 @@ mod tests {
         assert_eq!(body["head_sha"], check.head_sha);
         assert!(body.get("details_url").is_none());
         assert!(body.get("pull_number").is_none());
+    }
+
+    #[test]
+    fn each_ci_event_names_its_repository_head_and_pull_requests() {
+        let head = "AB".repeat(20);
+        for event in ["workflow_run", "check_suite", "check_run"] {
+            let payload = serde_json::json!({
+                "repository": {"full_name": "Example/App"},
+                event: {
+                    "head_sha": head,
+                    "pull_requests": [{"number": 7}, {"number": 3}, {"number": 7}],
+                },
+            });
+            assert_eq!(
+                ci_event_target(event, &payload),
+                Some(CiEventTarget {
+                    repo: "example/app".into(),
+                    head_sha: Some(head.to_ascii_lowercase()),
+                    pull_numbers: vec![3, 7],
+                }),
+                "{event}"
+            );
+        }
+        let status = serde_json::json!({
+            "repository": {"full_name": "example/app"},
+            "sha": head,
+            "state": "success",
+        });
+        assert_eq!(
+            ci_event_target("status", &status),
+            Some(CiEventTarget {
+                repo: "example/app".into(),
+                head_sha: Some(head.to_ascii_lowercase()),
+                pull_numbers: vec![],
+            })
+        );
+        // Not a CI event, no repository, or a head that is no commit.
+        assert_eq!(ci_event_target("push", &status), None);
+        assert_eq!(
+            ci_event_target("status", &serde_json::json!({"sha": head})),
+            None
+        );
+        let bad_head = serde_json::json!({
+            "repository": {"full_name": "example/app"},
+            "check_suite": {"head_sha": "main", "pull_requests": []},
+        });
+        assert_eq!(
+            ci_event_target("check_suite", &bad_head).map(|target| target.head_sha),
+            Some(None)
+        );
     }
 }

@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { edgeRedirect, isSitePage, withSecurityHeaders, SECURITY_HEADERS, SITE_CSP } from "../src/edge.js";
+import { isScannerProbe } from "../src/scanner.js";
+import { isStatusRequest } from "../src/status.js";
 
 const get = (url, accept) =>
   new Request(url, { headers: accept ? { accept } : {} });
@@ -15,6 +17,26 @@ test("a browser opening the bare origin lands in the console", () => {
   const res = edgeRedirect(get("https://maidan.world/", "text/html,application/xhtml+xml"));
   assert.equal(res.status, 302);
   assert.equal(res.headers.get("location"), "https://maidan.world/ui/");
+});
+
+test("a GitHub event delivery reaches the container untouched", () => {
+  // The change sweep reads CI when one of these says it changed; an edge
+  // rule that answered or redirected it would leave CI on the backstop alone.
+  const delivery = new Request("https://maidan.world/integrations/github/events", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-github-event": "check_suite",
+      "x-hub-signature-256": "sha256=00",
+    },
+    body: "{}",
+  });
+  for (const hasSite of [false, true]) {
+    assert.equal(edgeRedirect(delivery, { hasSite }), null);
+  }
+  assert.equal(isSitePage(delivery), false);
+  assert.equal(isStatusRequest(delivery), false);
+  assert.equal(isScannerProbe(new URL(delivery.url).pathname), false);
 });
 
 test("an API client, any other path, and a POST reach the container", () => {

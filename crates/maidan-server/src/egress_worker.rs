@@ -598,8 +598,10 @@ async fn clear_stale_queue_label(
     if !pull.labels.iter().any(|name| name == label) {
         return Ok(());
     }
+    // Only the merge-queue gate is used here, so the Actions fallback for
+    // the checks would be calls spent for nothing.
     let snapshot = git
-        .pull_snapshot(repo, pull.number)
+        .pull_snapshot(repo, pull.number, crate::github::ActionsRead::Skip)
         .await
         .map_err(failure)?;
     let Some(gate) = snapshot.gate else {

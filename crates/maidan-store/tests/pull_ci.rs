@@ -1080,8 +1080,153 @@ async fn a_push_during_an_approval_never_leaves_the_old_head_approved(store: Arc
     }
 }
 
+/// A CI event marks the open tracked pull requests it names, by number or
+/// by the head the sweep last read their CI at, in every workspace that
+/// tracks them; a read records its head and start; a closed pull request,
+/// another repository or another head is left unmarked.
+async fn a_ci_event_marks_open_pulls_by_number_or_last_read_head(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let a = room(s, "ci-a").await;
+    let b = room(s, "ci-b").await;
+    let (ta, tb) = (task(s, &a).await, task(s, &b).await);
+    s.register_change_pull(a.ws, ta, REPO, 7, None)
+        .await
+        .unwrap();
+    s.register_change_pull(b.ws, tb, REPO, 7, None)
+        .await
+        .unwrap();
+    let other = task(s, &a).await;
+    s.register_change_pull(a.ws, other, "example/other", 7, None)
+        .await
+        .unwrap();
+    let closed = task(s, &a).await;
+    s.register_change_pull(a.ws, closed, REPO, 8, None)
+        .await
+        .unwrap();
+
+    let fresh = s.change_pull_ci_marks(a.ws, REPO, 7).await.unwrap();
+    assert_eq!(
+        fresh,
+        Some(ChangeCiMarks::default()),
+        "nothing read or heard yet"
+    );
+    assert_eq!(
+        s.change_pull_ci_marks(a.ws, REPO, 99).await.unwrap(),
+        None,
+        "an untracked pull request has no marks"
+    );
+
+    // Whole seconds, so both backends give back exactly what was stamped.
+    let t0 = chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+    let head = "ab".repeat(20);
+    s.mark_change_pull_ci_read(a.ws, "Example/App", 7, &head.to_ascii_uppercase(), t0)
+        .await
+        .unwrap();
+    s.mark_change_pull_ci_read(a.ws, REPO, 8, &head, t0)
+        .await
+        .unwrap();
+    s.close_change_pull(a.ws, REPO, 8, None, None, t0)
+        .await
+        .unwrap();
+    let read = s
+        .change_pull_ci_marks(a.ws, REPO, 7)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.read_at, Some(t0));
+    assert_eq!(
+        read.read_head.as_deref(),
+        Some(head.as_str()),
+        "stored lowercase"
+    );
+    assert_eq!(read.event_at, None);
+    assert_eq!(
+        s.change_pull_ci_marks(b.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .read_at,
+        None,
+        "a read in one workspace is not another's"
+    );
+
+    // By number: both workspaces tracking #7 in this repository.
+    let t1 = t0 + chrono::Duration::seconds(10);
+    assert_eq!(
+        s.mark_change_pull_ci_event("EXAMPLE/app", 7, t1)
+            .await
+            .unwrap(),
+        2
+    );
+    for ws in [a.ws, b.ws] {
+        assert_eq!(
+            s.change_pull_ci_marks(ws, REPO, 7)
+                .await
+                .unwrap()
+                .unwrap()
+                .event_at,
+            Some(t1)
+        );
+    }
+    assert_eq!(
+        s.change_pull_ci_marks(a.ws, "example/other", 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .event_at,
+        None,
+        "another repository's #7 is not marked"
+    );
+    assert_eq!(
+        s.mark_change_pull_ci_event(REPO, 8, t1).await.unwrap(),
+        0,
+        "a closed pull request is not read again"
+    );
+    assert_eq!(s.mark_change_pull_ci_event(REPO, 99, t1).await.unwrap(), 0);
+
+    // By head: only the open pull request whose CI was last read there.
+    let t2 = t1 + chrono::Duration::seconds(10);
+    assert_eq!(
+        s.mark_change_pull_ci_event_at_head(REPO, &head.to_ascii_uppercase(), t2)
+            .await
+            .unwrap(),
+        1,
+        "workspace B never read #7 at this head, and #8 is closed"
+    );
+    assert_eq!(
+        s.change_pull_ci_marks(a.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .event_at,
+        Some(t2)
+    );
+    assert_eq!(
+        s.change_pull_ci_marks(b.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .event_at,
+        Some(t1)
+    );
+    assert_eq!(
+        s.mark_change_pull_ci_event_at_head(REPO, &"cd".repeat(20), t2)
+            .await
+            .unwrap(),
+        0,
+        "a head nothing was read at marks nothing"
+    );
+    assert_eq!(
+        s.mark_change_pull_ci_event_at_head("example/other", &head, t2)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
 on_both_backends!(
     a_push_during_an_approval_never_leaves_the_old_head_approved,
+    a_ci_event_marks_open_pulls_by_number_or_last_read_head,
     a_verdict_naming_a_moved_head_is_refused,
     a_named_head_without_a_tracked_pull_is_refused,
     a_ci_read_says_each_notice_once_per_head,

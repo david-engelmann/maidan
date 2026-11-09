@@ -339,7 +339,11 @@ commits a result to a branch and opens a draft pull request as the token's
 owner. Use a fine-grained token with **Contents** and **Pull requests** (read
 and write) on exactly the repositories it may write to, and nothing else. For
 CI notices (`ci_failed`, `checks_done`) add **Actions** and **Commit
-statuses**, read-only; for a change result's `check`, which Maidan posts as a
+statuses**, read-only, and deliver GitHub's `workflow_run`, `check_suite`,
+`check_run` and `status` events to `POST /integrations/github/events`
+(signed with `MAIDAN_GITHUB_WEBHOOK_SECRET`): the change sweep then reads a
+pull request's CI from those APIs only after an event, a push or the
+`MAIDAN_CHANGE_CI_BACKSTOP_SECS` backstop, rather than on every sweep; for a change result's `check`, which Maidan posts as a
 commit status on the head it delivered (or, for a `no_change` round, the
 head the check ran on), make **Commit statuses** read and write. Only a GitHub App can create check runs; with a token, the summary
 comment carries the verdict.
