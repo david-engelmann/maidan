@@ -172,7 +172,10 @@ pub async fn record_checks(
     pull_number: i64,
     snapshot: &GithubPullSnapshot,
 ) -> usize {
-    if snapshot.checks_denied {
+    if matches!(
+        snapshot.checks_unread,
+        Some(crate::github::ChecksUnread::Denied { .. })
+    ) {
         // GitHub refused every read of the checks (the rollup reads as no
         // checks at all), but the head still moved: record it, unreadable,
         // not pending, so a push dismisses the approvals given to the old
