@@ -768,7 +768,8 @@ async fn github_branch_result(
     };
     // Read again here, after every other check and before the first GitHub
     // call, so a cancel that landed while the delivery waited in the queue
-    // stops the commit and the draft pull request.
+    // stops the commit and the draft pull request. Read once: a cancel that
+    // commits after this point does not stop a delivery already writing.
     if let Some(reason) = ended_change_reason(state, entry.thread_id).await? {
         return Ok(Sent::Refused(reason));
     }

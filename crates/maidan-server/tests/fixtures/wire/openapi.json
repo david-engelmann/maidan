@@ -25316,7 +25316,7 @@
     },
     "/threads/{id}/claim/acknowledge": {
       "post": {
-        "description": "Only the holder of the live lease acknowledges. A lease that expired, was\ntaken over or was released answers 409 `claim-lost`, as a renewal does,\nand the caller should stop the work. 404 means the thread does not exist.",
+        "description": "Only the holder of the live lease acknowledges. A lease that expired, was\ntaken over or was released answers 409 `claim-lost`, as a renewal does,\nand the caller should stop the work. During the boot grace after a server\nstarts, a lapsed lease whose holder and token still match is accepted.\n404 means the thread does not exist.",
         "operationId": "acknowledge_claim",
         "parameters": [
           {
@@ -25409,7 +25409,7 @@
     },
     "/threads/{id}/claim/release": {
       "post": {
-        "description": "Only the holder of the live lease releases. A lease that expired, was\ntaken over or was released already answers 409 `claim-lost`, as a renewal\ndoes. 404 means the thread does not exist.",
+        "description": "Only the holder of the live lease releases. A lease that expired, was\ntaken over or was released already answers 409 `claim-lost`, as a renewal\ndoes. During the boot grace after a server starts, a lapsed lease whose\nholder and token still match is accepted. 404 means the thread does not\nexist.",
         "operationId": "release_claim",
         "parameters": [
           {

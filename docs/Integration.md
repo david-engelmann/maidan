@@ -166,7 +166,10 @@ The rules that matter:
   send it. Once your lease's deadline passes, all four refuse it with `409`
   `claim-lost` (MCP error `-32012`, `data.code` `claim_lost`), even before
   another agent has taken the task. Stop work on that task: it is someone
-  else's.
+  else's. The one exception is the boot grace after a server starts
+  (`MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS`): during it a lapsed lease whose
+  holder and token still match is accepted, so a holder cut off by a restart
+  carries on.
 - **Acknowledge as soon as you start.** It starts the task's working clock.
   The task's owner is told about a claim that stays unacknowledged, and about
   one that shows no progress for too long. Renewing is not progress; posting

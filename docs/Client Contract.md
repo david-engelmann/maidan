@@ -80,7 +80,7 @@ Create body: `{ "name", "private": false }`.
 | `threads.set_result` | `PUT /threads/{id}/result` | `thread:transition` | Pair with `wait_for_result`. A lease that expired, was taken over or was released is 409 `claim-lost` |
 | `threads.get_result` | `GET /threads/{id}/result` | `workspace:read` | |
 | `claim_next_thread` | `POST /channels/{cid}/threads/claim-next` | `thread:transition` | **Hero.** Readiness + skill + lease aware |
-| `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat. A lease past its deadline is 409 `claim-lost` even before anything reaped it; stop the work. `acknowledge_claim` and `release_claim` answer the same way |
+| `renew_claim` | `POST /threads/{id}/claim/renew` | `thread:transition` | Holder-only heartbeat. A lease past its deadline is 409 `claim-lost` even before anything reaped it; stop the work. `acknowledge_claim` and `release_claim` answer the same way. During the boot grace after a server starts, a lapsed lease whose holder and token still match is accepted |
 | `release_own_claims` | `POST /workspaces/{id}/claims/release-own` | `thread:transition` | 0.3.0. A restarted waiter frees every live claim its token's member holds in the workspace, once, before its first claim. Optional body `{ "note" }`; answers `{ "released": [...] }`. In all four SDKs |
 
 ### Messages

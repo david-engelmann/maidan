@@ -2118,9 +2118,11 @@ What refuses which:
 - **Mark ready, enqueue** (the mark-ready app): a pull request whose task is
   closed or archived is `thread-ended`, and GitHub is not written.
 - **A change delivery** (the `github_branch` commit and draft pull request)
-  queued before its task was cancelled, closed as abandoned, archived or
-  deleted writes nothing to GitHub. Its delivery row is `skipped` with a
-  reason that starts `thread_ended`. A task closed after its change landed
+  that has not started its GitHub writes when its task is cancelled, closed
+  as abandoned, archived or deleted writes nothing to GitHub. Its delivery
+  row is `skipped` with a reason that starts `thread_ended`. A delivery
+  already writing when the cancel commits can finish: the thread is read once,
+  just before the first GitHub call. A task closed after its change landed
   still delivers, and message relays and result replies to Slack, Linear and
   GitHub comments still go out.
 - **A repeat that changes nothing is still a `200`,** and says so: a second
