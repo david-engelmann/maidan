@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [441.0.0] — 2026-11-09
+
+claude.ai connector sign-in (an omitted OAuth resource), ended threads refuse claims and skip change deliveries, the CI-access alert waits out rate limits, phone-width console fixes.
+
+### The CI-access alert fires on a lasting refusal, not on a rate limit
+
+- **Fixed:** the operator alert that GitHub refuses Maidan's token a repository's CI fired on any failure of the Actions read that follows a refused check rollup, including GitHub's secondary rate limit (a 403) and outages, then resolved on the next pass. Only a 401, 403 or 404 that is not a rate limit, by its headers or GitHub's message, now counts as a refusal. Any other failure leaves the pass's checks unread: no alert, no resolve, and no unreadable-checks notice on the thread.
+- **Changed:** the alert posts only after the refusal has lasted three sweeps and 15 minutes. It names the call GitHub refused and what GitHub answered, and no longer tells the operator to add permissions.
+
+### The validation record runs on v440.0.0
+
+- **Added:** `listings/validation/v440.md`, the Next 14 validation record re-run on `v440.0.0`: the official MCP Inspector against the signed release binaries (cosign-verified, no source build) passed all 50 checks over 263 tools, and the clean-machine install passed on the maintainer's Mac and on a fresh GitHub runner. The example prompts through each platform's own model, a person's install on another host and the reviewer token stay open, each with its owner and the exact prompts to run.
+
+### What ending early does to partial work
+
+- **Added:** `docs/Swarms.md` says what a cancel, a close as abandoned and `release_own_claims` each do to a task's claim, state, branch and pull request, queued deliveries, written result and the claimant's build box, who cleans up each, how a claimant learns to stop (`claim-lost`, `thread-ended` and the live events), and the gaps the code shows today. `docs/Integration.md` links it from the claim rules.
+
+### claude.ai's connector can sign in: an omitted OAuth resource means the MCP endpoint
+
+- **Fixed:** `/oauth/authorize` and `/oauth/token` refused a request that named no `resource` with `invalid_target`, and claude.ai's custom connector sends none, so every claude.ai sign-in stopped on a Bad Request page. A request without a resource now gets the one resource the server issues tokens for (`<origin>/mcp/streamable`), and the grant and its tokens are bound to it as before. A request that names any other resource is still refused.
+
+### The console's phone-width pass on maidan.world
+
+- **Fixed:** on a phone, the board's task search, its Agent and State filters, the new-task field and the channel picker were 13 to 15px, so iOS zoomed the page into each one when it took focus. Below 600px they are 16px, like every other console field.
+- **Fixed:** at 360px the console header's title, live chip and Search did not fit one row, so the sticky header wrapped to two and took 102px of the screen. The title now gives way (and ellipsizes) first, and the header keeps one 67px row.
+- **Fixed:** the sign-up check on the sign-in card rendered Cloudflare Turnstile's 300px widget in a 275px column at 360px (297px at 390px), running past the form. A column narrower than 300px now gets the compact widget.
+
+### An ended task is not claimed again, and a cancelled change is not pushed
+
+- **Fixed:** `POST /threads/{id}/assignee/claim` and MCP `claim_thread` refuse a thread that is closed or archived with `409 thread-ended` (MCP `-32013`, `data.code` `thread_ended`) and a deleted one with `410 gone` (`-32014`), before the park, a block or the WIP limit is read. A thread closed as abandoned is not parked, so it could be claimed while closed. Both backends read the state in the claim's own transaction, so a close cannot land between the check and the claim.
+- **Fixed:** a change delivery (the `github_branch` commit and draft pull request) that has not started its GitHub writes when its task is cancelled, closed as abandoned, archived or deleted writes nothing to GitHub. The worker reads the thread just before its first GitHub call and settles the delivery as `skipped`, with a reason that starts `thread_ended`; a delivery already writing when the cancel commits can finish. A task closed some other way, as when its change landed, still delivers, and message relays and result replies to Slack, Linear and GitHub comments still go out, so a cancel's notice reaches Slack.
+- **Changed:** `POST /threads/{id}/claim/acknowledge` and `POST /threads/{id}/claim/release`, and MCP `acknowledge_claim` and `release_claim`, answer a lease that expired, was taken over or was released with `409 claim-lost` (MCP `-32012`, `data.code` `claim_lost`), as `renew_claim` does, on the same lease clock and boot grace: during the boot grace after a server starts, a lapsed lease whose holder and token still match is accepted. A `decline` on a lapsed lease is `claim-lost` too, before the decline is judged. They answered `404` (`-32004`), and an expired lease nothing had reaped yet was still acknowledged or released. A thread that does not exist is still `404`.
+
 ## [440.0.0] — 2026-11-09
 
 Generic change-producer wire names (unattended engine, maidan.change.result/1), explicit delivery states, ops alerts once per outage.

@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v441.0.0](https://github.com/david-engelmann/maidan/releases/tag/v441.0.0) — the CI-access alert fires on a lasting refusal, not on a rate limit, and 5 more
+
+claude.ai connector sign-in (an omitted OAuth resource), ended threads refuse claims and skip change deliveries, the CI-access alert waits out rate limits, phone-width console fixes.
+
+- The CI-access alert fires on a lasting refusal, not on a rate limit
+- The validation record runs on v440.0.0
+- What ending early does to partial work
+- claude.ai's connector can sign in: an omitted OAuth resource means the MCP endpoint
+- The console's phone-width pass on maidan.world
+- An ended task is not claimed again, and a cancelled change is not pushed
+
+`CHANGELOG.md` under `[441.0.0]` has every entry.
+
 ## [v440.0.0](https://github.com/david-engelmann/maidan/releases/tag/v440.0.0) — a call aimed at a lost claim, an ended thread or a deleted one answers an error, and 3 more
 
 Generic change-producer wire names (unattended engine, maidan.change.result/1), explicit delivery states, ops alerts once per outage.
