@@ -932,6 +932,20 @@ its base and closed was never ahead, so it lands nothing. Any other close is
 a close without a merge, said once and leaving the task open (a watch
 closes, as above).
 
+A merged change lands through its thread's gates: separation of duties, the
+review requirement and the land gate. When one refuses, the thread stays
+open and gets one message saying why (`#N merged, but this thread stays open
+until its gates pass, ...`). The merge is not settled, though: each sweep
+tries the landing again, in one store transaction and with no GitHub call,
+and the first sweep after the gate lifts (a reviewer approves, the land gate
+records a qualifying pass) closes the thread with `ThreadLanded`, so its
+dependents become claimable without anyone closing it by hand. The refusal
+is said once however many sweeps try again. A thread closed or cancelled in
+the meantime is never landed, and its merge settles. Each sweep settles at
+most 25 closes a workspace, those never tried first and then the refusals
+tried longest ago, so refusals waiting on a person hold back neither a new
+close nor one another.
+
 ### Deploys
 
 A deploy pipeline can tell Maidan where a merged change went. It is opt-in,
