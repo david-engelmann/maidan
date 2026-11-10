@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  ENV_FINGERPRINT_HEADER,
   ENV_FINGERPRINT_KEY,
   SERVER_ENV,
   ContainerEnvSession,
@@ -211,7 +212,10 @@ test("the same environment fingerprints the same, whatever the key order", async
 test("the container class delegates environment changes to the session", () => {
   const worker = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
   const fetch = worker.slice(worker.indexOf("async fetch(request)"), worker.indexOf("export default"));
-  assert.match(worker, /this\.envVars = serverEnv\(env\)/);
+  assert.match(worker, /this\.baseEnv = serverEnv\(env\)/);
+  // The process starts with the hash of its settings and echoes it.
+  assert.match(fetch, /envFingerprint\(this\.baseEnv\)/);
+  assert.match(fetch, /this\.envVars = \{ \.\.\.this\.baseEnv, \[ENV_FINGERPRINT_VAR\]: fingerprint \}/);
   assert.match(worker, /this\.envSession = new ContainerEnvSession\(\)/);
   assert.match(fetch, /this\.envSession\.serve\(/);
   assert.match(fetch, /forward: \(\) => super\.fetch\(request\)/);
@@ -569,4 +573,53 @@ test("a cold start still in flight when the demo resets does not record itself, 
   assert.equal(world.session.startingFingerprint, null);
   assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
   assert.equal(world.destroys(), 0);
+});
+
+function answer(fingerprint) {
+  return new Response("ok", { headers: { [ENV_FINGERPRINT_HEADER]: fingerprint } });
+}
+
+test("a container that answers with another start's environment is recycled on the next request", async () => {
+  // v445: the rollout restarted the new image on the previous start's
+  // settings, so MAIDAN_SIGNUP_OPEN never reached the process.
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_SIGNUP_OPEN: "1" }));
+  const previous = await envFingerprint(serverEnv({}));
+  const world = rig({ fingerprint });
+  const stale = await world.serve(async () => {
+    world.container.running = true;
+    return answer(previous);
+  });
+  assert.equal(await stale.text(), "ok", "the answer still goes back");
+  assert.equal(world.destroys(), 0, "its body is not cut off mid-answer");
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), `stale:${previous}`);
+
+  await world.serve(async () => {
+    world.container.running = true;
+    return answer(fingerprint);
+  });
+  assert.equal(world.destroys(), 1, "the next request recycles it");
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+});
+
+test("a verified container that later answers with another environment is recycled too", async () => {
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_SIGNUP_OPEN: "1" }));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  await world.serve(async () => answer(fingerprint));
+  assert.equal(world.destroys(), 0);
+  await world.serve(async () => answer("b".repeat(64)));
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), `stale:${"b".repeat(64)}`);
+  await world.serve(async () => {
+    world.container.running = true;
+    return answer(fingerprint);
+  });
+  assert.equal(world.destroys(), 1);
+});
+
+test("an answer without the header is taken as before, so an older image is not recycled for it", async () => {
+  const fingerprint = await envFingerprint(serverEnv({}));
+  const world = rig({ fingerprint, running: true, stored: fingerprint });
+  await world.serve(async () => new Response("ok"));
+  await world.serve(async () => new Response("ok"));
+  assert.equal(world.destroys(), 0);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
 });

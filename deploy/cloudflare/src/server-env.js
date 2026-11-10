@@ -24,6 +24,20 @@ import { routedEgressHosts } from "./edge.js";
 
 export const ENV_FINGERPRINT_KEY = "containerEnvFingerprint";
 
+// The server echoes the `MAIDAN_ENV_FINGERPRINT` it was started with on
+// every response (crates/maidan-server/src/env_fingerprint.rs). It is the one
+// account of the process's settings that a rollout cannot fake.
+export const ENV_FINGERPRINT_HEADER = "x-maidan-env-fingerprint";
+export const ENV_FINGERPRINT_VAR = "MAIDAN_ENV_FINGERPRINT";
+
+// The fingerprint a response says its process started with; null when it
+// says none (an older image, or a response that is not the server's).
+export function answeredFingerprint(response) {
+  const headers = response?.headers;
+  if (!headers || typeof headers.get !== "function") return null;
+  return headers.get(ENV_FINGERPRINT_HEADER);
+}
+
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
 // Alphabetical, no duplicates. `_FILE` mounts stay off this list: a Worker
@@ -177,11 +191,25 @@ export class ContainerEnvSession {
     this.inFlightStarts = 0;
   }
 
+  // The process answered with another start's settings. This response is
+  // let through, since destroying now would cut its body off, and the start
+  // is recorded as stale so the next request recycles the container.
+  async #staleProcess(response, fingerprint, storage) {
+    const answered = answeredFingerprint(response);
+    if (answered === null || answered === fingerprint) return false;
+    console.log("container answered with another start's environment; recycling on the next request");
+    this.verifiedFingerprint = null;
+    await storage.put(ENV_FINGERPRINT_KEY, `stale:${answered}`);
+    return true;
+  }
+
   async serve({ fingerprint, container, storage, blockConcurrencyWhile, destroy, forward }) {
     if (this.verifiedFingerprint === fingerprint && container.running === true) {
       const epoch = this.epoch;
       try {
-        return await forward();
+        const response = await forward();
+        if (this.epoch === epoch) await this.#staleProcess(response, fingerprint, storage);
+        return response;
       } finally {
         if (this.epoch === epoch && container.running !== true) this.verifiedFingerprint = null;
       }
@@ -193,7 +221,9 @@ export class ContainerEnvSession {
     if (!joined) {
       const epoch = this.epoch;
       try {
-        return await forward();
+        const response = await forward();
+        if (this.epoch === epoch) await this.#staleProcess(response, fingerprint, storage);
+        return response;
       } finally {
         if (this.epoch === epoch && container.running !== true) this.verifiedFingerprint = null;
       }
@@ -206,6 +236,7 @@ export class ContainerEnvSession {
       // saw is gone; recording it would pin the next request to a process
       // that no longer exists.
       if (this.epoch !== epoch) return response;
+      if (await this.#staleProcess(response, fingerprint, storage)) return response;
       if (container.running === true) {
         if (this.verifiedFingerprint !== fingerprint) {
           await storage.put(ENV_FINGERPRINT_KEY, fingerprint);
