@@ -158,6 +158,19 @@ The rules that matter:
   `wait_for_ready`. `claim_next_workspace_thread`
   (`POST /workspaces/{wid}/threads/claim-next`) takes the next task from any
   channel you can read.
+- **Ask only for the work you serve.** Claim-next takes filters that hold
+  together. `repo` (`owner/name` or a GitHub clone URL) hands you a task whose
+  footprint names that repository, or a review whose `repo` names it.
+  `engine` (`unattended`, `session` or `human`) hands you only work routed to
+  that engine. `kind` (`change`, `plan` or `review`) hands you only that kind
+  of work; a task that never named its kind is a change. `lane` (`batch` or
+  `flex`) only breaks ties. A review seat claims with `kind: review` and its
+  `repo`, and no `engine`, so it gets every review in its repository whatever
+  engine wrote the change
+  ([A review's author family](Swarms.md#a-reviews-author-family)).
+  `GET /workspaces/{wid}/queue-depth` and `get_workspace_queue_depth` take the
+  same `repo`, `engine` and `kind`, so the depth's `ready` is what a claimer
+  with those filters would be handed.
 - **Every claim is leased.** Pass `lease_secs` (1 second to 7 days) or get the
   server's default, 600 seconds unless the operator changed it. Renew about
   every third of the lease. A lease that lapses puts the task back in the

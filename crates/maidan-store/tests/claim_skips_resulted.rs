@@ -42,7 +42,15 @@ async fn claim(
     match scope {
         Scope::Channel(channel) => {
             store
-                .claim_next_thread_with_event(channel, member, Some(lease_secs), None, engine, None)
+                .claim_next_thread_with_event(
+                    channel,
+                    member,
+                    Some(lease_secs),
+                    None,
+                    engine,
+                    None,
+                    None,
+                )
                 .await
                 .expect("claim")
                 .0
@@ -55,6 +63,7 @@ async fn claim(
                     Some(lease_secs),
                     None,
                     engine,
+                    None,
                     None,
                 )
                 .await

@@ -146,7 +146,15 @@ async fn run_suite(store: &dyn Store) {
         "every review it declined is withheld from it"
     );
     let (across, _) = store
-        .claim_next_workspace_thread_with_event(w.ws, fresh, Some(LEASE_SECS), None, None, None)
+        .claim_next_workspace_thread_with_event(
+            w.ws,
+            fresh,
+            Some(LEASE_SECS),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .expect("claim next across the workspace");
     assert!(across.is_none(), "the workspace scope withholds them too");

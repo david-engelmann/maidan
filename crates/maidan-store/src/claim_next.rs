@@ -20,7 +20,11 @@
 //! a footprint is then never handed to it, so a change is not handed out
 //! before it has declared what it touches. A claimer that serves one engine
 //! can ask only for work routed to that engine; work routed to another
-//! engine, or not routed at all, is never handed to it.
+//! engine, or not routed at all, is never handed to it. A claimer that asks
+//! for one kind (a change, a plan or a review) is handed only that kind, a
+//! thread that never named its kind reading as a change: a review seat claims
+//! reviews in its repository whatever engine wrote the change, and never the
+//! changes themselves.
 //! A thread that already has a stored result is finished work, so it is not
 //! handed out again (#1499) unless it was moved back to `open` after that
 //! result was produced: a reopen or a reviewer's request for changes is the
@@ -82,6 +86,10 @@ pub(crate) struct ClaimSql<'a> {
     /// work. A named engine takes only threads routed to it: a thread with
     /// no engine, or another engine, is not handed over.
     pub engine: &'a str,
+    /// Placeholder bound to the kind of work the claimer takes (`change`,
+    /// `plan` or `review`), or NULL for any kind. A thread with no attributes
+    /// row is a change.
+    pub kind: &'a str,
     /// Placeholder bound to the service lane the claimer runs in, or NULL
     /// for none. Lane is a tiebreak, never a filter: among threads of equal
     /// aged priority, a lane claimer is handed threads in its lane first, then
@@ -104,8 +112,8 @@ pub(crate) struct ClaimSql<'a> {
     pub later_than: &'a str,
 }
 
-/// Threads aliased `cand` within the claimer's `repo` and routed to its
-/// `engine`, each placeholder NULL for any work. Queue depth applies the same
+/// Threads aliased `cand` within the claimer's `repo`, routed to its
+/// `engine` and of its `kind`, each placeholder NULL for any work. Queue depth applies the same
 /// predicate, so a filtered depth's `ready` is what a claimer with the same
 /// filters would be handed. A thread is within the repository when its
 /// footprint names it. A review is also within it when its `repo` attribute
@@ -113,7 +121,9 @@ pub(crate) struct ClaimSql<'a> {
 /// the footprint rule guards against two claims colliding on files, which a
 /// review cannot. Any other kind still needs its footprint, so a change is
 /// never handed to a repository seat before it has declared what it touches.
-pub(crate) fn served_by(repo: &str, engine: &str) -> String {
+/// A thread with no attributes row reads as a change, as everywhere else
+/// attributes are read, so `kind = change` still finds work nobody described.
+pub(crate) fn served_by(repo: &str, engine: &str, kind: &str) -> String {
     format!(
         "({repo} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_footprints rf
@@ -126,7 +136,11 @@ pub(crate) fn served_by(repo: &str, engine: &str) -> String {
            AND ({engine} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_attributes a
                WHERE a.thread_id = cand.id AND a.engine = {engine}
-           ))"
+           ))
+           AND ({kind} IS NULL OR COALESCE((
+               SELECT k.kind FROM maidan_thread_attributes k
+               WHERE k.thread_id = cand.id
+           ), 'change') = {kind})"
     )
 }
 
@@ -145,6 +159,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         repo,
         engine,
+        kind,
         lane,
         requeued_after_result,
         warm_hold_since,
@@ -166,7 +181,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         requeued_after_result,
     });
     let lane_rank = lane_rank(lane);
-    let served = served_by(repo, engine);
+    let served = served_by(repo, engine, kind);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id

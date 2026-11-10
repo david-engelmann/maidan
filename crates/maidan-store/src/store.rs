@@ -2061,8 +2061,8 @@ pub trait ThreadStore: Send + Sync {
 
     /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
     /// of `workspace_id`: the sum of its channels' counts for the same reader.
-    /// A reader from another workspace counts nothing. `repo` (normalized)
-    /// and `engine` narrow the count as they narrow
+    /// A reader from another workspace counts nothing. `repo` (normalized),
+    /// `engine` and `kind` narrow the count as they narrow
     /// [`claim_next_workspace_thread`](Self::claim_next_workspace_thread), so
     /// `ready` is what a claimer with the same filters would be handed.
     async fn workspace_queue_depth(
@@ -2071,6 +2071,7 @@ pub trait ThreadStore: Send + Sync {
         readable_by: Option<MemberId>,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
+        kind: Option<maidan_types::TaskKind>,
     ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
@@ -2623,7 +2624,10 @@ pub trait AssignmentStore: Send + Sync {
     /// Empty vec when nothing was claimed. With `repo` (normalized
     /// `owner/name`), only a thread whose footprint names that repository, or
     /// a review whose `repo` attribute names it, is claimed, for a worker
-    /// whose checkout is that repository.
+    /// whose checkout is that repository. With `kind`, only a thread of that
+    /// kind is claimed, a thread that never named its kind being a change: a
+    /// review seat passes `Review` and its repository, and no engine, to take
+    /// every review there whatever engine wrote the change.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
@@ -2632,6 +2636,7 @@ pub trait AssignmentStore: Send + Sync {
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
         lane: Option<maidan_types::TaskLane>,
+        kind: Option<maidan_types::TaskKind>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2645,6 +2650,7 @@ pub trait AssignmentStore: Send + Sync {
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
         lane: Option<maidan_types::TaskLane>,
+        kind: Option<maidan_types::TaskKind>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When

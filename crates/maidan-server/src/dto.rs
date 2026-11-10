@@ -11,8 +11,8 @@ use maidan_types::{
     EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, Footprint, FsmHookId, LandColor,
     LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
     RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, TaskAttributes,
-    TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind, WaitlistEntry,
-    WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
+    TaskEngine, TaskKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind,
+    WaitlistEntry, WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use maidan_types::{ResultDelivery, ThreadResult};
 use serde::{Deserialize, Serialize};
@@ -228,6 +228,12 @@ pub struct ClaimNextThread {
     /// unlaned threads win the tie.
     #[serde(default)]
     pub lane: Option<maidan_types::TaskLane>,
+    /// Only claim a thread of this kind (`change`, `plan` or `review`); a
+    /// thread that never named its kind is a change. A review seat claims with
+    /// `review` and its `repo`, and no `engine`, to take every review in that
+    /// repository whatever engine wrote the change. Omitted, any kind.
+    #[serde(default)]
+    pub kind: Option<TaskKind>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the
@@ -505,6 +511,9 @@ pub struct WorkspaceQueueDepthQuery {
     /// Count only threads routed to this engine (`unattended`, `session` or
     /// `human`). Omitted, any work.
     pub engine: Option<TaskEngine>,
+    /// Count only threads of this kind (`change`, `plan` or `review`); a
+    /// thread that never named its kind is a change. Omitted, any kind.
+    pub kind: Option<TaskKind>,
 }
 
 /// Query params for a thread's transition history.

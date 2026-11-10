@@ -111,13 +111,21 @@ fn end_grace(store: &dyn Store) {
 
 async fn nothing_for_the_next_claimer(store: &dyn Store, q: &Queue) {
     let (taken, events) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(300), None, None, None)
+        .claim_next_thread_with_event(q.channel, q.next, Some(300), None, None, None, None)
         .await
         .unwrap();
     assert_eq!(taken.map(|t| t.id), None, "a held lease is not taken over");
     assert!(events.is_empty());
     let (taken, _) = store
-        .claim_next_workspace_thread_with_event(q.workspace, q.next, Some(300), None, None, None)
+        .claim_next_workspace_thread_with_event(
+            q.workspace,
+            q.next,
+            Some(300),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(taken.map(|t| t.id), None, "nor across the workspace");
@@ -222,7 +230,7 @@ async fn claim_next_takes_a_lapsed_lease_over_once_the_grace_ends(store: &dyn St
 
     end_grace(store);
     let (taken, events) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(300), None, None, None)
+        .claim_next_thread_with_event(q.channel, q.next, Some(300), None, None, None, None)
         .await
         .unwrap();
     assert_eq!(taken.map(|t| t.id), Some(held.id));

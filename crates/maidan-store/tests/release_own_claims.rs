@@ -221,7 +221,7 @@ async fn a_claim_that_changed_hands_is_not_released(store: &dyn Store) {
     tokio::time::sleep(Duration::from_millis(1500)).await;
     // The lapsed claim is taken over by b before a's restart gets to it.
     let (b_claim, _) = store
-        .claim_next_thread_with_event(channel, b, Some(LEASE_SECS), None, None, None)
+        .claim_next_thread_with_event(channel, b, Some(LEASE_SECS), None, None, None, None)
         .await
         .unwrap();
     let b_claim = b_claim.expect("the lapsed claim is claimable");

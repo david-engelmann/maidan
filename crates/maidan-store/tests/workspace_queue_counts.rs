@@ -128,7 +128,15 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     let working_channel = channel(store, ws, "working", false).await;
     let working = thread(store, working_channel).await;
     let held = store
-        .claim_next_thread_with_event(working_channel, bob, Some(LEASE_SECS), None, None, None)
+        .claim_next_thread_with_event(
+            working_channel,
+            bob,
+            Some(LEASE_SECS),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .expect("claim")
         .0
@@ -168,7 +176,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     ];
     for (reader, expected) in cases {
         let got = store
-            .workspace_queue_depth(ws, reader, None, None)
+            .workspace_queue_depth(ws, reader, None, None, None)
             .await
             .expect("workspace depth");
         assert_eq!(got, expected, "workspace depth for {reader:?}");
@@ -203,7 +211,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
 
     assert_eq!(
         store
-            .workspace_queue_depth(other, Some(agent), None, None)
+            .workspace_queue_depth(other, Some(agent), None, None, None)
             .await
             .expect("foreign depth"),
         depth(0, 0, 0, 0, 0),
@@ -219,7 +227,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
     assert_eq!(
         store
-            .workspace_queue_depth(other, None, None, None)
+            .workspace_queue_depth(other, None, None, None, None)
             .await
             .expect("foreign depth")
             .open,

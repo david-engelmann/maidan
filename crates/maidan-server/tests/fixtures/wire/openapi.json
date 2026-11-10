@@ -1583,6 +1583,17 @@
               }
             ]
           },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskKind",
+                "description": "Only claim a thread of this kind (`change`, `plan` or `review`); a\nthread that never named its kind is a change. A review seat claims with\n`review` and its `repo`, and no `engine`, to take every review in that\nrepository whatever engine wrote the change. Omitted, any kind."
+              }
+            ]
+          },
           "lane": {
             "oneOf": [
               {
@@ -44072,6 +44083,15 @@
             "schema": {
               "$ref": "#/components/schemas/TaskEngine"
             }
+          },
+          {
+            "description": "Count only threads of this kind (`change`, `plan` or `review`); a\nthread that never named its kind is a change. Omitted, any kind.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskKind"
+            }
           }
         ],
         "responses": {
@@ -44083,7 +44103,7 @@
                 }
               }
             },
-            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo` and `engine` narrow it as they narrow claim-next"
+            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo`, `engine` and `kind` narrow it as they narrow claim-next"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"

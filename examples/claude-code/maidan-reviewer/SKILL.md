@@ -27,6 +27,19 @@ are a named reviewer and have not approved) and the `unassigned_review` items
 `overdue` go first. To wait for the next one instead of polling, call
 `wait_for_notification` with your `member_id` and `timeout_ms` up to 300000.
 
+**A review seat pulls instead.** A seat that serves one repository's reviews
+takes them from the queue on the full `/mcp/streamable` endpoint:
+`claim_next_workspace_thread` with your `workspace_id`, `kind: "review"`, your
+`repo` (`owner/name`) and no `engine`. `kind` hands you only reviews, never
+the changes themselves. Leaving out `engine` hands you every review in the
+repository whatever engine wrote the change; a review carries its change's
+engine, so an engine filter would hide the reviews of changes routed to
+another one. Never filter on `review_family`: any family but the author's may
+review. `get_workspace_queue_depth` with the same `kind` and `repo` says how
+many reviews wait. Handed a review of your own family's change, give it back
+with `release_claim`, its `claim_lease_id` and `decline: "own_family"`, and
+you are not handed it again.
+
 ## 2. Read exactly what was handed over
 
 For each thread:
@@ -118,4 +131,5 @@ requires, so do them only when the person running the review asks.
 `get_review_status`, `list_references`, `submit_review`, `post_message`,
 `cast_vote`, `retract_vote`, `list_votes`, `transition_thread`,
 `get_land_gate`, `list_land_gate_history`, `advise_land_gate`,
-`set_land_gate`, `require_land_gate`, `clear_land_gate`, `wait_for_landed`
+`set_land_gate`, `require_land_gate`, `clear_land_gate`, `wait_for_landed`,
+`claim_next_workspace_thread`, `get_workspace_queue_depth`, `release_claim`

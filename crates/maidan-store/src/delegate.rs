@@ -2204,6 +2204,7 @@ macro_rules! store_delegations {
                     readable_by,
                     None,
                     None,
+                    None,
                 )
                 .await
             }
@@ -2214,6 +2215,7 @@ macro_rules! store_delegations {
                 readable_by: Option<MemberId>,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
+                kind: Option<maidan_types::TaskKind>,
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
@@ -2222,6 +2224,7 @@ macro_rules! store_delegations {
                     readable_by,
                     repo,
                     engine,
+                    kind,
                 )
                 .await
             }
@@ -2927,6 +2930,7 @@ macro_rules! store_delegations {
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
                 lane: Option<maidan_types::TaskLane>,
+                kind: Option<maidan_types::TaskKind>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2937,6 +2941,7 @@ macro_rules! store_delegations {
                     repo,
                     engine,
                     lane,
+                    kind,
                 )
                 .await
             }
@@ -2949,6 +2954,7 @@ macro_rules! store_delegations {
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
                 lane: Option<maidan_types::TaskLane>,
+                kind: Option<maidan_types::TaskKind>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2959,6 +2965,7 @@ macro_rules! store_delegations {
                     repo,
                     engine,
                     lane,
+                    kind,
                 )
                 .await
             }

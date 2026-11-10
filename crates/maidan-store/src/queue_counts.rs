@@ -49,6 +49,9 @@ pub(crate) struct QueueSql<'a> {
     /// Placeholder bound to an engine, or NULL for any work:
     /// [`claim_next::served_by`]'s `engine`.
     pub engine: &'a str,
+    /// Placeholder bound to a kind of work, or NULL for any kind:
+    /// [`claim_next::served_by`]'s `kind`.
+    pub kind: &'a str,
     /// [`ThreadSql::lapsed_worked_secs`].
     pub lapsed_worked_secs: &'a str,
     /// [`ThreadSql::requeued_after_result`].
@@ -161,7 +164,7 @@ fn occupancy_columns(t: &ThreadSql<'_>) -> String {
 }
 
 /// `FROM … WHERE` of the open, live threads in `scope` the reader may read and
-/// the repo and engine filters admit,
+/// the repo, engine and kind filters admit,
 /// aliased `cand` as [`claim_next::readable_by`] expects, with their channel
 /// `ch`.
 fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
@@ -171,6 +174,7 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
         dm_channel,
         repo,
         engine,
+        kind,
         ..
     } = sql;
     let in_scope = match scope {
@@ -178,7 +182,7 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
         QueueScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = claim_next::readable_by(reader, dm_channel);
-    let served = claim_next::served_by(repo, engine);
+    let served = claim_next::served_by(repo, engine, kind);
     format!(
         "FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id

@@ -530,6 +530,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             Some(REPO),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -546,6 +547,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             Some(REPO),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -555,6 +557,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             room.ws,
             room.agents[1],
             Some(600),
+            None,
             None,
             None,
             None,
@@ -572,6 +575,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             room.agents[1],
             Some(600),
             Some("example/other"),
+            None,
             None,
             None,
         )
@@ -846,6 +850,7 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
                         room.channel,
                         room.agents[agent],
                         Some(600),
+                        None,
                         None,
                         None,
                         None,

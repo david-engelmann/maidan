@@ -863,6 +863,7 @@ type Claimed = (
 /// work-queue pattern: parallel claimers skip each other's locked candidate
 /// and each gets a distinct thread. Shared by both `claim_next` variants and
 /// both scopes so they take the same thread.
+#[allow(clippy::too_many_arguments)]
 async fn claim_next_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     grace: &ClaimGrace,
@@ -872,6 +873,7 @@ async fn claim_next_in_tx(
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
@@ -889,6 +891,7 @@ async fn claim_next_in_tx(
             dm_channel: "$5",
             repo: "$6::text",
             engine: "$7::text",
+            kind: "$13::text",
             lane: "$8::text",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             // A lease lapsed when its deadline is before the lease clock: `now`,
@@ -926,6 +929,7 @@ async fn claim_next_in_tx(
     .bind(now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS))
     .bind(now)
     .bind(grace.lease_clock(now))
+    .bind(kind.map(|kind| kind.as_str()))
     .fetch_optional(&mut **tx)
     .await?;
     let Some(row) = row else {
@@ -962,6 +966,7 @@ pub async fn claim_next(
         None,
         engine,
         None,
+        None,
     )
     .await?
     else {
@@ -980,8 +985,9 @@ pub async fn claim_next(
 }
 
 /// The placeholders the queue counts bind on Postgres: `$1` the scope, `$2` the
-/// reader, `$3` the DM channel name, `$6` the app clock, as `claim_next` binds
-/// it, so `ready` matches its claimability predicate exactly (#1605).
+/// reader, `$3` the DM channel name, `$4` the repo, `$5` the engine, `$6` the
+/// app clock, as `claim_next` binds it, so `ready` matches its claimability
+/// predicate exactly (#1605), and `$7` the kind.
 const QUEUE_SQL: QueueSql<'static> = QueueSql {
     scope: "$1",
     reader: "$2::uuid",
@@ -989,6 +995,7 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     now: "$6::timestamptz",
     repo: "$4::text",
     engine: "$5::text",
+    kind: "$7::text",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
 };
@@ -1007,6 +1014,7 @@ pub async fn queue_depth(
     readable_by: Option<MemberId>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
@@ -1015,6 +1023,7 @@ pub async fn queue_depth(
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
         .bind(grace.lease_clock(chrono::Utc::now()))
+        .bind(kind.map(|kind| kind.as_str()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -1044,6 +1053,7 @@ pub async fn occupancy(
         .bind(None::<&str>)
         .bind(None::<&str>)
         .bind(grace.lease_clock(chrono::Utc::now()))
+        .bind(None::<&str>)
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -1059,6 +1069,7 @@ pub async fn occupancy(
 /// tx. Conditional: the event is appended **only** when a thread was claimed;
 /// nothing to claim yields `(None, [])`. `previous_assignee_id` is `None`
 /// (behaviour-preserving — matches the old route).
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn claim_next_with_event(
     pool: &PgPool,
     grace: &ClaimGrace,
@@ -1068,10 +1079,11 @@ pub(crate) async fn claim_next_with_event(
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let Some((thread, lapsed)) = claim_next_in_tx(
-        &mut tx, grace, scope, member_id, lease_secs, repo, engine, lane,
+        &mut tx, grace, scope, member_id, lease_secs, repo, engine, lane, kind,
     )
     .await?
     else {

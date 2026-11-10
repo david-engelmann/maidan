@@ -633,6 +633,7 @@ fn lapsed_claim(
 /// lapsed when its deadline is before `lease_clock`
 /// ([`ClaimGrace::lease_clock`]). Shared by both `claim_next` variants and
 /// both scopes so they take the same thread.
+#[allow(clippy::too_many_arguments)]
 async fn claim_next_candidate(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     scope: ClaimScope,
@@ -642,6 +643,7 @@ async fn claim_next_candidate(
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
     let sql = claim_next::candidate_select(
         scope,
@@ -653,6 +655,7 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             repo: "?5",
             engine: "?6",
+            kind: "?11",
             lane: "?7",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             // SQLite threads take `created_at` from the app clock, so the age
@@ -676,6 +679,7 @@ async fn claim_next_candidate(
         .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
         .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(kind.map(|kind| kind.as_str()))
         .fetch_optional(&mut **tx)
         .await?)
 }
@@ -980,6 +984,7 @@ pub async fn claim_next(
         None,
         engine,
         None,
+        None,
     )
     .await?
     else {
@@ -999,7 +1004,8 @@ pub async fn claim_next(
 }
 
 /// The placeholders the queue counts bind on SQLite: `?1` the scope, `?2` the
-/// reader, `?3` the DM channel name, `?4` now.
+/// reader, `?3` the DM channel name, `?4` now, `?5` the repo, `?6` the engine,
+/// `?7` the kind.
 const QUEUE_SQL: QueueSql<'static> = QueueSql {
     scope: "?1",
     reader: "?2",
@@ -1007,6 +1013,7 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     now: "?4",
     repo: "?5",
     engine: "?6",
+    kind: "?7",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
 };
@@ -1027,6 +1034,7 @@ pub async fn queue_depth(
     readable_by: Option<MemberId>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
@@ -1035,6 +1043,7 @@ pub async fn queue_depth(
         .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind(kind.map(|kind| kind.as_str()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -1062,6 +1071,7 @@ pub async fn occupancy(
         .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(None::<&str>)
         .bind(None::<&str>)
+        .bind(None::<&str>)
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -1078,6 +1088,7 @@ pub async fn occupancy(
 /// (`(Some(thread), events)`); nothing to claim yields `(None, [])`.
 /// `previous_assignee_id` is `None` (behaviour-preserving — matches the old
 /// route; a takeover of a lapsed lease reports the prior holder's end first).
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn claim_next_with_event(
     pool: &SqlitePool,
     grace: &ClaimGrace,
@@ -1087,6 +1098,7 @@ pub(crate) async fn claim_next_with_event(
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     lane: Option<maidan_types::TaskLane>,
+    kind: Option<maidan_types::TaskKind>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = super::tx::begin_write(pool).await?;
     // One microsecond reading for the lease window and for both claim stamps.
@@ -1104,6 +1116,7 @@ pub(crate) async fn claim_next_with_event(
         repo,
         engine,
         lane,
+        kind,
     )
     .await?
     else {

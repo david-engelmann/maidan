@@ -1306,6 +1306,12 @@ struct ClaimNextThreadArgs {
     /// lanes. Omitted, unlaned threads win the tie.
     #[serde(default)]
     lane: Option<maidan_types::TaskLane>,
+    /// Only a thread of this kind; a thread that never named its kind is a
+    /// change. A review seat asks for reviews in its repository, with no
+    /// engine, so it is handed every review there whatever engine wrote the
+    /// change.
+    #[serde(default)]
+    kind: Option<maidan_types::TaskKind>,
 }
 
 /// The repository a claimer serves, normalized as footprints store it.
@@ -1348,6 +1354,7 @@ pub(super) async fn claim_next_thread(
             repo.as_deref(),
             a.engine,
             a.lane,
+            a.kind,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1365,6 +1372,8 @@ struct ClaimNextWorkspaceThreadArgs {
     engine: Option<maidan_types::TaskEngine>,
     #[serde(default)]
     lane: Option<maidan_types::TaskLane>,
+    #[serde(default)]
+    kind: Option<maidan_types::TaskKind>,
     /// With nothing claimable now, wait up to this long for work to become
     /// claimable and claim it, instead of answering null at once.
     #[serde(default)]
@@ -1425,6 +1434,7 @@ pub(super) async fn claim_next_workspace_thread(
                 repo.as_deref(),
                 a.engine,
                 a.lane,
+                a.kind,
             )
             .await?;
         let Some(stream) = signals.as_mut().filter(|_| claimed.0.is_none()) else {
@@ -2019,12 +2029,14 @@ struct WorkspaceQueueDepthArgs {
     repo: Option<String>,
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    #[serde(default)]
+    kind: Option<maidan_types::TaskKind>,
 }
 
 /// `get_queue_depth` across every channel of the caller's workspace: the sum of
 /// the depths of the channels it may read, counting a DM only for its
-/// participants, narrowed by `claim_next_workspace_thread`'s `repo` and
-/// `engine`. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+/// participants, narrowed by `claim_next_workspace_thread`'s `repo`, `engine`
+/// and `kind`. The MCP twin of `GET /workspaces/:wid/queue-depth`.
 pub(super) async fn get_workspace_queue_depth(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -2035,7 +2047,13 @@ pub(super) async fn get_workspace_queue_depth(
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     let depth = store
-        .workspace_queue_depth(workspace_id, queue_reader(auth), repo.as_deref(), a.engine)
+        .workspace_queue_depth(
+            workspace_id,
+            queue_reader(auth),
+            repo.as_deref(),
+            a.engine,
+            a.kind,
+        )
         .await?;
     Ok(content_json(&depth))
 }

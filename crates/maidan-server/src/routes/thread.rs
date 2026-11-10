@@ -1849,6 +1849,7 @@ pub async fn claim_next_thread(
             repo.as_deref(),
             body.engine,
             body.lane,
+            body.kind,
         )
         .await?;
     publish_claim(&state, claimed).await.map(Json)
@@ -1888,6 +1889,7 @@ pub async fn claim_next_workspace_thread(
             repo.as_deref(),
             body.engine,
             body.lane,
+            body.kind,
         )
         .await?;
     publish_claim(&state, claimed).await.map(Json)
