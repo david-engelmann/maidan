@@ -115,7 +115,36 @@ pub(crate) async fn refuse_growth_past_stored_bytes(
     refuse_past_stored_bytes(pool, meters, existing.thread_id).await
 }
 
-pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, StoreError> {
+/// Refuse a post to a thread that is gone or archived, read inside the post's
+/// transaction. That transaction holds SQLite's write lock from its first
+/// statement (`begin_write`), so an archive cannot commit between this read
+/// and the insert.
+async fn refuse_post_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query(
+        "SELECT state, tombstoned_at IS NOT NULL AS gone FROM maidan_threads WHERE id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    crate::thread_liveness::refuse_post_column(
+        thread_id,
+        row.get::<&str, _>("state"),
+        row.get("gone"),
+    )
+}
+
+/// Insert a message. With `live_thread`, the thread must still take messages
+/// (see [`refuse_post_in_tx`]); without it, as for the store's own notices,
+/// it is written whatever the thread's state.
+pub async fn create(
+    pool: &SqlitePool,
+    new: NewMessage,
+    live_thread: bool,
+) -> Result<Message, StoreError> {
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
     let id = Uuid::now_v7();
     let now = Utc::now();
@@ -126,6 +155,9 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
         .map(serde_json::to_string)
         .transpose()?;
     let mut tx = super::tx::begin_write(pool).await?;
+    if live_thread {
+        refuse_post_in_tx(&mut tx, new.thread_id).await?;
+    }
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -162,6 +194,7 @@ pub async fn create_with_event(
     keys: &ContentKeyring,
     new: NewMessage,
     dm_conversation_id: Option<DmConversationId>,
+    live_thread: bool,
 ) -> Result<(Message, StoredEvent), StoreError> {
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
     let id = Uuid::now_v7();
@@ -173,6 +206,9 @@ pub async fn create_with_event(
         .map(serde_json::to_string)
         .transpose()?;
     let mut tx = super::tx::begin_write(pool).await?;
+    if live_thread {
+        refuse_post_in_tx(&mut tx, new.thread_id).await?;
+    }
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)

@@ -453,7 +453,8 @@ in one of these ways:
   `ThreadAssignmentChanged` too), so stop only on an event whose `thread_id`
   is your task and that ends your claim: a `ThreadCancelled`, a
   `ThreadStateChanged` whose `to_state` is `closed` or `archived` (on a
-  cancel or a close-abandoned, its `previous_assignee_id` is you), or a
+  cancel, a close-abandoned, or a close by anyone else, its
+  `previous_assignee_id` is you), or a
   `ThreadAssignmentChanged` whose `previous_assignee_id` is you and whose
   `assignee_id` is not.
 
@@ -500,8 +501,10 @@ Current gaps, read from the code and not yet decided:
 - The withdrawal only reaches pull requests the change-pull table tracks
   under the task. One the change flow delivered to under another task's
   row is not found from this one.
-- If GitHub accepts the comment and then fails the close, the retry comments
-  again.
+
+Closed since: the withdrawal comment posts at most once. It starts with a
+hidden marker naming the withdrawal, and a retry after GitHub took the
+comment but failed the close finds it and only closes.
 
 ## Task attributes
 

@@ -3536,6 +3536,21 @@ pub trait MessageStore: Send + Sync {
         new: NewMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError>;
+    /// [`Self::post_message`] for a writer held to the thread's liveness (a
+    /// person or agent posting): refused with [`StoreError::Gone`] when the
+    /// thread is tombstoned and [`StoreError::Ended`] when it is archived,
+    /// checked inside the insert's transaction (the thread row locked on
+    /// Postgres, the write lock held on SQLite) so an archive cannot commit
+    /// between the check and the insert. A closed thread still takes
+    /// messages.
+    async fn post_message_to_live_thread(&self, new: NewMessage) -> Result<Message, StoreError>;
+    /// [`Self::post_message_with_event`] held to the thread's liveness, as
+    /// [`Self::post_message_to_live_thread`].
+    async fn post_message_to_live_thread_with_event(
+        &self,
+        new: NewMessage,
+        dm_conversation_id: Option<DmConversationId>,
+    ) -> Result<(Message, StoredEvent), StoreError>;
     /// Edit a just-posted message and append its `MessagePosted` event
     /// (reflecting the edited message) atomically — the regular post path's
     /// slash-command finalization, where the event must carry the post-edit

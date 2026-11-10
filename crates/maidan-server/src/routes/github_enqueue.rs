@@ -221,6 +221,16 @@ pub struct Withdrawn {
     pub closed: bool,
 }
 
+/// The comment a withdrawal posts, and how a retry finds it already posted.
+pub struct WithdrawalComment<'a> {
+    /// Reads the pull request's comments.
+    pub reader: &'a dyn crate::github::GithubSender,
+    /// A hidden marker naming this one withdrawal, written at byte 0.
+    pub marker: &'a str,
+    /// What the comment says, after the marker.
+    pub text: &'a str,
+}
+
 /// The guard path for withdrawing a pull request whose task was cancelled or
 /// closed as abandoned: the shared guards on one fresh read, as for
 /// dequeue, so only a `feature/agent-*` head in this repository into an
@@ -229,6 +239,10 @@ pub struct Withdrawn {
 /// pull request while it is being closed), and an open pull request gets
 /// `comment` and is closed. A closed one is left closed and gets no comment.
 /// The branch is never touched.
+///
+/// The comment posts at most once per withdrawal: GitHub can take the
+/// comment and then fail the close, and the retry that follows finds the
+/// comment by its marker and only closes.
 pub async fn withdraw_pull_guarded(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,
@@ -237,7 +251,7 @@ pub async fn withdraw_pull_guarded(
     labels: &maidan_types::MergeQueueLabels,
     repo: &str,
     pull_number: i64,
-    comment: &str,
+    comment: WithdrawalComment<'_>,
 ) -> Result<Withdrawn, MarkReadyGuard> {
     let brief = git
         .pull_brief(repo, pull_number)
@@ -258,9 +272,22 @@ pub async fn withdraw_pull_guarded(
             closed: false,
         });
     }
-    git.comment_on_pull(repo, pull_number, comment)
+    let posted = comment
+        .reader
+        .list_issue_comments(repo, pull_number)
+        .await
+        .map_err(MarkReadyGuard::Github)?
+        .iter()
+        .any(|c| c.body.starts_with(comment.marker));
+    if !posted {
+        git.comment_on_pull(
+            repo,
+            pull_number,
+            &format!("{}\n{}", comment.marker, comment.text),
+        )
         .await
         .map_err(MarkReadyGuard::Github)?;
+    }
     git.close_pull(repo, pull_number, EnqueueGuardPass { _private: () })
         .await
         .map_err(MarkReadyGuard::Github)?;

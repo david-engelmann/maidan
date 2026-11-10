@@ -234,7 +234,8 @@ pub(super) async fn post_message(
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
     // As REST: a deleted thread is gone and an archived one ended, but a
-    // closed thread still takes messages.
+    // closed thread still takes messages. The insert checks again inside its
+    // own transaction, where an archive cannot land between check and write.
     maidan_store::thread_liveness::refuse_post(&store.get_thread(thread_id).await?)?;
     let new_message = NewMessage {
         thread_id,
@@ -278,7 +279,7 @@ pub(super) async fn post_message(
     let msg = if let Some((parsed, dispatcher)) = slash {
         // Provisional insert → run the (possibly external) dispatch →
         // finalizing edit + `MessagePosted` of the edited message in one tx.
-        let provisional = store.post_message(new_message).await;
+        let provisional = store.post_message_to_live_thread(new_message).await;
         let m = observe_spawn_denial(server, author, provisional).await?;
         let slash_meta = dispatcher
             .dispatch(
@@ -311,7 +312,9 @@ pub(super) async fn post_message(
         // (`post_message_with_event` + `publish_stored`), matching REST — the
         // event is durably appended in the same tx (was a separate, bus-gated
         // append).
-        let posted = store.post_message_with_event(new_message, dm_id).await;
+        let posted = store
+            .post_message_to_live_thread_with_event(new_message, dm_id)
+            .await;
         let (message, stored) = observe_spawn_denial(server, author, posted).await?;
         server.publish_stored(&stored).await;
         message

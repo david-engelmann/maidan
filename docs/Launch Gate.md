@@ -284,7 +284,9 @@ mcp whoami '{}'
 
 **Observe:** People now lists two members, person A and `gate-agent`.
 `whoami` names the agent's member in `WS_A`, with `thread:transition` among
-its capabilities.
+its capabilities. Only a person adds an agent: a console session that
+belongs to an agent member is refused, even before anyone in the workspace
+holds `token:admin`.
 
 **Record:** the `whoami` answer. Its `member_id` is `AGENT` from here on.
 Keep the terminal's output from here to step 5: it is the evidence for the
