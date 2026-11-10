@@ -94,7 +94,7 @@ The USDC contracts are Circle's: Base mainnet
 ## The deposit watcher
 
 With `MAIDAN_CREDITS_ADDRESS` set, every replica runs a background loop
-(`credits_watcher`) that:
+(`credits`) that:
 
 1. asks the JSON-RPC endpoint (`MAIDAN_CREDITS_RPC_URL`) for the head block
    (`eth_blockNumber`);

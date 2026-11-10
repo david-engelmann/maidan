@@ -243,7 +243,7 @@ container:
   with Sepolia USDC.
 
 Check it is running: boot logs `credits deposit watcher started` with the
-chain and address, and the `credits_watcher` loop appears in the loop
+chain and address, and the `credits` loop appears in the loop
 liveness metrics. A watcher that cannot reach the chain logs `credits
 watcher: tick stopped` and resumes from the same block; nothing is lost.
 

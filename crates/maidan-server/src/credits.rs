@@ -486,14 +486,10 @@ pub async fn run(state: AppState, reader: Arc<dyn ChainReader>, config: WatcherC
         interval_secs = config.interval.as_secs(),
         "credits deposit watcher started"
     );
-    let _watched = crate::ops_alert::start_loop("credits_watcher", config.interval);
+    let _watched = crate::ops_alert::start_loop("credits", config.interval);
     loop {
-        match crate::ops_alert::guarded_tick(
-            "credits_watcher",
-            tick(&state, reader.as_ref(), &config),
-        )
-        .await
-        {
+        let scan = tick(&state, reader.as_ref(), &config);
+        match crate::ops_alert::guarded_tick("credits", scan).await {
             Some(Ok(report)) => tracing::debug!(?report, "credits watcher tick"),
             Some(Err(err)) => {
                 tracing::warn!(error = %err, "credits watcher: tick stopped; it resumes from the same block")
