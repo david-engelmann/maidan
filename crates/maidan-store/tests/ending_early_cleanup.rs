@@ -179,6 +179,8 @@ async fn a_merge_that_lands_a_held_task_names_its_holder(store: Arc<dyn Store>) 
         .set_thread_owner(owned, Some(room.producer))
         .await
         .unwrap();
+    // Claimed and kept: the worker still holds the task when it merges.
+    store.claim_lease_for(owned, room.worker).await.unwrap();
     store
         .set_thread_result_claiming(owned, room.worker, &serde_json::json!({"summary": "done"}))
         .await
@@ -188,6 +190,8 @@ async fn a_merge_that_lands_a_held_task_names_its_holder(store: Arc<dyn Store>) 
     assert_eq!(closed_from(&stored, owned), Some(room.worker));
 
     let unowned = task(store.as_ref(), &room, "unowned").await;
+    // Claimed and kept: the worker still holds the task when it merges.
+    store.claim_lease_for(unowned, room.worker).await.unwrap();
     store
         .set_thread_result_claiming(
             unowned,
