@@ -42,6 +42,18 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v444.0.0](https://github.com/david-engelmann/maidan/releases/tag/v444.0.0) — the docs site leads with how to use Maidan, and 4 more
+
+the console ends a task (Cancel, Close as abandoned); second-family reviews route to where the change is; the authority audit scans every crate.
+
+- The docs site leads with how to use Maidan
+- A second-family review is served where its change is
+- A review seat claims every review in its repository
+- Console: cancel a task, or close it as abandoned
+- Authority audit covers every crate and example
+
+`CHANGELOG.md` under `[444.0.0]` has every entry.
+
 ## [v443.0.0](https://github.com/david-engelmann/maidan/releases/tag/v443.0.0) — ending a task early cleans up its pull request, its decision and its claimant, and 8 more
 
 Watches close when their PR ends, refused landings retry, build seats deliver on feature/builder- branches, the try page follows the theme, and the remaining ending and authorization gaps close.
