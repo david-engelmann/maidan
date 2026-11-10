@@ -57,12 +57,18 @@ async fn room(store: &dyn Store, name: &str) -> Room {
     }
 }
 
+/// Numbers each test task's title. Two open tasks with the same brief are
+/// fingerprinted as duplicates, and a duplicate's claim is refused, so tasks
+/// a test keeps open side by side need briefs of their own.
+static TASK_NUMBER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 async fn task(store: &dyn Store, room: &Room) -> ThreadId {
+    let n = TASK_NUMBER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let thread = store
         .create_thread(NewThread {
             channel_id: room.channel,
             parent_thread_id: None,
-            title: Some("task".into()),
+            title: Some(format!("task {n}")),
             description: None,
             created_by: Some(room.member),
         })
