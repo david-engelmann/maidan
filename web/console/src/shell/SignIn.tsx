@@ -14,7 +14,7 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { oidcLoginPath, signupPath, turnstileSiteKey } = session.discovery;
+  const { oidcLoginPath, signupPath, signupOpen, turnstileSiteKey } = session.discovery;
   const check = readSignupCheck(window.location.search);
   const showCreate = Boolean(signupPath) || check.active;
   // Only the page the server sent here is joining: a stray invite query on
@@ -54,10 +54,10 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
           joining={joining}
           returnTo={check.returnTo}
           siteKey={turnstileSiteKey}
-          primary={check.active}
+          primary={check.active || signupOpen}
         />
       ) : null}
-      {signupPath ? (
+      {signupPath && !signupOpen ? (
         <p className="sign-in-waitlist">No invite yet? <a href="/">Join the waitlist</a>.</p>
       ) : null}
       <form className="sign-in-token" onSubmit={(e) => void submit(e)}>

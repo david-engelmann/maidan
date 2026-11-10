@@ -34,6 +34,22 @@ struct Env {
     _dir: tempfile::TempDir,
 }
 
+impl Env {
+    /// What discovery says about sign-up without an invite.
+    async fn signup_open_advertised(&self) -> Option<bool> {
+        let body: serde_json::Value = self
+            .client
+            .get(format!("{}/.well-known/maidan.json", self.base))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        body["auth"]["oidc_signup_open"].as_bool()
+    }
+}
+
 async fn spawn(signup: bool, domains: Vec<String>) -> Env {
     spawn_with(signup, domains, None).await
 }
@@ -458,6 +474,7 @@ async fn invited_signup_creates_a_fresh_workspace_and_session() {
 #[tokio::test]
 async fn an_invite_only_signs_up_the_address_it_was_minted_for() {
     let env = spawn(true, vec![]).await;
+    assert_eq!(env.signup_open_advertised().await, Some(false));
     env.join("ada@example.com", "swarms", true).await;
     let op = env.token(&["operator:global"]).await;
     let (_, list) = env.operator_list(&op).await;
@@ -665,6 +682,9 @@ async fn a_sign_up_names_its_workspace_and_a_blank_or_bad_name_follows_the_rule(
 #[tokio::test]
 async fn open_signup_gives_each_verified_address_its_own_workspace_without_an_invite() {
     let env = spawn_full(true, vec![], None, true, [None, None]).await;
+    // The landing and the console read this to offer sign-up in place of
+    // the waitlist.
+    assert_eq!(env.signup_open_advertised().await, Some(true));
     // Two people on unrelated domains, neither invited nor listed.
     let ada = env
         .signup_roundtrip(

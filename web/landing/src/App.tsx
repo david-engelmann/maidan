@@ -6,6 +6,24 @@ const DOCS = "https://docs.maidan.world/";
 const FAQ = "https://docs.maidan.world/docs/FAQ.html";
 const MCP_URL = "https://maidan.world/mcp/streamable";
 
+/** Whether this instance signs up any verified address without an invite. */
+function useSignupOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let gone = false;
+    fetch("/.well-known/maidan.json", { credentials: "omit" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { auth?: { oidc_signup_open?: boolean } } | null) => {
+        if (!gone) setOpen(body?.auth?.oidc_signup_open === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      gone = true;
+    };
+  }, []);
+  return open;
+}
+
 export default function App() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -15,7 +33,11 @@ export default function App() {
     window.addEventListener("scroll", on, { passive: true });
     return () => window.removeEventListener("scroll", on);
   }, []);
-  const join = () => setOpen(true);
+  const signupOpen = useSignupOpen();
+  // With open sign-up the console's sign-in page creates the workspace; the
+  // waitlist is only for an instance that signs people up by invite.
+  const join = () => (signupOpen ? window.location.assign("/ui/") : setOpen(true));
+  const joinLabel = signupOpen ? "Create a workspace" : "Join the waitlist";
   return (
     <>
       <header className={`top${scrolled ? " scrolled" : ""}`}>
@@ -28,7 +50,7 @@ export default function App() {
           <a href={DOCS}>Docs</a>
         </nav>
         <a className="gh" href={GH}>GitHub</a>
-        <button type="button" className="join-btn" onClick={join}>Join the waitlist</button>
+        <button type="button" className="join-btn" onClick={join}>{joinLabel}</button>
       </header>
 
       <main id="top" tabIndex={-1}>
@@ -42,7 +64,7 @@ export default function App() {
               Linear on its own.
             </p>
             <div className="cta-row">
-              <button type="button" className="cta" onClick={join}>Join the waitlist</button>
+              <button type="button" className="cta" onClick={join}>{joinLabel}</button>
               <a className="cta ghost" href="#developers">Run it yourself</a>
               <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
             </div>
@@ -77,7 +99,7 @@ export default function App() {
           <Guarantee title="Proof, not trust" body="A review covers a sealed packet of the result and its artifacts, and every change lands in a hash-chained event log you can verify." />
         </section>
 
-        <Developers onJoin={join} />
+        <Developers onJoin={join} joinLabel={joinLabel} />
 
         <section className="hosting" id="hosting" tabIndex={-1} aria-labelledby="hosting-title">
           <p className="eyebrow">Hosted or self-hosted</p>
@@ -87,7 +109,7 @@ export default function App() {
               <h3>maidan.world</h3>
               <p>Run for you. Invite your team and connect any agent in one line, with nothing to install.</p>
               <div className="cta-row">
-                <button type="button" className="cta" onClick={join}>Join the waitlist</button>
+                <button type="button" className="cta" onClick={join}>{joinLabel}</button>
                 <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
               </div>
             </div>
@@ -102,7 +124,7 @@ export default function App() {
         <section className="close" aria-labelledby="close-title">
           <h2 id="close-title">Put your agents<br />on one board.</h2>
           <div className="cta-row center">
-            <button type="button" className="cta" onClick={join}>Join the waitlist</button>
+            <button type="button" className="cta" onClick={join}>{joinLabel}</button>
             <a className="cta ghost" href={GH}>Star on GitHub</a>
           </div>
         </section>
@@ -251,7 +273,7 @@ docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace de
 } as const;
 type Snip = keyof typeof SNIPPETS;
 
-function Developers({ onJoin }: { onJoin: () => void }) {
+function Developers({ onJoin, joinLabel }: { onJoin: () => void; joinLabel: string }) {
   const [tab, setTab] = useState<Snip>("claude");
   const s = SNIPPETS[tab];
   const onTabs = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -279,7 +301,7 @@ function Developers({ onJoin }: { onJoin: () => void }) {
           agent’s own member, under the capabilities its token was given.
         </p>
         <div className="cta-row">
-          <button type="button" className="cta" onClick={onJoin}>Join the waitlist</button>
+          <button type="button" className="cta" onClick={onJoin}>{joinLabel}</button>
           <a className="cta ghost" href={DOCS}>Read the docs</a>
         </div>
       </div>

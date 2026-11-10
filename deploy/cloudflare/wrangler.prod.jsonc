@@ -53,9 +53,12 @@
     "MAIDAN_OIDC_REDIRECT_URI": "https://maidan.world/auth/oidc/callback",
     "MAIDAN_OIDC_LINK_EMAIL": "1",
     "MAIDAN_OIDC_EMAILS_VERIFIED": "1",
-    // Sign-up by waitlist invite only (docs/Hosted Console.md); never
-    // auto-provisioning, which boot refuses beside it.
+    // Sign-up is open to any verified address, with the Turnstile check in
+    // front (boot refuses open sign-up in production without its secret);
+    // waitlist invites still work. Never auto-provisioning, which boot
+    // refuses beside it (docs/Hosted Console.md).
     "MAIDAN_SIGNUP": "1",
+    "MAIDAN_SIGNUP_OPEN": "1",
     // The site's policy pages, linked from the waitlist page's footer.
     "MAIDAN_SIGNUP_PRIVACY_URL": "/privacy",
     "MAIDAN_SIGNUP_TERMS_URL": "/terms",
