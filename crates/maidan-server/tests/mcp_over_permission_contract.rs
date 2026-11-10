@@ -183,16 +183,18 @@ fn dispatch_arms(mod_src: &str) -> BTreeSet<String> {
     let bytes = mod_src.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        let next = skip_non_code(bytes, i);
-        if next != i {
-            i = next;
-            continue;
-        }
+        // Check for an arm before skipping literals: `skip_non_code` would
+        // otherwise step over the `"tool_name"` string itself.
         if bytes[i] == b'"'
             && let Some((name, after)) = read_tool_arm(mod_src, i)
         {
             names.insert(name);
             i = after;
+            continue;
+        }
+        let next = skip_non_code(bytes, i);
+        if next != i {
+            i = next;
             continue;
         }
         i += 1;
