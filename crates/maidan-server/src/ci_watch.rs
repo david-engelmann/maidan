@@ -47,16 +47,31 @@ pub struct CiSummary {
     pub first_failing_job: Option<i64>,
 }
 
+/// Whether `check` failed the head. A cancelled check whose name another
+/// check on the head now runs or passed under was superseded, not failed:
+/// GitHub cancels a run when a newer one starts on the same head, and the
+/// rollup lists both. A cancel with nothing in its place is a failure.
+fn failed(check: &GithubCheck, checks: &[GithubCheck]) -> bool {
+    match check.state {
+        GithubCheckState::Failed => true,
+        GithubCheckState::Cancelled => !checks.iter().any(|other| {
+            other.name == check.name
+                && matches!(
+                    other.state,
+                    GithubCheckState::Pending | GithubCheckState::Passed
+                )
+        }),
+        GithubCheckState::Pending | GithubCheckState::Passed => false,
+    }
+}
+
 /// Summarize the checks on a head. Any failure makes it a failure at once,
 /// whatever still runs, as GitHub's own rollup does; otherwise it is pending
 /// until every check has finished.
 pub fn summarize(checks: &[GithubCheck]) -> CiSummary {
     let mut failing_jobs: Vec<String> = Vec::new();
     let mut first_failing_job = None;
-    for check in checks
-        .iter()
-        .filter(|c| c.state == GithubCheckState::Failed)
-    {
+    for check in checks.iter().filter(|c| failed(c, checks)) {
         if first_failing_job.is_none() {
             first_failing_job = check.job_id;
         }
@@ -443,5 +458,39 @@ mod tests {
         assert_eq!(summary.status, CiStatus::Success);
         assert!(summary.finished);
         assert!(summary.failing_jobs.is_empty());
+    }
+
+    #[test]
+    fn a_cancel_superseded_by_a_newer_run_of_the_same_check_is_not_a_failure() {
+        // Marking the pull request ready started new runs and GitHub
+        // cancelled the old ones; the rollup lists both.
+        let checks = [
+            check("Early Checks", GithubCheckState::Cancelled, Some(1)),
+            check("All Tests Pass", GithubCheckState::Cancelled, Some(2)),
+            check("Early Checks", GithubCheckState::Passed, Some(3)),
+            check("All Tests Pass", GithubCheckState::Pending, Some(4)),
+        ];
+        let summary = summarize(&checks);
+        assert_eq!(summary.status, CiStatus::Pending);
+        assert!(summary.failing_jobs.is_empty());
+        assert_eq!(summary.first_failing_job, None);
+    }
+
+    #[test]
+    fn a_cancel_with_nothing_in_its_place_is_still_a_failure() {
+        let checks = [
+            check("lint", GithubCheckState::Passed, Some(1)),
+            check("unit tests", GithubCheckState::Cancelled, Some(2)),
+        ];
+        let summary = summarize(&checks);
+        assert_eq!(summary.status, CiStatus::Failure);
+        assert_eq!(summary.failing_jobs, vec!["unit tests".to_string()]);
+        assert_eq!(summary.first_failing_job, Some(2));
+        // Two cancels of one name, and nothing else under it, fail too.
+        let twice = [
+            check("unit tests", GithubCheckState::Cancelled, Some(2)),
+            check("unit tests", GithubCheckState::Cancelled, Some(5)),
+        ];
+        assert_eq!(summarize(&twice).status, CiStatus::Failure);
     }
 }
