@@ -103,35 +103,64 @@ pub async fn github_events(
         .get("x-hub-signature-256")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if !crate::webhooks::verify_signature(&cfg.webhook_secret, &body, signature) {
-        return ApiError::SignatureInvalid.into_response();
-    }
     let event = headers
         .get("x-github-event")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
+    if !crate::webhooks::verify_signature(&cfg.webhook_secret, &body, signature) {
+        count_github_event(event, "refused");
+        return ApiError::SignatureInvalid.into_response();
+    }
     let payload: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
     match event {
         // Webhook setup handshake — GitHub sends `ping` once; a 200 confirms it.
-        "ping" => Json(serde_json::json!({ "ok": true })).into_response(),
+        "ping" => {
+            count_github_event(event, "handled");
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
         // A new comment on a linked issue/PR → the mapped Maidan thread (311).
         "issue_comment" => {
             route_github_issue_comment(&state, &payload).await;
+            count_github_event(event, "handled");
             StatusCode::OK.into_response()
         }
         // A merged PR on a linked issue/PR → a `ThreadLanded` fact.
         // A closed, unmerged PR on a linked issue/PR → one thread message.
         "pull_request" => {
             route_github_pull_request(&state, &payload).await;
+            count_github_event(event, "handled");
             StatusCode::OK.into_response()
         }
         // CI moved on a head: the change sweep reads it on its next pass.
         "workflow_run" | "check_suite" | "check_run" | "status" => {
-            mark_ci_event(&state, event, &payload).await;
+            let marked = mark_ci_event(&state, event, &payload).await;
+            count_github_event(event, if marked > 0 { "marked" } else { "unmatched" });
             StatusCode::OK.into_response()
         }
-        _ => StatusCode::OK.into_response(),
+        _ => {
+            count_github_event(event, "ignored");
+            StatusCode::OK.into_response()
+        }
     }
+}
+
+/// Count one inbound GitHub delivery by event and what became of it, so an
+/// operator can compare what a forwarder sent with what Maidan took in. The
+/// event label is one of the handled names or `other`, never GitHub's raw
+/// header, so a sender cannot grow the label set.
+fn count_github_event(event: &str, outcome: &'static str) {
+    let event: &'static str = match event {
+        "ping" => "ping",
+        "issue_comment" => "issue_comment",
+        "pull_request" => "pull_request",
+        "workflow_run" => "workflow_run",
+        "check_suite" => "check_suite",
+        "check_run" => "check_run",
+        "status" => "status",
+        _ => "other",
+    };
+    metrics::counter!("maidan_github_events_total", "event" => event, "outcome" => outcome)
+        .increment(1);
 }
 
 /// What a CI event names: its repository, the head commit its CI ran on,
@@ -190,9 +219,9 @@ pub fn ci_event_target(event: &str, payload: &serde_json::Value) -> Option<CiEve
 /// only stamps the time of the latest event, and two stamps before one
 /// sweep pass still make that pass read CI once. An event for a repository
 /// or head nothing tracks marks nothing.
-async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Value) {
+async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Value) -> u64 {
     let Some(target) = ci_event_target(event, payload) else {
-        return;
+        return 0;
     };
     let at = chrono::Utc::now();
     let mut marked = 0u64;
@@ -223,6 +252,7 @@ async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Valu
         }
     }
     tracing::debug!(repo = target.repo, event, marked, "github CI event");
+    marked
 }
 
 /// Route an inbound GitHub `pull_request` event: when a PR **linked** to a

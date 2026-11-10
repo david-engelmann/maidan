@@ -395,6 +395,9 @@ async fn deliver(
 /// last read at its commit. Each marks only its own.
 #[tokio::test]
 async fn each_ci_event_marks_the_tracked_pull_request_it_names() {
+    // The recorder is process-wide and installed by the binary; a test
+    // installs it itself to read the counts back from `/metrics`.
+    maidan_server::metrics::init();
     let (addr, client, store, server) = spawn(true).await;
     let ws = tracking(store.as_ref()).await;
     assert!(marked(store.as_ref(), ws).await.is_empty());
@@ -437,6 +440,27 @@ async fn each_ci_event_marks_the_tracked_pull_request_it_names() {
         StatusCode::OK
     );
     assert_eq!(marked(store.as_ref(), ws).await, vec![5, 6, 7, 8]);
+
+    // Each delivery is counted by event and outcome, so a forwarder's count
+    // can be checked against what Maidan took in.
+    let metrics = client
+        .get(format!("http://{addr}/metrics"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    for event in ["workflow_run", "check_suite", "check_run", "status"] {
+        assert!(
+            metrics
+                .lines()
+                .any(|line| line.starts_with("maidan_github_events_total")
+                    && line.contains(&format!("event=\"{event}\""))
+                    && line.contains("outcome=\"marked\"")),
+            "no marked count for {event} in:\n{metrics}"
+        );
+    }
     server.abort();
 }
 
