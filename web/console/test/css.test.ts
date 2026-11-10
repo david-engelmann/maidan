@@ -142,3 +142,9 @@ test("at 360px the header title gives way so the header keeps one row", () => {
   assert.match(css, /@media \(max-width: 380px\) \{[\s\S]{0,400}?\.top h1 \{[^}]*flex-basis: 6rem;/);
   assert.equal(lastValue(".top h1", "flex-basis"), "6rem");
 });
+
+test("an activity row's channel link is a 44px target, however short the channel name", () => {
+  // `#build` drew 38px wide on a phone, under the touch-target floor.
+  assert.equal(lastValue(".activity-channel", "min-width"), "44px");
+  assert.equal(lastValue(".activity-channel", "min-height"), "44px");
+});

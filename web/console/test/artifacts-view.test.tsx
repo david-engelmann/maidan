@@ -1,8 +1,10 @@
 import { renderSignedIn, withSession } from "./console-harness.tsx";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import { Artifacts } from "../src/artifacts/Artifacts.tsx";
+import { SessionContext } from "../src/hooks/useSession.ts";
+import { SessionStore } from "../src/core/session.ts";
 
 afterEach(() => cleanup());
 
@@ -46,4 +48,24 @@ test("a task can be chosen, and a linked file shows its name and size", async ()
   await user.type(view.getByLabelText("Task id"), "t2");
   await user.click(view.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(view.getByText(/No files linked to this task yet/)).toBeTruthy());
+});
+
+test("a sha typed while the session is still signing in survives the sign-in", async () => {
+  // The workspace arriving with the first sign-in once cleared the field and
+  // the lookup, so a fast lookup showed nothing at all.
+  const user = userEvent.setup();
+  const router = withSession([{ match: /\/workspaces\/ws\/channels$/, body: () => [] }]);
+  const store = new SessionStore("https://console.test", router.fn);
+  globalThis.fetch = router.fn;
+  render(
+    <SessionContext.Provider value={store}>
+      <Artifacts />
+    </SessionContext.Provider>,
+  );
+  const field = screen.getByLabelText("sha256") as HTMLInputElement;
+  await user.type(field, "0".repeat(64));
+  await user.keyboard("{Enter}");
+  await store.refresh();
+  await waitFor(() => expect(screen.getByText("Not found, or not in this workspace.")).toBeTruthy());
+  expect(field.value).toBe("0".repeat(64));
 });

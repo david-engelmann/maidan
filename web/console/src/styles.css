@@ -1410,6 +1410,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .activity-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .activity-head h1 { margin: 0 auto 0 0; font-size: 18px; }
 .activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-channel { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
 .activity-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 32px; }
 
 /* Card vote badges (console-22). */
