@@ -105,6 +105,24 @@ fn rel(root: &Path, file: &Path) -> String {
         .replace('\\', "/")
 }
 
+/// Workspace crate directory names from the root Cargo.toml `members` list.
+fn workspace_crate_names(root: &Path) -> BTreeSet<String> {
+    let text = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let start = text
+        .find("members = [")
+        .expect("workspace Cargo.toml has a members list");
+    let rest = &text[start..];
+    let end = rest.find(']').expect("members list is closed");
+    rest[..end]
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim().strip_prefix('"')?;
+            let path = line.split('"').next()?;
+            path.strip_prefix("crates/").map(str::to_string)
+        })
+        .collect()
+}
+
 /// Production Rust in every workspace crate and in the repo examples, not tests.
 fn production_rust(root: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -151,10 +169,10 @@ fn authority_changes_are_audited_in_their_transaction() {
             Some(rest.split('/').next()?.to_string())
         })
         .collect();
+    let members = workspace_crate_names(&root);
     assert_eq!(
-        crate_names.len(),
-        15,
-        "expected every workspace crate, scanned {crate_names:?}"
+        crate_names, members,
+        "scanned crates must match workspace members"
     );
 
     let allowed: HashMap<&str, &[&str]> = PLAYWRIGHT_HARNESS.iter().copied().collect();
@@ -165,11 +183,11 @@ fn authority_changes_are_audited_in_their_transaction() {
         let source = std::fs::read_to_string(file).unwrap();
         for (line_no, line) in without_tests(&source).lines().enumerate() {
             for call in unaudited_on_line(line) {
-                if let Some((pinned, pins)) = allowed.get_key_value(path.as_str()) {
-                    if pins.contains(&call) {
-                        seen.entry(*pinned).or_default().insert(call);
-                        continue;
-                    }
+                if let Some((pinned, pins)) = allowed.get_key_value(path.as_str())
+                    && pins.contains(&call)
+                {
+                    seen.entry(*pinned).or_default().insert(call);
+                    continue;
                 }
                 offenders.push(format!("{path}:{}: {call}", line_no + 1));
             }
