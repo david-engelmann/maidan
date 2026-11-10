@@ -36,6 +36,7 @@ mkdir -p "$src_docs/assets"
 # deliberately stays out of the published book. Space-named sources are staged
 # under hyphenated names (space -> hyphen).
 top_pages=(
+  "Using-Maidan" "Setup-Modes" "Typical-Flows" "Console"
   "Quickstart" "Integration" "Integration Reference" "Swarms" "Capability Map" "Result Delivery"
   "Production" "Configuration" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison" "Architecture" "Claims"
