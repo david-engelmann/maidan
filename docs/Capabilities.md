@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v442.0.0](https://github.com/david-engelmann/maidan/releases/tag/v442.0.0) — CI compiles the workspace once per run, and 2 more
+
+Cancelled tasks leave the merge queue and the context pack, inbound GitHub deliveries are counted, and prod picks up its web push keys.
+
+- CI compiles the workspace once per run
+- The change sweep reads CI when GitHub says it changed
+- Inbound GitHub deliveries are counted
+
+`CHANGELOG.md` under `[442.0.0]` has every entry.
+
 ## [v441.0.0](https://github.com/david-engelmann/maidan/releases/tag/v441.0.0) — the CI-access alert fires on a lasting refusal, not on a rate limit, and 5 more
 
 claude.ai connector sign-in (an omitted OAuth resource), ended threads refuse claims and skip change deliveries, the CI-access alert waits out rate limits, phone-width console fixes.
