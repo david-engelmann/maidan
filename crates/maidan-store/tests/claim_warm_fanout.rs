@@ -202,7 +202,15 @@ impl World {
         let member = self.members[member];
         if self.with_event {
             store
-                .claim_next_thread_with_event(self.channel, member, Some(60), None, None, None)
+                .claim_next_thread_with_event(
+                    self.channel,
+                    member,
+                    Some(60),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
                 .await
                 .expect("claim")
                 .0

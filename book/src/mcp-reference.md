@@ -2446,6 +2446,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "kind": {
+      "description": "only claim a thread of this kind (change, plan or review; a thread that names no kind is a change). A review seat claims with kind review and its repo, and no engine, to take every review in that repository whatever engine wrote the change. Combines with repo, engine and lane. Omitted, any kind",
+      "enum": [
+        "change",
+        "plan",
+        "review"
+      ],
+      "type": "string"
+    },
     "lane": {
       "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
       "enum": [
@@ -2489,6 +2498,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "unattended",
         "session",
         "human"
+      ],
+      "type": "string"
+    },
+    "kind": {
+      "description": "only claim a thread of this kind (change, plan or review; a thread that names no kind is a change). A review seat claims with kind review and its repo, and no engine, to take every review in that repository whatever engine wrote the change. Combines with repo, engine and lane. Omitted, any kind",
+      "enum": [
+        "change",
+        "plan",
+        "review"
       ],
       "type": "string"
     },
@@ -3175,7 +3193,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_queue_depth`
 
-**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo and engine narrow the count as they narrow claim_next_workspace_thread.
+**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo, engine and kind narrow the count as they narrow claim_next_workspace_thread.
 
 **Capability:** `workspace:read`
 
@@ -3190,6 +3208,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "unattended",
         "session",
         "human"
+      ],
+      "type": "string"
+    },
+    "kind": {
+      "description": "count only threads of this kind (change, plan or review; a thread that names no kind is a change), as claim_next_workspace_thread's kind. Omitted, any kind",
+      "enum": [
+        "change",
+        "plan",
+        "review"
       ],
       "type": "string"
     },

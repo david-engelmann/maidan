@@ -627,10 +627,16 @@ claims or reads queue depth filtered by engine and repository sees it where it
 sees the change. It also carries a `review_family`, the first family Maidan
 knows that is not the author's (`openai` for an Anthropic author). That is a
 label and nothing routes on it: a seat of any other family, DeepSeek or
-Google for an Anthropic change, may claim the review. **A review seat filters
-on `kind=review` (with its engine and repository), never on
-`review_family`:** a seat that also filters on its own family never picks a
-review whose label names another, and those reviews wait for nobody.
+Google for an Anthropic change, may claim the review. **A review seat claims
+with `kind: review` and its `repo`, and no `engine`, and never filters on
+`review_family`.** `kind` hands it only reviews, never the changes in its
+repository. Leaving out `engine` hands it every review there whatever engine
+wrote the change: the review carries its change's engine, so a seat that
+filters on one engine never sees the reviews of changes routed to another. A
+seat that also filters on its own family never picks a review whose label
+names another, and those reviews wait for nobody. Size the review pool with
+the same filters: `GET /workspaces/{wid}/queue-depth?kind=review&repo=owner/name`
+(or `get_workspace_queue_depth` with `kind` and `repo`).
 
 A seat that knows its own family declines a review of that family's change
 when it is handed one: `release_claim` with `decline: "own_family"` releases

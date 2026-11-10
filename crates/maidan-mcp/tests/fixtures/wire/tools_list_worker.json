@@ -166,6 +166,15 @@
             ],
             "type": "string"
           },
+          "kind": {
+            "description": "only claim a thread of this kind (change, plan or review; a thread that names no kind is a change). A review seat claims with kind review and its repo, and no engine, to take every review in that repository whatever engine wrote the change. Combines with repo, engine and lane. Omitted, any kind",
+            "enum": [
+              "change",
+              "plan",
+              "review"
+            ],
+            "type": "string"
+          },
           "lane": {
             "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
             "enum": [
@@ -209,6 +218,15 @@
               "unattended",
               "session",
               "human"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "only claim a thread of this kind (change, plan or review; a thread that names no kind is a change). A review seat claims with kind review and its repo, and no engine, to take every review in that repository whatever engine wrote the change. Combines with repo, engine and lane. Omitted, any kind",
+            "enum": [
+              "change",
+              "plan",
+              "review"
             ],
             "type": "string"
           },

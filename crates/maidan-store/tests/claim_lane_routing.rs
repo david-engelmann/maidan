@@ -84,7 +84,7 @@ async fn task(store: &dyn Store, room: &Room, title: &str, lane: Option<TaskLane
 /// takes the next thread the order gives.
 async fn claim(store: &dyn Store, room: &Room, lane: Option<TaskLane>) -> Option<ThreadId> {
     store
-        .claim_next_thread_with_event(room.channel, room.agent, Some(600), None, None, lane)
+        .claim_next_thread_with_event(room.channel, room.agent, Some(600), None, None, lane, None)
         .await
         .unwrap()
         .0
@@ -196,12 +196,21 @@ async fn the_workspace_queue_orders_by_lane_too(store: Arc<dyn Store>) {
             None,
             None,
             Some(TaskLane::Flex),
+            None,
         )
         .await
         .unwrap();
     assert_eq!(claimed.map(|t| t.id), Some(flex));
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agent, Some(600), None, None, None)
+        .claim_next_workspace_thread_with_event(
+            room.ws,
+            room.agent,
+            Some(600),
+            None,
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(claimed.map(|t| t.id), Some(plain));
