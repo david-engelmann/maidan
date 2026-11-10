@@ -1,5 +1,0 @@
-### A workspace made by sign-up can invite a second person
-
-- **Fixed:** the first admin token (`POST /auth/session/mint`) now carries `workspace:admin` beside `token:admin`. Before, a workspace made by sign-up could never invite anyone: the token lacked it, a token cannot mint a capability it does not hold, and a browser session never holds it.
-- **Added:** `POST`/`GET /ui/api/workspaces/{wid}/invites` and `DELETE /ui/api/workspaces/{wid}/invites/{iid}`, so the person who signed up invites, lists and revokes from the console without holding a token. A session's member must be a human holding `workspace:admin` on a live token, or, before anyone holds `token:admin`, the person who may mint the first one. An invited member, an agent and a session made from a token are refused; a bearer is held to `workspace:admin`. The console's Invites panel uses these routes when signed in.
-- **Fixed:** the launch gate test's cross-tenant read called `get_thread`, which is not an MCP tool, so it passed on "unknown tool". It now calls `get_thread_context`, asserts the tenant refusal, and checks the owner's own read succeeds.
