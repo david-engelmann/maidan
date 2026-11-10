@@ -13,6 +13,10 @@
 - [ ] every new or changed string re-read end to end
 -->
 
+## Threat model
+
+<!-- If this change adds or changes a trust boundary, authn/authz, tenancy, egress, secrets, or a Primary-threats row, update docs/Threat-Model.md (Test column included) or say why no delta is needed. -->
+
 ## Retrospective (PR-level)
 
 - **What was surprising:**
