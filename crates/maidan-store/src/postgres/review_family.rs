@@ -91,16 +91,32 @@ pub(crate) async fn spawn_in_tx(
     let workspace_id: Uuid = place.try_get("workspace_id")?;
     // The database's clock, like every other thread: claim_next ages a thread
     // by `created_at` against it (#1586).
+    // The review names what it reviews: the change's latest delivered pull
+    // request and head.
+    let delivered = sqlx::query(&crate::review_family::delivered_head_sql("$1"))
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .map(|row| -> Result<(String, i64, String), sqlx::Error> {
+            Ok((
+                row.try_get("repo")?,
+                row.try_get("pull_number")?,
+                row.try_get("commit_sha")?,
+            ))
+        })
+        .transpose()?;
+    let (title, description) = crate::review_family::child_naming(delivered);
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
-         VALUES ($1, $2, $3, $4, NULL, $5)
+         VALUES ($1, $2, $3, $4, $6, $5)
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(Uuid::now_v7())
     .bind(channel_id)
     .bind(thread_id.0)
-    .bind("Second-family review")
+    .bind(&title)
     .bind(actor_id.0)
+    .bind(description.as_deref())
     .fetch_one(&mut **tx)
     .await?;
     let thread = threads::row_to_thread(&row)?;

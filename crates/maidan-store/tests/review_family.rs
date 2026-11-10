@@ -1103,7 +1103,112 @@ async fn the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(
     assert_eq!(handed.id, waiting);
 }
 
+/// A change the flow delivered names, on its review, the pull request and
+/// the head to review, so a reviewer reads both from the thread; one it
+/// never delivered keeps the plain title.
+async fn a_spawned_review_names_the_pull_request_and_head_it_reviews(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "names").await;
+    let (change, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: None,
+                title: Some("delivered change".into()),
+                description: None,
+                created_by: None,
+            },
+            Some(exclusive("src/")),
+            Some(TaskAttributes {
+                kind: TaskKind::Change,
+                engine: Some(TaskEngine::Session),
+                repo: Some(REPO.into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("change");
+    store
+        .claim_thread(change.id, room.author)
+        .await
+        .expect("claim");
+    pool.usage(Usage {
+        ws: room.ws.0,
+        thread: change.id.0,
+        reporter: room.author.0,
+        model: "claude-sonnet-4",
+    })
+    .await;
+    let head = "0123456789abcdef0123456789abcdef01234567";
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: change.id,
+            repo: REPO.into(),
+            pull_number: 42,
+            commit_sha: head.into(),
+            base_sha: "b".repeat(40),
+            base_behind: None,
+            diff_lines: 3,
+            paths: vec!["src/lib.rs".into()],
+            base_branch: Some("dev".into()),
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .expect("round");
+    store
+        .set_thread_result_claiming(change.id, room.author, &json!({"status": "done"}))
+        .await
+        .expect("result");
+    let (_, events) = store
+        .transition_thread_with_event(change.id, room.author, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let review = events
+        .iter()
+        .map(|e| e.opened_event().expect("event"))
+        .find_map(|e| match e {
+            Event::ThreadCreated { thread, .. } if thread.parent_thread_id == Some(change.id) => {
+                Some(thread)
+            }
+            _ => None,
+        })
+        .expect("a review child is spawned");
+    assert_eq!(
+        review.title.as_deref(),
+        Some(format!("Second-family review: {REPO}#42 at 0123456").as_str())
+    );
+    assert_eq!(
+        review.description.as_deref(),
+        Some(format!("Pull request: {REPO}#42\nHead to review: {head}").as_str())
+    );
+
+    let (_, plain) = change_into_review(
+        store,
+        pool,
+        &room,
+        "undelivered change",
+        Some(exclusive("docs/")),
+        TaskAttributes {
+            kind: TaskKind::Change,
+            engine: Some(TaskEngine::Session),
+            repo: Some(REPO.into()),
+            ..TaskAttributes::default()
+        },
+    )
+    .await;
+    let plain = store.get_thread(plain).await.expect("review");
+    assert_eq!(plain.title.as_deref(), Some("Second-family review"));
+    assert_eq!(plain.description, None);
+}
+
 async fn served_where_the_change_is(store: &dyn Store, pool: &Pool) {
+    a_spawned_review_names_the_pull_request_and_head_it_reviews(store, pool).await;
     a_spawned_review_carries_its_changes_engine_repository_and_lane(store, pool).await;
     a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(store, pool).await;
     the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(store, pool).await;
