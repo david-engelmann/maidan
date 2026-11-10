@@ -222,6 +222,36 @@ Result delivery to Slack takes `MAIDAN_SLACK_BOT_TOKEN`, and to Linear
 when it is bound. A result aimed at a surface whose credential is missing is
 recorded `failed`, and its `last_error` names the setting.
 
+### Credits
+
+maidan.world takes prepaid credits in USDC on Base ([Credits](Credits.md)).
+They are off until the maintainer sets the receiving address; nothing in this
+tree names a real address or price. To turn them on, set these as Worker
+secrets (the Worker forwards each to the container) and restart the
+container:
+
+- `MAIDAN_CREDITS_ADDRESS`: the receiving address. A wallet whose key is kept
+  away from this deploy entirely: the server only reads the chain.
+- `MAIDAN_OVERAGE_PRICES`: the price per meter, such as
+  `mcp_calls=1000000/100000,requests=500000/100000`. Leave `stored_bytes` out:
+  it stays a hard cap.
+- `MAIDAN_CREDITS_RPC_URL`: a provider's Base endpoint. The public
+  `https://mainnet.base.org` answers `eth_getLogs` with "request limit
+  reached" often enough that the watcher falls behind; a provider endpoint
+  avoids it.
+- Optionally `MAIDAN_CREDITS_CHAIN=base-sepolia` on dev.maidan.world, to test
+  with Sepolia USDC.
+
+Check it is running: boot logs `credits deposit watcher started` with the
+chain and address, and the `credits_watcher` loop appears in the loop
+liveness metrics. A watcher that cannot reach the chain logs `credits
+watcher: tick stopped` and resumes from the same block; nothing is lost.
+
+Transfers that matched no top-up (the wrong amount, a payment after its
+intent lapsed, a stranger's) are listed by `GET /operator/credits/unmatched`
+(`operator:global`). Settle each by hand with the workspace's admin: credit
+it with a grant, or refund it from the wallet.
+
 ## dev.maidan.world
 
 Every push to `dev` that touches the server runs `deploy dev`

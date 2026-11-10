@@ -84,7 +84,7 @@ pub enum StoreError {
     /// past its free allowance on this meter this month. REST 429, MCP
     /// `OverAllowance`. Raised at the store's message and artifact writes,
     /// so every writer is held to it, not only the routes that list it.
-    #[error("this workspace is past its free allowance for {} this month", .0.as_str())]
+    #[error("{}", maidan_types::over_allowance_detail(*.0))]
     OverAllowance(maidan_types::UsageMeter),
 }
 

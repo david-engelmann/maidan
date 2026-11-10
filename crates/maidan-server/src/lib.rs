@@ -30,6 +30,7 @@ pub mod compression;
 pub mod config;
 pub mod consistency;
 pub mod content_keys;
+pub mod credits;
 pub mod delivery;
 pub mod delivery_ops;
 pub mod deploy_ingest;

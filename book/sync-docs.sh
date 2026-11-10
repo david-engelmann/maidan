@@ -38,7 +38,7 @@ mkdir -p "$src_docs/assets"
 top_pages=(
   "Using-Maidan" "Setup-Modes" "Typical-Flows" "Console"
   "Quickstart" "Integration" "Integration Reference" "Swarms" "Capability Map" "Result Delivery"
-  "Production" "Configuration" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
+  "Production" "Configuration" "Credits" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison" "Architecture" "Claims"
   "Providers" "Protocols" "Clients"
   "Framework Integrations" "Harness Caching" "WASI-Handlers"

@@ -50,6 +50,11 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CONTENT_KEK_PREVIOUS",
     "MAIDAN_CONTENT_KEK_PREVIOUS_FILE",
     "MAIDAN_COOKIE_SECURE",
+    "MAIDAN_CREDITS_ADDRESS",
+    "MAIDAN_CREDITS_CHAIN",
+    "MAIDAN_CREDITS_CONFIRMATIONS",
+    "MAIDAN_CREDITS_POLL_SECS",
+    "MAIDAN_CREDITS_RPC_URL",
     "MAIDAN_DB_ACQUIRE_TIMEOUT_SECS",
     "MAIDAN_DB_BUSY_TIMEOUT_MS",
     "MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS",
@@ -157,6 +162,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_OUTBOX_POLL_INTERVAL_MS",
     "MAIDAN_OUTBOX_RELAY",
     "MAIDAN_OUTBOX_RELAY_MODE",
+    "MAIDAN_OVERAGE_PRICES",
     "MAIDAN_PRESENCE_HEARTBEAT_SECS",
     "MAIDAN_PRESENCE_TTL_SECS",
     "MAIDAN_PRIVATE_EGRESS_HOSTS",
@@ -478,6 +484,10 @@ mod tests {
     const NOT_SECRETS: &[(&str, &str)] = &[
         ("MAIDAN_ALLOW_INSECURE_DEV_KEK", "a switch, not a key"),
         ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
+        (
+            "MAIDAN_CREDITS_RPC_URL",
+            "a chain read endpoint; a provider key in it reads public chain data only",
+        ),
         ("MAIDAN_EGRESS_CREDENTIAL_GUARD", "a switch"),
         ("MAIDAN_EXPORT_VERIFY_KEYS", "public keys"),
         (

@@ -145,6 +145,17 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.credits_deposited/1": {
+    "$type": "maidan.event.credits_deposited/1",
+    "balance_micros": 5001234,
+    "chain": "base",
+    "kind": "credits_deposited",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "top_up_id": "00000000-0000-0000-0000-00000000000f",
+    "tx_hash": "0x54e2797a303047b8271f8c7cd19947e4e96eda740a01591dc2839d7b8820d997",
+    "usd_micros": 5001234,
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.evidence_added/1": {
     "$type": "maidan.event.evidence_added/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

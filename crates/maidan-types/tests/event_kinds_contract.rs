@@ -45,6 +45,7 @@ fn event_kinds_match_contract_file() {
         EventKind::IntakeAccepted,
         EventKind::IntakeRejected,
         EventKind::UsageOverAllowance,
+        EventKind::CreditsDeposited,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

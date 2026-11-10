@@ -1788,6 +1788,44 @@
         "reason": "reads each open tracked pull request from GitHub before computing, when the server has a GitHub client"
       }
     },
+    "get_credits": {
+      "title": "Get credits",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "credit_terms::credits reads the balance, open intents and ledger; writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a read; a repeat answers the same until a deposit, charge or intent changes it"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; it never reads the chain itself"
+      }
+    },
+    "top_up_credits": {
+      "title": "Top up credits",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_credit_top_up stores an open intent with its reserved amount"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "adds an intent that expires on its own; moves no money and changes no balance"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call opens a new intent with a new amount, up to 20 open per workspace"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store: it answers where to pay, and the payment is the caller's own act outside Maidan"
+      }
+    },
     "get_tool_transcript": {
       "title": "Get tool transcript",
       "readOnlyHint": {

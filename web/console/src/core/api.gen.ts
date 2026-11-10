@@ -89,6 +89,12 @@ export type CreateVote = { confidence?: number | null; kind: VoteKind; };
 export type CreateWebhook = { event_kinds: string[]; label?: string | null; url: string; };
 export type CreateWorkspace = { name: string; };
 export type CreateWorkspaceInvite = { email: string; expires_at?: string | null; role: WorkspaceInviteRole; };
+export type CreditChain = "base" | "base-sepolia";
+export type CreditEntry = { chain?: null | CreditChain; created_at: string; external_ref?: string | null; id: string; kind: CreditEntryKind; log_index?: number | null; meter?: null | UsageMeter; month?: string | null; note?: string | null; source?: null | CreditSource; through_units?: number | null; top_up_id?: string | null; tx_hash?: string | null; units?: number | null; unpaid_micros: number; usd_micros: number; workspace_id: WorkspaceId; };
+export type CreditEntryKind = "deposit" | "charge" | "grant";
+export type CreditGrantRequest = { note: string; usd_micros: number; };
+export type Credits = { address?: string | null; balance: string; balance_micros: number; chain?: null | CreditChain; enabled: boolean; ledger: CreditEntry[]; methods: TopUpMethod[]; open_top_ups: TopUp[]; prices: MeterPrice[]; usdc_contract?: string | null; workspace_id: WorkspaceId; };
+export type CreditSource = "usdc_base" | "stripe" | "grant";
 export type DeadEgress = { attempts: number; id: EgressOutboxId; last_error?: string | null; selector: string; surface: string; thread_id: ThreadId; updated_at: string; workspace_id: WorkspaceId; };
 export type DeclaredStatus = "working" | "needs_input" | "needs_review" | "blocked" | "done";
 export type DeferralReason = "overlap" | "repo_paused" | "slot_full";
@@ -112,7 +118,7 @@ export type EnqueueRequest = { pull_number: number; repo: string; };
 export type EnqueueResponse = { already: boolean; applied: boolean; label: string; number: number; reason?: string | null; };
 export type EraseWorkspace = { confirm_workspace_id: string; };
 export type EscalationPolicy = "notify" | "park";
-export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "evidence_added" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "intake_proposed" | "intake_accepted" | "intake_rejected" | "usage_over_allowance" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
+export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "evidence_added" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "intake_proposed" | "intake_accepted" | "intake_rejected" | "usage_over_allowance" | "credits_deposited" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
 export type EventLink = { content_hash: string; id: number; lsn: number; prev_hash: string; };
 export type EventOrder = "asc" | "desc";
 export type EvidenceAttestation = { attested_by: MemberId; kind: EvidenceKind; sha256?: string | null; tier: AttestationTier; };
@@ -211,6 +217,7 @@ export type MessageEdit = { body_after: string; body_before: string; edited_at: 
 export type MessageEditView = { body_after?: string | null; body_before?: string | null; edited_at: string; editor_id: MemberId; id: number; message_id: MessageId; };
 export type MessageId = string;
 export type MessageVotes = { ack: number; approve: number; message_id: string; request_changes: number; votes: Vote[]; };
+export type MeterPrice = { meter: UsageMeter; micros: number; per: number; };
 export type MeterUsage = { allowance?: number | null; meter: UsageMeter; over: boolean; quantity: number; };
 export type MintApiToken = { capabilities?: string[]; capability_set?: string | null; expires_at?: string | null; label?: string | null; quotas?: TokenQuota[]; };
 export type MintApiTokenResponse = { capabilities: string[]; expires_at?: string | null; id: ApiTokenId; member_id: MemberId; quotas: TokenQuota[]; secret: string; workspace_id: WorkspaceId; };
@@ -434,11 +441,16 @@ export type TombstoneRecord = { author_id?: null | MemberId; channel_id: Channel
 export type ToolCallEntry = { author_id: MemberId; input: unknown; message_id: MessageId; name: string; posted_at: string; result?: null | ToolCallResult; tool_use_id: string; };
 export type ToolCallResult = { author_id: MemberId; content: string; is_error: boolean; message_id: MessageId; posted_at: string; };
 export type ToolTranscript = { entries: ToolCallEntry[]; orphan_results?: OrphanToolResult[]; thread_id: ThreadId; };
+export type TopUp = { address?: string | null; amount: string; amount_micros: number; chain?: null | CreditChain; chain_id?: number | null; checkout_url?: string | null; created_at: string; eip681?: string | null; expires_at: string; id: string; method: TopUpMethod; paid_at?: string | null; status: TopUpStatus; usd: number; usdc_contract?: string | null; workspace_id: WorkspaceId; };
+export type TopUpMethod = "usdc" | "card";
+export type TopUpRequest = { method?: TopUpMethod; usd: number; };
+export type TopUpStatus = "open" | "paid" | "expired";
 export type TransitionAction = "start_review" | "close" | "archive";
 export type TransitionThread = { action: TransitionAction; };
 export type TriageIntakeItem = { channel_id?: string | null; decision: IntakeTriageDecision; reason?: string | null; thread_id?: string | null; };
 export type UnassignThread = Record<string, unknown>;
 export type UniqueAttributeKey = "linear_issue" | "repo";
+export type UnmatchedDeposit = { amount: string; amount_micros: number; block_number: number; chain: CreditChain; from_address: string; log_index: number; seen_at: string; to_address: string; tx_hash: string; };
 export type UnreadCount = { count: number; };
 export type UsageEvidence = { batch?: boolean; cache_key?: string | null; cache_miss_reason?: string | null; effort?: string | null; harness?: string | null; harness_version?: string | null; pack_sha256?: string[]; provider?: string | null; service_tier?: string | null; standard_price?: null | PriceSnapshot; };
 export type UsageLedgerEntry = { accepted_at: string; budget: ThreadBudget; claim_failed_event_id?: number | null; evidence: UsageEvidence; reason?: string | null; stamp: PayerStamp; stopped: boolean; thread_id: ThreadId; turns: number; usage_event_id: number; usage_report_id: string; };
@@ -595,6 +607,7 @@ export type ApiRoute =
   | "GET /messages/{id}/votes"
   | "GET /oauth/authorize"
   | "GET /operator/audit"
+  | "GET /operator/credits/unmatched"
   | "GET /operator/egress/dead"
   | "GET /operator/export-public-key"
   | "GET /operator/github/enqueue"
@@ -668,6 +681,7 @@ export type ApiRoute =
   | "GET /workspaces/{id}"
   | "GET /workspaces/{id}/approval-policy"
   | "GET /workspaces/{id}/claims"
+  | "GET /workspaces/{id}/credits"
   | "GET /workspaces/{id}/default-engine"
   | "GET /workspaces/{id}/deferred"
   | "GET /workspaces/{id}/delegation-policy"
@@ -791,6 +805,7 @@ export type ApiRoute =
   | "POST /operator/reindex-embeddings"
   | "POST /operator/waitlist/{id}/invite"
   | "POST /operator/workspaces"
+  | "POST /operator/workspaces/{id}/credits/grants"
   | "POST /references"
   | "POST /threads/{id}"
   | "POST /threads/{id}/assignee/claim"
@@ -831,6 +846,7 @@ export type ApiRoute =
   | "POST /workspaces/export/verify"
   | "POST /workspaces/import"
   | "POST /workspaces/{id}/claims/release-own"
+  | "POST /workspaces/{id}/credits/top-ups"
   | "POST /workspaces/{id}/legal-holds"
   | "POST /workspaces/{id}/pull-watches"
   | "POST /workspaces/{id}/purge"

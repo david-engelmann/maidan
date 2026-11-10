@@ -161,6 +161,9 @@ mod context_query_count_e2e;
 #[path = "../context_snapshot_e2e.rs"]
 mod context_snapshot_e2e;
 
+#[path = "../credits_e2e.rs"]
+mod credits_e2e;
+
 #[path = "../critical_review_e2e.rs"]
 mod critical_review_e2e;
 

@@ -153,7 +153,10 @@ After each flush, the `usage_meters` loop checks the workspaces it touched.
 A workspace past an allowance is marked once per meter and month
 (`maidan_usage_over_allowance`). In the same transaction it records a
 `usage_over_allowance` event and notifies each of its admins (members with a
-live `token:admin` token). Nothing is billed.
+live `token:admin` token). Where the instance takes credits and prices the
+meter, an `open` workspace is charged for the overage from its prepaid
+balance instead, and marked only when the balance cannot cover it
+([Credits](Credits.md)).
 
 #### The hard cutoff for open sign-up workspaces
 
@@ -165,17 +168,18 @@ no route changes it.
 
 Only `open` workspaces are cut off. Once an `open` workspace is marked past
 a meter's allowance, the work that meter counts is refused until the month
-turns or the allowance is raised or removed:
+turns, the allowance is raised or removed, or (on a priced meter) a deposit
+brings its credit balance back above zero:
 
 | Meter | Refused | Answer |
 |---|---|---|
-| `requests` | every authenticated request except `GET /workspaces/{id}/usage-meters` and `GET /members/{id}/notifications[/grouped]`, so its admin can see why | `429 Too Many Requests`, problem type `rate-limited`, naming the meter |
-| `mcp_calls` | MCP tool calls | JSON-RPC error `-32030`, `data.meter` |
-| `embedding_calls` | semantic and hybrid search (REST and MCP), and embedding new messages (they are stored and found by keyword search, with no vector) | `429` / `-32030` |
+| `requests` | every authenticated request except `GET /workspaces/{id}/usage-meters`, `GET /workspaces/{id}/credits`, `POST /workspaces/{id}/credits/top-ups` and `GET /members/{id}/notifications[/grouped]`, so it can see why and pay its way back | `402 Payment Required`, problem type `payment-required`, naming the meter and how to top up |
+| `mcp_calls` | MCP tool calls, except `get_credits` and `top_up_credits` | a tool error (`isError: true`) with the same text, `structuredContent.meter` |
+| `embedding_calls` | semantic and hybrid search (REST and MCP), and embedding new messages (they are stored and found by keyword search, with no vector) | `402` / tool error |
 | `deliveries` | egress to Slack, GitHub and Linear, mail, and web push | queued egress and mail are parked for 15 minutes at a time (`over_allowance` in `maidan_egress_delivered_total` / `maidan_email_delivered_total`), not failed or retried; web push is dropped, not delayed (`skipped_over_allowance`): a push skipped during the cutoff is never sent later, though the in-app notification it was for is kept |
 | `wasi_ms` | WASI slash handlers | the handler does not run; the slash response is `ok: false`, `error_kind: "over_allowance"` |
-| `stored_bytes` | every message write and every scoped artifact upload, refused by the store itself whatever reached it: thread, DM and group-DM posts, seeding a thread from a message, A2A `message:send`, GitHub and Slack inbound, and artifact uploads (single, multipart, snapshots), on REST, MCP and A2A. Uploads are refused before any bytes are written (a cut-off multipart completion aborts its parts); if the cutoff lands between the write and the row, the bytes are deleted unless an artifact in any workspace already holds them; an edit that makes a message longer | `429` / `-32030` / A2A `PermissionDenied`, naming the meter; reading, deleting and edits that do not grow a message stay open so the workspace can make room |
-| any meter | importing a workspace (`POST /workspaces/import`, MCP `import_workspace`) while the caller's workspace, or the workspace a restore overwrites, is cut off | `429` / `-32030` |
+| `stored_bytes` | every message write and every scoped artifact upload, refused by the store itself whatever reached it: thread, DM and group-DM posts, seeding a thread from a message, A2A `message:send`, GitHub and Slack inbound, and artifact uploads (single, multipart, snapshots), on REST, MCP and A2A. Uploads are refused before any bytes are written (a cut-off multipart completion aborts its parts); if the cutoff lands between the write and the row, the bytes are deleted unless an artifact in any workspace already holds them; an edit that makes a message longer | `402` / tool error / A2A `PermissionDenied`, naming the meter; reading, deleting and edits that do not grow a message stay open so the workspace can make room |
+| any meter | importing a workspace (`POST /workspaces/import`, MCP `import_workspace`) while the caller's workspace, or the workspace a restore overwrites, is cut off | `402` / tool error |
 
 Exempt from the `stored_bytes` cutoff: the store's own system notices
 (cancellation and plan notices on a thread), which keep a cut-off
@@ -186,8 +190,11 @@ workspace) and a forced restore keeps the replaced workspace's origin,
 usage and allowance crossings, so a restore never lifts a cutoff.
 
 The
-refusal is `429` rather than `403` because the workspace may do the same
-thing again next month; it is not a permission. A refused request is not
+refusal is `402` rather than `403` because it is not a permission: the
+workspace may do the same thing again next month, or (on a priced meter)
+once it tops up. It is not `429` either, which says waiting helps. The
+`stored_bytes` cutoff answers `402` too, but credits do not lift it: it is a
+level, not a count, and its detail says to free space. A refused request is not
 counted. The crossing's `usage_over_allowance` notice to each admin is the
 admin notice; it is sent when the cutoff starts.
 

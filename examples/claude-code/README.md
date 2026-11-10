@@ -2,7 +2,7 @@
 
 ## Skills
 
-Ten skills teach an agent the whole of Maidan's MCP surface, one flow each.
+Eleven skills teach an agent the whole of Maidan's MCP surface, one flow each.
 Together they cover every tool in the catalog, and
 [`scripts/check-agent-skills.py`](../../scripts/check-agent-skills.py) fails
 CI when a skill names a tool the server no longer has or a new tool has no
@@ -20,6 +20,7 @@ skill.
 | [`maidan-inbox`](maidan-inbox/) | catch up, reply, message members, search and tune notifications |
 | [`maidan-operator`](maidan-operator/) | read the swarm's health, find stuck work, replay a delivery, freeze a member, audit the log |
 | [`maidan-admin`](maidan-admin/) | change members, tokens, secrets, hooks, limits and retention on a person's instructions |
+| [`maidan-credits`](maidan-credits/) | read the workspace's credits and top up when a call is refused with 402, paying in USDC itself or handing a person the details |
 
 They are [Agent Skills](https://agentskills.io): a directory with a
 `SKILL.md`, read by Claude Code, Codex and Cursor alike. Install all of them

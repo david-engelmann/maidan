@@ -26,6 +26,10 @@ pub enum ApiError {
     PayloadTooLarge(String),
     UnsupportedMediaType(String),
     TooManyRequests(String),
+    /// An open sign-up workspace is past its free allowance on a meter this
+    /// month: 402, naming the meter and how to top up. Not a 429: waiting
+    /// does not help, paying (or freeing space, for `stored_bytes`) does.
+    PaymentRequired(maidan_types::UsageMeter),
     BadGateway(String),
     Internal(String),
     /// The server is at a capacity ceiling (in-flight requests, subscriber
@@ -100,6 +104,7 @@ impl ApiError {
             Self::PayloadTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             Self::UnsupportedMediaType(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
+            Self::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Overloaded(_) => StatusCode::SERVICE_UNAVAILABLE,
@@ -128,6 +133,7 @@ impl ApiError {
             Self::PayloadTooLarge(_) => "Payload Too Large",
             Self::UnsupportedMediaType(_) => "Unsupported Media Type",
             Self::TooManyRequests(_) => "Too Many Requests",
+            Self::PaymentRequired(_) => "Payment Required",
             Self::BadGateway(_) => "Bad Gateway",
             Self::Internal(_) => "Internal Server Error",
             Self::Overloaded(_) => "Service Unavailable",
@@ -156,6 +162,7 @@ impl ApiError {
             }
             Self::Unauthorized => "missing or invalid bearer token".to_string(),
             Self::SignatureInvalid => "the request signature does not verify".to_string(),
+            Self::PaymentRequired(meter) => maidan_types::over_allowance_detail(*meter),
             Self::IdempotencyKeyReused => {
                 "this Idempotency-Key was used for a different request; use a new key".to_string()
             }
@@ -236,6 +243,7 @@ impl ApiError {
             Self::PayloadTooLarge(_) => "https://maidan.world/problems/payload-too-large",
             Self::UnsupportedMediaType(_) => "https://maidan.world/problems/unsupported-media-type",
             Self::TooManyRequests(_) => "https://maidan.world/problems/rate-limited",
+            Self::PaymentRequired(_) => "https://maidan.world/problems/payment-required",
             Self::BadGateway(_) => "https://maidan.world/problems/bad-gateway",
             Self::Internal(_) => "https://maidan.world/problems/internal",
             Self::Overloaded(_) => "https://maidan.world/problems/overloaded",
