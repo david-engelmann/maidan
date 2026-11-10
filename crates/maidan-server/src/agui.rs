@@ -245,6 +245,7 @@ mod tests {
             from_state: ThreadState::Open,
             to_state: ThreadState::Closed,
             thread: t.clone(),
+            previous_assignee_id: None,
         };
         assert_eq!(type_of(&agui_events_for(&closed)[0]), "RUN_FINISHED");
 
@@ -257,6 +258,7 @@ mod tests {
             from_state: ThreadState::Open,
             to_state: ThreadState::InReview,
             thread: t,
+            previous_assignee_id: None,
         };
         let step = agui_events_for(&reviewing);
         assert_eq!(type_of(&step[0]), "STEP_STARTED");

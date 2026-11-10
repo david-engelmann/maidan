@@ -656,7 +656,10 @@ pub trait ThreadResultStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadResult>, StoreError>;
     /// Closed/archived, non-tombstoned thread results in `channel_id`, newest
-    /// first. `exclude_thread_id` drops the claimer's own thread so the pack
+    /// first. A thread that ended without landing (cancelled, or closed as
+    /// abandoned, duplicate or superseded) is left out: its result was never
+    /// accepted, so the pack must not offer it as a decision.
+    /// `exclude_thread_id` drops the claimer's own thread so the pack
     /// lists *other* in-channel decisions. `limit` is clamped `1..=50`. The
     /// store does **not** interpret `result_kind` — that is a namespaced string
     /// the pack assembler reads, not a closed enum.
@@ -2024,8 +2027,10 @@ pub trait ThreadStore: Send + Sync {
     /// one transaction. `maintainer` is whether the actor holds the
     /// maintainer capability; otherwise the actor must be the producer or
     /// the claim holder. A thread with a result keeps every landing gate; a
-    /// thread with no result skips the review gates. The events come back
-    /// in order: the `duplicates`/`supersedes` reference when one was
+    /// thread with no result skips the review gates. The state change names
+    /// the former claim holder, and the change flow's open pull requests for
+    /// the thread get a withdrawal queued, as for a cancel. The events come
+    /// back in order: the `duplicates`/`supersedes` reference when one was
     /// recorded, the state change, then what the close owed a plan.
     async fn close_abandoned_thread(
         &self,
@@ -3256,9 +3261,11 @@ pub trait AssignmentStore: Send + Sync {
     /// Cancel a thread in one transaction: close it without the transition
     /// gates (a cancel lands nothing), park it from dispatch with `reason`,
     /// end any live claim so the holder's next renew is refused, and append
-    /// `ThreadStateChanged`, `ThreadCancelled` and a notice message posted by
-    /// `actor`. Under [`CancelAuthority::Creator`] only the thread's
-    /// `created_by` may. A repeat answers with the first cancel and changes
+    /// `ThreadStateChanged` (naming the former holder), `ThreadCancelled` and
+    /// a notice message posted by `actor`. Each open pull request the change
+    /// flow opened for the thread gets a withdrawal queued on the egress
+    /// outbox in the same transaction. Under [`CancelAuthority::Creator`]
+    /// only the thread's `created_by` may. A repeat answers with the first cancel and changes
     /// nothing. `reason` is the caller's to validate
     /// ([`validated_cancel_reason`]). `NotFound` when the thread is gone.
     async fn cancel_thread(

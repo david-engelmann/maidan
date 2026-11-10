@@ -569,6 +569,11 @@ pub enum Event {
         from_state: ThreadState,
         to_state: ThreadState,
         thread: Thread,
+        /// The member whose claim this change ended, on a cancel or a
+        /// close-abandoned. `thread` is written after the claim is cleared,
+        /// so without this the former holder could not be told.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        previous_assignee_id: Option<MemberId>,
     },
     ThreadAssignmentChanged {
         occurred_at: DateTime<Utc>,

@@ -749,6 +749,10 @@ pub(super) async fn close_abandoned_thread(
     for event in &stored {
         server.publish_stored(event).await;
     }
+    // A resource subscriber hears about the close as it does after a cancel.
+    let uris =
+        crate::resource_updates::uris_for_thread_transition(server.store.as_ref(), thread_id).await;
+    server.publish_resource_uris(uris).await;
     match server.store.newly_ready_dependents(thread_id).await {
         Ok(ready) => {
             for dep in ready {

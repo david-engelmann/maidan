@@ -1,7 +1,8 @@
 //! The change flow's merge-queue actions: label a ready agent pull request
 //! so the repository's merge queue takes it, read whether it is labelled, and
 //! take the label off again. Callable only by the mark-ready app, after
-//! mark-ready, once the producer's own checks passed.
+//! mark-ready, once the producer's own checks passed. The egress worker also
+//! withdraws a cancelled or abandoned task's pull request through here.
 //!
 //! Maidan only applies or removes the label. What the label does is the
 //! repository's merge-queue setting, which its owner controls, and a
@@ -207,6 +208,67 @@ pub async fn dequeue_pull_guarded(
         .await
         .map_err(MarkReadyGuard::Github)?;
     Ok((brief.number, label.to_string(), removed))
+}
+
+/// What the withdraw path did to a cancelled or abandoned task's pull
+/// request.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Withdrawn {
+    pub number: i64,
+    /// The merge-queue label was on and came off.
+    pub dequeued: bool,
+    /// It was open, got the comment, and was closed.
+    pub closed: bool,
+}
+
+/// The guard path for withdrawing a pull request whose task was cancelled or
+/// closed as abandoned: the shared guards on one fresh read, as for
+/// dequeue, so only a `feature/agent-*` head in this repository into an
+/// allowlisted base is touched. Then the merge-queue label comes off if the
+/// repository has one and it is on (first, so the queue cannot take the
+/// pull request while it is being closed), and an open pull request gets
+/// `comment` and is closed. A closed one is left closed and gets no comment.
+/// The branch is never touched.
+pub async fn withdraw_pull_guarded(
+    store: &dyn maidan_store::Store,
+    workspace_id: WorkspaceId,
+    git: &dyn GithubGit,
+    bases: &maidan_types::MarkReadyBases,
+    labels: &maidan_types::MergeQueueLabels,
+    repo: &str,
+    pull_number: i64,
+    comment: &str,
+) -> Result<Withdrawn, MarkReadyGuard> {
+    let brief = git
+        .pull_brief(repo, pull_number)
+        .await
+        .map_err(MarkReadyGuard::Github)?;
+    shared_guards(store, workspace_id, bases, repo, &brief).await?;
+    let dequeued = match labels.label_for(repo) {
+        Some(label) if brief.labels.iter().any(|name| name == label) => git
+            .remove_pull_label(repo, pull_number, label, EnqueueGuardPass { _private: () })
+            .await
+            .map_err(MarkReadyGuard::Github)?,
+        _ => false,
+    };
+    if !brief.open {
+        return Ok(Withdrawn {
+            number: brief.number,
+            dequeued,
+            closed: false,
+        });
+    }
+    git.comment_on_pull(repo, pull_number, comment)
+        .await
+        .map_err(MarkReadyGuard::Github)?;
+    git.close_pull(repo, pull_number, EnqueueGuardPass { _private: () })
+        .await
+        .map_err(MarkReadyGuard::Github)?;
+    Ok(Withdrawn {
+        number: brief.number,
+        dequeued,
+        closed: true,
+    })
 }
 
 async fn audit_enqueue(

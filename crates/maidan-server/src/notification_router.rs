@@ -448,17 +448,34 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             thread_id,
             actor_id,
             thread,
+            previous_assignee_id,
             ..
         } => {
             let mut recipients = HashSet::new();
+            // A cancel or close-abandoned clears the assignee before this
+            // event is written, so the member whose claim it ended rides
+            // alongside: its followers hear as the assignee's would have.
             add_accessible_member_followers(
                 state,
                 *workspace_id,
                 Some(*thread_id),
-                thread.assignee_id.into_iter().collect(),
+                thread
+                    .assignee_id
+                    .into_iter()
+                    .chain(*previous_assignee_id)
+                    .collect(),
                 &mut recipients,
             )
             .await?;
+            // The former holder itself may still be building on work that no
+            // longer counts, and its next fenced call is the only other way
+            // it would find out. Not when it ended its own claim.
+            if let Some(holder) = previous_assignee_id
+                && holder != actor_id
+                && member_can_read_thread(state, *workspace_id, *holder, *thread_id).await?
+            {
+                recipients.insert(*holder);
+            }
             for recipient_id in recipients {
                 notify(
                     state,
