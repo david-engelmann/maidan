@@ -1,0 +1,3 @@
+### The launch gate's path, by hand on maidan.world
+
+- **Added:** `docs/Launch Gate.md`, the runbook for running the `maidan-launch-1.0` gate test's path against maidan.world: who does each step, the clicks and commands, what to observe and what to keep as evidence, a throwaway second tenant for the two-tenant check, erasing both test workspaces afterwards, every place the hosted path differs from the test, and the go or no-go checklist for the launch release (open sign-up, web push, demo reviewer tokens), each the maintainer's call. A maintainer page, listed in the docs index and kept off the docs site.

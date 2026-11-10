@@ -56,6 +56,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 | [Conventions](Conventions.md) | Branches, commits, PRs and every CI job |
 | [Operations](Operations.md) | The PR flow, CI, closing a cluster, cutting a release |
 | [Hosted Operations](Hosted%20Operations.md) | How maidan.world, dev.maidan.world and the docs domain are deployed |
+| [Launch Gate](Launch%20Gate.md) | Running the `maidan-launch-1.0` gate's path by hand on maidan.world, cleaning up, and the launch go or no-go |
 | [Kani](Kani.md) | The local Kani proofs of capability containment and cursor arithmetic |
 | [Dependencies](Dependencies.md) | Dependency currency and the `deny.toml` policy |
 
