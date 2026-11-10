@@ -244,13 +244,13 @@ on every change task gives one agent per branch with no other setup.
 A worker whose checkout is one repository passes `repo` when it claims
 (`claim_next_thread` or `claim_next_workspace_thread` over MCP, or the
 `claim-next` routes' body, in any spelling a footprint accepts). It is then
-handed only threads whose footprint or `repo` attribute names that
-repository, so it never claims work it would have to release. A thread naming
-neither is never handed to a worker that names a repository, so producers
-declare `repo` at intake. Queue depth's `repo` filter counts the same threads.
-A review child Maidan spawns names its change's repository in its `repo`
-attribute and holds no footprint (it reads and never writes, so nothing waits
-on it).
+handed only threads whose footprint names that repository, so it never
+claims work it would have to release. A thread without a footprint is never
+handed to a worker that names a repository, so producers declare `repo` at
+intake. The one exception is a review (`kind: review`): it reads and never
+writes, so it needs no footprint, and its `repo` attribute is enough. The
+review child Maidan spawns carries its change's repository there. Queue
+depth's `repo` filter counts the same threads.
 
 ### Build slots
 

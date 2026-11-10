@@ -46,13 +46,13 @@ Each seat takes the configured repositories in turn. For each run:
    retry safe: a claim whose answer was lost is answered again, not taken
    twice. A claim answer without a string `id` and `claim_lease_id` runs no
    harness; with nothing to release it by, its lease bounds it. A `null` claim ends
-   the run. Only a thread whose footprint or `repo` attribute names the repo
-   is claimed, so a producer gives each thread one of them
-   (`PUT /threads/{id}/footprint`, or `repo` in its attributes). A footprint
-   needs at least one item: an empty `items` list clears it. A review needs
-   no footprint: the review child Maidan spawns carries its change's `repo`
-   and `engine` attributes, and a review a producer files can name `repo`
-   the same way.
+   the run. Only a thread whose footprint names the repo is claimed, so a
+   producer gives each thread one (`PUT /threads/{id}/footprint`). A
+   footprint needs at least one item: an empty `items` list clears it, and
+   the thread is then never claimed. A review (`kind: review`) needs no
+   footprint: its `repo` attribute is enough. The review child Maidan spawns
+   carries its change's `repo` and `engine`, and a review a producer files
+   can name `repo` the same way.
 5. **Harness.** The whole harness process runs under
    `capped --time run_secs --mem-gb run_mem_gb`. A cap inside the sandbox
    could not measure anything. Codex runs as

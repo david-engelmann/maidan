@@ -5,8 +5,8 @@
 -- A review child carried neither, so no filtered seat ever counted or claimed
 -- it. From this release the spawn copies them (crates/maidan-store/src/
 -- {postgres,sqlite}/review_family.rs), and `claim_next`'s repository filter
--- reads the `repo` attribute as well as the footprint, so a review needs no
--- footprint. This fills the reviews still waiting: an open or in-review
+-- reads a review's `repo` attribute as well as the footprint, so a review
+-- needs no footprint. This fills the reviews still waiting: an open or in-review
 -- `kind = review` child with no footprint of its own, whose change names a
 -- repository in its attributes or its footprint. Only missing values are
 -- filled, the attribute first and the footprint after, so a second run

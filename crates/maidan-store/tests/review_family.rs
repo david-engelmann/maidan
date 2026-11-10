@@ -913,7 +913,8 @@ async fn a_spawned_review_carries_its_changes_engine_repository_and_lane(
 
 /// `claim_next` filtered by the change's engine and repository hands its
 /// review to a seat of a third family, never to the author's; a seat that
-/// serves another engine or repository is not handed it.
+/// serves another engine or repository is not handed it. Only a review
+/// matches by its `repo` attribute: a change still needs a footprint.
 async fn a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(
     store: &dyn Store,
     pool: &Pool,
@@ -966,6 +967,50 @@ async fn a_third_family_seat_filtered_by_engine_and_repository_claims_the_review
         .await
         .expect("the third family's seat is handed the review");
     assert_eq!(handed.id, review);
+
+    // A change that names the repository only in its attributes has not
+    // declared what it touches, so no repository seat is handed it; a seat
+    // serving any repository is.
+    let (bare, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: None,
+                title: Some("change without a footprint".into()),
+                description: None,
+                created_by: None,
+            },
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Change,
+                engine: Some(TaskEngine::Session),
+                repo: Some(REPO.into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("bare change");
+    assert!(
+        filtered_claim(store, &room, room.third, REPO, TaskEngine::Session)
+            .await
+            .is_none(),
+        "a change with no footprint is not handed to a repository seat"
+    );
+    let unfiltered = store
+        .claim_next_thread_with_event(
+            room.channel,
+            room.author,
+            None,
+            None,
+            Some(TaskEngine::Session),
+            None,
+        )
+        .await
+        .expect("claim next")
+        .0
+        .expect("a seat serving any repository takes it");
+    assert_eq!(unfiltered.id, bare.id);
 }
 
 /// Migration 0230, run again over a review spawned before the spawn copied

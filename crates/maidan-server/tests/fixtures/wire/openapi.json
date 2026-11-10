@@ -1605,7 +1605,7 @@
             ]
           },
           "repo": {
-            "description": "Only claim a thread whose footprint or `repo` attribute names this\nrepository (`owner/name` or a GitHub clone URL), for a worker whose\ncheckout is that repository. A thread naming neither is then never\nclaimed.",
+            "description": "Only claim a thread whose footprint names this repository (`owner/name`\nor a GitHub clone URL), or a review whose `repo` attribute names it, for\na worker whose checkout is that repository. Any other thread without a\nfootprint is then never claimed.",
             "type": [
               "string",
               "null"
@@ -44056,7 +44056,7 @@
             }
           },
           {
-            "description": "Count only threads whose footprint or `repo` attribute names this\nrepository (`owner/name` or a GitHub clone URL). Omitted, any work.",
+            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL), or reviews whose `repo` attribute names it.\nOmitted, any work.",
             "in": "query",
             "name": "repo",
             "required": false,
