@@ -6,7 +6,10 @@
 
 // The page and its files, served from the Worker's static assets
 // (deploy/cloudflare/try, the `ASSETS` binding in wrangler.demo.jsonc).
-export const TRY_PATHS = new Set(["/", "/try.css", "/try.js", "/clients.js", "/geist.woff2"]);
+// /theme.js is the console's pre-paint script (web/console/public/theme.js),
+// which deploy-demo.yml copies in: the console's /ui/theme.js is the
+// container's, and loading it would wake the container on every visit.
+export const TRY_PATHS = new Set(["/", "/theme.js", "/try.css", "/try.js", "/clients.js", "/geist.woff2"]);
 
 // What the page reads to know whether to render the Turnstile widget.
 export const TRY_CONFIG_PATH = "/try-config.json";

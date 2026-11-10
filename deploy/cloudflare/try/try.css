@@ -1,35 +1,78 @@
-/* The try page. The materials are the landing's (web/landing/src/styles.css):
-   warm paper, ink, one signal orange, Geist. No inline styles: the page's
-   CSP is style-src 'self'. */
+/* The try page. The palettes are the landing's (web/landing/src/styles.css),
+   which are the console's: graphite and one signal orange by default, warm
+   paper and ink in light. /theme.js, the console's own pre-paint script
+   (web/console/public/theme.js, copied in at deploy), puts the console's
+   stored choice on <html> before the first paint, so someone who picked
+   Light in the console sees the light page too. Without it the page is dark.
+   No inline styles: the page's CSP is style-src 'self'. Every colour is a
+   token in the two blocks below (test/try-theme.test.js). */
 @font-face { font-family: Geist; src: url("/geist.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --pad: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0c0d0f;
+  --paper-2: #16171b;
+  --card: #1c1e22;
+  --page-bg: radial-gradient(1100px 560px at 88% -14%, rgba(255, 112, 52, 0.09), transparent 62%), radial-gradient(900px 640px at -8% 108%, rgba(118, 138, 178, 0.07), transparent 60%), #0c0d0f;
+  --ink: #ecebe7;
+  --muted: #9fa3ab;
+  --line: rgba(236, 240, 248, 0.09);
+  --signal: #ff6a2b;
+  --signal-ink: #ff9b6e;
+  --danger: #ff6f64;
+  --focus: var(--signal);
+  --mark-ink: #ff6a2b;
+  --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
+  --primary-flat: #f45a1d;
+  --primary-ink: #1b0b03;
+  --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
+  --card-shadow: 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --run-bg: #08090b;
+  --run-ink: #ecebe7;
+  --run-line: rgba(236, 240, 248, 0.09);
+}
+:root[data-theme="light"] {
   color-scheme: light;
   --paper: #f2eee6;
   --paper-2: #e9e4d9;
   --card: #faf8f3;
+  --page-bg: #f2eee6;
   --ink: #151411;
   --muted: #5c5850;
   --line: rgba(21, 20, 17, 0.12);
   --signal: #e8501c;
   --signal-ink: #a83a0d;
   --danger: #b4231a;
-  --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --pad: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  /* The signal orange is under 3:1 on the light notice; its ink is not. */
+  --focus: var(--signal-ink);
+  --mark-ink: #151411;
+  --primary: #151411;
+  --primary-flat: #151411;
+  --primary-ink: #f2eee6;
+  --primary-shadow: none;
+  --card-shadow: 0 0 0 1px var(--line);
+  --run-bg: #1a1916;
+  --run-ink: #f2eee6;
+  --run-line: rgba(255, 255, 255, 0.1);
 }
 * { box-sizing: border-box; }
 html { background: var(--paper); -webkit-text-size-adjust: 100%; }
-body { margin: 0; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--page-bg); background-attachment: fixed; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:disabled { cursor: progress; opacity: 0.6; }
 a { color: inherit; }
-:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 [hidden] { display: none !important; }
-.skip { position: fixed; left: 1rem; top: 1rem; z-index: 9; padding: 0.6rem 1rem; background: var(--ink); color: var(--paper); transform: translateY(-200%); }
+.skip { position: fixed; left: 1rem; top: 1rem; z-index: 9; padding: 0.6rem 1rem; background: var(--primary); color: var(--primary-ink); transform: translateY(-200%); }
 .skip:focus { transform: none; }
 
 .top { display: flex; align-items: center; gap: 0.4rem; padding: calc(env(safe-area-inset-top) + 0.4rem) var(--pad) 0.4rem; max-width: 52rem; width: 100%; margin: 0 auto; }
-.brand { font-weight: 640; letter-spacing: -0.04em; font-size: 1.1rem; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+.brand { font-weight: 640; letter-spacing: -0.04em; font-size: 1.1rem; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; gap: 0.5rem; color: var(--ink); }
+.brand .mark { width: 1.45rem; height: 1.45rem; flex: none; color: var(--mark-ink); }
 .top-link { margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); }
 .top-link:hover { color: var(--ink); }
 
@@ -47,7 +90,7 @@ h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -
 
 .start { margin-top: 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.8rem; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-.cta { min-height: 52px; padding: 0 1.3rem; border-radius: 99px; background: var(--ink); color: var(--paper); font-weight: 560; text-decoration: none; display: inline-flex; align-items: center; }
+.cta { min-height: 52px; padding: 0 1.3rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-weight: 560; text-decoration: none; display: inline-flex; align-items: center; }
 .cta.ghost { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
 .cta:hover { opacity: 0.88; }
 .status { margin: 0; min-height: 1.5em; font-size: 0.95rem; color: var(--muted); }
@@ -56,12 +99,12 @@ h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -
 .notice a { color: var(--signal-ink); font-weight: 560; }
 
 .ready h2 { margin-bottom: 1.6rem; }
-.card { margin: 0 0 1rem; padding: 1.3rem; border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.card { margin: 0 0 1rem; padding: 1.3rem; border-radius: 18px; background: var(--card); box-shadow: var(--card-shadow); min-width: 0; }
 .client + .client { margin-top: 1rem; }
 .client-name { margin: 0 0 0.4rem; font-weight: 600; font-size: 0.95rem; }
 .client-name .muted { font-weight: 400; font-size: 0.88rem; }
 .secret, .snippet { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; }
-.secret code, .snippet pre { flex: 1; min-width: 0; margin: 0; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; overflow-x: auto; }
+.secret code, .snippet pre { flex: 1; min-width: 0; margin: 0; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--run-bg); color: var(--run-ink); box-shadow: 0 0 0 1px var(--run-line); font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; overflow-x: auto; }
 .secret code { display: block; word-break: break-all; }
 .snippet pre { white-space: pre; }
 .snippet pre code { font: inherit; }

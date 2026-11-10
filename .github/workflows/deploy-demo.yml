@@ -91,6 +91,10 @@ jobs:
             -f demo/Dockerfile -t "maidan-demo:$TAG" ../..
       - name: push the demo image to the account registry
         run: npx wrangler containers push -c wrangler.demo.jsonc "maidan-demo:$TAG"
+      # The try page's pre-paint theme script is the console's own file, not a
+      # copy kept in the repo (deploy/cloudflare/src/try-page.js, TRY_PATHS).
+      - name: the try page takes the console's theme.js
+        run: cp ../../web/console/public/theme.js try/theme.js
       - name: deploy
         run: |
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-demo:$TAG"
@@ -113,4 +117,6 @@ jobs:
       # The Worker serves the try page itself; this does not touch the
       # container.
       - name: the try page offers a sandbox
-        run: curl -fsS https://try.maidan.world/ | grep -q 'Start a sandbox'
+        run: |
+          curl -fsS https://try.maidan.world/ | grep -q 'Start a sandbox'
+          curl -fsS https://try.maidan.world/theme.js | grep -q maidan_console_theme
