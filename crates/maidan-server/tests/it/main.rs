@@ -794,6 +794,9 @@ mod thread_transitions_e2e;
 #[path = "../thread_votes_e2e.rs"]
 mod thread_votes_e2e;
 
+#[path = "../threat_model_contract.rs"]
+mod threat_model_contract;
+
 #[path = "../token_mint_subset_e2e.rs"]
 mod token_mint_subset_e2e;
 
