@@ -476,8 +476,9 @@ function AddAgentCard({ api, onAdded }: { api: PeopleApi; onAdded: () => void })
 function Invites({ api }: { api: PeopleApi }) {
   const { session } = useSession();
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
-  // A signed-in admin invites from the session; the server refuses anyone else.
-  const canWrite = session.status === "signed-in";
+  // Only a workspace admin invites; the list answers 403 to anyone else, and
+  // the panel then stays hidden rather than showing a form that cannot work.
+  const [refused, setRefused] = useState(false);
   const [version, setVersion] = useState(0);
   const [list, setList] = useState<{ value: Invite[] | null; error: string | null }>({ value: null, error: null });
   const [email, setEmail] = useState("");
@@ -487,18 +488,21 @@ function Invites({ api }: { api: PeopleApi }) {
   const [link, setLink] = useState<{ title: string; value: string } | null>(null);
   const now = useNow();
   useEffect(() => {
-    if (!canWrite || !workspace) return;
+    if (!workspace) return;
     let live = true;
     api.invites(workspace).then(
-      (value) => live && setList({ value, error: null }),
+      (value) => {
+        if (!live) return;
+        if (value === null) setRefused(true);
+        else setList({ value, error: null });
+      },
       (e: unknown) => live && setList((l) => ({ value: l.value, error: e instanceof Error ? e.message : "Could not load invites" })),
     );
     return () => {
       live = false;
     };
-  }, [api, workspace, canWrite, version]);
-  if (!workspace) return null;
-  if (!canWrite) return null;
+  }, [api, workspace, version]);
+  if (!workspace || refused) return null;
   async function run(f: () => Promise<void>) {
     if (busy) return;
     setBusy(true);
