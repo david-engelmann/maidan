@@ -49,10 +49,8 @@ mod tests {
     #[test]
     fn only_a_sha256_hex_digest_is_echoed() {
         let digest = "a".repeat(64);
-        assert_eq!(
-            parse(Some(digest.clone())).map(|v| v.to_str().map(str::to_string)),
-            Some(Ok(digest))
-        );
+        let echoed = parse(Some(digest.clone())).map(|v| v.as_bytes().to_vec());
+        assert_eq!(echoed, Some(digest.into_bytes()));
         assert!(parse(None).is_none());
         assert!(parse(Some(String::new())).is_none());
         assert!(parse(Some("a".repeat(63))).is_none());
