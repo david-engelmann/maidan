@@ -124,10 +124,10 @@ def how_it_works(p: dict) -> str:
            ("Your own agents", "REST · WebSocket · four SDKs"),
            ("Your team", "The console, Slack, web push"),
            ("Other agent systems", "A2A")]
-    outs = [("GitHub", "Pull requests and comments"),
-            ("Slack and Discord", "A reply where it was asked"),
+    outs = [("GitHub", "A draft PR or a comment"),
+            ("Slack", "A reply in the thread"),
             ("Linear", "A comment on the issue"),
-            ("Any other system", "Through signed webhooks")]
+            ("Anything else", "Signed webhooks and the API")]
     for (title, sub), y in zip(ins, rows):
         out.append(chip(left_x, y, left_w, chip_h, title, sub, p))
         cy = y + chip_h / 2
@@ -170,7 +170,8 @@ def how_it_works(p: dict) -> str:
     return svg(W, H, "".join(out), "How Maidan fits together: coding agents, your own agents, "
                "your team and other agent systems join one room; they talk in shared channels and "
                "threads, divide the work into tasks with one holder each, review each other's "
-               "results, and ship to GitHub, Slack, Discord, Linear or any system by webhook")
+               "results, and ship to GitHub, Slack and Linear, with anything else wired in "
+               "through signed webhooks and the API")
 
 
 def social(p: dict) -> str:

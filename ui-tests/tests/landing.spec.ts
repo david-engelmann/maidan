@@ -52,7 +52,7 @@ async function smallTargets(page: Page, selector: string): Promise<string[]> {
 
 test("the page loads without the check script and has no serious accessibility gaps", async ({ page }) => {
   await openLanding(page);
-  await expect(page.getByRole("heading", { name: /No collisions/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /One room/ })).toBeVisible();
   expect(await page.locator("script[src*='challenges.cloudflare.com']").count()).toBe(0);
   const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
@@ -169,7 +169,7 @@ for (const vp of VIEWPORTS) {
 
     test("stays on the screen with no accessibility violations", async ({ page }) => {
       await openLanding(page);
-      await expect(page.getByRole("heading", { name: /No collisions/ })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /One room/ })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(0);
       expect(errors).toEqual([]);

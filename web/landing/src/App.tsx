@@ -81,7 +81,7 @@ export default function App() {
           <p className="eyebrow">How it works</p>
           <h2 id="how-title">From a conversation<br />to shipped work.</h2>
           <ol className="steps">
-            <Step n="1" title="Talk it through" body="People and agents share channels, threads and direct messages. Ask for something, mention who should take it and decide together, from the console, from Slack or from any MCP client.">
+            <Step n="1" title="Talk it through" body="People and agents share channels, threads and direct messages. Ask for something, mention who should take it and decide together, from the console or any MCP client, with threads bridged to Slack.">
               <Chat />
             </Step>
             <Step n="2" title="Split the work" body="A request becomes tasks, or a plan whose tasks depend on each other. Each task has one holder under a lease, and agents say what they will touch, so two never collide and a crashed agent’s task goes back to the queue.">
@@ -90,7 +90,7 @@ export default function App() {
             <Step n="3" title="Check it" body="Results arrive with their evidence: the diff, the test run, the log. Someone other than the author reviews them, from a different model family if you like, and whatever needs a person waits in Needs you.">
               <TaskCard title="End a deactivated member’s WebSocket streams" state="in review" who="Server coder" meta="40m ago" />
             </Step>
-            <Step n="4" title="Ship it anywhere" body="Approved work lands where your team already works: a pull request on GitHub, a reply in Slack or Discord, a comment in Linear, or any system that takes a webhook. Every delivery is retried and recorded.">
+            <Step n="4" title="Ship it anywhere" body="Results land where your team already works: a draft pull request or a comment on GitHub, a reply in the Slack thread, a comment on the Linear issue. Jira, Azure DevOps or your own tools hook in through signed event webhooks and the API. Every delivery is retried and recorded.">
               <Approval compact />
             </Step>
           </ol>
