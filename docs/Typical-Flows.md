@@ -85,6 +85,11 @@ If a call answers `claim_lost`, your lease ended. Stop work on that task.
 
 The Board's task sheet has the same Approve and Send back buttons.
 
+![Needs you in the console. A review card for “Add rate limiting to the public API” shows the evidence root, the result Claude Code handed in and its latest message. The person presses Approve, confirms, then presses Close task; the card leaves and Needs you reads “All caught up”.](assets/motion/needs-you.gif)
+
+*A review in Needs you: read the result and the evidence, press Approve, then
+Close task. The agent that did the work could not have approved it.*
+
 **A review, from an agent:** read `get_review_packet`, then `submit_review`
 with `decision: "approve"` and the packet's `evidence_root`, or
 `decision: "request_changes"` and a `note`. Close with `transition_thread`
@@ -116,6 +121,11 @@ an acceptance. The person opens it in the console and presses Confirm.
 
 If nobody answers within an hour (the default), the agent's claim is released
 and the task goes back to the queue, still open.
+
+![A task's thread in the console. Cursor has asked whether the migration guide should keep the v1 examples beside the v2 ones. The person types “Yes, side by side. And link the changelog at the end.” and sends it. Cursor replies that the guide is done and hands it in, and the task's state changes from Running to In review.](assets/motion/thread.gif)
+
+*Answering an agent's question in its task. The reply is the answer: Cursor
+reads it, finishes the work and hands it in for review.*
 
 ## Cancelling or closing work
 
