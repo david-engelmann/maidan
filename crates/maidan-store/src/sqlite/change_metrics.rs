@@ -361,7 +361,10 @@ pub async fn list_sweep_workspaces(
 }
 
 /// The tracked pull requests in `workspace_id` seen closed and not yet
-/// settled, oldest close first, at most `limit`.
+/// settled, at most `limit`: those never tried first, oldest close first, then
+/// the merges whose landing a gate refused, the one tried longest ago first.
+/// A refusal is tried again every sweep until it lands or its thread ends, so
+/// a backlog of them must not hold back a new close, or one another.
 pub async fn list_unsettled(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -370,7 +373,7 @@ pub async fn list_unsettled(
     let rows = sqlx::query(
         "SELECT repo, pull_number FROM maidan_change_pulls
          WHERE workspace_id = ?1 AND closed_at IS NOT NULL AND settled_at IS NULL
-         ORDER BY closed_at, repo, pull_number
+         ORDER BY retried_at IS NOT NULL, retried_at, closed_at, repo, pull_number
          LIMIT ?2",
     )
     .bind(workspace_id.0)
@@ -383,11 +386,13 @@ pub async fn list_unsettled(
         .collect())
 }
 
-/// Settle a tracked pull request seen closed, once. A merge lands its thread:
+/// Settle a tracked pull request seen closed. A merge lands its thread:
 /// closed through the transition path, with `ThreadLanded` in the same
-/// transaction. A close without a merge leaves the thread open and owes one
-/// notice. A thread that only watched the pull request closes either way
-/// (`close_watch_in_tx`). See [`ChangeSettlement`].
+/// transaction. A merge whose landing a gate refuses stays unsettled, so the
+/// next call tries it again, and owes one notice, the first time. A close
+/// without a merge leaves the thread open and owes one notice. A thread that
+/// only watched the pull request closes either way (`close_watch_in_tx`).
+/// Everything but a refused landing settles once. See [`ChangeSettlement`].
 pub async fn settle(
     pool: &SqlitePool,
     keys: &ContentKeyring,
@@ -516,12 +521,15 @@ pub async fn settle(
         }
         Err(StoreError::Conflict(reason)) => {
             tx.rollback().await?;
-            // The merge stands whatever the thread's gates say, so the close
-            // is settled now and the refusal said once, not retried each tick.
+            // The merge stands, and a gate can lift after it: a reviewer
+            // approves, the land gate passes. Settling the close here left the
+            // thread open for good once that happened, so the close stays
+            // unsettled and the next sweep tries the landing again. The
+            // refusal is said the first time only.
             let mut tx = super::tx::begin_write(pool).await?;
-            let claimed = mark_settled(&mut tx, workspace_id, &repo, pull_number).await?;
+            let first = mark_refused(&mut tx, workspace_id, &repo, pull_number).await?;
             tx.commit().await?;
-            if claimed == 0 {
+            if !first {
                 return Ok(ChangeSettlement::Unchanged);
             }
             Ok(ChangeSettlement::CloseRefused {
@@ -551,6 +559,42 @@ async fn mark_settled(
     .execute(conn)
     .await?
     .rows_affected())
+}
+
+/// Record that the landing of a merged `repo`#`pull_number` was refused, and
+/// whether this is the first refusal. Both replicas sweeping at once may be
+/// refused; only the one whose update sets `refused_at` says so.
+async fn mark_refused(
+    conn: &mut <sqlx::Sqlite as sqlx::Database>::Connection,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+) -> Result<bool, StoreError> {
+    let now = Utc::now().to_rfc3339();
+    let first = sqlx::query(
+        "UPDATE maidan_change_pulls SET refused_at = ?3
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4
+           AND settled_at IS NULL AND refused_at IS NULL",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .bind(now.as_str())
+    .bind(workspace_id.0)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected()
+        == 1;
+    sqlx::query(
+        "UPDATE maidan_change_pulls SET retried_at = ?3
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4 AND settled_at IS NULL",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .bind(now.as_str())
+    .bind(workspace_id.0)
+    .execute(&mut *conn)
+    .await?;
+    Ok(first)
 }
 
 async fn land_in_tx(

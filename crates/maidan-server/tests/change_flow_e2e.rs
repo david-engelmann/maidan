@@ -5593,6 +5593,108 @@ async fn a_branch_reset_to_its_base_and_closed_does_not_land() {
     );
 }
 
+/// A merged change whose landing its review requirement refused lands on the
+/// first sweep after a reviewer approves, with one `ThreadLanded`. The
+/// refusal is said once, however many sweeps try again before that. Before,
+/// the refusal settled the merge for good and the thread stayed open.
+#[tokio::test]
+async fn a_merged_change_refused_for_want_of_a_review_lands_on_the_sweep_after_the_approval() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let thread = h.a.thread_id;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(905))]);
+    h.store.set_review_requirement(thread, 1).await.unwrap();
+    h.store
+        .transition_thread(thread, h.a.member_id, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    change_sweep::sweep_once(&h.state).await;
+
+    h.fake.lock().unwrap().pulls[0].merged_at = Some("2026-11-09T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (0, 1), "{stats:?}");
+    for _ in 0..2 {
+        let stats = change_sweep::sweep_once(&h.state).await;
+        assert_eq!(
+            (stats.landed, stats.noticed),
+            (0, 0),
+            "tried again, refused again, not said again: {stats:?}"
+        );
+    }
+    assert_eq!(
+        h.store.get_thread(thread).await.unwrap().state,
+        ThreadState::InReview
+    );
+    let refusal = format!("#{number} merged, but this thread stays open");
+    let refusals = h
+        .store
+        .list_messages(thread, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.body.starts_with(&refusal))
+        .count();
+    assert_eq!(refusals, 1, "the refusal is said once");
+
+    let reviewer = h
+        .store
+        .create_member(NewMember {
+            workspace_id: h.a.workspace_id,
+            handle: "reviewer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    let root = h
+        .store
+        .latest_review_packet(thread)
+        .await
+        .unwrap()
+        .expect("handed to review")
+        .evidence_root;
+    h.store
+        .submit_review(
+            thread,
+            reviewer,
+            maidan_types::ReviewDecision::Approve,
+            None,
+            Some(&root),
+        )
+        .await
+        .unwrap();
+
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (1, 0), "{stats:?}");
+    assert_eq!(
+        h.store.get_thread(thread).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let kinds = thread_event_kinds(&h, thread).await;
+    assert_eq!(
+        kinds
+            .iter()
+            .filter(|k| **k == EventKind::ThreadLanded)
+            .count(),
+        1,
+        "{kinds:?}"
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.landed,
+        0,
+        "a landing settles the merge"
+    );
+}
+
 /// The same read says what else holds a watched pull request back: an
 /// unresolved review thread (a review bot's counts), a merge state such as
 /// `BLOCKED` or `BEHIND`, a required check that never reported. Each change

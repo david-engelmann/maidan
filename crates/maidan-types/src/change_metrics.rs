@@ -19,7 +19,8 @@ use crate::events::StoredEvent;
 use crate::ids::{MemberId, ThreadId, WorkspaceId};
 
 /// What settling a closed agent pull request did to its thread. Each close
-/// is settled once.
+/// is settled once, except a merge whose landing a gate refused: that one is
+/// tried again on every settle until it lands or its thread ends.
 #[derive(Debug)]
 pub enum ChangeSettlement {
     /// It merged and the thread closed. The transitions' `ThreadStateChanged`
@@ -32,7 +33,9 @@ pub enum ChangeSettlement {
         author_id: MemberId,
     },
     /// It merged, but the thread's close was refused (a review requirement
-    /// not met, say). The thread stays open and `reason` is posted once.
+    /// not met, say). The thread stays open and `reason` is posted once. The
+    /// close stays unsettled, so a later settle lands the thread once the gate
+    /// lifts, and answers `Unchanged` while it still refuses.
     CloseRefused {
         thread_id: ThreadId,
         author_id: MemberId,
@@ -48,8 +51,9 @@ pub enum ChangeSettlement {
         merged: bool,
         events: Vec<StoredEvent>,
     },
-    /// Nothing to do: settled already, the thread is closed or gone, or
-    /// another of its pull requests is still open.
+    /// Nothing to do: settled already, the thread is closed or gone, another
+    /// of its pull requests is still open, or a landing refused before is
+    /// refused again.
     Unchanged,
 }
 
