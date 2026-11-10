@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { problemPage } from "../../deploy/cloudflare/src/edge.js";
+import { demoUnavailablePage } from "../../deploy/cloudflare/src/demo-edge.js";
 import { renderStatus, STATUS_CSS, summarize } from "../../deploy/cloudflare/src/status.js";
 import { fixtures } from "./_fixtures";
 
@@ -11,6 +12,8 @@ import { fixtures } from "./_fixtures";
 const fx = fixtures();
 const SITE = resolve(__dirname, "../../deploy/cloudflare/site");
 const TRY = resolve(__dirname, "../../deploy/cloudflare/try");
+// The demo deploy copies the console's own theme.js into the try assets.
+const THEME = resolve(__dirname, "../../web/console/public/theme.js");
 const minted = {
   agent: { token: "mdn_agent_try" },
   admin: { token: "mdn_admin_try" },
@@ -52,8 +55,47 @@ function tryFiles(): Record<string, { body: string; type: string }> {
     "/try.css": { body: text(resolve(TRY, "try.css")), type: "text/css; charset=utf-8" },
     "/try.js": { body: text(resolve(TRY, "try.js")), type: "text/javascript; charset=utf-8" },
     "/clients.js": { body: text(resolve(TRY, "clients.js")), type: "text/javascript; charset=utf-8" },
+    "/theme.js": { body: text(THEME), type: "text/javascript; charset=utf-8" },
   };
 }
+
+test("the try page and the demo's unavailable page are dark by default and take the console's stored Light", async ({ page }) => {
+  const files = tryFiles();
+  // The refresh is the page's retry; it would reload under the assertions.
+  const down = (await demoUnavailablePage().text()).replace(/<meta http-equiv="refresh"[^>]*>/, "");
+  files["/down"] = { body: down, type: "text/html; charset=utf-8" };
+  await serve(page, files);
+  await page.route("**/try-config.json", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"turnstile_site_key":null}' }));
+  // A visitor whose system is light still gets dark until they choose Light.
+  await page.emulateMedia({ colorScheme: "light" });
+  for (const path of ["/", "/down"]) {
+    await page.goto(`${fx.base_url}${path}`);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(236, 235, 231)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(12, 13, 15)");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0c0d0f");
+    const dark = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(dark.violations.map((v) => `${path} dark ${v.id}: ${v.help}`)).toEqual([]);
+  }
+  await page.evaluate(() => window.localStorage.setItem("maidan_console_theme", "light"));
+  for (const path of ["/", "/down"]) {
+    await page.goto(`${fx.base_url}${path}`);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("body")).toHaveCSS("color", "rgb(21, 20, 17)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(242, 238, 230)");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f2eee6");
+    const light = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(light.violations.map((v) => `${path} light ${v.id}: ${v.help}`)).toEqual([]);
+  }
+  // The ready state, with its code blocks and outlined buttons, in light.
+  await page.route("**/sandbox", (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(minted) }));
+  await page.goto(`${fx.base_url}/`);
+  await page.locator("#start").click();
+  await expect(page.locator("#ready")).toBeVisible();
+  const ready = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(ready.violations.map((v) => `ready light ${v.id}: ${v.help}`)).toEqual([]);
+  await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
+});
 
 test("a sandbox mint reaches the ready state once, and both states pass axe", async ({ page }) => {
   await serve(page, tryFiles());

@@ -405,7 +405,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   paints only from the `:root[data-theme="dark"]` and `:root[data-theme="light"]`
   blocks; `test/tokens.test.ts` fails on a colour literal anywhere else and on
   a token one palette lacks, and `test/contrast.test.ts` checks AA in both.
-  Dark is the default, set before the first paint by `public/theme.js`.
+  Dark is the default, set before the first paint by `public/theme.js`. The
+  try page (`deploy/cloudflare/try/try.css`) is held to the same rules by
+  `deploy/cloudflare/test/try-theme.test.js`, and its shared tokens to the
+  landing's values; the demo deploy copies `theme.js` in beside it.
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports unused under
   `--no-default-features`) and `check-agent-contract.sh` (it greps paths).
