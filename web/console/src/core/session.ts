@@ -10,6 +10,8 @@ export type Discovery = {
   oidcLoginPath: string | null;
   sessions: boolean | null;
   signupPath: string | null;
+  /** True when any verified address may sign up without an invite. */
+  signupOpen: boolean;
   turnstileSiteKey: string | null;
 };
 
@@ -28,7 +30,7 @@ export type SessionState = {
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-const NO_DISCOVERY: Discovery = { answered: false, oidcLoginPath: null, sessions: null, signupPath: null, turnstileSiteKey: null };
+const NO_DISCOVERY: Discovery = { answered: false, oidcLoginPath: null, sessions: null, signupPath: null, signupOpen: false, turnstileSiteKey: null };
 
 export function initialSession(base: string): SessionState {
   return {
@@ -54,6 +56,7 @@ export async function readDiscovery(fetchFn: Fetch, base: string, timeoutMs = 40
         oidcLoginPath: auth.oidc && typeof auth.oidc_login === "string" ? auth.oidc_login : null,
         sessions: typeof auth.sessions === "boolean" ? auth.sessions : null,
         signupPath: typeof auth.oidc_signup === "string" ? auth.oidc_signup : null,
+        signupOpen: auth.oidc_signup_open === true,
         turnstileSiteKey: typeof auth.turnstile_site_key === "string" ? auth.turnstile_site_key : null,
       };
     }

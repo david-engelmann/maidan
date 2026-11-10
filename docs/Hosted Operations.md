@@ -61,10 +61,13 @@ Without the Neon pair it deploys with a warning and no snapshot.
 People sign in through a Cloudflare Access for SaaS OIDC app (`maidan.world`
 in Zero Trust) whose only login method is a one-time code mailed to the
 address, so `MAIDAN_OIDC_EMAILS_VERIFIED=1` treats its email claims as
-verified. Sign-up is by waitlist invite (`MAIDAN_SIGNUP=1`, no
-auto-provisioning): the waitlist form is public, an operator invites from
-`/operator/waitlist`, and only an invited address finishes sign-up. The Zero
-Trust free plan counts each person who signs in as a seat.
+verified. Sign-up is open (`MAIDAN_SIGNUP=1` and `MAIDAN_SIGNUP_OPEN=1`
+since 2026-11-10, no auto-provisioning): any address that passes the
+Turnstile check and Access's one-time code gets a workspace of its own. The
+front page and the console's sign-in offer **Create a workspace** in place of
+the waitlist, read from `auth.oidc_signup_open` in `/.well-known/maidan.json`.
+Waitlist invites still work. The Zero Trust free plan counts each person who
+signs in as a seat, so its seat limit caps how many people can sign in.
 
 #### Inviting someone from the waitlist
 

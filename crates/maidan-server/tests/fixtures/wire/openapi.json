@@ -13126,6 +13126,10 @@
               "null"
             ]
           },
+          "oidc_signup_open": {
+            "description": "Whether any verified address may sign up without an invite.",
+            "type": "boolean"
+          },
           "sessions": {
             "description": "Whether this server issues a browser session (OIDC, or a pasted token\nexchanged for a cookie). Sign out posts `/auth/logout` when this is\ntrue, even if the page has not cached a member id.",
             "type": "boolean"
@@ -13141,7 +13145,8 @@
         "required": [
           "bearer",
           "oidc",
-          "sessions"
+          "sessions",
+          "oidc_signup_open"
         ],
         "type": "object"
       },

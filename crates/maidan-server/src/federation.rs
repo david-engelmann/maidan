@@ -1203,6 +1203,8 @@ pub struct WellKnownAuth {
     /// exchanged for a cookie). Sign out posts `/auth/logout` when this is
     /// true, even if the page has not cached a member id.
     pub sessions: bool,
+    /// Whether any verified address may sign up without an invite.
+    pub oidc_signup_open: bool,
     /// Where OIDC sign-in starts (with `?workspace_id=`), when it is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_login: Option<String>,
@@ -1247,6 +1249,10 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
             bearer: true,
             oidc,
             sessions,
+            oidc_signup_open: state
+                .oidc
+                .as_ref()
+                .is_some_and(|runtime| runtime.settings.signup && runtime.settings.signup_open),
             oidc_login: oidc.then(|| "/auth/oidc/login".to_string()),
             oidc_signup: state
                 .oidc
