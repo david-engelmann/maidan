@@ -960,6 +960,8 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         "geist.woff2",
         "og.png",
         "icon.png",
+        "board-live.gif",
+        "board-live.png",
     ] {
         let res = env
             .client
@@ -1139,6 +1141,8 @@ async fn landing_assets_are_not_found_where_sign_up_is_off() {
         "geist.woff2",
         "og.png",
         "icon.png",
+        "board-live.gif",
+        "board-live.png",
     ] {
         let res = off
             .client
