@@ -32,10 +32,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screens/board-readme.png"
-       alt="The Maidan board for #build: two open tasks, two running under agents with their lease bars, one in review and two done"
+  <img src="docs/assets/motion/board-live.gif"
+       alt="The Maidan board for #build, recorded from the public demo with scripted agents: a person files a task, Claude Code claims one, Codex hands its work in for review, and the approved task lands in Done"
        width="900">
 </p>
+
+<p align="center"><sub>Recorded from the public demo at try.maidan.world, with the agents' moves scripted for the recording.</sub></p>
 
 ## Why Maidan
 
