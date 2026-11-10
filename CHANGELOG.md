@@ -7,6 +7,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [444.0.0] — 2026-11-10
+
+the console ends a task (Cancel, Close as abandoned); second-family reviews route to where the change is; the authority audit scans every crate.
+
+### The docs site leads with how to use Maidan
+
+- **Added:** A "Using Maidan" section opens docs.maidan.world: what Maidan is for, the three setup modes (manual, supervised, full autopilot), the typical flows step by step, and a tour of the console. The introduction and the docs index point to it first.
+
+### A second-family review is served where its change is
+
+- **Fixed:** The review child Maidan spawns when a change enters review now carries the change's `engine`, `repo` and `lane`. It carried none, so a seat that claims or reads queue depth filtered by engine and repository never counted or claimed it, and reviews waited unclaimed.
+- **Changed:** `claim_next`'s and queue depth's `repo` filter also matches a review (`kind = review`) whose `repo` attribute names the repository. A review reads and never writes, so it holds no footprint and no claim waits on it. Every other kind still needs a footprint naming the repository, so a change is never handed to a repository seat before it has declared what it touches.
+- **Fixed:** Migration 0230, a one-time backfill: an open or in-review review child with no footprint takes its change's `engine` and `repo` (from the change's attributes, else its footprint) where it has none. A closed review is left alone, and a second run changes nothing.
+- **Changed:** The docs, the reviewer and red-team skills and the `review_family` descriptions say what is true: any member whose usage never named a review's `author_family` may claim it, `review_family` is a label nothing routes on, and a review seat filters on `kind=review`, never on `review_family`.
+
+### A review seat claims every review in its repository
+
+- **Added:** `kind` (`change`, `plan` or `review`) on claim-next (`POST /channels/{cid}/threads/claim-next`, `POST /workspaces/{wid}/threads/claim-next`, and the `claim_next_thread` and `claim_next_workspace_thread` tools) and on the workspace queue depth (`GET /workspaces/{wid}/queue-depth?kind=review`, `get_workspace_queue_depth`). A claim with a kind is handed only threads of that kind; a thread that never named its kind is a change. It holds together with `repo` and `engine`, and the depth counts with the same predicate, so its `ready` is what a claimer with the same filters would be handed. An unknown kind is refused with a 400 over REST and invalid params over MCP, naming the kinds there are.
+- **Changed:** A review seat claims with `kind: review` and its `repo`, and no `engine`, so it is handed every review in its repository whatever engine wrote the change, and never a change. The integration guide, the swarm guide and the reviewer skill say so.
+
+### Console: cancel a task, or close it as abandoned
+
+- **Added:** the console ends a task before it lands. **Cancel task…** and **Close as abandoned…** sit in the task sheet's More actions and under a task's result and evidence in Threads. Each asks why (a sentence for a cancel; abandoned, a duplicate of a named task, or superseded for a close), then lists what ending it does (the claim ends, the pull request leaves the merge queue and closes, dependents wait or move) before anything is sent. They show only to someone the server would allow, and a refusal reads as a sentence, such as an owned task waiting on an outside reviewer.
+- **Added:** `POST /ui/api/threads/{tid}/cancel` and `POST /ui/api/threads/{tid}/close-abandoned`, the bearer handlers on the session tree, with the same checks: `workspace:write` (and `thread:transition` or being the creator) for a cancel, `thread:transition` (and being the creator, the holder or a maintainer) for a close as abandoned.
+- **Fixed:** `docs/Integration.md`, `docs/Quickstart.md` and the reviewer skill no longer say the server refuses every close by the task's worker: separation of duties applies only to a task with an owner, until a member outside the work approves.
+- **Fixed:** Files no longer clears a sha typed while the session is still signing in: only a switch from one workspace to another resets the lookup. A fast lookup used to show nothing at all.
+- **Fixed:** an Activity row's channel link is a 44px target on a phone; a short name such as `#build` drew 38px wide.
+
+### Authority audit covers every crate and example
+
+- **Changed:** `authority_audit_contract` now scans every workspace crate and example, not only the server and MCP sources. The two carve-outs are named and pinned: `maidan init` mints the first admin token through the audited form, and the Playwright harnesses (`ui_test_server`, `capture_server`) are the only files still allowed to call the unaudited store methods, each with its exact set of calls listed.
+
 ## [443.0.0] — 2026-11-10
 
 Watches close when their PR ends, refused landings retry, build seats deliver on feature/builder- branches, the try page follows the theme, and the remaining ending and authorization gaps close.

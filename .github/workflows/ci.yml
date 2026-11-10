@@ -792,7 +792,7 @@ jobs:
           TMPDIR: ${{ runner.temp }}
         run: |
           contracts="$(bash scripts/check-agent-contract.sh --nextest-filter)"
-          docs='test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current)::/)'
+          docs='test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed|mcp_reference_current|threat_model_contract)::/)'
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap . \
             --profile ci -E "$docs | $contracts"
       - name: upload JUnit report

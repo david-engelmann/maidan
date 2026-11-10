@@ -57,6 +57,11 @@ struct FakeGithub {
     pulls: HashMap<i64, FakePull>,
     label_deletes: Vec<(i64, String)>,
     comments: Vec<(i64, String)>,
+    /// Comments written long before the test, listed ahead of `comments` and
+    /// left out of a read with a later `since`, as GitHub leaves them out.
+    history: Vec<(i64, String)>,
+    /// The `since` of each comment read, `None` for a read without one.
+    comment_reads: Vec<Option<String>>,
     closes: Vec<i64>,
     /// Closes still to fail with a 502, after which the pull request stays
     /// open.
@@ -98,11 +103,33 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
     // them for its own marker.
     if method == Method::GET && path.ends_with("/comments") {
         let number: i64 = parts[parts.len() - 2].parse().unwrap_or(-1);
-        let listed: Vec<Value> = fake
-            .comments
+        let query: HashMap<String, String> = uri
+            .query()
+            .map(|q| {
+                url::form_urlencoded::parse(q.as_bytes())
+                    .into_owned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let since = query.get("since").cloned();
+        fake.comment_reads.push(since.clone());
+        // The history predates any `since` the withdrawal can send.
+        let history = fake
+            .history
             .iter()
+            .filter(|_| since.is_none())
+            .map(|(n, text)| (*n, text));
+        let page: usize = query.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let per_page: usize = query
+            .get("per_page")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(30);
+        let listed: Vec<Value> = history
+            .chain(fake.comments.iter().map(|(n, text)| (*n, text)))
+            .filter(|(n, _)| *n == number)
             .enumerate()
-            .filter(|(_, (n, _))| *n == number)
+            .skip((page - 1) * per_page)
+            .take(per_page)
             .map(|(i, (_, text))| json!({"id": 1000 + i, "body": text}))
             .collect();
         return (StatusCode::OK, Json(Value::Array(listed))).into_response();
@@ -461,6 +488,59 @@ async fn a_close_that_fails_after_the_comment_is_retried_without_a_second_commen
         fake.comments[0].1
     );
     assert!(fake.comments[0].1.contains("the bridge is gone"));
+}
+
+#[tokio::test]
+async fn a_retry_finds_its_comment_behind_more_than_a_thousand_older_ones() {
+    let h = spawn(&[(7, queued("feature/agent-x"))]).await;
+    let thread = h.task("port the bridge").await;
+    h.opened_for(thread, 7).await;
+    h.delivered_by(thread, 7).await;
+    {
+        let mut fake = h.fake.lock().unwrap();
+        fake.history = (0..1200).map(|i| (7, format!("review note {i}"))).collect();
+        fake.failing_closes = 1;
+    }
+
+    h.cancel(thread, "the bridge is gone").await;
+    let first = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(first.retried, 1, "the failed close is retried: {first:?}");
+    assert_eq!(
+        h.fake.lock().unwrap().comments.len(),
+        1,
+        "GitHub took the comment"
+    );
+
+    sqlx::query("UPDATE maidan_egress_outbox SET next_attempt_at = ? WHERE status = 'pending'")
+        .bind(Utc::now().to_rfc3339())
+        .execute(&h.pool)
+        .await
+        .unwrap();
+    let retry = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(retry.sent, 1, "{retry:?}");
+    let fake = h.fake.lock().unwrap();
+    assert_eq!(fake.closes, vec![7], "the retry closes the pull request");
+    // A scan from the first comment stops at 1,000, short of the marker, and
+    // the retry would comment a second time.
+    assert_eq!(
+        fake.comments.len(),
+        1,
+        "one comment for one withdrawal, past 1,200 older ones: {:?}",
+        fake.comments
+    );
+    let since = fake
+        .comment_reads
+        .last()
+        .cloned()
+        .flatten()
+        .expect("the marker scan reads from when the withdrawal was queued");
+    let since = chrono::DateTime::parse_from_rfc3339(&since)
+        .unwrap()
+        .with_timezone(&Utc);
+    assert!(
+        since <= Utc::now() && since > Utc::now() - chrono::Duration::hours(1),
+        "the scan starts shortly before the withdrawal was queued: {since}"
+    );
 }
 
 #[tokio::test]
