@@ -845,6 +845,18 @@ watcher, in the `channel_id` given or in the workspace's public
 watched pull request is not an agent task: the swarm metrics and the outcome
 checks leave it out. One another workspace tracks is a `409`.
 
+The watch's thread ends with its pull request. When the change sweep sees
+the pull request merged, or closed without merging, it closes the thread
+straight from `open` or `in_review`, as the watcher, with one message naming
+the pull request and how it ended (`owner/name#N merged, so this watch is
+closed.`, or `closed without merging`), and the `ThreadStateChanged` event
+tells its watchers. A merge also records `ThreadLanded`; a close without one
+records that nothing landed, so a thread depending on the watch keeps
+waiting. No land or review gate holds the close: a thread that only watches
+has no result or delivery of its own for them to judge. A thread that also
+carries a result, an armed delivery, or a pull request the change flow
+delivered or a session registered is a change, and settles as one below.
+
 Each read records `ci` on the thread (`GET /threads/{id}` and the context
 pack's tail): the head commit, `status` (`pending` until every check has
 finished, `failure` as soon as one fails, else `success`), the failing checks
@@ -917,7 +929,8 @@ had commits its base lacked while it was open and is on the base branch now,
 as when a stack tool lands the commits itself and closes the pull request.
 The sweep asks GitHub once, when it first sees the close. A branch reset to
 its base and closed was never ahead, so it lands nothing. Any other close is
-a close without a merge, said once and leaving the task open.
+a close without a merge, said once and leaving the task open (a watch
+closes, as above).
 
 ### Deploys
 

@@ -3568,6 +3568,7 @@ async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_not
         change_sweep::sweep_once(&h.state).await,
         change_sweep::SweepStats {
             landed: 0,
+            watches_closed_unmerged: 0,
             noticed: 1,
             rebase_notices: 0,
             linear_notices: 0,
@@ -5135,6 +5136,132 @@ async fn a_watched_pull_says_it_opened_failed_and_finished_once_per_head() {
             |body| body.starts_with("CI failed on example/app#90") && body.ends_with(": lint.")
         ),
         "{said:?}"
+    );
+}
+
+/// Watch `number` in tenant A over REST, as A's member: the watch's thread.
+async fn watch_thread(h: &Harness, number: i64) -> ThreadId {
+    let token = write_token(h, h.a.workspace_id, h.a.member_id).await;
+    let (status, watched) = post_json(
+        h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": number}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{watched}");
+    ThreadId(watched["thread_id"].as_str().unwrap().parse().unwrap())
+}
+
+/// The kinds of `thread`'s events in tenant A, oldest first.
+async fn thread_event_kinds(h: &Harness, thread: ThreadId) -> Vec<EventKind> {
+    h.store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.thread_id == Some(thread))
+        .map(|e| e.kind)
+        .collect()
+}
+
+/// A watched pull request that merges closes its watch on the next sweep,
+/// with a message naming it, though the watch carries a review requirement
+/// and the land gate: it has no work of its own for them to hold, and they
+/// held the merge's close for good before.
+#[tokio::test]
+async fn a_watch_closes_with_a_message_when_its_pull_merges() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 95, "feature/watched-merge");
+    let thread = watch_thread(&h, 95).await;
+    h.store.set_review_requirement(thread, 1).await.unwrap();
+    h.store.require_land_gate(thread).await.unwrap();
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(
+        h.store.get_thread(thread).await.unwrap().state,
+        ThreadState::Open
+    );
+
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().merged_at =
+        Some("2026-11-09T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (1, 0), "{stats:?}");
+    assert_eq!(
+        h.store.get_thread(thread).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let kinds = thread_event_kinds(&h, thread).await;
+    let count = |kind: EventKind| kinds.iter().filter(|k| **k == kind).count();
+    assert_eq!(
+        count(EventKind::ThreadStateChanged),
+        1,
+        "open straight to closed: {kinds:?}"
+    );
+    assert_eq!(count(EventKind::ThreadLanded), 1, "{kinds:?}");
+    let said: Vec<String> = h
+        .store
+        .list_messages(thread, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|m| m.body)
+        .collect();
+    assert!(
+        said.contains(&"example/app#95 merged, so this watch is closed.".to_string()),
+        "{said:?}"
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.landed,
+        0,
+        "a watch closes once"
+    );
+}
+
+/// A watched pull request closed without merging closes its watch too,
+/// saying so: a watch leaves nothing for anyone to decide, and before it
+/// stayed open with only a notice.
+#[tokio::test]
+async fn a_watch_closes_with_a_message_when_its_pull_closes_without_merging() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 96, "feature/watched-close");
+    let thread = watch_thread(&h, 96).await;
+    change_sweep::sweep_once(&h.state).await;
+
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().closed_at =
+        Some("2026-11-09T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!(
+        (stats.watches_closed_unmerged, stats.landed, stats.noticed),
+        (1, 0, 0),
+        "{stats:?}"
+    );
+    assert_eq!(
+        h.store.get_thread(thread).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let kinds = thread_event_kinds(&h, thread).await;
+    let count = |kind: EventKind| kinds.iter().filter(|k| **k == kind).count();
+    assert_eq!(count(EventKind::ThreadStateChanged), 1, "{kinds:?}");
+    assert_eq!(count(EventKind::ThreadLanded), 0, "nothing landed");
+    let closing: Vec<_> = h
+        .store
+        .list_messages(thread, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.body == "example/app#96 closed without merging, so this watch is closed.")
+        .collect();
+    assert_eq!(closing.len(), 1);
+    assert_eq!(closing[0].author_id, h.a.member_id, "said as the watcher");
+    assert_eq!(closing[0].metadata["github"]["closed_unmerged"], true);
+    assert_eq!(
+        change_sweep::sweep_once(&h.state)
+            .await
+            .watches_closed_unmerged,
+        0,
+        "a watch closes once"
     );
 }
 

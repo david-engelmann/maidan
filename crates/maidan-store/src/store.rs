@@ -2949,7 +2949,9 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Vec<(String, i64)>, StoreError>;
     /// Settle a tracked agent pull request seen closed, once: a merge closes
     /// its thread through the transition path with `ThreadLanded` in the same
-    /// transaction. See [`maidan_types::ChangeSettlement`].
+    /// transaction, and a thread that only watched the pull request closes
+    /// whether it merged or not, with a message saying which. See
+    /// [`maidan_types::ChangeSettlement`].
     async fn settle_change_pull(
         &self,
         workspace_id: WorkspaceId,

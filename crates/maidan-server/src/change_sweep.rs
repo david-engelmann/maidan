@@ -13,7 +13,10 @@
 //! store's transition path, with `ThreadLanded` in the same transaction, so
 //! dependents become claimable and the board moves; a close without a merge
 //! leaves the thread open with one notice, for a person or the planner to
-//! decide.
+//! decide. A thread that only watches a pull request (`watch_pull`) closes
+//! when it merges and when it closes without merging, with a message saying
+//! which: it has no result or delivery of its own, so no land or review gate
+//! holds it, and nobody is left to decide anything.
 //!
 //! A merge also tells the other workers in its repository: each live claim
 //! in the same workspace whose footprint covers a path the merged pull
@@ -87,8 +90,11 @@ pub const DEFAULT_CI_BACKSTOP_SECS: u64 = 1800;
 /// What one sweep did.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct SweepStats {
-    /// Threads closed because their pull request merged.
+    /// Threads closed because their pull request merged, watches included.
     pub landed: usize,
+    /// Watch threads closed because their pull request closed without
+    /// merging.
+    pub watches_closed_unmerged: usize,
     /// Notices posted: a close without a merge, or a merge whose thread's
     /// close was refused.
     pub noticed: usize,
@@ -981,6 +987,16 @@ async fn settle_closed_pulls(state: &AppState, workspace_id: WorkspaceId, stats:
                     crate::routes::publish_stored(state, event).await;
                 }
                 stats.landed += 1;
+            }
+            Ok(ChangeSettlement::WatchClosed { merged, events }) => {
+                for event in events {
+                    crate::routes::publish_stored(state, event).await;
+                }
+                if merged {
+                    stats.landed += 1;
+                } else {
+                    stats.watches_closed_unmerged += 1;
+                }
             }
             Ok(ChangeSettlement::ClosedUnmerged {
                 thread_id,

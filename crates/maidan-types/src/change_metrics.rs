@@ -38,6 +38,16 @@ pub enum ChangeSettlement {
         author_id: MemberId,
         reason: String,
     },
+    /// The thread only watched the pull request, which merged (`merged`) or
+    /// closed without merging, and it closed with a message saying which. A
+    /// watch has no result or delivery of its own, so no land or review gate
+    /// applies: nothing on it waits for a person to land. The message, the
+    /// `ThreadStateChanged`, and on a merge the `ThreadLanded`, committed
+    /// with the close, to publish.
+    WatchClosed {
+        merged: bool,
+        events: Vec<StoredEvent>,
+    },
     /// Nothing to do: settled already, the thread is closed or gone, or
     /// another of its pull requests is still open.
     Unchanged,
