@@ -240,9 +240,12 @@ pub struct WithdrawalComment<'a> {
 /// `comment` and is closed. A closed one is left closed and gets no comment.
 /// The branch is never touched.
 ///
-/// The comment posts at most once per withdrawal: GitHub can take the
-/// comment and then fail the close, and the retry that follows finds the
-/// comment by its marker and only closes.
+/// The comment posts once per withdrawal on any pull request with up to
+/// 1,000 comments: GitHub can take the comment and then fail the close, and
+/// the retry that follows finds the comment by its marker and only closes.
+/// `list_issue_comments` reads at most ten pages of 100, so on a busier pull
+/// request a marker past that window is missed and the retry comments again;
+/// a second comment there costs less than guessing.
 pub async fn withdraw_pull_guarded(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,

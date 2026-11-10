@@ -502,9 +502,11 @@ Current gaps, read from the code and not yet decided:
   under the task. One the change flow delivered to under another task's
   row is not found from this one.
 
-Closed since: the withdrawal comment posts at most once. It starts with a
-hidden marker naming the withdrawal, and a retry after GitHub took the
-comment but failed the close finds it and only closes.
+Closed since: the withdrawal comment posts once on a pull request with up to
+1,000 comments. It starts with a hidden marker naming the withdrawal, and a
+retry after GitHub took the comment but failed the close finds it and only
+closes. The retry reads at most 1,000 comments, so a busier pull request can
+get a second one.
 
 ## Task attributes
 
