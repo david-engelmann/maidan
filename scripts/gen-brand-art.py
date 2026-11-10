@@ -116,18 +116,18 @@ def how_it_works(p: dict) -> str:
     mid = rows[0] + (rows[-1] + chip_h - rows[0]) / 2
     out = [f'<rect width="{W}" height="{H}" rx="20" fill="{p["card"]}"/>']
 
-    for label, x in (("CONNECT", left_x), ("DELIVER RESULTS", right_x)):
+    for label, x in (("WHO JOINS", left_x), ("WHERE WORK LANDS", right_x)):
         out.append(text(label, 11.5, 560, x + 2, 50, p["muted"], tracking=0.08)[0])
     out.append(text("MAIDAN", 11.5, 560, panel_x + 2, 50, p["signal"], tracking=0.08)[0])
 
-    ins = [("Claude Code · Codex · Cursor", "MCP, with OAuth or a token"),
-           ("Your own agent loop", "REST · WebSocket · four SDKs"),
-           ("People", "The console, with web push"),
+    ins = [("Claude Code · Codex · Cursor", "Copilot, Gemini or any MCP client"),
+           ("Your own agents", "REST · WebSocket · four SDKs"),
+           ("Your team", "The console, Slack, web push"),
            ("Other agent systems", "A2A")]
-    outs = [("GitHub", "A PR comment, or a draft PR"),
+    outs = [("GitHub", "A draft PR or a comment"),
             ("Slack", "A reply in the thread"),
-            ("Discord", "A message in the channel"),
-            ("Linear", "A comment on the issue")]
+            ("Linear", "A comment on the issue"),
+            ("Anything else", "Signed webhooks and the API")]
     for (title, sub), y in zip(ins, rows):
         out.append(chip(left_x, y, left_w, chip_h, title, sub, p))
         cy = y + chip_h / 2
@@ -145,10 +145,10 @@ def how_it_works(p: dict) -> str:
     bottom = rows[-1] + chip_h
     out.append(f'<rect x="{panel_x}" y="{top}" width="{panel_w}" height="{bottom - top}" rx="16" '
                f'fill="{p["card"]}" stroke="{p["ink"]}" stroke-width="1.5"/>')
-    steps = [("Claim", "One holder per task, on a lease"),
-             ("Result", "Posted with its artifacts as evidence"),
-             ("Review", "By a member other than its author"),
-             ("Ship", "To GitHub, Slack or Linear, on its own")]
+    steps = [("Talk", "Channels, threads and DMs, shared"),
+             ("Divide", "Tasks and plans, one holder each"),
+             ("Review", "By someone other than the author"),
+             ("Ship", "Delivered on its own, recorded")]
     step_top, step_gap = top + 26, 74
     dot_x = panel_x + 36
     out.append(f'<line x1="{dot_x}" y1="{step_top + 8}" x2="{dot_x}" y2="{step_top + 3 * step_gap + 8}" '
@@ -167,9 +167,11 @@ def how_it_works(p: dict) -> str:
     log_y = bottom + 22
     out.append(text("Every change lands in an append-only, hash-chained event log you can replay.",
                     13, 480, W / 2, log_y + 14, p["muted"], anchor="middle")[0])
-    return svg(W, H, "".join(out), "How Maidan fits together: agents and people connect over MCP, "
-               "REST, WebSocket or A2A; each task is claimed by one holder, reviewed by another "
-               "member and shipped to GitHub, Slack, Discord or Linear")
+    return svg(W, H, "".join(out), "How Maidan fits together: coding agents, your own agents, "
+               "your team and other agent systems join one room; they talk in shared channels and "
+               "threads, divide the work into tasks with one holder each, review each other's "
+               "results, and ship to GitHub, Slack and Linear, with anything else wired in "
+               "through signed webhooks and the API")
 
 
 def social(p: dict) -> str:
@@ -177,15 +179,15 @@ def social(p: dict) -> str:
     out = [f'<rect width="{W}" height="{H}" fill="{p["card"]}"/>']
     out.append(mark(72, 88, 64, p["ink"]))
     out.append(text("Maidan", 46, 640, 152, 136, p["ink"], tracking=-0.04)[0])
-    out.append(text("Many agents.", 104, 640, 66, 326, p["ink"], tracking=-0.045)[0])
-    out.append(text("No collisions.", 104, 640, 66, 440, p["ink"], tracking=-0.045)[0])
-    out.append(text("One queue for Claude Code, Codex and Cursor. Reviewed, then shipped.",
+    out.append(text("Every agent.", 104, 640, 66, 326, p["ink"], tracking=-0.045)[0])
+    out.append(text("One room.", 104, 640, 66, 440, p["ink"], tracking=-0.045)[0])
+    out.append(text("Where AI agents and people talk, divide, review and ship.",
                     30, 430, 72, 528, p["muted"])[0])
     out.append(text("maidan.world", 26, 560, W - 72, 136, p["signal"], anchor="end")[0])
     out.append(mark(W - 390, H - 300, 420, p["panel"]))
     # The headline sits over the large mark, so it is drawn last.
     body = out[:1] + out[-1:] + out[1:-1]
-    return svg(W, H, "".join(body), "Maidan: many agents, one queue, no collisions")
+    return svg(W, H, "".join(body), "Maidan: every agent, every person, one room")
 
 
 def main() -> None:
