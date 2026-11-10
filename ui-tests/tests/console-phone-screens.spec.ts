@@ -34,9 +34,11 @@ async function smallFields(page: Page): Promise<string[]> {
     .locator("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select, textarea")
     .evaluateAll((els) =>
       els
+        // A visually hidden field (a file input behind its label) is 1px and
+        // never takes text focus.
         .filter((e) => {
           const r = e.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
+          return r.width > 1 && r.height > 1;
         })
         .map((e) => ({
           name: e.getAttribute("placeholder") ?? e.getAttribute("aria-label") ?? e.closest("label")?.textContent?.trim().slice(0, 24) ?? e.tagName,
@@ -47,23 +49,37 @@ async function smallFields(page: Page): Promise<string[]> {
     );
 }
 
-/** Visible, enabled buttons smaller than 44px on either side, by name and size. */
+/**
+ * Visible, enabled buttons and tabs smaller than 44px on either side, by name
+ * and size. Lists use `content-visibility: auto`, so a control below the fold
+ * has no real layout until it nears the viewport: the page is scrolled a
+ * screen at a time and only what is on screen is measured.
+ */
 async function smallTargets(page: Page): Promise<string[]> {
-  return page.locator("button:not([disabled]), [role=tab]").evaluateAll((els) =>
-    els
-      .map((e) => ({ e, r: e.getBoundingClientRect() }))
-      .filter(({ e, r }) => r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden")
-      .filter(({ r }) => Math.round(r.height) < 44 || Math.round(r.width) < 44)
-      .map(({ e, r }) => {
-        const name = (e.getAttribute("aria-label") ?? e.textContent ?? e.className).trim().slice(0, 32);
-        return `${name} ${Math.round(r.width)}x${Math.round(r.height)}`;
-      }),
-  );
+  const found = new Set<string>();
+  const screens = await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight / window.innerHeight));
+  for (let i = 0; i < Math.min(screens, 12); i++) {
+    await page.evaluate((n) => window.scrollTo(0, n * window.innerHeight * 0.8), i);
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    const small = await page.locator("button:not([disabled]), [role=tab]").evaluateAll((els) =>
+      els
+        .map((e) => ({ e, r: e.getBoundingClientRect() }))
+        .filter(({ e, r }) => r.width > 1 && r.height > 1 && getComputedStyle(e).visibility !== "hidden")
+        .filter(({ r }) => r.top >= 0 && r.bottom <= window.innerHeight)
+        .filter(({ r }) => Math.round(r.height) < 44 || Math.round(r.width) < 44)
+        .map(({ e, r }) => {
+          const name = (e.getAttribute("aria-label") ?? e.textContent ?? e.className).trim().slice(0, 32);
+          return `${name} ${Math.round(r.width)}x${Math.round(r.height)}`;
+        }),
+    );
+    small.forEach((s) => found.add(s));
+  }
+  return [...found];
 }
 
 for (const size of WIDTHS) {
   test.describe(`signed in, on a ${size.width}px phone`, () => {
-    test.use({ viewport: size, isMobile: true, hasTouch: true });
+    test.use({ viewport: size, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
 
     for (const screen of SCREENS) {
       test(`${screen}: no sideways scroll, no field under 16px, no target under 44px`, async ({ page }) => {
