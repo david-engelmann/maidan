@@ -407,9 +407,10 @@ pub fn served_families(result: &serde_json::Value) -> Vec<&'static str> {
     families
 }
 
-/// The family a change by `author` is reviewed by: the first family that is
-/// not the author's. `None` when the author's family is unknown, since a
-/// review cannot be routed away from a family nobody named.
+/// The `review_family` label of a review child spawned for a change by
+/// `author`: the first family that is not the author's. A label only: who may
+/// claim the review is decided by its `author_family`, and any other family
+/// may. `None` when the author's family is unknown.
 pub fn review_family_for(author: Option<&str>) -> Option<&'static str> {
     let author = author?;
     PROVIDER_FAMILIES
@@ -483,9 +484,11 @@ pub struct TaskAttributes {
     /// deadline has slack, unset for realtime.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lane: Option<TaskLane>,
-    /// The provider family a review child is routed to: one other than the
-    /// family of the change's author, picked when the change entered review.
-    /// Set by the server only; setting attributes leaves it as it was.
+    /// A label the server sets on a review child it spawns: the first family
+    /// it knows that is not the author's. Nothing routes on it: any member
+    /// whose usage never named `author_family` may claim the review. It marks
+    /// the child as spawned by the server, which the parent's ordering hold
+    /// exempts. Set by the server only; setting attributes leaves it as it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_family: Option<String>,
     /// The provider family that wrote the change this task reviews

@@ -244,9 +244,13 @@ on every change task gives one agent per branch with no other setup.
 A worker whose checkout is one repository passes `repo` when it claims
 (`claim_next_thread` or `claim_next_workspace_thread` over MCP, or the
 `claim-next` routes' body, in any spelling a footprint accepts). It is then
-handed only threads whose footprint names that repository, so it never claims
-work it would have to release. A thread without a footprint is never handed
-to a worker that names a repository, so producers declare `repo` at intake.
+handed only threads whose footprint names that repository, so it never
+claims work it would have to release. A thread without a footprint is never
+handed to a worker that names a repository, so producers declare `repo` at
+intake. The one exception is a review (`kind: review`): it reads and never
+writes, so it needs no footprint, and its `repo` attribute is enough. The
+review child Maidan spawns carries its change's repository there. Queue
+depth's `repo` filter counts the same threads.
 
 ### Build slots
 
@@ -614,6 +618,19 @@ keeps it, and one that names another is refused with a 409, so nobody who
 may set attributes, the change's author included, can lift or move it. A
 member that has reported no usage in the workspace has no known family and
 is not refused.
+
+**Who may claim a review.** Any member whose usage in the workspace never
+named the author's family. That is the whole rule: there is no one family a
+review is meant for. The review child Maidan spawns carries `kind: review`,
+`author_family`, and its change's `engine`, `repo` and `lane`, so a seat that
+claims or reads queue depth filtered by engine and repository sees it where it
+sees the change. It also carries a `review_family`, the first family Maidan
+knows that is not the author's (`openai` for an Anthropic author). That is a
+label and nothing routes on it: a seat of any other family, DeepSeek or
+Google for an Anthropic change, may claim the review. **A review seat filters
+on `kind=review` (with its engine and repository), never on
+`review_family`:** a seat that also filters on its own family never picks a
+review whose label names another, and those reviews wait for nobody.
 
 A seat that knows its own family declines a review of that family's change
 when it is handed one: `release_claim` with `decline: "own_family"` releases

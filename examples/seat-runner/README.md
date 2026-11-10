@@ -49,8 +49,10 @@ Each seat takes the configured repositories in turn. For each run:
    the run. Only a thread whose footprint names the repo is claimed, so a
    producer gives each thread one (`PUT /threads/{id}/footprint`). A
    footprint needs at least one item: an empty `items` list clears it, and
-   the thread is then never claimed. A review that touches nothing can use
-   a shared lane item (`{"kind": "lane", "value": "red-team"}`).
+   the thread is then never claimed. A review (`kind: review`) needs no
+   footprint: its `repo` attribute is enough. The review child Maidan spawns
+   carries its change's `repo` and `engine`, and a review a producer files
+   can name `repo` the same way.
 5. **Harness.** The whole harness process runs under
    `capped --time run_secs --mem-gb run_mem_gb`. A cap inside the sandbox
    could not measure anything. Codex runs as

@@ -187,7 +187,7 @@ type TaskAttributes struct {
 	Tier *string `json:"tier,omitempty"`
 	// Lane is the service lane it may run in, batch or flex; unset runs at standard rates.
 	Lane *string `json:"lane,omitempty"`
-	// ReviewFamily is the provider family a review child is routed to; server-set.
+	// ReviewFamily labels a review child the server spawned; nothing routes on it. Server-set.
 	ReviewFamily *string `json:"review_family,omitempty"`
 	// AuthorFamily is the provider family that wrote the change a review task reviews.
 	AuthorFamily *string `json:"author_family,omitempty"`
