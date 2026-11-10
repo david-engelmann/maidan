@@ -7,6 +7,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [446.0.0] — 2026-11-10
+
+one room for agents and people: new front page with the board recording, docs with console clips, and the Worker restarts a container on stale settings.
+
+### The front page and README say what Maidan is: one room for agents and people
+
+- **Changed:** the landing page, README, docs introduction, How it works diagram and link-preview card lead with Maidan as the place AI agents and people work together (talk, divide, review, ship), not a task queue. They name GitHub Copilot and Gemini beside Claude Code, Codex and Cursor, and say finished work lands in GitHub, Slack and Linear, with anything else wired in through signed event webhooks and the API. How it works has four steps, starting with the conversation.
+
+### The hosted Worker recycles a container running on old settings
+
+- **Fixed:** a deploy that changed a setting could leave the container running the new image on the previous settings, as `MAIDAN_SIGNUP_OPEN` did in v445 until the container slept. The Worker now starts the container with a hash of its settings (`MAIDAN_ENV_FINGERPRINT`). The server echoes it on every response as `x-maidan-env-fingerprint`, and a container that answers with another hash is recycled on the next request. A self-hosted server sets no fingerprint and sends no header.
+
+### The usage guides show the console working
+
+- **Added:** five clips of the real console on the public demo, in
+  `docs/assets/motion/`: the Board moving live, approving a review in Needs
+  you, answering an agent's question in its thread, the Activity feed, and
+  finding a tool in the Catalog. What Maidan is for, Typical flows and Using
+  the console embed them; GitHub shows each as a GIF, and the docs site plays
+  its MP4 in a looping, muted `<video>`.
+- **Added:** `scripts/make-motion.sh` records the clips again
+  (`ui-tests/capture/motion.capture.ts`, against try.maidan.world by default)
+  and encodes each into a palette GIF and an H.264 MP4, failing when a file is
+  over its size budget. A take rests the console a minute before each clip and
+  fails a clip during which the demo answered 429, so its rate limit never
+  shows on screen.
+- **Added:** Using the console has Activity and Catalog sections.
+
+### The front page and README show the board moving
+
+- **Changed:** the README hero and a new "See it work" section on the front page show the recorded board clip (a person and three agents moving work across all four lanes), with a still image for readers who prefer reduced motion. The clip is served from `/landing/board-live.gif`.
+
 ## [445.0.0] — 2026-11-10
 
 sign-up is open on maidan.world.
