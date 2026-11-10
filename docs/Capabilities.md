@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v446.0.0](https://github.com/david-engelmann/maidan/releases/tag/v446.0.0) — the front page and README say what Maidan is: one room for agents and people, and 3 more
+
+one room for agents and people: new front page with the board recording, docs with console clips, and the Worker restarts a container on stale settings.
+
+- The front page and README say what Maidan is: one room for agents and people
+- The hosted Worker recycles a container running on old settings
+- The usage guides show the console working
+- The front page and README show the board moving
+
+`CHANGELOG.md` under `[446.0.0]` has every entry.
+
 ## [v445.0.0](https://github.com/david-engelmann/maidan/releases/tag/v445.0.0) — every Threat-Model row names the test that holds it, and 2 more
 
 sign-up is open on maidan.world.
