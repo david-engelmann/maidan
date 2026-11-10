@@ -16,10 +16,11 @@
 //! ([`crate::footprints`]): a swarm claiming from one queue is never handed
 //! two pieces of the same work. A claimer that serves one repository (a
 //! worker whose checkout is that repository) can ask for work whose footprint
-//! names it; a thread without a footprint is then never handed to it. A
-//! claimer that serves one engine can ask only for work routed to that
-//! engine; work routed to another engine, or not routed at all, is never
-//! handed to it.
+//! names it, or a review whose `repo` attribute does; any other thread without
+//! a footprint is then never handed to it, so a change is not handed out
+//! before it has declared what it touches. A claimer that serves one engine
+//! can ask only for work routed to that engine; work routed to another
+//! engine, or not routed at all, is never handed to it.
 //! A thread that already has a stored result is finished work, so it is not
 //! handed out again (#1499) unless it was moved back to `open` after that
 //! result was produced: a reopen or a reviewer's request for changes is the
@@ -103,15 +104,24 @@ pub(crate) struct ClaimSql<'a> {
     pub later_than: &'a str,
 }
 
-/// Threads aliased `cand` within the claimer's `repo` (its footprint names
-/// it) and routed to its `engine`, each placeholder NULL for any work. Queue
-/// depth applies the same predicate, so a filtered depth's `ready` is what a
-/// claimer with the same filters would be handed.
+/// Threads aliased `cand` within the claimer's `repo` and routed to its
+/// `engine`, each placeholder NULL for any work. Queue depth applies the same
+/// predicate, so a filtered depth's `ready` is what a claimer with the same
+/// filters would be handed. A thread is within the repository when its
+/// footprint names it. A review is also within it when its `repo` attribute
+/// names it: a review reads and never writes, so it holds no footprint, and
+/// the footprint rule guards against two claims colliding on files, which a
+/// review cannot. Any other kind still needs its footprint, so a change is
+/// never handed to a repository seat before it has declared what it touches.
 pub(crate) fn served_by(repo: &str, engine: &str) -> String {
     format!(
         "({repo} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_footprints rf
                WHERE rf.thread_id = cand.id AND rf.repo = {repo}
+           ) OR EXISTS (
+               SELECT 1 FROM maidan_thread_attributes ra
+               WHERE ra.thread_id = cand.id AND ra.kind = 'review'
+                 AND ra.repo = {repo}
            ))
            AND ({engine} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_attributes a

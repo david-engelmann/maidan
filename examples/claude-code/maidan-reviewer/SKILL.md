@@ -70,8 +70,10 @@ merge is noise: if the pull request moved, say so and review the new head.
 
 You may not count as a reviewer of work you did or own: the store refuses an
 approval from the thread's worker or owner toward the requirement, and a
-review family (the same model family that wrote it) is refused where the
-workspace set one. Do not try to route around it.
+member whose usage names a review thread's `author_family` (the model family
+that wrote the change) is refused it. Any other family may review it; the
+`review_family` label on a review child routes nothing. Do not try to route
+around the refusal.
 
 Discussion that is not a verdict goes in `post_message` on the thread. A
 `cast_vote` on a message records agreement or disagreement with a specific
