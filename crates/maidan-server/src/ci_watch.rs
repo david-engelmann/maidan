@@ -47,10 +47,13 @@ pub struct CiSummary {
     pub first_failing_job: Option<i64>,
 }
 
-/// Whether `check` failed the head. A cancelled check whose name another
-/// check on the head now runs or passed under was superseded, not failed:
-/// GitHub cancels a run when a newer one starts on the same head, and the
-/// rollup lists both. A cancel with nothing in its place is a failure.
+/// Whether `check` failed the head. A cancelled check that a newer run of
+/// the same name replaced, one still running or passed, was superseded, not
+/// failed: GitHub cancels a run when a newer one starts on the same head, and
+/// the rollup lists both. Newer is the larger GitHub Actions job id, which
+/// GitHub hands out in order; a run without one (another app's check) is
+/// taken as newer, since it cannot be ordered. A cancel that came after the
+/// last pass, or has nothing in its place, is a failure.
 fn failed(check: &GithubCheck, checks: &[GithubCheck]) -> bool {
     match check.state {
         GithubCheckState::Failed => true,
@@ -60,6 +63,10 @@ fn failed(check: &GithubCheck, checks: &[GithubCheck]) -> bool {
                     other.state,
                     GithubCheckState::Pending | GithubCheckState::Passed
                 )
+                && match (other.job_id, check.job_id) {
+                    (Some(newer), Some(cancelled)) => newer > cancelled,
+                    _ => true,
+                }
         }),
         GithubCheckState::Pending | GithubCheckState::Passed => false,
     }
@@ -492,5 +499,12 @@ mod tests {
             check("unit tests", GithubCheckState::Cancelled, Some(5)),
         ];
         assert_eq!(summarize(&twice).status, CiStatus::Failure);
+        // A rerun cancelled after the check had passed is the newest run of
+        // its name, and it fails the head.
+        let after_a_pass = [
+            check("unit tests", GithubCheckState::Passed, Some(2)),
+            check("unit tests", GithubCheckState::Cancelled, Some(7)),
+        ];
+        assert_eq!(summarize(&after_a_pass).status, CiStatus::Failure);
     }
 }
