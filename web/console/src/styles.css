@@ -746,6 +746,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 /* Task sheet extras and Connect. */
 .result-form { display: grid; gap: 8px; margin-top: 8px; }
 .result-form textarea, .result-form input { width: 100%; font: inherit; font-size: var(--text-input); padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+/* Ending a task early: say why, then read what it does and confirm. Ink, muted and danger reach AA on --card in both themes (contrast.test.ts). */
+.end-task { display: grid; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); color: var(--ink); }
+.end-task-title { margin: 0; font-size: var(--text-md); font-weight: 600; }
+.end-task-title:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.end-task .field textarea, .end-task .field input { width: 100%; min-height: 44px; font: inherit; font-size: var(--text-input); padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.end-reasons { display: grid; margin: 0; padding: 0; border: 0; min-width: 0; }
+.end-reasons legend { padding: 0; margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--muted); }
+.end-effects { display: grid; gap: var(--space-1); margin: 0; padding-left: 1.2em; font-size: var(--text-sm); }
+.end-task-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.end-task-actions .button, .task-end .button { min-height: 44px; min-width: 44px; }
+.end-task-problem { margin: 0; color: var(--danger); }
+.task-end { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--pad) var(--space-2); }
+.task-end .end-task { flex: 1 1 100%; margin-top: 0; }
 .snippet { margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
 .snippet-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--paper-2); }
 .snippet-scroll { position: relative; }
@@ -1397,6 +1410,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .activity-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .activity-head h1 { margin: 0 auto 0 0; font-size: 18px; }
 .activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-channel { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
 .activity-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 32px; }
 
 /* Card vote badges (console-22). */

@@ -1754,6 +1754,13 @@ pub fn router(state: AppState) -> Router {
             put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),
         )
         .route("/ui/api/threads/{tid}", post(routes::transition_thread))
+        // Ending a task early from the task sheet: the bearer handlers, so a
+        // session meets the same capability and creator checks a token does.
+        .route("/ui/api/threads/{tid}/cancel", post(routes::cancel_thread))
+        .route(
+            "/ui/api/threads/{tid}/close-abandoned",
+            post(routes::close_abandoned_thread),
+        )
         .route(
             "/ui/api/threads/{tid}/block",
             delete(routes::clear_thread_block),

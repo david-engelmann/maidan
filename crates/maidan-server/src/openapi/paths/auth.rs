@@ -4,18 +4,18 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    ConfirmApprovalGate, CreateAgent, CreateChannel, CreateMessage, CreateThread,
-    CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
-    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm,
-    OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    CancelThread, CloseAbandonedThread, ConfirmApprovalGate, CreateAgent, CreateChannel,
+    CreateMessage, CreateThread, CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery,
+    ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
+    MintApiTokenResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
+    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
     SessionWorkspaces, SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
-    ApprovalGate, AuditEvent, Channel, Member, Message, MessageEdit, StoredEvent, Thread,
-    ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace, WorkspaceInvite,
+    ApprovalGate, AuditEvent, CancelledThread, Channel, Member, Message, MessageEdit, StoredEvent,
+    Thread, ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace, WorkspaceInvite,
 };
 
 /// Start an OIDC login
@@ -531,6 +531,58 @@ pub fn ui_create_thread() {}
     )
 )]
 pub fn ui_post_message() {}
+
+/// Cancel a task (console)
+///
+/// The bearer tree's `POST /threads/{id}/cancel` for the console's task sheet,
+/// with the same checks: `workspace:write`, and then either
+/// `thread:transition` or having created the task. A repeat answers 200 with
+/// the first cancel and `replayed: true`.
+#[utoipa::path(
+    post,
+    path = "/ui/api/threads/{tid}/cancel",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    request_body = CancelThread,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = CancelledThread, description = "The cancelled thread and why"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    )
+)]
+pub fn ui_cancel_thread() {}
+
+/// Close a task that will not land (console)
+///
+/// The bearer tree's `POST /threads/{id}/close-abandoned` for the console's
+/// task sheet, with the same checks: `thread:transition`, and then being the
+/// task's creator, its claim holder, or a maintainer. A task with a result
+/// keeps its landing gates, so the close can be refused with a 409.
+#[utoipa::path(
+    post,
+    path = "/ui/api/threads/{tid}/close-abandoned",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    request_body = CloseAbandonedThread,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Thread),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    )
+)]
+pub fn ui_close_abandoned_thread() {}
 
 /// List a channel's threads (console)
 #[utoipa::path(

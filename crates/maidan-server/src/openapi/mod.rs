@@ -685,6 +685,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ui_revoke_workspace_invite,
         paths::ui_create_thread,
         paths::ui_post_message,
+        paths::ui_cancel_thread,
+        paths::ui_close_abandoned_thread,
         paths::ui_list_threads,
         paths::ui_list_messages,
         paths::ui_list_reviews,

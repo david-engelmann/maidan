@@ -12,6 +12,8 @@ import { useSession } from "../hooks/useSession.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { ReviewContext } from "../needs/ReviewContext.tsx";
 import { convHash, membersPending } from "../core/threads.ts";
+import { END_TITLE } from "../core/endTask.ts";
+import { EndTaskForm, useEndActions, useEndTaskApi } from "./EndTask.tsx";
 
 type Props = {
   thread: Thread | null;
@@ -285,7 +287,7 @@ type ActionProps = {
 /**
  * The moves that fit the state up front (Claim when open, Send to review while
  * held, Approve or Send back in review), and the rare or destructive ones
- * (Close, Archive, Record result) behind a menu.
+ * (Close, Cancel, Close as abandoned, Archive, Record result) behind a menu.
  */
 function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }: ActionProps) {
   const { session, store } = useSession();
@@ -296,7 +298,9 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
   const [working, setWorking] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [armed, setArmed] = useState(false);
-  const [panel, setPanel] = useState<"send-back" | "result" | null>(null);
+  const [panel, setPanel] = useState<"send-back" | "result" | "cancel" | "abandon" | null>(null);
+  const ending = useEndActions(th);
+  const endApi = useEndTaskApi();
   const [words, setWords] = useState("");
   const [result, setResult] = useState("");
   const [lease, setLease] = useState("");
@@ -368,6 +372,9 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
   const extra: { key: string; label: string; danger?: boolean; run: () => void }[] = [];
   if (!terminal) extra.push({ key: "result", label: "Record a result…", run: () => { closeMenu(false); setPanel("result"); } });
   if (can.close) extra.push({ key: "close", label: "Close task", danger: true, run: () => { closeMenu(); void act("close"); } });
+  for (const k of ["cancel", "abandon"] as const) {
+    if (ending[k]) extra.push({ key: k, label: `${END_TITLE[k]}…`, danger: true, run: () => { closeMenu(false); setPanel(k); } });
+  }
   if (moves.includes("archive"))
     extra.push({
       key: "archive",
@@ -421,6 +428,22 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
           </label>
           <button type="button" className="button steel" disabled={disabled} onClick={sendBack}>{working === "send-back" ? "Sending…" : "Send back"}</button>
         </div>
+      )}
+      {(panel === "cancel" || panel === "abandon") && (
+        <EndTaskForm
+          th={th}
+          kind={panel}
+          api={endApi}
+          onDone={(said) => {
+            setPanel(null);
+            setNote(said);
+            onChanged();
+          }}
+          onBack={() => {
+            setPanel(null);
+            menuBtn.current?.focus();
+          }}
+        />
       )}
       {panel === "result" && (
         <div className="result-form">

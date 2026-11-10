@@ -848,6 +848,9 @@ mod ui_collab_e2e;
 #[path = "../ui_edit_history_e2e.rs"]
 mod ui_edit_history_e2e;
 
+#[path = "../ui_end_task_e2e.rs"]
+mod ui_end_task_e2e;
+
 #[path = "../ui_etag_e2e.rs"]
 mod ui_etag_e2e;
 

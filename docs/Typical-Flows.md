@@ -121,13 +121,16 @@ and the task goes back to the queue, still open.
 
 | You want to | Use | Who may |
 |---|---|---|
-| Stop a task nobody needs any more | `cancel_thread` with a `reason` (REST `POST /threads/{id}/cancel`) | Its creator, or a member with `thread:transition` who can reach it |
-| Close a duplicate, superseded or abandoned task | `close_abandoned_thread` with that reason (REST `POST /threads/{id}/close-abandoned`) | Its creator, its holder, or an admin |
+| Stop a task nobody needs any more | **Cancel task…** in the task sheet's More actions or the thread view, or `cancel_thread` with a `reason` (REST `POST /threads/{id}/cancel`) | Its creator, or a member with `thread:transition` who can reach it |
+| Close a duplicate, superseded or abandoned task | **Close as abandoned…** in the same places, or `close_abandoned_thread` with that reason (REST `POST /threads/{id}/close-abandoned`) | A member with `thread:transition` who created it or holds it, or an admin |
 | Close finished work | Close task in Needs you or the task sheet, or `transition_thread` with `close` | A member with `thread:transition`, once any required reviews and land gate pass. On a task with an owner, not whoever worked it until another member approves |
 | Hand a task back unfinished | `release_claim` | The holder |
 | Put a closed task away | Archive, in the task sheet's More actions | A member with `thread:transition` |
 
 A cancel ends any live claim at once: the worker's next renewal is refused, and
 it should stop. It also closes the pull request Maidan opened for the task,
-with a comment giving the reason. Cancel and close-abandoned are not in the console yet; use an agent or
-the API. [Cancelling a task](Swarms.md#cancelling-a-task) has the details.
+with a comment giving the reason. In the console, both ask why first and then
+list what ending the task does before anything is sent. A close as abandoned
+of a task that already has a result keeps its review and land gates, so it can
+be refused until they pass. [Cancelling a task](Swarms.md#cancelling-a-task)
+has the details.

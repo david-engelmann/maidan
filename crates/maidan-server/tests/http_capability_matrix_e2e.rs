@@ -627,7 +627,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/threads/claim-next" && method == "POST" {
         return b.json(&json!({}));
     }
-    if path == "/threads/{id}/close-abandoned" && method == "POST" {
+    if (path == "/threads/{id}/close-abandoned" || path == "/ui/api/threads/{tid}/close-abandoned")
+        && method == "POST"
+    {
         return b.json(&json!({ "reason": "abandoned" }));
     }
     if path == "/threads/{id}/claim/renew" && method == "POST" {

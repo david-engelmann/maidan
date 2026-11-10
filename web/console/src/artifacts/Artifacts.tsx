@@ -52,12 +52,17 @@ export function Artifacts() {
   const [busy, setBusy] = useState(false);
   const room = ws ?? "";
   const [seenRoom, setSeenRoom] = useState(room);
+  // A switch to another workspace clears what was looked up in the last one.
+  // Signing in for the first time (no room yet) is not a switch: it must not
+  // wipe a sha typed while the session was still loading.
   if (seenRoom !== room) {
     setSeenRoom(room);
-    setSha("");
-    setLooked(null);
-    setThread("");
-    setThreadOn(null);
+    if (seenRoom) {
+      setSha("");
+      setLooked(null);
+      setThread("");
+      setThreadOn(null);
+    }
   }
   const meta = useLoad(looked, () => api.artifact(looked ?? ""));
   const linked = useLoad(threadOn, () => api.linked(threadOn ?? ""));

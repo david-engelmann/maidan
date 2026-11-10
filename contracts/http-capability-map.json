@@ -1278,6 +1278,18 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/ui/api/threads/{tid}/cancel",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/ui/api/threads/{tid}/close-abandoned",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/ui/api/workspaces/{wid}/events",
     "capability": "workspace:read",
