@@ -689,7 +689,22 @@ async fn a_watch_closes_when_its_pull_ends_and_a_change_keeps_its_gates(store: A
     }
     assert_eq!(s.get_thread(gated).await.unwrap().state, ThreadState::Open);
 
-    let session = task(s, &room).await;
+    // A title of its own: two open tasks titled alike are fingerprinted as
+    // duplicates, and the gated one above stays open by design.
+    let session = s
+        .create_thread(NewThread {
+            channel_id: room.channel,
+            parent_thread_id: None,
+            title: Some("session task".into()),
+            description: None,
+            created_by: Some(room.member),
+        })
+        .await
+        .unwrap()
+        .id;
+    s.set_thread_owner(session, Some(room.member))
+        .await
+        .unwrap();
     s.set_thread_result_claiming(session, worker, &result)
         .await
         .unwrap();
