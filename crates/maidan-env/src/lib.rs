@@ -894,6 +894,7 @@ mod tests {
             "MAIDAN_EMBED_REPAIR_INTERVAL_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
+        ("MAIDAN_ENV_FINGERPRINT", "set by the Worker per start"),
         (
             "MAIDAN_HNSW_EF_CONSTRUCTION",
             "self-hosted bind, custody, or sweep tuning",
