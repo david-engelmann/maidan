@@ -706,6 +706,23 @@ async fn the_last_landed_child_closes_the_plan(store: Arc<dyn Store>) {
         store.get_thread(parent).await.unwrap().state,
         ThreadState::Closed
     );
+    // The planner still held the plan; the worker's landing closed it, so the
+    // state change names the planner, and the router tells it.
+    let closed = last
+        .iter()
+        .filter(|e| e.kind == EventKind::ThreadStateChanged && e.thread_id == Some(parent))
+        .find_map(
+            |e| match serde_json::from_value::<Event>(e.payload.clone()).unwrap() {
+                Event::ThreadStateChanged {
+                    to_state: ThreadState::Closed,
+                    previous_assignee_id,
+                    ..
+                } => Some(previous_assignee_id),
+                _ => None,
+            },
+        )
+        .expect("the plan's close is in the landing's events");
+    assert_eq!(closed, Some(r.planner));
     let messages = store.list_messages(parent, 50).await.unwrap();
     let [summary] = messages.as_slice() else {
         panic!("one message on the plan, got {}", messages.len());

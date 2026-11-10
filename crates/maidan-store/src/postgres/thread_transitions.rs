@@ -808,6 +808,21 @@ async fn holder_in_tx(
     Ok(holder.flatten().map(MemberId))
 }
 
+/// Close `thread_id` in `tx` and append its `ThreadStateChanged` event,
+/// naming the member whose claim the close ended, as an ordinary close by
+/// someone else does: a merge that lands a change and a plan that closes when
+/// its children land both end a claim the holder did not give up.
+pub(crate) async fn close_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+) -> Result<StoredEvent, StoreError> {
+    let holder = holder_in_tx(tx, thread_id).await?;
+    let result = transition_in_tx(tx, thread_id, actor_id, ThreadAction::Close).await?;
+    let ended = holder.filter(|h| *h != actor_id);
+    state_changed_ending_claim_in_tx(tx, actor_id, &result, ended).await
+}
+
 /// Append the `ThreadStateChanged` event for a transition made in `tx`.
 pub(crate) async fn state_changed_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,

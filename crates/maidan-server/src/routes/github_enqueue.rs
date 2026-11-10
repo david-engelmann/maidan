@@ -229,6 +229,10 @@ pub struct WithdrawalComment<'a> {
     pub marker: &'a str,
     /// What the comment says, after the marker.
     pub text: &'a str,
+    /// The earliest the comment could have been written: when the withdrawal
+    /// was queued, less a margin for the two clocks. The marker scan reads
+    /// only comments GitHub updated since then. `None` scans from the first.
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// The guard path for withdrawing a pull request whose task was cancelled or
@@ -240,12 +244,12 @@ pub struct WithdrawalComment<'a> {
 /// `comment` and is closed. A closed one is left closed and gets no comment.
 /// The branch is never touched.
 ///
-/// The comment posts once per withdrawal on any pull request with up to
-/// 1,000 comments: GitHub can take the comment and then fail the close, and
-/// the retry that follows finds the comment by its marker and only closes.
-/// `list_issue_comments` reads at most ten pages of 100, so on a busier pull
-/// request a marker past that window is missed and the retry comments again;
-/// a second comment there costs less than guessing.
+/// The comment posts once per withdrawal: GitHub can take the comment and
+/// then fail the close, and the retry that follows finds the comment by its
+/// marker and only closes. The scan reads only the comments written since
+/// the withdrawal was queued, so however long the pull request's history,
+/// the marker is found unless 1,000 more comments landed after it; past that
+/// the retry comments again, which costs less than guessing.
 pub async fn withdraw_pull_guarded(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,
@@ -275,10 +279,16 @@ pub async fn withdraw_pull_guarded(
             closed: false,
         });
     }
-    let posted = comment
-        .reader
-        .list_issue_comments(repo, pull_number)
-        .await
+    let listed = match comment.since {
+        Some(since) => {
+            comment
+                .reader
+                .list_issue_comments_since(repo, pull_number, since)
+                .await
+        }
+        None => comment.reader.list_issue_comments(repo, pull_number).await,
+    };
+    let posted = listed
         .map_err(MarkReadyGuard::Github)?
         .iter()
         .any(|c| c.body.starts_with(comment.marker));

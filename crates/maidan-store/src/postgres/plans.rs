@@ -593,9 +593,7 @@ async fn close_through_gates(
                 .await?;
         stored.push(thread_transitions::state_changed_in_tx(tx, actor, &review).await?);
     }
-    let closed =
-        thread_transitions::transition_in_tx(tx, parent, actor, ThreadAction::Close).await?;
-    stored.push(thread_transitions::state_changed_in_tx(tx, actor, &closed).await?);
+    stored.push(thread_transitions::close_in_tx(tx, parent, actor).await?);
     Ok(stored)
 }
 

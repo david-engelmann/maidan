@@ -616,9 +616,7 @@ async fn land_in_tx(
                 .await?;
         stored.push(thread_transitions::state_changed_in_tx(tx, actor, &review).await?);
     }
-    let closed =
-        thread_transitions::transition_in_tx(tx, thread_id, actor, ThreadAction::Close).await?;
-    stored.push(thread_transitions::state_changed_in_tx(tx, actor, &closed).await?);
+    stored.push(thread_transitions::close_in_tx(tx, thread_id, actor).await?);
     let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
     let landed = Event::ThreadLanded {
         occurred_at: Utc::now(),
