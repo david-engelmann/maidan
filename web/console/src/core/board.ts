@@ -22,6 +22,8 @@ export type Thread = {
   title?: string | null;
   state: string;
   assignee_id?: string | null;
+  /** Who created the task: a creator may cancel or abandon its own task. */
+  created_by?: string | null;
   work_started_at?: string | null;
   assignment_expires_at?: string | null;
   updated_at?: string | null;

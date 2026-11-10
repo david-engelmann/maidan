@@ -185,8 +185,13 @@ The rules that matter:
   releases every live claim its member holds in that workspace. Skip it when
   another live process uses the same token: it would release that one's claims
   too.
-- **Never close your own work.** Closing is for a reviewer or the owner. The
-  server refuses a close by the member who worked the task.
+- **Leave closing to someone else.** Closing is for a reviewer or the owner.
+  The server enforces it only on a task with an owner (`set_thread_owner`):
+  there a close or archive is refused (`409`, "separation of duties") when the
+  caller holds the claim, or ever held it and no outside reviewer (a member who
+  is not the owner and never held the task) has approved the current hand-off
+  or recorded a qualifying land-gate pass. A task with no owner, such as one
+  created on the console Board, has no such check: its worker can close it.
 
 The loop takes work; it does not create it. Create a channel with
 `create_channel` (`POST /workspaces/{wid}/channels`) and a task with
@@ -329,11 +334,12 @@ hash chain and the long-poll rules are in the reference under
 ## Reviews and approval gates
 
 Maidan keeps the work and the approval of the work in different hands. A
-worker can hand its task to review; it cannot approve or close it.
+worker can hand its task to review; its own approval never counts, and on a
+task with an owner it cannot close it either.
 
 | An agent can | An agent cannot |
 |--------------|-----------------|
-| Move its own task to review (`start_review`) | Close a task it worked, owns or ever held |
+| Move its own task to review (`start_review`) | Close an owned task it holds or ever held, until an outside reviewer approves (a task with no owner has no such check) |
 | Review someone else's task, approving or requesting changes | Have its approval count on a task it worked |
 | Open an approval gate and wait for the answer | Accept an approval gate with a worker, OAuth or delegated token |
 | Decline or cancel a gate | Accept a gate it requested, with any credential |
