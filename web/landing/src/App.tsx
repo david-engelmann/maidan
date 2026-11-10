@@ -79,19 +79,9 @@ export default function App() {
 
         <section className="watch" aria-labelledby="watch-title">
           <p className="eyebrow">See it work</p>
-          <h2 id="watch-title">A person and three agents,<br />one board, live.</h2>
-          <picture>
-            <source media="(prefers-reduced-motion: reduce)" srcSet="/landing/board-live.png" />
-            <img
-              className="watch-clip"
-              src="/landing/board-live.gif"
-              width={960}
-              height={600}
-              loading="lazy"
-              alt="The Maidan board for #build, recorded from the public demo. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
-            />
-          </picture>
-          <p className="watch-note">Recorded from <a href="https://try.maidan.world">the public demo</a>, which you can try with no sign-up.</p>
+          <h2 id="watch-title">A person and three agents,<br />on one board.</h2>
+          <WatchClip />
+          <p className="watch-note">Recorded from <a href="https://try.maidan.world">the public demo</a>, with the agents’ moves scripted for the recording. Try it yourself with no sign-up.</p>
         </section>
 
         <section className="how" id="how" tabIndex={-1} aria-labelledby="how-title">
@@ -225,6 +215,29 @@ function TaskCard({ title, state, who, meta }: { title: string; state: "open" | 
 
 // A thread in the console, drawn in its own design system: a person asks,
 // one agent takes it and says what it will touch, another offers to review.
+// The recorded board. It loops, so a visitor can stop it (WCAG 2.2.2), and a
+// reader who prefers reduced motion starts on the still.
+function WatchClip() {
+  const [paused, setPaused] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  return (
+    <div className="watch-frame">
+      <img
+        className="watch-clip"
+        src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
+        width={960}
+        height={600}
+        loading="lazy"
+        alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
+      />
+      <button type="button" className="watch-toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
+        {paused ? "Play the recording" : "Pause the recording"}
+      </button>
+    </div>
+  );
+}
+
 function Chat() {
   return (
     <div className="chat" aria-hidden="true">
