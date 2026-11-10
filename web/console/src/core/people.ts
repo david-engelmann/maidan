@@ -441,8 +441,17 @@ export class PeopleApi {
     await this.write("DELETE", `/tokens/${encodeURIComponent(id)}`, undefined);
   }
 
-  async invites(workspace: string): Promise<Invite[]> {
-    const rows = await this.get<Array<{ id: string; email: string; role: string; created_at: string; expires_at: string; revoked_at?: string | null; accepted_at?: string | null }>>(`/workspaces/${workspace}/invites`);
+  /**
+   * The workspace's invites, or `null` when the server refuses this person
+   * the list (403): only a workspace admin invites, so the panel hides for
+   * everyone else instead of greeting them with an error.
+   */
+  async invites(workspace: string): Promise<Invite[] | null> {
+    const c = this.creds();
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspace}/invites`), { headers: headers(c), credentials: "include" });
+    if (res.status === 403) return null;
+    if (!res.ok) return fail(res, this.mode());
+    const rows = (await res.json()) as Array<{ id: string; email: string; role: string; created_at: string; expires_at: string; revoked_at?: string | null; accepted_at?: string | null }>;
     return rows.map((i) => ({ id: i.id, email: i.email, role: i.role, createdAt: i.created_at, expiresAt: i.expires_at, revokedAt: i.revoked_at ?? null, acceptedAt: i.accepted_at ?? null }));
   }
 

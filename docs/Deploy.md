@@ -202,6 +202,13 @@ opens `/ui/`. No secret goes into a URL the browser sends anywhere: the Cursor
 and VS Code links carry the agent token, but they are `cursor:` and `vscode:`
 links that the browser hands to the local app.
 
+**The theme.** The page wears the console's graphite palette and is dark by
+default, with the landing's warm paper in light. It loads `/theme.js`, the
+console's own pre-paint script (`web/console/public/theme.js`), which the
+deploy copies into the page's assets, so a visitor who chose Light in the
+console sees the light page. The console's `/ui/theme.js` is the container's,
+and loading it would wake the container on every visit.
+
 **The mint.** `POST /sandbox` (`crates/maidan-server/src/sandbox.rs`) is on only
 with `MAIDAN_DEMO_SANDBOX=1`, and under `MAIDAN_ENV=production` only beside
 `MAIDAN_DEMO_INSTANCE=1`, the marker that the whole instance is a throwaway.

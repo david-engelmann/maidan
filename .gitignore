@@ -16,6 +16,8 @@ web/landing/node_modules/
 crates/maidan-server/static/landing/dist/
 web/console/node_modules/
 crates/maidan-server/static/console/dist/
+# The console's theme.js, copied into the try page's assets at deploy (deploy-demo.yml)
+deploy/cloudflare/try/theme.js
 
 # mdBook (generated): build output + docs staged in by book/sync-docs.sh
 /book/build/

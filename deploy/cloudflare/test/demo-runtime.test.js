@@ -8,7 +8,9 @@ import { envFingerprint } from "../src/server-env.js";
 
 const demoWorker = readFileSync(new URL("../src/demo.js", import.meta.url), "utf8");
 const demoEdge = readFileSync(new URL("../src/demo-edge.js", import.meta.url), "utf8");
-const tryFiles = new Set(readdirSync(new URL("../try/", import.meta.url)).map((name) => `/${name}`));
+// theme.js is copied into the try assets at deploy (deploy-demo.yml), so it
+// is not in the checkout's try/ directory.
+const tryFiles = new Set([...readdirSync(new URL("../try/", import.meta.url)).map((name) => `/${name}`), "/theme.js"]);
 
 const req = (path, headers = {}) => new Request(`https://try.maidan.world${path}`, { headers });
 const plain = (status, body) =>
@@ -122,7 +124,10 @@ test("a browser opening a page while the container is down gets HTML that only u
   const html = await res.text();
   assert.match(html, new RegExp(`<meta http-equiv="refresh" content="${UNAVAILABLE_RETRY_SECS}">`));
   assert.match(html, /The demo is starting or being updated/);
-  assert.doesNotMatch(html, /<script|<style|\sstyle=/);
+  // One script, the console's pre-paint theme.js, served beside the page.
+  assert.deepEqual([...html.matchAll(/<script[^>]*>/g)].map((m) => m[0]), ['<script src="/theme.js">']);
+  assert.match(DEMO_UNAVAILABLE_CSP, /script-src 'self';/);
+  assert.doesNotMatch(html, /<style|\sstyle=/);
   assert.doesNotMatch(html, /site\.css|\/status|\/support|\/privacy/);
   assert.doesNotMatch(html, /not running/);
   for (const ref of [...html.matchAll(/(?:href|src)="(\/[^"]+)"/g)].map((m) => m[1])) {

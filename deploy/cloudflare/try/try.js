@@ -115,6 +115,8 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     turnstileWidget = window.turnstile.render(holder, {
       sitekey: siteKey,
       action: "sandbox",
+      // The page's theme, which /theme.js set from the stored choice.
+      theme: doc.documentElement?.getAttribute?.("data-theme") === "light" ? "light" : "dark",
       callback: (token) => {
         turnstileToken = token;
       },

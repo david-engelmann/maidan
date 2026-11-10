@@ -203,6 +203,11 @@ test("invites: a signed-in session lists, invites and revokes through the consol
   assert.equal(calls[2].init?.method, "DELETE");
 });
 
+test("invites: a person the server refuses the list gets null, not an error", async () => {
+  const { api } = fake([{ status: 403, body: { detail: "only a workspace admin can invite people" } }]);
+  assert.equal(await api.invites("w"), null);
+});
+
 test("invite: a session the server refuses says so and keeps no link", async () => {
   const { api } = fake([{ status: 403, body: { detail: "only a workspace admin can invite people" } }]);
   await assert.rejects(api.invite("w", { email: "a@b.co", role: "member" }), PeopleError);
@@ -216,6 +221,7 @@ test("invite: the server's refusal reaches the form", async () => {
 test("invites: list maps rows, revoke deletes by id", async () => {
   const { api, calls } = fake([{ body: [{ id: "i1", email: "a@b.co", role: "member", created_at: "2026-01-01T00:00:00Z", expires_at: "2026-01-08T00:00:00Z" }] }, { status: 204 }], bearer);
   const rows = await api.invites("w");
+  assert.ok(rows);
   assert.equal(rows[0].email, "a@b.co");
   assert.equal(inviteState(rows[0], Date.parse("2026-01-02T00:00:00Z")), "pending");
   assert.equal(inviteState(rows[0], Date.parse("2026-01-09T00:00:00Z")), "expired");
