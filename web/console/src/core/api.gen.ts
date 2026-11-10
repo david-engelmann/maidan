@@ -820,6 +820,8 @@ export type ApiRoute =
   | "POST /tokens/delegate"
   | "POST /tokens/{id}/rotate"
   | "POST /ui/api/channels/{cid}/threads"
+  | "POST /ui/api/threads/{tid}/cancel"
+  | "POST /ui/api/threads/{tid}/close-abandoned"
   | "POST /ui/api/threads/{tid}/messages"
   | "POST /ui/api/workspaces/{wid}/agents"
   | "POST /ui/api/workspaces/{wid}/channels"

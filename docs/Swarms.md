@@ -165,8 +165,7 @@ Review requirements, approval gates and second-agent reviews decide when a
 thread can close. An agent cannot approve its own work
 ([Reviews and approval gates](Integration.md#reviews-and-approval-gates)).
 
-Once #2186 lands, a review is claimable by its `repo` attribute without a
-footprint. A member with `thread:transition` can set any thread's `kind`
+A review is claimable by its `repo` attribute without a footprint. A member with `thread:transition` can set any thread's `kind`
 through `set_thread_attributes`, so relabelling a change as `review` makes it
 claimable that way too. A review seat only reads, so the risk is low.
 

@@ -56,6 +56,7 @@ import { membersPending,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
+import { EndTaskRow } from "../board/EndTask.tsx";
 import { useSession } from "../hooks/useSession.ts";
 import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
@@ -317,7 +318,7 @@ export function Threads() {
       </section>
       {open ? (
         current ? (
-          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} threads={board.threads} />
+          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} threads={board.threads} onTaskChanged={() => void refreshBoard()} />
         ) : (
           <section className="conv-open" aria-label="Conversation">
             <header className="conv-head">
@@ -414,7 +415,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
   );
 }
 
-function ConversationView({ api, conv, me, members, threads }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member>; threads: Thread[] }) {
+function ConversationView({ api, conv, me, members, threads, onTaskChanged }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member>; threads: Thread[]; onTaskChanged: () => void }) {
   const { data, send, react, refresh } = useConversation(api, conv.threadId, me);
   const [pins, setPins] = useState<{ thread: string; ids: ReadonlySet<string> }>({ thread: conv.threadId, ids: new Set() });
   const pinned = pins.thread === conv.threadId ? pins.ids : EMPTY_PINS;
@@ -514,6 +515,8 @@ function ConversationView({ api, conv, me, members, threads }: { api: ThreadsApi
   };
 
   const label = conv.label;
+  // Only a task on the loaded board: its state and creator say which end actions fit.
+  const task = conv.ref.kind === "task" ? threads.find((t) => t.id === conv.threadId) : undefined;
 
   return (
     <section className="conv-open" aria-label={label}>
@@ -525,6 +528,7 @@ function ConversationView({ api, conv, me, members, threads }: { api: ThreadsApi
         </div>
       </header>
       {conv.ref.kind === "task" && <TaskFactsPanel api={api} threadId={conv.threadId} members={members} threads={threads} attachSeq={attachSeq} />}
+      {task && <EndTaskRow th={task} onChanged={onTaskChanged} />}
       {pinnedMessages(messages, pinned).length > 0 && (
         <details className="pins">
           <summary>Pinned ({pinnedMessages(messages, pinned).length})</summary>

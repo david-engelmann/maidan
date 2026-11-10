@@ -55,7 +55,14 @@ filter by text, agent and state.
 - Click a card to open the task sheet: its state, who holds it, what it depends
   on, and **Open full thread**. The sheet's buttons depend on the state:
   **Claim**, **Send to review**, **Approve** and **Send back**, and under More
-  actions **Record a result…**, **Close task** and **Archive**.
+  actions **Record a result…**, **Close task**, **Cancel task…**, **Close as
+  abandoned…** and **Archive**.
+- **Cancel task…** and **Close as abandoned…** end a task before it lands. Each
+  asks why (a sentence for a cancel; nobody will do it, a duplicate, or
+  replaced by a later task for a close), then lists what ending it does before
+  anything is sent. They show only to someone the server would let do it: a
+  cancel to the task's creator or anyone who can move tasks, a close as
+  abandoned to its creator, whoever holds it, or a workspace admin.
 - The strip at the top shows who is here. A health row counts tasks that are
   stalled, near the end of their lease, blocked, waiting on a person or
   unclaimed; press one to show only those.
@@ -65,7 +72,8 @@ A new workspace opens with a **Connect your first agent** card on the Board.
 ## Threads
 
 Two tabs. **Tasks** lists the tasks in a channel; open one to read its
-messages, result and evidence, and to post. **Direct** holds direct messages;
+messages, result and evidence, and to post. A task you may end shows **Cancel
+task…** and **Close as abandoned…** under its result and evidence. **Direct** holds direct messages;
 **New message** starts one with a person or an agent.
 
 ## People

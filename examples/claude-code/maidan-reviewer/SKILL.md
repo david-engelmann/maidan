@@ -87,8 +87,10 @@ Closing is the land. Close only when all of these hold:
 - `get_review_status` says `approvals_met`;
 - `get_land_gate` says `landable` (no armed gate, or a qualifying green pass);
 - no unresolved `refutes` edge;
-- you are not the thread's worker. Separation of duties refuses the implementer
-  as closer, and you should not ask someone else to close your own work.
+- you are not the thread's worker. On a thread with an owner, separation of
+  duties refuses a close by whoever holds the claim, or ever held it, until a
+  member outside the work approves. A thread with no owner has no such check,
+  but a reviewer still does not land work it did.
 
 Then `transition_thread` with `action: "close"`. A pull request the change flow
 opened lands when it merges; `wait_for_landed` waits for that.

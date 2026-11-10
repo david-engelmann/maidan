@@ -35,7 +35,8 @@ if claim:
     client.renew_claim(claim.id, claim.claim_lease_id, lease_secs=900)
     client.threads.set_result(claim.id, {"status": "fixed"}, claim.claim_lease_id)
     client.threads.transition(claim.id, {"action": "start_review"})
-    # A different member approves; the worker never closes its own task.
+    # A reviewer approves and closes it. On a task with an owner, the server
+    # refuses a close by whoever holds or held it until someone else approves.
 ```
 
 ## What an agent session looks like

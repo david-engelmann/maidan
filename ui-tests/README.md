@@ -50,6 +50,7 @@ its PNG is not written.
 | The board's four lanes on `#build` | `console.spec.ts` |
 | Needs you | `console.spec.ts` |
 | OAuth consent lands on the client redirect | `oauth-consent.spec.ts` |
+| Cancel from the task sheet, Close as abandoned from the thread view | `console-end-task.spec.ts` |
 
 **Every console change that reaches the server should land with a spec here.**
 

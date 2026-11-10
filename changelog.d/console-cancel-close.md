@@ -1,3 +1,5 @@
-### Console: cancel and close as abandoned (WIP)
+### Console: cancel a task, or close it as abandoned
 
-- **Fixed:** `docs/Integration.md` no longer says the server refuses every close by the task's worker: separation of duties applies only to a task with an owner.
+- **Added:** the console ends a task before it lands. **Cancel task…** and **Close as abandoned…** sit in the task sheet's More actions and under a task's result and evidence in Threads. Each asks why (a sentence for a cancel; abandoned, a duplicate of a named task, or superseded for a close), then lists what ending it does (the claim ends, the pull request leaves the merge queue and closes, dependents wait or move) before anything is sent. They show only to someone the server would allow, and a refusal reads as a sentence, such as an owned task waiting on an outside reviewer.
+- **Added:** `POST /ui/api/threads/{tid}/cancel` and `POST /ui/api/threads/{tid}/close-abandoned`, the bearer handlers on the session tree, with the same checks: `workspace:write` (and `thread:transition` or being the creator) for a cancel, `thread:transition` (and being the creator, the holder or a maintainer) for a close as abandoned.
+- **Fixed:** `docs/Integration.md`, `docs/Quickstart.md` and the reviewer skill no longer say the server refuses every close by the task's worker: separation of duties applies only to a task with an owner, until a member outside the work approves.

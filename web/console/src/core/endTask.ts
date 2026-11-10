@@ -123,15 +123,16 @@ export class EndTaskError extends ApiError {}
 export function endRefusal(kind: EndKind, status: number, detail: string | null): string | null {
   const d = detail ?? "";
   if (status === 403 && /capability/i.test(d)) return null;
+  // Most specific first: a separation-of-duties refusal also names who may act.
+  if (status === 409 && /separation of duties/i.test(d))
+    return "This task has an owner and you worked on it, so someone else closes it, or an outside reviewer approves it first.";
+  if (status === 409 && /already|only an open or in-review/i.test(d)) return "This task has already ended. Reload to see where it stands.";
   if (status === 403 || (status === 409 && /producer|claim holder|maintainer/i.test(d))) {
     return kind === "cancel"
       ? "Only the person who created this task, or someone allowed to move tasks, can cancel it."
       : "Only the task's creator, whoever holds it, or a workspace admin can close it as abandoned.";
   }
   if (status === 409) {
-    if (/already|only an open or in-review/i.test(d)) return "This task has already ended. Reload to see where it stands.";
-    if (/separation of duties/i.test(d))
-      return "This task has an owner and you worked on it, so someone else closes it, or an outside reviewer approves it first.";
     if (/approv|review|land gate|refute/i.test(d))
       return "This task has a result, so it still has to pass its review before it can close. Approve it or send it back instead.";
     return d ? `This did not go through: ${d}` : null;
@@ -152,11 +153,11 @@ export class EndTaskApi {
     this.mode = mode;
   }
 
-  private async post<T>(kind: EndKind, suffix: string, body: unknown): Promise<T> {
+  private async send<T>(method: "POST", kind: EndKind, suffix: string, body: unknown): Promise<T> {
     const c = this.creds();
     const res = await this.fetchFn(
       apiPath(c, suffix),
-      writeInit({ method: "POST", headers: headers(c, true), credentials: "include", body: JSON.stringify(body) }),
+      writeInit({ method, headers: headers(c, true), credentials: "include", body: JSON.stringify(body) }),
     );
     if (!res.ok) return failure(res, this.mode(), EndTaskError, (status, detail) => endRefusal(kind, status, detail));
     return (await res.json()) as T;
@@ -166,13 +167,13 @@ export class EndTaskApi {
   cancel(threadId: string, reason: string): Promise<{ thread: Thread; replayed?: boolean }> {
     const why = cancelReasonRefusal(reason);
     if (why) return Promise.reject(new EndTaskError(why, 400));
-    return this.post("cancel", `/threads/${threadId}/cancel`, { reason: reason.trim() });
+    return this.send("POST", "cancel", `/threads/${threadId}/cancel`, { reason: reason.trim() });
   }
 
   /** `POST /threads/{id}/close-abandoned`. */
   closeAbandoned(threadId: string, reason: CloseReason, other = ""): Promise<Thread> {
     const why = closeRefusal(reason, other, threadId);
     if (why) return Promise.reject(new EndTaskError(why, 400));
-    return this.post("abandon", `/threads/${threadId}/close-abandoned`, closeBody(reason, other));
+    return this.send("POST", "abandon", `/threads/${threadId}/close-abandoned`, closeBody(reason, other));
   }
 }

@@ -15,6 +15,7 @@ import {
   type EndKind,
 } from "../core/endTask.ts";
 import type { Thread } from "../core/board.ts";
+import { say } from "../core/notices.ts";
 import { useSession } from "../hooks/useSession.ts";
 
 /** Which end actions the signed-in caller may take on `th`. */
@@ -156,5 +157,52 @@ export function EndTaskForm({ th, kind, api, onDone, onBack }: Props) {
       )}
       <p className="end-task-problem small" role="alert">{problem}</p>
     </section>
+  );
+}
+
+/**
+ * The thread view's end actions: a button for each one the caller may take,
+ * opening the form in place. Once the server accepts, the row goes away and
+ * the board reload shows the task closed.
+ */
+export function EndTaskRow({ th, onChanged }: { th: Thread; onChanged: () => void }) {
+  const can = useEndActions(th);
+  const api = useEndTaskApi();
+  const [kind, setKind] = useState<EndKind | null>(null);
+  // The action whose form was left with "Keep the task". Its button is drawn
+  // again, and autofocus puts the person back where they were.
+  const [back, setBack] = useState<EndKind | null>(null);
+  const [ended, setEnded] = useState(false);
+  if (ended || (!can.cancel && !can.abandon)) return null;
+  if (kind) {
+    return (
+      <div className="task-end">
+        <EndTaskForm
+          th={th}
+          kind={kind}
+          api={api}
+          onDone={(said) => {
+            setEnded(true);
+            say(said);
+            onChanged();
+          }}
+          onBack={() => {
+            setBack(kind);
+            setKind(null);
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="task-end" role="group" aria-label="End this task">
+      {(["cancel", "abandon"] as const)
+        .filter((k) => can[k])
+        .map((k) => (
+          <button key={k} type="button" className="button ghost danger" autoFocus={back === k} onClick={() => setKind(k)}>
+            {END_TITLE[k]}…
+          </button>
+        ))}
+    </div>
   );
 }
