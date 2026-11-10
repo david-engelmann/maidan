@@ -226,6 +226,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/ui/api/workspaces/") {
         return template
             .replace("{wid}", &f.workspace)
+            .replace("{iid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{tid}", &f.thread)
             .replace("{mid}", &f.message);
@@ -732,7 +733,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/secret-egress-hosts" && method == "POST" {
         return b.json(&json!({ "host": "hooks.example.com" }));
     }
-    if path == "/workspaces/{wid}/invites" && method == "POST" {
+    if (path == "/workspaces/{wid}/invites" || path == "/ui/api/workspaces/{wid}/invites")
+        && method == "POST"
+    {
         // A viewer invite: the probe token holds `workspace:admin` alone,
         // which caps what it may grant at viewer.
         return b.json(&json!({ "email": "cap-matrix@example.com", "role": "viewer" }));

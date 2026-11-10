@@ -57,9 +57,10 @@ pub const OPERATOR_GLOBAL: &str = "operator:global";
 pub const APPROVAL_GRANT: &str = "approval:grant";
 
 /// Invite people into the workspace: mint, list and revoke
-/// `/workspaces/:wid/invites`. In [`crate::capability_set::HUMAN_ADMIN`],
-/// never in `AGENT_WORKER`, and not delegatable: deciding who belongs to a
-/// workspace is authority, not work. The invite's role is still capped at the
+/// `/workspaces/:wid/invites`. In [`crate::capability_set::HUMAN_ADMIN`] and
+/// the first admin token a person mints for the workspace they signed up for
+/// (`POST /auth/session/mint`), never in `AGENT_WORKER`, and not delegatable:
+/// deciding who belongs to a workspace is authority, not work. The invite's role is still capped at the
 /// inviter's own, so holding this never lets anyone grant more than they have.
 pub const WORKSPACE_ADMIN: &str = "workspace:admin";
 

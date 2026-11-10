@@ -476,7 +476,8 @@ function AddAgentCard({ api, onAdded }: { api: PeopleApi; onAdded: () => void })
 function Invites({ api }: { api: PeopleApi }) {
   const { session } = useSession();
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
-  const canWrite = session.status === "signed-in" && hasToken(session.credentials);
+  // A signed-in admin invites from the session; the server refuses anyone else.
+  const canWrite = session.status === "signed-in";
   const [version, setVersion] = useState(0);
   const [list, setList] = useState<{ value: Invite[] | null; error: string | null }>({ value: null, error: null });
   const [email, setEmail] = useState("");
@@ -497,7 +498,7 @@ function Invites({ api }: { api: PeopleApi }) {
     };
   }, [api, workspace, canWrite, version]);
   if (!workspace) return null;
-  if (!canWrite) return <p className="muted small invite-note">Inviting people needs a bearer token with workspace:admin. A signed-in session cannot.</p>;
+  if (!canWrite) return null;
   async function run(f: () => Promise<void>) {
     if (busy) return;
     setBusy(true);

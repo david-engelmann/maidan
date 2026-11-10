@@ -357,9 +357,28 @@ async fn console_admin(state: &AppState, session: &SessionContext) -> ApiResult<
             "a session made from a token cannot add an agent here; that token's holder uses POST /workspaces/{wid}/agents".into(),
         ));
     }
+    if session_holds_or_may_mint(state, session, TOKEN_ADMIN).await? {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(
+            "only a workspace admin can add an agent".into(),
+        ))
+    }
+}
+
+/// Whether the member behind an OIDC session holds `capability` on a live
+/// token in its workspace, or, before anyone holds `token:admin` there, is
+/// the person who may mint the first admin token (`POST /auth/session/mint`:
+/// not invited, with the first-admin mint on), which carries it. The caller
+/// refuses a session made from a token before asking.
+pub(super) async fn session_holds_or_may_mint(
+    state: &AppState,
+    session: &SessionContext,
+    capability: &str,
+) -> ApiResult<bool> {
     let workspace_id = session.workspace_id;
     let now = chrono::Utc::now();
-    let holds_admin = state
+    let holds = state
         .store
         .list_api_tokens_for_member(workspace_id, session.member_id)
         .await?
@@ -367,12 +386,12 @@ async fn console_admin(state: &AppState, session: &SessionContext) -> ApiResult<
         .any(|t| {
             t.revoked_at.is_none()
                 && t.expires_at.is_none_or(|at| at > now)
-                && t.capabilities.iter().any(|c| c == TOKEN_ADMIN)
+                && t.capabilities.iter().any(|c| c == capability)
         });
-    if holds_admin {
-        return Ok(());
+    if holds {
+        return Ok(true);
     }
-    let first_admin_open = session.invite_role.is_none()
+    Ok(session.invite_role.is_none()
         && state
             .oidc
             .as_ref()
@@ -380,14 +399,7 @@ async fn console_admin(state: &AppState, session: &SessionContext) -> ApiResult<
         && !state
             .store
             .workspace_has_active_capability(workspace_id, TOKEN_ADMIN)
-            .await?;
-    if first_admin_open {
-        Ok(())
-    } else {
-        Err(ApiError::Forbidden(
-            "only a workspace admin can add an agent".into(),
-        ))
-    }
+            .await?)
 }
 
 /// Create the agent member and its worker token, both audit rows naming

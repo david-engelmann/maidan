@@ -5,16 +5,17 @@ use uuid::Uuid;
 
 use crate::dto::{
     ConfirmApprovalGate, CreateAgent, CreateChannel, CreateMessage, CreateThread,
-    CreatedAgentResponse, ListAuditQuery, ListEventsQuery, ListMessageEditsQuery,
-    ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery,
-    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
+    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
+    MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm,
+    OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
     SessionWorkspaces, SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
     ApprovalGate, AuditEvent, Channel, Member, Message, MessageEdit, StoredEvent, Thread,
-    ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace,
+    ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace, WorkspaceInvite,
 };
 
 /// Start an OIDC login
@@ -437,6 +438,57 @@ pub fn ui_create_channel() {}
     )
 )]
 pub fn ui_create_agent() {}
+
+/// Invite a person into the workspace (console)
+///
+/// `POST /workspaces/{wid}/invites` for the person signed in to the console:
+/// a human member holding `workspace:admin` on a live token, or, before
+/// anyone holds an admin token, the person who may mint the first one. A
+/// bearer is held to `workspace:admin`; a session made from a token is refused.
+#[utoipa::path(post, path = "/ui/api/workspaces/{wid}/invites", tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWorkspaceInvite,
+    security(
+        ("bearerAuth" = ["workspace:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = MintWorkspaceInviteResponse),
+        (status = 400, description = "Invalid email or expiry", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+        (status = 429, description = "Too many invites for this email domain", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn ui_create_workspace_invite() {}
+
+/// List a workspace's invites (console)
+#[utoipa::path(get, path = "/ui/api/workspaces/{wid}/invites", tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = ["workspace:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<WorkspaceInvite>),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn ui_list_workspace_invites() {}
+
+/// Revoke an unused workspace invite (console)
+#[utoipa::path(delete, path = "/ui/api/workspaces/{wid}/invites/{iid}", tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("iid" = Uuid, Path, description = "Invite id"),
+    ),
+    security(
+        ("bearerAuth" = ["workspace:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No unused invite with this id in this workspace", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn ui_revoke_workspace_invite() {}
 
 /// Create a thread in a channel (console)
 #[utoipa::path(

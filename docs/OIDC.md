@@ -134,7 +134,8 @@ Two layers, both needed:
 A successful OIDC callback creates or links a `Member` and creates a server-side
 browser session. When enabled (the default), `POST /auth/session/mint` may mint
 the first `token:admin` for the signed-in member's workspace; it refuses when an
-active `token:admin` already exists. `MAIDAN_OIDC_AUTO_MINT=1` only adds an
+active `token:admin` already exists. That token also carries `workspace:admin`,
+so the workspace's first admin can invite people. `MAIDAN_OIDC_AUTO_MINT=1` only adds an
 `auto_mint=1` hint to the UI redirect when that mint is available; the UI then
 performs the explicit mint request.
 
@@ -196,8 +197,10 @@ switching issuers.
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
 | GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. Another workspace whose member is SCIM-deactivated or frozen is left out, but the session's own workspace stays listed even when its member is frozen, since that is where the person already is. A session made from a token lists only its own workspace. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
-| POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. |
+| POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. The token holds the default capabilities, `token:admin` and `workspace:admin`. |
 | POST | `/ui/api/workspaces/{wid}/agents` | OIDC session or bearer | "Add an agent": an agent member and a `maidan.agent.worker` token, the secret returned once. A session's member must be a workspace admin: it holds a live `token:admin` token, or nobody does and it may mint the first one (not invited, `MAIDAN_OIDC_FIRST_ADMIN` not `0`). A session made from a token is refused; a bearer needs `token:admin`. 20 a workspace an hour (`MAIDAN_AGENT_ADD_RATE_LIMIT_MAX`). |
+| POST, GET | `/ui/api/workspaces/{wid}/invites` | OIDC session or bearer | Invite a person, or list the invites, from the console. A session's member must be a human who holds `workspace:admin` on a live token, or, while nobody holds `token:admin`, the person who may mint the first one (not invited, `MAIDAN_OIDC_FIRST_ADMIN` not `0`). A session made from a token is refused; a bearer needs `workspace:admin`. |
+| DELETE | `/ui/api/workspaces/{wid}/invites/{iid}` | OIDC session or bearer | Revoke an unused invite, on the same rule. |
 
 Existing bearer routes are unchanged. Session middleware is used on the session
 routes and the `/ui/api` routes (and the UI WebSocket path); MCP and A2A remain
@@ -206,7 +209,10 @@ bearer-token surfaces.
 ## Workspace invites
 
 A holder of `workspace:admin` invites a person with `POST /workspaces/{wid}/invites`
-and a body of `{"email", "role", "expires_at"?}`. `role` is `viewer` or `member`, and
+and a body of `{"email", "role", "expires_at"?}`. The first admin token
+(`POST /auth/session/mint`) holds it, so a workspace made by sign-up can invite.
+The console uses `/ui/api/workspaces/{wid}/invites`, where the person who signed
+up invites before minting any token. `role` is `viewer` or `member`, and
 an invite never grants a role above the inviter's own. The invite expires after 7 days
 by default and after 30 days at most. The response holds the link once, as
 `accept_path` (`/auth/oidc/login?invite=…`). The server keeps only a hash of it.
@@ -433,8 +439,9 @@ OIDC login unfinished.
 2. The issuer and client are configured per server process; the pending login
    binds the selected `workspace_id` to its one-time state.
 3. Sessions are server-side rows referenced by signed `maidan_session` cookies.
-4. `POST /auth/session/mint` can create the first workspace `token:admin` only
-   for an OIDC session and only while `MAIDAN_OIDC_FIRST_ADMIN` permits it.
+4. `POST /auth/session/mint` can create the first workspace `token:admin` (with
+   `workspace:admin`) only for an OIDC session and only while
+   `MAIDAN_OIDC_FIRST_ADMIN` permits it.
 
 ## References
 

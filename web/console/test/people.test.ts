@@ -176,14 +176,36 @@ test("invite: posts email and role, joins the returned path to the base, keeps n
   assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { email: "a@b.co", role: "viewer" });
 });
 
-test("invite: a bad email is refused before any request; a session without a token cannot invite", async () => {
+test("invite: a bad email is refused before any request; signed out, nothing is sent", async () => {
   const { api, calls } = fake([], bearer);
   await assert.rejects(api.invite("w", { email: "nope", role: "member" }), (e: unknown) => e instanceof PeopleError && e.message === EMAIL_REQUIRED);
   assert.equal(calls.length, 0);
   assert.equal(emailRefusal("a@b.co"), null);
-  const s = fake([]);
-  await assert.rejects(s.api.invite("w", { email: "a@b.co", role: "member" }), PeopleError);
-  assert.equal(s.calls.length, 0);
+  const out = fake([], { ...session, sessionMemberId: null });
+  await assert.rejects(out.api.invite("w", { email: "a@b.co", role: "member" }), PeopleError);
+  assert.equal(out.calls.length, 0);
+});
+
+test("invites: a signed-in session lists, invites and revokes through the console routes", async () => {
+  const { api, calls } = fake([
+    { body: [] },
+    { status: 201, body: { invite: { id: "i1" }, secret: "maid_inv_x", accept_path: "/auth/oidc/login?invite=maid_inv_x" } },
+    { status: 204 },
+  ]);
+  assert.deepEqual(await api.invites("w"), []);
+  assert.equal(calls[0].url, "http://h/ui/api/workspaces/w/invites");
+  const out = await api.invite("w", { email: "a@b.co", role: "member" });
+  assert.equal(out.link, "http://h/auth/oidc/login?invite=maid_inv_x");
+  assert.equal(calls[1].url, "http://h/ui/api/workspaces/w/invites");
+  assert.equal(calls[1].init?.method, "POST");
+  await api.revokeInvite("w", "i1");
+  assert.equal(calls[2].url, "http://h/ui/api/workspaces/w/invites/i1");
+  assert.equal(calls[2].init?.method, "DELETE");
+});
+
+test("invite: a session the server refuses says so and keeps no link", async () => {
+  const { api } = fake([{ status: 403, body: { detail: "only a workspace admin can invite people" } }]);
+  await assert.rejects(api.invite("w", { email: "a@b.co", role: "member" }), PeopleError);
 });
 
 test("invite: the server's refusal reaches the form", async () => {
