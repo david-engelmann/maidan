@@ -2621,8 +2621,9 @@ pub trait AssignmentStore: Send + Sync {
     /// `ClaimFailed` when charging that claim's worked time put the thread
     /// over budget (see [`reap_expired_claims`](Self::reap_expired_claims)).
     /// Empty vec when nothing was claimed. With `repo` (normalized
-    /// `owner/name`), only a thread whose footprint names that repository is
-    /// claimed, for a worker whose checkout is that repository.
+    /// `owner/name`), only a thread whose footprint or `repo` attribute names
+    /// that repository is claimed, for a worker whose checkout is that
+    /// repository.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,

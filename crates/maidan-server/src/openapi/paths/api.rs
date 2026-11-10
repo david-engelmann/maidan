@@ -2880,7 +2880,7 @@ pub fn clear_task_duplicate() {}
         ("attr.linear_issue" = Option<String>, Query, description = "The Linear issue key, e.g. ENG-123"),
         ("attr.tier" = Option<String>, Query, description = "Review tier: A or B"),
         ("attr.lane" = Option<String>, Query, description = "Service lane: batch or flex"),
-        ("attr.review_family" = Option<String>, Query, description = "The provider family a review child is routed to"),
+        ("attr.review_family" = Option<String>, Query, description = "The label on a review child the server spawned; nothing routes on it"),
         ("ref.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)")),
     security(("bearerAuth" = [])),
     responses(

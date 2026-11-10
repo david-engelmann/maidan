@@ -2461,7 +2461,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "integer"
     },
     "repo": {
-      "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work",
+      "description": "only claim a thread whose footprint or repo attribute names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread naming neither is then never claimed. Omitted, any work",
       "type": "string"
     }
   },
@@ -2507,7 +2507,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "integer"
     },
     "repo": {
-      "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work",
+      "description": "only claim a thread whose footprint or repo attribute names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread naming neither is then never claimed. Omitted, any work",
       "type": "string"
     },
     "wait_ms": {
@@ -3194,7 +3194,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "repo": {
-      "description": "count only threads whose footprint names this repository (owner/name or a GitHub clone URL), as claim_next_workspace_thread's repo. Omitted, any work",
+      "description": "count only threads whose footprint or repo attribute names this repository (owner/name or a GitHub clone URL), as claim_next_workspace_thread's repo. Omitted, any work",
       "type": "string"
     },
     "workspace_id": {

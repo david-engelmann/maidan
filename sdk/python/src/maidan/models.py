@@ -219,7 +219,7 @@ class TaskAttributes(Model):
     tier: Optional[str] = None
     #: The service lane it may run in, ``batch`` or ``flex``; unset runs at standard rates.
     lane: Optional[str] = None
-    #: The provider family a review child is routed to; server-set.
+    #: A label on a review child the server spawned; nothing routes on it. Server-set.
     review_family: Optional[str] = None
     #: The provider family that wrote the change a review task reviews.
     author_family: Optional[str] = None

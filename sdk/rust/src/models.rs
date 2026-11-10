@@ -297,7 +297,7 @@ model! {
         tier: Option<String>,
         /// The service lane it may run in, `batch` or `flex`; unset runs at standard rates.
         lane: Option<String>,
-        /// The provider family a review child is routed to; server-set.
+        /// A label on a review child the server spawned; nothing routes on it. Server-set.
         review_family: Option<String>,
         /// The provider family that wrote the change a review task reviews.
         author_family: Option<String>,

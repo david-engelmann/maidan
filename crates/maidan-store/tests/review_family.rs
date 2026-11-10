@@ -600,3 +600,502 @@ async fn a_review_is_routed_away_from_its_authors_family_on_postgres() {
     })
     .await;
 }
+
+const SQLITE_0230: &str =
+    include_str!("../../../migrations/sqlite/0230_review_served_where_its_change_is.sql");
+const POSTGRES_0230: &str =
+    include_str!("../../../migrations/postgres/0230_review_served_where_its_change_is.sql");
+
+/// The backend under a store, for the writes the store has no call for: a
+/// usage record, and a migration run again.
+#[derive(Clone)]
+enum Pool {
+    Sqlite(sqlx::SqlitePool),
+    Postgres(sqlx::PgPool),
+}
+
+impl Pool {
+    async fn usage(&self, u: Usage) {
+        let done = match self {
+            Self::Sqlite(pool) => sqlx::query(INSERT_SQLITE)
+                .bind(Uuid::now_v7())
+                .bind(u.ws)
+                .bind(u.thread)
+                .bind(u.reporter)
+                .bind(Uuid::now_v7())
+                .bind(u.model)
+                .execute(pool)
+                .await
+                .map(|_| ()),
+            Self::Postgres(pool) => sqlx::query(INSERT_POSTGRES)
+                .bind(Uuid::now_v7())
+                .bind(u.ws)
+                .bind(u.thread)
+                .bind(u.reporter)
+                .bind(Uuid::now_v7())
+                .bind(u.model)
+                .execute(pool)
+                .await
+                .map(|_| ()),
+        };
+        done.expect("usage");
+    }
+
+    /// Run migration 0230 again on rows written after it first ran.
+    async fn rerun_0230(&self) {
+        let done = match self {
+            Self::Sqlite(pool) => sqlx::raw_sql(SQLITE_0230).execute(pool).await.map(|_| ()),
+            Self::Postgres(pool) => sqlx::raw_sql(POSTGRES_0230).execute(pool).await.map(|_| ()),
+        };
+        done.expect("re-run 0230");
+    }
+
+    async fn close(&self, thread: ThreadId) {
+        let done = match self {
+            Self::Sqlite(pool) => {
+                sqlx::query("UPDATE maidan_threads SET state = 'closed' WHERE id = ?")
+                    .bind(thread.0)
+                    .execute(pool)
+                    .await
+                    .map(|_| ())
+            }
+            Self::Postgres(pool) => {
+                sqlx::query("UPDATE maidan_threads SET state = 'closed' WHERE id = $1")
+                    .bind(thread.0)
+                    .execute(pool)
+                    .await
+                    .map(|_| ())
+            }
+        };
+        done.expect("close");
+    }
+}
+
+const REPO: &str = "example/widgets";
+
+/// A workspace with an Anthropic seat that writes the changes and a DeepSeek
+/// seat of a third family, whose family is on record there.
+struct Room {
+    ws: WorkspaceId,
+    channel: ChannelId,
+    author: MemberId,
+    third: MemberId,
+}
+
+async fn room(store: &dyn Store, pool: &Pool, name: &str) -> Room {
+    let ws = store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .expect("workspace")
+        .id;
+    let mut ids = Vec::new();
+    for handle in ["author", "third"] {
+        ids.push(
+            store
+                .create_member(NewMember {
+                    workspace_id: ws,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .expect("member")
+                .id,
+        );
+    }
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel")
+        .id;
+    let (author, third) = (ids[0], ids[1]);
+    // The DeepSeek seat's family is on record before any review exists.
+    let elsewhere = store
+        .create_thread(NewThread {
+            channel_id: channel,
+            parent_thread_id: None,
+            title: Some("deepseek's earlier work".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread")
+        .id;
+    pool.usage(Usage {
+        ws: ws.0,
+        thread: elsewhere.0,
+        reporter: third.0,
+        model: "deepseek-chat",
+    })
+    .await;
+    pool.close(elsewhere).await;
+    Room {
+        ws,
+        channel,
+        author,
+        third,
+    }
+}
+
+/// What `claim_next` filtered by `repo` and `engine` hands `member` in
+/// `room`'s channel.
+async fn filtered_claim(
+    store: &dyn Store,
+    room: &Room,
+    member: MemberId,
+    repo: &str,
+    engine: TaskEngine,
+) -> Option<Thread> {
+    store
+        .claim_next_thread_with_event(room.channel, member, None, Some(repo), Some(engine), None)
+        .await
+        .expect("claim next")
+        .0
+}
+
+/// A review child of `change` as the spawn wrote one before it copied
+/// anything: the kind and the author's family only.
+async fn old_review(store: &dyn Store, room: &Room, change: ThreadId, title: &str) -> ThreadId {
+    store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: Some(change),
+                title: Some(title.into()),
+                description: None,
+                created_by: None,
+            },
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("review")
+        .0
+        .id
+}
+
+fn exclusive(path: &str) -> Footprint {
+    Footprint {
+        repo: REPO.into(),
+        mode: FootprintMode::Exclusive,
+        items: vec![FootprintItem {
+            kind: FootprintKind::Path,
+            value: path.into(),
+        }],
+    }
+}
+
+/// A change in `room` with `footprint` and `attributes`, written by the
+/// author and sent to review; returns the change and the review it spawned.
+async fn change_into_review(
+    store: &dyn Store,
+    pool: &Pool,
+    room: &Room,
+    title: &str,
+    footprint: Option<Footprint>,
+    attributes: TaskAttributes,
+) -> (ThreadId, ThreadId) {
+    let (change, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+                created_by: None,
+            },
+            footprint,
+            Some(attributes),
+            None,
+        )
+        .await
+        .expect("change");
+    store
+        .claim_thread(change.id, room.author)
+        .await
+        .expect("claim");
+    pool.usage(Usage {
+        ws: room.ws.0,
+        thread: change.id.0,
+        reporter: room.author.0,
+        model: "claude-sonnet-4",
+    })
+    .await;
+    store
+        .set_thread_result_claiming(change.id, room.author, &json!({"status": "done"}))
+        .await
+        .expect("result");
+    let (_, events) = store
+        .transition_thread_with_event(change.id, room.author, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let review = events
+        .iter()
+        .map(|e| e.opened_event().expect("event"))
+        .find_map(|e| match e {
+            Event::ThreadCreated { thread, .. } if thread.parent_thread_id == Some(change.id) => {
+                Some(thread.id)
+            }
+            _ => None,
+        })
+        .expect("a review child is spawned");
+    (change.id, review)
+}
+
+/// A spawned review carries its change's engine, repository and lane, and
+/// its author's family; it holds no footprint, so it waits on no claim and
+/// no claim waits on it. A change that names its repository only in its
+/// footprint lends the review that one.
+async fn a_spawned_review_carries_its_changes_engine_repository_and_lane(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "carries").await;
+    let (_, review) = change_into_review(
+        store,
+        pool,
+        &room,
+        "named change",
+        Some(exclusive("src/")),
+        TaskAttributes {
+            kind: TaskKind::Change,
+            engine: Some(TaskEngine::Session),
+            repo: Some(REPO.into()),
+            lane: Some(TaskLane::Flex),
+            ..TaskAttributes::default()
+        },
+    )
+    .await;
+    let attributes = store.get_thread_attributes(review).await.expect("attrs");
+    assert_eq!(attributes.kind, TaskKind::Review);
+    assert_eq!(attributes.engine, Some(TaskEngine::Session));
+    assert_eq!(attributes.repo.as_deref(), Some(REPO));
+    assert_eq!(attributes.lane, Some(TaskLane::Flex));
+    assert_eq!(attributes.author_family.as_deref(), Some("anthropic"));
+    assert_eq!(
+        store.get_thread_footprint(review).await.expect("footprint"),
+        None,
+        "a review holds nothing"
+    );
+
+    let (_, review) = change_into_review(
+        store,
+        pool,
+        &room,
+        "footprint-only change",
+        Some(exclusive("docs/")),
+        TaskAttributes {
+            kind: TaskKind::Change,
+            engine: Some(TaskEngine::Session),
+            ..TaskAttributes::default()
+        },
+    )
+    .await;
+    let attributes = store.get_thread_attributes(review).await.expect("attrs");
+    assert_eq!(attributes.engine, Some(TaskEngine::Session));
+    assert_eq!(
+        attributes.repo.as_deref(),
+        Some(REPO),
+        "the change's footprint names the repository"
+    );
+    assert_eq!(attributes.lane, None);
+}
+
+/// `claim_next` filtered by the change's engine and repository hands its
+/// review to a seat of a third family, never to the author's; a seat that
+/// serves another engine or repository is not handed it.
+async fn a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "filtered").await;
+    let (_, review) = change_into_review(
+        store,
+        pool,
+        &room,
+        "change",
+        Some(exclusive("src/")),
+        TaskAttributes {
+            kind: TaskKind::Change,
+            engine: Some(TaskEngine::Session),
+            repo: Some(REPO.into()),
+            ..TaskAttributes::default()
+        },
+    )
+    .await;
+    assert!(
+        filtered_claim(store, &room, room.author, REPO, TaskEngine::Session)
+            .await
+            .is_none(),
+        "the author's family is refused"
+    );
+    let direct = store.claim_thread(review, room.author).await;
+    assert!(
+        matches!(&direct, Err(StoreError::Conflict(m)) if m.contains("anthropic family")),
+        "{direct:?}"
+    );
+    assert!(
+        filtered_claim(
+            store,
+            &room,
+            room.third,
+            "example/other",
+            TaskEngine::Session
+        )
+        .await
+        .is_none(),
+        "another repository's seat"
+    );
+    assert!(
+        filtered_claim(store, &room, room.third, REPO, TaskEngine::Unattended)
+            .await
+            .is_none(),
+        "another engine's seat"
+    );
+    let handed = filtered_claim(store, &room, room.third, REPO, TaskEngine::Session)
+        .await
+        .expect("the third family's seat is handed the review");
+    assert_eq!(handed.id, review);
+}
+
+/// Migration 0230, run again over a review spawned before the spawn copied
+/// anything: the waiting review takes its change's engine and repository and
+/// is handed out by a filtered `claim_next`; a closed review is untouched, and
+/// a second run changes nothing.
+async fn the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "backfill").await;
+    // A change with no usage on record spawns no review of its own, so the
+    // reviews below stand as the old spawn left them.
+    let (change, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: None,
+                title: Some("change".into()),
+                description: None,
+                created_by: None,
+            },
+            Some(exclusive("src/")),
+            Some(TaskAttributes {
+                kind: TaskKind::Change,
+                engine: Some(TaskEngine::Session),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("change");
+    store
+        .claim_thread(change.id, room.author)
+        .await
+        .expect("claim");
+    store
+        .set_thread_result_claiming(change.id, room.author, &json!({"status": "done"}))
+        .await
+        .expect("result");
+    store
+        .transition_thread(change.id, room.author, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let waiting = old_review(store, &room, change.id, "waiting review").await;
+    let closed = old_review(store, &room, change.id, "closed review").await;
+    pool.close(closed).await;
+    assert!(
+        filtered_claim(store, &room, room.third, REPO, TaskEngine::Session)
+            .await
+            .is_none(),
+        "before the backfill no filtered seat sees it"
+    );
+
+    pool.rerun_0230().await;
+    pool.rerun_0230().await;
+
+    let attributes = store.get_thread_attributes(waiting).await.expect("attrs");
+    assert_eq!(attributes.engine, Some(TaskEngine::Session));
+    assert_eq!(
+        attributes.repo.as_deref(),
+        Some(REPO),
+        "the change's footprint names it"
+    );
+    assert_eq!(attributes.author_family.as_deref(), Some("anthropic"));
+    let untouched = store.get_thread_attributes(closed).await.expect("attrs");
+    assert_eq!(untouched.engine, None);
+    assert_eq!(untouched.repo, None);
+    assert_eq!(
+        store
+            .get_thread_footprint(waiting)
+            .await
+            .expect("footprint"),
+        None
+    );
+    let handed = filtered_claim(store, &room, room.third, REPO, TaskEngine::Session)
+        .await
+        .expect("the backfilled review is handed out");
+    assert_eq!(handed.id, waiting);
+}
+
+async fn served_where_the_change_is(store: &dyn Store, pool: &Pool) {
+    a_spawned_review_carries_its_changes_engine_repository_and_lane(store, pool).await;
+    a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(store, pool).await;
+    the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(store, pool).await;
+}
+
+#[tokio::test]
+async fn a_review_is_served_where_its_change_is_on_sqlite() {
+    let pool = maidan_search::sqlite_pool_options()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::for_tests(pool.clone());
+    served_where_the_change_is(&store, &Pool::Sqlite(pool)).await;
+}
+
+#[tokio::test]
+async fn a_review_is_served_where_its_change_is_on_postgres() {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("container host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("container port");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&format!(
+            "postgres://postgres:postgres@{host}:{port}/postgres"
+        ))
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store = PostgresStore::for_tests(pool.clone());
+    served_where_the_change_is(&store, &Pool::Postgres(pool)).await;
+}
