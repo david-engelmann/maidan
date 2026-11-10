@@ -1727,6 +1727,19 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/{wid}/agents",
             no_store(post(routes::ui_create_agent)),
         )
+        // Invites in the console: the person who opened the workspace
+        // invites people without holding an admin token.
+        .route(
+            "/ui/api/workspaces/{wid}/invites",
+            no_store(
+                post(routes::ui_create_workspace_invite)
+                    .merge(get(routes::ui_list_workspace_invites)),
+            ),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/invites/{iid}",
+            delete(routes::ui_revoke_workspace_invite),
+        )
         .route(
             "/ui/api/workspaces/{wid}/channels",
             post(routes::create_channel),

@@ -671,6 +671,9 @@ mod secret_rest_e2e;
 #[path = "../seed_from_message_e2e.rs"]
 mod seed_from_message_e2e;
 
+#[path = "../self_serve_invite_e2e.rs"]
+mod self_serve_invite_e2e;
+
 #[path = "../server_card_e2e.rs"]
 mod server_card_e2e;
 

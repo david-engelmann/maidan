@@ -171,6 +171,29 @@ filter) is `WS_A`.
 
 **Record:** the same set, as `PERSON_B` and `WS_B`.
 
+### 1f. Person A invites a second person
+
+**Who:** person A, in profile A.
+
+**Do:** open **People**. In the **Invite a person** form, enter a third fresh
+address, choose **Member** and press **Invite**. Then press **Revoke** on the
+new row, so the run takes no third Zero Trust seat.
+
+**Observe:** the invite link is shown once, the new row shows `member` and an
+expiry 7 days out, and after **Revoke** it reads `revoked`. No admin token is
+needed: the person who signed up invites from their own sign-in. In profile B,
+`https://maidan.world/ui/api/workspaces/WS_A/invites` is refused.
+
+**Record:** a screenshot of People before and after the revoke, without
+the link, and profile B's refusal.
+
+A workspace whose first admin token was minted before #2175 holds
+`token:admin` without `workspace:admin`. In that workspace the form refuses
+the person who signed up. They revoke that token with itself
+(`DELETE /tokens/TOKEN_ID`, which needs `token:admin`), then mint a new one
+from **Tools**, **Connect**, **Mint an admin token**. The new token carries
+`workspace:admin`.
+
 ## Step 2: a channel for the work
 
 **Who:** person A, in profile A.
@@ -196,8 +219,8 @@ person signed in to through Cloudflare Access, and an agent member has no
 address to sign in with, so every OAuth grant on maidan.world belongs to the
 person who consented. The run therefore splits the step: person A proves the
 OAuth leg with their own grant (3a), and the agent works with its own worker
-token (3b). A second person in workspace A cannot stand in for the agent
-either: see [Where the hosted path differs](#where-the-hosted-path-differs).
+token (3b). Inviting a second person into workspace A (1f) does not change
+this: a person's grant is still that person's, not an agent's.
 
 ### 3a. Person A connects an MCP client over OAuth
 
@@ -365,11 +388,8 @@ workspace A: no title, no message, no member.
 **Record:** both answers, and the number of tool calls Claude made on
 `maidan-gate-b` since 3c.
 
-The test makes its first call with `get_thread`, which is not an MCP tool, so
-that assertion passes on "unknown tool" rather than on tenant isolation.
-`get_thread_context` exists and checks the workspace, so the run uses it. The
-test should change the same way; that is a fix for the test, not for this
-page.
+The first refusal reads `forbidden: token is not valid for this workspace`,
+the answer the test asserts for the same call.
 
 ## Step 6: the person reviews and closes
 
@@ -494,10 +514,8 @@ What the cleanup cannot remove:
 | A mock identity provider signs anyone in by a query parameter | Cloudflare Access, with a one-time code mailed to the address | Each person needs a real mailbox and a fresh address. Each sign-in is a Zero Trust seat. The Access App Launcher must be set up, or the login never comes back ([Hosted Operations](Hosted%20Operations.md#sign-in-and-sign-up)) |
 | The invite's `signup_path` is followed in the same client | Maidan sends no email; the operator sends the invite by hand | The run hands the link over directly. Sending the template email is optional, and is the only check that the message itself arrives |
 | An agent member gets a console session from the store and consents to the client | Consent needs a person's own sign-in, and an agent member cannot sign in through Access | No OAuth grant on maidan.world belongs to an agent. The run proves the OAuth leg on person A's grant and runs the work on the agent's worker token, so "an agent connected through OAuth" holds only in the sense that a person's client is the agent |
-| Two members of workspace A: the person and the agent seat | A sign-up workspace cannot invite a second person: the first admin token has no `workspace:admin`, a token cannot mint a capability it lacks, and a browser session never carries it | A second human in workspace A is out of reach, so a person cannot stand in for the agent seat either. This is a product gap for any team on maidan.world, not only for the run |
 | The client's metadata document is served from a test host the instance lists | Claude Code's document, from a host the instance lists | The PKCE exchange happens inside Claude Code; the run sees the consent page and the result, not each request |
 | The OAuth token is shown refused on `/me` and `/mcp` | The token never leaves the client | Covered by CI and by the P6 record, not by this run |
-| The cross-tenant read calls `get_thread` | `get_thread` is not an MCP tool | The run uses `get_thread_context`. The test passes this assertion for the wrong reason and should be fixed |
 | The default claim lease (10 minutes) | The same default | The run asks for 30 minutes, since a person types the calls |
 | Meters are flushed by a direct call, and today's row is read | A flush every 60 seconds while awake, and monthly reads | Wait a minute with the console open before reading; the counts are compared with transcripts, not a fixed number |
 | A server that never sleeps | A container that sleeps 15 minutes after the last request, and a Worker that holds requests for up to 90 seconds while it starts | A long pause adds a cold start; work a sleeping server would do (claim expiry, sweeps) waits for the next request or the daily wake ([What a sleeping instance means](Hosted%20Operations.md#what-a-sleeping-instance-means)) |
@@ -512,7 +530,7 @@ and reconciles Open Work.
 | Step | Pass when | Evidence |
 |---|---|---|
 | 0 | `/health` is `ok` on the release under test | `/health` JSON, `/status` screenshot |
-| 1 | Two sign-ups by invite, two workspaces, each with one member and `#general` | Session JSON, channel lists, waitlist lines, screenshots |
+| 1 | Two sign-ups by invite, two workspaces, each with one member and `#general`; person A invites and revokes from the console, and B is refused A's invites | Session JSON, channel lists, waitlist lines, screenshots |
 | 2 | `launch` created | Channel list |
 | 3 | OAuth consent names the right workspace and `whoami` agrees, for A and for B; the agent's token works | Consent screenshots, `whoami` answers |
 | 4 | The agent claims, works, reports usage and hands to review | Terminal output, usage rollup |
@@ -535,4 +553,3 @@ not make the decision.
 | Web push on prod (Next 24) | `MAIDAN_VAPID_PRIVATE_KEY`, `MAIDAN_VAPID_PUBLIC_KEY` and `MAIDAN_VAPID_SUBJECT` are set as prod Worker secrets and the container restarted ([Secrets](Hosted%20Operations.md#secrets)); then **Tools**, **This device** turns notifications on. Launching without them means notifications in the console only | The maintainer's |
 | Demo reviewer tokens (Next 12) | Only when a directory listing is submitted: a reviewer token per directory on try.maidan.world, with an expiry that outlasts that directory's review and a prefix per listing, after name and logo clearance. Submitting at all waits on the maintainer's go | The maintainer's |
 | Connectors pointed at `/mcp` (Next 23) | Either `/mcp` sends a client to `/mcp/streamable` or accepts its token, or launch goes out with the docs naming `/mcp/streamable` only, as they do now | The maintainer's |
-| A second person in a sign-up workspace | Either a sign-up workspace can invite people before launch, or launch says it is one person and their agents for now | The maintainer's |

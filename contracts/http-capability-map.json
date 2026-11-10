@@ -1249,6 +1249,24 @@
   },
   {
     "method": "POST",
+    "path": "/ui/api/workspaces/{wid}/invites",
+    "capability": "workspace:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/invites",
+    "capability": "workspace:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/invites/{iid}",
+    "capability": "workspace:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:write",
     "surface": "http"

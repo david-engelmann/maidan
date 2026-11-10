@@ -441,26 +441,36 @@ export class PeopleApi {
     await this.write("DELETE", `/tokens/${encodeURIComponent(id)}`, undefined);
   }
 
-  async invites(workspace: string): Promise<Invite[]> {
-    const rows = await this.bearer<Array<{ id: string; email: string; role: string; created_at: string; expires_at: string; revoked_at?: string | null; accepted_at?: string | null }>>(`/workspaces/${workspace}/invites`);
+  /**
+   * The workspace's invites, or `null` when the server refuses this person
+   * the list (403): only a workspace admin invites, so the panel hides for
+   * everyone else instead of greeting them with an error.
+   */
+  async invites(workspace: string): Promise<Invite[] | null> {
+    const c = this.creds();
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspace}/invites`), { headers: headers(c), credentials: "include" });
+    if (res.status === 403) return null;
+    if (!res.ok) return fail(res, this.mode());
+    const rows = (await res.json()) as Array<{ id: string; email: string; role: string; created_at: string; expires_at: string; revoked_at?: string | null; accepted_at?: string | null }>;
     return rows.map((i) => ({ id: i.id, email: i.email, role: i.role, createdAt: i.created_at, expiresAt: i.expires_at, revokedAt: i.revoked_at ?? null, acceptedAt: i.accepted_at ?? null }));
   }
 
   /**
    * Invites a person. The link comes back once; the caller shows it and
-   * drops it, and nothing here keeps or logs it. Needs a bearer token.
+   * drops it, and nothing here keeps or logs it. A signed-in admin goes
+   * through the session route, a token through the bearer one.
    */
   async invite(workspace: string, req: { email: string; role: InviteRole }): Promise<{ id: string; link: string }> {
     const why = emailRefusal(req.email);
     if (why) throw new PeopleError(why);
-    const res = await this.raw("POST", `/workspaces/${workspace}/invites`, { email: req.email.trim(), role: req.role });
+    const res = await this.either("POST", `/workspaces/${workspace}/invites`, { email: req.email.trim(), role: req.role });
     const out = (await res.json()) as { invite?: { id?: string }; accept_path?: string };
     if (typeof out.invite?.id !== "string" || typeof out.accept_path !== "string") throw new PeopleError("The server did not send the invite link back.");
     return { id: out.invite.id, link: inviteLink(this.creds().base, out.accept_path) };
   }
 
   async revokeInvite(workspace: string, id: string): Promise<void> {
-    await this.write("DELETE", `/workspaces/${workspace}/invites/${encodeURIComponent(id)}`, undefined);
+    await this.either("DELETE", `/workspaces/${workspace}/invites/${encodeURIComponent(id)}`, undefined);
   }
 
   private async secretWrite(method: string, path: string, body: unknown): Promise<{ id: string; secret: string }> {
@@ -472,6 +482,17 @@ export class PeopleApi {
 
   private async write(method: string, path: string, body: unknown): Promise<void> {
     await this.raw(method, path, body);
+  }
+
+  /** A write the session routes also serve: a token's goes to the bearer route, a signed-in person's to the session route. */
+  private async either(method: string, path: string, body: unknown): Promise<Response> {
+    const c = this.creds();
+    if (!hasToken(c) && !c.sessionMemberId) throw new PeopleError("Sign in first.");
+    const init: RequestInit = { method, headers: headers(c, body !== undefined), credentials: "include" };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    const res = await this.fetchFn(apiPath(c, path), writeInit(init));
+    if (!res.ok) return fail(res, this.mode());
+    return res;
   }
 
   private async raw(method: string, path: string, body: unknown): Promise<Response> {

@@ -2,7 +2,9 @@
 //! Postgres. Each step below is a line of the launch checklist.
 //!
 //! 1. A visitor joins the waitlist, an operator invites them, and the
-//!    invited OIDC sign-up creates a fresh workspace and a session.
+//!    invited OIDC sign-up creates a fresh workspace and a session. The
+//!    person invites a second person from the console, into that workspace
+//!    only.
 //! 2. The person creates a channel for the work.
 //! 3. The workspace's agent seat connects an MCP client whose metadata
 //!    document lives on a host the instance lists: `/oauth/authorize`,
@@ -508,6 +510,36 @@ async fn launch_gate_e2e() {
         Some(vec![json!("general")]),
         "a new workspace's channels: {channels}"
     );
+    // The person who signed up can invite a second person, from the console
+    // and without an admin token; the other tenant's person cannot invite
+    // into this workspace.
+    let ada_invites = format!("/workspaces/{}/invites", ada.ws.0);
+    let teammate = json!({"email": "teammate@launch-gate.example", "role": "member"});
+    let invited = env
+        .ui(
+            &ada,
+            reqwest::Method::POST,
+            &ada_invites,
+            Some(teammate.clone()),
+        )
+        .await;
+    assert_eq!(invited.status(), StatusCode::CREATED, "invite a teammate");
+    let intruder = env
+        .ui(&grace, reqwest::Method::POST, &ada_invites, Some(teammate))
+        .await;
+    assert_eq!(
+        intruder.status(),
+        StatusCode::FORBIDDEN,
+        "cross-tenant invite"
+    );
+    assert_eq!(
+        env.store
+            .list_workspace_invites(ada.ws)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 
     // 2. A channel for the work.
     let channel = env
@@ -665,11 +697,25 @@ async fn launch_gate_e2e() {
     mcp_calls += 1;
 
     // 8. (during) The second tenant's agent is refused on the first's
-    //    thread and queue.
-    assert!(env
-        .tool(&grace_token, "get_thread", json!({"thread_id": tid}))
+    //    thread and queue. The read is a real tool, refused by the tenant
+    //    check, not an unknown name refused before any check runs.
+    let cross_read = env
+        .tool(
+            &grace_token,
+            "get_thread_context",
+            json!({"thread_id": tid}),
+        )
         .await
-        .is_err());
+        .expect_err("another tenant's agent cannot read the thread");
+    assert!(
+        cross_read.contains("token is not valid for this workspace"),
+        "{cross_read}"
+    );
+    // The same read by the thread's own agent succeeds, so the refusal
+    // above is the tenant boundary and not the call.
+    env.ok(&token, "get_thread_context", json!({"thread_id": tid}))
+        .await;
+    mcp_calls += 1;
     assert!(env
         .tool(
             &grace_token,

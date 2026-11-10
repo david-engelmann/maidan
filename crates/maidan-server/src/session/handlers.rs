@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use maidan_auth::{
-    capability::{self, WORKSPACE_READ},
+    capability::{self, WORKSPACE_ADMIN, WORKSPACE_READ},
     hash_secret, AuthContext, TokenSecret, TOKEN_ADMIN,
 };
 use maidan_types::{AuditScope, MemberId, NewApiToken, NewAuditEvent, NewMaidanSession};
@@ -185,8 +185,13 @@ pub async fn mint_first_admin_token(
         ));
     }
 
+    // The workspace's first admin decides who else belongs to it, so the
+    // token carries `workspace:admin` (inviting people) beside `token:admin`.
+    // Without it nobody in a workspace made by sign-up could ever invite: a
+    // token cannot mint a capability it does not hold.
     let mut capabilities = capability::default_minted();
     capabilities.push(TOKEN_ADMIN.to_string());
+    capabilities.push(WORKSPACE_ADMIN.to_string());
     let secret = TokenSecret::generate();
     let actor = ctx.member_id;
     let record = state
