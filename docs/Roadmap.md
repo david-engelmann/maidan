@@ -141,8 +141,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    and an approval binds the evidence it was shown, re-checked at close (#1309,
    #1310, #1312), with the evidence on the card (#1316) and how far to trust
    each piece (#1327). The screenshots are captured by a script, and the board
-   is the README hero (#1353). Next: the launch polish of Next 30, performance
-   Tier 0 and the UI audit's P2 items.
+   is the README hero (#1353). The launch polish shipped: performance Tier 0,
+   the UI audit's P2 items, and every signed-in screen held at phone width
+   in CI (#2191).
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
@@ -178,7 +179,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
      prod (Next 24) and deploys without the five-minute restart gap (Next 47).
    - **Prove.** A validated version (Next 14), the ChatGPT card and the
      connect recipes tested live (Next 17, Next 13), the listing assets and
-     demo instance (Next 12), and the launch polish (Next 30). Public `main`
+     demo instance (Next 12); the launch polish shipped (#2191). Public `main`
      names no internal project (#1387), nor since #2112 any private
      deployment, checked by token, and pi's client contract runs in Maidan's
      CI (#1384). The README and landing lead with the console under "Many
