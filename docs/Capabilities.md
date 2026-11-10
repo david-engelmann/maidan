@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v445.0.0](https://github.com/david-engelmann/maidan/releases/tag/v445.0.0) — every Threat-Model row names the test that holds it, and 2 more
+
+sign-up is open on maidan.world.
+
+- Every Threat-Model row names the test that holds it
+- Every close names the claim it ended; the withdrawal comment finds itself on any pull request
+- Sign-up is open on maidan.world
+
+`CHANGELOG.md` under `[445.0.0]` has every entry.
+
 ## [v444.0.0](https://github.com/david-engelmann/maidan/releases/tag/v444.0.0) — the docs site leads with how to use Maidan, and 4 more
 
 the console ends a task (Cancel, Close as abandoned); second-family reviews route to where the change is; the authority audit scans every crate.
