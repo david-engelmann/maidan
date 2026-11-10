@@ -93,7 +93,7 @@ change.
 
 ## Current state (2026-11-07)
 
-- **Releases:** latest **`v441.0.0`** (2026-11-09). The newest record in
+- **Releases:** latest **`v442.0.0`** (2026-11-10). The newest record in
   `docs/Capabilities.md` says what it carries. A release is one button: run
   the `cut release` workflow from `dev` (`gh workflow run cut-release.yml -R
   david-engelmann/maidan --ref dev`, optionally `-f summary='…'`). It writes

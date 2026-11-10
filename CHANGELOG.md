@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [442.0.0] — 2026-11-10
+
+Cancelled tasks leave the merge queue and the context pack, inbound GitHub deliveries are counted, and prod picks up its web push keys.
+
+### CI compiles the workspace once per run
+
+- **Changed:** CI builds every test binary, the debug server and CLI, and the console harnesses once, in a `build (tests + binaries)` job, and every other job runs what it built: `unit tests` and four integration shards run one `cargo nextest archive` (each test once; the shards no longer re-run the unit tests), the Playwright jobs and the report-only clients run its binaries, and the compose and scale-out smokes run one image of its server. The shipped image is built once, for the OTLP smoke and the kind install. Cargo and Docker caches are one per profile and saved only from `dev`, so they stop evicting each other from the 10 GB Actions cache. Seven tests that another test fully covered are removed.
+
+### The change sweep reads CI when GitHub says it changed
+
+- **Changed:** with the GitHub ingress configured (`MAIDAN_GITHUB_WEBHOOK_SECRET`), the change sweep reads a pull request's CI through the Actions and commit-status APIs (the fallback for a fine-grained token, which cannot read the GraphQL `statusCheckRollup`) only when a CI event arrived since its last read, its head moved, or that read is older than a backstop. Before, every sweep (120 s) made a call for the head's workflow runs, one for each run's jobs and one for its commit statuses for every open tracked pull request, and ran out the token's shared 5,000-an-hour REST budget. Each sweep still makes the one GraphQL read, so closes, merges and the ready label are seen as before. Without the ingress every sweep reads CI as it did. A swarm-metrics read and the merge-queue label check no longer read Actions at all: they record no checks.
+- **Added:** `POST /integrations/github/events` accepts `workflow_run`, `check_suite`, `check_run` and `status`, behind the same signature check. Each marks the open tracked pull requests it names, by `pull_requests[].number` or by the head their CI was last read at, and makes no GitHub call. Migration 0228 adds `ci_event_at`, `ci_read_at` and `ci_read_head` to `maidan_change_pulls`.
+- **Added:** `MAIDAN_CHANGE_CI_BACKSTOP_SECS` (default 1800, `0` reads on every sweep): how old a pull request's last CI read may get before the sweep reads it again without an event. The hosted Worker forwards it to the container.
+
+### Inbound GitHub deliveries are counted
+
+- **Added:** `maidan_github_events_total{event, outcome}` counts each delivery to `POST /integrations/github/events`. Its outcome is `marked`, `unmatched`, `handled`, `ignored` or `refused`, the last for a bad signature. An operator forwarding CI events can check its sent count against what Maidan took in.
+
 ## [441.0.0] — 2026-11-09
 
 claude.ai connector sign-in (an omitted OAuth resource), ended threads refuse claims and skip change deliveries, the CI-access alert waits out rate limits, phone-width console fixes.
