@@ -152,7 +152,7 @@ fn is_read_cap(cap: &str) -> bool {
     READ_CAPS.contains(&cap)
 }
 
-fn pin_cap(rows: &[(&str, &str)], name: &str) -> Option<&'static str> {
+fn pin_cap(rows: &[(&'static str, &'static str)], name: &str) -> Option<&'static str> {
     rows.iter()
         .find(|(tool, _)| *tool == name)
         .map(|(_, cap)| *cap)
@@ -626,7 +626,9 @@ fn a_handler_does_not_exceed_its_declared_capability() {
     );
     for (tool, call) in HANDLER_CALL_EXCEPTIONS {
         assert!(
-            seen_exceptions.iter().any(|(t, c)| t == tool && *c == call),
+            seen_exceptions
+                .iter()
+                .any(|(t, c)| t == tool && *c == *call),
             "{tool} no longer calls {call}; update HANDLER_CALL_EXCEPTIONS"
         );
     }
