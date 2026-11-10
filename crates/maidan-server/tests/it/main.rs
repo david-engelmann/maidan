@@ -407,6 +407,9 @@ mod mcp_capability_matrix_e2e;
 #[path = "../mcp_e2e.rs"]
 mod mcp_e2e;
 
+#[path = "../mcp_over_permission_contract.rs"]
+mod mcp_over_permission_contract;
+
 #[path = "../mcp_resource_subscription_scope_e2e.rs"]
 mod mcp_resource_subscription_scope_e2e;
 
