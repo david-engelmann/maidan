@@ -1,7 +1,8 @@
 //! What a cancel and a close-abandoned clean up on both backends: each queues
 //! the withdrawal of the pull request the change flow opened for the task
 //! (and of no other), names the member whose claim it ended on the state
-//! change, and the task's result stops counting as an accepted decision.
+//! change, and the task's result stops counting as an accepted decision. A
+//! merge that lands a task someone else holds names that holder too.
 //! Postgres runs under testcontainers (skipped without Docker).
 
 use std::sync::Arc;
@@ -125,6 +126,79 @@ fn previous_assignee(events: &[StoredEvent]) -> Option<MemberId> {
         }
         other => panic!("expected ThreadStateChanged, got {other:?}"),
     }
+}
+
+/// The member the close of `thread` took the claim from, from the
+/// `ThreadStateChanged` into `closed` among `events`.
+fn closed_from(events: &[StoredEvent], thread: ThreadId) -> Option<MemberId> {
+    events
+        .iter()
+        .filter(|e| e.kind == EventKind::ThreadStateChanged && e.thread_id == Some(thread))
+        .find_map(
+            |e| match serde_json::from_value::<Event>(e.payload.clone()).unwrap() {
+                Event::ThreadStateChanged {
+                    to_state: ThreadState::Closed,
+                    previous_assignee_id,
+                    thread,
+                    ..
+                } => {
+                    assert_eq!(thread.assignee_id, None, "the claim is ended");
+                    Some(previous_assignee_id)
+                }
+                _ => None,
+            },
+        )
+        .expect("the landing closes the thread")
+}
+
+/// Merge `pull_number` and settle it as the PR sweep does.
+async fn merge_and_settle(store: &dyn Store, room: &Room, pull_number: i64) -> Vec<StoredEvent> {
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(room.ws, REPO, pull_number, Some(at), Some("c0ffee"), at)
+        .await
+        .unwrap();
+    match store
+        .settle_change_pull(room.ws, REPO, pull_number)
+        .await
+        .unwrap()
+    {
+        ChangeSettlement::Landed(stored) => stored,
+        other => panic!("expected the merge to land the task, got {other:?}"),
+    }
+}
+
+/// A merge lands a task in its owner's name. When the worker still holds it,
+/// the close ends that claim, and the state change names the worker, as an
+/// ordinary close by someone else does. A task nobody owns lands in the name
+/// of the worker that produced its result, who knows already.
+async fn a_merge_that_lands_a_held_task_names_its_holder(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "land-names-holder").await;
+    let owned = task(store.as_ref(), &room, "owned").await;
+    store
+        .set_thread_owner(owned, Some(room.producer))
+        .await
+        .unwrap();
+    store
+        .set_thread_result_claiming(owned, room.worker, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    delivered(store.as_ref(), &room, owned, 21).await;
+    let stored = merge_and_settle(store.as_ref(), &room, 21).await;
+    assert_eq!(closed_from(&stored, owned), Some(room.worker));
+
+    let unowned = task(store.as_ref(), &room, "unowned").await;
+    store
+        .set_thread_result_claiming(
+            unowned,
+            room.worker,
+            &serde_json::json!({"summary": "done"}),
+        )
+        .await
+        .unwrap();
+    delivered(store.as_ref(), &room, unowned, 22).await;
+    let stored = merge_and_settle(store.as_ref(), &room, 22).await;
+    assert_eq!(closed_from(&stored, unowned), None, "the holder closed it");
 }
 
 /// A cancel queues one withdrawal, for the open pull request the change flow
@@ -408,4 +482,5 @@ on_both_backends!(
     a_close_abandoned_queues_the_withdrawal_and_names_the_former_holder,
     an_unheld_task_names_no_holder_and_a_sessions_pull_request_is_not_withdrawn,
     a_cancelled_or_abandoned_result_is_not_an_accepted_decision,
+    a_merge_that_lands_a_held_task_names_its_holder,
 );

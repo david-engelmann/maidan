@@ -483,6 +483,19 @@ fn withdrawal_marker(entry: &EgressOutbox) -> String {
     format!("<!-- maidan:withdraw:{} -->", entry.id.0)
 }
 
+/// How far before the row's own clock reading GitHub's comment times may
+/// fall: the two clocks differ, and a comment read twice costs nothing.
+const WITHDRAWAL_CLOCK_MARGIN: chrono::Duration = chrono::Duration::minutes(10);
+
+/// When the withdrawal was queued, less [`WITHDRAWAL_CLOCK_MARGIN`]. Its
+/// comment cannot predate the row, and the row's id is a v7 UUID, which
+/// carries its creation time, so no column is needed to scan from there.
+fn withdrawal_queued_at(entry: &EgressOutbox) -> Option<chrono::DateTime<chrono::Utc>> {
+    let (secs, nanos) = entry.id.0.get_timestamp()?.to_unix();
+    let queued = chrono::DateTime::from_timestamp(i64::try_from(secs).ok()?, nanos)?;
+    queued.checked_sub_signed(WITHDRAWAL_CLOCK_MARGIN)
+}
+
 /// Withdraw a cancelled or abandoned task's pull request: take it out of the
 /// merge queue and close it with the queued comment, through the withdraw
 /// guard path. The cancel or close queued this in its own transaction for a
@@ -556,6 +569,7 @@ async fn deliver_withdraw(
             reader: sender,
             marker: &marker,
             text: comment,
+            since: withdrawal_queued_at(entry),
         },
     )
     .await

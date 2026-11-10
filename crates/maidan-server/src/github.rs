@@ -716,6 +716,21 @@ pub trait GithubSender: Send + Sync {
         issue_number: i64,
     ) -> Result<Vec<GithubIssueComment>, GithubError>;
 
+    /// [`Self::list_issue_comments`], but only the comments GitHub last
+    /// updated at or after `since`. A caller that knows when its own comment
+    /// could first have been written reads from then, so the scan's
+    /// 1,000-comment cap counts only what came after. A sender that cannot
+    /// filter lists everything, which is the same answer read the long way.
+    async fn list_issue_comments_since(
+        &self,
+        repo: &str,
+        issue_number: i64,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GithubIssueComment>, GithubError> {
+        let _ = since;
+        self.list_issue_comments(repo, issue_number).await
+    }
+
     /// Post a pull-request review with inline comments.
     ///
     /// `commit_id` is the envelope `head_sha` the caller already resolved —
@@ -1408,43 +1423,18 @@ impl GithubSender for GithubApiClient {
         repo: &str,
         issue_number: i64,
     ) -> Result<Vec<GithubIssueComment>, GithubError> {
-        // Cap the scan so a busy issue cannot turn one recovery into an
-        // unbounded walk. 10 pages × 100 = 1000 comments; past that we post
-        // rather than guess.
-        let mut out = Vec::new();
-        for page in 1..=10 {
-            let resp = self
-                .request(
-                    reqwest::Method::GET,
-                    repo,
-                    &format!("/issues/{issue_number}/comments?per_page=100&page={page}"),
-                )
-                .await?
-                .send()
-                .await
-                .map_err(|e| self.http_error(e))?;
-            if !resp.status().is_success() {
-                return Err(self.api_error(resp).await);
-            }
-            let batch: Vec<serde_json::Value> =
-                resp.json().await.map_err(|e| self.http_error(e))?;
-            let n = batch.len();
-            for c in batch {
-                let Some(id) = c.get("id").and_then(|i| i.as_i64()).filter(|id| *id > 0) else {
-                    continue;
-                };
-                let body = c
-                    .get("body")
-                    .and_then(|b| b.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                out.push(GithubIssueComment { id, body });
-            }
-            if n < 100 {
-                break;
-            }
-        }
-        Ok(out)
+        self.list_comments_filtered(repo, issue_number, "").await
+    }
+
+    async fn list_issue_comments_since(
+        &self,
+        repo: &str,
+        issue_number: i64,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GithubIssueComment>, GithubError> {
+        let since = since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        self.list_comments_filtered(repo, issue_number, &format!("&since={since}"))
+            .await
     }
 
     async fn create_review(
@@ -1504,6 +1494,53 @@ impl GithubSender for GithubApiClient {
 }
 
 impl GithubApiClient {
+    /// The comments on `issue_number`, oldest first, with `filter` (a query
+    /// suffix such as `&since=...`, or empty) on every page's request.
+    async fn list_comments_filtered(
+        &self,
+        repo: &str,
+        issue_number: i64,
+        filter: &str,
+    ) -> Result<Vec<GithubIssueComment>, GithubError> {
+        // Cap the scan so a busy issue cannot turn one recovery into an
+        // unbounded walk. 10 pages × 100 = 1000 comments; past that we post
+        // rather than guess.
+        let mut out = Vec::new();
+        for page in 1..=10 {
+            let resp = self
+                .request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/issues/{issue_number}/comments?per_page=100&page={page}{filter}"),
+                )
+                .await?
+                .send()
+                .await
+                .map_err(|e| self.http_error(e))?;
+            if !resp.status().is_success() {
+                return Err(self.api_error(resp).await);
+            }
+            let batch: Vec<serde_json::Value> =
+                resp.json().await.map_err(|e| self.http_error(e))?;
+            let n = batch.len();
+            for c in batch {
+                let Some(id) = c.get("id").and_then(|i| i.as_i64()).filter(|id| *id > 0) else {
+                    continue;
+                };
+                let body = c
+                    .get("body")
+                    .and_then(|b| b.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                out.push(GithubIssueComment { id, body });
+            }
+            if n < 100 {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
     /// A request to `path` inside `repo`. Anything but a GET writes to `repo`,
     /// so it is refused unless the operator listed `repo`. Every request is
     /// built here or in [`Self::graphql`], and a test holds the HTTP client to
