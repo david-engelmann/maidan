@@ -130,7 +130,7 @@ pub async fn flip_pull_ready_guarded(
     // Shape rules and the per-repository base map, on the fresh read.
     maidan_types::check_mark_ready_target(bases, repo, &brief.head, &brief.base)
         .map_err(MarkReadyGuard::Refused)?;
-    // A fork's branch can carry a `feature/agent-*` name too; only the change
+    // A fork's branch can carry a `feature/agent-*` or `feature/builder-*` name too; only the change
     // flow's own branches, which live in the base repository, are flipped.
     if !brief.open {
         return Err(MarkReadyGuard::Refused(format!(
@@ -276,7 +276,7 @@ pub(super) fn valid_repo_shape(repo: &str) -> bool {
 /// `POST /operator/github/mark-ready` — flip a draft pull request to ready
 /// for review.
 ///
-/// Mark-ready app only. The flip lands only on a `feature/agent-*` head into the
+/// Mark-ready app only. The flip lands only on a `feature/agent-*` or `feature/builder-*` head into the
 /// workspace's allowlisted base for that repo — never prod, never a merge,
 /// never any other PR mutation. Every call that reaches the handler is
 /// audited, including refusals: this endpoint is the sole gate for a PR

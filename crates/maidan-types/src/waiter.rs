@@ -553,8 +553,12 @@ pub const CHANGE_STATUS_NO_CHANGE: &str = "no_change";
 /// session, so Maidan only records it and says so in the reply.
 pub const CHANGE_STATUS_REBASE_CONFLICT: &str = "rebase_conflict";
 
-/// Every branch the change flow may write starts with this.
-pub const CHANGE_BRANCH_PREFIX: &str = "feature/agent-";
+/// Every branch the change flow may write starts with one of these:
+/// `feature/agent-` for an unattended producer's changes and
+/// `feature/builder-` for a build seat's, so a repository's gate can hold
+/// the two to different checks by branch name alone (a builder's change
+/// touches the paths an unattended producer's check refuses, on purpose).
+pub const CHANGE_BRANCH_PREFIXES: [&str; 2] = ["feature/agent-", "feature/builder-"];
 
 /// Branches the change flow never writes and never targets as a base,
 /// whatever the allowlist says. Hard-coded on purpose: the token the flow
@@ -574,9 +578,12 @@ pub fn names_forbidden_base(base: &str) -> bool {
     last.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE)
 }
 
-/// Whether `branch` is `feature/agent-[a-z0-9][a-z0-9-]*`.
+/// Whether `branch` is `feature/agent-` or `feature/builder-` followed by `[a-z0-9][a-z0-9-]*`.
 pub fn is_change_branch(branch: &str) -> bool {
-    let Some(slug) = branch.strip_prefix(CHANGE_BRANCH_PREFIX) else {
+    let Some(slug) = CHANGE_BRANCH_PREFIXES
+        .iter()
+        .find_map(|prefix| branch.strip_prefix(prefix))
+    else {
         return false;
     };
     let mut chars = slug.chars();
@@ -621,12 +628,12 @@ pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
     };
     if protected(branch) {
         return Err(format!(
-            "branch `{branch}` is protected; the change flow writes only `{CHANGE_BRANCH_PREFIX}…` branches"
+            "branch `{branch}` is protected; the change flow writes only `feature/agent-…` and `feature/builder-…` branches"
         ));
     }
     if !is_change_branch(branch) {
         return Err(format!(
-            "branch `{branch}` does not match `{CHANGE_BRANCH_PREFIX}[a-z0-9][a-z0-9-]*`"
+            "branch `{branch}` does not match `feature/agent-[a-z0-9][a-z0-9-]*` or `feature/builder-[a-z0-9][a-z0-9-]*`"
         ));
     }
     if is_ref_spelling(base) {
@@ -650,10 +657,10 @@ pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
     // repository's base, and an order between changes is a thread
     // dependency (`depends_on`), which holds the child unclaimed until its
     // parent closes, so the child is built on the base with the parent in it.
-    if base
-        .get(..CHANGE_BRANCH_PREFIX.len())
-        .is_some_and(|p| p.eq_ignore_ascii_case(CHANGE_BRANCH_PREFIX))
-    {
+    if CHANGE_BRANCH_PREFIXES.iter().any(|prefix| {
+        base.get(..prefix.len())
+            .is_some_and(|p| p.eq_ignore_ascii_case(prefix))
+    }) {
         return Err(format!(
             "base `{base}` is another change's branch; open on the repository's base and order the changes with depends_on"
         ));
@@ -2327,6 +2334,7 @@ mod tests {
     fn the_change_branch_rules_are_hard_coded_and_name_their_reason() {
         assert!(check_change_target("feature/agent-fix-greeting-1a2b", "dev").is_ok());
         assert!(check_change_target("feature/agent-9", "main").is_ok());
+        assert!(check_change_target("feature/builder-fix-greeting-1a2b", "dev").is_ok());
         for (branch, base, why) in [
             ("main", "dev", "protected"),
             ("prod", "dev", "protected"),
@@ -2337,6 +2345,19 @@ mod tests {
             ("feature/agent--x", "dev", "does not match"),
             ("feature/agent-Fix", "dev", "does not match"),
             ("feature/agent-x/y", "dev", "does not match"),
+            ("feature/builder-", "dev", "does not match"),
+            ("feature/builder-Fix", "dev", "does not match"),
+            ("feature/builders-x", "dev", "does not match"),
+            (
+                "feature/agent-y",
+                "Feature/Builder-x",
+                "another change's branch",
+            ),
+            (
+                "feature/builder-y",
+                "feature/agent-x",
+                "another change's branch",
+            ),
             ("feature/agent-x", "prod", "never allowed"),
             ("feature/agent-x", "PROD", "never allowed"),
             ("feature/agent-x", "de v", "not a branch name"),

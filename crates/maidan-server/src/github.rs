@@ -826,7 +826,7 @@ pub struct GithubPullBrief {
     /// The PR's GraphQL node id, from the same fresh read the guards ran on.
     pub node_id: String,
     /// Whether the head branch lives in the base repository. A fork's
-    /// `feature/agent-*` branch is not one of the change flow's, so the flip
+    /// `feature/agent-*` or `feature/builder-*` branch is not one of the change flow's, so the flip
     /// refuses it; a head repository GitHub no longer reports (a deleted
     /// fork) reads as `false`.
     pub same_repo: bool,
@@ -1171,7 +1171,7 @@ pub trait GithubGit: Send + Sync {
     ///
     /// The deliberate, tightly-scoped exception to "never marks ready"
     /// (Decisions, 2026-10-06): the mark-ready app holds no GitHub write credential,
-    /// so Maidan does the flip — only for `feature/agent-*` heads into
+    /// so Maidan does the flip — only for `feature/agent-*` or `feature/builder-*` heads into
     /// allowlisted bases, never prod, never anything else.
     async fn set_pull_ready(
         &self,
