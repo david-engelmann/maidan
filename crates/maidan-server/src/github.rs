@@ -928,10 +928,10 @@ pub enum MarkReadyOutcome {
 /// touches, write blobs, a tree and a commit, move the branch, find or open
 /// its draft pull request, post the producer's own check as a commit status
 /// on the head it delivered, and — the deliberate exceptions —
-/// [`GithubGit::set_pull_ready`] and [`GithubGit::force_move_branch`].
-/// Nothing else here approves, merges, requests a review, comments, deletes a
-/// branch, force-pushes or touches repository settings, and there is
-/// deliberately no other method that could.
+/// [`GithubGit::set_pull_ready`], [`GithubGit::force_move_branch`] and
+/// [`GithubGit::close_pull`]. Nothing else here approves, merges, requests a
+/// review, deletes a branch, force-pushes or touches repository settings, and
+/// there is deliberately no other method that could.
 #[async_trait::async_trait]
 pub trait GithubGit: Send + Sync {
     /// `GET /repos/{repo}/git/ref/heads/{branch}`: the branch head, or `None`
@@ -1002,9 +1002,11 @@ pub trait GithubGit: Send + Sync {
         pull_number: i64,
         body: &str,
     ) -> Result<(), GithubError>;
-    /// `POST /repos/{repo}/issues/{n}/comments`. The change flow's one
-    /// comment: after a squash-rebase moves the agent branch, it names the
-    /// old and new heads so a reviewer can diff the range the force rewrote.
+    /// `POST /repos/{repo}/issues/{n}/comments`. The change flow's two
+    /// comments: after a squash-rebase moves the agent branch, it names the
+    /// old and new heads so a reviewer can diff the range the force rewrote;
+    /// and when a cancelled or abandoned task's pull request is closed, it
+    /// says why.
     async fn comment_on_pull(
         &self,
         repo: &str,
@@ -1169,6 +1171,17 @@ pub trait GithubGit: Send + Sync {
         label: &str,
         _pass: crate::routes::EnqueueGuardPass,
     ) -> Result<bool, GithubError>;
+    /// `PATCH /repos/{repo}/pulls/{n}` with `state: closed`: close the
+    /// pull request a cancelled or abandoned task's change flow opened. The
+    /// branch is not touched. The `_pass` is minted only by the withdraw
+    /// path ([`crate::routes::withdraw_pull_guarded`]), which ran the
+    /// enqueue guards on the same read first.
+    async fn close_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<(), GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -2424,6 +2437,33 @@ impl GithubGit for GithubApiClient {
             // dequeued, which is the state the caller asked for.
             Err(GithubError::Api { status: 404, .. }) => Ok(false),
             Err(err) => Err(err),
+        }
+    }
+
+    async fn close_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        let request = self
+            .request(
+                reqwest::Method::PATCH,
+                repo,
+                &format!("/pulls/{pull_number}"),
+            )
+            .await?
+            .json(&serde_json::json!({ "state": "closed" }));
+        let value = self.send_json(request).await?;
+        // The answer is the pull request after the write; only a `closed`
+        // state counts, so a write GitHub ignored is not reported done.
+        if value.get("state").and_then(serde_json::Value::as_str) == Some("closed") {
+            Ok(())
+        } else {
+            Err(GithubError::Http(format!(
+                "github close unverified: {repo}#{pull_number} is not closed after the write"
+            )))
         }
     }
 

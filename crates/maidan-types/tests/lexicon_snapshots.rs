@@ -169,6 +169,7 @@ fn sample_event(kind: EventKind) -> Event {
             from_state: ThreadState::Open,
             to_state: ThreadState::Closed,
             thread: thread(),
+            previous_assignee_id: None,
         },
         EventKind::ThreadAssignmentChanged => Event::ThreadAssignmentChanged {
             occurred_at,

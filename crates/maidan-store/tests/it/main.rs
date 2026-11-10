@@ -191,6 +191,9 @@ mod egress_targets;
 #[path = "../email_digest.rs"]
 mod email_digest;
 
+#[path = "../ending_early_cleanup.rs"]
+mod ending_early_cleanup;
+
 #[path = "../event_chain.rs"]
 mod event_chain;
 

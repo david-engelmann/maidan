@@ -1,0 +1,8 @@
+### Ending a task early cleans up its pull request, its decision and its claimant
+
+- **Fixed:** a cancelled task's pull request in the merge queue could still merge. A cancel or a close-abandoned now queues, in its own transaction, the withdrawal of each open pull request the change flow opened for the task. The egress worker (a new `withdraw` outbox kind) runs the dequeue guards on one fresh read, takes the repository's merge-queue label off, and closes an open pull request with a comment naming the reason. The branch is left. A pull request a session registered, one only watched, one already closed, and one another task's result was delivered to since are not touched.
+- **Fixed:** the context pack listed a cancelled or abandoned task's result among its channel's accepted decisions. `list_channel_closed_results` leaves out every thread with a cancellation or an unlanded-close record, in the same query.
+- **Fixed:** the member whose claim a cancel or close-abandoned ended was not told, because the state change is written after the assignee is cleared. It now gets a `thread_state_changed` notification, unless it did the close itself, and its followers hear as the assignee's would.
+- **Fixed:** MCP `close_abandoned_thread` now publishes the thread's resource updates, as `cancel_thread` does.
+- **Changed:** `ThreadStateChanged` carries `previous_assignee_id` on a cancel and a close-abandoned: the member whose claim it ended. Omitted otherwise.
+- **Changed:** the GitHub client can close a pull request (`PATCH /repos/{repo}/pulls/{n}`, `state: closed`), reachable only through the withdraw guard path.

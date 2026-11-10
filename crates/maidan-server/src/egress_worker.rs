@@ -202,6 +202,9 @@ async fn deliver(
     if entry.kind == EgressKind::Result {
         return deliver_result(state, entry, target).await;
     }
+    if entry.kind == EgressKind::Withdraw {
+        return deliver_withdraw(state, entry, target).await;
+    }
     // A projector message or a notice is sent exactly as it was queued, so
     // the queued body is what is screened.
     let part = if entry.kind == EgressKind::Notice {
@@ -467,6 +470,105 @@ async fn deliver_notice(
         .await
         .map_err(linear_failure)?;
     Ok(Sent::Landed(Some(ExternalRef::Linear { comment_id })))
+}
+
+/// The withdrawal comment when the queued one cannot be sent as written.
+const WITHDRAWN_WITHOUT_REASON: &str = "Maidan closed this pull request because its task ended \
+     without landing. It is out of the merge queue; its branch is left as it is.";
+
+/// Withdraw a cancelled or abandoned task's pull request: take it out of the
+/// merge queue and close it with the queued comment, through the withdraw
+/// guard path. The cancel or close queued this in its own transaction for a
+/// pull request the change flow opened for the task. One that another task
+/// answers for now (its result was delivered there since) is left alone, as
+/// is anything the guards refuse: it is no longer this task's to close.
+async fn deliver_withdraw(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+) -> Result<Sent, DeliveryFailure> {
+    let EgressTarget::Github { repo, issue_number } = target else {
+        return Err(DeliveryFailure {
+            message: format!("{} takes no withdrawal", target.surface()),
+            misconfiguration: true,
+            retry_after: None,
+        });
+    };
+    let Some(git) = state.github_sender.as_ref().and_then(|sender| sender.git()) else {
+        return Err(DeliveryFailure {
+            message: "github is not configured to write".into(),
+            misconfiguration: true,
+            retry_after: None,
+        });
+    };
+    let store_failure = |err: maidan_store::StoreError| DeliveryFailure {
+        message: err.to_string(),
+        misconfiguration: false,
+        retry_after: None,
+    };
+    let answering = state
+        .store
+        .change_pull_thread(entry.workspace_id, repo, *issue_number)
+        .await
+        .map_err(store_failure)?;
+    if answering != Some(entry.thread_id) {
+        return Ok(Sent::Refused(format!(
+            "{repo}#{issue_number} no longer answers to this task, so it is left as it is"
+        )));
+    }
+    // The comment carries the canceller's reason. A reason the credential
+    // guard refuses must not keep the pull request in the merge queue, so it
+    // is withdrawn anyway, with a comment that leaves the reason out.
+    let comment = match crate::egress_guard::screen(
+        target.surface(),
+        entry.thread_id,
+        [("notice", entry.body.as_str())],
+    )
+    .await
+    {
+        None => entry.body.as_str(),
+        Some(_) => WITHDRAWN_WITHOUT_REASON,
+    };
+    match crate::routes::withdraw_pull_guarded(
+        state.store.as_ref(),
+        entry.workspace_id,
+        git,
+        &state.mark_ready_bases,
+        &state.merge_queue_labels,
+        repo,
+        *issue_number,
+        comment,
+    )
+    .await
+    {
+        Ok(withdrawn) => {
+            crate::audit::record(
+                state,
+                maidan_types::NewAuditEvent {
+                    scope: maidan_types::AuditScope::Workspace(entry.workspace_id),
+                    actor_id: None,
+                    action: "github.withdraw".into(),
+                    target_kind: Some("github_pull".into()),
+                    target_id: None,
+                    metadata: serde_json::json!({
+                        "repo": repo,
+                        "pull_number": withdrawn.number,
+                        "thread_id": entry.thread_id.0,
+                        "dequeued": withdrawn.dequeued,
+                        "closed": withdrawn.closed,
+                    }),
+                },
+            )
+            .await;
+            Ok(Sent::Landed(None))
+        }
+        Err(crate::routes::MarkReadyGuard::Refused(reason)) => Ok(Sent::Refused(reason)),
+        Err(crate::routes::MarkReadyGuard::Github(err)) => Err(DeliveryFailure::github(err)),
+        Err(
+            crate::routes::MarkReadyGuard::Store(err)
+            | crate::routes::MarkReadyGuard::ThreadEnded(err),
+        ) => Err(store_failure(err)),
+    }
 }
 
 fn linear_failure(err: crate::linear::LinearError) -> DeliveryFailure {

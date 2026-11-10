@@ -79,6 +79,11 @@ pub enum EgressKind {
     /// A fixed comment the worker posts as written: a task's claim or
     /// release on its Linear issue.
     Notice,
+    /// Take a cancelled or abandoned task's pull request out of the merge
+    /// queue and close it, with the row's body as its last comment. Queued
+    /// by the cancel or the close itself, for a pull request the change flow
+    /// opened for that task.
+    Withdraw,
 }
 
 impl EgressKind {
@@ -87,6 +92,7 @@ impl EgressKind {
             Self::Projector => "projector",
             Self::Result => "result",
             Self::Notice => "notice",
+            Self::Withdraw => "withdraw",
         }
     }
 
@@ -94,6 +100,7 @@ impl EgressKind {
         match s {
             "result" => Self::Result,
             "notice" => Self::Notice,
+            "withdraw" => Self::Withdraw,
             _ => Self::Projector,
         }
     }

@@ -672,7 +672,18 @@ pub async fn close_abandoned(
         audit,
     )
     .await?;
-    stored.push(state_changed_in_tx(&mut tx, actor_id, &result).await?);
+    // `result.thread` has no assignee any more; the event names whoever held
+    // the claim, so that claimant can be told to stop.
+    let changed =
+        state_changed_ending_claim_in_tx(&mut tx, actor_id, &result, thread.assignee_id).await?;
+    super::cancel::queue_pull_withdrawals_in_tx(
+        &mut tx,
+        thread_id,
+        changed.id,
+        &crate::cancel::closed_pull_comment(close.reason.as_str()),
+    )
+    .await?;
+    stored.push(changed);
     stored.extend(notices);
     stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
     tx.commit().await?;
@@ -749,6 +760,18 @@ pub(crate) async fn state_changed_in_tx(
     actor_id: MemberId,
     result: &ThreadTransitionResult,
 ) -> Result<StoredEvent, StoreError> {
+    state_changed_ending_claim_in_tx(tx, actor_id, result, None).await
+}
+
+/// [`state_changed_in_tx`] for a close that ended `holder`'s claim (a cancel
+/// or a close-abandoned): the event names the former holder, because the
+/// thread it carries has no assignee any more.
+pub(crate) async fn state_changed_ending_claim_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor_id: MemberId,
+    result: &ThreadTransitionResult,
+    holder: Option<MemberId>,
+) -> Result<StoredEvent, StoreError> {
     let thread_id = result.thread.id;
     let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
     let event = Event::ThreadStateChanged {
@@ -760,6 +783,7 @@ pub(crate) async fn state_changed_in_tx(
         from_state: result.from_state,
         to_state: result.to_state,
         thread: result.thread.clone(),
+        previous_assignee_id: holder,
     };
     events::append_in_tx(tx, &event).await
 }

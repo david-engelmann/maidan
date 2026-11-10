@@ -386,6 +386,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             from_state: maidan_types::ThreadState::Open,
             to_state: maidan_types::ThreadState::InReview,
             thread: thread.clone(),
+            previous_assignee_id: None,
         },
         Event::ThreadResultSet {
             occurred_at: Utc::now(),

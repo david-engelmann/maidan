@@ -308,6 +308,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             from_state,
             to_state,
             thread,
+            previous_assignee_id,
         } => ThreadStateChanged {
             occurred_at,
             workspace_id,
@@ -317,6 +318,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             from_state,
             to_state,
             thread,
+            previous_assignee_id,
         },
         ThreadAssignmentChanged {
             occurred_at,

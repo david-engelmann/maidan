@@ -2,15 +2,16 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    CancelAuthority, CancelOutcome, CancelledThread, ContentKeyring, Event, MemberId, StoredEvent,
-    ThreadCancellation, ThreadId, ThreadState, ThreadTransitionResult,
+    CancelAuthority, CancelOutcome, CancelledThread, ContentKeyring, EgressKind, EgressOutboxId,
+    EgressTarget, Event, MemberId, StoredEvent, ThreadCancellation, ThreadId, ThreadState,
+    ThreadTransitionResult,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::threads::row_to_thread;
 use super::{events, messages, thread_transitions, threads};
-use crate::cancel::{notice_body, notice_metadata};
+use crate::cancel::{cancelled_pull_comment, notice_body, notice_metadata};
 use crate::error::StoreError;
 
 const THREAD_COLS: &str = "id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by";
@@ -119,7 +120,17 @@ pub(crate) async fn cancel_in_tx(
         from_state: thread.state,
         to_state: ThreadState::Closed,
     };
-    stored.push(thread_transitions::state_changed_in_tx(tx, actor, &transition).await?);
+    // The thread above has no assignee any more; the event names whoever
+    // held it, so the claimant that is still building can be told.
+    stored.push(
+        thread_transitions::state_changed_ending_claim_in_tx(
+            tx,
+            actor,
+            &transition,
+            thread.assignee_id,
+        )
+        .await?,
+    );
     let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
     let cancelled = Event::ThreadCancelled {
         occurred_at: now,
@@ -129,7 +140,15 @@ pub(crate) async fn cancel_in_tx(
         reason: reason.to_string(),
         cancelled_by: actor,
     };
-    stored.push(events::append_in_tx(tx, &cancelled).await?);
+    let cancelled_event = events::append_in_tx(tx, &cancelled).await?;
+    queue_pull_withdrawals_in_tx(
+        tx,
+        thread_id,
+        cancelled_event.id,
+        &cancelled_pull_comment(reason),
+    )
+    .await?;
+    stored.push(cancelled_event);
     let message_row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES ($1, $2, $3, $4, $5, NULL, $6)
@@ -209,4 +228,66 @@ pub async fn unlanded_close(
     .fetch_optional(pool)
     .await?;
     Ok(how)
+}
+
+/// Queue the withdrawal of each pull request the change flow opened for
+/// `thread_id` and has not seen closed: the egress worker takes it out of
+/// the merge queue and closes it with `comment`. Queued in the caller's
+/// transaction, so a cancel or close that commits always owes it, and GitHub
+/// is written only by the worker, never while the thread is locked. A pull
+/// request the change flow delivered no round to (a session's, registered or
+/// watched) is not Maidan's to close and is left out. The repository is
+/// spelled as the task's change delivery named it, since the allowlist the
+/// worker checks again is keyed on that spelling.
+pub(crate) async fn queue_pull_withdrawals_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    source_log_id: i64,
+    comment: &str,
+) -> Result<(), StoreError> {
+    let pulls = sqlx::query(
+        "SELECT p.workspace_id, p.pull_number,
+                COALESCE((
+                    SELECT substr(rd.selector, 1, length(p.repo))
+                    FROM maidan_result_deliveries rd
+                    WHERE rd.thread_id = p.thread_id AND rd.surface = 'github_branch'
+                      AND lower(substr(rd.selector, 1, length(p.repo) + 1)) = p.repo || '@'
+                    ORDER BY rd.updated_at DESC
+                    LIMIT 1
+                ), p.repo) AS repo
+         FROM maidan_change_pulls p
+         WHERE p.thread_id = $1 AND p.closed_at IS NULL AND NOT p.watch_only
+           AND EXISTS (
+               SELECT 1 FROM maidan_change_rounds r
+               WHERE r.workspace_id = p.workspace_id AND r.repo = p.repo
+                 AND r.pull_number = p.pull_number)
+         ORDER BY p.repo, p.pull_number",
+    )
+    .bind(thread_id.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    for pull in &pulls {
+        let target = EgressTarget::Github {
+            repo: pull.get("repo"),
+            issue_number: pull.get("pull_number"),
+        };
+        sqlx::query(
+            "INSERT INTO maidan_egress_outbox
+               (id, workspace_id, thread_id, source_log_id, surface, selector, body, kind,
+                status, attempts, next_attempt_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, now(), now(), now())
+             ON CONFLICT (source_log_id, surface, selector) DO NOTHING",
+        )
+        .bind(EgressOutboxId::new().0)
+        .bind(pull.get::<Uuid, _>("workspace_id"))
+        .bind(thread_id.0)
+        .bind(source_log_id)
+        .bind(target.surface().as_str())
+        .bind(target.selector())
+        .bind(comment)
+        .bind(EgressKind::Withdraw.as_str())
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
 }

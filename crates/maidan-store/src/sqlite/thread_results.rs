@@ -145,6 +145,10 @@ pub async fn list_closed_in_channel(
            AND t.state IN ('closed', 'archived')
            AND t.tombstoned_at IS NULL
            AND (?2 IS NULL OR t.id <> ?2)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_cancellations x WHERE x.thread_id = t.id)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_unlanded_closes u WHERE u.thread_id = t.id)
          ORDER BY tr.produced_at DESC, tr.thread_id DESC
          LIMIT ?3",
     )

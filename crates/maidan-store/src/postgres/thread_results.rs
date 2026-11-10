@@ -121,7 +121,8 @@ pub async fn list(
 
 /// Closed/archived results in a channel — see the SQLite twin.
 /// `exclude_thread_id` is the claimer's own thread; `limit` is clamped
-/// `1..=50`.
+/// `1..=50`. A thread with a cancellation or an unlanded-close record is
+/// left out in the same query, so the pack needs no lookup per row.
 pub async fn list_closed_in_channel(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -139,6 +140,10 @@ pub async fn list_closed_in_channel(
            AND t.state IN ('closed', 'archived')
            AND t.tombstoned_at IS NULL
            AND ($2::uuid IS NULL OR t.id <> $2)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_cancellations x WHERE x.thread_id = t.id)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_unlanded_closes u WHERE u.thread_id = t.id)
          ORDER BY tr.produced_at DESC, tr.thread_id DESC
          LIMIT $3",
     )
