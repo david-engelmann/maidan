@@ -1,13 +1,15 @@
 //! CI on tracked pull requests on both backends: a read of a pull request's
 //! checks is recorded on its thread and owes each notice once per head, a
-//! watched pull request gets a thread of its own and stays out of the swarm
-//! metrics, and nothing crosses a workspace. Postgres runs under
+//! watched pull request gets a thread of its own, stays out of the swarm
+//! metrics and closes when the pull request does, and nothing crosses a
+//! workspace. Postgres runs under
 //! testcontainers (skipped without Docker).
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use maidan_store::pull_watch::{watch_pull, WatchRequest};
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -568,6 +570,141 @@ async fn watching_makes_one_thread_and_stays_out_of_the_metrics(store: Arc<dyn S
         .collect();
     open.sort_unstable();
     assert_eq!(open, vec![7, 8, 9, 10], "the sweep still reads every one");
+}
+
+/// A thread that only watches a pull request closes when the pull request
+/// merges and when it closes without merging, with one message naming the
+/// pull request and how it ended, said as the watcher. It closes past a
+/// review requirement and the land gate: a watch has no result or delivery
+/// of its own for them to hold. A thread with a result keeps the change's
+/// settle exactly, even when its pull request was only watched: its gates
+/// still refuse a merge, and a close without one still leaves it open.
+async fn a_watch_closes_when_its_pull_ends_and_a_change_keeps_its_gates(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "watch-ends").await;
+    let watch = |pull_number| WatchRequest {
+        workspace_id: room.ws,
+        repo: REPO.into(),
+        pull_number,
+        channel_id: None,
+        title: None,
+        created_by: Some(room.member),
+    };
+    let merged = watch_pull(s, watch(21)).await.unwrap().watched.thread_id;
+    let unmerged = watch_pull(s, watch(22)).await.unwrap().watched.thread_id;
+    s.set_review_requirement(merged, 1).await.unwrap();
+    s.require_land_gate(merged).await.unwrap();
+    let now = chrono::Utc::now();
+    s.close_change_pull(room.ws, REPO, 21, Some(now), Some("aaa1"), now)
+        .await
+        .unwrap();
+    s.close_change_pull(room.ws, REPO, 22, None, None, now)
+        .await
+        .unwrap();
+
+    let ChangeSettlement::WatchClosed {
+        merged: true,
+        events,
+    } = s.settle_change_pull(room.ws, REPO, 21).await.unwrap()
+    else {
+        panic!("a merge closes the watch, its gates notwithstanding");
+    };
+    assert_eq!(
+        events.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        vec![
+            EventKind::MessagePosted,
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadLanded
+        ],
+        "the message, open straight to closed, then the landing"
+    );
+    assert!(events.iter().all(|e| e.thread_id == Some(merged)));
+    assert_eq!(
+        s.get_thread(merged).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let said = s.list_messages(merged, 10).await.unwrap();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert_eq!(
+        said[0].body,
+        "example/app#21 merged, so this watch is closed."
+    );
+    assert_eq!(said[0].author_id, room.member);
+    assert_eq!(said[0].metadata["github"]["closed_unmerged"], false);
+    assert!(
+        matches!(
+            s.settle_change_pull(room.ws, REPO, 21).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "a close settles once"
+    );
+
+    let ChangeSettlement::WatchClosed {
+        merged: false,
+        events,
+    } = s.settle_change_pull(room.ws, REPO, 22).await.unwrap()
+    else {
+        panic!("a close without a merge closes the watch too");
+    };
+    assert_eq!(
+        events.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        vec![EventKind::MessagePosted, EventKind::ThreadStateChanged],
+        "nothing landed"
+    );
+    assert_eq!(
+        s.get_thread(unmerged).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let said = s.list_messages(unmerged, 10).await.unwrap();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert_eq!(
+        said[0].body,
+        "example/app#22 closed without merging, so this watch is closed."
+    );
+    assert_eq!(said[0].metadata["github"]["closed_unmerged"], true);
+
+    // Changes: a result produced by a worker, so the owner may land it and
+    // only the gates decide.
+    let worker = agent(s, room.ws, "worker").await;
+    let result = serde_json::json!({"summary": "done"});
+    let gated = task(s, &room).await;
+    s.set_thread_result_claiming(gated, worker, &result)
+        .await
+        .unwrap();
+    s.set_review_requirement(gated, 1).await.unwrap();
+    s.watch_change_pull(room.ws, gated, REPO, 23).await.unwrap();
+    s.close_change_pull(room.ws, REPO, 23, Some(now), Some("bbb1"), now)
+        .await
+        .unwrap();
+    match s.settle_change_pull(room.ws, REPO, 23).await.unwrap() {
+        ChangeSettlement::CloseRefused {
+            thread_id, reason, ..
+        } => {
+            assert_eq!(thread_id, gated);
+            assert!(reason.starts_with("review requirement not met"), "{reason}");
+        }
+        other => panic!("a thread with a result keeps its gates, got {other:?}"),
+    }
+    assert_eq!(s.get_thread(gated).await.unwrap().state, ThreadState::Open);
+
+    let session = task(s, &room).await;
+    s.set_thread_result_claiming(session, worker, &result)
+        .await
+        .unwrap();
+    s.register_change_pull(room.ws, session, REPO, 24, None)
+        .await
+        .unwrap();
+    s.close_change_pull(room.ws, REPO, 24, None, None, now)
+        .await
+        .unwrap();
+    match s.settle_change_pull(room.ws, REPO, 24).await.unwrap() {
+        ChangeSettlement::ClosedUnmerged { thread_id, .. } => assert_eq!(thread_id, session),
+        other => panic!("a change closed unmerged waits for a person, got {other:?}"),
+    }
+    assert_eq!(
+        s.get_thread(session).await.unwrap().state,
+        ThreadState::Open
+    );
 }
 
 /// Two workspaces can track the same pull request: each gets its own thread
@@ -1232,6 +1369,7 @@ on_both_backends!(
     a_ci_read_says_each_notice_once_per_head,
     a_review_is_said_once_with_who_how_and_which_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
+    a_watch_closes_when_its_pull_ends_and_a_change_keeps_its_gates,
     two_workspaces_track_the_same_pull_request_apart,
     a_gate_change_is_said_once,
     a_push_dismisses_approvals_given_to_an_earlier_head,

@@ -700,6 +700,40 @@ pub async fn close_abandoned(
     Ok((result, stored))
 }
 
+/// Close a thread that only watched a pull request, now that the pull
+/// request has closed, on the caller's transaction: straight to `closed`
+/// from `open` or `in_review`. A watch has no result or delivery of its own,
+/// so there is nothing for separation of duties, a review requirement or the
+/// land gate to judge, and holding the close on them would leave the watch
+/// open for good. Returns the `ThreadStateChanged`, naming whoever held a
+/// claim on it.
+pub(crate) async fn close_watch_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+) -> Result<StoredEvent, StoreError> {
+    let row = sqlx::query(
+        "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
+         FROM maidan_threads WHERE id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let thread = row_to_thread(&row)?;
+    if thread.tombstoned_at.is_some() {
+        return Err(StoreError::NotFound);
+    }
+    if !matches!(thread.state, ThreadState::Open | ThreadState::InReview) {
+        return Err(StoreError::Conflict(format!(
+            "only an open or in-review watch can be closed; this one is {}",
+            thread.state.as_str()
+        )));
+    }
+    let result = land_in_tx(tx, &thread, actor_id, ThreadState::Closed).await?;
+    state_changed_ending_claim_in_tx(tx, actor_id, &result, thread.assignee_id).await
+}
+
 pub async fn transition(
     pool: &SqlitePool,
     keys: &ContentKeyring,

@@ -386,7 +386,8 @@ pub async fn list_unsettled(
 /// Settle a tracked pull request seen closed, once. A merge lands its thread:
 /// closed through the transition path, with `ThreadLanded` in the same
 /// transaction. A close without a merge leaves the thread open and owes one
-/// notice. See [`ChangeSettlement`].
+/// notice. A thread that only watched the pull request closes either way
+/// (`close_watch_in_tx`). See [`ChangeSettlement`].
 pub async fn settle(
     pool: &SqlitePool,
     keys: &ContentKeyring,
@@ -396,9 +397,23 @@ pub async fn settle(
 ) -> Result<ChangeSettlement, StoreError> {
     let repo = repo.to_ascii_lowercase();
     let mut tx = super::tx::begin_write(pool).await?;
+    // A watch-only thread has no result, no delivery armed, and no pull
+    // request on it that the change flow delivered a round to or a session
+    // registered: nothing of its own for a gate to judge.
     let Some(row) = sqlx::query(
         "SELECT p.thread_id, p.merged_at IS NOT NULL AS merged, t.state,
-                t.tombstoned_at IS NOT NULL AS tombstoned, t.owner_id, r.produced_by
+                t.tombstoned_at IS NOT NULL AS tombstoned, t.owner_id, r.produced_by,
+                (r.thread_id IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM maidan_result_deliveries d
+                                 WHERE d.thread_id = p.thread_id)
+                 AND NOT EXISTS (SELECT 1 FROM maidan_change_pulls o
+                                 WHERE o.thread_id = p.thread_id
+                                   AND (NOT o.watch_only
+                                        OR EXISTS (SELECT 1 FROM maidan_change_rounds cr
+                                                   WHERE cr.workspace_id = o.workspace_id
+                                                     AND cr.repo = o.repo
+                                                     AND cr.pull_number = o.pull_number))))
+                  AS watch_only
          FROM maidan_change_pulls p
          JOIN maidan_threads t ON t.id = p.thread_id
          LEFT JOIN maidan_thread_results r ON r.thread_id = p.thread_id
@@ -438,6 +453,20 @@ pub async fn settle(
     .fetch_optional(&mut *tx)
     .await?
     .is_some();
+    if row.get::<bool, _>("watch_only") {
+        if another_open {
+            tx.commit().await?;
+            return Ok(ChangeSettlement::Unchanged);
+        }
+        let merged = row.get::<bool, _>("merged");
+        let stored =
+            close_watch_in_tx(&mut tx, keys, thread_id, actor, &repo, pull_number, merged).await?;
+        tx.commit().await?;
+        return Ok(ChangeSettlement::WatchClosed {
+            merged,
+            events: stored,
+        });
+    }
     // The thread lands once none of its pull requests is still open, on its
     // latest merge, whichever of them closed last: a merge that waited on a
     // sibling is not lost when the sibling then closes without merging.
@@ -559,6 +588,75 @@ async fn land_in_tx(
         title: None,
     };
     stored.push(events::append_in_tx(tx, &landed).await?);
+    stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
+    Ok(stored)
+}
+
+/// Close a thread that only watched `repo`#`pull_number` now that the pull
+/// request has closed, in the settle's transaction, as `actor`: a message
+/// naming the pull request and how it ended, then the close. A merge is the
+/// watch's landing, as for a change, so whoever waits on the thread landing
+/// hears it; a close without one records that nothing landed, so a thread
+/// that depends on the watch keeps waiting.
+async fn close_watch_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor: MemberId,
+    repo: &str,
+    pull_number: i64,
+    merged: bool,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let ended = if merged {
+        "merged"
+    } else {
+        "closed without merging"
+    };
+    let mut stored = vec![
+        super::plans::post_notice_in_tx(
+            tx,
+            keys,
+            thread_id,
+            actor,
+            format!("{repo}#{pull_number} {ended}, so this watch is closed."),
+            // `github` keeps egress from posting the message back onto the
+            // pull request it is about, as for the sweep's close notices.
+            serde_json::json!({
+                "github": {
+                    "repo": repo,
+                    "issue": pull_number,
+                    "closed_unmerged": !merged,
+                }
+            }),
+        )
+        .await?,
+    ];
+    stored.push(thread_transitions::close_watch_in_tx(tx, thread_id, actor).await?);
+    if merged {
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
+        let landed = Event::ThreadLanded {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id,
+            repo: repo.to_string(),
+            pr_number: pull_number,
+            merged_by: None,
+            merge_commit_sha: None,
+            title: None,
+        };
+        stored.push(events::append_in_tx(tx, &landed).await?);
+    } else {
+        sqlx::query(
+            "INSERT INTO maidan_thread_unlanded_closes (thread_id, reason, closed_by)
+             VALUES (?1, 'abandoned', ?2)
+             ON CONFLICT (thread_id) DO NOTHING",
+        )
+        .bind(thread_id.0)
+        .bind(actor.0)
+        .execute(&mut **tx)
+        .await?;
+    }
     stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
     Ok(stored)
 }
