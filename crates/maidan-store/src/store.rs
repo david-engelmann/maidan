@@ -2941,7 +2941,8 @@ pub trait AssignmentStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<WorkspaceId>, StoreError>;
     /// Tracked agent pull requests in a workspace seen closed and not yet
-    /// settled, oldest close first.
+    /// settled: never tried first, oldest close first, then the merges whose
+    /// landing a gate refused, the one tried longest ago first.
     async fn list_unsettled_change_pulls(
         &self,
         workspace_id: WorkspaceId,
@@ -2950,7 +2951,9 @@ pub trait AssignmentStore: Send + Sync {
     /// Settle a tracked agent pull request seen closed, once: a merge closes
     /// its thread through the transition path with `ThreadLanded` in the same
     /// transaction, and a thread that only watched the pull request closes
-    /// whether it merged or not, with a message saying which. See
+    /// whether it merged or not, with a message saying which. A merge whose
+    /// landing a gate refuses stays unsettled and is tried again on the next
+    /// call, and is `CloseRefused` the first time only. See
     /// [`maidan_types::ChangeSettlement`].
     async fn settle_change_pull(
         &self,

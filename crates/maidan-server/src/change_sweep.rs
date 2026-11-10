@@ -13,10 +13,17 @@
 //! store's transition path, with `ThreadLanded` in the same transaction, so
 //! dependents become claimable and the board moves; a close without a merge
 //! leaves the thread open with one notice, for a person or the planner to
-//! decide. A thread that only watches a pull request (`watch_pull`) closes
-//! when it merges and when it closes without merging, with a message saying
-//! which: it has no result or delivery of its own, so no land or review gate
-//! holds it, and nobody is left to decide anything.
+//! decide. A merge whose landing the thread's gates refuse (a review not yet
+//! approved, the land gate not passed) is said once and tried again each
+//! sweep, at most [`REFRESH_LIMIT`] closes a workspace, never-tried closes
+//! first: a gate lifts later, and a refusal settled for good left the merged
+//! work open, and its dependents waiting, until someone closed it by hand.
+//! A thread closed or cancelled in the meantime settles without landing.
+//!
+//! A thread that only watches a pull request (`watch_pull`) closes when it
+//! merges and when it closes without merging, with a message saying which: it
+//! has no result or delivery of its own, so no land or review gate holds it,
+//! and nobody is left to decide anything.
 //!
 //! A merge also tells the other workers in its repository: each live claim
 //! in the same workspace whose footprint covers a path the merged pull
@@ -1029,7 +1036,10 @@ async fn settle_closed_pulls(state: &AppState, workspace_id: WorkspaceId, stats:
                 notice
                     .post(
                         state,
-                        format!("#{pull_number} merged, but this thread stays open: {reason}"),
+                        format!(
+                            "#{pull_number} merged, but this thread stays open until its gates \
+                             pass, and lands on the next sweep after that: {reason}"
+                        ),
                     )
                     .await;
                 stats.noticed += 1;
@@ -1051,8 +1061,8 @@ struct Notice<'a> {
 }
 
 impl Notice<'_> {
-    /// Best effort: the close is already settled, so a failed post is not
-    /// retried, rather than risk saying it twice.
+    /// Best effort: the close is already settled, or its refusal recorded, so
+    /// a failed post is not retried, rather than risk saying it twice.
     async fn post(&self, state: &AppState, body: String) {
         let new = maidan_types::NewMessage {
             thread_id: self.thread_id,

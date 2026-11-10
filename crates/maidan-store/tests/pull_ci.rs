@@ -1,13 +1,15 @@
 //! CI on tracked pull requests on both backends: a read of a pull request's
 //! checks is recorded on its thread and owes each notice once per head, a
 //! watched pull request gets a thread of its own, stays out of the swarm
-//! metrics and closes when the pull request does, and nothing crosses a
+//! metrics and closes when the pull request does, a merge whose landing a
+//! gate refused lands once the gate lifts, and nothing crosses a
 //! workspace. Postgres runs under
 //! testcontainers (skipped without Docker).
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_fsm::ThreadAction;
 use maidan_store::pull_watch::{watch_pull, WatchRequest};
 use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
@@ -1361,8 +1363,275 @@ async fn a_ci_event_marks_open_pulls_by_number_or_last_read_head(store: Arc<dyn 
     );
 }
 
+/// A change thread the room's member owns, holding `worker`'s result, whose
+/// pull request `pull_number` the change flow tracks.
+async fn change_task(s: &dyn Store, room: &Room, worker: MemberId, pull_number: i64) -> ThreadId {
+    let thread = task(s, room).await;
+    s.set_thread_result_claiming(thread, worker, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    s.register_change_pull(room.ws, thread, REPO, pull_number, None)
+        .await
+        .unwrap();
+    thread
+}
+
+/// Record `pull_number` merged, as the sweep does when GitHub says so.
+async fn merge(s: &dyn Store, room: &Room, pull_number: i64) {
+    let now = chrono::Utc::now();
+    s.close_change_pull(room.ws, REPO, pull_number, Some(now), Some("ccc1"), now)
+        .await
+        .unwrap();
+}
+
+/// Approve `thread` as `reviewer`, on the evidence its current review was
+/// handed.
+async fn approve_handed(s: &dyn Store, thread: ThreadId, reviewer: MemberId) {
+    let root = s
+        .latest_review_packet(thread)
+        .await
+        .unwrap()
+        .expect("handed to review")
+        .evidence_root;
+    s.submit_review(thread, reviewer, ReviewDecision::Approve, None, Some(&root))
+        .await
+        .unwrap();
+}
+
+/// How many `ThreadLanded` events the log holds for `thread`.
+async fn landings(s: &dyn Store, ws: WorkspaceId, thread: ThreadId) -> usize {
+    s.list_events_after(ws, 0, 1000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(thread))
+        .count()
+}
+
+/// A merged change whose landing the review requirement refused is tried
+/// again on each settle, and lands, once, on the first settle after a
+/// reviewer approves. Before, the refusal settled the close for good and the
+/// thread stayed open after the approval.
+async fn a_merged_change_refused_by_its_review_requirement_lands_once_the_review_is_approved(
+    store: Arc<dyn Store>,
+) {
+    let s = store.as_ref();
+    let room = room(s, "refused-review").await;
+    let worker = agent(s, room.ws, "worker").await;
+    let reviewer = agent(s, room.ws, "reviewer").await;
+    let thread = change_task(s, &room, worker, 31).await;
+    s.set_review_requirement(thread, 1).await.unwrap();
+    s.transition_thread(thread, room.member, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    merge(s, &room, 31).await;
+
+    match s.settle_change_pull(room.ws, REPO, 31).await.unwrap() {
+        ChangeSettlement::CloseRefused {
+            thread_id, reason, ..
+        } => {
+            assert_eq!(thread_id, thread);
+            assert!(reason.starts_with("review requirement not met"), "{reason}");
+        }
+        other => panic!("an unapproved change is refused, got {other:?}"),
+    }
+    assert!(
+        matches!(
+            s.settle_change_pull(room.ws, REPO, 31).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "still refused, and not said again"
+    );
+    assert_eq!(
+        s.get_thread(thread).await.unwrap().state,
+        ThreadState::InReview
+    );
+
+    approve_handed(s, thread, reviewer).await;
+    let ChangeSettlement::Landed(events) = s.settle_change_pull(room.ws, REPO, 31).await.unwrap()
+    else {
+        panic!("the approval lifts the gate, so the merge lands");
+    };
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.kind == EventKind::ThreadLanded)
+            .count(),
+        1,
+        "{events:?}"
+    );
+    assert_eq!(
+        s.get_thread(thread).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert!(matches!(
+        s.settle_change_pull(room.ws, REPO, 31).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    assert_eq!(landings(s, room.ws, thread).await, 1, "landed once");
+    assert!(
+        s.list_unsettled_change_pulls(room.ws, 25)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a landing settles the close"
+    );
+}
+
+/// A merged change whose landing the land gate refused lands once the gate
+/// passes, straight from `open` through review on the same settle.
+async fn a_merged_change_refused_by_the_land_gate_lands_once_the_gate_passes(
+    store: Arc<dyn Store>,
+) {
+    let s = store.as_ref();
+    let room = room(s, "refused-gate").await;
+    let worker = agent(s, room.ws, "worker").await;
+    let checker = agent(s, room.ws, "checker").await;
+    s.add_member_skill(checker, LAND_GATE_SKILL).await.unwrap();
+    let thread = change_task(s, &room, worker, 32).await;
+    s.require_land_gate(thread).await.unwrap();
+    merge(s, &room, 32).await;
+
+    match s.settle_change_pull(room.ws, REPO, 32).await.unwrap() {
+        ChangeSettlement::CloseRefused { reason, .. } => {
+            assert!(reason.contains("land gate"), "{reason}");
+        }
+        other => panic!("a pending land gate refuses the landing, got {other:?}"),
+    }
+    assert!(matches!(
+        s.settle_change_pull(room.ws, REPO, 32).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    assert_eq!(s.get_thread(thread).await.unwrap().state, ThreadState::Open);
+
+    s.set_land_gate_pointer(thread, checker, LandGateStatus::Pass, None, None)
+        .await
+        .unwrap();
+    let ChangeSettlement::Landed(events) = s.settle_change_pull(room.ws, REPO, 32).await.unwrap()
+    else {
+        panic!("a qualifying pass lifts the land gate, so the merge lands");
+    };
+    let kinds: Vec<EventKind> = events.iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds
+            .iter()
+            .filter(|k| **k == EventKind::ThreadStateChanged)
+            .count(),
+        2,
+        "open to in_review to closed: {kinds:?}"
+    );
+    assert_eq!(
+        s.get_thread(thread).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert_eq!(landings(s, room.ws, thread).await, 1);
+}
+
+/// A refused landing whose thread is cancelled before the gate lifts never
+/// lands, though its approval then arrives, and leaves the settle queue. A
+/// sibling refused at the same time, and not cancelled, lands on the same
+/// pass.
+async fn a_refused_landing_whose_thread_was_cancelled_does_not_land(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "refused-cancel").await;
+    let worker = agent(s, room.ws, "worker").await;
+    let reviewer = agent(s, room.ws, "reviewer").await;
+    let kept = change_task(s, &room, worker, 33).await;
+    let cancelled = change_task(s, &room, worker, 34).await;
+    for (thread, pull) in [(kept, 33), (cancelled, 34)] {
+        s.set_review_requirement(thread, 1).await.unwrap();
+        s.transition_thread(thread, room.member, ThreadAction::StartReview)
+            .await
+            .unwrap();
+        merge(s, &room, pull).await;
+        assert!(matches!(
+            s.settle_change_pull(room.ws, REPO, pull).await.unwrap(),
+            ChangeSettlement::CloseRefused { .. }
+        ));
+    }
+
+    approve_handed(s, kept, reviewer).await;
+    approve_handed(s, cancelled, reviewer).await;
+    s.cancel_thread(
+        cancelled,
+        room.member,
+        "not wanted",
+        CancelAuthority::Transition,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        matches!(
+            s.settle_change_pull(room.ws, REPO, 34).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "a cancelled thread is not landed"
+    );
+    assert_eq!(landings(s, room.ws, cancelled).await, 0);
+    assert_eq!(
+        s.thread_unlanded_close(cancelled).await.unwrap().as_deref(),
+        Some("cancelled")
+    );
+    assert!(matches!(
+        s.settle_change_pull(room.ws, REPO, 33).await.unwrap(),
+        ChangeSettlement::Landed(_)
+    ));
+    assert_eq!(landings(s, room.ws, kept).await, 1);
+    assert!(
+        s.list_unsettled_change_pulls(room.ws, 25)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the cancelled thread's close settles without landing"
+    );
+}
+
+/// A refused landing is said once however many settles try it again, and it
+/// stays in the settle queue, behind any close not yet tried, so a backlog
+/// of refusals cannot hold a new close back.
+async fn a_refused_landing_is_said_once_and_waits_behind_new_closes(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "refused-once").await;
+    let worker = agent(s, room.ws, "worker").await;
+    let refused = change_task(s, &room, worker, 35).await;
+    s.require_land_gate(refused).await.unwrap();
+    merge(s, &room, 35).await;
+
+    let mut said = 0;
+    for _ in 0..4 {
+        if let ChangeSettlement::CloseRefused { .. } =
+            s.settle_change_pull(room.ws, REPO, 35).await.unwrap()
+        {
+            said += 1;
+        }
+    }
+    assert_eq!(said, 1, "the refusal is said once across four settles");
+    assert_eq!(
+        s.list_unsettled_change_pulls(room.ws, 25).await.unwrap(),
+        vec![(REPO.to_string(), 35)],
+        "a refused landing stays queued to be tried again"
+    );
+    assert_eq!(
+        s.get_thread(refused).await.unwrap().state,
+        ThreadState::Open
+    );
+
+    change_task(s, &room, worker, 36).await;
+    merge(s, &room, 36).await;
+    assert_eq!(
+        s.list_unsettled_change_pulls(room.ws, 1).await.unwrap(),
+        vec![(REPO.to_string(), 36)],
+        "a close never tried goes ahead of a refusal, though it closed later"
+    );
+}
+
 on_both_backends!(
     a_push_during_an_approval_never_leaves_the_old_head_approved,
+    a_merged_change_refused_by_its_review_requirement_lands_once_the_review_is_approved,
+    a_merged_change_refused_by_the_land_gate_lands_once_the_gate_passes,
+    a_refused_landing_whose_thread_was_cancelled_does_not_land,
+    a_refused_landing_is_said_once_and_waits_behind_new_closes,
     a_ci_event_marks_open_pulls_by_number_or_last_read_head,
     a_verdict_naming_a_moved_head_is_refused,
     a_named_head_without_a_tracked_pull_is_refused,
