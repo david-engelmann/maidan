@@ -29,14 +29,30 @@ fn refuse_gone_at(thread_id: ThreadId, gone: bool) -> Result<(), StoreError> {
 /// Refuse a message to a thread that is gone or archived. A closed thread
 /// takes messages.
 pub fn refuse_post(thread: &Thread) -> Result<(), StoreError> {
-    refuse_gone(thread)?;
-    if thread.state == ThreadState::Archived {
+    refuse_post_at(thread.id, thread.state, thread.tombstoned_at.is_some())
+}
+
+fn refuse_post_at(thread_id: ThreadId, state: ThreadState, gone: bool) -> Result<(), StoreError> {
+    refuse_gone_at(thread_id, gone)?;
+    if state == ThreadState::Archived {
         return Err(StoreError::Ended(format!(
             "thread {} is archived and takes no new messages; reopen it first",
-            thread.id.0
+            thread_id.0
         )));
     }
     Ok(())
+}
+
+/// [`refuse_post`] on the columns the post's own transaction read from the
+/// thread row: its `state` as text and whether it is tombstoned.
+pub(crate) fn refuse_post_column(
+    thread_id: ThreadId,
+    state: &str,
+    gone: bool,
+) -> Result<(), StoreError> {
+    let state = ThreadState::parse(state)
+        .ok_or_else(|| StoreError::InvalidInput(format!("unknown thread state `{state}`")))?;
+    refuse_post_at(thread_id, state, gone)
 }
 
 /// Refuse `what` on a thread that is gone, closed or archived.

@@ -27,7 +27,9 @@ pub async fn post_message(
         maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
     // A post to a deleted thread is 410 and one to an archived thread 409,
     // never a 201 nobody will read. A closed thread still takes messages:
-    // people discuss the work after it closes.
+    // people discuss the work after it closes. This early read only answers
+    // before the budget checks; the insert below checks again inside its own
+    // transaction, where an archive cannot land in between.
     maidan_store::thread_liveness::refuse_post(&state.store.get_thread(ctx.thread_id).await?)?;
     // A content-only post derives its searchable `body` from the blocks; an
     // explicit `body` is respected verbatim.
@@ -75,7 +77,7 @@ pub async fn post_message(
     // the 409, on both branches.
     let author = Some(auth.member_id);
     let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
-        let provisional = state.store.post_message(new_message).await;
+        let provisional = state.store.post_message_to_live_thread(new_message).await;
         let m = super::observe_spawn_denial(&state, author, provisional).await?;
         let slash_result = crate::slash_commands::dispatch_slash_command(
             &state,
@@ -110,7 +112,7 @@ pub async fn post_message(
     } else {
         let posted = state
             .store
-            .post_message_with_event(new_message, dm_conversation_id)
+            .post_message_to_live_thread_with_event(new_message, dm_conversation_id)
             .await;
         let (message, stored) = super::observe_spawn_denial(&state, author, posted).await?;
         super::publish_stored(&state, stored).await;

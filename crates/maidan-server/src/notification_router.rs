@@ -452,9 +452,10 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             ..
         } => {
             let mut recipients = HashSet::new();
-            // A cancel or close-abandoned clears the assignee before this
-            // event is written, so the member whose claim it ended rides
-            // alongside: its followers hear as the assignee's would have.
+            // A cancel, a close-abandoned or a close by someone else clears
+            // the assignee before this event is written, so the member whose
+            // claim it ended rides alongside: its followers hear as the
+            // assignee's would have.
             add_accessible_member_followers(
                 state,
                 *workspace_id,

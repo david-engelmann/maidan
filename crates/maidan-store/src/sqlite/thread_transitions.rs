@@ -741,8 +741,14 @@ pub async fn transition_with_event(
     action: ThreadAction,
 ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
     let mut tx = super::tx::begin_write(pool).await?;
+    let holder = holder_in_tx(&mut tx, thread_id).await?;
     let (result, spawned) = transition_in_spawning(&mut tx, thread_id, actor_id, action).await?;
-    let mut stored = vec![state_changed_in_tx(&mut tx, actor_id, &result).await?];
+    // A terminal transition clears the claim, as a cancel does, so the event
+    // names the member it took the thread from, and the router tells them.
+    // A holder who closed their own thread already knows.
+    let ended = holder.filter(|h| result.to_state.is_terminal() && *h != actor_id);
+    let mut stored =
+        vec![state_changed_ending_claim_in_tx(&mut tx, actor_id, &result, ended).await?];
     stored.extend(spawned);
     if action == ThreadAction::RequestChanges {
         let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
@@ -764,6 +770,20 @@ pub async fn transition_with_event(
     Ok((result, stored))
 }
 
+/// Who holds `thread_id` before a transition in `tx` clears the claim. `None`
+/// for no holder, and for no such thread, which the transition then reports.
+async fn holder_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<Option<MemberId>, StoreError> {
+    let holder: Option<Option<Uuid>> =
+        sqlx::query_scalar("SELECT assignee_id FROM maidan_threads WHERE id = ?")
+            .bind(thread_id.0)
+            .fetch_optional(&mut **tx)
+            .await?;
+    Ok(holder.flatten().map(MemberId))
+}
+
 /// Append the `ThreadStateChanged` event for a transition made in `tx`.
 pub(crate) async fn state_changed_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -773,9 +793,9 @@ pub(crate) async fn state_changed_in_tx(
     state_changed_ending_claim_in_tx(tx, actor_id, result, None).await
 }
 
-/// [`state_changed_in_tx`] for a close that ended `holder`'s claim (a cancel
-/// or a close-abandoned): the event names the former holder, because the
-/// thread it carries has no assignee any more.
+/// [`state_changed_in_tx`] for a close that ended `holder`'s claim (a cancel,
+/// a close-abandoned, or an ordinary close by someone else): the event names
+/// the former holder, because the thread it carries has no assignee any more.
 pub(crate) async fn state_changed_ending_claim_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     actor_id: MemberId,

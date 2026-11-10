@@ -3926,7 +3926,7 @@ macro_rules! store_delegations {
             async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
                 messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
                     .await?;
-                messages::create(self.pool(), new).await
+                messages::create(self.pool(), new, false).await
             }
 
             async fn post_message_with_event(
@@ -3936,7 +3936,28 @@ macro_rules! store_delegations {
             ) -> Result<(Message, StoredEvent), StoreError> {
                 messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
                     .await?;
-                messages::create_with_event(self.pool(), &self.keys, new, dm_conversation_id).await
+                messages::create_with_event(self.pool(), &self.keys, new, dm_conversation_id, false)
+                    .await
+            }
+
+            async fn post_message_to_live_thread(
+                &self,
+                new: NewMessage,
+            ) -> Result<Message, StoreError> {
+                messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
+                    .await?;
+                messages::create(self.pool(), new, true).await
+            }
+
+            async fn post_message_to_live_thread_with_event(
+                &self,
+                new: NewMessage,
+                dm_conversation_id: Option<DmConversationId>,
+            ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
+                    .await?;
+                messages::create_with_event(self.pool(), &self.keys, new, dm_conversation_id, true)
+                    .await
             }
 
             async fn edit_message_with_posted_event(

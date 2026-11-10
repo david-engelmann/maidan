@@ -346,18 +346,27 @@ pub async fn ui_create_agent(
 
 /// Whether the person behind an OIDC session is a workspace admin, for adding
 /// an agent. A session carries no role of its own, so admin is what the rest
-/// of the server already takes it to be: a member holding a live
+/// of the server already takes it to be: a human member holding a live
 /// `token:admin` token in the workspace. Before anyone holds one, the person
 /// who may mint the first one (`POST /auth/session/mint`: not invited, with
 /// the first-admin mint on) is the admin too; adding a worker agent is
-/// strictly less than that mint.
+/// strictly less than that mint. An agent never qualifies, as on the console's
+/// invite routes: before the first admin token exists the first-admin rule
+/// holds for any uninvited session, and an agent's own session must not use
+/// it to add more agents.
 async fn console_admin(state: &AppState, session: &SessionContext) -> ApiResult<()> {
     if session.token.is_some() {
         return Err(ApiError::Forbidden(
             "a session made from a token cannot add an agent here; that token's holder uses POST /workspaces/{wid}/agents".into(),
         ));
     }
-    if session_holds_or_may_mint(state, session, TOKEN_ADMIN).await? {
+    let member = state
+        .store
+        .get_member_in(session.workspace_id, session.member_id)
+        .await?;
+    if member.kind == MemberKind::Human
+        && session_holds_or_may_mint(state, session, TOKEN_ADMIN).await?
+    {
         Ok(())
     } else {
         Err(ApiError::Forbidden(

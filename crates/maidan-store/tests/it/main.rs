@@ -302,6 +302,9 @@ mod message_edit;
 #[path = "../message_edit_postgres.rs"]
 mod message_edit_postgres;
 
+#[path = "../message_post_ended_thread.rs"]
+mod message_post_ended_thread;
+
 #[path = "../message_purge.rs"]
 mod message_purge;
 

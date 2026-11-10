@@ -476,6 +476,13 @@ async fn deliver_notice(
 const WITHDRAWN_WITHOUT_REASON: &str = "Maidan closed this pull request because its task ended \
      without landing. It is out of the merge queue; its branch is left as it is.";
 
+/// The hidden marker at byte 0 of a withdrawal's comment. It names the outbox
+/// row, so a retry of this withdrawal finds its own comment and posts none,
+/// while a later withdrawal of the same pull request still says why.
+fn withdrawal_marker(entry: &EgressOutbox) -> String {
+    format!("<!-- maidan:withdraw:{} -->", entry.id.0)
+}
+
 /// Withdraw a cancelled or abandoned task's pull request: take it out of the
 /// merge queue and close it with the queued comment, through the withdraw
 /// guard path. The cancel or close queued this in its own transaction for a
@@ -494,7 +501,14 @@ async fn deliver_withdraw(
             retry_after: None,
         });
     };
-    let Some(git) = state.github_sender.as_ref().and_then(|sender| sender.git()) else {
+    let Some(sender) = state.github_sender.as_deref() else {
+        return Err(DeliveryFailure {
+            message: "github is not configured to write".into(),
+            misconfiguration: true,
+            retry_after: None,
+        });
+    };
+    let Some(git) = sender.git() else {
         return Err(DeliveryFailure {
             message: "github is not configured to write".into(),
             misconfiguration: true,
@@ -529,6 +543,7 @@ async fn deliver_withdraw(
         None => entry.body.as_str(),
         Some(_) => WITHDRAWN_WITHOUT_REASON,
     };
+    let marker = withdrawal_marker(entry);
     match crate::routes::withdraw_pull_guarded(
         state.store.as_ref(),
         entry.workspace_id,
@@ -537,7 +552,11 @@ async fn deliver_withdraw(
         &state.merge_queue_labels,
         repo,
         *issue_number,
-        comment,
+        crate::routes::WithdrawalComment {
+            reader: sender,
+            marker: &marker,
+            text: comment,
+        },
     )
     .await
     {

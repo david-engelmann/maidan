@@ -5,8 +5,9 @@
 //!
 //! Two tenants throughout: each sign-up gets its own workspace, and a session
 //! for one cannot add an agent to the other. A session made from a token, a
-//! request from another origin and a member who is not an admin are refused
-//! and create nothing; the agent's token is the worker set, never an admin's.
+//! request from another origin, a member who is not an admin and an agent's
+//! own session are refused and create nothing; the agent's token is the
+//! worker set, never an admin's.
 
 use std::{
     net::SocketAddr,
@@ -487,6 +488,59 @@ async fn a_member_who_is_not_an_admin_cannot_add_an_agent() {
         .add_agent(&ada.cookie, ada.workspace, json!({"handle": "allowed"}))
         .await;
     assert_eq!(status, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn only_a_human_adds_an_agent_before_anyone_holds_an_admin_token() {
+    let env = spawn(false).await;
+    let ada = env.sign_up("sub-ada", "ada@first-hour.example").await;
+    let bob = env.sign_up("sub-bob", "bob@other-tenant.example").await;
+    assert_ne!(ada.workspace, bob.workspace);
+
+    // An agent's own sign-in in Ada's workspace, while nobody holds
+    // `token:admin` there: the first-admin rule is open, and still does not
+    // make an agent the admin.
+    let seat = env
+        .store
+        .create_member(NewMember {
+            workspace_id: ada.workspace,
+            handle: "seat".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let seat_cookie = env.signed_in(ada.workspace, seat.id).await;
+    let (status, out) = env
+        .add_agent(&seat_cookie, ada.workspace, json!({"handle": "spawned"}))
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{out}");
+    assert_eq!(env.agents(ada.workspace).await, 1, "only the seat itself");
+
+    // Another tenant's person cannot add one to Ada's workspace either.
+    let (status, _) = env
+        .add_agent(&bob.cookie, ada.workspace, json!({"handle": "intruder"}))
+        .await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "{status}"
+    );
+    assert_eq!(env.agents(ada.workspace).await, 1);
+    assert_eq!(env.agents(bob.workspace).await, 0);
+
+    // The human who signed up can, and nobody holds an admin token yet.
+    let (status, out) = env
+        .add_agent(&ada.cookie, ada.workspace, json!({"handle": "claude"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{out}");
+    assert_eq!(env.agents(ada.workspace).await, 2);
+    assert!(
+        !env.store
+            .workspace_has_active_capability(ada.workspace, capability::TOKEN_ADMIN)
+            .await
+            .unwrap(),
+        "the refusal above was taken with the first-admin rule open"
+    );
 }
 
 #[tokio::test]
