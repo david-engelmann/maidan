@@ -849,7 +849,10 @@ moved, or that read is older than the backstop,
 `MAIDAN_CHANGE_CI_BACKSTOP_SECS` (1800 s by default), which covers a dropped
 delivery. Every tick still makes the one GraphQL read, so closes, merges and
 the ready label are seen as before. Without the ingress no event arrives, and
-every tick reads CI as it always did.
+every tick reads CI as it always did. `maidan_github_events_total{event,
+outcome}` counts each delivery (`marked`, `unmatched`, `handled`, `ignored`,
+or `refused` for a bad signature), so a forwarder's sent count can be checked
+against what Maidan took in.
 
 The same read says what else holds the pull request back, and `ci` records
 it: GitHub's `merge_state`, the unresolved review threads (a review bot's

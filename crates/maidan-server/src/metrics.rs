@@ -107,6 +107,10 @@ pub fn init() {
             "HTTP request latency in seconds"
         );
         describe_counter!(
+            "maidan_github_events_total",
+            "Inbound GitHub webhook deliveries by event and outcome (marked, unmatched, handled, ignored, refused)"
+        );
+        describe_counter!(
             "maidan_http_shed_total",
             "HTTP requests refused with 503 because the in-flight ceiling was reached"
         );
