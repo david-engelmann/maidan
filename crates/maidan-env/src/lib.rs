@@ -82,6 +82,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_EMBED_REPAIR_BATCH",
     "MAIDAN_EMBED_REPAIR_INTERVAL_SECS",
     "MAIDAN_ENV",
+    "MAIDAN_ENV_FINGERPRINT",
     "MAIDAN_EXPORT_SIGNING_KEY",
     "MAIDAN_EXPORT_SIGNING_KEY_FILE",
     "MAIDAN_EXPORT_VERIFY_KEYS",
@@ -893,6 +894,7 @@ mod tests {
             "MAIDAN_EMBED_REPAIR_INTERVAL_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
+        ("MAIDAN_ENV_FINGERPRINT", "set by the Worker per start"),
         (
             "MAIDAN_HNSW_EF_CONSTRUCTION",
             "self-hosted bind, custody, or sweep tuning",

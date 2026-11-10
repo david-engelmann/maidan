@@ -42,6 +42,7 @@ pub mod egress_guard;
 pub mod egress_http;
 pub mod egress_worker;
 pub mod embed_repair;
+pub mod env_fingerprint;
 pub mod error;
 pub mod event_stream;
 pub mod export;

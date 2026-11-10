@@ -28,7 +28,7 @@ import {
 } from "./edge.js";
 import { replayableBody, sendHeld } from "./hold.js";
 import { isStatusRequest, statusResponse } from "./status.js";
-import { ContainerEnvSession, envFingerprint, serverEnv } from "./server-env.js";
+import { ContainerEnvSession, ENV_FINGERPRINT_VAR, envFingerprint, serverEnv } from "./server-env.js";
 
 export class MaidanServer extends Container {
   defaultPort = 8080;
@@ -42,7 +42,8 @@ export class MaidanServer extends Container {
 
   constructor(ctx, env) {
     super(ctx, env);
-    this.envVars = serverEnv(env);
+    this.baseEnv = serverEnv(env);
+    this.envVars = this.baseEnv;
     this.envSession = new ContainerEnvSession();
   }
 
@@ -52,7 +53,10 @@ export class MaidanServer extends Container {
   // process. The session recycles that container, and keeps a start already
   // in flight on this instance from being recycled by the next request.
   async fetch(request) {
-    const fingerprint = await envFingerprint(this.envVars);
+    // The hash covers the settings, not itself; the process is started with
+    // it and echoes it, so a process on another start's settings shows.
+    const fingerprint = await envFingerprint(this.baseEnv);
+    this.envVars = { ...this.baseEnv, [ENV_FINGERPRINT_VAR]: fingerprint };
     return this.envSession.serve({
       fingerprint,
       container: this.ctx.container,

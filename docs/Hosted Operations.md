@@ -119,7 +119,7 @@ address) is shown as a page with its title, its detail and a support link.
 
 ### Restarting the container
 
-A running Container keeps the environment it started with, so a deploy that changes settings without changing the image doesn't reach it until it restarts. Set `MAIDAN_OPS_RESTART_TOKEN` (a Worker secret, never passed to the server) and `POST /__ops/restart` with `Authorization: Bearer <token>`. The Worker stops the container and answers `202`, and the next request starts a fresh one with the current settings.
+A running Container keeps the environment it started with, so a deploy that changes settings without changing the image doesn't reach it until it restarts. The Worker starts the container with a hash of its settings in `MAIDAN_ENV_FINGERPRINT`, and the server echoes it on every response (`x-maidan-env-fingerprint`). When a response carries another hash, as after an image rollout that restarted the container on the previous settings (v445), the Worker recycles the container on the next request. A restart by hand is still there for anything else. Set `MAIDAN_OPS_RESTART_TOKEN` (a Worker secret, never passed to the server) and `POST /__ops/restart` with `Authorization: Bearer <token>`. The Worker stops the container and answers `202`, and the next request starts a fresh one with the current settings.
 Requests that arrive while it starts are held at the edge, as during a deploy.
 
 ### Deploys without downtime

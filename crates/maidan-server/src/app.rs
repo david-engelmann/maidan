@@ -2048,6 +2048,9 @@ pub fn router(state: AppState) -> Router {
         // Outside the request-id span so the exported server span's parent
         // is the caller's trace, not an internal child.
         .layer(middleware::from_fn(trace_context::middleware))
+        // Outermost, so every answer the hosted Worker sees says which
+        // environment this process started with, refusals included.
+        .layer(middleware::map_response(crate::env_fingerprint::stamp))
         // Cap request bodies before extractors buffer them.
         .layer(DefaultBodyLimit::max(max_body_bytes_from_env()))
         .with_state(state)
