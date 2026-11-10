@@ -195,7 +195,7 @@ the CLI image pinned to the server's tag, on a network that reaches the
 database:
 
 ```sh
-MAIDAN_TAG=v444.0.0
+MAIDAN_TAG=v445.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
@@ -760,5 +760,5 @@ Card. Erasure is `DELETE /messages/:id/purge` for a withdrawn message and
 
 Until the 1.0 launch, HTTP and MCP shapes can change between releases without
 compatibility shims; the CHANGELOG says when they do. From 1.0 they are
-stable. Release numbers count releases, so `v444.0.0` is a release number, not
+stable. Release numbers count releases, so `v445.0.0` is a release number, not
 a promise of stability.

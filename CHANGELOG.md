@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [445.0.0] — 2026-11-10
+
+sign-up is open on maidan.world.
+
+### Every Threat-Model row names the test that holds it
+
+- **Added:** a Test column on the Primary threats table in `docs/Threat-Model.md`, each cell naming an existing Rust test function or a `*.rs` file stem. `threat_model_contract` fails if a name is missing or does not resolve in the repo. T6 (`sqlx` parameterized queries) has no dedicated test and is pinned as `practice`. The pull-request template asks for a threat-model delta when a change touches a trust boundary.
+
+### Every close names the claim it ended; the withdrawal comment finds itself on any pull request
+
+- **Fixed:** a merge that lands a task in its owner's name, and a plan that
+  closes when its last child lands, now name the member whose claim the close
+  ended (`previous_assignee_id` on `ThreadStateChanged`), so that worker and
+  its followers are told, as they already were for a cancel, a close-abandoned
+  and an ordinary close by someone else.
+- **Fixed:** a withdrawal's retry looks for its own comment only among those
+  written since the withdrawal was queued (GitHub's `since`), so a pull
+  request with more than 1,000 older comments no longer gets the comment
+  twice.
+
+### Sign-up is open on maidan.world
+
+- **Added:** `/.well-known/maidan.json` reports `auth.oidc_signup_open`. Where
+  it is true, the front page's buttons read **Create a workspace** and open the
+  console's sign-in, and the console drops its "No invite yet? Join the
+  waitlist" line and makes **Create your workspace** its main action.
+- **Changed:** maidan.world signs up any verified address without an invite
+  (`MAIDAN_SIGNUP_OPEN=1`), behind the Turnstile check that boot requires for
+  it in production. Waitlist invites still work.
+
 ## [444.0.0] — 2026-11-10
 
 the console ends a task (Cancel, Close as abandoned); second-family reviews route to where the change is; the authority audit scans every crate.
