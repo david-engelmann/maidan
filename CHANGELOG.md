@@ -7,6 +7,59 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [443.0.0] — 2026-11-10
+
+Watches close when their PR ends, refused landings retry, build seats deliver on feature/builder- branches, the try page follows the theme, and the remaining ending and authorization gaps close.
+
+### Ending a task early cleans up its pull request, its decision and its claimant
+
+- **Fixed:** a cancelled task's pull request in the merge queue could still merge. A cancel or a close-abandoned now queues, in its own transaction, the withdrawal of each open pull request the change flow opened for the task. The egress worker (a new `withdraw` outbox kind) runs the dequeue guards on one fresh read, takes the repository's merge-queue label off, and closes an open pull request with a comment naming the reason. The branch is left. A pull request a session registered, one only watched, one already closed, and one another task's result was delivered to since are not touched.
+- **Fixed:** the context pack listed a cancelled or abandoned task's result among its channel's accepted decisions. `list_channel_closed_results` leaves out every thread with a cancellation or an unlanded-close record, in the same query.
+- **Fixed:** the member whose claim a cancel or close-abandoned ended was not told, because the state change is written after the assignee is cleared. It now gets a `thread_state_changed` notification, unless it did the close itself, and its followers hear as the assignee's would.
+- **Fixed:** MCP `close_abandoned_thread` now publishes the thread's resource updates, as `cancel_thread` does.
+- **Changed:** `ThreadStateChanged` carries `previous_assignee_id` on a cancel and a close-abandoned: the member whose claim it ended. Omitted otherwise.
+- **Changed:** the GitHub client can close a pull request (`PATCH /repos/{repo}/pulls/{n}`, `state: closed`), reachable only through the withdraw guard path.
+
+### The launch gate's path, by hand on maidan.world
+
+- **Added:** `docs/Launch Gate.md`, the runbook for running the `maidan-launch-1.0` gate test's path against maidan.world: who does each step, the clicks and commands, what to observe and what to keep as evidence, a throwaway second tenant for the two-tenant check, erasing both test workspaces afterwards, every place the hosted path differs from the test, and the go or no-go checklist for the launch release (open sign-up, web push, demo reviewer tokens), each the maintainer's call. A maintainer page, listed in the docs index and kept off the docs site.
+
+### A workspace made by sign-up can invite a second person
+
+- **Fixed:** the first admin token (`POST /auth/session/mint`) now carries `workspace:admin` beside `token:admin`. Before, a workspace made by sign-up could never invite anyone: the token lacked it, a token cannot mint a capability it does not hold, and a browser session never holds it.
+- **Added:** `POST`/`GET /ui/api/workspaces/{wid}/invites` and `DELETE /ui/api/workspaces/{wid}/invites/{iid}`, so the person who signed up invites, lists and revokes from the console without holding a token. A session's member must be a human holding `workspace:admin` on a live token, or, before anyone holds `token:admin`, the person who may mint the first one. An invited member, an agent and a session made from a token are refused; a bearer is held to `workspace:admin`. The console's Invites panel uses these routes when signed in.
+- **Fixed:** the launch gate test's cross-tenant read called `get_thread`, which is not an MCP tool, so it passed on "unknown tool". It now calls `get_thread_context`, asserts the tenant refusal, and checks the owner's own read succeeds.
+
+### try.maidan.world matches the rest of Maidan
+
+- **Changed:** The try page at try.maidan.world, and the demo's "Back in a moment" page, are dark by default in the console's graphite palette with the orange primary button and the Maidan mark, like the landing and the console. Light is the landing's warm paper. Both pages load the console's own `theme.js` before the first paint, so a browser that chose Light in the console sees them light. The Worker serves it as `/theme.js` (the demo deploy copies it in), so a visit still never wakes the demo container. The Turnstile check, when it is on, follows the page's theme.
+- **Added:** `deploy/cloudflare/test/try-theme.test.js` holds `try.css` to the console's token rules (one palette block per theme, the same tokens in each, no colour outside them, the landing's values for shared tokens) and checks WCAG AA in both themes. A Playwright test checks both pages are dark by default, switch with a stored Light, and pass axe in each.
+
+### The validation record runs on v441.0.0
+
+- **Added:** `listings/validation/v441.md`, the Next 14 validation record re-run on `v441.0.0`: the official MCP Inspector against the signed release binaries (cosign-verified, no source build) passed all 50 checks over 263 tools, and the clean-machine install passed on the maintainer's Mac and on a fresh GitHub runner. A new section records the maintainer's 2026-11-09 connector runs against maidan.world: claude.ai's custom connector signed in over OAuth and works, and ChatGPT's free plan connected over OAuth and answered `whoami`, `list_channels` and `get_waiting_inbox`, and the coordinator saw the inline approve card render in ChatGPT for a test gate whose decision is still the maintainer's. The example prompts through each platform's own model, a person's install on another host, the reviewer token, a record per listing and the go for any submission stay open, each with its owner.
+
+### Four gaps left by the cancel and invite work
+
+- **Fixed:** "Add an agent" in the console (`POST /ui/api/workspaces/{wid}/agents`) now requires the session's member to be a human, as the console's invite routes do. Before anyone held `token:admin`, a console session belonging to an agent member passed the first-admin rule and could add agents.
+- **Fixed:** a cancelled or abandoned task's pull request gets its withdrawal comment once (on a pull request with up to 1,000 comments). The comment starts with a hidden marker naming the withdrawal, and a retry after GitHub took the comment but failed the close finds it and only closes.
+- **Fixed:** a message can no longer land on a thread archived while it was being posted. The REST and MCP post paths check the thread inside the insert's own transaction (the thread row locked on Postgres, the write lock held on SQLite) and answer `409` `thread-ended` for an archived thread and `410` `gone` for a deleted one.
+- **Fixed:** an ordinary close of a thread someone held, by someone other than the holder, names the former holder in `ThreadStateChanged`'s `previous_assignee_id` and notifies them and their followers, as a cancel and a close-abandoned already did.
+
+### A watched pull request's thread closes when the pull request does
+
+- **Fixed:** a thread made by `POST /workspaces/{id}/pull-watches` or MCP `watch_pull` stayed `open` after its pull request ended, some for days. A close without a merge left it open with only a notice, as for a change waiting on a person. A merge closed it only through the change's landing gates (separation of duties, a review requirement, the land gate), and a refused close was said once and never tried again. The change sweep now closes a watch-only thread (no result, no delivery, no pull request the change flow delivered or a session registered) when its pull request merges and when it closes without merging, straight from `open` or `in_review`, past those gates, as the watcher. One message names the pull request and how it ended, committed with the close, and the `ThreadStateChanged` event tells its watchers. A merge also records `ThreadLanded`; a close without one records that nothing landed, so a thread depending on the watch keeps waiting. A change thread settles as before.
+- **Changed:** the change sweep's stats count a merged watch's close in `landed`, and an unmerged one in the new `watches_closed_unmerged`.
+
+### Build seats deliver on `feature/builder-` branches
+
+- **Added:** the change flow writes `feature/builder-[a-z0-9][a-z0-9-]*` branches as well as `feature/agent-…`, under the same rules: never a protected branch, never `prod` as a base, never another change's branch as a base, either prefix in any case. A repository's gate can hold a build seat's changes to different checks from an unattended producer's by branch name alone.
+
+### A merged change lands once the gate that refused it lifts
+
+- **Fixed:** when a change thread's pull request merged and one of the thread's gates refused the landing (separation of duties, a review requirement not met, the land gate not passed), the change sweep said so once and settled the merge for good. When the gate was met later (a reviewer approved, the land gate passed), the thread stayed open until someone closed it by hand, and every thread depending on it kept waiting. A refused landing now stays unsettled: each sweep tries it again, in the same transaction as before and with no GitHub call, and the thread lands, with one `ThreadLanded`, on the first sweep after its gates pass. The refusal is still said once. A thread closed or cancelled in the meantime settles without landing.
+- **Changed:** the change sweep settles closes it has never tried first, then refused landings, the one tried longest ago first, at most 25 a workspace a sweep, so a backlog of refusals holds back neither a new close nor one another. The refusal message now says the thread lands on the sweep after its gates pass. Migration 0229 adds `refused_at` and `retried_at` to `maidan_change_pulls`.
+
 ## [442.0.0] — 2026-11-10
 
 Cancelled tasks leave the merge queue and the context pack, inbound GitHub deliveries are counted, and prod picks up its web push keys.

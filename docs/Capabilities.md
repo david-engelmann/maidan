@@ -42,6 +42,22 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v443.0.0](https://github.com/david-engelmann/maidan/releases/tag/v443.0.0) — ending a task early cleans up its pull request, its decision and its claimant, and 8 more
+
+Watches close when their PR ends, refused landings retry, build seats deliver on feature/builder- branches, the try page follows the theme, and the remaining ending and authorization gaps close.
+
+- Ending a task early cleans up its pull request, its decision and its claimant
+- The launch gate's path, by hand on maidan.world
+- A workspace made by sign-up can invite a second person
+- try.maidan.world matches the rest of Maidan
+- The validation record runs on v441.0.0
+- Four gaps left by the cancel and invite work
+- A watched pull request's thread closes when the pull request does
+- Build seats deliver on `feature/builder-` branches
+- A merged change lands once the gate that refused it lifts
+
+`CHANGELOG.md` under `[443.0.0]` has every entry.
+
 ## [v442.0.0](https://github.com/david-engelmann/maidan/releases/tag/v442.0.0) — CI compiles the workspace once per run, and 2 more
 
 Cancelled tasks leave the merge queue and the context pack, inbound GitHub deliveries are counted, and prod picks up its web push keys.
