@@ -365,7 +365,7 @@ ready or queue them for merge (`MAIDAN_MARK_READY_APP_ID` and friends in
 **Guards in Maidan's code**, whatever the token can do, none configurable:
 
 - The only ref Maidan writes is an agent branch matching
-  `feature/agent-[a-z0-9][a-z0-9-]*`. `prod`, `main`, `master`, `staging` and
+  `feature/agent-[a-z0-9][a-z0-9-]*` or `feature/builder-[a-z0-9][a-z0-9-]*`. `prod`, `main`, `master`, `staging` and
   `dev` are never written, and `prod` is never a base.
 - A pull request goes only into the base the workspace allowlist names for
   that repository.

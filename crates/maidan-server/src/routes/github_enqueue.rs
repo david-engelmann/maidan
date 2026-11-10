@@ -76,7 +76,7 @@ fn label_for<'a>(
 }
 
 /// The guards enqueue and dequeue share, on one fresh read: mark-ready's
-/// shape rules and base pins (a `feature/agent-*` head into its pinned base,
+/// shape rules and base pins (a `feature/agent-*` or `feature/builder-*` head into its pinned base,
 /// never prod), a head in the base repository, and the `owner/name@base`
 /// blessing in the workspace's `github_branch` allowlist.
 async fn shared_guards(
@@ -223,7 +223,7 @@ pub struct Withdrawn {
 
 /// The guard path for withdrawing a pull request whose task was cancelled or
 /// closed as abandoned: the shared guards on one fresh read, as for
-/// dequeue, so only a `feature/agent-*` head in this repository into an
+/// dequeue, so only a `feature/agent-*` or `feature/builder-*` head in this repository into an
 /// allowlisted base is touched. Then the merge-queue label comes off if the
 /// repository has one and it is on (first, so the queue cannot take the
 /// pull request while it is being closed), and an open pull request gets

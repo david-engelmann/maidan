@@ -183,7 +183,7 @@ An array of target objects. Each names a `surface` plus per-surface detail:
    commits a [`maidan.change.result/1`](#the-change-flow-maidanchangeresult1--github_branch)
    to `branch` and opens a draft pull request against `base`. It is logged as
    `github_branch:<repo>@<branch>`. `branch` must match
-   `feature/agent-[a-z0-9][a-z0-9-]*`; `base` must be blessed for the
+   `feature/agent-[a-z0-9][a-z0-9-]*` or `feature/builder-[a-z0-9][a-z0-9-]*`; `base` must be blessed for the
    repository, and is never `prod`.
 6. **`linear` requires `team` (the team's id, a UUID) and `issue` (its
    identifier, `ENG-123`, or its id).** Delivery is a comment on the issue.
@@ -313,7 +313,7 @@ envelope fields, Maidan reads:
 blessed:
 
 0. Checks the hard-coded rules, at routing and again before any write: the
-   branch matches `feature/agent-[a-z0-9][a-z0-9-]*` and is not `prod`,
+   branch matches `feature/agent-[a-z0-9][a-z0-9-]*` or `feature/builder-[a-z0-9][a-z0-9-]*` and is not `prod`,
    `main`, `master`, `staging` or `dev`; the base is not `prod` and not the
    branch; `owner/name@base` is on the workspace allowlist; and no pull request
    for the branch is open into another base. Each refusal is recorded with its
@@ -418,7 +418,7 @@ branch head immediately before the move, and moves the branch with
 `force: true` only if the head is still `branch_head_sha`, the head the round
 started from. This is the change
 flow's **only non-fast-forward write**. It is allowed only for a
-`feature/agent-*` branch whose head is the last commit Maidan delivered, and
+`feature/agent-*` or `feature/builder-*` branch whose head is the last commit Maidan delivered, and
 only through one guard that no other code path can reach: the force write
 takes a single-use pass that only that guard mints, bound to the branch and
 both commits, and checks the branch shape again. GitHub's ref API has no compare-and-swap, so a push landing between the
@@ -451,7 +451,7 @@ with `repo` and `pull_number`), read whether it is labelled (`GET`), and take
 the label off (`DELETE`). Enqueue reads the pull request once and refuses
 unless every check holds on that read: a label is configured for the
 repository; the pull request is open, not a draft and not from a fork; its
-head is a `feature/agent-*` branch into the pinned base and on the workspace
+head is a `feature/agent-*` or `feature/builder-*` branch into the pinned base and on the workspace
 allowlist; and its head is the commit the change flow last delivered to it.
 The last check keeps a commit pushed after the review out of the queue: the
 refusal names both SHAs. Dequeue skips that comparison, since the queue may
