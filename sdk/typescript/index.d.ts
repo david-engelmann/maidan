@@ -277,7 +277,7 @@ export interface TaskAttributes {
   tier?: "A" | "B";
   /** The service lane it may run in; unset runs at standard rates. */
   lane?: "batch" | "flex";
-  /** The provider family a review child is routed to; server-set. */
+  /** A label on a review child the server spawned; nothing routes on it. Server-set. */
   review_family?: string;
   /** The provider family that wrote the change a review task reviews; kept once set. */
   author_family?: string | null;

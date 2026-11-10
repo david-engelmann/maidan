@@ -1605,7 +1605,7 @@
             ]
           },
           "repo": {
-            "description": "Only claim a thread whose footprint names this repository\n(`owner/name` or a GitHub clone URL), for a worker whose checkout is\nthat repository. A thread without a footprint is then never claimed.",
+            "description": "Only claim a thread whose footprint names this repository (`owner/name`\nor a GitHub clone URL), or a review whose `repo` attribute names it, for\na worker whose checkout is that repository. Any other thread without a\nfootprint is then never claimed.",
             "type": [
               "string",
               "null"
@@ -10447,7 +10447,7 @@
             ]
           },
           "review_family": {
-            "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
+            "description": "A label the server sets on a review child it spawns: the first family\nit knows that is not the author's. Nothing routes on it: any member\nwhose usage never named `author_family` may claim the review. It marks\nthe child as spawned by the server, which the parent's ordering hold\nexempts. Set by the server only; setting attributes leaves it as it was.",
             "type": [
               "string",
               "null"
@@ -37624,7 +37624,7 @@
             }
           },
           {
-            "description": "The provider family a review child is routed to",
+            "description": "The label on a review child the server spawned; nothing routes on it",
             "in": "query",
             "name": "attr.review_family",
             "required": false,
@@ -44056,7 +44056,7 @@
             }
           },
           {
-            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL). Omitted, any work.",
+            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL), or reviews whose `repo` attribute names it.\nOmitted, any work.",
             "in": "query",
             "name": "repo",
             "required": false,

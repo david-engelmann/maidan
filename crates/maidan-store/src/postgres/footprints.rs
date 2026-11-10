@@ -147,13 +147,22 @@ pub async fn set(
 
 /// `thread_id`'s declared footprint, claimed or not.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<Option<Footprint>, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_on(&mut conn, thread_id).await
+}
+
+/// [`get`] on a connection, so a transaction reads its own writes.
+pub(crate) async fn get_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<Option<Footprint>, StoreError> {
     let rows = sqlx::query(
         "SELECT thread_id, repo, mode, kind, value FROM maidan_thread_footprints
          WHERE thread_id = $1
          ORDER BY kind, value",
     )
     .bind(thread_id.0)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     footprint_from_rows(rows.iter().map(item_row).collect())
 }

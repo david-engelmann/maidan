@@ -8,14 +8,14 @@ use maidan_types::{
 use sqlx::Row;
 use uuid::Uuid;
 
-use super::{events, thread_attributes, threads};
+use super::{events, footprints, thread_attributes, threads};
 use crate::error::StoreError;
 
-/// When change `thread_id` enters review, spawn its review child, routed to a
-/// provider family other than its author's, unless it is not a change or a
-/// live review child already exists. The author's family is read from the
-/// latest usage record the change's claimant reported on it; when none is
-/// named there is nothing to route away from, and no child is spawned.
+/// When change `thread_id` enters review, spawn its review child, claimable by
+/// any member whose usage never named its author's family, unless it is not a
+/// change or a live review child already exists. The author's family is read
+/// from the latest usage record the change's claimant reported on it; when
+/// none is named there is nothing to route away from, and no child is spawned.
 pub(crate) async fn spawn_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
@@ -105,8 +105,23 @@ pub(crate) async fn spawn_in_tx(
     .await?;
     let thread = threads::row_to_thread(&row)?;
     let now = thread.created_at;
+    // The review is served where its change is: a seat that claims, or wakes
+    // on queue depth, filtered by engine or repository would otherwise never
+    // see it. A change that names its repository only in its footprint lends
+    // the review that one. The review takes no footprint: it reads and never
+    // writes, so it holds nothing another claim could wait on.
+    let change = thread_attributes::get_on(tx, thread_id).await?;
+    let repo = match change.repo {
+        Some(repo) => Some(repo),
+        None => footprints::get_on(tx, thread_id)
+            .await?
+            .map(|footprint| footprint.repo),
+    };
     let attributes = TaskAttributes {
         kind: TaskKind::Review,
+        engine: change.engine,
+        lane: change.lane,
+        repo,
         ..TaskAttributes::default()
     };
     thread_attributes::insert_on(tx, thread.id, &attributes).await?;

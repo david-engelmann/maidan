@@ -2,6 +2,13 @@
 
 [Introduction](./introduction.md)
 
+# Using Maidan
+
+- [What Maidan is for](docs/Using-Maidan.md)
+- [Setup modes](docs/Setup-Modes.md)
+- [Typical flows](docs/Typical-Flows.md)
+- [Using the console](docs/Console.md)
+
 # Integrate
 
 - [Quickstart](docs/Quickstart.md)

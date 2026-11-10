@@ -3,9 +3,19 @@
 GitHub-native Markdown: standard links, headings and Mermaid blocks, published
 as the [docs site](https://docs.maidan.world/) (mdBook).
 
+- **Using Maidan?** Start at [What Maidan is for](Using-Maidan.md).
 - **Connecting an agent or a client?** Start at [Integration](Integration.md).
 - **Working on the repo?** Start at [`CLAUDE.md`](../CLAUDE.md), then come back here.
 - **What is being built next?** [Open Work](Open%20Work.md). Where it is heading: [Roadmap](Roadmap.md).
+
+## Use
+
+| Doc | What it answers |
+|---|---|
+| [What Maidan is for](Using-Maidan.md) | The room, the pieces, and the loop from a filed task to done. **Start here** |
+| [Setup modes](Setup-Modes.md) | Manual, supervised or full autopilot: who does what, what to connect, the safety rails |
+| [Typical flows](Typical-Flows.md) | Filing, working, reviewing, asking, cancelling and connecting, step by step |
+| [Using the console](Console.md) | What each screen of `/ui/` is for |
 
 ## Integrate
 

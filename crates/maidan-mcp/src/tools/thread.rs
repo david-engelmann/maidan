@@ -1293,7 +1293,8 @@ struct ClaimNextThreadArgs {
     /// lapses. Omitted, the server's default lease applies.
     #[serde(default)]
     lease_secs: Option<i64>,
-    /// Only a thread whose footprint names this repository.
+    /// Only a thread whose footprint names this repository, or a review whose
+    /// `repo` attribute names it.
     #[serde(default)]
     repo: Option<String>,
     /// Only a thread routed to this engine; a thread routed to another

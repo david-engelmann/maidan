@@ -211,9 +211,10 @@ pub struct ClaimNextThread {
     #[serde(default)]
     #[schema(minimum = 1, maximum = 604800)]
     pub lease_secs: Option<i64>,
-    /// Only claim a thread whose footprint names this repository
-    /// (`owner/name` or a GitHub clone URL), for a worker whose checkout is
-    /// that repository. A thread without a footprint is then never claimed.
+    /// Only claim a thread whose footprint names this repository (`owner/name`
+    /// or a GitHub clone URL), or a review whose `repo` attribute names it, for
+    /// a worker whose checkout is that repository. Any other thread without a
+    /// footprint is then never claimed.
     #[serde(default)]
     pub repo: Option<String>,
     /// Only claim a thread routed to this engine (`unattended`, `session` or
@@ -498,7 +499,8 @@ pub struct FindThreadsQuery {
 #[into_params(parameter_in = Query)]
 pub struct WorkspaceQueueDepthQuery {
     /// Count only threads whose footprint names this repository (`owner/name`
-    /// or a GitHub clone URL). Omitted, any work.
+    /// or a GitHub clone URL), or reviews whose `repo` attribute names it.
+    /// Omitted, any work.
     pub repo: Option<String>,
     /// Count only threads routed to this engine (`unattended`, `session` or
     /// `human`). Omitted, any work.
