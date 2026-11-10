@@ -7,6 +7,8 @@
 //! the privileged reads and the personal-state writes; holder-side token
 //! tools act only on the caller.
 
+// This scan only blanks test items; `rust_files` serves the other scans.
+#[expect(dead_code)]
 mod source_scan;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -186,12 +188,12 @@ fn dispatch_arms(mod_src: &str) -> BTreeSet<String> {
             i = next;
             continue;
         }
-        if bytes[i] == b'"' {
-            if let Some((name, after)) = read_tool_arm(mod_src, i) {
-                names.insert(name);
-                i = after;
-                continue;
-            }
+        if bytes[i] == b'"'
+            && let Some((name, after)) = read_tool_arm(mod_src, i)
+        {
+            names.insert(name);
+            i = after;
+            continue;
         }
         i += 1;
     }
