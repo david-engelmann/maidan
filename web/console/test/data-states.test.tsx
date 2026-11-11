@@ -45,6 +45,9 @@ test("a token without workspace:admin is never asked for invites; a sign-in or a
   expect(asksForInvites("bearer", null)).toBe(false);
   expect(asksForInvites("bearer", { capabilities: ["workspace:admin"] })).toBe(true);
   expect(asksForInvites("session", { capabilities: ["workspace:read"] })).toBe(true);
+  // A browser session traded for a token keeps that token's grant.
+  expect(asksForInvites("session", { capabilities: ["workspace:read"] }, true)).toBe(false);
+  expect(asksForInvites("session", { capabilities: ["workspace:admin"] }, true)).toBe(true);
 });
 
 test("a channel that failed to load is named, not silently dropped", () => {

@@ -322,14 +322,14 @@ export function missingChannels(names: string[]): string | null {
 }
 
 /**
- * Whether the invites panel asks the server at all. A token is exactly its
- * grant, so one without workspace:admin is told no here, with no request
- * the browser would log as a failure. A person's own sign-in carries no
- * workspace:admin of its own (the server checks their membership instead), so
- * only the server can answer for it.
+ * Whether the invites panel asks the server at all. A token, and a browser
+ * session made from one, is exactly its grant, so one without workspace:admin
+ * is told no here, with no request the browser would log as a failure. A
+ * person's own sign-in carries no workspace:admin of its own (the server
+ * checks their membership instead), so only the server can answer for it.
  */
-export function asksForInvites(mode: CredentialMode | null, grant: { capabilities: string[] } | null): boolean {
-  if (mode === "bearer" || mode === "delegated") return Boolean(grant?.capabilities.includes("workspace:admin"));
+export function asksForInvites(mode: CredentialMode | null, grant: { capabilities: string[] } | null, tokenBacked = false): boolean {
+  if (tokenBacked || mode === "bearer" || mode === "delegated") return Boolean(grant?.capabilities.includes("workspace:admin"));
   return true;
 }
 

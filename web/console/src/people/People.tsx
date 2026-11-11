@@ -480,7 +480,7 @@ function Invites({ api }: { api: PeopleApi }) {
   // request; for a sign-in the list answers 403 to anyone else. Either way the
   // form shows only once the list loaded, so a failed read never offers a
   // form that cannot work.
-  const workspace = session.status === "signed-in" && asksForInvites(session.mode, session.grant) ? session.workspaceId : null;
+  const workspace = session.status === "signed-in" && asksForInvites(session.mode, session.grant, Boolean(session.credentials.pastedToken) || session.credentials.tokenSession) ? session.workspaceId : null;
   const [refused, setRefused] = useState(false);
   const [version, setVersion] = useState(0);
   const [list, setList] = useState<{ value: Invite[] | null; error: string | null }>({ value: null, error: null });
