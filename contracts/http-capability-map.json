@@ -1920,7 +1920,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/fsm-hooks",
-    "capability": "workspace:write",
+    "capability": "workspace:admin",
     "surface": "http"
   },
   {
@@ -2352,7 +2352,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/webhooks",
-    "capability": "workspace:write",
+    "capability": "workspace:admin",
     "surface": "http"
   },
   {
@@ -2370,7 +2370,7 @@
   {
     "method": "PUT",
     "path": "/workspaces/{wid}/mention-webhook",
-    "capability": "workspace:write",
+    "capability": "workspace:admin",
     "surface": "http"
   },
   {

@@ -55,6 +55,11 @@ fn deny_caps(required: &str) -> Vec<String> {
             capability::SECRET_READ.into(),
         ],
         capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
+        // A writer, the worker token that used to register hooks.
+        capability::WORKSPACE_ADMIN => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         other => panic!("unknown capability in map: {other}"),
     }
 }

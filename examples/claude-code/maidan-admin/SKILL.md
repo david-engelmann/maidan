@@ -84,7 +84,7 @@ agent never needs the value.
 - `register_fsm_hook` runs a handler (`handler_kind` `http` with a URL, or
   `mcp_tool` with a tool name) on a thread state transition (`from_state`,
   `to_state`: `open`, `in_review`, `closed`, `archived`); `list_fsm_hooks`,
-  `revoke_fsm_hook`.
+  `revoke_fsm_hook`. Registering one needs `workspace:admin`.
 - `register_slash_command` with a `name`, `description` and handler;
   `list_slash_commands`, `revoke_slash_command`. A message that starts with
   the command runs the handler, and an `http` handler receives a signed POST.

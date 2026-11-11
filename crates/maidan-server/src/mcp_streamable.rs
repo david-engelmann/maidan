@@ -18,6 +18,7 @@ use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
 use crate::extract::ApiBytes;
+use crate::load_shed::PermitSlot;
 use crate::state::AppState;
 
 /// How often a session's notification task checks that the session is still
@@ -48,8 +49,24 @@ fn last_event_id(headers: &HeaderMap) -> Option<u64> {
 pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
+) -> Result<Response, ApiError> {
+    // One request per POST, so an admitted wait may give back its permit, as
+    // on `POST /mcp`.
+    let request = streamable_request(state, auth, headers, body);
+    match permit {
+        Some(Extension(permit)) => crate::mcp::releasing_when_parked(permit, request).await,
+        None => request.await,
+    }
+}
+
+async fn streamable_request(
+    state: AppState,
+    auth: AuthContext,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
     if !auth.bypass {
         auth.require_capability(WORKSPACE_READ)

@@ -7,7 +7,7 @@ use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
@@ -126,7 +126,10 @@ pub async fn create_webhook(
     ApiJson(body): ApiJson<CreateWebhook>,
 ) -> ApiResult<(StatusCode, Json<MintWebhookResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // A subscription receives every matching event in the workspace, private
+    // channels and DMs included, so only an administrator may point one at a
+    // URL (SEC-009).
+    cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     validate_webhook_url(&body.url)?;
     let event_kinds = parse_event_kinds(&body.event_kinds)?;
@@ -198,7 +201,9 @@ pub async fn set_mention_webhook(
     ApiJson(body): ApiJson<SetMentionWebhook>,
 ) -> ApiResult<Json<MentionWebhookConfig>> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // Choosing which subscription gets every mention is the same reach as
+    // creating one (SEC-009).
+    cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let webhook_id = body.webhook_id.map(WebhookSubscriptionId);
     if let Some(id) = webhook_id {

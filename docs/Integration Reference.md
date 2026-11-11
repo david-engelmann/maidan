@@ -754,9 +754,16 @@ Four rules for using them safely:
   claim lease, so a waiter that outlives its lease is reclaimed and its work
   returns to the queue (evict-on-wait). Keep a wait shorter than your lease, or
   `renew_claim` around a long one, if you must hold the claim across it.
-- **A wait holds an in-flight slot.** Every HTTP request counts against the
-  server's in-flight ceiling until its response starts, and a wait's response
-  starts when it returns.
+- **A wait parks without an in-flight slot, up to 32 per workspace per
+  replica.** Every other HTTP request counts against the server's in-flight
+  ceiling until its response starts. A `wait_for_*` call sent on its own
+  gives its slot back once it is admitted (its capability, its arguments and
+  channel access, and a place under its workspace's cap all checked), so
+  waits cannot crowd out other requests; a refused wait, or one inside a
+  batch, keeps its slot until it answers. One workspace may park at most 32
+  waits at once on each replica, across all its tokens (the count is held in
+  each replica's memory); the next is refused at once with `-32029` and
+  `retry_after_ms`, so back off rather than retry in a loop.
 
 ### Event-log hash chain
 
@@ -1966,11 +1973,15 @@ its sha, and the guest reads a JSON invoke on stdin and writes its answer to
 stdout. No network, no filesystem.
 
 Dispatch is bounded at 5 seconds for every kind. FSM hooks accept `http` and
-`mcp_tool` only.
+`mcp_tool` only. Registering an FSM hook (`POST /workspaces/{workspace_id}/fsm-hooks`,
+MCP `register_fsm_hook`) needs `workspace:admin`: a hook runs on every matching
+transition of any thread in the workspace.
 
 ### Webhooks
 
-Create outbound subscriptions:
+Create outbound subscriptions. A subscription receives every matching event in
+the workspace, private channels and DMs included, so creating one needs
+`workspace:admin`:
 
 ```http
 POST /workspaces/{workspace_id}/webhooks
@@ -1999,7 +2010,7 @@ Worker polls the outbox; see [Configuration](Configuration.md#background-workers
 
 #### Mention webhook (dedicated route)
 
-Route `mention_recorded` events to a subscription even when that kind is **not** in the subscription's `event_kinds` filter:
+Route `mention_recorded` events to a subscription even when that kind is **not** in the subscription's `event_kinds` filter. Setting it needs `workspace:admin`, as creating the subscription does:
 
 ```http
 GET /workspaces/{workspace_id}/mention-webhook

@@ -208,7 +208,7 @@ See [OAuth](OAuth.md).
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | unset | Redis for the rate-limit counters, shared across replicas. Unset or unreachable, counters are per process. |
 | `MAIDAN_TRUSTED_PROXY_HOPS` | `0` | How many rightmost `X-Forwarded-For` hops to trust when finding the client address. `0` ignores the header. A shorter or malformed chain falls back to the socket peer. |
 | `MAIDAN_MAX_BODY_BYTES` | `2097152` (2 MiB) | The largest request body outside artifact uploads. Past it, `413`. |
-| `MAIDAN_MAX_CONCURRENT_REQUESTS` | `1024` | HTTP requests in flight at once. Past it a request gets `503` with `Retry-After: 1` before authentication or rate limiting, so overload costs no database work. A long-poll MCP wait holds its slot; streaming bodies and WebSockets do not. `/health*` and `/metrics` are exempt. `0` turns it off. |
+| `MAIDAN_MAX_CONCURRENT_REQUESTS` | `1024` | HTTP requests in flight at once. Past it a request gets `503` with `Retry-After: 1` before authentication or rate limiting, so overload costs no database work. An MCP `wait_for_*` long-poll gives its slot back once it is admitted to park (32 per workspace per replica); streaming bodies and WebSockets do not hold one. `/health*` and `/metrics` are exempt. `0` turns it off. |
 | `MAIDAN_MAX_WS_CONNECTIONS` | `10000` | Concurrent `/ws/subscribe` connections. Past it, an upgrade gets `503`. Client frames are capped at 64 KiB. |
 
 ## Live delivery

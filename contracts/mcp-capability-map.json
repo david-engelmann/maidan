@@ -178,7 +178,7 @@
   "post_group_dm_message": "message:post",
   "post_message": "message:post",
   "record_mention": "workspace:write",
-  "register_fsm_hook": "workspace:write",
+  "register_fsm_hook": "workspace:admin",
   "register_slash_command": "workspace:write",
   "register_thread_pull": "workspace:write",
   "release_claim": "thread:transition",
