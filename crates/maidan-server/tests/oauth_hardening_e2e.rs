@@ -609,8 +609,10 @@ async fn an_agent_members_session_never_consents_and_a_person_beside_it_does() {
         .execute(&h.pool)
         .await
         .unwrap();
+    // A removed member's session is no session at all: the session layer
+    // refuses it before consent is reached.
     let removed = decide(&h, &removed_cookie, &removed_request).await;
-    assert_eq!(removed.status(), StatusCode::FORBIDDEN);
+    assert_eq!(removed.status(), StatusCode::UNAUTHORIZED);
 
     // The person in the same workspace consents as before.
     let code = code_with(&h, &t, "web-client", &challenge).await;
