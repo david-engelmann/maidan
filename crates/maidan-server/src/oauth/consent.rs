@@ -248,7 +248,7 @@ pub async fn decide_consent(
     // index on live grants makes this atomic: a concurrent approval for the
     // same tuple gets a Conflict, which we treat as "already exists".
     let scope = pending.scope.clone();
-    if state
+    let mut existing = state
         .store
         .find_oauth_grant(
             &pending.client_id,
@@ -256,9 +256,26 @@ pub async fn decide_consent(
             pending.workspace_id,
             &scope,
         )
-        .await?
-        .is_none()
+        .await?;
+    // A grant whose lineage has reached its end is not reused: this consent
+    // starts a new lineage with its own 90 days, rather than one the next
+    // refresh would refuse.
+    if let Some(ended) = existing.as_ref()
+        && super::token::lineage_end(ended) <= Utc::now()
     {
+        state
+            .store
+            .revoke_oauth_lineage_audited(
+                ended.lineage_id,
+                super::token::lineage_audit(
+                    super::token::LINEAGE_LIFETIME_REASON,
+                    pending.client_id.clone(),
+                ),
+            )
+            .await?;
+        existing = None;
+    }
+    if existing.is_none() {
         let (client_id, scope_meta, workspace_id, member_id) = (
             pending.client_id.clone(),
             scope.clone(),

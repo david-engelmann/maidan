@@ -115,6 +115,10 @@ pub struct AppState {
     /// The hosts client metadata documents may be fetched from
     /// (`MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`). Empty fetches none.
     pub oauth_client_metadata_hosts: crate::oauth::registry::ClientMetadataHosts,
+    /// Client metadata documents this process validated in the last five
+    /// minutes, so a sign-in does not fetch the same document three times.
+    /// Tests swap in one on a manual clock.
+    pub oauth_document_cache: Arc<crate::oauth::document_cache::DocumentCache>,
     /// RFC 7591 dynamic client registration (`MAIDAN_OAUTH_DYNAMIC_REGISTRATION`
     /// and `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`). `None` is off: no
     /// `registration_endpoint` is advertised, `POST /oauth/register` answers
@@ -382,6 +386,7 @@ impl AppState {
             allowed_hosts: Vec::new(),
             public_origin: None,
             oauth_client_metadata_hosts: Default::default(),
+            oauth_document_cache: Arc::default(),
             oauth_dynamic_registration: None,
             test_identity_header: false,
             bootstrap_enabled,

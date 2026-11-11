@@ -10,7 +10,10 @@
 //! `refresh_token` rotates: the presented refresh token is marked used and a
 //! new pair is minted under the same grant and lineage, in one transaction.
 //! A refresh token presented after it was used is a reuse, which revokes the
-//! whole lineage (OAuth 2.1 section 4.3.1).
+//! whole lineage (OAuth 2.1 section 4.3.1). A lineage ends
+//! [`LINEAGE_LIFETIME_DAYS`] after the consent that started it, however often
+//! it was refreshed: no token it mints outlives that, and a refresh after it
+//! revokes the lineage, so the person consents again.
 //!
 //! Every token is bound to the MCP resource (RFC 8707): the request must name
 //! it, and the bearer middleware accepts the access token nowhere else. No
@@ -27,7 +30,7 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_types::{
     ApiToken, AuditScope, NewApiToken, NewAuditEvent, NewOAuthRefreshToken, OAuthClient,
@@ -47,8 +50,47 @@ use crate::state::AppState;
 const ACCESS_TOKEN_TTL_SECS: i64 = 3600;
 
 /// Refresh tokens minted here live this long. Each rotation issues a new one
-/// with a fresh lifetime, so a client in use keeps its lineage alive.
+/// with a fresh lifetime, so a client in use keeps its lineage alive, up to
+/// [`LINEAGE_LIFETIME_DAYS`].
 pub const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
+
+/// A lineage lives this long from the consent that started it (the grant's
+/// `created_at`), however often it is refreshed (N3, decided 2026-11-10).
+/// Without it a client in use stayed connected for as long as it kept
+/// refreshing; this makes a person look at what they lent at least this
+/// often. A constant, like the token lifetimes above.
+pub const LINEAGE_LIFETIME_DAYS: i64 = 90;
+
+/// When `grant`'s lineage ends.
+pub(super) fn lineage_end(grant: &OAuthGrant) -> DateTime<Utc> {
+    grant.created_at + chrono::Duration::days(LINEAGE_LIFETIME_DAYS)
+}
+
+/// The audit reason for a lineage revoked because it reached its end.
+pub(super) const LINEAGE_LIFETIME_REASON: &str = "lineage_lifetime";
+
+/// A token minted at `now` for this grant lives `ttl`, or until its lineage
+/// ends if that comes first.
+fn capped_expiry(now: DateTime<Utc>, ttl: chrono::Duration, grant: &OAuthGrant) -> DateTime<Utc> {
+    (now + ttl).min(lineage_end(grant))
+}
+
+/// Revoke the lineage of a grant that reached its end: the refusal to send.
+async fn refuse_ended_lineage(state: &AppState, grant: &OAuthGrant, client_id: &str) -> OAuthError {
+    match state
+        .store
+        .revoke_oauth_lineage_audited(
+            grant.lineage_id,
+            lineage_audit(LINEAGE_LIFETIME_REASON, client_id.to_owned()),
+        )
+        .await
+    {
+        Ok(_) => OAuthError::invalid_grant(format!(
+            "the grant is more than {LINEAGE_LIFETIME_DAYS} days old, so its lineage is revoked; authorize again"
+        )),
+        Err(e) => e.into(),
+    }
+}
 
 /// Every parameter either grant reads. All optional, so a missing one is an
 /// `invalid_request` naming it rather than a deserialization failure.
@@ -219,6 +261,10 @@ async fn exchange_code(
     }
 
     let grant = grant_for(state, &pending).await?;
+    let now = Utc::now();
+    if lineage_end(&grant) <= now {
+        return Err(refuse_ended_lineage(state, &grant, &creds.client_id).await);
+    }
     for cap in &grant.scope {
         if !maidan_auth::capability::is_known(cap) {
             return Err(OAuthError::new(
@@ -234,6 +280,11 @@ async fn exchange_code(
 
     let access = TokenSecret::generate();
     let (refresh_secret, refresh_hash) = new_refresh_token();
+    let access_expires_at = capped_expiry(
+        now,
+        chrono::Duration::seconds(ACCESS_TOKEN_TTL_SECS),
+        &grant,
+    );
     let record = state
         .store
         .mint_oauth_token_pair_audited(
@@ -244,7 +295,7 @@ async fn exchange_code(
                 token_hash: hash_secret(access.as_str()),
                 label: Some(format!("oauth:{}", grant.client_id)),
                 capabilities: grant.scope.clone(),
-                expires_at: Some(Utc::now() + chrono::Duration::seconds(ACCESS_TOKEN_TTL_SECS)),
+                expires_at: Some(access_expires_at),
             },
             grant.id,
             NewOAuthRefreshToken {
@@ -253,13 +304,22 @@ async fn exchange_code(
                 lineage_id: grant.lineage_id,
                 client_id: grant.client_id.clone(),
                 resource,
-                expires_at: Utc::now() + chrono::Duration::days(REFRESH_TOKEN_TTL_DAYS),
+                expires_at: capped_expiry(
+                    now,
+                    chrono::Duration::days(REFRESH_TOKEN_TTL_DAYS),
+                    &grant,
+                ),
             },
             mint_audit(&grant, "oauth_code_exchange"),
         )
         .await?;
     note_registered_client_used(state, &client).await;
-    Ok(token_response(access.as_str(), &refresh_secret, &record))
+    Ok(token_response(
+        access.as_str(),
+        &refresh_secret,
+        &record,
+        expires_in(now, access_expires_at),
+    ))
 }
 
 /// The grant a code mints under: the live one consent recorded. None is a
@@ -313,7 +373,7 @@ async fn refresh(
             "the refresh token was already used, so its lineage is revoked",
         ));
     }
-    if stored.revoked_at.is_some() || stored.expires_at <= Utc::now() {
+    if stored.revoked_at.is_some() {
         return Err(OAuthError::invalid_grant(
             "the refresh token is expired or revoked",
         ));
@@ -325,6 +385,17 @@ async fn refresh(
         .ok_or_else(|| {
             OAuthError::invalid_grant("the grant behind the refresh token is revoked")
         })?;
+    // Before the token's own expiry, so a lineage past its end is revoked
+    // whichever of its refresh tokens comes back.
+    let now = Utc::now();
+    if lineage_end(&grant) <= now {
+        return Err(refuse_ended_lineage(state, &grant, &creds.client_id).await);
+    }
+    if stored.expires_at <= now {
+        return Err(OAuthError::invalid_grant(
+            "the refresh token is expired or revoked",
+        ));
+    }
     let client = client_auth::authenticate_in(state, creds, preregistered).await?;
     let resource = require_resource(form.resource.as_deref(), origin)?;
     if resource != stored.resource {
@@ -337,6 +408,11 @@ async fn refresh(
 
     let access = TokenSecret::generate();
     let (refresh_secret, refresh_hash) = new_refresh_token();
+    let access_expires_at = capped_expiry(
+        now,
+        chrono::Duration::seconds(ACCESS_TOKEN_TTL_SECS),
+        &grant,
+    );
     let outcome = state
         .store
         .rotate_oauth_refresh_token(
@@ -345,9 +421,13 @@ async fn refresh(
                 access_token_hash: hash_secret(access.as_str()),
                 access_label: Some(format!("oauth:{}", grant.client_id)),
                 access_capabilities: scope,
-                access_expires_at: Utc::now() + chrono::Duration::seconds(ACCESS_TOKEN_TTL_SECS),
+                access_expires_at,
                 refresh_hash,
-                refresh_expires_at: Utc::now() + chrono::Duration::days(REFRESH_TOKEN_TTL_DAYS),
+                refresh_expires_at: capped_expiry(
+                    now,
+                    chrono::Duration::days(REFRESH_TOKEN_TTL_DAYS),
+                    &grant,
+                ),
             },
             mint_audit(&grant, "oauth_refresh"),
             lineage_audit("refresh_token_reuse", creds.client_id.clone()),
@@ -356,7 +436,12 @@ async fn refresh(
     match outcome {
         OAuthRefreshOutcome::Rotated { access: record, .. } => {
             note_registered_client_used(state, &client).await;
-            Ok(token_response(access.as_str(), &refresh_secret, &record))
+            Ok(token_response(
+                access.as_str(),
+                &refresh_secret,
+                &record,
+                expires_in(now, access_expires_at),
+            ))
         }
         OAuthRefreshOutcome::Reused(_) => Err(OAuthError::invalid_grant(
             "the refresh token was already used, so its lineage is revoked",
@@ -460,7 +545,13 @@ fn mint_audit(grant: &OAuthGrant, source: &'static str) -> maidan_store::AuditFo
     })
 }
 
-fn token_response(access: &str, refresh: &str, record: &ApiToken) -> Response {
+/// The `expires_in` of a token minted at `now` that expires at `expires_at`:
+/// [`ACCESS_TOKEN_TTL_SECS`], or less when its lineage ends sooner.
+fn expires_in(now: DateTime<Utc>, expires_at: DateTime<Utc>) -> i64 {
+    (expires_at - now).num_seconds().max(0)
+}
+
+fn token_response(access: &str, refresh: &str, record: &ApiToken, expires_in: i64) -> Response {
     (
         StatusCode::OK,
         [
@@ -470,7 +561,7 @@ fn token_response(access: &str, refresh: &str, record: &ApiToken) -> Response {
         Json(OAuthTokenResponse {
             access_token: access.to_owned(),
             token_type: "Bearer".to_owned(),
-            expires_in: ACCESS_TOKEN_TTL_SECS,
+            expires_in,
             refresh_token: refresh.to_owned(),
             scope: record.capabilities.join(" "),
         }),

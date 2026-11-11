@@ -6,6 +6,9 @@
 //!   sign-up, with no egress rows at all, resolves a listed host's client; an
 //!   unlisted host is refused before anything is fetched; a document that
 //!   answers with a redirect is refused and the redirect is not followed.
+//! - A document that validated is used for five minutes, then fetched again;
+//!   a fetch that failed is not held, and a revoked client is refused
+//!   whatever the cache holds.
 //! - A signed-out browser at `GET /oauth/authorize` is sent to sign in with
 //!   `return_to` set to the exact authorize request, comes back to it signed
 //!   in, and reaches consent. A bad bearer still gets a 401, and a
@@ -18,9 +21,12 @@
 // clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
-use std::sync::{
-    atomic::{AtomicI64, AtomicUsize, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicI64, AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use axum::{response::IntoResponse, routing::get, Router};
@@ -28,8 +34,12 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{hash_secret, TokenSecret};
 use maidan_server::{
-    oauth::registry::ClientMetadataHosts,
+    oauth::{
+        document_cache::{DocumentCache, DOCUMENT_TTL},
+        registry::ClientMetadataHosts,
+    },
     oidc::{OidcRuntime, OidcSettings},
+    retry_budget::ManualClock,
     router, AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -51,6 +61,9 @@ const LISTED: &str = "https://docs.client.example/oauth/client.json";
 const REDIRECTING: &str = "https://docs.client.example/oauth/moved.json";
 /// A listed document with no `scope`, as claude.ai's connector publishes.
 const UNSCOPED: &str = "https://docs.client.example/oauth/unscoped.json";
+/// A document on the listed host whose first fetch fails and later ones
+/// succeed.
+const FLAKY: &str = "https://docs.client.example/oauth/flaky.json";
 /// A host the instance does not list.
 const UNLISTED: &str = "https://other.example/oauth/client.json";
 /// A client the operator registered, for the sign-in round trip.
@@ -60,8 +73,12 @@ struct Harness {
     base: String,
     client: reqwest::Client,
     store: Arc<dyn Store>,
-    /// Requests the document server has answered, any path.
+    /// Requests the document server has answered, any path but the unscoped
+    /// document's.
     fetches: Arc<AtomicUsize>,
+    /// The clock the document cache reads.
+    clock: Arc<ManualClock>,
+    pool: sqlx::SqlitePool,
     _dir: tempfile::TempDir,
 }
 
@@ -69,6 +86,8 @@ struct Harness {
 /// `/oauth/moved.json` redirects to it.
 async fn document_server(fetches: Arc<AtomicUsize>) -> String {
     let doc_hits = fetches.clone();
+    let flaky_hits = fetches.clone();
+    let flaky_seen = Arc::new(AtomicUsize::new(0));
     let moved_hits = fetches;
     let app = Router::new()
         .route(
@@ -82,6 +101,26 @@ async fn document_server(fetches: Arc<AtomicUsize>) -> String {
                         "redirect_uris": [REDIRECT],
                         "scope": "workspace:read",
                     }))
+                }
+            }),
+        )
+        // Down the first time it is asked, a valid document after.
+        .route(
+            "/oauth/flaky.json",
+            get(move || {
+                flaky_hits.fetch_add(1, Ordering::SeqCst);
+                let first = flaky_seen.fetch_add(1, Ordering::SeqCst) == 0;
+                async move {
+                    if first {
+                        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                    }
+                    axum::Json(serde_json::json!({
+                        "client_id": FLAKY,
+                        "client_name": "Flaky Client",
+                        "redirect_uris": [REDIRECT],
+                        "scope": "workspace:read",
+                    }))
+                    .into_response()
                 }
             }),
         )
@@ -151,6 +190,8 @@ async fn spawn() -> Harness {
     state.oauth_client_metadata_hosts = ClientMetadataHosts::parse("docs.client.example")
         .unwrap()
         .with_fetch_origin_override(docs);
+    let clock = Arc::new(ManualClock::new());
+    state.oauth_document_cache = Arc::new(DocumentCache::with_clock(clock.clone()));
     state.oidc = Some(Arc::new(OidcRuntime {
         settings: OidcSettings {
             enabled: true,
@@ -190,6 +231,8 @@ async fn spawn() -> Harness {
             .unwrap(),
         store,
         fetches,
+        clock,
+        pool,
         _dir: dir,
     }
 }
@@ -305,6 +348,7 @@ async fn a_listed_host_resolves_for_every_fresh_workspace_and_nothing_else_is_fe
 
     // A listed host's document resolves for a workspace with no rows of its
     // own, and for a second one the same way: the list is the instance's.
+    // The second is served from the document the first validated.
     for t in [&a, &b] {
         let resp = h.authorize_as(t, LISTED).await;
         assert_eq!(
@@ -315,7 +359,7 @@ async fn a_listed_host_resolves_for_every_fresh_workspace_and_nothing_else_is_fe
         );
         assert!(location(&resp).starts_with("/ui/oauth/consent?request="));
     }
-    assert_eq!(h.fetches.load(Ordering::SeqCst), 2);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 1);
 
     // An unlisted host is refused before any fetch.
     let before = h.fetches.load(Ordering::SeqCst);
@@ -507,4 +551,71 @@ async fn a_client_whose_document_and_request_name_no_scope_reaches_consent() {
         resp.text().await
     );
     assert!(location(&resp).starts_with("/ui/oauth/consent?request="));
+}
+
+#[tokio::test]
+async fn a_document_is_fetched_once_in_five_minutes_and_again_after() {
+    let h = spawn().await;
+    let a = tenant(&h, "alpha").await;
+    let b = tenant(&h, "beta").await;
+    let consents = |resp: reqwest::Response| {
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert!(location(&resp).starts_with("/ui/oauth/consent?request="));
+    };
+
+    consents(h.authorize_as(&a, LISTED).await);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 1);
+    // Within five minutes, from either tenant: no fetch.
+    h.clock.advance(DOCUMENT_TTL - Duration::from_secs(1));
+    consents(h.authorize_as(&b, LISTED).await);
+    consents(h.authorize_as(&a, LISTED).await);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 1);
+
+    // Five minutes after the fetch, the document is fetched again, and that
+    // fetch is held for the next five.
+    h.clock.advance(Duration::from_secs(1));
+    consents(h.authorize_as(&a, LISTED).await);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 2);
+    consents(h.authorize_as(&b, LISTED).await);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_failed_fetch_is_not_held_and_the_next_request_fetches_again() {
+    let h = spawn().await;
+    let a = tenant(&h, "alpha").await;
+
+    let failed = h.authorize_as(&a, FLAKY).await;
+    assert_eq!(failed.status(), StatusCode::BAD_REQUEST);
+    assert!(failed.text().await.unwrap().contains("503"));
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 1);
+
+    // No time has passed, and the failure was not held: this fetches.
+    let ok = h.authorize_as(&a, FLAKY).await;
+    assert_eq!(ok.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 2);
+    // The success is held.
+    let again = h.authorize_as(&a, FLAKY).await;
+    assert_eq!(again.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_held_document_never_outranks_a_revoked_client() {
+    let h = spawn().await;
+    let a = tenant(&h, "alpha").await;
+    let ok = h.authorize_as(&a, LISTED).await;
+    assert_eq!(ok.status(), StatusCode::TEMPORARY_REDIRECT);
+
+    // The operator revokes the client's row while its document is held.
+    sqlx::query("UPDATE oauth_clients SET revoked_at = ? WHERE client_id = ?")
+        .bind(chrono::Utc::now())
+        .bind(LISTED)
+        .execute(&h.pool)
+        .await
+        .unwrap();
+    let refused = h.authorize_as(&a, LISTED).await;
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert!(refused.text().await.unwrap().contains("revoked"));
+    assert_eq!(h.fetches.load(Ordering::SeqCst), 1);
 }

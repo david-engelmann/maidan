@@ -145,6 +145,88 @@ async fn assert_grant_list_scopes(store: &dyn Store) {
     );
 }
 
+/// A grant reads back the moment its lineage began, the one a refresh is
+/// capped 90 days from, from every query the token endpoint and the grants
+/// page use.
+async fn assert_grant_records_when_its_lineage_began(store: &dyn Store) {
+    let ws = seed_workspace(store, "lineage-start-ws").await;
+    let member = seed_member(store, ws, "lineage-starter").await;
+    seed_client(store, "lineage-client").await;
+    // Postgres stamps the row with its own clock, which can drift from the
+    // test's by a few seconds in a container.
+    let before = Utc::now() - chrono::Duration::seconds(60);
+    let created = grant(store, "lineage-client", member, ws).await;
+    let after = Utc::now() + chrono::Duration::seconds(60);
+    assert!(
+        created.created_at > before && created.created_at < after,
+        "the lineage starts when the grant is created: {}",
+        created.created_at
+    );
+    let by_id = store.get_oauth_grant(created.id).await.unwrap().unwrap();
+    let found = store
+        .find_oauth_grant(
+            "lineage-client",
+            member,
+            ws,
+            &["workspace:read".to_string()],
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let listed = store.list_oauth_grants(ws, member).await.unwrap();
+    for read in [&by_id, &found, &listed[0]] {
+        assert_eq!(read.id, created.id);
+        // Postgres keeps microseconds, so compare at that precision.
+        assert_eq!(
+            read.created_at.timestamp_micros(),
+            created.created_at.timestamp_micros()
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_grant_reads_back_when_its_lineage_began_sqlite() {
+    let pool = maidan_search::sqlite_pool_options()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::for_tests(pool);
+    assert_grant_records_when_its_lineage_began(&store).await;
+}
+
+#[tokio::test]
+async fn a_grant_reads_back_when_its_lineage_began_postgres() {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.unwrap();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .unwrap();
+    run_postgres_migrations(&pool).await.unwrap();
+    let store = PostgresStore::for_tests(pool);
+    assert_grant_records_when_its_lineage_began(&store).await;
+}
+
 #[tokio::test]
 async fn grant_list_scopes_to_member_and_workspace_sqlite() {
     let pool = maidan_search::sqlite_pool_options()

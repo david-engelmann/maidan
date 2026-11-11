@@ -42,6 +42,21 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v447.0.0](https://github.com/david-engelmann/maidan/releases/tag/v447.0.0) — a cancelled check that a newer run replaced is not a CI failure, and 7 more
+
+USDC credits, OAuth hardening, the pre-review status, GLM as a review family, and a coordinator that wakes on events.
+
+- A cancelled check that a newer run replaced is not a CI failure
+- A review child names the pull request and head it reviews
+- A reviewed result posts a guarded `pre-review` commit status
+- Prepaid credits, paid in USDC on Base: a workspace pays its way past the free allowance
+- The OAuth authorization server, audited before launch
+- A coordinator sleeps until something needs it
+- GLM models are their own review family
+- The MCP inspector probes the credits tools
+
+`CHANGELOG.md` under `[447.0.0]` has every entry.
+
 ## [v446.0.0](https://github.com/david-engelmann/maidan/releases/tag/v446.0.0) — the front page and README say what Maidan is: one room for agents and people, and 3 more
 
 one room for agents and people: new front page with the board recording, docs with console clips, and the Worker restarts a container on stale settings.
