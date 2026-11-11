@@ -189,6 +189,22 @@ pub async fn can_access_thread(
     }
 }
 
+/// Whether an item at `thread_id` is visible to the caller. This is
+/// [`can_access_thread`] when the item has a thread, and `true` (after the
+/// caller has already been isolated to the workspace) when it does not — the
+/// one read rule used by the inbox, notifications, approval gates, and
+/// located events such as `ThreadBlocked`.
+pub async fn visible_to(
+    store: &dyn Store,
+    auth: &AuthContext,
+    thread_id: Option<ThreadId>,
+) -> Result<bool, AuthError> {
+    match thread_id {
+        Some(thread_id) => can_access_thread(store, auth, thread_id).await,
+        None => Ok(true),
+    }
+}
+
 /// Whether `member_id` is a workspace admin for what falls to admins: a member
 /// holding a live `token:admin` token, or the caller itself acting with
 /// `token:admin` (a session carries no token row). A delegate's grant never

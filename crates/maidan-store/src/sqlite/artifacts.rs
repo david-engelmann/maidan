@@ -273,6 +273,61 @@ pub async fn ref_exists(
     Ok(exists)
 }
 
+/// Whether `member_id` may read `sha256` in this workspace. See the Postgres twin.
+pub async fn visible_to(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
+    let readable_thread = crate::thread_access::readable_thread;
+    let on_thread = readable_thread("ta.thread_id", "?1", "?3", "?4");
+    let on_message = readable_thread("m.thread_id", "?1", "?3", "?4");
+    let exists: bool = sqlx::query_scalar(&format!(
+        "SELECT EXISTS(
+            SELECT 1 FROM maidan_artifact_refs r
+            WHERE r.workspace_id = ?1 AND r.sha256 = ?2
+              AND (
+                r.uploaded_by = ?3
+                OR EXISTS (
+                    SELECT 1 FROM maidan_thread_artifacts ta
+                    JOIN maidan_threads t ON t.id = ta.thread_id
+                    JOIN maidan_channels c ON c.id = t.channel_id
+                    WHERE ta.sha256 = r.sha256
+                      AND c.workspace_id = r.workspace_id
+                      AND t.tombstoned_at IS NULL
+                      AND {on_thread})
+                OR EXISTS (
+                    SELECT 1 FROM maidan_messages m
+                    JOIN maidan_threads t ON t.id = m.thread_id
+                    JOIN maidan_channels c ON c.id = t.channel_id
+                    WHERE c.workspace_id = r.workspace_id
+                      AND m.tombstoned_at IS NULL
+                      AND json_valid(m.metadata)
+                      AND ((json_type(m.metadata, '$.artifact_sha256') = 'text'
+                            AND json_extract(m.metadata, '$.artifact_sha256') = r.sha256)
+                           OR (json_type(m.metadata, '$.sha256') = 'text'
+                               AND json_extract(m.metadata, '$.sha256') = r.sha256)
+                           OR (json_type(m.metadata, '$.artifacts') = 'array'
+                               AND EXISTS (
+                                   SELECT 1 FROM json_each(m.metadata, '$.artifacts') e
+                                   WHERE (e.type = 'text' AND e.value = r.sha256)
+                                      OR (e.type = 'object'
+                                          AND json_type(e.value, '$.sha256') = 'text'
+                                          AND json_extract(e.value, '$.sha256') = r.sha256))))
+                      AND {on_message})
+              )
+        )"
+    ))
+    .bind(workspace_id.0)
+    .bind(sha256)
+    .bind(member_id.0)
+    .bind(maidan_types::DM_CHANNEL_NAME)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
+}
+
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> Result<Artifact, StoreError> {
     let kind: String = row.get("kind");
     let kind = ArtifactKind::parse(&kind).ok_or_else(|| {

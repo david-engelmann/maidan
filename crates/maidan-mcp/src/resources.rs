@@ -97,8 +97,8 @@ pub async fn read(
             let sha =
                 Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
             let canonical = sha.to_hex();
-            // Access is gated by the caller (server::resources_read →
-            // artifact_ref_exists). `size_bytes` is
+            // Access is gated by the caller (server::authorize_resource →
+            // artifact_visible_to). `size_bytes` is
             // authoritative metadata, so the blob is never loaded just to
             // report its length.
             let meta = match viewer {

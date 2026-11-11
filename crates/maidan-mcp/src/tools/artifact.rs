@@ -276,13 +276,12 @@ pub(super) async fn get_artifact_metadata(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: GetArtifactMetadataArgs = crate::tools::parse_args(args)?;
-    // A blob is deduped across tenants, so gate on the caller's per-workspace
-    // access ref. A missing ref returns NotFound (indistinguishable from a
-    // genuinely-absent artifact — no cross-tenant existence oracle), exactly as
-    // the REST `get_artifact` does.
+    // A blob is deduped across tenants, so gate on a visible link (or the
+    // caller's own upload). Failure is NotFound so the route is not a
+    // membership oracle, exactly as the REST `get_artifact` does.
     if !auth.bypass
         && !store
-            .artifact_ref_exists(auth.workspace_id, &a.sha256)
+            .artifact_visible_to(auth.workspace_id, &a.sha256, auth.member_id)
             .await?
     {
         return Err(McpError::NotFound);
@@ -311,7 +310,7 @@ pub(super) async fn get_artifact(
     if !auth.bypass
         && !server
             .store
-            .artifact_ref_exists(auth.workspace_id, &a.sha256)
+            .artifact_visible_to(auth.workspace_id, &a.sha256, auth.member_id)
             .await?
     {
         return Err(McpError::NotFound);

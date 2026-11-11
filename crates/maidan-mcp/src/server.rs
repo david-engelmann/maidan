@@ -1152,17 +1152,18 @@ impl McpServer {
                     }
                 }
                 // Artifacts are deduped across tenants, so gate the read on
-                // the caller's per-workspace access ref. A missing ref is
-                // NotFound (no cross-tenant existence oracle), like REST.
-                // The ref is stored as canonical lowercase hex; an uppercase
-                // digest in the URI is the same artifact.
+                // a visible link (or the caller's own upload). A miss is
+                // NotFound (no membership or cross-tenant existence oracle),
+                // like REST and the get_artifact tools. The ref is stored as
+                // canonical lowercase hex; an uppercase digest is the same
+                // artifact.
                 (Some("artifacts"), Some(sha)) => {
                     let owned = maidan_artifacts::Sha256::from_hex(sha)
                         .map(|digest| digest.to_hex())
                         .unwrap_or_else(|_| sha.to_string());
                     if !self
                         .store
-                        .artifact_ref_exists(auth.workspace_id, &owned)
+                        .artifact_visible_to(auth.workspace_id, &owned, auth.member_id)
                         .await?
                     {
                         return Err(McpError::NotFound);

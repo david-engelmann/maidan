@@ -4450,6 +4450,15 @@ macro_rules! store_delegations {
                 artifacts::ref_exists(self.pool(), workspace_id, sha256).await
             }
 
+            async fn artifact_visible_to(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                artifacts::visible_to(self.pool(), workspace_id, sha256, member_id).await
+            }
+
             async fn erase_artifact_audited(
                 &self,
                 workspace_id: WorkspaceId,

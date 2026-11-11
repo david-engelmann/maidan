@@ -14,7 +14,10 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{
+    ChannelMemberRole, MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread,
+    NewWorkspace, WorkspaceId,
+};
 use reqwest::StatusCode;
 use serde_json::Value;
 
@@ -397,5 +400,202 @@ async fn an_artifact_upload_past_the_json_body_limit_fits_under_the_artifact_lim
         json.status(),
         StatusCode::PAYLOAD_TOO_LARGE,
         "every other route keeps the 2 MiB limit"
+    );
+}
+
+async fn mint_reader(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![capability::WORKSPACE_READ.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+/// A workspace member who did not upload the blob, and cannot see a thread
+/// that links it, gets 404. Adding them to the private channel reveals it;
+/// removing them hides it again. The uploader can always read their own blob.
+#[tokio::test]
+async fn artifact_reads_need_a_visible_link_or_to_be_the_uploader() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let alice = ctx
+        .store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let bob = ctx
+        .store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bob".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let alice_tok = {
+        let secret = TokenSecret::generate();
+        ctx.store
+            .create_api_token(NewApiToken {
+                workspace_id: ws.id,
+                member_id: alice.id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: None,
+                capabilities: vec![
+                    capability::WORKSPACE_READ.into(),
+                    capability::ARTIFACT_UPLOAD.into(),
+                ],
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        secret.as_str().to_string()
+    };
+    let bob_tok = mint_reader(ctx.store.as_ref(), ws.id, bob.id).await;
+
+    let created = ctx
+        .client
+        .post(format!("{base}/artifacts?kind=attachment"))
+        .header("Authorization", bearer(&alice_tok))
+        .body(b"private-channel-bytes".to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let sha = created.json::<Value>().await.unwrap()["sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Uploader can read before any link exists.
+    let owner = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&alice_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(owner.status(), StatusCode::OK, "uploader reads their blob");
+
+    // A same-workspace member with no link cannot, even though the ref exists.
+    let outsider = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&bob_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        outsider.status(),
+        StatusCode::NOT_FOUND,
+        "no visible link, not the uploader"
+    );
+
+    let channel = ctx
+        .store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "secret".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    ctx.store
+        .add_channel_member(channel.id, alice.id, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let thread = ctx
+        .store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("docs".into()),
+            description: None,
+            created_by: Some(alice.id),
+        })
+        .await
+        .unwrap();
+    ctx.store
+        .link_thread_artifact(thread.id, &sha, alice.id)
+        .await
+        .unwrap();
+
+    let still_hidden = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&bob_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        still_hidden.status(),
+        StatusCode::NOT_FOUND,
+        "linked on a private channel bob is not in"
+    );
+
+    ctx.store
+        .add_channel_member(channel.id, bob.id, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let visible = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&bob_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        visible.status(),
+        StatusCode::OK,
+        "membership reveals the link"
+    );
+
+    let meta = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}/meta"))
+        .header("Authorization", bearer(&bob_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(meta.status(), StatusCode::OK, "GET /artifacts/{{sha}}/meta");
+
+    ctx.store
+        .remove_channel_member(channel.id, bob.id)
+        .await
+        .unwrap();
+    let revoked = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&bob_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        revoked.status(),
+        StatusCode::NOT_FOUND,
+        "access-revoked fixture: removal hides the blob again"
     );
 }

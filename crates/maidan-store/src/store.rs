@@ -3919,7 +3919,9 @@ pub trait ArtifactMetaStore: Send + Sync {
     ) -> Result<Artifact, StoreError>;
 
     /// Record that `workspace_id` may access the artifact `sha256`. Idempotent.
-    /// Written on upload; enforced on fetch by [`Self::artifact_ref_exists`].
+    /// Written on upload. Member reads go through [`Self::artifact_visible_to`];
+    /// workspace ownership (retention, WASI modules) still uses
+    /// [`Self::artifact_ref_exists`].
     async fn record_artifact_ref(
         &self,
         workspace_id: WorkspaceId,
@@ -3932,6 +3934,16 @@ pub trait ArtifactMetaStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         sha256: &str,
+    ) -> Result<bool, StoreError>;
+
+    /// Whether `member_id` may read `sha256` in `workspace_id`: they uploaded
+    /// it, or they can see a live thread, message or DM that links it, judged
+    /// by [`crate::thread_access::readable_thread`].
+    async fn artifact_visible_to(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+        member_id: MemberId,
     ) -> Result<bool, StoreError>;
 
     /// Erase `workspace_id`'s reference to `sha256`, with its audit row in the

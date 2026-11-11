@@ -277,6 +277,57 @@ pub async fn ref_exists(
     Ok(exists)
 }
 
+/// Whether `member_id` may read `sha256` in this workspace: they uploaded it,
+/// or they can see a live thread, message or DM that links it, judged by
+/// [`crate::thread_access::readable_thread`].
+pub async fn visible_to(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
+    let readable_thread = crate::thread_access::readable_thread;
+    let on_thread = readable_thread("ta.thread_id", "$1", "$3", "$4");
+    let on_message = readable_thread("m.thread_id", "$1", "$3", "$4");
+    let exists: bool = sqlx::query_scalar(&format!(
+        "SELECT EXISTS(
+            SELECT 1 FROM maidan_artifact_refs r
+            WHERE r.workspace_id = $1 AND r.sha256 = $2
+              AND (
+                r.uploaded_by = $3
+                OR EXISTS (
+                    SELECT 1 FROM maidan_thread_artifacts ta
+                    JOIN maidan_threads t ON t.id = ta.thread_id
+                    JOIN maidan_channels c ON c.id = t.channel_id
+                    WHERE ta.sha256 = r.sha256
+                      AND c.workspace_id = r.workspace_id
+                      AND t.tombstoned_at IS NULL
+                      AND {on_thread})
+                OR EXISTS (
+                    SELECT 1 FROM maidan_messages m
+                    JOIN maidan_threads t ON t.id = m.thread_id
+                    JOIN maidan_channels c ON c.id = t.channel_id
+                    WHERE c.workspace_id = r.workspace_id
+                      AND m.tombstoned_at IS NULL
+                      AND (m.metadata -> 'artifact_sha256' = to_jsonb(r.sha256)
+                           OR m.metadata -> 'sha256' = to_jsonb(r.sha256)
+                           OR (jsonb_typeof(m.metadata -> 'artifacts') = 'array'
+                               AND (m.metadata -> 'artifacts' @> jsonb_build_array(r.sha256)
+                                    OR m.metadata -> 'artifacts'
+                                       @> jsonb_build_array(jsonb_build_object('sha256', r.sha256)))))
+                      AND {on_message})
+              )
+        )"
+    ))
+    .bind(workspace_id.0)
+    .bind(sha256)
+    .bind(member_id.0)
+    .bind(maidan_types::DM_CHANNEL_NAME)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
+}
+
 fn row_to_artifact(row: &sqlx::postgres::PgRow) -> Result<Artifact, StoreError> {
     let kind: String = row.get("kind");
     let kind = ArtifactKind::parse(&kind).ok_or_else(|| {

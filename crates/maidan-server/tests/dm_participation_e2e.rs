@@ -244,3 +244,131 @@ async fn a_bearer_cannot_read_the_roster_of_a_dm_it_is_not_in() {
         );
     }
 }
+
+async fn mint_dm_actor(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::MESSAGE_POST.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+/// Every `/dm/{id}` route refuses a workspace member who is not in the
+/// conversation: the conversation itself, the message list, and a post.
+#[tokio::test]
+async fn a_non_participant_is_refused_on_every_dm_route() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let alice = mk_member(ctx.store.as_ref(), ws.id, "alice").await;
+    let bob = mk_member(ctx.store.as_ref(), ws.id, "bob").await;
+    let carol = mk_member(ctx.store.as_ref(), ws.id, "carol").await;
+    let dm = ctx
+        .store
+        .open_dm_conversation(ws.id, alice, bob)
+        .await
+        .unwrap();
+    let carol_tok = mint_dm_actor(ctx.store.as_ref(), ws.id, carol).await;
+    let alice_tok = mint_dm_actor(ctx.store.as_ref(), ws.id, alice).await;
+
+    let convo = format!("{base}/dm/{}", dm.id.0);
+    let messages = format!("{base}/dm/{}/messages", dm.id.0);
+
+    let outsider_get_convo = ctx
+        .client
+        .get(&convo)
+        .bearer_auth(&carol_tok)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        outsider_get_convo.status(),
+        StatusCode::FORBIDDEN,
+        "GET /dm/{{id}}"
+    );
+
+    let outsider_list = ctx
+        .client
+        .get(&messages)
+        .bearer_auth(&carol_tok)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        outsider_list.status(),
+        StatusCode::FORBIDDEN,
+        "GET /dm/{{id}}/messages"
+    );
+
+    let outsider_post = ctx
+        .client
+        .post(&messages)
+        .bearer_auth(&carol_tok)
+        .json(&serde_json::json!({"body": "hi"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        outsider_post.status(),
+        StatusCode::FORBIDDEN,
+        "POST /dm/{{id}}/messages"
+    );
+
+    let participant_get = ctx
+        .client
+        .get(&convo)
+        .bearer_auth(&alice_tok)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        participant_get.status(),
+        StatusCode::OK,
+        "participant GET /dm/{{id}}"
+    );
+
+    let participant_list = ctx
+        .client
+        .get(&messages)
+        .bearer_auth(&alice_tok)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        participant_list.status(),
+        StatusCode::OK,
+        "participant GET /dm/{{id}}/messages"
+    );
+
+    let participant_post = ctx
+        .client
+        .post(&messages)
+        .bearer_auth(&alice_tok)
+        .json(&serde_json::json!({"body": "hello from alice"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        participant_post.status(),
+        StatusCode::CREATED,
+        "participant POST /dm/{{id}}/messages"
+    );
+}

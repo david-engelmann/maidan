@@ -1,0 +1,3 @@
+### One visibility rule for DM and artifact reads
+
+- **Security:** Listing a DM's messages now uses the same participant check as reading the conversation or posting to it. Artifact reads (REST, the MCP tools, and `resources/read`) succeed only for the uploader or a caller who can see a live thread, message, or DM that links the blob; anyone else gets 404, so the route is not a membership oracle. `visible_to` is the existing thread-access rule (`can_access_thread`) when an item has a thread, and is the predicate later reads (inbox, notifications, gates) should share. `ThreadBlocked` now carries its channel and thread on the event log, so it is no longer treated as workspace-wide.

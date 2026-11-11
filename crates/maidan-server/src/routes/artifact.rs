@@ -245,7 +245,7 @@ async fn ensure_artifact_ref(state: &AppState, auth: &AuthContext, sha256: &str)
     }
     if state
         .store
-        .artifact_ref_exists(auth.workspace_id, sha256)
+        .artifact_visible_to(auth.workspace_id, sha256, auth.member_id)
         .await?
     {
         Ok(())

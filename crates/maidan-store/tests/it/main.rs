@@ -635,6 +635,9 @@ mod usage_meters;
 #[path = "../uuid_v7_ids.rs"]
 mod uuid_v7_ids;
 
+#[path = "../visibility.rs"]
+mod visibility;
+
 #[path = "../wip_limits.rs"]
 mod wip_limits;
 

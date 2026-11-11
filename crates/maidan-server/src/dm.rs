@@ -214,6 +214,11 @@ pub async fn list_dm_messages(
         .get_dm_conversation(DmConversationId(id))
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
+    // Same participant check as get_dm_conversation and post_dm_message: a
+    // workspace member who is not in the conversation must not read it.
+    if !auth.bypass {
+        ensure_dm_participant(&dm, auth.member_id)?;
+    }
     Ok(Json(
         state.store.list_messages(dm.thread_id, q.limit).await?,
     ))

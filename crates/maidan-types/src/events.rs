@@ -1431,6 +1431,7 @@ impl Event {
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
             | Self::ThreadSpawnDenied { channel_id, .. }
+            | Self::ThreadBlocked { channel_id, .. }
             | Self::MessagePosted { channel_id, .. }
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
@@ -1471,6 +1472,7 @@ impl Event {
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
             Self::ProjectorMisconfigured { thread_id, .. } => Some(*thread_id),
+            Self::ThreadBlocked { thread_id, .. } => Some(*thread_id),
             Self::MessagePosted { thread_id, .. }
             | Self::MessageEdited { thread_id, .. }
             | Self::MessageTombstoned { thread_id, .. }
@@ -2033,5 +2035,31 @@ mod kind_tests {
         assert!(EventKind::MemberJoined.federatable());
         assert!(!EventKind::ArtifactUpserted.federatable());
         assert!(!EventKind::ThreadReady.federatable());
+    }
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::*;
+    use chrono::Utc;
+
+    /// `Event::channel_id` / `thread_id` are what the event log stores and
+    /// what EventVisibility uses. A `ThreadBlocked` that fell through to
+    /// `None` was treated as workspace-wide.
+    #[test]
+    fn thread_blocked_returns_its_channel_and_thread() {
+        let channel_id = ChannelId(uuid::Uuid::new_v4());
+        let thread_id = ThreadId(uuid::Uuid::new_v4());
+        let event = Event::ThreadBlocked {
+            occurred_at: Utc::now(),
+            workspace_id: WorkspaceId(uuid::Uuid::new_v4()),
+            channel_id,
+            thread_id,
+            reason: BlockedReason::Human,
+            set_by: MemberId(uuid::Uuid::new_v4()),
+            note: None,
+        };
+        assert_eq!(event.channel_id(), Some(channel_id));
+        assert_eq!(event.thread_id(), Some(thread_id));
     }
 }
