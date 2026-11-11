@@ -6,10 +6,12 @@
 //!    person invites a second person from the console, into that workspace
 //!    only.
 //! 2. The person creates a channel for the work.
-//! 3. The workspace's agent seat connects an MCP client whose metadata
-//!    document lives on a host the instance lists: `/oauth/authorize`,
-//!    consent with the seat's session, and the token endpoint with PKCE.
-//!    The token works on `/mcp/streamable` and nowhere else.
+//! 3. The person connects an MCP client whose metadata document lives on a
+//!    host the instance lists: `/oauth/authorize`, consent with their
+//!    session, and the token endpoint with PKCE. The token works on
+//!    `/mcp/streamable` and nowhere else. The workspace's agent seat cannot
+//!    consent, even on a console session, so it works with its own worker
+//!    token, as the hosted run does.
 //! 4. Over MCP with that token the agent runs a change: `create_thread`
 //!    (kind change, engine session, with acceptance criteria),
 //!    `set_thread_owner` to the person, `claim_next_workspace_thread`,
@@ -77,6 +79,7 @@ async fn document_server() -> String {
         "/oauth/client.json",
         get(|| async {
             axum::Json(json!({
+                "client_id": CLIENT,
                 "client_name": "Launch Agent",
                 "redirect_uris": [REDIRECT],
                 "scope": SCOPE,
@@ -304,9 +307,10 @@ impl Env {
         }
     }
 
-    /// The workspace's agent seat, signed in to the console as the OIDC
-    /// callback signs a member in.
-    async fn agent_seat(&self, t: &Tenant) -> (MemberId, String) {
+    /// The workspace's agent seat: the member, a console session made for it
+    /// as the OIDC callback makes one, and its worker token, which carries
+    /// what the OAuth grant would have.
+    async fn agent_seat(&self, t: &Tenant) -> (MemberId, String, String) {
         let agent = self
             .store
             .create_member(NewMember {
@@ -338,13 +342,74 @@ impl Env {
             .next()
             .unwrap()
             .to_string();
-        (agent.id, cookie)
+        let secret = TokenSecret::generate();
+        self.store
+            .create_api_token(NewApiToken {
+                workspace_id: t.ws,
+                member_id: agent.id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: Some("agent worker".into()),
+                capabilities: SCOPE.split(' ').map(str::to_string).collect(),
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        (agent.id, cookie, secret.as_str().to_string())
+    }
+
+    /// An agent member's session gets as far as the consent page's form,
+    /// and the decision refuses it: only a person consents.
+    async fn assert_cannot_consent(&self, agent_cookie: &str) {
+        let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes())
+            + "-pkce-verifier-of-rfc-7636-length";
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+        let authorize = self
+            .client
+            .get(format!(
+                "{}/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge={challenge}&code_challenge_method=S256&scope={}&state=xyz&resource={}",
+                self.base,
+                urlencoding::encode(CLIENT),
+                urlencoding::encode(REDIRECT),
+                urlencoding::encode(SCOPE),
+                urlencoding::encode(RESOURCE),
+            ))
+            .header(header::COOKIE, agent_cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(authorize.status(), StatusCode::TEMPORARY_REDIRECT);
+        let consent_at = location(&authorize);
+        let request_id = consent_at.split("request=").nth(1).unwrap().to_string();
+        let page = self
+            .client
+            .get(format!("{}{consent_at}", self.base))
+            .header(header::COOKIE, agent_cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(page.status(), StatusCode::FORBIDDEN, "the consent page");
+        let consent = self
+            .client
+            .post(format!("{}/ui/api/oauth/consent", self.base))
+            .header(header::COOKIE, agent_cookie)
+            .header("Sec-Fetch-Site", "same-origin")
+            .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            consent.status(),
+            StatusCode::FORBIDDEN,
+            "the consent decision"
+        );
     }
 
     /// Step 3: authorize, consent and the PKCE token exchange; the access
     /// token.
     async fn connect_client(&self, consenting_cookie: &str) -> String {
-        let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes()) + "-pkce-verifier";
+        let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes())
+            + "-pkce-verifier-of-rfc-7636-length";
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         let authorize = self
             .client
@@ -558,16 +623,24 @@ async fn launch_gate_e2e() {
     let channel: Value = channel.json().await.unwrap();
     let cid = channel["id"].as_str().unwrap().to_string();
 
-    // 3. Each workspace's agent seat connects the client from the listed
-    //    host. The token is for MCP only.
-    let (agent, agent_cookie) = env.agent_seat(&ada).await;
-    let token = env.connect_client(&agent_cookie).await;
-    let (_, grace_agent_cookie) = env.agent_seat(&grace).await;
-    let grace_token = env.connect_client(&grace_agent_cookie).await;
+    // 3. The person connects the client from the listed host. The token is
+    //    for MCP only. Each workspace's agent seat cannot consent, so it
+    //    works with its own worker token.
+    let oauth_token = env.connect_client(&ada.cookie).await;
+    let (agent, agent_cookie, token) = env.agent_seat(&ada).await;
+    env.assert_cannot_consent(&agent_cookie).await;
+    let (_, _, grace_token) = env.agent_seat(&grace).await;
+    let mut mcp_calls = 0;
+    let whoami = env.ok(&oauth_token, "whoami", json!({})).await;
+    mcp_calls += 1;
+    assert!(
+        whoami.to_string().contains(&ada.person.0.to_string()),
+        "the OAuth token acts as the person who consented: {whoami}"
+    );
     let me = env
         .client
         .get(format!("{}/me", env.base))
-        .bearer_auth(&token)
+        .bearer_auth(&oauth_token)
         .send()
         .await
         .unwrap();
@@ -575,7 +648,7 @@ async fn launch_gate_e2e() {
     let plain_mcp = env
         .client
         .post(format!("{}/mcp", env.base))
-        .bearer_auth(&token)
+        .bearer_auth(&oauth_token)
         .json(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": "whoami", "arguments": {}}}))
         .send()
@@ -584,7 +657,6 @@ async fn launch_gate_e2e() {
     assert_eq!(plain_mcp.status(), StatusCode::UNAUTHORIZED, "/mcp");
 
     // 4. The agent runs a change over MCP.
-    let mut mcp_calls = 0;
     let thread = env
         .ok(
             &token,

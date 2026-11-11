@@ -174,7 +174,8 @@ async fn signed_in(h: &Harness, t: &Tenant) -> String {
 
 /// A fresh PKCE pair: the verifier and its S256 challenge.
 fn pkce() -> (String, String) {
-    let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes()) + "-pkce-verifier";
+    let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes())
+        + "-pkce-verifier-of-rfc-7636-length";
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     (verifier, challenge)
 }

@@ -110,8 +110,15 @@ pub async fn authorize(
             "code_challenge_method must be S256".into(),
         ));
     }
-    if query.code_challenge.trim().is_empty() {
-        return Err(ApiError::BadRequest("code_challenge is required".into()));
+    // Anything but the 43 characters an S256 digest encodes to is not a
+    // challenge some verifier can meet, and storing it would issue a code
+    // that no exchange could redeem.
+    if !super::token::is_s256_challenge(&query.code_challenge) {
+        return Err(ApiError::BadRequest(
+            "code_challenge must be an S256 challenge: the 43-character unpadded base64url \
+             SHA-256 of the code_verifier"
+                .into(),
+        ));
     }
     if query.state.trim().is_empty() {
         return Err(ApiError::BadRequest("state is required".into()));

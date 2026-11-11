@@ -18,7 +18,8 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
   // Start the authorize flow to get a pending request. Use PKCE S256.
   // (The verifier/challenge are fixed for the test.)
   const verifier = "playwright-pkce-verifier-1234567890";
-  const challenge = "7ZJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJx"; // placeholder
+  // The S256 challenge of the verifier: authorize refuses anything else.
+  const challenge = "BeYnPirNsCj7kz1xiBKHCVxAQih4oNLVwdJ3cVRDFAs";
   const authUrl =
     `${fx.base_url}/oauth/authorize?response_type=code` +
     `&client_id=playwright-consent-client` +
@@ -95,7 +96,7 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
 });
 
 async function pendingConsent(page: Page, request: APIRequestContext): Promise<void> {
-  const challenge = "7ZJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJxJx";
+  const challenge = "BeYnPirNsCj7kz1xiBKHCVxAQih4oNLVwdJ3cVRDFAs";
   const authUrl =
     `${fx.base_url}/oauth/authorize?response_type=code` +
     `&client_id=playwright-consent-client` +

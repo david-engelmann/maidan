@@ -467,6 +467,9 @@ mod oauth_dynamic_registration_e2e;
 #[path = "../oauth_grant_management_e2e.rs"]
 mod oauth_grant_management_e2e;
 
+#[path = "../oauth_hardening_e2e.rs"]
+mod oauth_hardening_e2e;
+
 #[path = "../oauth_metadata_client_row_e2e.rs"]
 mod oauth_metadata_client_row_e2e;
 

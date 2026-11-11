@@ -185,7 +185,8 @@ async fn signed_in(h: &Harness, t: &Tenant) -> String {
 /// An authorization code for `client_id` from `t`'s member, through
 /// authorize and consent, and the PKCE verifier that goes with it.
 async fn code_for(h: &Harness, t: &Tenant, client_id: &str) -> (String, String) {
-    let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes()) + "-pkce-verifier";
+    let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes())
+        + "-pkce-verifier-of-rfc-7636-length";
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let url = format!(
         "{}/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge={challenge}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz&resource={}",
@@ -631,7 +632,7 @@ async fn each_refused_token_request_answers_its_rfc_6749_error() {
     // names none, and refusing it stopped every claude.ai sign-in.
     let authorize = |resource: Option<&str>| {
         let mut url = format!(
-            "{}/oauth/authorize?response_type=code&client_id=public-client&redirect_uri={}&code_challenge=abc&code_challenge_method=S256&state=xyz",
+            "{}/oauth/authorize?response_type=code&client_id=public-client&redirect_uri={}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=xyz",
             h.base,
             urlencoding::encode(REDIRECT),
         );

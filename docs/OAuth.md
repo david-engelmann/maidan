@@ -60,8 +60,9 @@ P3 shipped. These are its controls and what each one does.
   `/oauth/authorize`, `/oauth/token` and `/oauth/revoke` answer 404, like the
   discovery documents. The token and revocation endpoints check it in a layer,
   before the body is read.
-- **Resource binding (RFC 8707).** Authorize and token requests must name
-  `resource`, and it must be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`. The code,
+- **Resource binding (RFC 8707).** An authorize or token request that names
+  `resource` must name `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`, and one that
+  names none is bound to it (claude.ai's connector names none). The code,
   the refresh token and the minted access token all carry it. The bearer
   middleware accepts an access token minted under an OAuth grant only when the
   matched route is `/mcp/streamable`. Everywhere else, `/mcp` included, the
@@ -111,7 +112,13 @@ P3 shipped. These are its controls and what each one does.
   resolved from the document at that URL, but only when the URL's host is
   listed exactly in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` (comma-separated
   host names, empty by default) and names no port. Any other host is refused
-  with 403 before anything is fetched, and redirects are never followed. The
+  with 403 before anything is fetched, and redirects are never followed. A
+  listed host is fetched only at a public address: one that resolves to a
+  loopback, private or link-local address is refused with 403 before any
+  connection, and the connection is pinned to the addresses checked
+  (`MAIDAN_ALLOW_PRIVATE_EGRESS` does not open this). The document must name
+  its own URL as its `client_id`, may be at most 16 KiB, and its
+  `client_name` follows the rules a self-registered client's does. The
   guard is against server-side request forgery, which is the operator's
   concern, so it is an instance setting and not a workspace one: a workspace
   fresh from sign-up resolves the same clients as every other. The hosted
@@ -147,6 +154,33 @@ P3 shipped. These are its controls and what each one does.
   problems, because OAuth clients parse that envelope. A body over the size
   limit, a 404 and a 429 stay problems: they come from layers in front of the
   handler.
+
+## Security properties
+
+The audit of 2026-11-10 checked the server against OAuth 2.1, RFC 7636, RFC
+8252, RFC 8707, RFC 9207, RFC 9728 and the MCP authorization specification
+(2025-06-18 and later). Each property below names the test that proves it.
+`oauth_hardening_e2e` holds the ones that audit added.
+
+| Property | How it holds | Proved by |
+|---|---|---|
+| PKCE is S256 only, for every client | Authorize refuses any method but `S256` and any challenge that is not a 43-character S256 digest. The token endpoint requires a verifier of 43 to 128 unreserved characters from every client, a confidential one included, and compares its SHA-256 with the stored challenge | `oauth_hardening_e2e`: `authorize_refuses_plain_pkce_and_any_challenge_no_s256_verifier_can_meet`, `a_verifier_too_short_to_be_unguessable_is_refused_even_when_its_challenge_matches`, `a_confidential_client_must_prove_pkce_as_well_as_its_secret` |
+| A code is single use, short-lived and bound | Stored as its SHA-256, for ten minutes, with its client, redirect URI, challenge and resource. It is read and fully validated before one atomic statement consumes it, so a wrong guess cannot burn it. A reuse with the verifier revokes the lineage minted from it | `oauth_token_endpoint_e2e`: `reusing_an_authorization_code_revokes_its_lineage`, `each_refused_token_request_answers_its_rfc_6749_error`; `approval_gate_e2e::concurrent_consent_allow_issues_one_code` |
+| Redirect URIs match exactly | String equality, except an `http` loopback redirect's port (RFC 8252 section 7.3). Authorize answers every error itself and redirects nothing until consent, so no error path is an open redirect | `registry::tests::a_loopback_redirect_matches_on_any_port_and_nothing_else_does`; `oauth_dynamic_registration_e2e::unsafe_redirects_and_confidential_clients_are_refused` |
+| Consent is a person's, on a same-origin request | `state` is required and passed back. The decision needs a session the person signed in to, whose member is a human still in the workspace, and a positive same-origin signal; the cookie is `SameSite=Lax`. The page sets `frame-ancestors 'none'`, escapes the client's name and names the redirect host | `oauth_hardening_e2e`: `consent_takes_a_same_origin_post_on_a_page_that_cannot_be_framed`, `an_agent_members_session_never_consents_and_a_person_beside_it_does`; `approval_gate_e2e::foreign_consent_post_leaves_request_usable` |
+| Tokens are bound to the MCP resource and their workspace | An OAuth access token resolves only on `/mcp/streamable` (RFC 8707); `/mcp`, REST and a session from a token refuse it. It acts as its member in its own workspace, and another tenant's resources refuse it | `oauth_token_endpoint_e2e`: `an_oauth_access_token_is_accepted_on_the_mcp_resource_and_nowhere_else`, `a_refresh_token_stays_with_the_tenant_and_client_it_was_issued_to`; `oauth_dynamic_registration_e2e::a_token_a_member_of_a_authorized_for_a_self_registered_client_reads_nothing_of_b`; `launch_gate_e2e` step 8 |
+| Scopes never exceed the grant, the client or the member | Authorize cuts a request to delegatable capabilities the client allows and the member holds; a refresh may narrow, never widen; a narrowed client stops refreshing. `approval:grant` is stripped at mint | `oauth_scope_contract_e2e` (all four tests); `oauth_token_endpoint_e2e::a_refresh_can_narrow_the_scope_but_never_widen_it`; `approval_gate_e2e::an_oauth_token_cannot_accept_a_gate` |
+| Refresh tokens rotate, and a reuse ends the lineage | Each refresh marks the token used and mints a new pair in one transaction; a used one presented again revokes every grant, access token and refresh token of its lineage. A refresh token is bound to its client and resource | `oauth_token_endpoint_e2e`: `a_refresh_rotates_the_pair_and_the_new_pair_works`, `reusing_a_refresh_token_revokes_the_whole_lineage`, `a_refresh_naming_another_resource_is_refused_and_keeps_its_token` |
+| Revocation ends access at once | `/oauth/revoke`, the grants page and the grants API revoke the token rows themselves, and the bearer lookup also refuses a token whose grant is revoked | `oauth_token_endpoint_e2e::revocation_ends_an_access_token_or_a_refresh_lineage_and_ignores_other_clients_tokens`; `oauth_grant_management_e2e` (all three tests) |
+| A member who leaves takes their apps with them | SCIM deactivation and deprovision revoke every lineage the member consented to, in the transaction that revokes their tokens and sessions, so reactivating them does not reconnect an app. A tombstoned or SCIM-inactive member's token never resolves | `oauth_hardening_e2e::deactivating_a_member_disconnects_their_apps_for_good_and_leaves_another_tenants` |
+| Dynamic registration grants nothing by itself | Public clients only, with server-chosen ids (`dyn-<uuid>`), loopback, app-scheme or listed `https` redirects, a cleaned and unverified name, bounded bodies, a per-address rate limit and a global cap | `oauth_dynamic_registration_e2e`; `register::tests`; `oauth_registration_rate_limit_e2e` |
+| Client metadata documents cannot be turned on the server | Only listed hosts, `https`, the default port, no redirects, public addresses only, 16 KiB, ten seconds, and a document whose `client_id` is its own URL. The cached row is never an authority | `oauth_authorize_signin_hosts_e2e::a_listed_host_resolves_for_every_fresh_workspace_and_nothing_else_is_fetched`; `oauth_hardening_e2e`: `a_listed_metadata_host_on_a_private_address_is_never_fetched`, `a_metadata_document_is_this_clients_only_when_its_client_id_is_its_own_url`, `a_metadata_document_past_the_size_limit_or_with_a_disguised_name_is_refused`; `oauth_metadata_client_row_e2e` |
+| Secrets are unguessable and never stored or logged | Codes and refresh tokens carry 256 random bits, access tokens about 244, and each is stored as its SHA-256. A presented bearer or client secret is compared in constant time. Token responses are `no-store`. Spans omit query strings and mark `Authorization`, `Cookie`, `Set-Cookie` and `Location` sensitive | `oauth_hardening_e2e::the_redirect_that_hands_over_a_code_never_reaches_the_trace`; `trace_redaction_e2e`; `oauth_token_endpoint_e2e` (every `pair` checks `no-store`) |
+| No oracle, and guessing is rate limited | Revocation answers 200 for a known, unknown or foreign token alike; a pending consent request is bound to its member. The token, revocation, authorize and consent endpoints have their own per-client and per-address buckets | `oauth_rate_limit_e2e` (all five tests); `oauth_token_endpoint_e2e::revocation_ends_an_access_token_or_a_refresh_lineage_and_ignores_other_clients_tokens` |
+| MCP discovery follows the specification | RFC 9728 metadata at `/.well-known/oauth-protected-resource/mcp/streamable`, a 401 with `WWW-Authenticate: Bearer resource_metadata=...`, and an RFC 8414 document that lists only what is served | `oauth_resource_metadata_e2e` (all three tests) |
+
+Client identifiers are not secret (RFC 6749 section 2.2), so the token
+endpoint may say that a client is unknown or must authenticate.
 
 ## Dynamic client registration
 

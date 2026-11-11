@@ -18,7 +18,8 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use maidan_types::{
-    AuditScope, NewAuditEvent, NewOAuthAuthorizationCode, NewOAuthGrant, OAuthPendingRequestId,
+    AuditScope, Member, MemberKind, NewAuditEvent, NewOAuthAuthorizationCode, NewOAuthGrant,
+    OAuthPendingRequestId,
 };
 use rand::RngCore;
 use serde::Deserialize;
@@ -50,13 +51,7 @@ pub async fn consent_page(
     Extension(session): Extension<SessionContext>,
     ApiQuery(query): ApiQuery<ConsentQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    // Consent is a human decision: a token-made session proves no more than
-    // the token behind it.
-    if session.token.is_some() {
-        return Err(ApiError::Forbidden(
-            "consent needs a browser session the person signed in to".into(),
-        ));
-    }
+    let member = require_consenting_person(&state, &session).await?;
     let request_id = query
         .request
         .parse::<Uuid>()
@@ -80,7 +75,6 @@ pub async fn consent_page(
         .map_err(|_| ApiError::BadRequest("unknown client".into()))?;
 
     let workspace = state.store.get_workspace(session.workspace_id).await?;
-    let member = state.store.get_member(session.member_id).await?;
     let you = member.display_name.as_deref().unwrap_or(&member.handle);
     // A client that registered itself chose its own name, so the name is
     // marked unverified wherever it shows, and the page says where the code
@@ -139,6 +133,32 @@ pub async fn consent_page(
     ))
 }
 
+/// The member who may consent on this session. Consent lends a person's
+/// authority, so it takes a person: a session they signed in to (a session
+/// made from a token proves no more than the token behind it), whose member
+/// is a human still in the workspace. An agent member never consents,
+/// however its session came to exist, and neither does a removed member.
+async fn require_consenting_person(
+    state: &AppState,
+    session: &SessionContext,
+) -> ApiResult<Member> {
+    if session.token.is_some() {
+        return Err(ApiError::Forbidden(
+            "consent needs a browser session the person signed in to".into(),
+        ));
+    }
+    let member = state.store.get_member(session.member_id).await?;
+    if member.kind != MemberKind::Human
+        || member.tombstoned_at.is_some()
+        || member.workspace_id != session.workspace_id
+    {
+        return Err(ApiError::Forbidden(
+            "consent needs a person: an agent or removed member cannot connect an app".into(),
+        ));
+    }
+    Ok(member)
+}
+
 /// Where the redirect goes, as a person reads it: the host for a web
 /// address, the scheme for an app's own.
 fn redirect_host(redirect_uri: &str) -> String {
@@ -187,11 +207,7 @@ pub async fn decide_consent(
     headers: HeaderMap,
     ApiForm(form): ApiForm<ConsentDecision>,
 ) -> ApiResult<impl IntoResponse> {
-    if session.token.is_some() {
-        return Err(ApiError::Forbidden(
-            "consent needs a browser session the person signed in to".into(),
-        ));
-    }
+    require_consenting_person(&state, &session).await?;
     require_same_origin(&headers)?;
 
     let request_id = form
