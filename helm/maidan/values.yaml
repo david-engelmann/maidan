@@ -65,6 +65,10 @@ config:
 # Development default. A production render (`production: true`) refuses it,
 # and any value holding the placeholder CHANGE_ME, with a message naming what to
 # set; prefer `existingSecret` there.
+# A production server answers 404 on /metrics unless MAIDAN_METRICS_TOKEN is
+# set (32 bytes or more, `openssl rand -hex 32`): add it here, or to
+# existingSecret and existingSecretKeys, and give the scraper the same value as
+# its bearer token.
 secrets:
   DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
 

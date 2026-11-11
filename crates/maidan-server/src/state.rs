@@ -279,6 +279,10 @@ pub struct AppState {
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
     /// env.
     pub a2a_card: crate::a2a_agent::A2aCardConfig,
+    /// Who may read `GET /metrics`. Open in [`AppState::new`], for tests and
+    /// embedders; the server binary closes it under `MAIDAN_ENV=production`
+    /// unless `MAIDAN_METRICS_TOKEN` names a bearer for the scraper.
+    pub metrics_access: crate::metrics::MetricsAccess,
     /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server
     /// should stamp a `Maidan-Consistency-Token` on writes and route
     /// replica-eligible reads. Left `false` in [`AppState::new`]; the server
@@ -448,6 +452,7 @@ impl AppState {
             merge_queue_labels: maidan_types::MergeQueueLabels::default(),
             ci_verdict_contexts: crate::ci_watch::verdict_contexts(None),
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
+            metrics_access: crate::metrics::MetricsAccess::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
             search_read_routing_metrics: None,
