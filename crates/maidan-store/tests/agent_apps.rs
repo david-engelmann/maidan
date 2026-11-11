@@ -102,8 +102,8 @@ async fn app_installation_token_resolves_and_subset_caps_enforced() {
         .unwrap();
 
     let ctx = resolve_bearer(&store, secret.as_str()).await.unwrap();
-    assert_eq!(ctx.member_id, bot.id);
-    assert_eq!(ctx.app_installation_id, Some(install.id));
+    assert_eq!(ctx.member_id(), bot.id);
+    assert_eq!(ctx.app_installation_id(), Some(install.id));
     assert!(ctx.has_capability("message:post"));
     assert!(!ctx.has_capability("workspace:write"));
 

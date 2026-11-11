@@ -7,7 +7,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{test_support::FailingBus, BusItem, EventBus, PostgresBus};
-use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
+use maidan_server::{outbox_relay::OutboxRelay, router, test_support, AppState};
 use maidan_store::{postgres::outbox, prelude::*, OutboxBackend};
 use maidan_types::EventFilter;
 use serde_json::json;
@@ -19,6 +19,7 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     pool: PgPool,
     bus: Arc<PostgresBus>,
+    tenant: test_support::Tenant,
     _container: testcontainers::ContainerAsync<Postgres>,
 }
 
@@ -37,6 +38,7 @@ async fn spawn_postgres_outbox() -> Option<Harness> {
     let artifacts = Arc::new(LocalFsStore::new(
         tempfile::tempdir().expect("tempdir").path(),
     ));
+    let tenant = test_support::tenant(store.as_ref(), "outbox-http-ws").await;
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
@@ -58,6 +60,7 @@ async fn spawn_postgres_outbox() -> Option<Harness> {
         server,
         pool,
         bus,
+        tenant,
         _container: container,
     })
 }
@@ -68,15 +71,24 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
         return;
     };
 
+    let relay = OutboxRelay::new(
+        OutboxBackend::postgres(h.pool.clone(), maidan_store::test_support::dev_keys()),
+        h.bus.clone(),
+    );
+    // Seeding the caller appended events of its own; relay them before
+    // subscribing so the request's event is the only one left to deliver.
+    relay.run_once().await.unwrap();
+    assert_eq!(outbox::count_pending(&h.pool).await.unwrap(), 0);
+
     let mut sub = h.bus.subscribe(EventFilter::all()).await.unwrap();
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
+    let client = h.tenant.client();
 
     let resp = client
-        .post(format!("http://{}/workspaces", h.addr))
-        .json(&json!({"name": "outbox-http-ws"}))
+        .post(format!(
+            "http://{}/workspaces/{}/channels",
+            h.addr, h.tenant.workspace_id.0
+        ))
+        .json(&json!({"name": "outbox-http", "private": false}))
         .send()
         .await
         .unwrap();
@@ -86,10 +98,6 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(
-        OutboxBackend::postgres(h.pool.clone(), maidan_store::test_support::dev_keys()),
-        h.bus.clone(),
-    );
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -259,7 +267,24 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let ws_id = maidan_types::WorkspaceId(uuid::Uuid::new_v4());
+    let tenant = test_support::tenant(store.as_ref(), "replay-outbox").await;
+    let ok_bus = Arc::new(
+        PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+            .await
+            .unwrap(),
+    );
+    // Seeding the caller appended events of its own; publish them so the
+    // event below is the only row the failing bus quarantines.
+    OutboxRelay::new(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        ok_bus.clone(),
+    )
+    .run_once()
+    .await
+    .unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+
+    let ws_id = tenant.workspace_id;
     store
         .append_event(&maidan_types::Event::WorkspaceCreated {
             occurred_at: chrono::Utc::now(),
@@ -283,16 +308,15 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
     relay.run_once().await.unwrap();
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
 
-    let row = sqlx::query_as::<_, (i64,)>("SELECT id FROM maidan_outbox LIMIT 1")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let row = sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM maidan_outbox WHERE quarantined_at IS NOT NULL LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let resp = client
+    let resp = tenant
+        .client()
         .post(format!(
             "http://{addr}/workspaces/{}/outbox/{}/replay",
             ws_id.0, row.0
@@ -304,11 +328,6 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 0);
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let ok_bus = Arc::new(
-        PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
-            .await
-            .unwrap(),
-    );
     let relay2 = OutboxRelay::new(
         OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
         ok_bus,

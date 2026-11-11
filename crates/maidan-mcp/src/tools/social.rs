@@ -38,7 +38,7 @@ pub(super) async fn cast_vote(
         .store
         .cast_vote_with_event(NewVote {
             message_id: MessageId(a.message_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
             kind: a.kind,
             confidence: a.confidence,
         })
@@ -65,7 +65,7 @@ pub(super) async fn retract_vote(
     let a: RetractVoteArgs = crate::tools::parse_args(args)?;
     let (removed, stored) = server
         .store
-        .retract_vote_with_event(MessageId(a.message_id), auth.member_id, a.kind)
+        .retract_vote_with_event(MessageId(a.message_id), auth.member_id(), a.kind)
         .await?;
     if let Some(stored) = stored {
         server.publish_stored(&stored).await;
@@ -90,7 +90,7 @@ pub(super) async fn add_reaction(
         .store
         .add_reaction_with_event(NewReaction {
             message_id: MessageId(a.message_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
             emoji: a.emoji,
         })
         .await?;
@@ -107,7 +107,7 @@ pub(super) async fn remove_reaction(
     // The event is appended only when a row was actually removed (idempotent).
     let (removed, stored) = server
         .store
-        .remove_reaction_with_event(MessageId(a.message_id), auth.member_id, &a.emoji)
+        .remove_reaction_with_event(MessageId(a.message_id), auth.member_id(), &a.emoji)
         .await?;
     if let Some(stored) = stored {
         server.publish_stored(&stored).await;
@@ -150,7 +150,7 @@ pub(super) async fn pin_message(
         .pin_message_with_event(NewPin {
             thread_id: ThreadId(a.thread_id),
             message_id: MessageId(a.message_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
         })
         .await?;
     server.publish_stored(&stored).await;
@@ -168,7 +168,7 @@ pub(super) async fn unpin_message(
         .unpin_message_with_event(
             ThreadId(a.thread_id),
             MessageId(a.message_id),
-            auth.member_id,
+            auth.member_id(),
         )
         .await?;
     if let Some(stored) = stored {

@@ -64,7 +64,7 @@ pub async fn set_review_requirement(
         cap(&auth, CHANNEL_ADMIN)?;
     }
     let allow_lower = cap(&auth, CHANNEL_ADMIN).is_ok();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let change = state
         .store
         .set_review_requirement_audited(
@@ -141,7 +141,7 @@ pub async fn clear_review_requirement(
             thread_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(scope.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "review_requirement.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),
@@ -190,7 +190,7 @@ pub async fn remove_reviewer(
             MemberId(member_id),
             NewAuditEvent {
                 scope: AuditScope::Workspace(scope.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "reviewer.remove".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),
@@ -235,7 +235,7 @@ pub async fn submit_review(
         .store
         .submit_review_at_head(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             body.decision,
             note.as_deref(),
             root.as_deref(),

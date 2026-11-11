@@ -44,13 +44,13 @@ pub async fn get_me(
     };
     let capability_sets = maidan_auth::held_sets(&reported);
     Ok(Json(WhoAmI {
-        actor_id: auth.actor_id.0,
-        member_id: auth.member_id.0,
-        delegation_grant_id: auth.delegation_grant_id.map(|id| id.0),
-        workspace_id: auth.workspace_id.0,
+        actor_id: auth.actor_id().0,
+        member_id: auth.member_id().0,
+        delegation_grant_id: auth.delegation_grant_id().map(|id| id.0),
+        workspace_id: auth.workspace_id().0,
         capabilities: reported,
-        is_bearer: auth.token_id.is_some(),
-        token_id: auth.token_id.map(|id| id.0),
+        is_bearer: auth.token_id().is_some(),
+        token_id: auth.token_id().map(|id| id.0),
         known_capabilities: maidan_auth::capability::all(),
         capability_sets,
     }))
@@ -433,7 +433,7 @@ async fn insert_agent(
     )
     .map_err(ApiError::BadRequest)?;
     let secret = TokenSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let label = body.label.unwrap_or_else(|| handle.clone());
     let created = state
         .store
@@ -538,7 +538,7 @@ pub async fn set_member_display_name(
     let display_name = normalize_display_name(Some(&body.display_name))?;
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(member.workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "member.display_name.set".into(),
         target_kind: Some("member".into()),
         target_id: Some(member.id.0),

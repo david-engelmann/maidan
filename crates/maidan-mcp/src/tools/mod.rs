@@ -606,7 +606,7 @@ fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Re
         return Ok(());
     };
 
-    if claimed == auth.member_id {
+    if claimed == auth.member_id() {
         return Ok(());
     }
     Err(McpError::Forbidden("member_id is not yours".to_string()))
@@ -1051,7 +1051,7 @@ async fn dispatch_rest(
             let reader_id = if auth.bypass {
                 None
             } else {
-                Some(auth.member_id)
+                Some(auth.member_id())
             };
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
@@ -1102,7 +1102,7 @@ pub(super) async fn requested_member(
     if auth.bypass {
         return Ok(store.get_member(id).await?);
     }
-    Ok(store.get_member_in(auth.workspace_id, id).await?)
+    Ok(store.get_member_in(auth.workspace_id(), id).await?)
 }
 
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec

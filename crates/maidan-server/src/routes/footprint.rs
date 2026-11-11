@@ -76,7 +76,7 @@ pub async fn list_active_claims(
         .repo
         .map(|repo| maidan_types::normalize_repo(&repo).map_err(ApiError::BadRequest))
         .transpose()?;
-    let readable_by = (!auth.bypass).then_some(auth.member_id);
+    let readable_by = (!auth.bypass).then_some(auth.member_id());
     Ok(Json(
         state
             .store
@@ -116,13 +116,13 @@ pub async fn pause_repo(
         .as_deref()
         .map(str::trim)
         .filter(|r| !r.is_empty());
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let pause = state
         .store
         .pause_repo_audited(
             workspace_id,
             &repo,
-            auth.member_id,
+            auth.member_id(),
             reason,
             Box::new(move |pause| NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
@@ -156,7 +156,7 @@ pub async fn resume_repo(
             &repo,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "repo.resume".into(),
                 target_kind: Some("repo".into()),
                 target_id: None,
@@ -206,10 +206,10 @@ pub async fn set_slot_capacity(
             workspace_id,
             &slot,
             body.capacity,
-            auth.member_id,
+            auth.member_id(),
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "slot.capacity.set".into(),
                 target_kind: Some("slot".into()),
                 target_id: None,
@@ -250,7 +250,7 @@ pub async fn clear_slot_capacity(
             &slot,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "slot.capacity.clear".into(),
                 target_kind: Some("slot".into()),
                 target_id: None,
@@ -277,7 +277,7 @@ pub async fn list_deferred_threads(
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(id);
     ensure_workspace(&auth, workspace_id)?;
-    let readable_by = (!auth.bypass).then_some(auth.member_id);
+    let readable_by = (!auth.bypass).then_some(auth.member_id());
     Ok(Json(
         state
             .store

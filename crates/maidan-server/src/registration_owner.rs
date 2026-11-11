@@ -66,15 +66,15 @@ pub async fn creator_authority(
             return Err(NotActing::Held("creator check failed"))
         }
     };
-    if auth.workspace_id != workspace_id {
+    if auth.workspace_id() != workspace_id {
         return Err(NotActing::Ended("creator token is for another workspace"));
     }
     // Deactivation revokes the member's tokens in the same transaction, so
     // this only matters for a member deactivated some other way; a delegate
     // presenting the token counts as much as its subject.
-    let mut members = vec![auth.member_id];
-    if auth.actor_id != auth.member_id {
-        members.push(auth.actor_id);
+    let mut members = vec![auth.member_id()];
+    if auth.actor_id() != auth.member_id() {
+        members.push(auth.actor_id());
     }
     for member in members {
         match state.store.get_scim_user(member).await {
@@ -117,14 +117,14 @@ pub fn registration_event(
 ) -> NewAuditEvent {
     NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
-        actor_id: (!auth.bypass).then_some(auth.actor_id),
+        actor_id: (!auth.bypass).then_some(auth.actor_id()),
         action: format!("{kind}.create"),
         target_kind: Some(kind.into()),
         target_id: Some(target_id),
         metadata: json!({
             "workspace_id": workspace_id.0,
-            "created_by_token": auth.token_id.map(|token| token.0),
-            "member_id": (!auth.bypass).then_some(auth.member_id.0),
+            "created_by_token": auth.token_id().map(|token| token.0),
+            "member_id": (!auth.bypass).then_some(auth.member_id().0),
         }),
     }
 }

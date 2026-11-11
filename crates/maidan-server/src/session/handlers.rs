@@ -58,7 +58,7 @@ pub async fn session_from_token(
     }
     crate::routes::cap(&auth, WORKSPACE_READ)?;
     let settings = state.browser_sessions().ok_or(ApiError::NotFound)?;
-    let token_id = auth.token_id.ok_or(ApiError::Unauthorized)?;
+    let token_id = auth.token_id().ok_or(ApiError::Unauthorized)?;
     let token = state.store.get_api_token(token_id).await?;
 
     let now = Utc::now();
@@ -97,14 +97,14 @@ pub async fn session_from_token(
         }
     }
 
-    let actor = auth.actor_id;
-    let grant = auth.delegation_grant_id;
+    let actor = auth.actor_id();
+    let grant = auth.delegation_grant_id();
     let session = state
         .store
         .create_session_audited(
             NewMaidanSession {
-                workspace_id: auth.workspace_id,
-                member_id: auth.member_id,
+                workspace_id: auth.workspace_id(),
+                member_id: auth.member_id(),
                 api_token_id: Some(token_id),
                 oidc_identity_id: None,
                 expires_at,

@@ -97,7 +97,7 @@ async fn spawn_with_settings(settings: OidcSettings) -> Harness {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

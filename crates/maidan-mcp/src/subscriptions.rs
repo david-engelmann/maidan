@@ -100,12 +100,12 @@ impl Principal {
             return Self::Bypass;
         }
         Self::Caller {
-            workspace_id: auth.workspace_id,
-            member_id: auth.member_id,
-            actor_id: auth.actor_id,
-            token_id: auth.token_id,
-            app_installation_id: auth.app_installation_id,
-            delegation_grant_id: auth.delegation_grant_id,
+            workspace_id: auth.workspace_id(),
+            member_id: auth.member_id(),
+            actor_id: auth.actor_id(),
+            token_id: auth.token_id(),
+            app_installation_id: auth.app_installation_id(),
+            delegation_grant_id: auth.delegation_grant_id(),
         }
     }
 }

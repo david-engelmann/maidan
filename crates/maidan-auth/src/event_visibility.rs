@@ -69,11 +69,11 @@ impl<'a> EventVisibility<'a> {
             let allowed = match self.store.get_channel(channel_id).await {
                 // A channel id from another tenant is never visible, public
                 // or not: the membership checks below assume this workspace.
-                Ok(channel) if channel.workspace_id != self.auth.workspace_id => false,
+                Ok(channel) if channel.workspace_id != self.auth.workspace_id() => false,
                 Ok(channel) if channel.name == DM_CHANNEL_NAME => false,
                 Ok(channel) if channel.private => {
                     self.store
-                        .channel_is_member(channel_id, self.auth.member_id)
+                        .channel_is_member(channel_id, self.auth.member_id())
                         .await?
                 }
                 Ok(_) => true,

@@ -60,8 +60,6 @@ async fn spawn(request_limit: Option<usize>) -> Harness {
         Arc::new(InMemoryBus::with_capacity(256)),
         search,
     );
-    state.auth_disabled = false;
-    state.test_identity_header = false;
     if let Some(max) = request_limit {
         state.request_limit = RequestLimit::new(max);
     }

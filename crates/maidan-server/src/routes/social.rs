@@ -35,7 +35,7 @@ pub async fn cast_vote(
         .store
         .cast_vote_with_event(NewVote {
             message_id: MessageId(message_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
             kind: body.kind,
             confidence: body.confidence,
         })
@@ -63,7 +63,7 @@ pub async fn retract_vote(
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     let (_removed, stored) = state
         .store
-        .retract_vote_with_event(message_id, auth.member_id, body.kind)
+        .retract_vote_with_event(message_id, auth.member_id(), body.kind)
         .await?;
     if let Some(stored) = stored {
         publish_stored(&state, stored).await;
@@ -130,7 +130,7 @@ pub async fn add_reaction(
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     let emoji = body.emoji.clone();
     // Reaction row + `ReactionAdded` event commit atomically.
     let stored = state
@@ -159,7 +159,7 @@ pub async fn remove_reaction(
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     let emoji = body.emoji.clone();
     // The DELETE + `ReactionRemoved` event commit atomically; the event is only
     // produced when a row was actually removed.
@@ -205,7 +205,7 @@ pub async fn pin_message(
     // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     let stored = state
         .store
         .pin_message_with_event(NewPin {
@@ -234,7 +234,7 @@ pub async fn unpin_message(
     // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     let (removed, stored) = state
         .store
         .unpin_message_with_event(thread_id, message_id, member_id)

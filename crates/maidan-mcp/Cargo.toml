@@ -42,6 +42,7 @@ uuid.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+maidan-auth = { path = "../maidan-auth", features = ["test-support"] }
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
 sqlx.workspace = true
 tempfile = "3"

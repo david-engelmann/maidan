@@ -9,20 +9,27 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{
+    router, subscribe_resume,
+    test_support::{self, Tenant},
+    AppState, FederationRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::EventKind;
+use maidan_types::{EventKind, MemberKind, NewMember};
 use serde_json::json;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
 };
 
-async fn spawn_server() -> (
+async fn spawn_server(
+    name: &str,
+) -> (
     std::net::SocketAddr,
-    reqwest::Client,
+    Tenant,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
+    Arc<dyn Store>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
@@ -35,20 +42,41 @@ async fn spawn_server() -> (
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), name).await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
+    (addr, tenant, server, dir, store)
+}
+
+/// Creates channel `name` in `tenant`'s workspace and returns its id.
+async fn create_channel(
+    client: &reqwest::Client,
+    base: &str,
+    tenant: &Tenant,
+    name: &str,
+) -> String {
+    let ch: serde_json::Value = client
+        .post(format!(
+            "{base}/workspaces/{}/channels",
+            tenant.workspace_id.0
+        ))
+        .json(&json!({ "name": name }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
         .unwrap();
-    (addr, client, server, dir)
+    ch["id"].as_str().unwrap().to_string()
 }
 
 type WsClient =
@@ -87,54 +115,33 @@ fn with_subscribe_resume_secret(mut state: AppState) -> AppState {
 
 #[tokio::test]
 async fn subscribe_receives_matching_events_in_order() {
-    let (addr, client, server, _dir) = spawn_server().await;
+    let (addr, tenant, server, _dir, _store) = spawn_server("ws-test").await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
 
     let req = ws_url.into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
 
-    // subscribe to everything
-    ws.send(Message::Text(json!({"filter": {}}).to_string()))
-        .await
-        .unwrap();
+    // Everything the token can see: its own workspace.
+    ws.send(Message::Text(
+        json!({"token": tenant.token, "filter": {}}).to_string(),
+    ))
+    .await
+    .unwrap();
 
     // The server subscribes to the bus before it acks, so events produced
     // after the ack are all delivered.
     await_subscribe_ack(&mut ws).await;
 
-    // produce three events via HTTP
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "ws-test"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    // A workspace and its members are created through the store, which
+    // publishes nothing live, so the three events are channels.
+    for name in ["first", "second", "third"] {
+        create_channel(&client, &base, &tenant, name).await;
+    }
 
-    // collect three text frames
     let mut kinds = Vec::new();
+    let mut names = Vec::new();
     let collect = async {
         while kinds.len() < 3 {
             match ws.next().await {
@@ -144,6 +151,12 @@ async fn subscribe_receives_matching_events_in_order() {
                         continue;
                     }
                     kinds.push(v["kind"].as_str().unwrap().to_string());
+                    names.push(
+                        v["channel"]["name"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                    );
                 }
                 Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
                 other => panic!("unexpected ws frame: {other:?}"),
@@ -156,8 +169,9 @@ async fn subscribe_receives_matching_events_in_order() {
 
     assert_eq!(
         kinds,
-        vec!["workspace_created", "member_joined", "channel_created"]
+        vec!["channel_created", "channel_created", "channel_created"]
     );
+    assert_eq!(names, vec!["first", "second", "third"]);
 
     ws.close(None).await.ok();
     server.abort();
@@ -165,7 +179,8 @@ async fn subscribe_receives_matching_events_in_order() {
 
 #[tokio::test]
 async fn subscribe_filters_by_kind() {
-    let (addr, client, server, _dir) = spawn_server().await;
+    let (addr, tenant, server, _dir, store) = spawn_server("filter-ws").await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
 
@@ -174,44 +189,17 @@ async fn subscribe_filters_by_kind() {
 
     // subscribe only to MessagePosted events
     ws.send(Message::Text(
-        json!({"filter": {"kinds": [EventKind::MessagePosted]}}).to_string(),
+        json!({"token": tenant.token, "filter": {"kinds": [EventKind::MessagePosted]}}).to_string(),
     ))
     .await
     .unwrap();
 
     await_subscribe_ack(&mut ws).await;
 
-    // setup workspace/member/channel/thread
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "filter-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
-    let alice: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
-    let ch: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap().to_string();
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let channel_id = create_channel(&client, &base, &tenant, "general").await;
     let th: serde_json::Value = client
         .post(format!("{base}/channels/{channel_id}/threads"))
         .json(&json!({"title": "t"}))
@@ -224,9 +212,9 @@ async fn subscribe_filters_by_kind() {
     let thread_id = th["id"].as_str().unwrap().to_string();
     // post two messages — the only events the subscriber should see
     for body in ["one", "two"] {
-        let _: serde_json::Value = client
+        let _: serde_json::Value = alice
+            .client()
             .post(format!("{base}/threads/{thread_id}/messages"))
-            .header("maidan-test-member-id", &alice_id)
             .json(&json!({"body": body}))
             .send()
             .await
@@ -279,7 +267,9 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let tenant = test_support::tenant(store.as_ref(), "lag-hint").await;
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(2));
@@ -289,7 +279,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -298,23 +288,29 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
 
     let req = format!("ws://{addr}/ws/subscribe")
         .into_client_request()
         .unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
-    ws.send(Message::Text(json!({"filter": {}}).to_string()))
-        .await
-        .unwrap();
+    ws.send(Message::Text(
+        json!({"token": tenant.token, "filter": {}}).to_string(),
+    ))
+    .await
+    .unwrap();
     // Flood only once the server holds its bus subscription (it acks after
     // subscribing). A fixed sleep here was the flake: on a loaded runner the
     // flood landed before the subscription existed, nothing lagged, and no
     // replay hint came.
     await_subscribe_ack(&mut ws).await;
+    // A token's subscription is bound to its workspace, and a lagging
+    // workspace subscription replays from the event log by itself; the hint
+    // is what it gets when that replay cannot run.
+    sqlx::query("ALTER TABLE maidan_events RENAME TO maidan_events_unreachable")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let ws_id = uuid::Uuid::new_v4();
     for i in 0..12 {
@@ -387,6 +383,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "lag-replay").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -397,7 +394,7 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -406,28 +403,15 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
-
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "lag-replay"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     let ws_url = format!("ws://{addr}/ws/subscribe");
     let req = ws_url.into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
     ws.send(Message::Text(
-        json!({"filter": {"workspace_id": workspace_id}}).to_string(),
+        json!({"token": tenant.token, "filter": {"workspace_id": workspace_id}}).to_string(),
     ))
     .await
     .unwrap();
@@ -508,45 +492,24 @@ async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filt
 
 #[tokio::test]
 async fn subscribe_resumes_after_id_from_event_log() {
-    let (addr, client, server, _dir) = spawn_server().await;
+    let (addr, tenant, server, _dir, _store) = spawn_server("resume-ws").await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     let req = ws_url.clone().into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
-    ws.send(Message::Text(json!({"filter": {}}).to_string()))
-        .await
-        .unwrap();
+    ws.send(Message::Text(
+        json!({"token": tenant.token, "filter": {}}).to_string(),
+    ))
+    .await
+    .unwrap();
     await_subscribe_ack(&mut ws).await;
 
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "resume-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    for name in ["first", "second", "third"] {
+        create_channel(&client, &base, &tenant, name).await;
+    }
 
     let mut first_log_id = None;
     let read_first = async {
@@ -570,6 +533,7 @@ async fn subscribe_resumes_after_id_from_event_log() {
     let (mut ws, _resp) = connect_async(req).await.expect("ws reconnect");
     ws.send(Message::Text(
         json!({
+            "token": tenant.token,
             "filter": {"workspace_id": workspace_id},
             "after_id": after_id
         })
@@ -578,22 +542,23 @@ async fn subscribe_resumes_after_id_from_event_log() {
     .await
     .unwrap();
 
-    let mut kinds = Vec::new();
+    let mut names = Vec::new();
     let collect = async {
-        while kinds.len() < 2 {
+        while names.len() < 2 {
             if let Some(Ok(Message::Text(payload))) = ws.next().await {
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
                 if is_control_frame(&v) {
                     continue;
                 }
-                kinds.push(v["kind"].as_str().unwrap().to_string());
+                assert_eq!(v["kind"], "channel_created");
+                names.push(v["channel"]["name"].as_str().unwrap().to_string());
             }
         }
     };
     tokio::time::timeout(Duration::from_secs(3), collect)
         .await
         .expect("timeout on resume");
-    assert_eq!(kinds, vec!["member_joined", "channel_created"]);
+    assert_eq!(names, vec!["second", "third"]);
 
     ws.close(None).await.ok();
     server.abort();
@@ -601,25 +566,16 @@ async fn subscribe_resumes_after_id_from_event_log() {
 
 #[tokio::test]
 async fn subscribe_reconnects_with_resume_token_only() {
-    let (addr, client, server, _dir) = spawn_server().await;
+    let (addr, tenant, server, _dir, store) = spawn_server("resume-token").await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
-
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "resume-token"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     let req = ws_url.clone().into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
     ws.send(Message::Text(
-        json!({"filter": {"workspace_id": workspace_id}}).to_string(),
+        json!({"token": tenant.token, "filter": {"workspace_id": workspace_id}}).to_string(),
     ))
     .await
     .unwrap();
@@ -641,36 +597,24 @@ async fn subscribe_reconnects_with_resume_token_only() {
         .expect("timeout waiting for subscribe_ack");
     ws.close(None).await.ok();
 
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bob", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let _: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    tenant
+        .member(store.as_ref(), "bob", MemberKind::Human)
+        .await;
+    create_channel(&client, &base, &tenant, "general").await;
 
     let req = ws_url.into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws reconnect");
     ws.send(Message::Text(
-        json!({"resume_token": resume_token.unwrap()}).to_string(),
+        json!({"token": tenant.token, "resume_token": resume_token.unwrap()}).to_string(),
     ))
     .await
     .unwrap();
 
+    // The log holds the workspace and its admin from `tenant`, then bob and
+    // the channel.
     let mut kinds = Vec::new();
     let collect = async {
-        while kinds.len() < 3 {
+        while kinds.len() < 4 {
             if let Some(Ok(Message::Text(payload))) = ws.next().await {
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
                 if is_control_frame(&v) {
@@ -685,7 +629,12 @@ async fn subscribe_reconnects_with_resume_token_only() {
         .expect("timeout on resume_token reconnect");
     assert_eq!(
         kinds,
-        vec!["workspace_created", "member_joined", "channel_created"]
+        vec![
+            "workspace_created",
+            "member_joined",
+            "member_joined",
+            "channel_created"
+        ]
     );
 
     ws.close(None).await.ok();
@@ -694,7 +643,7 @@ async fn subscribe_reconnects_with_resume_token_only() {
 
 #[tokio::test]
 async fn subscribe_with_invalid_resume_token_closes_with_1008() {
-    let (addr, _client, server, _dir) = spawn_server().await;
+    let (addr, _tenant, server, _dir, _store) = spawn_server("bad-resume").await;
     let ws_url = format!("ws://{addr}/ws/subscribe");
 
     let req = ws_url.into_client_request().unwrap();
@@ -726,7 +675,7 @@ async fn subscribe_with_invalid_resume_token_closes_with_1008() {
 
 #[tokio::test]
 async fn subscribe_with_invalid_filter_closes_with_1008() {
-    let (addr, _client, server, _dir) = spawn_server().await;
+    let (addr, _tenant, server, _dir, _store) = spawn_server("bad-filter").await;
     let ws_url = format!("ws://{addr}/ws/subscribe");
 
     let req = ws_url.into_client_request().unwrap();
@@ -796,6 +745,7 @@ async fn a_resume_keeps_events_published_while_the_server_subscribes() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "room").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -813,20 +763,8 @@ async fn a_resume_keeps_events_published_while_the_server_subscribes() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let room: serde_json::Value = client
-        .post(format!("http://{addr}/workspaces"))
-        .json(&json!({"name": "room"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = room["id"].as_str().unwrap().to_owned();
+    let client = tenant.client();
+    let workspace_id = tenant.workspace_id.0.to_string();
     let after_id = store.max_event_id().await.unwrap();
     assert!(after_id > 0, "a resume needs a position to resume from");
 
@@ -836,7 +774,12 @@ async fn a_resume_keeps_events_published_while_the_server_subscribes() {
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
     // Resume from the current head, so only newer events are owed.
     ws.send(Message::Text(
-        json!({"filter": {"workspace_id": workspace_id}, "after_id": after_id}).to_string(),
+        json!({
+            "token": tenant.token,
+            "filter": {"workspace_id": workspace_id},
+            "after_id": after_id
+        })
+        .to_string(),
     ))
     .await
     .unwrap();
@@ -846,20 +789,20 @@ async fn a_resume_keeps_events_published_while_the_server_subscribes() {
     // Committed and published while the subscription is still being set up.
     // When the server replayed first and subscribed after, the replay had
     // already run and the bus had nobody to deliver to, so this was lost.
-    let joined = client
-        .post(format!("http://{addr}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "during", "kind": "agent"}))
+    let created = client
+        .post(format!("http://{addr}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "during"}))
         .send()
         .await
         .unwrap();
-    assert!(joined.status().is_success());
+    assert!(created.status().is_success());
     bus.release.notify_one();
 
     let delivered = async {
         while let Some(frame) = ws.next().await {
             if let Message::Text(payload) = frame.expect("ws frame") {
                 let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
-                if v["kind"].as_str() == Some(EventKind::MemberJoined.as_str()) {
+                if v["kind"].as_str() == Some(EventKind::ChannelCreated.as_str()) {
                     return v;
                 }
             }
@@ -869,46 +812,30 @@ async fn a_resume_keeps_events_published_while_the_server_subscribes() {
     let event = tokio::time::timeout(Duration::from_secs(10), delivered)
         .await
         .expect("timeout waiting for the event published mid-subscribe");
-    assert_eq!(event["member"]["handle"], "during");
+    assert_eq!(event["channel"]["name"], "during");
 
     server.abort();
 }
 
 #[tokio::test]
 async fn subscribe_receives_many_sequential_events() {
-    let (addr, client, server, _dir) = spawn_server().await;
+    let (addr, tenant, server, _dir, _store) = spawn_server("soak").await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
 
     let req = ws_url.into_client_request().unwrap();
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
-    ws.send(Message::Text(json!({"filter": {}}).to_string()))
-        .await
-        .unwrap();
+    ws.send(Message::Text(
+        json!({"token": tenant.token, "filter": {}}).to_string(),
+    ))
+    .await
+    .unwrap();
     await_subscribe_ack(&mut ws).await;
-
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "soak"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
 
     const N: usize = 100;
     for i in 0..N {
-        let _: serde_json::Value = client
-            .post(format!("{base}/workspaces/{workspace_id}/members"))
-            .json(&json!({"handle": format!("u{i}"), "kind": "agent"}))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
+        create_channel(&client, &base, &tenant, &format!("c{i}")).await;
     }
 
     let mut count = 0usize;
@@ -920,7 +847,7 @@ async fn subscribe_receives_many_sequential_events() {
                     if is_control_frame(&v) {
                         continue;
                     }
-                    if v["kind"].as_str() == Some(EventKind::MemberJoined.as_str()) {
+                    if v["kind"].as_str() == Some(EventKind::ChannelCreated.as_str()) {
                         count += 1;
                     }
                 }
@@ -931,7 +858,7 @@ async fn subscribe_receives_many_sequential_events() {
     };
     tokio::time::timeout(Duration::from_secs(30), collect)
         .await
-        .expect("timeout waiting for 100 member events");
+        .expect("timeout waiting for 100 channel events");
 
     server.abort();
 }
@@ -940,29 +867,19 @@ async fn subscribe_receives_many_sequential_events() {
 async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() {
     use maidan_server::event_stream::REPLAY_LIMIT;
 
-    let (addr, client, server, _dir) = spawn_server().await;
-    let base = format!("http://{addr}");
+    let (addr, tenant, server, _dir, store) = spawn_server("trunc-ws").await;
     let ws_url = format!("ws://{addr}/ws/subscribe");
+    let workspace_id = tenant.workspace_id.0.to_string();
 
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "trunc-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-
+    // Only the log matters here, so the members go in through the store.
     for i in 0..REPLAY_LIMIT {
-        let _: serde_json::Value = client
-            .post(format!("{base}/workspaces/{workspace_id}/members"))
-            .json(&json!({"handle": format!("m{i}"), "kind": "agent"}))
-            .send()
-            .await
-            .unwrap()
-            .json()
+        store
+            .create_member_with_event(NewMember {
+                workspace_id: tenant.workspace_id,
+                handle: format!("m{i}"),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
             .await
             .unwrap();
     }
@@ -971,6 +888,7 @@ async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() 
     let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
     ws.send(Message::Text(
         json!({
+            "token": tenant.token,
             "filter": {"workspace_id": workspace_id},
             "after_id": 1
         })
@@ -998,7 +916,7 @@ async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() 
     assert_eq!(frame["limit"].as_i64(), Some(REPLAY_LIMIT));
     assert_eq!(
         frame["workspace_id"].as_str(),
-        Some(workspace_id),
+        Some(workspace_id.as_str()),
         "workspace_id should be present"
     );
     assert!(
@@ -1030,6 +948,12 @@ async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect(
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let store_probe = store.clone();
+    // Backlog: workspace_created and member_joined (the admin) from `tenant`,
+    // then member_joined (alice).
+    let tenant = test_support::tenant(store.as_ref(), "alo-ws").await;
+    tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -1041,41 +965,14 @@ async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
 
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
-
-    // Backlog: workspace_created + member_joined + channel_created.
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "alo-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
-    for body in [
-        json!({"handle": "alice", "kind": "human"}),
-        json!({"handle": "_chan", "kind": "human"}),
-    ] {
-        let _: serde_json::Value = client
-            .post(format!("{base}/workspaces/{workspace_id}/members"))
-            .json(&body)
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-    }
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     let subscribe = json!({
+        "token": tenant.token,
         "filter": {"workspace_id": workspace_id},
         "consumer_id": "alo-consumer",
         "at_least_once": true,
@@ -1110,7 +1007,7 @@ async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect(
     // wait for that commit so the reconnect deterministically sees the floor (a
     // reconnect that races ahead would merely re-deliver — at-least-once — but we
     // assert the no-re-delivery path here).
-    let ws_id = maidan_types::WorkspaceId(uuid::Uuid::parse_str(&workspace_id).unwrap());
+    let ws_id = tenant.workspace_id;
     let wait_cursor = async {
         loop {
             if store_probe

@@ -7,9 +7,9 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{consistency::CONSISTENCY_TOKEN_HEADER, router, AppState};
+use maidan_server::{consistency::CONSISTENCY_TOKEN_HEADER, router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace, ROOM_LSN_HEADER};
+use maidan_types::{Event, MemberKind, NewChannel, NewMember, ROOM_LSN_HEADER};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use tokio_tungstenite::{
@@ -19,7 +19,6 @@ use tokio_tungstenite::{
 
 async fn spawn() -> (
     std::net::SocketAddr,
-    reqwest::Client,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
     Arc<dyn Store>,
@@ -43,23 +42,15 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    (addr, client, server, dir, store)
+    (addr, server, dir, store)
 }
 
-async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, i64) {
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "room-lsn-ws".into(),
-        })
-        .await
-        .unwrap();
+async fn seed(store: &dyn Store) -> (test_support::Tenant, i64) {
+    let tenant = test_support::tenant(store, "room-lsn-ws").await;
+    let ws_id = tenant.workspace_id;
     let member = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             handle: "u".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -68,7 +59,7 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, i64) {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             name: "c".into(),
             topic: None,
             private: false,
@@ -78,7 +69,7 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, i64) {
     store
         .append_event(&Event::MemberJoined {
             occurred_at: chrono::Utc::now(),
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             member: member.clone(),
         })
         .await
@@ -86,12 +77,12 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, i64) {
     let last = store
         .append_event(&Event::ChannelCreated {
             occurred_at: chrono::Utc::now(),
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             channel: ch,
         })
         .await
         .unwrap();
-    (ws.id, last.id)
+    (tenant, last.id)
 }
 
 fn header_lsn(resp: &reqwest::Response) -> i64 {
@@ -106,8 +97,10 @@ fn header_lsn(resp: &reqwest::Response) -> i64 {
 
 #[tokio::test]
 async fn rest_stamps_room_lsn_and_never_a_consistency_token_on_sqlite() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, last) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, last) = seed(store.as_ref()).await;
+    let client = tenant.client();
+    let ws = tenant.workspace_id;
     assert_eq!(store.max_event_id().await.unwrap(), last);
 
     let live = client
@@ -149,8 +142,10 @@ async fn rest_stamps_room_lsn_and_never_a_consistency_token_on_sqlite() {
 
 #[tokio::test]
 async fn ws_and_mcp_stamp_header_ack_and_type_on_frames() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws_id, last) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, last) = seed(store.as_ref()).await;
+    let client = tenant.client();
+    let ws_id = tenant.workspace_id;
 
     let req = format!("ws://{addr}/ws/subscribe")
         .into_client_request()
@@ -168,6 +163,7 @@ async fn ws_and_mcp_stamp_header_ack_and_type_on_frames() {
 
     ws.send(Message::Text(
         json!({
+            "token": tenant.token,
             "filter": {"workspace_id": ws_id.0},
             "after_id": 1
         })

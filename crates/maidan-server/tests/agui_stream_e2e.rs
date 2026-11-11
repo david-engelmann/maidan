@@ -3,25 +3,46 @@
 //! Proves the door end-to-end: a thread's lifecycle (create → post a message)
 //! reaches an AG-UI client as `RUN_STARTED` then `TEXT_MESSAGE_*` frames, each
 //! carrying its source event-log `id:`, and a reconnect with `Last-Event-ID`
-//! resumes past what was already seen. Auth is bypass here (like the other
-//! `/mcp/stream` e2es), so the mapping + SSE framing + resume are exercised;
-//! the per-event RBAC filter composes the separately-tested `can_access_*`
-//! helpers.
+//! resumes past what was already seen. The caller is the workspace's admin,
+//! who can see every event, so the mapping + SSE framing + resume are
+//! exercised; the per-event RBAC filter composes the separately-tested
+//! `can_access_*` helpers.
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{
+    router,
+    test_support::{self, Tenant},
+    AppState,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::{json, Value};
 
-async fn spawn() -> (
-    SocketAddr,
-    reqwest::Client,
-    tokio::task::JoinHandle<()>,
-    tempfile::TempDir,
-) {
+struct Harness {
+    addr: SocketAddr,
+    tenant: Tenant,
+    store: Arc<dyn Store>,
+    server: tokio::task::JoinHandle<()>,
+    _dir: tempfile::TempDir,
+}
+
+/// A client sending `token` with no timeout: the SSE response stays open.
+fn streaming_client(token: &str) -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        test_support::bearer(token).parse().unwrap(),
+    );
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap()
+}
+
+async fn spawn(workspace: &str) -> Harness {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -37,12 +58,18 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::with_capacity(256));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let tenant = test_support::tenant(store.as_ref(), workspace).await;
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    // No client timeout: the SSE response stays open.
-    (addr, reqwest::Client::new(), server, dir)
+    Harness {
+        addr,
+        tenant,
+        store,
+        server,
+        _dir: dir,
+    }
 }
 
 /// An AG-UI SSE frame: its `id:` (source event-log id) and parsed `data:` JSON.
@@ -94,8 +121,9 @@ fn types(frames: &[Frame]) -> Vec<String> {
 
 #[tokio::test]
 async fn agui_stream_maps_thread_lifecycle_to_run_events() {
-    let (addr, client, server, _dir) = spawn().await;
-    let base = format!("http://{addr}");
+    let h = spawn("agui").await;
+    let client = streaming_client(&h.tenant.token);
+    let base = format!("http://{}", h.addr);
     let post = |path: String, body: Value| {
         let client = client.clone();
         async move {
@@ -111,14 +139,11 @@ async fn agui_stream_maps_thread_lifecycle_to_run_events() {
         }
     };
 
-    let ws = post(format!("{base}/workspaces"), json!({"name": "agui"})).await;
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-    let actor = post(
-        format!("{base}/workspaces/{workspace_id}/members"),
-        json!({"handle": "agent", "kind": "human"}),
-    )
-    .await;
-    let actor_id = actor["id"].as_str().unwrap().to_string();
+    let workspace_id = h.tenant.workspace_id.0;
+    let actor = h
+        .tenant
+        .member(h.store.as_ref(), "agent", MemberKind::Human)
+        .await;
     let ch = post(
         format!("{base}/workspaces/{workspace_id}/channels"),
         json!({"name": "runs"}),
@@ -141,9 +166,9 @@ async fn agui_stream_maps_thread_lifecycle_to_run_events() {
     )
     .await;
     let thread_id = thread["id"].as_str().unwrap().to_string();
-    let _ = client
+    let _ = actor
+        .client()
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", &actor_id)
         .json(&json!({"body": "on it"}))
         .send()
         .await
@@ -173,13 +198,14 @@ async fn agui_stream_maps_thread_lifecycle_to_run_events() {
     // Every frame carries its source event-log id (the resume anchor).
     assert!(frames.iter().all(|f| f.id.is_some()), "frames carry an id:");
 
-    server.abort();
+    h.server.abort();
 }
 
 #[tokio::test]
 async fn agui_stream_resumes_after_a_last_event_id() {
-    let (addr, client, server, _dir) = spawn().await;
-    let base = format!("http://{addr}");
+    let h = spawn("resume").await;
+    let client = streaming_client(&h.tenant.token);
+    let base = format!("http://{}", h.addr);
     let post = |path: String, body: Value| {
         let client = client.clone();
         async move {
@@ -195,8 +221,7 @@ async fn agui_stream_resumes_after_a_last_event_id() {
         }
     };
 
-    let ws = post(format!("{base}/workspaces"), json!({"name": "resume"})).await;
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let workspace_id = h.tenant.workspace_id.0;
     let ch = post(
         format!("{base}/workspaces/{workspace_id}/channels"),
         json!({"name": "c"}),
@@ -245,17 +270,17 @@ async fn agui_stream_resumes_after_a_last_event_id() {
         "resume replays only the second run, skipping the already-seen first"
     );
 
-    server.abort();
+    h.server.abort();
 }
 
 #[tokio::test]
 async fn agui_stream_rejects_after_id_without_workspace() {
-    let (addr, client, server, _dir) = spawn().await;
-    let resp = client
-        .get(format!("http://{addr}/agui/stream?after_id=5"))
+    let h = spawn("no-workspace").await;
+    let resp = streaming_client(&h.tenant.token)
+        .get(format!("http://{}/agui/stream?after_id=5", h.addr))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
-    server.abort();
+    h.server.abort();
 }

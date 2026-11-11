@@ -8,12 +8,12 @@ use std::{
 
 use maidan_artifacts::LocalFsStore;
 use maidan_fsm::ThreadAction;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewMember, NewThread};
 use reqwest::StatusCode;
 
-async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
+async fn spawn() -> (SocketAddr, test_support::Tenant, Arc<dyn Store>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -34,31 +34,29 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
+        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    let tenant = test_support::tenant(store.as_ref(), "dag").await;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), store)
+    (addr, tenant, store)
 }
 
 #[tokio::test]
 async fn dependency_management_add_list_ready_dependents_remove() {
-    let (addr, client, store) = spawn().await;
+    let (addr, tenant, store) = spawn().await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
-
-    let ws = store
-        .create_workspace(NewWorkspace { name: "dag".into() })
-        .await
-        .unwrap();
+    let ws_id = tenant.workspace_id;
     let actor = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             handle: "a".into(),
             display_name: None,
             kind: MemberKind::Agent,
@@ -67,7 +65,7 @@ async fn dependency_management_add_list_ready_dependents_remove() {
         .unwrap();
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             name: "tasks".into(),
             topic: None,
             private: false,

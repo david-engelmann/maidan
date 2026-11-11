@@ -5,7 +5,6 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
 use maidan_auth::{resolve_token_id, AuthError};
 use maidan_store::StoreError;
 use maidan_types::{AuditScope, NewAuditEvent};
@@ -28,15 +27,10 @@ pub async fn load_session(
     let settings = state.browser_sessions().ok_or(ApiError::Unauthorized)?;
     let session_id =
         parse_session_cookie(headers, &settings.secret).ok_or(ApiError::Unauthorized)?;
-    let session = state
-        .store
-        .get_session(session_id)
+    let principal = maidan_auth::resolve_session(state.store.as_ref(), session_id)
         .await
         .map_err(|_| ApiError::Unauthorized)?;
-    if session.expires_at < Utc::now() {
-        let _ = state.store.delete_expired_session(session.id).await;
-        return Err(ApiError::Unauthorized);
-    }
+    let session = principal.session().clone();
     // Kept, not ended: lifting the suspension restores the session.
     match maidan_auth::ensure_workspace_active(state.store.as_ref(), session.workspace_id).await {
         Ok(()) => {}
@@ -71,7 +65,7 @@ pub async fn load_session(
     let token = match session.api_token_id {
         None => None,
         Some(token_id) => match resolve_token_id(state.store.as_ref(), token_id).await {
-            Ok(ctx) if ctx.workspace_id == session.workspace_id => Some(ctx),
+            Ok(ctx) if ctx.workspace_id() == session.workspace_id => Some(ctx),
             Ok(_) | Err(AuthError::Unauthorized) | Err(AuthError::Store(StoreError::NotFound)) => {
                 // The token is gone, so the session already grants nothing.
                 // Record the end in the delete's transaction; a failed write
@@ -110,6 +104,7 @@ pub async fn load_session(
         session_id: session.id,
         member_id: session.member_id,
         workspace_id: session.workspace_id,
+        principal,
         token,
         invite_role,
     })

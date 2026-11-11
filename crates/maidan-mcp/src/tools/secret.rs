@@ -25,7 +25,7 @@ pub(super) async fn list_secrets(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let secrets = store.list_secrets(auth.workspace_id).await?;
+    let secrets = store.list_secrets(auth.workspace_id()).await?;
     Ok(content_json(&secrets))
 }
 
@@ -50,7 +50,7 @@ pub(super) async fn resolve_secret(
     };
     let ciphertext = server
         .store
-        .get_secret_ciphertext(auth.workspace_id, &a.name)
+        .get_secret_ciphertext(auth.workspace_id(), &a.name)
         .await?
         .ok_or(McpError::NotFound)?;
     let value = decrypt_peer_secret_rotating(&ciphertext, key)
@@ -59,13 +59,13 @@ pub(super) async fn resolve_secret(
     server
         .store
         .append_audit(maidan_types::NewAuditEvent {
-            scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-            actor_id: Some(auth.actor_id),
+            scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+            actor_id: Some(auth.actor_id()),
             action: "secret.resolve".into(),
             target_kind: Some("secret".into()),
             target_id: None,
             metadata: json!({
-                "workspace_id": auth.workspace_id.0,
+                "workspace_id": auth.workspace_id().0,
                 "name": a.name,
                 "surface": "mcp",
             }),
@@ -80,7 +80,7 @@ pub(super) async fn list_secret_egress_hosts(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let hosts = store.list_secret_egress_hosts(auth.workspace_id).await?;
+    let hosts = store.list_secret_egress_hosts(auth.workspace_id()).await?;
     Ok(content_json(&hosts))
 }
 
@@ -107,12 +107,12 @@ pub(super) async fn allow_secret_egress_host(
                 .into(),
         ));
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let entry = server
         .store
         .allow_secret_egress_host_audited(
             maidan_types::NewSecretEgressHost {
-                workspace_id: auth.workspace_id,
+                workspace_id: auth.workspace_id(),
                 host,
             },
             Box::new(move |entry| maidan_types::NewAuditEvent {
@@ -142,16 +142,16 @@ pub(super) async fn revoke_secret_egress_host(
     let host = a.host.to_ascii_lowercase();
     let revoked = store
         .revoke_secret_egress_host_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             &host,
             maidan_types::NewAuditEvent {
-                scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-                actor_id: Some(auth.actor_id),
+                scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+                actor_id: Some(auth.actor_id()),
                 action: "secret_egress_host.revoke".into(),
                 target_kind: Some("secret_egress_host".into()),
                 target_id: None,
                 metadata: json!({
-                    "workspace_id": auth.workspace_id.0,
+                    "workspace_id": auth.workspace_id().0,
                     "host": host,
                     "surface": "mcp",
                 }),
@@ -196,15 +196,15 @@ pub(super) async fn create_secret(
     };
     let value_ciphertext =
         encrypt_peer_secret(&a.value, key).map_err(|e| McpError::Internal(e.to_string()))?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let secret = server
         .store
         .create_secret_audited(
             maidan_types::NewSecret {
-                workspace_id: auth.workspace_id,
+                workspace_id: auth.workspace_id(),
                 name: a.name,
                 value_ciphertext,
-                created_by: auth.member_id,
+                created_by: auth.member_id(),
             },
             Box::new(move |secret| maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(secret.workspace_id),
@@ -232,16 +232,16 @@ pub(super) async fn delete_secret(
     let a: ResolveArgs = crate::tools::parse_args(args)?;
     let deleted = store
         .delete_secret_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             &a.name,
             maidan_types::NewAuditEvent {
-                scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-                actor_id: Some(auth.actor_id),
+                scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+                actor_id: Some(auth.actor_id()),
                 action: "secret.delete".into(),
                 target_kind: Some("secret".into()),
                 target_id: None,
                 metadata: json!({
-                    "workspace_id": auth.workspace_id.0,
+                    "workspace_id": auth.workspace_id().0,
                     "name": a.name,
                     "surface": "mcp",
                 }),

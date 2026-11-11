@@ -185,8 +185,8 @@ pub async fn authorize(
         .store
         .create_oauth_pending_request(NewOAuthPendingRequest {
             client_id: client.client_id.clone(),
-            member_id: auth.member_id,
-            workspace_id: auth.workspace_id,
+            member_id: auth.member_id(),
+            workspace_id: auth.workspace_id(),
             redirect_uri: query.redirect_uri,
             code_challenge: query.code_challenge,
             scope,

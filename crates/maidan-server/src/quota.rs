@@ -96,7 +96,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request<Body>, next:
     let path = req.uri().path();
     if let Some(auth) = req.extensions().get::<AuthContext>()
         && !auth.bypass
-        && let Some(token_id) = auth.token_id
+        && let Some(token_id) = auth.token_id()
         && let Some(cap) = route_capability(method, path)
     {
         match state.store.list_token_quotas(token_id).await {
