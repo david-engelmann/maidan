@@ -34,7 +34,7 @@ jobs:
           # The release record distinguishes every real tag from source-only history.
           fetch-depth: 0
       - name: install release-record dependencies
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: bash scripts/ci-install-ripgrep.sh
       - name: resolve tag
         id: tag
         run: |
