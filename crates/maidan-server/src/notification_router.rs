@@ -641,16 +641,10 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             channel_id,
             thread_id,
             ..
-        }
-        | Event::ResultDeliveryFailed {
-            workspace_id,
-            channel_id,
-            thread_id,
-            ..
         } => {
-            // A task that stopped converging and a result that never reached
-            // its target both wait on a person or a coordinator now. The
-            // server did it, so there is no actor and no member to follow.
+            // A task that stopped converging waits on a person or a
+            // coordinator now. The server did it, so there is no actor and no
+            // member to follow.
             notify_attention(
                 state,
                 log_id,
@@ -662,6 +656,14 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 None,
             )
             .await?;
+        }
+        Event::ResultDeliveryFailed {
+            workspace_id,
+            channel_id,
+            thread_id,
+            ..
+        } => {
+            notify_delivery_failed(state, log_id, *workspace_id, *channel_id, *thread_id).await?;
         }
         Event::ThreadBlocked {
             workspace_id,
@@ -1009,6 +1011,68 @@ async fn attention_recipients(
         }
     }
     Ok(recipients)
+}
+
+/// A result that did not reach one of its targets. The watchers
+/// [`attention_recipients`] names hear it, and so do the two members who can
+/// act on it whether or not they follow anything: the thread's creator, who
+/// filed the task and is waiting on its result, and the member who produced
+/// the result (the thread's assignee when no result is stored any more),
+/// who can fix it and set it again. Before, a creator and a builder who
+/// followed nothing were never told, and the task sat in review. Each still
+/// has to be able to read the thread now. The egress worker failed the
+/// delivery, so there is no actor to leave out.
+async fn notify_delivery_failed(
+    state: &AppState,
+    log_id: i64,
+    workspace_id: WorkspaceId,
+    channel_id: ChannelId,
+    thread_id: ThreadId,
+) -> Result<(), String> {
+    let thread = match state.store.get_thread(thread_id).await {
+        Ok(thread) => Some(thread),
+        Err(maidan_store::StoreError::NotFound) => None,
+        Err(err) => return Err(err.to_string()),
+    };
+    let produced_by = state
+        .store
+        .get_thread_result(thread_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|result| result.produced_by);
+    let producer = produced_by.or_else(|| thread.as_ref().and_then(|t| t.assignee_id));
+    let mut recipients = attention_recipients(
+        state,
+        workspace_id,
+        channel_id,
+        thread_id,
+        producer.as_slice(),
+        &[],
+    )
+    .await?;
+    let creator = thread.as_ref().and_then(|t| t.created_by);
+    for member_id in creator.into_iter().chain(producer) {
+        if !recipients.contains(&member_id)
+            && member_can_read_thread(state, workspace_id, member_id, thread_id).await?
+        {
+            recipients.insert(member_id);
+        }
+    }
+    for recipient_id in recipients {
+        notify(
+            state,
+            workspace_id,
+            recipient_id,
+            EventKind::ResultDeliveryFailed,
+            log_id,
+            Some(channel_id),
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Write `kind` for every [`attention_recipients`] of the event, with

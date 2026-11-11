@@ -13,6 +13,7 @@ use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{notification_router, AppState};
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ApprovalGateId, BlockedReason, ChannelId, ChannelMemberRole, ClaimStallReason, DeclaredStatus,
@@ -359,6 +360,126 @@ async fn a_failed_delivery_reaches_the_owner_and_channel_followers() {
     r.route(80, &event).await;
     r.assert_attention(80, EventKind::ResultDeliveryFailed, None)
         .await;
+}
+
+impl Room {
+    /// A thread in the room's channel filed by `created_by`.
+    async fn task(&self, created_by: MemberId) -> Thread {
+        self.store
+            .create_thread(NewThread {
+                channel_id: self.channel,
+                parent_thread_id: None,
+                title: Some("bump the workflow".into()),
+                description: None,
+                created_by: Some(created_by),
+            })
+            .await
+            .unwrap()
+    }
+
+    fn delivery_failed(&self, thread: &Thread) -> Event {
+        Event::ResultDeliveryFailed {
+            occurred_at: Utc::now(),
+            workspace_id: self.ws,
+            channel_id: self.channel,
+            thread_id: thread.id,
+            surface: "github_branch".into(),
+            selector: "acme/app@feature/agent-x".into(),
+            status: "failed".into(),
+            last_error: Some("github api error: status 403".into()),
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_failed_delivery_reaches_the_creator_and_the_producer_but_no_other_workspace() {
+    let r = room().await;
+    let creator = member(&r.store, r.ws, "filer").await;
+    let builder = member(&r.store, r.ws, "builder").await;
+    for m in [&creator, &builder] {
+        r.store
+            .add_channel_member(r.channel, m.id, ChannelMemberRole::Member)
+            .await
+            .unwrap();
+    }
+    let thread = r.task(creator.id).await;
+    r.store
+        .set_thread_result_claiming(thread.id, builder.id, &serde_json::json!({"done": true}))
+        .await
+        .unwrap();
+    // Another tenant's member that follows everything it can name.
+    let other_ws = r
+        .store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap()
+        .id;
+    let stranger = member(&r.store, other_ws, "stranger").await;
+    r.store
+        .follow_channel(stranger.id, r.channel)
+        .await
+        .unwrap();
+    r.store.follow_thread(stranger.id, thread.id).await.unwrap();
+    r.store
+        .follow_member(stranger.id, builder.id)
+        .await
+        .unwrap();
+
+    r.route(150, &r.delivery_failed(&thread)).await;
+    for (who, m) in [
+        ("creator", &creator),
+        ("producer", &builder),
+        ("channel follower", &r.coordinator),
+    ] {
+        assert_eq!(
+            r.kinds_at(m.id, 150).await,
+            vec![EventKind::ResultDeliveryFailed],
+            "the {who} is told"
+        );
+    }
+    let notes = r
+        .store
+        .list_notifications(creator.id, false, 10)
+        .await
+        .unwrap();
+    assert_eq!(notes[0].thread_id, Some(thread.id));
+    assert_eq!(
+        notes[0].actor_id, None,
+        "the server failed it, not a member"
+    );
+    assert!(
+        r.store
+            .list_notifications(stranger.id, false, 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a member of another workspace is told nothing"
+    );
+    assert!(r.kinds_at(r.outsider.id, 150).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_delivery_skips_a_creator_who_cannot_read_the_thread_and_falls_back_to_the_assignee(
+) {
+    let r = room().await;
+    let builder = member(&r.store, r.ws, "builder").await;
+    r.store
+        .add_channel_member(r.channel, builder.id, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    // The outsider filed it but is not in the private channel now.
+    let thread = r.task(r.outsider.id).await;
+    r.store.assign_thread(thread.id, builder.id).await.unwrap();
+    r.route(160, &r.delivery_failed(&thread)).await;
+    assert_eq!(
+        r.kinds_at(builder.id, 160).await,
+        vec![EventKind::ResultDeliveryFailed],
+        "with no result stored, the assignee is the one who built it"
+    );
+    assert!(
+        r.kinds_at(r.outsider.id, 160).await.is_empty(),
+        "a creator who can no longer read the thread is not told"
+    );
 }
 
 #[tokio::test]

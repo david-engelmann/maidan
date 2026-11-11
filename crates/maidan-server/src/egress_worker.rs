@@ -1000,9 +1000,45 @@ async fn github_branch_result(
         Ok(crate::change_flow::ChangeOutcome::Refused(reason)) => Ok(Sent::Refused(reason)),
         Err(err) => {
             crate::metrics::record_github_egress("failed");
-            Err(DeliveryFailure::github(err))
+            let workflows = change
+                .diff
+                .as_deref()
+                .map(maidan_types::workflow_paths)
+                .unwrap_or_default();
+            Err(branch_failure(err, &workflows))
         }
     }
+}
+
+/// A failed branch write, read against the workflow files the change edits.
+///
+/// GitHub answers a push that touches [`maidan_types::WORKFLOW_DIR`] with a
+/// bare 403 (`Resource not accessible by personal access token`) when the
+/// token lacks the Workflows permission, which names neither the file nor
+/// the fix. A 403 that refuses access, on a change that edits a workflow
+/// file, is final: no retry gets a permission back, so it dead-letters at
+/// once with a reason that names the files and both ways out. A rate-limited
+/// 403 still retries, and names the files too, so whoever reads it later
+/// does not have to dig the diff out to see what was being pushed.
+fn branch_failure(err: crate::github::GithubError, workflows: &[String]) -> DeliveryFailure {
+    let forbidden = matches!(err, crate::github::GithubError::Api { status: 403, .. });
+    let refused = forbidden && err.is_permission_refusal();
+    let mut failure = DeliveryFailure::github(err);
+    if !forbidden || workflows.is_empty() {
+        return failure;
+    }
+    let named = maidan_types::named_paths(workflows);
+    if refused {
+        failure.misconfiguration = true;
+        failure.retry_after = None;
+        failure.message = format!(
+            "{}; the change edits {named}, and GitHub refuses a workflow file to a delivery token without the Workflows permission. Drop the workflow edit from the diff and set the result again, or give the delivery token the Workflows permission (the `workflow` scope on a classic token)",
+            failure.message
+        );
+    } else {
+        failure.message = format!("{}; the change edits {named}", failure.message);
+    }
+    failure
 }
 
 /// Why a change delivery must not write to GitHub, or `None` when it may.
@@ -1665,12 +1701,14 @@ async fn record_result_gave_up(
     }
     // The event reaches a relay; the operator channel hears it too, naming
     // the thread and where the result was going (#1649), so a stored result
-    // nobody received does not wait for someone to notice by hand.
+    // nobody received does not wait for someone to notice by hand. A failure
+    // no retry fixes lands here on its first try, so the alert says the
+    // delivery failed, not that it ran out of retries.
     let reason: String = error.chars().take(200).collect();
     crate::ops_alert::alert(
         &format!("result-delivery-failed:{}:{target}", entry.thread_id),
         &format!(
-            "A task result was not delivered: thread {} to {target} gave up after its retries ({reason}). The result is stored; replay it with POST /threads/{}/deliveries/{}/replay once the cause is fixed.",
+            "A task result was not delivered: thread {} to {target} failed ({reason}). The result is stored; replay it with POST /threads/{}/deliveries/{}/replay once the cause is fixed.",
             entry.thread_id, entry.thread_id, row.id
         ),
     )
@@ -2128,6 +2166,66 @@ mod tests {
             retry_delay(1, Some(u64::MAX)),
             Duration::from_secs(BACKOFF_CAP_SECS)
         );
+    }
+
+    fn forbidden(rate_limited: bool) -> crate::github::GithubError {
+        crate::github::GithubError::Api {
+            status: 403,
+            rate_limited,
+            detail: "Resource not accessible by personal access token".into(),
+            retry_after: rate_limited.then_some(60),
+        }
+    }
+
+    #[test]
+    fn a_refused_push_of_a_workflow_file_is_final_and_names_the_file_and_the_fix() {
+        let workflows = [".github/workflows/test.yml".to_string()];
+        let failure = branch_failure(forbidden(false), &workflows);
+        assert!(failure.misconfiguration, "no retry gets a permission back");
+        assert_eq!(failure.retry_after, None);
+        assert!(
+            failure.message.starts_with("github api error: status 403"),
+            "the prefix dashboards match on is kept: {}",
+            failure.message
+        );
+        for part in [
+            "`.github/workflows/test.yml`",
+            "Drop the workflow edit",
+            "Workflows permission",
+        ] {
+            assert!(
+                failure.message.contains(part),
+                "{part}: {}",
+                failure.message
+            );
+        }
+    }
+
+    #[test]
+    fn a_rate_limited_403_on_a_workflow_change_still_retries_and_names_the_file() {
+        let workflows = [".github/workflows/test.yml".to_string()];
+        let failure = branch_failure(forbidden(true), &workflows);
+        assert!(!failure.misconfiguration);
+        assert_eq!(failure.retry_after, Some(60));
+        assert!(failure.message.contains("`.github/workflows/test.yml`"));
+        assert!(!failure.message.contains("Workflows permission"));
+    }
+
+    #[test]
+    fn a_403_on_a_change_without_workflow_files_reads_as_before() {
+        let failure = branch_failure(forbidden(false), &[]);
+        assert!(failure.misconfiguration);
+        assert_eq!(failure.message, forbidden(false).to_string());
+        let server_error = crate::github::GithubError::Api {
+            status: 500,
+            rate_limited: false,
+            detail: String::new(),
+            retry_after: None,
+        };
+        let workflows = [".github/workflows/test.yml".to_string()];
+        let failure = branch_failure(server_error.clone(), &workflows);
+        assert!(!failure.misconfiguration, "a 5xx retries whatever the diff");
+        assert_eq!(failure.message, server_error.to_string());
     }
 
     #[test]

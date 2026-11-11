@@ -1018,7 +1018,7 @@ these, and to the followers of the agent whose work it is:
 | `thread_handoff` | an unattended task stopped converging and was handed to a session |
 | `thread_notice` | a check failed (`ci_failed`) or the pull request cannot merge (`gate_blocked`). Other notices notify nobody |
 | `thread_blocked` | someone parked the thread with an explicit block |
-| `result_delivery_failed` | a result did not reach one of its `deliver_to` targets |
+| `result_delivery_failed` | a result did not reach one of its `deliver_to` targets. The thread's creator and the member who produced the result hear it too, whether or not they follow anything |
 | `thread_spawn_denied` | a member pushed a thread past the spawn budget |
 | `review_submitted` | a reviewer requested changes (the last worker hears too) |
 | `approval_requested` | an approval gate opened on a thread |

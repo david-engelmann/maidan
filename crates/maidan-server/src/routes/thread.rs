@@ -719,6 +719,14 @@ pub async fn set_thread_result(
     if let Some(reason) = maidan_types::unroutable_waiter_result(&body.result) {
         return Err(ApiError::BadRequest(reason));
     }
+    // The envelope is well formed; what it asks for is what this server's
+    // GitHub token cannot do, so a 422, said now rather than when the push
+    // fails with nobody waiting on the answer.
+    if state.mcp.refuses_workflow_paths()
+        && let Some(reason) = maidan_types::workflow_paths_refusal(&body.result)
+    {
+        return Err(ApiError::UnprocessableEntity(reason));
+    }
     let result = state
         .store
         .set_thread_result(
