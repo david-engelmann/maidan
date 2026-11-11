@@ -99,16 +99,6 @@ pub fn config_from_env() -> RetentionConfig {
     let media_days = parse_media_days(std::env::var("MAIDAN_RETENTION_MEDIA_DAYS").ok().as_deref());
     let media_quota_bytes =
         parse_media_quota_bytes(std::env::var("MAIDAN_MEDIA_QUOTA_BYTES").ok().as_deref());
-    let sweep = std::env::var("MAIDAN_RETENTION_SWEEP_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .unwrap_or(86_400);
-    let batch = std::env::var("MAIDAN_RETENTION_BATCH")
-        .ok()
-        .and_then(|s| s.parse::<i64>().ok())
-        .filter(|&b| b > 0)
-        .unwrap_or(5_000);
     RetentionConfig {
         messages_days,
         events_days,
@@ -117,8 +107,10 @@ pub fn config_from_env() -> RetentionConfig {
         notifications_days,
         media_days,
         media_quota_bytes,
-        sweep: Duration::from_secs(sweep),
-        batch,
+        // A daily sweep in batches of 5000: constants since OPS-006. The
+        // retention periods are the policy; how the sweep paces itself is not.
+        sweep: Duration::from_secs(86_400),
+        batch: 5_000,
     }
 }
 
