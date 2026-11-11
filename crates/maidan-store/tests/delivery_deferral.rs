@@ -38,13 +38,15 @@ async fn webhook_suite(store: &dyn Store) {
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .expect("sub");
     let id = store
         .enqueue_webhook_delivery(sub.id, 1, "{}")
         .await
-        .expect("enqueue");
+        .expect("enqueue")
+        .expect("a new delivery");
     let attempts = store
         .record_webhook_delivery_attempt(id, "HTTP 503", Utc::now() - Duration::seconds(1))
         .await
@@ -124,9 +126,11 @@ async fn automation_suite(store: &dyn Store) {
             header_name: "X-Maidan-Event".into(),
             header_value: "thread_state_changed".into(),
             payload: "{}".into(),
+            log_id: None,
         })
         .await
-        .expect("enqueue");
+        .expect("enqueue")
+        .expect("a new delivery");
     store
         .record_automation_delivery_attempt(id, "HTTP 503", Utc::now() - Duration::seconds(1))
         .await

@@ -206,11 +206,7 @@ export function Catalog() {
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
-          <div className="pane-empty">
-            <span className="pane-empty-mark" />
-            <strong>No tool selected</strong>
-            <p className="muted">Pick a tool to see what it does and what it takes.</p>
-          </div>
+          <EmptyState icon="catalog" title="No tool selected" body="Pick a tool to see what it does and what it takes." />
         </section>
       )}
     </div>

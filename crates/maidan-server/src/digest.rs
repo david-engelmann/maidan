@@ -4,7 +4,7 @@
 //! [`Store::members_due_for_digest`] — members in `Digest` delivery mode who
 //! have an address on file and unread notifications created since their last
 //! digest — and emails each an unread-count rollup, then advances their digest
-//! watermark ([`Store::set_last_digest_at`]).
+//! watermark ([`Store::advance_last_digest_at`]).
 //!
 //! **Advance, send, restore on failure:** the watermark is advanced before the
 //! send, and put back when the send fails, so a transient SMTP failure retries
@@ -14,13 +14,11 @@
 //! between advance and send, drops that digest; a rollup of unread counts is
 //! the right thing to lose rather than duplicate and leave unmetered.
 //!
-//! **Multi-replica note:** the claim (`members_due_for_digest`) and the advance
-//! (`set_last_digest_at`) are not a single atomic step, so two replicas both
-//! running the sweeper could double-send a digest before either advances the
-//! watermark. A duplicate digest is low-harm (unlike a duplicate task thread),
-//! so — deliberately, unlike the scheduler's `SKIP LOCKED` claim — the sweeper
-//! does not single-flight; run it on one replica (the common cron deployment)
-//! if exactly-once digests matter.
+//! **Every replica runs the sweeper.** The advance is a compare-and-set on
+//! the watermark the page read, so when two replicas find the same member due,
+//! one moves the watermark and sends, and the other's advance fails and it
+//! sends nothing. The restore after a failed send is one too, so it never
+//! undoes an advance made since.
 //!
 //! Does nothing when no `MailTransport` is configured (a digest with no way to
 //! send is a no-op).
@@ -232,13 +230,27 @@ pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
         // then leave the member due (a re-send) and the delivery unmetered
         // because the save failed (#1721). A failed save sends nothing; the
         // member stays due for the next tick.
-        if let Err(err) = state.store.set_last_digest_at(member.member_id, now).await {
-            tracing::warn!(
-                error = %err,
-                member = %member.member_id,
-                "digest sweeper: watermark advance failed; not sending (will retry next tick)"
-            );
-            continue;
+        match state
+            .store
+            .advance_last_digest_at(member.member_id, member.last_digest_at, now)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::debug!(
+                    member = %member.member_id,
+                    "digest sweeper: another replica sent this digest"
+                );
+                continue;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    member = %member.member_id,
+                    "digest sweeper: watermark advance failed; not sending (will retry next tick)"
+                );
+                continue;
+            }
         }
         match mail.send(&member.email, &subject, &body).await {
             Ok(()) => {
@@ -256,7 +268,7 @@ pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
                 let previous = member.last_digest_at.unwrap_or(epoch);
                 if let Err(err) = state
                     .store
-                    .set_last_digest_at(member.member_id, previous)
+                    .advance_last_digest_at(member.member_id, Some(now), previous)
                     .await
                 {
                     tracing::warn!(

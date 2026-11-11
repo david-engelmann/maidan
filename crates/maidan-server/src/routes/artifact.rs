@@ -236,18 +236,17 @@ async fn ensure_media_quota(
     }
 }
 
-/// 404 (not 403) when the caller's workspace has no access link to `sha` — a
-/// missing link and a missing artifact are indistinguishable to the caller, so
-/// a cross-tenant SHA can't be confirmed to exist.
-async fn ensure_artifact_ref(state: &AppState, auth: &AuthContext, sha256: &str) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
-    if state
-        .store
-        .artifact_ref_exists(auth.workspace_id, sha256)
-        .await?
-    {
+/// 404 (not 403) when the caller may not read `sha`
+/// ([`maidan_auth::can_read_artifact`]): another tenant's artifact, or one a
+/// private channel or a DM the caller is not in references. A hidden
+/// artifact and a missing one are indistinguishable, so the route confirms
+/// neither that a sha exists nor where it is linked.
+async fn ensure_artifact_visible(
+    state: &AppState,
+    auth: &AuthContext,
+    sha256: &str,
+) -> ApiResult<()> {
+    if maidan_auth::can_read_artifact(state.store.as_ref(), auth, sha256).await? {
         Ok(())
     } else {
         Err(ApiError::NotFound)
@@ -262,7 +261,7 @@ pub async fn get_artifact(
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let canonical = sha.to_hex();
-    ensure_artifact_ref(&state, &auth, &canonical).await?;
+    ensure_artifact_visible(&state, &auth, &canonical).await?;
     let meta = artifact_as_seen_by(&state, &auth, &canonical).await?;
     let bytes = state.artifacts.get(&sha).await?;
     Ok(crate::artifact_response::artifact_response(&meta, bytes))
@@ -276,7 +275,7 @@ pub async fn get_artifact_metadata(
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let canonical = sha.to_hex();
-    ensure_artifact_ref(&state, &auth, &canonical).await?;
+    ensure_artifact_visible(&state, &auth, &canonical).await?;
     Ok(Json(artifact_as_seen_by(&state, &auth, &canonical).await?))
 }
 

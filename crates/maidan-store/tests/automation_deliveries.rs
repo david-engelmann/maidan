@@ -46,8 +46,10 @@ async fn automation_delivery_pending_and_quarantine_round_trip() {
             header_name: "X-Maidan-Event".into(),
             header_value: "thread_state_changed".into(),
             payload: "{}".into(),
+            log_id: None,
         })
         .await
+        .unwrap()
         .unwrap();
     let pending = store.list_pending_automation_deliveries(10).await.unwrap();
     assert_eq!(pending.len(), 1);

@@ -54,8 +54,11 @@ const OUTBOX_CAPACITY: usize = 16_384;
 /// How long the publisher waits on one publish before logging it and
 /// moving on, so a stalled notifier cannot hold up the queue behind it.
 const PUBLISH_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_HEARTBEAT_SECS: u64 = 10;
-const DEFAULT_TTL_SECS: u64 = 30;
+/// The heartbeat and the TTL are constants, not knobs (OPS-006): the TTL has
+/// to outlast a few heartbeats, and two separate variables let an operator
+/// set a TTL shorter than the heartbeat and flap every replica's roster.
+const HEARTBEAT_SECS: u64 = 10;
+const TTL_SECS: u64 = 30;
 
 static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
 
@@ -246,8 +249,8 @@ impl PresenceHub {
             outbox_rx: Arc::new(Mutex::new(None)),
             heartbeat_queued: Arc::new(AtomicBool::new(false)),
             outbox_full: Arc::new(AtomicBool::new(false)),
-            ttl: Duration::from_secs(ttl_secs_from_env()),
-            heartbeat: Duration::from_secs(heartbeat_secs_from_env()),
+            ttl: Duration::from_secs(TTL_SECS),
+            heartbeat: Duration::from_secs(HEARTBEAT_SECS),
         }
     }
 
@@ -665,22 +668,6 @@ impl maidan_mcp::PresenceReader for PresenceHub {
             None => maidan_types::OccupancyPresence::Offline,
         }
     }
-}
-
-fn ttl_secs_from_env() -> u64 {
-    std::env::var("MAIDAN_PRESENCE_TTL_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(DEFAULT_TTL_SECS)
-}
-
-fn heartbeat_secs_from_env() -> u64 {
-    std::env::var("MAIDAN_PRESENCE_HEARTBEAT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(DEFAULT_HEARTBEAT_SECS)
 }
 
 fn offline_payload(workspace_id: WorkspaceId, member_id: MemberId) -> String {

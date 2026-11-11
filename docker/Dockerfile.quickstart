@@ -7,8 +7,9 @@
 # crates/maidan-server/Dockerfile, Postgres, and scoped bearer tokens).
 #
 # The release binaries are built on ubuntu-latest (glibc), so the runtime base is
-# ubuntu:24.04 to match that glibc generation.
-FROM ubuntu:24.04
+# ubuntu:24.04 to match that glibc generation, pinned by digest (Dependabot moves
+# it).
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 
 # The release to install. The default in `compose.quickstart.yaml` overrides this one;
 # the release record moves both, with every other deploy pin, before its tag is cut

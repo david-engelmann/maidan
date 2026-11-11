@@ -10,6 +10,12 @@
 //! depend on what the caller cannot see. `claim_next` and the queue counts
 //! read through it too (`claim_next::readable_by`). `tests/thread_access.rs`
 //! checks the two against each other on both backends.
+//!
+//! Every other read that must not show a private channel or a DM to someone
+//! outside it builds on the same condition: a member's own inbox, mentions
+//! and notifications ([`thread_visible_to`], [`row_visible_to`]) and every
+//! artifact read ([`artifact_visible_to`]). `tests/read_visibility.rs` holds
+//! them to it on both backends.
 
 /// A condition true when `member` may read the thread `thread` names.
 /// `thread` is a SQL expression; `workspace`, `member` and `dm_channel` are
@@ -60,4 +66,155 @@ pub fn readable_row(
 ) -> String {
     let readable = readable_thread(thread_column, workspace, member, dm_channel);
     format!("({member} IS NULL OR {thread_column} IS NULL OR {readable})")
+}
+
+/// [`readable_thread`] for a listing of one member's own rows (its inbox, its
+/// mentions, its notifications), where no caller pins a workspace: the
+/// reader-row join already confines the thread to the member's own
+/// workspace, so the thread's channel supplies it. Checked when the row is
+/// read, not when it was written, so leaving a private channel or a DM takes
+/// its rows with it.
+pub fn thread_visible_to(thread: &str, member: &str, dm_channel: &str) -> String {
+    readable_thread(thread, "rt_channel.workspace_id", member, dm_channel)
+}
+
+/// Who may read a channel's own rows, those on no thread: a public channel
+/// is open to its workspace, a private one needs a `channel_members` row, and
+/// the shared DM channel's are never shown, since DM access is per
+/// conversation and such a row names none. The same rule
+/// `maidan_auth::EventVisibility` applies to a channel's events.
+pub fn channel_visible_to(channel: &str, member: &str, dm_channel: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM maidan_channels rc_channel
+                 JOIN maidan_members rc_reader
+                      ON rc_reader.id = {member}
+                     AND rc_reader.workspace_id = rc_channel.workspace_id
+                 WHERE rc_channel.id = {channel}
+                   AND rc_channel.name <> {dm_channel}
+                   AND (NOT rc_channel.private
+                        OR EXISTS (SELECT 1 FROM maidan_channel_members rc_member
+                                   WHERE rc_member.channel_id = rc_channel.id
+                                     AND rc_member.member_id = rc_reader.id)))"
+    )
+}
+
+/// The one rule for a row that may name a thread, a channel, or neither: a
+/// row on a thread follows [`thread_visible_to`], one on a channel and no
+/// thread follows [`channel_visible_to`], and one on neither is the
+/// workspace's, as [`readable_row`] has it.
+pub fn row_visible_to(
+    thread_column: &str,
+    channel_column: &str,
+    member: &str,
+    dm_channel: &str,
+) -> String {
+    let thread = thread_visible_to(thread_column, member, dm_channel);
+    let channel = channel_visible_to(channel_column, member, dm_channel);
+    format!(
+        "(CASE WHEN {thread_column} IS NOT NULL THEN {thread}
+               WHEN {channel_column} IS NOT NULL THEN {channel}
+               ELSE TRUE END)"
+    )
+}
+
+/// [`thread_visible_to`] for a `maidan_mentions` row aliased `mention`: the
+/// thread of the message it was made in. Mentions are recorded for whoever a
+/// message names, so this read-time check is what keeps a private channel's
+/// or a DM's words from someone who is not, or is no longer, in it.
+pub fn mention_visible_to(mention: &str, member: &str, dm_channel: &str) -> String {
+    thread_visible_to(
+        &format!(
+            "(SELECT vis_msg.thread_id FROM maidan_messages vis_msg \
+              WHERE vis_msg.id = {mention}.message_id)"
+        ),
+        member,
+        dm_channel,
+    )
+}
+
+/// [`row_visible_to`] for a `maidan_notifications` row. A notification is
+/// written only for a member who could read where it happened, and is
+/// checked again on every read, so leaving a private channel or a DM takes
+/// its notifications with it.
+pub fn notification_visible_to(member: &str, dm_channel: &str) -> String {
+    row_visible_to(
+        "maidan_notifications.thread_id",
+        "maidan_notifications.channel_id",
+        member,
+        dm_channel,
+    )
+}
+
+/// Whether `member` may read the artifact behind the ref `ref_alias` (a
+/// `maidan_artifact_refs` row, already pinned to the caller's workspace).
+///
+/// An artifact is read through the places that reference it: a thread link
+/// (`maidan_thread_artifacts`, review evidence included), a land-gate
+/// verdict, and a message whose metadata names it. Every one of those must
+/// sit on a thread the member can read ([`readable_thread`]). One the member
+/// cannot read hides the artifact, so linking a sha somewhere public never
+/// unlocks what a private channel or a DM holds. An artifact referenced
+/// nowhere is the workspace's, as a row on no thread is in [`readable_row`],
+/// and whoever uploaded it into the workspace always reads it back. The
+/// reader is always a member of the ref's workspace.
+///
+/// `message_names_sha` is the backend's test that the message `vis_m`
+/// names `{ref_alias}.sha256` in its metadata: the one part JSON makes
+/// differ between Postgres and SQLite. A public channel's messages are
+/// skipped before it runs, since every member of the workspace reads them.
+pub fn artifact_visible_to(
+    ref_alias: &str,
+    member: &str,
+    dm_channel: &str,
+    message_names_sha: &str,
+) -> String {
+    // A reference in this workspace, on a thread the member cannot read.
+    // Artifacts are deduplicated across tenants, so only this workspace's
+    // threads count: another tenant's link neither hides nor shows anything.
+    let hidden_by = |table: &str, alias: &str, names_sha: &str| {
+        let readable = readable_thread(
+            &format!("{alias}.thread_id"),
+            &format!("{ref_alias}.workspace_id"),
+            member,
+            dm_channel,
+        );
+        format!(
+            "EXISTS (SELECT 1 FROM {table} {alias}
+                     JOIN maidan_threads {alias}_t ON {alias}_t.id = {alias}.thread_id
+                     JOIN maidan_channels {alias}_c ON {alias}_c.id = {alias}_t.channel_id
+                     WHERE {alias}_c.workspace_id = {ref_alias}.workspace_id
+                       AND {names_sha}
+                       AND NOT {readable})"
+        )
+    };
+    let link = hidden_by(
+        "maidan_thread_artifacts",
+        "vis_link",
+        &format!("vis_link.sha256 = {ref_alias}.sha256"),
+    );
+    let gate = hidden_by(
+        "maidan_thread_land_gate",
+        "vis_gate",
+        &format!("vis_gate.artifact_sha = {ref_alias}.sha256"),
+    );
+    let verdict = hidden_by(
+        "maidan_thread_land_gate_verdicts",
+        "vis_verdict",
+        &format!("vis_verdict.artifact_sha = {ref_alias}.sha256"),
+    );
+    let message = hidden_by(
+        "maidan_messages",
+        "vis_m",
+        &format!("(vis_m_c.private OR vis_m_c.name = {dm_channel}) AND {message_names_sha}"),
+    );
+    // The reader must be a member of the ref's workspace, so the condition
+    // holds on its own, as [`readable_thread`] does, rather than trusting the
+    // caller to have pinned the ref to the reader's workspace.
+    format!(
+        "(EXISTS (SELECT 1 FROM maidan_members vis_reader
+                  WHERE vis_reader.id = {member}
+                    AND vis_reader.workspace_id = {ref_alias}.workspace_id)
+          AND ({ref_alias}.uploaded_by = {member}
+               OR NOT ({link} OR {gate} OR {verdict} OR {message})))"
+    )
 }

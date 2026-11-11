@@ -2502,7 +2502,7 @@ _Post-gate hardening (Phase XXIV): fourth RBAC cluster. Closes the MCP aggregate
 
 | Capability | Where |
 |------------|-------|
-| MCP pre-dispatch per-channel gate for point-access content tools | `crates/maidan-mcp/src/tools/mod.rs` (`enforce_channel_access`) |
+| MCP pre-dispatch per-channel gate for point-access content tools | `crates/maidan-mcp/src/tools/id_scope.rs` (`enforce`) |
 | `resources/read` gates `threads/{id}` + `channels/{id}` | `crates/maidan-mcp/src/server.rs` |
 
 _Post-gate hardening (Phase XXIV): third RBAC cluster. Closes the MCP read/write path into private channels (aggregate reads — search / workspace-context / list-channels — filtered next). No new gate tag._

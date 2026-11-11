@@ -114,6 +114,7 @@ async fn subscribed(state: &AppState, ws: WorkspaceId, addr: SocketAddr) -> Webh
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();
@@ -150,10 +151,12 @@ async fn suite(backend: &Backend) {
     let a_fresh = store
         .enqueue_webhook_delivery(a_sub, 1, "{}")
         .await
+        .unwrap()
         .unwrap();
     let a_retry = store
         .enqueue_webhook_delivery(a_sub, 2, "{}")
         .await
+        .unwrap()
         .unwrap();
     store
         .record_webhook_delivery_attempt(
@@ -166,10 +169,12 @@ async fn suite(backend: &Backend) {
     store
         .enqueue_webhook_delivery(b_sub, 3, "{}")
         .await
+        .unwrap()
         .unwrap();
     store
         .enqueue_webhook_delivery(b_down, 4, "{}")
         .await
+        .unwrap()
         .unwrap();
 
     let month = UsageMonth::of(Utc::now().date_naive()).label();
@@ -313,11 +318,13 @@ async fn a_delivery_enqueued_before_the_cutoff_and_replayed_after_it_still_sends
     let a_dead = store
         .enqueue_webhook_delivery(a_sub, 1, "{}")
         .await
+        .unwrap()
         .unwrap();
     store.quarantine_webhook_delivery(a_dead).await.unwrap();
     store
         .enqueue_webhook_delivery(b_down, 2, "{}")
         .await
+        .unwrap()
         .unwrap();
 
     let month = UsageMonth::of(Utc::now().date_naive()).label();
