@@ -5000,7 +5000,6 @@ fn log_reads(h: &Harness, job: i64) -> usize {
 /// makes it a thread, and each sweep records its checks there and says, once
 /// per head, that it opened, that a check failed (with the end of the
 /// failing job's log, read once) and that the checks are done.
-#[tokio::test]
 /// A failing verdict status (`pre-review`, always a verdict context) is not
 /// a CI failure: the pull request's CI reads as passed and no `ci_failed` is
 /// said, while a real failing check still is.
@@ -5050,6 +5049,7 @@ async fn a_failing_verdict_status_is_not_reported_as_a_ci_failure() {
     assert_eq!(view["ci"][0]["failing_jobs"], json!(["lint"]), "{view}");
 }
 
+#[tokio::test]
 async fn a_watched_pull_says_it_opened_failed_and_finished_once_per_head() {
     let h = harness().await;
     h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
