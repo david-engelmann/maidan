@@ -188,10 +188,13 @@ async fn run_suite(store: &dyn Store, ops: Vec<Op>) {
     }
 }
 
+/// The state the last transition left from: the one before it landed in,
+/// or `Open` (every thread is created open) when it is the first.
 fn previous_state(log: &[ThreadTransition]) -> ThreadState {
-    log.get(log.len().saturating_sub(2))
-        .map(|row| row.to_state)
-        .unwrap_or(ThreadState::Open)
+    match log {
+        [.., before, _last] => before.to_state,
+        _ => ThreadState::Open,
+    }
 }
 
 async fn sqlite_store() -> SqliteStore {
