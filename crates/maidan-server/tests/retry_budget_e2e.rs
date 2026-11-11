@@ -118,6 +118,7 @@ async fn webhook_suite(backend: &Backend) {
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();
