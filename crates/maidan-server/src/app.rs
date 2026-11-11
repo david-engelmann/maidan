@@ -1399,6 +1399,16 @@ pub fn router(state: AppState) -> Router {
                 "image/png",
                 include_bytes!("../static/landing/dist/icon.png"),
             ),
+            // The board moving, recorded from the public demo
+            // (scripts/make-motion.sh), and its still for reduced motion.
+            "board-live.gif" => (
+                "image/gif",
+                include_bytes!("../static/landing/dist/board-live.gif"),
+            ),
+            "board-live.png" => (
+                "image/png",
+                include_bytes!("../static/landing/dist/board-live.png"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(

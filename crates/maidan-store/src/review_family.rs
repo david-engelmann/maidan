@@ -3,6 +3,38 @@
 
 use maidan_types::PROVIDER_FAMILIES;
 
+/// The latest pull request and head the change flow delivered for a change,
+/// for its review child to name. Shared by both backends; `{p}` is the
+/// thread's placeholder.
+pub(crate) fn delivered_head_sql(p: &str) -> String {
+    format!(
+        "SELECT r.repo, r.pull_number, r.commit_sha FROM maidan_change_rounds r
+         JOIN maidan_change_pulls cp ON cp.repo = r.repo AND cp.pull_number = r.pull_number
+          AND cp.workspace_id = r.workspace_id
+         WHERE cp.thread_id = {p}
+         ORDER BY r.delivered_at DESC, r.round DESC LIMIT 1"
+    )
+}
+
+/// The title and description of a change's review child. A reviewer reads
+/// which pull request and which head it is asked to review from the thread
+/// itself, without a second read of the change's deliveries; a change the
+/// flow never delivered keeps the plain title.
+pub(crate) fn child_naming(delivered: Option<(String, i64, String)>) -> (String, Option<String>) {
+    match delivered {
+        Some((repo, pull_number, head)) => {
+            let short: String = head.chars().take(7).collect();
+            (
+                format!("Second-family review: {repo}#{pull_number} at {short}"),
+                Some(format!(
+                    "Pull request: {repo}#{pull_number}\nHead to review: {head}"
+                )),
+            )
+        }
+        None => ("Second-family review".to_string(), None),
+    }
+}
+
 /// SQL naming the provider family of a usage record from its provider and
 /// model columns, built from [`PROVIDER_FAMILIES`] so it cannot drift from
 /// [`maidan_types::provider_family`]; NULL when neither names one.
@@ -157,6 +189,23 @@ pub(crate) fn result_refusal(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_delivered_change_names_its_pull_request_and_head_on_the_review() {
+        let (title, description) = super::child_naming(Some((
+            "acme/app".into(),
+            42,
+            "0123456789abcdef0123456789abcdef01234567".into(),
+        )));
+        assert_eq!(title, "Second-family review: acme/app#42 at 0123456");
+        assert_eq!(
+            description.as_deref(),
+            Some("Pull request: acme/app#42\nHead to review: 0123456789abcdef0123456789abcdef01234567")
+        );
+        let (plain, none) = super::child_naming(None);
+        assert_eq!(plain, "Second-family review");
+        assert_eq!(none, None);
+    }
+
     use super::*;
 
     #[test]

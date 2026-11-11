@@ -62,6 +62,10 @@ for art in maidan-lockup how-it-works; do
   done
 done
 cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
+# The console clips (scripts/make-motion.sh): each as an MP4 for the site's
+# <video> and a GIF inside it for a browser that plays no video.
+mkdir -p "$src_docs/assets/motion"
+cp "$repo_root"/docs/assets/motion/*.mp4 "$repo_root"/docs/assets/motion/*.gif "$src_docs/assets/motion/"
 
 export GH="https://github.com/david-engelmann/maidan/blob/main"
 export GHTREE="https://github.com/david-engelmann/maidan/tree/main"
@@ -112,6 +116,12 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{\]\(Tracks/README\.md\)}{]($ENV{GH}/docs/Tracks/README.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/\)}{]($ENV{GHTREE}/docs/Clusters/)}g' "$f"
   perl -pi -e 's{\]\(Tracks/\)}{]($ENV{GHTREE}/docs/Tracks/)}g' "$f"
+
+  # 3b) a console clip -> a looping, silent <video> of its MP4. GitHub shows
+  # only the Markdown image (the GIF); on the site the video is a tenth of the
+  # bytes, and the GIF stays inside it for a browser that plays no video.
+  # An alt text holding a straight double quote stays a GIF: write curly ones.
+  perl -pi -e 's{!\[([^\]"]+)\]\((assets/motion/[A-Za-z0-9-]+)\.gif\)}{<video class="motion" src="$2.mp4" autoplay loop muted playsinline preload="auto" width="1280" height="800" aria-label="$1" style="display:block;width:100%;height:auto;border-radius:8px"><img src="$2.gif" alt="$1"></video>}g' "$f"
 
   # 4) Obsidian [[wikilinks]] -> plain text (mdBook can't render them)
   perl -pi -e 's{\[\[([^\]|]+)\|([^\]]+)\]\]}{$2}g' "$f"

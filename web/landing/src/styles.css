@@ -276,3 +276,10 @@ section > *, .hero > * { min-width: 0; }
   .approval { margin: -1.6rem 0.4rem 0 auto; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .top { transition: none; } }
+
+/* The recorded board: the product moving, not a drawing of it. */
+.watch { padding-top: 2rem; }
+.watch-frame { position: relative; margin-top: 2rem; }
+.watch-clip { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: var(--shadow-approval); background: var(--paper-2); }
+.watch-toggle { position: absolute; right: 0.8rem; bottom: 0.8rem; min-height: 44px; padding: 0 1rem; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 0.85rem; cursor: pointer; }
+.watch-note { margin: 0.9rem 0 0; color: var(--muted); font-size: 0.9rem; }
