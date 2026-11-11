@@ -975,9 +975,14 @@ pub trait ApprovalGateStore: Send + Sync {
         &self,
         id: ApprovalGateId,
     ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// The pending gates in a workspace, oldest first, that `readable_by`
+    /// may read: those on a thread it can read, and those on no thread.
+    /// `None` keeps every gate and is only for a caller that bypasses auth;
+    /// every other caller names itself.
     async fn list_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
     /// A keyset page of the pending gates, newest first (see
@@ -3978,6 +3983,18 @@ pub trait ArtifactMetaStore: Send + Sync {
     async fn artifact_ref_exists(
         &self,
         workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+
+    /// Whether `member_id` may read the artifact `sha256` in `workspace_id`:
+    /// the workspace holds a ref, and every thread in the workspace that
+    /// references it is one the member can read, unless the member uploaded
+    /// it. An artifact referenced nowhere is the workspace's. The one rule
+    /// every artifact read goes through (`thread_access::artifact_visible_to`).
+    async fn artifact_visible_to(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
         sha256: &str,
     ) -> Result<bool, StoreError>;
 

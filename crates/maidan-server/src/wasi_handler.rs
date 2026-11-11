@@ -38,7 +38,7 @@ async fn load_module(
     // `bypass` is `AUTH_DISABLED`, where the upload path deliberately records no
     // access link at all (`upload_artifact` only refs for a non-bypass caller),
     // so a ref check would reject every module in that mode. Same carve-out as
-    // `routes::artifact::ensure_artifact_ref`.
+    // `maidan_auth::can_read_artifact`.
     if auth.bypass {
         return fetch_bytes(state, &sha).await;
     }

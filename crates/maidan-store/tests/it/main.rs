@@ -401,6 +401,9 @@ mod reactions_pins;
 #[path = "../read_routing.rs"]
 mod read_routing;
 
+#[path = "../read_visibility.rs"]
+mod read_visibility;
+
 #[path = "../reader_pool.rs"]
 mod reader_pool;
 

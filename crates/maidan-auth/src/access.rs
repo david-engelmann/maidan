@@ -9,8 +9,8 @@
 
 use maidan_store::Store;
 use maidan_types::{
-    ChannelId, MemberId, MessageId, Thread, ThreadBlock, ThreadId, ThreadStatusDeclaration,
-    WorkspaceId, DM_CHANNEL_NAME,
+    ApprovalGate, ChannelId, MemberId, MessageId, Thread, ThreadBlock, ThreadId,
+    ThreadStatusDeclaration, WorkspaceId, DM_CHANNEL_NAME,
 };
 
 use crate::{AuthContext, AuthError};
@@ -187,6 +187,48 @@ pub async fn can_access_thread(
         Err(AuthError::Forbidden(_)) => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// Whether the caller may read `gate`: it is in the caller's workspace and,
+/// when it sits on a thread, the caller can read that thread. A gate's prompt
+/// and content come from its thread, so a gate is no wider than the thread;
+/// the listings filter by the same rule in SQL (`readable_row`). A gate the
+/// caller cannot read is answered as not found, never as forbidden, so its id
+/// is not an oracle.
+pub async fn can_read_gate(
+    store: &dyn Store,
+    auth: &AuthContext,
+    gate: &ApprovalGate,
+) -> Result<bool, AuthError> {
+    if auth.bypass {
+        return Ok(true);
+    }
+    if gate.workspace_id != auth.workspace_id {
+        return Ok(false);
+    }
+    match gate.thread_id {
+        Some(thread_id) => can_access_thread(store, auth, thread_id).await,
+        None => Ok(true),
+    }
+}
+
+/// Whether the caller may read the artifact `sha256` (canonical lowercase
+/// hex): its workspace holds a ref, and every thread there that references
+/// the artifact is one the caller can read, unless the caller uploaded it.
+/// The store holds the rule (`Store::artifact_visible_to`) so every surface
+/// that serves bytes or metadata asks the same question. A caller that may
+/// not read it gets the same answer as for an artifact that does not exist.
+pub async fn can_read_artifact(
+    store: &dyn Store,
+    auth: &AuthContext,
+    sha256: &str,
+) -> Result<bool, AuthError> {
+    if auth.bypass {
+        return Ok(true);
+    }
+    Ok(store
+        .artifact_visible_to(auth.workspace_id, auth.member_id, sha256)
+        .await?)
 }
 
 /// Whether `member_id` is a workspace admin for what falls to admins: a member
