@@ -2001,6 +2001,25 @@ macro_rules! store_delegations {
                 channels::list(self.read_pool(), workspace_id).await
             }
 
+            async fn list_channels_with_membership(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<(Channel, bool)>, StoreError> {
+                channels::list_with_membership(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn display_names(
+                &self,
+                workspace_id: WorkspaceId,
+                channels: &[ChannelId],
+                threads: &[ThreadId],
+                members: &[MemberId],
+            ) -> Result<$crate::DisplayNames, StoreError> {
+                display_names::load(self.read_pool(), workspace_id, channels, threads, members)
+                    .await
+            }
+
             #[cfg(feature = "test-support")]
             async fn add_channel_member(
                 &self,
