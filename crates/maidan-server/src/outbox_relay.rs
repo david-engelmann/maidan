@@ -15,9 +15,10 @@ const BATCH: i64 = 64;
 /// relay may take it. Long enough that a healthy tick never races itself, short
 /// enough that a crashed relay's rows resume promptly.
 const CLAIM_LEASE_SECS: i64 = 60;
-const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// The busy poll interval. It and the idle cap are constants since OPS-006.
+pub const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// Idle backoff cap: an idle relay polls at most this often.
-const DEFAULT_MAX_POLL_INTERVAL: Duration = Duration::from_millis(1000);
+const MAX_POLL_INTERVAL: Duration = Duration::from_millis(1000);
 pub const DEFAULT_MAX_ATTEMPTS: u32 = 16;
 
 /// Outcome of one relay tick: how many pending rows were fetched and how many
@@ -67,7 +68,7 @@ impl OutboxRelay {
         bus: Arc<dyn EventBus>,
         max_attempts: u32,
     ) -> Self {
-        Self::with_options(backend, bus, max_attempts, poll_interval_from_env())
+        Self::with_options(backend, bus, max_attempts, POLL_INTERVAL)
     }
 
     pub fn with_options(
@@ -82,7 +83,7 @@ impl OutboxRelay {
             max_attempts: max_attempts.max(1),
             poll_interval,
             // Idle cap is never below the base interval.
-            max_poll_interval: max_poll_interval_from_env().max(poll_interval),
+            max_poll_interval: MAX_POLL_INTERVAL.max(poll_interval),
             nudge: None,
         }
     }
@@ -228,25 +229,6 @@ pub fn max_attempts_from_env() -> u32 {
         .and_then(|s| s.parse().ok())
         .filter(|&n| n > 0)
         .unwrap_or(DEFAULT_MAX_ATTEMPTS)
-}
-
-pub fn poll_interval_from_env() -> Duration {
-    std::env::var("MAIDAN_OUTBOX_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&ms| ms > 0)
-        .map(Duration::from_millis)
-        .unwrap_or(DEFAULT_POLL_INTERVAL)
-}
-
-/// Idle-backoff ceiling for the adaptive relay loop.
-pub fn max_poll_interval_from_env() -> Duration {
-    std::env::var("MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&ms| ms > 0)
-        .map(Duration::from_millis)
-        .unwrap_or(DEFAULT_MAX_POLL_INTERVAL)
 }
 
 /// Double the current idle interval, clamped to `[base, cap]`. A no-op once at

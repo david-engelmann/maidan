@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use tracing::warn;
 
 use crate::automation_delivery::{
-    backoff, deliver_pending, max_attempts_from_env, poll_interval_ms_from_env,
+    backoff, deliver_pending, max_attempts_from_env, POLL_INTERVAL_MS,
 };
 use crate::metrics;
 use crate::retry_budget::{deferred_until, Attempt};
@@ -37,7 +37,7 @@ impl AutomationDeliveryWorker {
 
 async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
     let max_attempts = max_attempts_from_env();
-    let interval = Duration::from_millis(poll_interval_ms_from_env());
+    let interval = Duration::from_millis(POLL_INTERVAL_MS);
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,
