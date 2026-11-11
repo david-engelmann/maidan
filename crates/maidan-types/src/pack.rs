@@ -1158,6 +1158,7 @@ mod tests {
             posted_at: Utc::now(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }
     }
 
@@ -1257,6 +1258,7 @@ mod tests {
             posted_at: at_secs(n as i64),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }
     }
 

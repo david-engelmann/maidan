@@ -107,6 +107,9 @@ mod body_limit_e2e;
 #[path = "../bootstrap_e2e.rs"]
 mod bootstrap_e2e;
 
+#[path = "../bridged_provenance_e2e.rs"]
+mod bridged_provenance_e2e;
+
 #[path = "../budget_enforce_e2e.rs"]
 mod budget_enforce_e2e;
 

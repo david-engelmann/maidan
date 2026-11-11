@@ -685,11 +685,26 @@ pub(crate) async fn post_notice_in_tx(
     body: String,
     metadata: serde_json::Value,
 ) -> Result<StoredEvent, StoreError> {
+    post_notice_from_in_tx(tx, keys, thread_id, author, body, metadata, None).await
+}
+
+/// [`post_notice_in_tx`] for a sentence about what a bridge reported (a
+/// pull request closing), stamped with that bridge as its origin so egress
+/// does not post it back where it came from.
+pub(crate) async fn post_notice_from_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    author: MemberId,
+    body: String,
+    metadata: serde_json::Value,
+    origin: Option<maidan_types::MessageOrigin>,
+) -> Result<StoredEvent, StoreError> {
     let now = Utc::now();
     let row = sqlx::query(
-        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?)
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at, origin)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(Uuid::now_v7())
     .bind(thread_id.0)
@@ -697,6 +712,7 @@ pub(crate) async fn post_notice_in_tx(
     .bind(body)
     .bind(serde_json::to_string(&metadata)?)
     .bind(now)
+    .bind(origin.map(maidan_types::MessageOrigin::as_str))
     .fetch_one(&mut **tx)
     .await?;
     let message = messages::row_to_message(&row)?;

@@ -19,8 +19,8 @@ use axum::{
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink,
-    ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, ExternalRef, MessageOrigin, MessageProvenance, NewEgressOutbox,
+    NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId,
 };
 use sha2::Sha256;
 
@@ -152,11 +152,14 @@ pub async fn slack_events(
                 .to_string();
             Json(serde_json::json!({ "challenge": challenge })).into_response()
         }
-        // A real event — route it, then ACK fast (Slack retries on non-200).
+        // A real event — route it, then ACK (Slack retries on non-200, and
+        // after 3 s without an answer). The post is keyed on the event's
+        // `event_id`, so a retry of an event that did post writes nothing.
         Some("event_callback") => {
             if let Some(event) = payload.get("event") {
                 let team = payload.get("team_id").and_then(|v| v.as_str());
-                route_slack_event(&state, team, event).await;
+                let event_id = payload.get("event_id").and_then(|v| v.as_str());
+                route_slack_event(&state, team, event_id, event).await;
             }
             StatusCode::OK.into_response()
         }
@@ -169,10 +172,25 @@ pub async fn slack_events(
 /// Bot messages and subtype events (edits/deletes/joins) are skipped: only
 /// plain user messages project, and skipping `bot_id` avoids echoing our own
 /// egress back into Maidan. A message from another Slack team is skipped too.
-async fn route_slack_event(state: &AppState, team: Option<&str>, event: &serde_json::Value) {
+///
+/// The post is keyed on the envelope's `event_id` (RED-002), which Slack
+/// keeps the same on every retry of one event and which every
+/// `event_callback` carries. `client_msg_id` would not do: Slack sets it only
+/// on a message typed in a Slack client, so a message a workflow or an app
+/// posts for a user has none and would go unkeyed. An event without an
+/// `event_id` is not posted, since nothing could tell its retry from it.
+async fn route_slack_event(
+    state: &AppState,
+    team: Option<&str>,
+    event_id: Option<&str>,
+    event: &serde_json::Value,
+) {
     if event.get("type").and_then(|v| v.as_str()) != Some("message") {
         return;
     }
+    let Some(event_id) = event_id.filter(|id| !id.is_empty()) else {
+        return;
+    };
     if event.get("bot_id").is_some() || event.get("subtype").is_some() {
         return;
     }
@@ -201,13 +219,19 @@ async fn route_slack_event(state: &AppState, team: Option<&str>, event: &serde_j
         thread_id: link.thread_id,
         author_id: link.member_id,
         body: format!("{user}: {text}"),
-        // Tag the origin so egress never echoes a Slack-sourced message back to
-        // Slack (loop prevention).
         metadata: serde_json::json!({ "slack": { "user": user, "channel": slack_channel } }),
         content: None,
     };
-    match state.store.post_message_with_event(new, None).await {
-        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+    // The provenance, not the metadata above, keeps egress from echoing the
+    // message back to Slack: a member can write metadata, not provenance.
+    let provenance = MessageProvenance::delivered(MessageOrigin::Slack, event_id);
+    match state
+        .store
+        .post_bridged_message_with_event(new, provenance)
+        .await
+    {
+        Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+        Ok(None) => tracing::debug!(event_id, "slack ingress: event already delivered"),
         Err(err) => tracing::warn!(error = %err, "slack ingress: post failed"),
     }
 }
@@ -411,8 +435,8 @@ impl SlackSender for SlackWebClient {
 ///
 /// No-op unless a [`SlackSender`] is configured (the worker only runs then, so
 /// queueing without one would pile up rows nothing drains); **skips messages
-/// that originated in Slack** (the `metadata.slack` tag from the ingress) so a
-/// projected inbound message is never echoed back — loop prevention.
+/// that originated in Slack** (their server-set provenance) so a projected
+/// inbound message is never echoed back — loop prevention.
 ///
 /// `log_id` is the `maidan_events` row being routed. It is the dedup key
 /// together with the target: every replica runs the notification router, so all
@@ -426,7 +450,9 @@ pub async fn route_message_to_slack(
     if state.slack_sender.is_none() {
         return;
     }
-    if message.metadata.get("slack").is_some() {
+    // The server-set provenance, never `metadata`: a member could forge the
+    // key to keep a message out of Slack, or strip it to echo one back.
+    if MessageProvenance::is_from(message.provenance.as_ref(), MessageOrigin::Slack) {
         return; // originated in Slack — don't echo it back
     }
     let link = match state
