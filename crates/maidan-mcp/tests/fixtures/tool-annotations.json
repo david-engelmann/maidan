@@ -751,7 +751,7 @@
       },
       "destructiveHint": {
         "value": false,
-        "reason": "only adds a new thread row and event"
+        "reason": "adds a new thread row and event; with supersedes it also closes the named thread as superseded, which moves its dependents and pull requests to the new thread rather than discarding them"
       },
       "idempotentHint": {
         "value": false,

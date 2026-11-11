@@ -132,6 +132,18 @@ pub struct CreateThread {
     /// Changing it later is `PUT /threads/{id}/priority`.
     #[serde(default)]
     pub priority: Option<i64>,
+    /// A thread this one replaces, such as the previous round of the same
+    /// task. In the same transaction as the create, that thread is closed as
+    /// `superseded` by the new one, exactly as `POST
+    /// /threads/{id}/close-abandoned` with `duplicate_of` would close it: its
+    /// dependents move here and its open pull requests are handed here, not
+    /// withdrawn. It does not hold its ticket against the new thread, so a
+    /// round can be replaced without cancelling it first. It must be an open
+    /// or in-review thread of this workspace that you may close (its
+    /// producer, its claim holder, or a maintainer), and needs
+    /// `thread:transition`. Any refusal creates nothing.
+    #[serde(default)]
+    pub supersedes: Option<uuid::Uuid>,
 }
 
 /// Actions a caller may name on `POST /threads/{id}`.
@@ -157,7 +169,12 @@ pub struct CloseAbandonedThread {
     pub reason: maidan_types::CloseReason,
     /// The thread that covers this one: required for `duplicate`, optional
     /// for `superseded`, refused for `abandoned`. Must be a live thread you
-    /// can read in the same workspace.
+    /// can read in the same workspace. A `superseded` thread hands its open
+    /// pull requests to this one, which then answers for them: they stay
+    /// open and queued, and that thread's rounds deliver to them. It must be
+    /// open or in review, and not already tracking an open pull request in
+    /// the same repository (409, naming it). Every other close withdraws
+    /// them.
     #[serde(default)]
     pub duplicate_of: Option<uuid::Uuid>,
 }

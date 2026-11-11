@@ -262,6 +262,10 @@ struct CreateThreadArgs {
     /// Dispatch priority, stored with the thread.
     #[serde(default)]
     priority: Option<i64>,
+    /// A thread this one replaces, closed as `superseded` by it in the same
+    /// transaction.
+    #[serde(default)]
+    supersedes: Option<uuid::Uuid>,
 }
 
 /// The refusal for a thread write the store turned down because another open
@@ -315,21 +319,43 @@ pub(super) async fn create_thread(
                 .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))
         })
         .transpose()?;
-    let created = server
-        .store
-        .create_thread_with_footprint(
-            NewThread {
-                channel_id: ChannelId(a.channel_id),
-                parent_thread_id: a.parent_thread_id.map(ThreadId),
-                title: a.title,
-                description: None,
-                created_by: auth.attribution().map(|a| a.subject_id),
-            },
-            footprint,
-            attributes.clone(),
-            a.priority,
-        )
-        .await;
+    let new = NewThread {
+        channel_id: ChannelId(a.channel_id),
+        parent_thread_id: a.parent_thread_id.map(ThreadId),
+        title: a.title,
+        description: None,
+        created_by: auth.attribution().map(|a| a.subject_id),
+    };
+    let (created, superseded) = match a.supersedes.map(ThreadId) {
+        None => (
+            server
+                .store
+                .create_thread_with_footprint(new, footprint, attributes.clone(), a.priority)
+                .await,
+            None,
+        ),
+        Some(old) => {
+            let channel = server.store.get_channel(ChannelId(a.channel_id)).await?;
+            let supersede = supersede_for(server, auth, channel.workspace_id, old).await?;
+            match server
+                .store
+                .create_thread_superseding(
+                    new,
+                    footprint,
+                    attributes.clone(),
+                    a.priority,
+                    supersede,
+                )
+                .await
+            {
+                Ok(done) => (
+                    Ok((done.thread, done.created)),
+                    Some((channel.workspace_id, old, done.events)),
+                ),
+                Err(err) => (Err(err), None),
+            }
+        }
+    };
     let created = match created {
         Err(err @ maidan_store::StoreError::AttributeHeld { .. }) => {
             return Err(disclose_holder(server.store.as_ref(), auth, err).await);
@@ -352,7 +378,59 @@ pub(super) async fn create_thread(
         },
     });
     server.publish_stored(&stored).await;
+    if let Some((workspace_id, old, events)) = superseded {
+        publish_close(server, workspace_id, old, &events).await;
+    }
     Ok(content_json(&thread))
+}
+
+/// Who closes `old` when a new thread supersedes it, judged as
+/// `close_abandoned_thread` judges it: `thread:transition`, access to the
+/// thread, and being its producer, its claim holder or a maintainer. The
+/// store checks again on the locked row that it is open and in this
+/// workspace.
+async fn supersede_for(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    old: ThreadId,
+) -> Result<maidan_store::store::Supersede, McpError> {
+    if !auth.bypass && !auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
+        return Err(McpError::Forbidden(
+            "supersedes closes a thread, which needs thread:transition".into(),
+        ));
+    }
+    let scope = maidan_auth::authorize_thread(server.store.as_ref(), auth, old).await?;
+    if scope.workspace_id != workspace_id {
+        return Err(McpError::InvalidParams(
+            "supersedes is not a thread in this workspace".into(),
+        ));
+    }
+    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let thread = server.store.get_thread(old).await?;
+    if !maintainer
+        && thread.created_by != Some(auth.member_id)
+        && thread.assignee_id != Some(auth.member_id)
+    {
+        return Err(McpError::Forbidden(
+            "only the superseded thread's producer, its claim holder, or a maintainer can \
+             supersede it"
+                .into(),
+        ));
+    }
+    Ok(maidan_store::store::Supersede {
+        thread_id: old,
+        actor_id: auth.member_id,
+        maintainer,
+        audit: NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
+            actor_id: Some(auth.actor_id),
+            action: "thread.close_abandoned".into(),
+            target_kind: Some("thread".into()),
+            target_id: Some(old.0),
+            metadata: json!({ "superseded_by_create": true }),
+        },
+    })
 }
 
 #[derive(Deserialize)]
@@ -746,7 +824,20 @@ pub(super) async fn close_abandoned_thread(
         .store
         .close_abandoned_thread(thread_id, auth.member_id, maintainer, &close, audit)
         .await?;
-    for event in &stored {
+    publish_close(server, channel.workspace_id, thread_id, &stored).await;
+    Ok(content_json(&result.thread))
+}
+
+/// Publish what closing `thread_id` without landing logged, and what it
+/// unblocked: shared by `close_abandoned_thread` and a create that
+/// supersedes a thread.
+async fn publish_close(
+    server: &crate::server::McpServer,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    stored: &[StoredEvent],
+) {
+    for event in stored {
         server.publish_stored(event).await;
     }
     // A resource subscriber hears about the close as it does after a cancel.
@@ -759,7 +850,7 @@ pub(super) async fn close_abandoned_thread(
                 server
                     .publish_event(Event::ThreadReady {
                         occurred_at: Utc::now(),
-                        workspace_id: channel.workspace_id,
+                        workspace_id,
                         channel_id: dep.channel_id,
                         thread_id: dep.id,
                         thread: dep,
@@ -771,7 +862,6 @@ pub(super) async fn close_abandoned_thread(
             tracing::warn!(error = %err, "thread_ready: newly_ready_dependents failed");
         }
     }
-    Ok(content_json(&result.thread))
 }
 
 #[derive(Deserialize)]

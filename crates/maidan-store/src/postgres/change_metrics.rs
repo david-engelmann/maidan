@@ -138,6 +138,12 @@ pub async fn pull_thread(
                AND rd.surface = 'github_branch' AND rd.status = 'delivered'
                AND lower(substr(rd.selector, 1, length($1) + 1)) = lower($1) || '@'
                AND rd.external_ref LIKE '%#' || $4
+               -- A delivery made before the pull request moved to another
+               -- thread (a superseded task's) no longer answers for it.
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_change_pulls h
+                   WHERE h.workspace_id = $3 AND h.repo = lower($1) AND h.pull_number = $2
+                     AND h.handed_at IS NOT NULL AND rd.updated_at <= h.handed_at)
          ) found
          ORDER BY rank, at DESC
          LIMIT 1",

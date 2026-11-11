@@ -65,6 +65,40 @@ pub async fn create_with_footprint(
     attributes: Option<maidan_types::TaskAttributes>,
     priority: Option<i64>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    let (footprint, attributes, priority_by) =
+        prepare_create(&new, footprint, attributes, priority)?;
+    precheck(pool, &new).await?;
+    let mut tx = pool.begin().await?;
+    let created = insert_on(
+        &mut tx,
+        &new,
+        footprint.as_ref(),
+        attributes.as_ref(),
+        priority_by,
+        None,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(created)
+}
+
+/// What a create checks before it touches the database: valid attributes
+/// and footprint, and a priority only from an attributed creator, who is
+/// recorded as having set it. An empty footprint stores nothing.
+#[allow(clippy::type_complexity)]
+fn prepare_create(
+    new: &NewThread,
+    footprint: Option<maidan_types::Footprint>,
+    attributes: Option<maidan_types::TaskAttributes>,
+    priority: Option<i64>,
+) -> Result<
+    (
+        Option<maidan_types::Footprint>,
+        Option<maidan_types::TaskAttributes>,
+        Option<(i64, MemberId)>,
+    ),
+    StoreError,
+> {
     let attributes = attributes
         .map(|attributes| attributes.validated().map_err(StoreError::InvalidInput))
         .transpose()?;
@@ -81,18 +115,90 @@ pub async fn create_with_footprint(
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
+    Ok((footprint, attributes, priority_by))
+}
+
+/// Create a thread that supersedes another, in one transaction: the new
+/// thread, then the old one closed as `superseded` by it through
+/// [`super::thread_transitions::close_abandoned_in_tx`], which moves the
+/// old thread's dependents and hands it its open pull requests. The old
+/// thread is not counted as holding the values the workspace keeps unique,
+/// since it closes in the same commit, so a follow-up round can take the
+/// ticket its predecessor holds. Any refusal (the old thread in another
+/// workspace, gone, already ended, not the caller's to close, or a pull
+/// request the new thread cannot take) leaves nothing written.
+pub async fn create_superseding(
+    pool: &PgPool,
+    keys: &maidan_types::ContentKeyring,
+    new: NewThread,
+    footprint: Option<maidan_types::Footprint>,
+    attributes: Option<maidan_types::TaskAttributes>,
+    priority: Option<i64>,
+    supersede: crate::store::Supersede,
+) -> Result<crate::store::SupersedingCreate, StoreError> {
+    let (footprint, attributes, priority_by) =
+        prepare_create(&new, footprint, attributes, priority)?;
     precheck(pool, &new).await?;
     let mut tx = pool.begin().await?;
-    let created = insert_on(
+    let old = supersede.thread_id;
+    let found = sqlx::query(
+        "SELECT t.state::text AS state, c.workspace_id FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE t.id = $1 AND t.tombstoned_at IS NULL
+         FOR UPDATE OF t",
+    )
+    .bind(old.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let workspace_id: Uuid =
+        sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = $1")
+            .bind(new.channel_id.0)
+            .fetch_one(&mut *tx)
+            .await?;
+    // Another workspace's thread is refused as a missing one, so the answer
+    // says nothing about it.
+    let Some(found) = found.filter(|row| row.get::<Uuid, _>("workspace_id") == workspace_id) else {
+        return Err(StoreError::InvalidInput(
+            "supersedes is not a thread in this workspace".into(),
+        ));
+    };
+    let state: String = found.try_get("state")?;
+    if !matches!(state.as_str(), "open" | "in_review") {
+        return Err(StoreError::Conflict(format!(
+            "only an open or in-review thread can be superseded; {} is {state}",
+            old.0
+        )));
+    }
+    let (thread, created) = insert_on(
         &mut tx,
         &new,
         footprint.as_ref(),
         attributes.as_ref(),
         priority_by,
+        Some(old),
+    )
+    .await?;
+    let close = maidan_types::CloseAbandoned {
+        reason: maidan_types::CloseReason::Superseded,
+        duplicate_of: Some(thread.id),
+    };
+    let (superseded, events) = super::thread_transitions::close_abandoned_in_tx(
+        &mut tx,
+        keys,
+        old,
+        supersede.actor_id,
+        supersede.maintainer,
+        &close,
+        supersede.audit,
     )
     .await?;
     tx.commit().await?;
-    Ok(created)
+    Ok(crate::store::SupersedingCreate {
+        thread,
+        created,
+        superseded,
+        events,
+    })
 }
 
 /// The reads a thread create checks before its transaction: the parent is
@@ -106,12 +212,15 @@ pub(crate) async fn precheck(pool: &PgPool, new: &NewThread) -> Result<(), Store
 /// Insert a validated thread, its footprint, attributes and priority, and
 /// its `ThreadCreated` event inside `tx`, so a caller can make the thread
 /// part of a larger transaction. Run [`precheck`] first, outside `tx`.
+/// `exempt` is a thread this one supersedes in the same transaction, which
+/// does not hold the values the workspace keeps unique against it.
 pub(crate) async fn insert_on(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     new: &NewThread,
     footprint: Option<&maidan_types::Footprint>,
     attributes: Option<&maidan_types::TaskAttributes>,
     priority_by: Option<(i64, maidan_types::MemberId)>,
+    exempt: Option<ThreadId>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let row = sqlx::query(
@@ -143,7 +252,7 @@ pub(crate) async fn insert_on(
         super::footprints::insert_items_on(tx, thread.id, workspace_id, footprint).await?;
     }
     if let Some(attributes) = &attributes {
-        super::thread_attributes::insert_on(tx, thread.id, attributes).await?;
+        super::thread_attributes::insert_exempting_on(tx, thread.id, attributes, exempt).await?;
     }
     super::thread_attributes::apply_default_engine_on(tx, thread.id).await?;
     // The fingerprint covers the attributes as given: a workspace default

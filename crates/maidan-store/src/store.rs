@@ -105,6 +105,30 @@ pub struct CreatedAgent {
     pub event: StoredEvent,
 }
 
+/// The thread a new one supersedes, and who closes it: the closer's
+/// authority is judged as `close_abandoned_thread` judges it.
+#[derive(Debug, Clone)]
+pub struct Supersede {
+    pub thread_id: ThreadId,
+    pub actor_id: MemberId,
+    /// The caller is a maintainer, who may close any thread.
+    pub maintainer: bool,
+    /// The close's audit row, as `close_abandoned_thread` takes it.
+    pub audit: NewAuditEvent,
+}
+
+/// What a superseding create wrote: the new thread and its `ThreadCreated`,
+/// and the old thread's close with the events it owed (the reference, the
+/// state change, the dependents' and the pull requests' notices, a plan's
+/// follow-ups), as `close_abandoned_thread` returns them.
+#[derive(Debug, Clone)]
+pub struct SupersedingCreate {
+    pub thread: Thread,
+    pub created: StoredEvent,
+    pub superseded: ThreadTransitionResult,
+    pub events: Vec<StoredEvent>,
+}
+
 /// How one page of a channel's threads is selected by
 /// [`ThreadStore::page_threads_for_channel`]. The order is `(created_at,
 /// id)`, ascending unless `newest_first`; `after` is an exclusive keyset
@@ -1955,6 +1979,22 @@ pub trait ThreadStore: Send + Sync {
         priority: Option<i64>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
+    /// [`Self::create_thread_with_footprint`] for a thread that supersedes
+    /// `supersede.thread_id`, in one transaction: the old thread closes as
+    /// `superseded` by the new one, as `close_abandoned_thread` would close
+    /// it, moving its dependents and handing the new thread its open pull
+    /// requests. The old thread does not hold the ticket against its
+    /// successor. Refused with nothing written when the old thread is not a
+    /// live thread of this workspace that the actor may close.
+    async fn create_thread_superseding(
+        &self,
+        new: NewThread,
+        footprint: Option<maidan_types::Footprint>,
+        attributes: Option<maidan_types::TaskAttributes>,
+        priority: Option<i64>,
+        supersede: Supersede,
+    ) -> Result<SupersedingCreate, StoreError>;
+
     /// A thread's task attributes; the defaults when it was never
     /// described. Not an error for a missing thread: attributes are a view
     /// of the thread, and the thread read itself reports the miss.
@@ -2798,7 +2838,9 @@ pub trait AssignmentStore: Send + Sync {
     /// The thread answerable for agent pull request `pull_number` of `repo`
     /// in `workspace_id`: the one whose result was last delivered to it (the
     /// thread behind its current head), else the one the change flow tracks
-    /// it under. `None` when the change flow knows no such pull request there.
+    /// it under. A delivery made before a superseded task handed the pull
+    /// request on no longer counts, so the successor answers for it. `None`
+    /// when the change flow knows no such pull request there.
     async fn change_pull_thread(
         &self,
         workspace_id: WorkspaceId,

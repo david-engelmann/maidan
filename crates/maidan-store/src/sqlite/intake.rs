@@ -140,7 +140,8 @@ pub async fn triage(
     let (state, thread_id, reason) = match decision {
         IntakeDecision::Accept { thread_id } => (IntakeState::Accepted, Some(*thread_id), None),
         IntakeDecision::AcceptNewThread { thread } => {
-            let (created, stored) = threads::insert_on(&mut tx, thread, None, None, None).await?;
+            let (created, stored) =
+                threads::insert_on(&mut tx, thread, None, None, None, None).await?;
             stored_events.push(stored);
             if let Some(metadata) = event.metadata.as_object_mut() {
                 metadata.insert("thread_id".into(), serde_json::json!(created.id.0));
