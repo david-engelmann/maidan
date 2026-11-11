@@ -328,15 +328,19 @@ impl Harness {
             .collect()
     }
 
-    /// The bodies of the issue comments posted on [`PR`].
+    /// The bodies of the result comments written on [`PR`]: the first round
+    /// posts one, and a later round edits it in place.
     fn comments(&self) -> Vec<String> {
-        let path = format!("/repos/{REPO}/issues/{PR}/comments");
+        let posted = format!("/repos/{REPO}/issues/{PR}/comments");
+        let edited = format!("/repos/{REPO}/issues/comments/");
         self.fake
             .lock()
             .unwrap()
             .calls
             .iter()
-            .filter(|(method, p, _)| method == "POST" && *p == path)
+            .filter(|(method, p, _)| {
+                (method == "POST" && *p == posted) || (method == "PATCH" && p.starts_with(&edited))
+            })
             .map(|(_, _, body)| body["body"].as_str().unwrap_or_default().to_string())
             .collect()
     }
