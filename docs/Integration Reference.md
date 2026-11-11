@@ -754,13 +754,16 @@ Four rules for using them safely:
   claim lease, so a waiter that outlives its lease is reclaimed and its work
   returns to the queue (evict-on-wait). Keep a wait shorter than your lease, or
   `renew_claim` around a long one, if you must hold the claim across it.
-- **A wait parks without an in-flight slot, up to 32 per workspace.** Every
-  other HTTP request counts against the server's in-flight ceiling until its
-  response starts; a `wait_for_*` call sent on its own gives its slot back
-  once it parks, so waits cannot crowd out other requests (one inside a
-  batch keeps it, since the batch's other items run under the same slot). One workspace may park at most 32
-  waits at once, across all its tokens; the next is refused at once with
-  `-32029` and `retry_after_ms`, so back off rather than retry in a loop.
+- **A wait parks without an in-flight slot, up to 32 per workspace per
+  replica.** Every other HTTP request counts against the server's in-flight
+  ceiling until its response starts. A `wait_for_*` call sent on its own
+  gives its slot back once it is admitted (its capability, its arguments and
+  channel access, and a place under its workspace's cap all checked), so
+  waits cannot crowd out other requests; a refused wait, or one inside a
+  batch, keeps its slot until it answers. One workspace may park at most 32
+  waits at once on each replica, across all its tokens (the count is held in
+  each replica's memory); the next is refused at once with `-32029` and
+  `retry_after_ms`, so back off rather than retry in a loop.
 
 ### Event-log hash chain
 

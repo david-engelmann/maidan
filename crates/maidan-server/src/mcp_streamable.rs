@@ -53,6 +53,21 @@ pub async fn streamable(
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Result<Response, ApiError> {
+    // One request per POST, so an admitted wait may give back its permit, as
+    // on `POST /mcp`.
+    let request = streamable_request(state, auth, headers, body);
+    match permit {
+        Some(Extension(permit)) => crate::mcp::releasing_when_parked(permit, request).await,
+        None => request.await,
+    }
+}
+
+async fn streamable_request(
+    state: AppState,
+    auth: AuthContext,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
     if !auth.bypass {
         auth.require_capability(WORKSPACE_READ)
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
@@ -62,12 +77,6 @@ pub async fn streamable(
         Ok(r) => r,
         Err(rejected) => return Ok(Json(JsonRpcResponse::rejected(rejected)).into_response()),
     };
-    // A long-poll gives back its in-flight permit, as on `POST /mcp`.
-    if let Some(Extension(permit)) = &permit
-        && crate::mcp::parks(&request)
-    {
-        permit.release();
-    }
     // The revision's own checks: on `2026-07-28` the version header, `_meta`,
     // the routing headers and removed methods; on earlier revisions, routing
     // headers that are sent must match the body (SEP-2243, J3.2).

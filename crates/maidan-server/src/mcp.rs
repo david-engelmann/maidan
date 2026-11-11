@@ -341,19 +341,6 @@ pub(crate) fn validate_routing_headers(
     Ok(())
 }
 
-/// Whether a request is a `wait_for_*` call. A wait parks for up to five
-/// minutes, so it gives back its in-flight permit rather than hold one of the
-/// instance's shared permits that long (RED-008); the MCP server caps the
-/// waits each workspace may park instead.
-pub(crate) fn parks(request: &JsonRpcRequest) -> bool {
-    request.method == "tools/call"
-        && request
-            .params
-            .get("name")
-            .and_then(|name| name.as_str())
-            .is_some_and(maidan_mcp::parked_waits::parks)
-}
-
 pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -429,16 +416,7 @@ async fn json_rpc(
     body: axum::body::Bytes,
     profile: Option<maidan_mcp::Profile>,
 ) -> Response {
-    let parsed = maidan_mcp::protocol::parse_body(&body);
-    // Only a lone wait gives its permit back. A batch runs its items in turn,
-    // so releasing for one wait would let every other item in it run outside
-    // the ceiling.
-    if let (Some(Extension(permit)), Ok(RequestBody::Single(request))) = (&permit, &parsed)
-        && parks(request)
-    {
-        permit.release();
-    }
-    match parsed {
+    match maidan_mcp::protocol::parse_body(&body) {
         Err(rejected) => Json(JsonRpcResponse::rejected(rejected)).into_response(),
         // Routing headers describe a single op; a batch names many, so they are
         // validated per single request, not against an array. Batches belong
@@ -461,10 +439,30 @@ async fn json_rpc(
             }
             batch_response(&state, &auth, items, profile).await
         }
+        // Only a lone request can give its permit back. A batch runs its
+        // items in turn, so a wait in one would let the others run outside
+        // the ceiling.
         Ok(RequestBody::Single(request)) => {
-            single_response(&state, &auth, &headers, request, profile).await
+            let response = single_response(&state, &auth, &headers, request, profile);
+            match permit {
+                Some(Extension(permit)) => releasing_when_parked(permit, response).await,
+                None => response.await,
+            }
         }
     }
+}
+
+/// Run one request with a way to give back its in-flight permit. The MCP
+/// server uses it only for a `wait_for_*` call it has admitted: the caller
+/// holds the tool's capability, its workspace has a parking place, and its
+/// arguments and channel access passed (RED-008). A request refused before
+/// that keeps its permit until it answers, like any other. A request that
+/// took no permit (shedding off, or an exempt path) has nothing to give back.
+pub(crate) async fn releasing_when_parked<F: std::future::Future>(
+    permit: PermitSlot,
+    request: F,
+) -> F::Output {
+    maidan_mcp::parked_waits::with_permit_release(move || permit.release(), request).await
 }
 
 async fn single_response(

@@ -6,14 +6,44 @@
 //! per-workspace cap is what bounds one tenant's waits instead. A call past
 //! the cap is refused at once with a typed rate-limit error rather than
 //! queued, so a client backs off instead of piling up.
+//!
+//! The permit goes back only once the wait is admitted: its capability
+//! checked, a place under this cap held, the allowance and its arguments and
+//! channel access passed. A wait refused on the way keeps its permit until it
+//! answers, so refused calls cannot run their checks outside the ceiling. The
+//! count is held in memory, so the cap is per workspace per replica.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use maidan_types::WorkspaceId;
 
 /// The most `wait_for_*` calls one workspace may have parked at once.
 pub const MAX_PARKED_WAITS_PER_WORKSPACE: usize = 32;
+
+tokio::task_local! {
+    /// How the request being served gives back its in-flight permit, when the
+    /// transport holds one for it.
+    static RELEASE_PERMIT: Box<dyn Fn() + Send + Sync>;
+}
+
+/// Run `request` with `release` as the way to give back its in-flight permit.
+/// The server calls it at most once per admitted wait, from the request's own
+/// task; a request that never reaches an admitted wait never calls it.
+pub async fn with_permit_release<F: Future>(
+    release: impl Fn() + Send + Sync + 'static,
+    request: F,
+) -> F::Output {
+    RELEASE_PERMIT.scope(Box::new(release), request).await
+}
+
+/// Give back the current request's in-flight permit, if its transport holds
+/// one. Outside [`with_permit_release`] (stdio, an auth-disabled test harness,
+/// a hook firing) there is nothing to give back.
+pub(crate) fn release_permit() {
+    let _ = RELEASE_PERMIT.try_with(|release| release());
+}
 
 /// Whether a tool is a long-poll that parks until something happens.
 pub fn parks(tool: &str) -> bool {

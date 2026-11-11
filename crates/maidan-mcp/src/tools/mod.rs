@@ -976,6 +976,14 @@ pub async fn dispatch(
 ) -> Result<Value, McpError> {
     check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
+    // Admitted: the capability, the workspace's parking place and the
+    // allowance were checked before dispatch, and the arguments and channel
+    // access just now. Only then does a wait stop holding the request's
+    // in-flight permit. An auth-disabled caller holds no parking place, so it
+    // keeps its permit (RED-008).
+    if crate::parked_waits::parks(name) && !auth.bypass {
+        crate::parked_waits::release_permit();
+    }
     let store = &server.store;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,

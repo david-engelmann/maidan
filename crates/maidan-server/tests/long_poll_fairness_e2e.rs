@@ -6,8 +6,17 @@
 //!   shares, and another workspace's ordinary request is still served.
 //! - One workspace may park at most 32 waits; the next is refused at once with
 //!   the typed rate-limit error, while another workspace's wait still parks.
+//! - A wait gives its permit back only once it is admitted. One refused for a
+//!   missing capability, another workspace's thread, or a full workspace
+//!   keeps its permit until it answers; an auth-disabled caller keeps it too.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{expand_set, hash_secret, TokenSecret, AGENT_WORKER};
@@ -301,4 +310,124 @@ async fn a_workspace_past_its_wait_cap_is_refused_while_another_workspace_still_
         0,
         "a finished wait gives its place back"
     );
+}
+
+/// A `wait_for_result` request for `thread`, timing out after `timeout_ms`.
+fn wait_request(thread: ThreadId, timeout_ms: u64) -> maidan_mcp::JsonRpcRequest {
+    serde_json::from_value(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "wait_for_result",
+            "arguments": {"thread_id": thread.0, "timeout_ms": timeout_ms},
+        },
+    }))
+    .unwrap()
+}
+
+/// Serve `request` as `auth` the way the HTTP layer does, with a permit to
+/// give back, and count how often it was given back.
+async fn releases(
+    h: &Harness,
+    auth: &maidan_auth::AuthContext,
+    request: maidan_mcp::JsonRpcRequest,
+) -> (usize, Value) {
+    let released = Arc::new(AtomicUsize::new(0));
+    let counter = released.clone();
+    let response = maidan_mcp::parked_waits::with_permit_release(
+        move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+        },
+        h.state.mcp.handle(request, auth),
+    )
+    .await;
+    (
+        released.load(Ordering::SeqCst),
+        serde_json::to_value(&response).unwrap(),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_wait_gives_back_its_permit_only_once_it_is_admitted() {
+    let h = spawn(None).await;
+    let store = h.state.store.clone();
+    let mine = tenant(store.as_ref(), "mine").await;
+    let theirs = tenant(store.as_ref(), "theirs").await;
+    let auth = maidan_auth::resolve_bearer(store.as_ref(), &mine.token)
+        .await
+        .unwrap();
+
+    // Admitted: given back exactly once.
+    let (released, body) = releases(&h, &auth, wait_request(mine.thread, 50)).await;
+    assert!(body.get("result").is_some(), "{body}");
+    assert_eq!(released, 1, "an admitted wait gives its permit back once");
+
+    // A token without the tool's capability.
+    let member = store
+        .create_member(NewMember {
+            workspace_id: mine.workspace,
+            handle: "poster".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: mine.workspace,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec!["message:post".into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let poster = maidan_auth::resolve_bearer(store.as_ref(), secret.as_str())
+        .await
+        .unwrap();
+    let (released, body) = releases(&h, &poster, wait_request(mine.thread, 50)).await;
+    assert!(body.get("error").is_some(), "{body}");
+    assert_eq!(
+        released, 0,
+        "a wait refused for its capability kept its permit"
+    );
+
+    // Another workspace's thread.
+    let (released, body) = releases(&h, &auth, wait_request(theirs.thread, 50)).await;
+    assert!(body.get("error").is_some(), "{body}");
+    assert_eq!(
+        released, 0,
+        "a wait on another tenant's thread kept its permit"
+    );
+
+    // A workspace already at its cap.
+    let mut parked = Vec::new();
+    for i in 0..MAX_PARKED_WAITS_PER_WORKSPACE {
+        parked.push(wait(&h, &mine, i, 5_000));
+    }
+    let full = eventually(Duration::from_secs(5), || {
+        h.state.mcp.parked_waits(mine.workspace) == MAX_PARKED_WAITS_PER_WORKSPACE
+    })
+    .await;
+    assert!(full, "the workspace did not reach its cap");
+    let (released, body) = releases(&h, &auth, wait_request(mine.thread, 50)).await;
+    assert!(rate_limited(&body), "{body}");
+    assert_eq!(released, 0, "a wait refused at the cap kept its permit");
+
+    // An auth-disabled caller holds no parking place, so it keeps its permit.
+    let (released, _) = releases(
+        &h,
+        &maidan_auth::AuthContext::bypass(),
+        wait_request(mine.thread, 50),
+    )
+    .await;
+    assert_eq!(released, 0, "an auth-disabled wait gave back its permit");
+
+    for handle in parked {
+        handle.await.unwrap();
+    }
 }
