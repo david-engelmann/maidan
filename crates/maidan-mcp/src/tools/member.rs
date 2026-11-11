@@ -236,11 +236,207 @@ async fn lookback_member_event(
     }
 }
 
-/// The event kinds the notification router turns into per-recipient
-/// notifications — the set `wait_for_notification` waits on. Grows as Arc H
-/// routes more kinds; keep in step with `notification_router::route_event`.
-fn notifiable_kinds() -> HashSet<EventKind> {
-    HashSet::from([EventKind::MentionRecorded])
+/// How often a notification wait reads the ledger when no event wakes it.
+/// The bus says something happened; only the ledger says it reached this
+/// member, and a replica that is not this one may have written the row.
+const NOTIFICATION_POLL: Duration = Duration::from_secs(2);
+/// How long a notification wait gives the router to write the row after an
+/// event wakes it, which also folds a burst of events into one read.
+const NOTIFICATION_SETTLE: Duration = Duration::from_millis(150);
+/// Unread rows a notification wait reads at once.
+const NOTIFICATION_SCAN: i64 = 500;
+/// The longest `reason` a digest line carries.
+const REASON_MAX_CHARS: usize = 200;
+
+/// A notification with what one digest line needs: the thread's title (the
+/// item's own, for an intake proposal) and a short reason read from the
+/// event that caused it. Both are absent when the caller can no longer read
+/// the thread or the event's words were erased.
+#[derive(serde::Serialize)]
+struct NotificationLine {
+    #[serde(flatten)]
+    notification: Notification,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+/// Thread titles and access, read once per thread for a whole listing.
+#[derive(Default)]
+struct ThreadCache(std::collections::HashMap<ThreadId, Option<Option<String>>>);
+
+impl ThreadCache {
+    /// `None` when the caller cannot read the thread; otherwise its title.
+    async fn title(
+        &mut self,
+        store: &dyn Store,
+        auth: &AuthContext,
+        thread_id: ThreadId,
+    ) -> Result<Option<Option<String>>, McpError> {
+        if let Some(cached) = self.0.get(&thread_id) {
+            return Ok(cached.clone());
+        }
+        let readable =
+            auth.bypass || maidan_auth::can_access_thread(store, auth, thread_id).await?;
+        let title = if readable {
+            Some(store.get_thread(thread_id).await.ok().and_then(|t| t.title))
+        } else {
+            None
+        };
+        self.0.insert(thread_id, title.clone());
+        Ok(title)
+    }
+}
+
+async fn notification_line(
+    store: &dyn Store,
+    auth: &AuthContext,
+    threads: &mut ThreadCache,
+    notification: Notification,
+) -> Result<NotificationLine, McpError> {
+    let mut title = None;
+    if let Some(thread_id) = notification.thread_id {
+        match threads.title(store, auth, thread_id).await? {
+            Some(thread_title) => title = thread_title,
+            // Routed when the member could read it; not any more, so the row
+            // says only what it already said.
+            None => {
+                return Ok(NotificationLine {
+                    notification,
+                    title: None,
+                    reason: None,
+                });
+            }
+        }
+    }
+    let mut reason = None;
+    if let Ok(stored) = store.get_stored_event(notification.source_log_id).await
+        && stored.workspace_id == Some(notification.workspace_id)
+        && let Ok(event) = stored.opened_event()
+    {
+        if let Event::IntakeProposed {
+            title: item_title, ..
+        } = &event
+            && title.is_none()
+        {
+            title = Some(item_title.clone());
+        }
+        reason = attention_reason(&event).map(|r| clip(&r));
+    }
+    Ok(NotificationLine {
+        notification,
+        title,
+        reason,
+    })
+}
+
+fn clip(text: &str) -> String {
+    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match one_line.char_indices().nth(REASON_MAX_CHARS) {
+        Some((cut, _)) => format!("{}…", &one_line[..cut]),
+        None => one_line,
+    }
+}
+
+fn joined(items: &[String]) -> String {
+    items.join(", ")
+}
+
+/// Why a notification's event wants someone's attention, in a few words.
+fn attention_reason(event: &Event) -> Option<String> {
+    Some(match event {
+        Event::MentionRecorded { .. } => "mentioned you".into(),
+        Event::StatusDeclared { status, note, .. } => format!("{}: {note}", status.as_str()),
+        Event::ClaimStalled { reason, .. } => format!("claim stalled ({})", reason.as_str()),
+        Event::ClaimUnacknowledged { .. } => "claim not acknowledged".into(),
+        Event::ClaimExpired { .. } => "claim expired".into(),
+        Event::ClaimFailed { reason, .. } => format!("run stopped over its {reason} budget"),
+        Event::ThreadHandoff {
+            rounds,
+            repo,
+            pr_number,
+            to_engine,
+            ..
+        } => format!(
+            "not converging after {rounds} rounds on {repo}#{pr_number}; handed to {}",
+            to_engine.as_str()
+        ),
+        Event::ThreadNotice {
+            notice,
+            repo,
+            pr_number,
+            failing_jobs,
+            reasons,
+            ..
+        } => match notice {
+            ThreadNoticeKind::CiFailed => {
+                format!("CI failed on {repo}#{pr_number}: {}", joined(failing_jobs))
+            }
+            ThreadNoticeKind::GateBlocked => {
+                format!("{repo}#{pr_number} cannot merge: {}", joined(reasons))
+            }
+            other => format!("{} on {repo}#{pr_number}", other.as_str()),
+        },
+        Event::ThreadBlocked { reason, note, .. } => match note {
+            Some(note) => format!("blocked ({}): {note}", reason.as_str()),
+            None => format!("blocked ({})", reason.as_str()),
+        },
+        Event::ResultDeliveryFailed {
+            surface,
+            selector,
+            status,
+            last_error,
+            ..
+        } => match last_error {
+            Some(error) => format!("delivery to {surface} {selector} {status}: {error}"),
+            None => format!("delivery to {surface} {selector} {status}"),
+        },
+        Event::IntakeProposed { .. } => "intake proposed".into(),
+        Event::ThreadSpawnDenied {
+            axis,
+            limit,
+            observed,
+            ..
+        } => format!("spawn refused: {axis} at {observed} of {limit}"),
+        Event::ReviewSubmitted { decision, .. } => match decision {
+            ReviewDecision::RequestChanges => "changes requested".into(),
+            ReviewDecision::Approve => "approved".into(),
+        },
+        Event::ApprovalRequested { .. } => "approval requested".into(),
+        Event::WaitTimedOut { reason, .. } => match reason {
+            Some(reason) => format!("wait timed out: {reason}"),
+            None => "wait timed out".into(),
+        },
+        Event::ThreadLanded { repo, .. } => format!("landed in {repo}"),
+        Event::ThreadResultSet { .. } => "result set".into(),
+        _ => return None,
+    })
+}
+
+/// The oldest unread notification `member_id` got for an event after
+/// `after`, skipping one in a thread the caller can no longer read.
+async fn next_unread_notification(
+    store: &dyn Store,
+    auth: &AuthContext,
+    member_id: MemberId,
+    after: i64,
+) -> Result<Option<Notification>, McpError> {
+    let mut rows = store
+        .list_notifications(member_id, true, NOTIFICATION_SCAN)
+        .await?;
+    rows.retain(|n| n.source_log_id > after);
+    rows.sort_by_key(|n| n.source_log_id);
+    for row in rows {
+        if !auth.bypass
+            && let Some(thread_id) = row.thread_id
+            && !maidan_auth::can_access_thread(store, auth, thread_id).await?
+        {
+            continue;
+        }
+        return Ok(Some(row));
+    }
+    Ok(None)
 }
 
 #[derive(Deserialize)]
@@ -259,13 +455,19 @@ struct ListNotificationsArgs {
 /// per-channel filter.
 pub(super) async fn list_notifications(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListNotificationsArgs = crate::tools::parse_args(args)?;
     let notes = store
         .list_notifications(MemberId(a.member_id), a.unread_only, clamp_limit(a.limit))
         .await?;
-    Ok(content_json(&notes))
+    let mut threads = ThreadCache::default();
+    let mut lines = Vec::with_capacity(notes.len());
+    for note in notes {
+        lines.push(notification_line(store.as_ref(), auth, &mut threads, note).await?);
+    }
+    Ok(content_json(&lines))
 }
 
 #[derive(Deserialize)]
@@ -482,27 +684,71 @@ pub(super) async fn snooze_notification(
     Ok(content_json(&serde_json::json!({ "snoozed": snoozed })))
 }
 
-/// Block until `member_id` gets a new notification-worthy event, or the timeout
-/// lapses. The general form of `wait_for_mention`: it waits on the event kinds
-/// the notification router acts on (today: mentions), filtered to this member,
-/// and returns the triggering event (RBAC-checked) or `null`. **Live** — drain
-/// existing notifications with `list_notifications`/`get_unread_count` first
-/// (the durable ledger + `GET /mcp/stream` are the at-least-once alternatives).
+/// Block until `member_id` has an unread notification for an event after
+/// `since_log_id` (the log head when omitted), or the timeout lapses. Reads
+/// the notification ledger itself rather than the events, so it wakes for
+/// every kind the router writes for this member, as owner, follower or the
+/// one mentioned, and with `since_log_id` it returns a row written while the
+/// caller was not waiting. Returns that row with its digest `title` and
+/// `reason`, or `null`.
 pub(super) async fn wait_for_notification(
     server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: WaitForMentionArgs = crate::tools::parse_args(args)?;
-    wait_for_member_event(
-        server,
-        auth,
-        MemberId(a.member_id),
-        notifiable_kinds(),
-        a.timeout_ms,
-        a.since_log_id,
-    )
-    .await
+    let member_id = MemberId(a.member_id);
+    let store = server.store.as_ref();
+    let wait = a
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(wait as u64);
+    // Subscribed before the head is read, so an event in between still wakes
+    // the wait early; the poll is what makes it correct without a bus.
+    let mut stream = match server.event_bus.as_ref() {
+        Some(bus) => Some(
+            bus.subscribe(EventFilter::workspace(auth.workspace_id))
+                .await
+                .map_err(|e| McpError::Internal(e.to_string()))?,
+        ),
+        None => None,
+    };
+    let after = match a.since_log_id {
+        Some(since) => since,
+        None => store.max_event_id().await?,
+    };
+    loop {
+        if let Some(row) = next_unread_notification(store, auth, member_id, after).await? {
+            let mut threads = ThreadCache::default();
+            let line = notification_line(store, auth, &mut threads, row).await?;
+            return Ok(content_json(&line));
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Ok(content_json(&Value::Null));
+        }
+        let tick = (now + NOTIFICATION_POLL).min(deadline);
+        let mut closed = false;
+        match stream.as_mut() {
+            Some(events) => {
+                tokio::select! {
+                    item = events.next() => match item {
+                        Some(_) => {
+                            let settle = tokio::time::Instant::now() + NOTIFICATION_SETTLE;
+                            tokio::time::sleep_until(settle.min(deadline)).await;
+                        }
+                        None => closed = true,
+                    },
+                    () = tokio::time::sleep_until(tick) => {}
+                }
+            }
+            None => tokio::time::sleep_until(tick).await,
+        }
+        if closed {
+            stream = None;
+        }
+    }
 }
 
 #[derive(Deserialize)]

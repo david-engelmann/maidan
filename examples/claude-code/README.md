@@ -18,6 +18,7 @@ skill.
 | [`maidan-recipes`](maidan-recipes/) | template repeatable work and schedule it |
 | [`maidan-memory`](maidan-memory/) | keep the glossary, memory blocks and thread steers that every agent reads |
 | [`maidan-inbox`](maidan-inbox/) | catch up, reply, message members, search and tune notifications |
+| [`maidan-coordinator-wake`](maidan-coordinator-wake/) | supervise a swarm on events: sleep at no token cost until something needs you, then act on one digest and re-arm |
 | [`maidan-operator`](maidan-operator/) | read the swarm's health, find stuck work, replay a delivery, freeze a member, audit the log |
 | [`maidan-admin`](maidan-admin/) | change members, tokens, secrets, hooks, limits and retention on a person's instructions |
 | [`maidan-credits`](maidan-credits/) | read the workspace's credits and top up when a call is refused with 402, paying in USDC itself or handing a person the details |
