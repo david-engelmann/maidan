@@ -3,8 +3,9 @@
 .activity-head .field { flex: 1 1 12rem; min-width: 0; }
 .activity-list { min-width: 0; }
 .activity-row { flex-wrap: wrap; min-width: 0; }
+/* The channel link is a 44px target; only the other links may shrink. */
 .activity-row .grow,
-.activity-row a { min-width: 0; overflow-wrap: anywhere; }
+.activity-row a:not(.activity-channel) { min-width: 0; overflow-wrap: anywhere; }
 .activity-channel {
   display: inline-flex;
   align-items: center;
