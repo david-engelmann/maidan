@@ -614,6 +614,9 @@ mod references_reverse_e2e;
 #[path = "../reindex_job_e2e.rs"]
 mod reindex_job_e2e;
 
+#[path = "../registration_creator_e2e.rs"]
+mod registration_creator_e2e;
+
 #[path = "../release_own_claims_e2e.rs"]
 mod release_own_claims_e2e;
 

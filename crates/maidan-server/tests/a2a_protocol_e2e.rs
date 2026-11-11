@@ -1738,3 +1738,74 @@ async fn client_stops_reading_a_huge_error_body_after_512_bytes() {
     assert!(text.contains("500") && text.contains("BOUNDS:"), "{text}");
     assert!(text.len() < 800, "snippet was not bounded: {}", text.len());
 }
+
+/// SEC-017: a push config pushes for the member who set it. Once SCIM
+/// deactivates that member, the task's next update is not pushed to it.
+#[tokio::test]
+async fn a_push_config_stops_when_the_member_who_set_it_is_deactivated() {
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    let h = spawn().await;
+    let (hook, seen) = receiver().await;
+    let done = h.send("context", None).await;
+    let context = ThreadId(uuid::Uuid::parse_str(done["contextId"].as_str().unwrap()).unwrap());
+    let setter_id = member(h.store.as_ref(), h.ws, "setter").await;
+    let setter = mint(h.store.as_ref(), h.ws, setter_id, ALL_CAPS).await;
+    let (kept, dropped) = (h.working_task(context).await, h.working_task(context).await);
+    for task in [&kept, &dropped] {
+        let resp = h
+            .rpc_as(
+                &setter,
+                "CreateTaskPushNotificationConfig",
+                json!({ "taskId": task, "id": "watch", "url": hook }),
+            )
+            .await;
+        assert!(resp.get("error").is_none(), "{resp}");
+    }
+    let pushed = |task: &str| {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|(_, body)| body["task"]["id"] == json!(task))
+    };
+
+    h.rpc("CancelTask", json!({ "id": kept })).await;
+    for _ in 0..50 {
+        if pushed(&kept) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(pushed(&kept), "the live setter's config was not pushed");
+
+    h.store
+        .create_scim_user(setter_id, h.ws, None, true)
+        .await
+        .unwrap();
+    h.store
+        .scim_update_user_audited(
+            h.ws,
+            setter_id,
+            None,
+            None,
+            false,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(h.ws),
+                actor_id: None,
+                action: "scim.user.deactivate".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(setter_id.0),
+                metadata: json!({ "active": false }),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("the SCIM user exists");
+    h.rpc("CancelTask", json!({ "id": dropped })).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !pushed(&dropped),
+        "a deactivated setter's config was still pushed"
+    );
+}

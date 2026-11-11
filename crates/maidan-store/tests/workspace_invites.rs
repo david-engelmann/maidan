@@ -299,6 +299,36 @@ async fn assert_invites(store: &dyn Store) {
 }
 
 /// Two sign-ins race for one invite: exactly one joins.
+/// SEC-012: an invite is its creator's offer, so a deactivated creator's
+/// invite is neither found nor accepted.
+async fn assert_invite_dies_with_its_creator(store: &dyn Store) {
+    let (ws, admin) = seed(store, "leaver").await;
+    let invite = mint(
+        store,
+        ws,
+        admin,
+        "late@example.com",
+        WorkspaceInviteRole::Member,
+        9,
+        chrono::Duration::hours(1),
+    )
+    .await;
+    assert!(store
+        .find_live_workspace_invite(&hash(9), Utc::now())
+        .await
+        .is_ok());
+    store
+        .create_scim_user(admin, ws, None, false)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.find_live_workspace_invite(&hash(9), Utc::now()).await,
+        Err(StoreError::NotFound)
+    ));
+    let refused = accept(store, &invite, ws, "late@example.com", "sub-late").await;
+    assert!(not_valid(&refused), "{refused:?}");
+}
+
 async fn assert_one_winner(store: &dyn Store) {
     let (ws, admin) = seed(store, "inv-race").await;
     let invite = mint(
@@ -378,6 +408,7 @@ async fn workspace_invites_sqlite() {
     let store = sqlite_file_store(&dir).await;
     assert_invites(&store).await;
     assert_one_winner(&store).await;
+    assert_invite_dies_with_its_creator(&store).await;
 }
 
 #[tokio::test]
@@ -387,4 +418,5 @@ async fn workspace_invites_postgres() {
     };
     assert_invites(&store).await;
     assert_one_winner(&store).await;
+    assert_invite_dies_with_its_creator(&store).await;
 }

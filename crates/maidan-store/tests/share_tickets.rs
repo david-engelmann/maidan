@@ -305,9 +305,66 @@ async fn a_ticket_is_valid_until_the_instant_it_expires(store: &dyn Store) {
     ));
 }
 
+/// SEC-012: a ticket is its owner's grant, so it stops resolving once the
+/// owner is SCIM-deactivated, and stays gone when they are deleted.
+async fn a_ticket_dies_with_its_owner(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "leaver".into(),
+        })
+        .await
+        .expect("workspace");
+    let owner = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "owner".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("owner");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "brief".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let token_hash = "c".repeat(64);
+    let now = Utc::now();
+    store
+        .create_share_ticket(NewShareTicket {
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            owner_id: owner.id,
+            created_by: owner.id,
+            token_hash: token_hash.clone(),
+            expires_at: now + ChronoDuration::hours(1),
+            artifact_shas: Vec::new(),
+        })
+        .await
+        .expect("ticket");
+    assert!(store.resolve_share_ticket(&token_hash, now).await.is_ok());
+    store
+        .create_scim_user(owner.id, ws.id, None, false)
+        .await
+        .expect("deactivate");
+    assert!(matches!(
+        store.resolve_share_ticket(&token_hash, now).await,
+        Err(StoreError::NotFound)
+    ));
+}
+
 #[tokio::test]
 async fn a_ticket_is_valid_until_the_instant_it_expires_sqlite() {
     a_ticket_is_valid_until_the_instant_it_expires(&sqlite().await).await;
+}
+
+#[tokio::test]
+async fn a_ticket_dies_with_its_owner_sqlite() {
+    a_ticket_dies_with_its_owner(&sqlite().await).await;
 }
 
 #[tokio::test]
@@ -348,4 +405,5 @@ async fn share_ticket_lifecycle_postgres() {
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     a_ticket_is_valid_until_the_instant_it_expires(&store).await;
+    a_ticket_dies_with_its_owner(&store).await;
 }

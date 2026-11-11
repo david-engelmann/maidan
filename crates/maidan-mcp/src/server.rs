@@ -9641,6 +9641,7 @@ mod tests {
                 handler_kind: SlashHandlerKind::Http,
                 handler_target: "https://example.test/hook".into(),
                 secret_ciphertext: String::new(),
+                created_by_token: None,
             })
             .await
             .unwrap();

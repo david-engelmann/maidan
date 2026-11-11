@@ -149,6 +149,7 @@ pub async fn create_webhook(
             label: body.label,
             event_kinds,
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await?;
 

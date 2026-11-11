@@ -299,46 +299,20 @@ pub async fn dispatch_thread_state_changed(
     }
 }
 
-/// The authority a hook runs with: its creator's token, resolved now as a
-/// bearer of it would be (SEC-013, SEC-017). A hook acts for whoever
-/// registered it, so it may do no more than they may, and it stops when their
-/// token is revoked, expires or rotates away, their member is deactivated, or
-/// the token no longer holds `workspace:admin`. `Err` is the reason it is
+/// The authority a hook runs with: its creator's token, which must still
+/// hold `workspace:admin` (SEC-013, SEC-017). `Err` is the reason it is
 /// skipped.
 async fn creator_authority(
     state: &AppState,
     registration: &FsmHookWithSecret,
 ) -> Result<AuthContext, &'static str> {
-    let Some(token_id) = registration.created_by_token else {
-        // Only a server with auth disabled registers a hook without a token,
-        // and only there does it run, with that server's authority.
-        return if state.auth_disabled {
-            Ok(AuthContext::bypass())
-        } else {
-            Err("registered without a token")
-        };
-    };
-    let auth = match maidan_auth::resolve_token_id(state.store.as_ref(), token_id).await {
-        Ok(auth) => auth,
-        Err(maidan_auth::AuthError::Forbidden(_)) => return Err("workspace suspended"),
-        // A revoked, expired or rotated token, or a deactivated member, is no
-        // longer found among the live ones.
-        Err(
-            maidan_auth::AuthError::Unauthorized
-            | maidan_auth::AuthError::Store(maidan_store::StoreError::NotFound),
-        ) => return Err("creator token no longer valid"),
-        Err(maidan_auth::AuthError::Store(_)) => return Err("creator check failed"),
-    };
-    if auth.workspace_id != registration.hook.workspace_id {
-        return Err("creator token is for another workspace");
-    }
-    if auth
-        .require_capability(maidan_auth::capability::WORKSPACE_ADMIN)
-        .is_err()
-    {
-        return Err("creator no longer holds workspace:admin");
-    }
-    Ok(auth)
+    crate::registration_owner::creator_authority(
+        state,
+        registration.hook.workspace_id,
+        registration.created_by_token,
+        maidan_auth::capability::WORKSPACE_ADMIN,
+    )
+    .await
 }
 
 /// A skipped hook is written to the workspace's audit trail, so an

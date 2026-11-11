@@ -300,3 +300,88 @@ async fn a_scheduled_thread_is_routed_to_the_workspace_default_engine() {
         "the scheduler names no engine, so the workspace default routes it"
     );
 }
+
+/// SEC-018: a schedule creates threads as its creator, so a creator who was
+/// deactivated, or who left the schedule's private channel, fires nothing.
+#[tokio::test]
+async fn a_schedule_whose_creator_is_deactivated_or_left_its_channel_is_skipped() {
+    let pool = maidan_search::sqlite_pool_options()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(64)),
+        search,
+    );
+    let ws = store
+        .create_workspace(NewWorkspace { name: "s".into() })
+        .await
+        .unwrap()
+        .id;
+    let mut cases = Vec::new();
+    for (handle, private) in [("live", true), ("deactivated", false), ("leaver", true)] {
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: handle.into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap()
+            .id;
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws,
+                name: handle.into(),
+                topic: None,
+                private,
+            })
+            .await
+            .unwrap()
+            .id;
+        if private {
+            store
+                .add_channel_member(channel, member, maidan_types::ChannelMemberRole::Member)
+                .await
+                .unwrap();
+        }
+        store
+            .create_task_schedule(NewTaskSchedule {
+                workspace_id: ws,
+                channel_id: channel,
+                title: handle.into(),
+                interval_secs: None,
+                next_run_at: Utc::now() - Duration::minutes(5),
+                created_by: member,
+                recipe_id: None,
+            })
+            .await
+            .unwrap();
+        cases.push((handle, member, channel));
+    }
+    let (_, deactivated, _) = cases[1];
+    store
+        .create_scim_user(deactivated, ws, None, false)
+        .await
+        .unwrap();
+    let (_, leaver, left) = cases[2];
+    store.remove_channel_member(left, leaver).await.unwrap();
+
+    scheduler::sweep_once(&state).await;
+    for (handle, _, channel) in cases {
+        let made = store.list_threads(channel).await.unwrap().len();
+        assert_eq!(made, usize::from(handle == "live"), "{handle}");
+    }
+}

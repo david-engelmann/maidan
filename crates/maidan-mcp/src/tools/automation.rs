@@ -84,6 +84,7 @@ pub(super) async fn register_slash_command(
                 handler_kind,
                 handler_target,
                 secret_ciphertext: ciphertext,
+                created_by_token: auth.token_id,
             })
             .await
             .map_err(McpError::from)?;
@@ -102,6 +103,7 @@ pub(super) async fn register_slash_command(
             handler_kind,
             handler_target,
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await
         .map_err(McpError::from)?;

@@ -16,7 +16,7 @@ use maidan_a2a::{
 use maidan_auth::capability::WORKSPACE_WRITE;
 use maidan_auth::{decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext};
 use maidan_store::A2aPushConfigRow;
-use maidan_types::WorkspaceId;
+use maidan_types::{ApiTokenId, WorkspaceId};
 use uuid::Uuid;
 
 use super::error::{denied, internal, store};
@@ -38,6 +38,7 @@ pub(super) struct Prepared {
     token_ciphertext: Option<String>,
     auth_scheme: Option<String>,
     auth_credentials_ciphertext: Option<String>,
+    created_by_token: Option<ApiTokenId>,
 }
 
 pub(super) fn prepare(
@@ -94,6 +95,7 @@ pub(super) fn prepare(
         token_ciphertext: seal(config.token)?,
         auth_scheme,
         auth_credentials_ciphertext: seal(credentials)?,
+        created_by_token: auth.token_id,
     })
 }
 
@@ -129,6 +131,7 @@ pub(super) async fn attach(
         token_ciphertext: prepared.token_ciphertext,
         auth_scheme: prepared.auth_scheme,
         auth_credentials_ciphertext: prepared.auth_credentials_ciphertext,
+        created_by_token: prepared.created_by_token,
     };
     state
         .store
@@ -278,6 +281,10 @@ pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
             }
         };
         for config in configs {
+            if let Err(reason) = creator_may_read(&state, workspace_id, &config).await {
+                tracing::warn!(task_id = task.id, config_id = config.config_id, reason, "a2a push skipped");
+                continue;
+            }
             let Some(headers) = PushHeaders::open(&state, &config) else {
                 metrics::counter!("maidan_a2a_push_total", "result" => "failed").increment(1);
                 continue;
@@ -311,6 +318,27 @@ pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
         })
         .await;
     });
+}
+
+/// A config pushes for whoever set it: while their token is live and holds
+/// `workspace:write`, and only while it may still read the task (SEC-012,
+/// SEC-017). `Err` is why it is skipped.
+async fn creator_may_read(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    config: &A2aPushConfigRow,
+) -> Result<(), &'static str> {
+    let creator = crate::registration_owner::creator_authority(
+        state,
+        workspace_id,
+        config.created_by_token,
+        WORKSPACE_WRITE,
+    )
+    .await?;
+    find(state, &creator, &config.task_id)
+        .await
+        .map(|_| ())
+        .map_err(|_| "creator cannot read the task")
 }
 
 /// The credentials a delivery presents, unsealed.

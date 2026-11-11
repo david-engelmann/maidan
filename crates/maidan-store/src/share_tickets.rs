@@ -10,6 +10,19 @@ use crate::StoreError;
 /// `expires_at > created_at` CHECK to hold on both backends.
 const EXPIRY_RESOLUTION: Duration = Duration::milliseconds(1);
 
+/// A ticket is its owner's and creator's grant, so it holds only while both
+/// are live members, neither tombstoned nor SCIM-deactivated (SEC-012). The
+/// same SQL on both backends, for a ticket row aliased `t`.
+pub(crate) const OWNERS_LIVE: &str = "
+    AND EXISTS (SELECT 1 FROM maidan_members m
+        WHERE m.id = t.owner_id AND m.tombstoned_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+              WHERE u.member_id = m.id AND NOT u.active))
+    AND EXISTS (SELECT 1 FROM maidan_members m
+        WHERE m.id = t.created_by AND m.tombstoned_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+              WHERE u.member_id = m.id AND NOT u.active))";
+
 pub(crate) fn validate_new(
     new: &NewShareTicket,
     now: DateTime<Utc>,

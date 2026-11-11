@@ -371,6 +371,7 @@ async fn withdrawal_shreds_the_key_and_the_chain_still_verifies(db: Db) {
             label: None,
             event_kinds: vec![],
             secret_ciphertext: "c".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();

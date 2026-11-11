@@ -238,6 +238,7 @@ async fn run_suite(store: &dyn Store) {
         token_ciphertext: None,
         auth_scheme: None,
         auth_credentials_ciphertext: None,
+        created_by_token: None,
     };
     store
         .upsert_a2a_task_push_config(&config("t0", "a", "https://a.example"))

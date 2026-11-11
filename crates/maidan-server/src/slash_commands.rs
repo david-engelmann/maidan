@@ -168,6 +168,7 @@ pub async fn create_slash_command(
             handler_kind,
             handler_target,
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await?;
 
@@ -254,6 +255,29 @@ pub async fn dispatch_slash_command(
     let Ok(registration) = lookup else {
         return json!({ "ok": false, "error": "unknown_command" });
     };
+    // A command acts for whoever registered it, so it stops when they do, and
+    // its http handler hears only of threads they may read (SEC-017).
+    let creator = match crate::registration_owner::creator_authority(
+        state,
+        workspace_id,
+        registration.created_by_token,
+        WORKSPACE_WRITE,
+    )
+    .await
+    {
+        Ok(creator) => creator,
+        Err(reason) => {
+            tracing::warn!(command = %registration.command.id, reason, "slash command skipped");
+            return json!({ "ok": false, "error": "command_inactive", "reason": reason });
+        }
+    };
+    if registration.command.handler_kind == SlashHandlerKind::Http
+        && !maidan_auth::can_access_thread(state.store.as_ref(), &creator, thread_id)
+            .await
+            .unwrap_or(false)
+    {
+        return json!({ "ok": false, "error": "command_inactive", "reason": "creator cannot read this thread" });
+    }
 
     let dispatch = async {
         match registration.command.handler_kind {

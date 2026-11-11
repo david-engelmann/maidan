@@ -61,6 +61,11 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         if crate::suspension::held_back(state, sched.workspace_id).await {
             continue;
         }
+        if let Err(reason) = creator_present(state, &sched).await {
+            crate::metrics::record_task_schedule_fired("skipped");
+            tracing::warn!(schedule = %sched.id, reason, "scheduler skipped: creator gone");
+            continue;
+        }
         match sched.recipe_id {
             Some(_) => fire_recipe(state, &sched).await,
             None => fire_bare_thread(state, &sched).await,
@@ -73,6 +78,39 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         );
     }
     fired
+}
+
+/// A schedule creates its threads as its creator, so it fires only while the
+/// creator is a live member, neither tombstoned nor SCIM-deactivated, who may
+/// still read the schedule's channel (SEC-018). `Err` is why it is skipped.
+async fn creator_present(state: &AppState, sched: &TaskSchedule) -> Result<(), &'static str> {
+    let store = state.store.as_ref();
+    let member = store
+        .get_member(sched.created_by)
+        .await
+        .map_err(|_| "creator not found")?;
+    if member.tombstoned_at.is_some() {
+        return Err("creator deleted");
+    }
+    match store.get_scim_user(sched.created_by).await {
+        Ok(Some(user)) if !user.active => return Err("creator deactivated"),
+        Ok(_) => {}
+        Err(_) => return Err("creator check failed"),
+    }
+    let channel = store
+        .get_channel(sched.channel_id)
+        .await
+        .map_err(|_| "channel not found")?;
+    if channel.private
+        && channel.name != maidan_types::DM_CHANNEL_NAME
+        && !store
+            .channel_is_member(channel.id, sched.created_by)
+            .await
+            .unwrap_or(false)
+    {
+        return Err("creator left the channel");
+    }
+    Ok(())
 }
 
 /// Fire a plain schedule: create one titled thread in its channel.

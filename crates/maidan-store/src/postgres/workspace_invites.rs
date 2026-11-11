@@ -8,7 +8,8 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::workspace_invites::{
-    nth_handle, validate_new, HANDLE_ATTEMPTS, INVITE_ALREADY_MEMBER, INVITE_NOT_VALID,
+    nth_handle, validate_new, HANDLE_ATTEMPTS, INVITER_LIVE, INVITE_ALREADY_MEMBER,
+    INVITE_NOT_VALID,
 };
 use crate::StoreError;
 
@@ -117,7 +118,7 @@ pub async fn find_live(
     let row = sqlx::query(&format!(
         "SELECT {COLUMNS} FROM maidan_workspace_invites
          WHERE token_hash = $1 AND accepted_at IS NULL AND revoked_at IS NULL
-           AND expires_at > $2"
+           AND expires_at > $2{INVITER_LIVE}"
     ))
     .bind(token_hash)
     .bind(now)
@@ -250,7 +251,7 @@ pub async fn accept(
          SET accepted_at = $1, accepted_member_id = $2
          WHERE id = $3 AND workspace_id = $4 AND email_lower = $5
            AND accepted_at IS NULL AND revoked_at IS NULL
-           AND expires_at > $1
+           AND expires_at > $1{INVITER_LIVE}
          RETURNING {COLUMNS}"
     ))
     .bind(now)

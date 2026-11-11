@@ -2,12 +2,14 @@
 
 use std::time::Duration;
 
+use maidan_auth::capability::WORKSPACE_ADMIN;
 use maidan_bus::{BusItem, EventStream};
 use maidan_types::{EventFilter, EventKind};
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
 use tracing::{info, warn};
 
+use crate::registration_owner::{creator_authority, creator_can_see};
 use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 use crate::webhooks::{
@@ -172,10 +174,23 @@ async fn enqueue_matches(
         .map_err(|e| e.to_string())?;
     // Build the payload lazily — only once a subscription actually matches.
     let mut payload: Option<String> = None;
-    let mut enqueued = std::collections::HashSet::new();
+    let mention_webhook_id = if kind == EventKind::MentionRecorded {
+        state
+            .store
+            .get_workspace_mention_webhook_id(workspace_id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     for sub in &subs {
         let subscription = &sub.subscription;
-        if !kinds_match(subscription, &kind) {
+        // The mention webhook gets every mention, whatever kinds it lists.
+        if !kinds_match(subscription, &kind) && mention_webhook_id != Some(subscription.id) {
+            continue;
+        }
+        if !delivers_to(state, sub, event).await {
             continue;
         }
         if payload.is_none() {
@@ -189,33 +204,33 @@ async fn enqueue_matches(
             .enqueue_webhook_delivery(subscription.id, log_id, body)
             .await
             .map_err(|e| e.to_string())?;
-        enqueued.insert(subscription.id);
-    }
-    if kind == EventKind::MentionRecorded
-        && let Ok(Some(mention_webhook_id)) = state
-            .store
-            .get_workspace_mention_webhook_id(workspace_id)
-            .await
-    {
-        // `subs` is already scoped to this workspace (H1).
-        if !enqueued.contains(&mention_webhook_id)
-            && subs.iter().any(|s| {
-                s.subscription.id == mention_webhook_id && s.subscription.revoked_at.is_none()
-            })
-        {
-            if payload.is_none() {
-                payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
-            }
-            if let Some(body) = payload.as_deref() {
-                state
-                    .store
-                    .enqueue_webhook_delivery(mention_webhook_id, log_id, body)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-        }
     }
     Ok(())
+}
+
+/// A subscription receives an event only as its creator: while the token
+/// that created it is live and holds `workspace:admin`, and only an event
+/// that token may read (SEC-009, SEC-017).
+async fn delivers_to(
+    state: &AppState,
+    sub: &maidan_types::WebhookSubscriptionWithSecret,
+    event: &maidan_types::Event,
+) -> bool {
+    let subscription = &sub.subscription;
+    match creator_authority(
+        state,
+        subscription.workspace_id,
+        sub.created_by_token,
+        WORKSPACE_ADMIN,
+    )
+    .await
+    {
+        Ok(auth) => creator_can_see(state, &auth, event).await,
+        Err(reason) => {
+            warn!(webhook = %subscription.id, reason, "webhook skipped");
+            false
+        }
+    }
 }
 
 async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>) {
@@ -283,6 +298,29 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
                 "quarantined delivery for revoked webhook"
             );
             continue;
+        }
+        // A retry queued before its creator left goes nowhere after.
+        match creator_authority(
+            state,
+            sub.subscription.workspace_id,
+            sub.created_by_token,
+            WORKSPACE_ADMIN,
+        )
+        .await
+        {
+            Ok(_) => {}
+            // The store could not answer; the next poll asks again.
+            Err("creator check failed") => continue,
+            Err(reason) => {
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                warn!(
+                    delivery_id = delivery.id,
+                    webhook = %delivery.subscription_id,
+                    reason,
+                    "quarantined delivery for webhook whose creator is gone"
+                );
+                continue;
+            }
         }
         let Some(secret) = resolve_webhook_secret(
             &state.webhooks,

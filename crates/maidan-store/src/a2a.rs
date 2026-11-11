@@ -1,7 +1,7 @@
 //! A2A task, context and push notification config persistence types.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{ApprovalGateId, MemberId, ThreadId, WorkspaceId};
+use maidan_types::{ApiTokenId, ApprovalGateId, MemberId, ThreadId, WorkspaceId};
 
 /// One persisted A2A task. `task_json` is the protocol `Task` without any
 /// message words: history and status messages are rendered from the sealed
@@ -77,4 +77,7 @@ pub struct A2aPushConfigRow {
     pub token_ciphertext: Option<String>,
     pub auth_scheme: Option<String>,
     pub auth_credentials_ciphertext: Option<String>,
+    /// The token that set the config. A task is pushed to it only while that
+    /// token is live, holds `workspace:write` and may still read the task.
+    pub created_by_token: Option<ApiTokenId>,
 }

@@ -13,6 +13,15 @@ pub const INVITE_ALREADY_MEMBER: &str =
 /// workspace. One message for all of them, so the refusal discloses nothing.
 pub const INVITE_NOT_VALID: &str = "the invite is no longer valid";
 
+/// An invite is its creator's offer, so it holds only while they are a live
+/// member, neither tombstoned nor SCIM-deactivated (SEC-012). The same SQL
+/// on both backends, appended to a `maidan_workspace_invites` filter.
+pub(crate) const INVITER_LIVE: &str = "
+           AND EXISTS (SELECT 1 FROM maidan_members m
+               WHERE m.id = maidan_workspace_invites.created_by AND m.tombstoned_at IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+                     WHERE u.member_id = m.id AND NOT u.active))";
+
 /// SQLite compares timestamps with `julianday()`, which keeps milliseconds;
 /// an expiry must be more than this after `now` for the CHECK to hold.
 const EXPIRY_RESOLUTION: Duration = Duration::milliseconds(1);

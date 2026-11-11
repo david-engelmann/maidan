@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use maidan_types::{NewShareTicket, ShareTicket, ShareTicketId, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 
-use crate::{share_tickets, StoreError};
+use crate::share_tickets::{self, OWNERS_LIVE};
+use crate::StoreError;
 
 const COLUMNS: &str = "id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, revoked_at, created_at";
 
@@ -117,9 +118,9 @@ pub async fn resolve(
     now: DateTime<Utc>,
 ) -> Result<ShareTicket, StoreError> {
     let row = sqlx::query(&format!(
-        "SELECT {COLUMNS} FROM maidan_share_tickets
+        "SELECT {COLUMNS} FROM maidan_share_tickets t
          WHERE token_hash = ?1 AND revoked_at IS NULL
-           AND julianday(expires_at) > julianday(?2)"
+           AND julianday(expires_at) > julianday(?2){OWNERS_LIVE}"
     ))
     .bind(token_hash)
     .bind(now)
@@ -174,15 +175,15 @@ pub async fn allows_artifact(
     sha256: &str,
     now: DateTime<Utc>,
 ) -> Result<bool, StoreError> {
-    Ok(sqlx::query_scalar(
+    Ok(sqlx::query_scalar(&format!(
         "SELECT EXISTS(
             SELECT 1 FROM maidan_share_ticket_artifacts a
             JOIN maidan_share_tickets t ON t.id = a.ticket_id
             WHERE a.ticket_id = ?1 AND a.sha256 = ?2
               AND t.revoked_at IS NULL
-              AND julianday(t.expires_at) > julianday(?3)
-        )",
-    )
+              AND julianday(t.expires_at) > julianday(?3){OWNERS_LIVE}
+        )"
+    ))
     .bind(id.0)
     .bind(sha256)
     .bind(now)

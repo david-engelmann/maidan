@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewWebhookSubscription, WebhookDelivery, WebhookSubscription, WebhookSubscriptionDelivery,
-    WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, NewWebhookSubscription, WebhookDelivery, WebhookSubscription,
+    WebhookSubscriptionDelivery, WebhookSubscriptionId, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -10,12 +10,13 @@ use crate::automation_deliveries::AutomationDeliveryFilter;
 use crate::error::StoreError;
 
 const SUB_COLS: &str =
-    "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at";
+    "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 #[derive(Debug, Clone)]
 pub struct WebhookSubscriptionRow {
     pub subscription: WebhookSubscription,
     pub secret_ciphertext: String,
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 pub async fn create(
@@ -26,8 +27,8 @@ pub async fn create(
     let kinds_json = serde_json::to_string(&new.event_kinds)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_webhook_subscriptions
-            (id, workspace_id, url, label, event_kinds, secret_ciphertext)
-         VALUES (?, ?, ?, ?, ?, ?)
+            (id, workspace_id, url, label, event_kinds, secret_ciphertext, created_by_token)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          RETURNING {SUB_COLS}"
     ))
     .bind(id)
@@ -36,6 +37,7 @@ pub async fn create(
     .bind(&new.label)
     .bind(&kinds_json)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(pool)
     .await?;
     row_to_subscription(&row)
@@ -55,6 +57,9 @@ pub async fn get(
     let subscription = row_to_subscription(&row)?;
     Ok(WebhookSubscriptionRow {
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: row
+            .get::<Option<Uuid>, _>("created_by_token")
+            .map(ApiTokenId),
         subscription,
     })
 }
@@ -93,6 +98,9 @@ pub async fn list_enabled_for_workspace(
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: row
+                    .get::<Option<Uuid>, _>("created_by_token")
+                    .map(ApiTokenId),
                 subscription,
             })
         })
@@ -112,6 +120,9 @@ pub async fn list_enabled(pool: &SqlitePool) -> Result<Vec<WebhookSubscriptionRo
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: row
+                    .get::<Option<Uuid>, _>("created_by_token")
+                    .map(ApiTokenId),
                 subscription,
             })
         })

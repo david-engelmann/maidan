@@ -1,0 +1,7 @@
+### Every registration acts for, and stops with, the member who made it
+
+- **Security:** Outbound webhooks, the mention webhook, slash commands and A2A push configs now record the token that registered them (migration 0234, both dialects) and act as it, as FSM hooks do since 0232. Each fires only while that token is live, belongs to the workspace and still holds what registering needed (`workspace:admin` for webhooks, `workspace:write` for slash commands and push configs). A revoked, expired or rotated token, or a member deactivated by SCIM, stops it. A queued webhook retry whose creator is gone is quarantined instead of sent.
+- **Security:** A webhook delivers only events its creator may read: a private channel or DM they are not in no longer reaches it. A slash command's `http` handler hears only of threads its creator may read, and otherwise answers `command_inactive` with a reason. A push config pushes only tasks its creator may still read.
+- **Security:** A scheduled task fires only while its creator is a live member who may still read its channel.
+- **Security:** A share ticket holds only while its owner and creator are live members, and a workspace invite only while its inviter is; a tombstoned or SCIM-deactivated member's tickets and invites stop resolving.
+- **Changed:** A webhook, slash command or push config registered before 0234 has no recorded creator and stops firing on a server with auth enabled. An administrator re-registers the ones still wanted.
