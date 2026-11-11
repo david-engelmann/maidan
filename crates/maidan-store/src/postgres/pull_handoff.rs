@@ -124,10 +124,10 @@ pub(crate) async fn hand_off_pulls_in_tx(
         .await?;
         let metadata = handoff_metadata(&repo, pull_number, from, to);
         super::audit::append_scoped(
-            &mut **tx,
+            tx,
             crate::audit_scope::AuditOwner::Thread(to),
             NewAuditEvent {
-                scope: audit.scope.clone(),
+                scope: audit.scope,
                 actor_id: audit.actor_id,
                 action: "thread.pull_handed_off".into(),
                 target_kind: Some("github_pull".into()),

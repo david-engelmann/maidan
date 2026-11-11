@@ -1783,7 +1783,7 @@
         "description": "Body of `POST /threads/{id}/close-abandoned`.",
         "properties": {
           "duplicate_of": {
-            "description": "The thread that covers this one: required for `duplicate`, optional\nfor `superseded`, refused for `abandoned`. Must be a live thread you\ncan read in the same workspace.",
+            "description": "The thread that covers this one: required for `duplicate`, optional\nfor `superseded`, refused for `abandoned`. Must be a live thread you\ncan read in the same workspace. A `superseded` thread hands its open\npull requests to this one, which then answers for them: they stay\nopen and queued, and that thread's rounds deliver to them. It must be\nopen or in review, and not already tracking an open pull request in\nthe same repository (409, naming it). Every other close withdraws\nthem.",
             "format": "uuid",
             "type": [
               "string",
@@ -2649,6 +2649,14 @@
             "format": "int64",
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "supersedes": {
+            "description": "A thread this one replaces, such as the previous round of the same\ntask. In the same transaction as the create, that thread is closed as\n`superseded` by the new one, exactly as `POST\n/threads/{id}/close-abandoned` with `duplicate_of` would close it: its\ndependents move here and its open pull requests are handed here, not\nwithdrawn. It does not hold its ticket against the new thread, so a\nround can be replaced without cancelling it first. It must be an open\nor in-review thread of this workspace that you may close (its\nproducer, its claim holder, or a maintainer), and needs\n`thread:transition`. Any refusal creates nothing.",
+            "format": "uuid",
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -16794,6 +16802,7 @@
         ]
       },
       "post": {
+        "description": "With `supersedes`, the named thread is closed as `superseded` by the new\none in the same transaction, as `POST /threads/{id}/close-abandoned` with\n`duplicate_of` would close it: its dependents move to the new thread and\nits open pull requests are handed to it rather than withdrawn, and it\ndoes not hold its ticket against the new thread. Use it to start a\nfollow-up round of a task. It needs `thread:transition` and must name an\nopen or in-review thread of this workspace that the caller may close;\nany refusal creates nothing.",
         "operationId": "create_thread",
         "parameters": [
           {
@@ -26667,7 +26676,7 @@
     },
     "/threads/{id}/close-abandoned": {
       "post": {
-        "description": "Closes an open or in-review thread as a duplicate, abandoned, or\nsuperseded. Allowed for the thread's producer, its claim holder, or a\nmaintainer. A thread with a result keeps every landing gate; a thread\nwith no result skips the review gates. A duplicate records a\n`duplicates` reference to `duplicate_of`; a superseded thread records\n`duplicate_of supersedes` it. Each open dependent of a duplicate or\nsuperseded thread then depends on `duplicate_of` instead and gets a\nnotice, unless the move would make a cycle; an abandoned thread's\ndependents keep waiting. Audited as `thread.close_abandoned`.",
+        "description": "Closes an open or in-review thread as a duplicate, abandoned, or\nsuperseded. Allowed for the thread's producer, its claim holder, or a\nmaintainer. A thread with a result keeps every landing gate; a thread\nwith no result skips the review gates. A duplicate records a\n`duplicates` reference to `duplicate_of`; a superseded thread records\n`duplicate_of supersedes` it. Each open dependent of a duplicate or\nsuperseded thread then depends on `duplicate_of` instead and gets a\nnotice, unless the move would make a cycle; an abandoned thread's\ndependents keep waiting. Audited as `thread.close_abandoned`.\n\nA superseded thread with `duplicate_of` hands its open pull requests to\n`duplicate_of`: they stay open and in the merge queue, and that thread's\nrounds deliver to them and its cancel withdraws them. Each move is\naudited as `thread.pull_handed_off` and noticed on both threads. It is\nrefused (409, naming the pull request) when `duplicate_of` is not open or\nin review, or already tracks an open pull request in the same\nrepository. Every other close withdraws the pull requests: out of the\nmerge queue, then closed with a comment naming the reason.",
         "operationId": "close_abandoned_thread",
         "parameters": [
           {

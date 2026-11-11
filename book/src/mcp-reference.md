@@ -592,7 +592,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `create_thread`
 
-**Create thread.** Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.
+**Create thread.** Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too. With supersedes, the named thread (an open or in-review thread you may close: its producer, its claim holder, or a maintainer, with thread:transition) is closed as superseded by the new one in the same transaction, as close_abandoned_thread with duplicate_of would close it: its dependents move to the new thread and its open pull requests are handed to it, not withdrawn, and it does not hold its ticket against the new thread. Use it for a follow-up round of a task. Any refusal creates nothing.
 
 **Capability:** `workspace:write`
 
@@ -736,6 +736,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "priority": {
       "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)",
       "type": "integer"
+    },
+    "supersedes": {
+      "description": "a thread this one replaces, such as the previous round of the same task; it is closed as superseded by the new thread, which takes its dependents and its open pull requests",
+      "format": "uuid",
+      "type": "string"
     },
     "title": {
       "type": "string"
@@ -1480,7 +1485,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `close_abandoned_thread`
 
-**Close abandoned thread.** Close an open or in-review thread that will not land, as a duplicate, abandoned, or superseded. The MCP twin of REST POST /threads/:id/close-abandoned. Allowed for the thread's producer, its claim holder, or a maintainer, and audited as thread.close_abandoned. A thread with a result keeps every landing gate (separation of duties, required reviewers, land gate); a thread with no result skips the review gates. A duplicate records a duplicates reference to duplicate_of; a superseded thread records duplicate_of supersedes it. Each open dependent of a duplicate or superseded thread then depends on duplicate_of instead and gets a notice, unless the move would make a cycle; an abandoned thread's dependents keep waiting. Returns the closed thread.
+**Close abandoned thread.** Close an open or in-review thread that will not land, as a duplicate, abandoned, or superseded. The MCP twin of REST POST /threads/:id/close-abandoned. Allowed for the thread's producer, its claim holder, or a maintainer, and audited as thread.close_abandoned. A thread with a result keeps every landing gate (separation of duties, required reviewers, land gate); a thread with no result skips the review gates. A duplicate records a duplicates reference to duplicate_of; a superseded thread records duplicate_of supersedes it. Each open dependent of a duplicate or superseded thread then depends on duplicate_of instead and gets a notice, unless the move would make a cycle; an abandoned thread's dependents keep waiting. A superseded thread with duplicate_of hands its open pull requests to duplicate_of, which must be open or in review and not already tracking an open pull request in the same repository: they stay open and queued, and its rounds deliver to them. Every other close withdraws them (out of the merge queue, then closed). Returns the closed thread.
 
 **Capability:** `thread:transition`
 
@@ -1490,7 +1495,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "duplicate_of": {
-      "description": "The thread that covers this one: required for duplicate, optional for superseded, refused for abandoned. Must be a live thread you can read in the same workspace",
+      "description": "The thread that covers this one: required for duplicate, optional for superseded, refused for abandoned. Must be a live thread you can read in the same workspace. A superseded thread's open pull requests move to it",
       "format": "uuid",
       "type": "string"
     },
