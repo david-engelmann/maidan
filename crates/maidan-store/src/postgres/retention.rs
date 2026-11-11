@@ -348,6 +348,16 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         owner: "workspace_id",
         partitioned: Some(&partitions::AGENT_WORK_DLQ),
     },
+    // A hook run is the claim on one event (0234). A lag resume reads forward
+    // from a recent watermark, so a claim this old guards nothing.
+    TerminalRows {
+        table: "maidan_fsm_hook_runs",
+        age: "created_at",
+        terminal: "TRUE",
+        hold: "d.workspace_id",
+        owner: "workspace_id",
+        partitioned: None,
+    },
 ];
 
 /// Delete up to `limit` terminal rows older than `cutoff` from each delivery

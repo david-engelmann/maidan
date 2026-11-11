@@ -30,6 +30,7 @@ mod explorer;
 mod export;
 mod freeze;
 mod glossary;
+mod id_scope;
 mod land_gate;
 mod member;
 mod memory_block;
@@ -659,9 +660,7 @@ const MEMBER_SCOPED_TOOLS: &[&str] = &[
 ///
 /// Listed rather than omitted so that "not gated" is a decision with a reason
 /// attached, and a new tool cannot land in the gap between the two lists.
-/// Referenced only by the guard below — the gate itself needs no list of what
-/// it does *not* cover.
-#[cfg(test)]
+/// The id guard (`id_scope`) refuses a `member_id` tool on none of these lists.
 const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
     "get_member_occupancy",
     "get_member_wip",
@@ -670,17 +669,15 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
     "usage_rollup",
 ];
 
-/// Tools where `member_id` is the object of an administrative or routing
-/// action, not the caller identity. Those arguments remain legitimate targets.
 /// Tools whose `member_id` is personal state *or* an administrative target
 /// depending on another argument, so the decision is made in the handler where
 /// that argument is visible. `add_member_skill`: a routing tag is the member's
 /// own declaration and only they may set it; a governance skill is authority an
 /// operator confers on someone else under `channel:admin`.
-#[cfg(test)]
 const MEMBER_ARGUMENT_SCOPED_TOOLS: &[&str] = &["add_member_skill", "remove_member_skill"];
 
-#[cfg(test)]
+/// Tools where `member_id` is the object of an administrative or routing
+/// action, not the caller identity. Those arguments remain legitimate targets.
 const MEMBER_TARGET_TOOLS: &[&str] = &[
     "add_channel_member",
     "remove_channel_member",
@@ -691,65 +688,6 @@ const MEMBER_TARGET_TOOLS: &[&str] = &[
     "record_mention",
 ];
 
-/// Tools whose `channel_id` is checked for channel access before dispatch.
-const CHANNEL_SCOPED_TOOLS: &[&str] = &[
-    "list_threads",
-    "create_thread",
-    "claim_next_thread",
-    "wait_for_ready",
-    "wait_for_claim_expired",
-    "wait_for_claim_failed",
-    "get_queue_depth",
-    "get_channel_occupancy",
-    "list_recently_active_threads",
-    "mute_channel",
-    "unmute_channel",
-    "list_dlq",
-    "create_task_schedule",
-    "create_recipe",
-    "list_unclaimable",
-    "list_blocked_threads",
-    "follow_channel",
-    "watch_pull",
-];
-
-/// Tools whose optional `channel_id` and `thread_id` are both checked before
-/// dispatch.
-const CHANNEL_AND_THREAD_SCOPED_TOOLS: &[&str] = &[
-    "list_tombstones",
-    "get_kind_census",
-    "wait_for_blocked_resolved",
-    "wait_for_landed",
-];
-
-/// Tools with a `channel_id` that is deliberately not checked for channel
-/// access at dispatch, each for a reason its handler or the store carries.
-/// Checked by `every_channel_id_tool_is_classified`.
-///
-/// - The membership tools: an admin manages a private channel it is not in, so
-///   the handler checks the workspace instead (`channel::own_channel`).
-/// - `create_share_ticket`: the store requires the channel, owner and creator
-///   to be live in the ticket's workspace.
-/// - `unfollow_channel`: deletes only the caller's own follow row.
-/// - `seed_from_message`: scoped by its `message_id`.
-/// - `search_messages`: filters its results by access.
-#[cfg(test)]
-const CHANNEL_HANDLER_SCOPED_TOOLS: &[&str] = &[
-    "add_channel_member",
-    "list_channel_members",
-    "remove_channel_member",
-    "create_share_ticket",
-    "unfollow_channel",
-    "seed_from_message",
-    "search_messages",
-];
-
-/// Pre-dispatch per-channel authorization for point-access content tools.
-/// Bypass callers pass through; DM tools rely on their own participant checks
-/// (the `__dm__` channel is exempt in `ensure_*`); aggregate reads
-/// (`list_channels` / `get_workspace_context` / `search_messages`) filter their
-/// result sets separately. A tool whose id arg is absent/malformed is left to
-/// its handler's own decode error.
 /// A tool naming a workspace names the caller's own. Seven tools took a
 /// `workspace_id` and never compared it with the token's (`list_channels`,
 /// `get_workspace_context`, `open_dm_conversation` and others), so any
@@ -792,181 +730,6 @@ pub fn check_argument_scope(auth: &AuthContext, name: &str, args: &Value) -> Res
     enforce_member_self_scope(auth, name, args)
 }
 
-async fn enforce_channel_access(
-    server: &crate::server::McpServer,
-    auth: &AuthContext,
-    name: &str,
-    args: &Value,
-) -> Result<(), McpError> {
-    if auth.bypass {
-        return Ok(());
-    }
-    let store = server.store.as_ref();
-    let field = |key: &str| -> Option<uuid::Uuid> {
-        args.get(key)
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok())
-    };
-    match name {
-        name if CHANNEL_SCOPED_TOOLS.contains(&name) => {
-            // These tools' channel_id is optional; gate it only when present
-            // so a caller can't long-poll a private channel they can't access.
-            if let Some(id) = field("channel_id") {
-                maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
-                    .await?;
-            }
-        }
-        "list_messages"
-        | "post_message"
-        | "get_thread_context"
-        | "snapshot_thread_context"
-        | "get_tool_transcript"
-        | "pin_message"
-        | "unpin_message"
-        | "list_pins"
-        | "assign_thread"
-        | "claim_thread"
-        | "unassign_thread"
-        | "renew_claim"
-        | "acknowledge_claim"
-        | "release_claim"
-        | "set_thread_footprint"
-        | "set_thread_attributes"
-        | "submit_plan"
-        | "amend_plan"
-        | "add_thread_dependency"
-        | "list_thread_dependencies"
-        | "remove_thread_dependency"
-        | "list_thread_dependents"
-        | "add_thread_required_skill"
-        | "list_thread_required_skills"
-        | "remove_thread_required_skill"
-        | "set_thread_result"
-        | "set_thread_lineage"
-        | "clear_thread_lineage"
-        | "get_thread_result"
-        | "get_thread_lineage"
-        | "list_result_deliveries"
-        | "replay_result_delivery"
-        | "set_thread_owner"
-        | "rename_thread"
-        | "set_thread_steer"
-        | "get_thread_steer"
-        | "set_thread_budget"
-        | "update_thread_budget"
-        | "get_thread_budget"
-        | "report_usage"
-        | "usage_rollup"
-        | "list_child_threads"
-        | "mute_thread"
-        | "unmute_thread"
-        | "wait_for_result"
-        | "get_dependency_results"
-        | "request_approval"
-        | "mark_unclaimable"
-        | "cancel_thread"
-        | "mark_claimable"
-        | "set_thread_block"
-        | "get_thread_block"
-        | "clear_thread_block"
-        | "declare_status"
-        | "get_thread_status"
-        | "get_thread_version"
-        | "get_review_packet"
-        | "list_thread_artifacts"
-        | "link_thread_artifact"
-        | "unlink_thread_artifact"
-        | "add_evidence_record"
-        | "list_evidence_records"
-        | "set_wait"
-        | "cancel_wait"
-        | "get_wait"
-        | "set_priority"
-        | "get_priority"
-        | "attach_memory_block"
-        | "detach_memory_block"
-        | "list_thread_memory_blocks"
-        | "set_review_requirement"
-        | "get_review_requirement"
-        | "clear_review_requirement"
-        | "list_reviewers"
-        | "remove_reviewer"
-        | "add_reviewer"
-        | "submit_review"
-        | "get_review_status"
-        | "list_reviews"
-        | "list_review_history"
-        | "transition_thread"
-        | "close_abandoned_thread"
-        | "set_land_gate"
-        | "get_land_gate"
-        | "list_land_gate_history"
-        | "require_land_gate"
-        | "clear_land_gate"
-        | "advise_land_gate"
-        | "register_thread_pull"
-        | "wait_for_event"
-        | "follow_thread" => {
-            if let Some(id) = field("thread_id") {
-                maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
-            }
-        }
-        name if CHANNEL_AND_THREAD_SCOPED_TOOLS.contains(&name) => {
-            if let Some(id) = field("channel_id") {
-                maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
-                    .await?;
-            }
-            if let Some(id) = field("thread_id") {
-                maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
-            }
-        }
-        "edit_message"
-        | "record_mention"
-        | "cast_vote"
-        | "retract_vote"
-        | "add_reaction"
-        | "remove_reaction"
-        | "list_reactions"
-        | "seed_from_message"
-        | "list_message_backlinks"
-        | "tombstone_message"
-        | "list_message_edits"
-        | "list_votes" => {
-            if let Some(id) = field("message_id") {
-                maidan_auth::ensure_message_access(store, auth, maidan_types::MessageId(id))
-                    .await?;
-            }
-        }
-        "add_reference" | "list_references" => {
-            for (kind_key, id_key) in [("src_kind", "src_id"), ("dst_kind", "dst_id")] {
-                if let (Some(kv), Some(id)) = (args.get(kind_key), field(id_key)) {
-                    match serde_json::from_value::<maidan_types::RefSide>(kv.clone()) {
-                        Ok(maidan_types::RefSide::Thread) => {
-                            maidan_auth::ensure_thread_access(
-                                store,
-                                auth,
-                                maidan_types::ThreadId(id),
-                            )
-                            .await?;
-                        }
-                        Ok(maidan_types::RefSide::Message) => {
-                            maidan_auth::ensure_message_access(
-                                store,
-                                auth,
-                                maidan_types::MessageId(id),
-                            )
-                            .await?;
-                        }
-                        Err(_) => {}
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
 pub async fn dispatch(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -975,9 +738,9 @@ pub async fn dispatch(
     call: &crate::call_context::CallContext,
 ) -> Result<Value, McpError> {
     check_argument_scope(auth, name, args)?;
-    enforce_channel_access(server, auth, name, args).await?;
+    id_scope::enforce(server, auth, name, args).await?;
     // Admitted: the capability, the workspace's parking place and the
-    // allowance were checked before dispatch, and the arguments and channel
+    // allowance were checked before dispatch, and the arguments and id
     // access just now. Only then does a wait stop holding the request's
     // in-flight permit. An auth-disabled caller holds no parking place, so it
     // keeps its permit (RED-008).
@@ -1469,51 +1232,6 @@ mod self_scope_tests {
             both.is_empty(),
             "member_id tools listed in multiple semantic classes: {both:?}"
         );
-    }
-
-    /// A tool that names a channel is either checked for access to it before
-    /// dispatch or listed with the reason it is not. The channel-membership
-    /// tools were neither, and let one workspace's admin list and empty
-    /// another's private channel.
-    #[test]
-    fn every_channel_id_tool_is_classified() {
-        let declared: Vec<String> = catalog()
-            .iter()
-            .filter_map(|tool| {
-                let name = tool.get("name")?.as_str()?;
-                declared_arguments(name)?
-                    .contains("channel_id")
-                    .then(|| name.to_owned())
-            })
-            .collect();
-        assert!(
-            declared.len() > 15,
-            "expected broad channel_id schema coverage; found {}",
-            declared.len()
-        );
-        let classes = [
-            CHANNEL_SCOPED_TOOLS,
-            CHANNEL_AND_THREAD_SCOPED_TOOLS,
-            CHANNEL_HANDLER_SCOPED_TOOLS,
-        ];
-        for name in &declared {
-            let claimed = classes
-                .iter()
-                .filter(|c| c.contains(&name.as_str()))
-                .count();
-            assert_eq!(
-                claimed, 1,
-                "channel_id tool {name} must be in exactly one class, found {claimed}"
-            );
-        }
-        for class in classes {
-            for name in class {
-                assert!(
-                    declared.iter().any(|d| d == name),
-                    "{name} is classified but declares no channel_id"
-                );
-            }
-        }
     }
 
     /// The gate reads one argument: `member_id`. A tool listed as
