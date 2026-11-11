@@ -146,6 +146,9 @@ mod concurrent_migrations;
 #[path = "../context_pack_ties.rs"]
 mod context_pack_ties;
 
+#[path = "../credits.rs"]
+mod credits;
+
 #[path = "../crypto_shredding.rs"]
 mod crypto_shredding;
 

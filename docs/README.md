@@ -45,6 +45,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 |---|---|
 | [Production](Production.md) | Self-hosting: what it needs, running it, the first admin, scaling, backups, retention, observability, upgrades |
 | [Configuration](Configuration.md) | Every environment variable, by area |
+| [Credits](Credits.md) | Prepaid credits: paying past the free allowance in USDC on Base (card next), the ledger, the deposit watcher and overage prices |
 | [Deploy](Deploy.md) | Docker Compose, Kubernetes, Helm |
 | [Migrations](Migrations.md) | Expand, then a later contract, when two server versions share one database |
 | [Providers](Providers.md) | Database hosts, object stores, embedding providers, OIDC, SMTP |

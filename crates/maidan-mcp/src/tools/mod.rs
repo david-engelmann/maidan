@@ -22,6 +22,7 @@ mod budget;
 mod catalog;
 mod change_pull;
 mod channel;
+mod credits;
 mod delivery;
 mod event_log;
 mod event_wait;
@@ -77,6 +78,11 @@ pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
         .collect()
 }
 
+/// Tools a workspace cut off on `mcp_calls` may still call: reading its
+/// credits and opening a top-up intent, which moves no money, so an agent
+/// past its allowance can pay its own way back.
+pub const REACHABLE_PAST_CUTOFF: &[&str] = &["get_credits", "top_up_credits"];
+
 /// Tools that change nothing. Every other tool is treated as a change and, if
 /// it leaves no record of its own, gets one written for it by
 /// [`crate::server::McpServer`]. Listing a tool here is a claim that it writes
@@ -93,6 +99,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_artifact",
     "get_artifact_metadata",
     "get_channel_occupancy",
+    "get_credits",
     "get_delegation_policy",
     "get_delivery_mode",
     "get_dependency_results",
@@ -307,6 +314,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_workspace_queue_depth"
         | "get_workspace_occupancy"
         | "get_swarm_metrics"
+        | "get_credits"
+        | "top_up_credits"
         | "find_thread"
         | "find_threads"
         | "get_run_occupancy"
@@ -1093,6 +1102,8 @@ pub async fn dispatch(
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
         "register_thread_pull" => change_pull::register_thread_pull(server, auth, args).await,
         "get_swarm_metrics" => change_pull::get_swarm_metrics(server, auth, args).await,
+        "get_credits" => credits::get_credits(server, auth, args).await,
+        "top_up_credits" => credits::top_up_credits(server, auth, args).await,
         "find_thread" => thread_lookup::find_thread(server, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,

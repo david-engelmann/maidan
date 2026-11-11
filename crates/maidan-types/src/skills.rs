@@ -5,12 +5,16 @@
 //! requires. That openness is the point, and for routing it is harmless: the
 //! worst a bogus skill buys you is work you cannot do.
 //!
-//! Two of them are not routing tags. The close-gate only counts a green pass
+//! Three of them are not routing tags. The close-gate only counts a green pass
 //! from a member who declared [`LAND_GATE_SKILL`], and the adapter only arms
-//! `request_changes` for a producer who declared [`REVIEW_SKILL`]. For those
-//! two, *declaring the skill is what qualifies you to approve* — so a
-//! self-service grant hands the holder the qualification the gate exists to
-//! check, and the separation-of-duties test is all that is left standing.
+//! `request_changes` for a producer who declared [`REVIEW_SKILL`]. And a
+//! review's result posts the `pre-review` commit status, which a merge gate
+//! outside Maidan reads as "a second family passed this head", only for a
+//! member holding [`PRE_REVIEW_SKILL`]. For those three, *holding the skill is
+//! what qualifies you to approve* — so a self-service grant hands the holder
+//! the qualification the gate exists to check, and the separation-of-duties
+//! test is all that is left standing. Each must be granted by `channel:admin`,
+//! never self-declared.
 //!
 //! So granting one ratchets, exactly as the gates themselves ratchet:
 //! the ordinary path keeps `workspace:write`, and the operation that *widens*
@@ -25,11 +29,16 @@
 use crate::land_gate::LAND_GATE_SKILL;
 use crate::review::REVIEW_SKILL;
 
+/// The skill a member must hold for its review's result to post the
+/// `pre-review` commit status. That status is a merge gate's input, so
+/// holding the skill is approval authority, not a routing tag.
+pub const PRE_REVIEW_SKILL: &str = "pre-review";
+
 /// The skills whose *presence on a member* is read as authority by a gate.
 ///
 /// Kept sorted so [`is_governance_skill`] can binary-search, and asserted sorted
 /// by a test — an out-of-order entry would silently stop gating a skill.
-pub const GOVERNANCE_SKILLS: &[&str] = &[LAND_GATE_SKILL, REVIEW_SKILL];
+pub const GOVERNANCE_SKILLS: &[&str] = &[LAND_GATE_SKILL, PRE_REVIEW_SKILL, REVIEW_SKILL];
 
 /// True when granting `skill` widens who may approve, and so needs the
 /// elevated capability.
@@ -64,6 +73,8 @@ mod tests {
             "Land_Gate",
             "review",
             "REVIEW",
+            "pre-review",
+            " PRE-REVIEW ",
         ] {
             assert!(
                 is_governance_skill(spelling),
@@ -75,7 +86,15 @@ mod tests {
     /// Ordinary routing tags stay self-service — the gate is narrow on purpose.
     #[test]
     fn routing_skills_are_not_governance() {
-        for skill in ["rust", "land_gates", "reviewer", "pre-review", "", "gate"] {
+        for skill in [
+            "rust",
+            "land_gates",
+            "reviewer",
+            "pre_review",
+            "prereview",
+            "",
+            "gate",
+        ] {
             assert!(!is_governance_skill(skill), "{skill} must stay open");
         }
     }

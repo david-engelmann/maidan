@@ -77,6 +77,7 @@ async fn document_server(fetches: Arc<AtomicUsize>) -> String {
                 doc_hits.fetch_add(1, Ordering::SeqCst);
                 async {
                     axum::Json(serde_json::json!({
+                        "client_id": LISTED,
                         "client_name": "Document Client",
                         "redirect_uris": [REDIRECT],
                         "scope": "workspace:read",
@@ -89,6 +90,7 @@ async fn document_server(fetches: Arc<AtomicUsize>) -> String {
             "/oauth/unscoped.json",
             get(|| async {
                 axum::Json(serde_json::json!({
+                    "client_id": UNSCOPED,
                     "client_name": "Claude",
                     "redirect_uris": [REDIRECT],
                     "grant_types": ["authorization_code", "refresh_token"],

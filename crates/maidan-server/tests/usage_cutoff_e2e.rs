@@ -1,5 +1,5 @@
 //! The hard allowance cutoff: an open sign-up workspace past its free
-//! allowance on a meter is refused that meter's work with a 429, while an
+//! allowance on a meter is refused that meter's work with a 402, while an
 //! operator-created or invited workspace past the same allowance is only
 //! marked. One workspace's usage never cuts off another.
 
@@ -112,10 +112,29 @@ async fn an_open_signup_workspace_past_its_allowance_is_refused_while_an_operato
 
     // The open workspace is refused, and told why.
     let (code, body) = status(&h, &open_token, &home(open)).await;
-    assert_eq!(code, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(code, StatusCode::PAYMENT_REQUIRED, "{body}");
     assert!(
         body.to_string().contains("free allowance for requests"),
         "{body}"
+    );
+    // A 402 problem that says how to pay the way back, and the credits stay
+    // reachable so it can.
+    assert_eq!(
+        body["type"], "https://maidan.world/problems/payment-required",
+        "{body}"
+    );
+    assert!(
+        body["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("POST /workspaces/{id}/credits/top-ups"),
+        "{body}"
+    );
+    assert_eq!(
+        status(&h, &open_token, &format!("/workspaces/{}/credits", open.0))
+            .await
+            .0,
+        StatusCode::OK
     );
     let told = store
         .list_notifications(open_admin, false, 10)
@@ -261,7 +280,7 @@ async fn past_its_stored_bytes_an_open_workspace_cannot_add_messages_while_other
 
     let open_bearer = token(store, open, open_admin, caps()).await;
     let res = post(open_bearer.clone(), a_thread(store, open).await).await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED);
     let body: Value = res.json().await.unwrap_or(Value::Null);
     assert!(
         body.to_string().contains("free allowance for stored_bytes"),
@@ -358,7 +377,7 @@ async fn past_its_stored_bytes_an_open_workspace_cannot_seed_send_over_a2a_or_im
             Some(serde_json::json!({ "title": "branch", "inclusion": "quote" })),
         )
         .await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "seed");
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED, "seed");
 
     let res = h
         .client
@@ -388,7 +407,7 @@ async fn past_its_stored_bytes_an_open_workspace_cannot_seed_send_over_a2a_or_im
                 Some(bundle.clone()),
             )
             .await;
-        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "import {mode}");
+        assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED, "import {mode}");
     }
     assert_eq!(
         store.workspace_origin(open).await.unwrap(),
@@ -468,14 +487,14 @@ async fn a_cut_off_tenant_cannot_import_into_or_restore_over_another_that_still_
     };
     assert_eq!(
         post_to(&h, &a_bearer, a_thread_id).await.status(),
-        StatusCode::TOO_MANY_REQUESTS
+        StatusCode::PAYMENT_REQUIRED
     );
     assert_eq!(
         upload(&a_bearer, b"a's bytes past the cutoff")
             .await
             .unwrap()
             .status(),
-        StatusCode::TOO_MANY_REQUESTS
+        StatusCode::PAYMENT_REQUIRED
     );
     // A cannot post into B's thread either.
     assert!(!post_to(&h, &a_bearer, b_thread_id)
@@ -504,7 +523,7 @@ async fn a_cut_off_tenant_cannot_import_into_or_restore_over_another_that_still_
             Some(b_bundle.clone()),
         )
         .await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "A import new");
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED, "A import new");
     assert_eq!(store.count_workspaces().await.unwrap(), before);
     // Nor restore over B.
     let res = h
@@ -590,7 +609,7 @@ async fn a_refused_upload_leaves_no_bytes_behind_over_rest_or_mcp() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED);
     assert!(!state
         .artifacts
         .exists(&Sha256::compute(rest_bytes))
@@ -605,7 +624,7 @@ async fn a_refused_upload_leaves_no_bytes_behind_over_rest_or_mcp() {
             Some(serde_json::json!({})),
         )
         .await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED);
     let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM maidan_artifacts")
         .fetch_one(&h.pool)
         .await
@@ -636,6 +655,9 @@ async fn a_refused_upload_leaves_no_bytes_behind_over_rest_or_mcp() {
         said.to_string().contains("free allowance for stored_bytes"),
         "{said}"
     );
+    // Over MCP the refusal is a tool error the model reads, not a protocol
+    // error.
+    assert_eq!(said["result"]["isError"], true, "{said}");
     assert!(!state
         .artifacts
         .exists(&Sha256::compute(mcp_bytes))
@@ -723,7 +745,7 @@ async fn a_workspace_past_its_embedding_allowance_cannot_reindex_itself_while_an
             Some(serde_json::json!({ "workspace_id": cut.0 })),
         )
         .await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.status(), StatusCode::PAYMENT_REQUIRED);
 
     let res = h
         .send(

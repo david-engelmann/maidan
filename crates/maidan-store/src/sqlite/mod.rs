@@ -17,6 +17,7 @@ mod change_metrics;
 mod channel_members;
 mod channels;
 mod content_keys;
+mod credits;
 mod data_audited;
 mod delegation_grants;
 pub mod delivery_cursor;

@@ -107,8 +107,8 @@ agent holds, and which a delegation grant can lend — reaches none of them.
 
 **Skills come in two kinds.** A routing skill (`python`, `rust`) is something a
 member declares about itself, and only that member may set or remove it. A
-governance skill (`land_gate`, `review`) is what a gate reads as authority to
-approve, so it is conferred by an operator holding `channel:admin`, on someone
+governance skill (`land_gate`, `pre-review`, `review`) is what a gate reads as
+authority to approve, so it is conferred by an operator holding `channel:admin`, on someone
 else, and is never self-service — otherwise an agent could grant itself the
 approval a gate exists to check. The same operator can revoke it without the
 holder's cooperation. Share-ticket ownership likewise comes from the issuer's

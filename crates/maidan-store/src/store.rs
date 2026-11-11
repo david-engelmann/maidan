@@ -874,6 +874,62 @@ pub trait UsageLedgerStore: Send + Sync {
         workspace_id: WorkspaceId,
         since: chrono::NaiveDate,
     ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
+    /// A workspace's credit balance in USD micros: the sum of its ledger.
+    async fn credit_balance(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
+    /// A workspace's most recent credit ledger rows, newest first.
+    async fn list_credit_ledger(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<CreditEntry>, StoreError>;
+    /// Open a top-up intent for the dollars plus the first candidate offset
+    /// no open intent on the chain holds. `Conflict` at the per-workspace cap
+    /// or when every candidate is taken.
+    async fn create_credit_top_up(&self, new: &NewTopUp) -> Result<TopUp, StoreError>;
+    /// A workspace's intents still offered at `now`, newest first.
+    async fn list_open_credit_top_ups(
+        &self,
+        workspace_id: WorkspaceId,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<TopUp>, StoreError>;
+    /// The workspace whose open intent asks for exactly this transfer, if
+    /// any. A peek, so the caller can find whom to tell before recording.
+    async fn find_credit_top_up_workspace(
+        &self,
+        log: &DepositLog,
+        now: DateTime<Utc>,
+    ) -> Result<Option<WorkspaceId>, StoreError>;
+    /// Record one confirmed transfer: credit and close the matching intent,
+    /// or keep it as unmatched. A log seen before changes nothing.
+    async fn record_credit_deposit(
+        &self,
+        log: &DepositLog,
+        effects: &DepositEffects,
+        now: DateTime<Utc>,
+    ) -> Result<DepositOutcome, StoreError>;
+    /// Charge a priced meter's units past the allowance that no charge covers
+    /// yet. A rerun or a second replica charges nothing new.
+    async fn charge_credits(&self, charge: &CreditCharge) -> Result<ChargeOutcome, StoreError>;
+    /// Add credit by hand.
+    async fn grant_credits(&self, grant: &CreditGrant) -> Result<CreditEntry, StoreError>;
+    /// Transfers that matched no intent, newest first.
+    async fn list_unmatched_credit_deposits(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<UnmatchedDeposit>, StoreError>;
+    /// The last block the deposit watcher scanned for a chain and address.
+    async fn credit_cursor(
+        &self,
+        chain: CreditChain,
+        address: &str,
+    ) -> Result<Option<i64>, StoreError>;
+    /// Move the deposit watcher's cursor forward (never back).
+    async fn set_credit_cursor(
+        &self,
+        chain: CreditChain,
+        address: &str,
+        block: i64,
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]

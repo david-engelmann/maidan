@@ -259,6 +259,12 @@ See [OAuth](OAuth.md).
 | `MAIDAN_CHAIN_VERIFY_SECS` | unset | Verify every workspace's event-log hash chain at this interval, such as `86400`. See [Event-log integrity](Production.md#event-log-integrity). |
 | `MAIDAN_USAGE_METER_FLUSH_SECS` | `60` | How often usage counters are written. |
 | `MAIDAN_FREE_ALLOWANCE` | unset | Per-meter free allowance, such as `requests=100000,mcp_calls=50000,stored_bytes=1073741824`. An unknown or repeated meter or a bad number refuses boot. |
+| `MAIDAN_OVERAGE_PRICES` | unset | What overage past the free allowance costs, per meter, as `meter=micros/units`: `mcp_calls=1000000/100000` charges 1,000,000 USD micros (one dollar) per 100,000 calls. Comma-separated; both numbers whole and at least 1. `stored_bytes` takes no price (it stays a hard cap). Charged only with `MAIDAN_CREDITS_ADDRESS` set. An unknown or repeated meter or a malformed price refuses boot. See [Credits](Credits.md). |
+| `MAIDAN_CREDITS_ADDRESS` | unset | The EVM address that receives USDC top-ups. Unset, credits are off: nothing is charged, no top-up opens and nothing watches the chain. The server only reads the chain; this is an address, never a key. A malformed address refuses boot. |
+| `MAIDAN_CREDITS_CHAIN` | `base` | `base` (chain id 8453) or `base-sepolia` (84532, for testing). |
+| `MAIDAN_CREDITS_RPC_URL` | the chain's public endpoint | A JSON-RPC endpoint for the chain (`https://mainnet.base.org`, `https://sepolia.base.org` by default). The public endpoints rate-limit `eth_getLogs`; a provider's endpoint is steadier. |
+| `MAIDAN_CREDITS_CONFIRMATIONS` | `5` | Blocks a transfer must have on top of it before it is credited. |
+| `MAIDAN_CREDITS_POLL_SECS` | `15` | How often the deposit watcher polls the chain. |
 | `MAIDAN_OPS_ALERT_CHANNEL` | unset | A Slack channel id (`C…`) that the server posts to on boot and when a background loop panics, stalls, keeps failing or exits. Needs the Slack bot token. See [alerts](https://github.com/david-engelmann/maidan/blob/main/docs/alerts/README.md). |
 | `MAIDAN_OPS_FAULT` | unset | `<loop>:<panic\|stall\|fail\|exit>` injects one fault after boot, to prove the alerts. Refused in production. |
 

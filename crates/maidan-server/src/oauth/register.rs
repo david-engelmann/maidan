@@ -245,6 +245,11 @@ impl RegistrationError {
     pub fn code(&self) -> &'static str {
         self.code
     }
+
+    /// Why the metadata was refused, for a person to read.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
 }
 
 impl IntoResponse for RegistrationError {

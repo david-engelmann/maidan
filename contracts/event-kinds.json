@@ -7,6 +7,7 @@
   "claim_failed",
   "claim_stalled",
   "claim_unacknowledged",
+  "credits_deposited",
   "intake_accepted",
   "intake_proposed",
   "intake_rejected",

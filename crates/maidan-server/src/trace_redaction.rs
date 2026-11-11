@@ -9,8 +9,9 @@
 //! its one-time `code` there.
 //!
 //! Response headers are marked the same way (`Set-Cookie` holds the browser
-//! session, `Mcp-Session-Id` names a live MCP session) before the response is
-//! logged.
+//! session, `Mcp-Session-Id` names a live MCP session, and `Location` carries
+//! the authorization code of the redirect after OAuth consent) before the
+//! response is logged.
 
 use std::sync::Arc;
 
@@ -33,10 +34,13 @@ pub fn sensitive_request_headers() -> Vec<HeaderName> {
     ]
 }
 
-/// Response headers whose value is a credential.
+/// Response headers whose value is a credential. `Location` is one on the
+/// consent decision's redirect, which hands the client its `code`, and the
+/// response layer cannot tell that redirect from any other.
 pub fn sensitive_response_headers() -> Vec<HeaderName> {
     vec![
         header::SET_COOKIE,
+        header::LOCATION,
         HeaderName::from_static("mcp-session-id"),
     ]
 }
@@ -113,7 +117,7 @@ mod tests {
             );
         }
         let response = sensitive_response_headers();
-        for name in ["set-cookie", "mcp-session-id"] {
+        for name in ["set-cookie", "location", "mcp-session-id"] {
             assert!(
                 response.iter().any(|h| h == name),
                 "{name} is not marked sensitive on responses"

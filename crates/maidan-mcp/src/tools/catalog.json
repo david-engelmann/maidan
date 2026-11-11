@@ -3346,6 +3346,69 @@
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Get credits"
+    },
+    "description": "The workspace's prepaid credits: balance_micros (USD micros, one USDC base unit each; below zero, overage went unpaid and the priced meters are cut off until a deposit covers it), whether this instance takes payment (enabled) and by which methods (usdc now; card next), the chain, receiving address and USDC contract, the overage price per meter, the open top-up intents and the recent ledger (deposits, charges, grants). Works past the allowance cutoff. The twin of GET /workspaces/{id}/credits.",
+    "inputSchema": {
+      "properties": {
+        "workspace_id": {
+          "description": "your own workspace (whoami's workspace_id)",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_credits"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Top up credits"
+    },
+    "description": "Ask to be paid: opens a top-up intent for usd dollars. method usdc (the default) answers the exact amount to send (amount_micros USDC base units, the dollars plus a small offset that names your workspace), the receiving address, the chain and its id, the USDC contract, an EIP-681 wallet link and expires_at (24 hours). With a wallet, pay that exact amount of USDC on that chain yourself; once the transfer has its confirmations the balance is credited and a cutoff on a priced meter lifts. A different amount is not matched. Without a wallet, ask with method card and hand the checkout_url it answers to a person; card is the next rail, and an instance that has not configured it says so. get_credits lists the methods this instance offers. Moves no money. Call it when a call is refused as past the free allowance (HTTP 402, or a tool error naming the meter). Works past the cutoff. At most 20 open intents per workspace. The twin of POST /workspaces/{id}/credits/top-ups.",
+    "inputSchema": {
+      "properties": {
+        "method": {
+          "description": "usdc (default): a USDC transfer on Base, which an agent with a wallet sends itself; card: a checkout link for a person",
+          "enum": [
+            "usdc",
+            "card"
+          ],
+          "type": "string"
+        },
+        "usd": {
+          "description": "whole dollars to add, 1 to 10000",
+          "maximum": 10000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "workspace_id": {
+          "description": "your own workspace (whoami's workspace_id)",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "usd",
+        "workspace_id"
+      ],
+      "type": "object"
+    },
+    "name": "top_up_credits"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Wait for event"
     },
     "description": "Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.",

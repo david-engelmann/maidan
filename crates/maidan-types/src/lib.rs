@@ -8,6 +8,7 @@ pub mod cancel;
 pub mod change_metrics;
 pub mod claim_release;
 pub mod content_seal;
+pub mod credits;
 pub mod cursor;
 pub mod delegation;
 pub mod egress;
@@ -64,6 +65,7 @@ pub use cancel::*;
 pub use change_metrics::*;
 pub use claim_release::*;
 pub use content_seal::*;
+pub use credits::*;
 pub use cursor::*;
 pub use delegation::*;
 pub use egress::*;
@@ -113,7 +115,8 @@ pub use trace::*;
 pub use usage::*;
 pub use usage_ledger::*;
 pub use usage_meter::{
-    MeterUsage, MonthlyUsage, OverAllowance, UsageAllowance, UsageMeter, UsageMeterDay, UsageMonth,
+    over_allowance_detail, MeterUsage, MonthlyUsage, OverAllowance, UsageAllowance, UsageMeter,
+    UsageMeterDay, UsageMonth,
 };
 pub use waiter::*;
 pub use wasi::*;

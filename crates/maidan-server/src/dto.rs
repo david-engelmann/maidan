@@ -583,6 +583,41 @@ pub struct ThreadLookupQuery {
     pub pr_number: Option<i64>,
 }
 
+/// Body of `POST /workspaces/{id}/credits/top-ups`.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopUpRequest {
+    /// Whole dollars to add, 1 to 10000.
+    #[schema(minimum = 1, maximum = 10000, example = 5)]
+    pub usd: i64,
+    /// How it is paid: `usdc` (the default), a transfer on Base from any
+    /// wallet; or `card`, a hosted checkout for a person, which is the next
+    /// rail and answers 409 until an instance configures it.
+    #[serde(default)]
+    pub method: maidan_types::TopUpMethod,
+}
+
+/// Body of `POST /operator/workspaces/{id}/credits/grants`.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreditGrantRequest {
+    /// USD micros to add, at most 10,000 dollars.
+    #[schema(minimum = 1, maximum = 10000000000_i64, example = 5000000)]
+    pub usd_micros: i64,
+    /// Why, kept on the ledger row: the transaction hash of an unmatched
+    /// deposit, or the reason for a courtesy credit.
+    #[schema(example = "unmatched deposit 0x54e2…:7")]
+    pub note: String,
+}
+
+/// Query params for the operator's unmatched deposits.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct UnmatchedDepositsQuery {
+    /// At most this many, newest first (default 100, at most 1000).
+    pub limit: Option<i64>,
+}
+
 /// Query params for a month of usage.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

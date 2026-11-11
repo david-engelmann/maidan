@@ -636,7 +636,7 @@ pub async fn get_refresh_token(
 /// Revoke a lineage on an open transaction. The access tokens are revoked as
 /// rows too, not only through their grant, so a lookup that skipped the
 /// grant-liveness join would still refuse them.
-async fn revoke_lineage_on(
+pub(crate) async fn revoke_lineage_on(
     conn: &mut sqlx::PgConnection,
     lineage_id: Uuid,
 ) -> Result<OAuthLineageRevocation, StoreError> {

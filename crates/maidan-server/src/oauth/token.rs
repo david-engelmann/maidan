@@ -150,6 +150,15 @@ async fn exchange_code(
     let code = required(form.code, "code")?;
     let redirect_uri = required(form.redirect_uri, "redirect_uri")?;
     let verifier = required(form.code_verifier, "code_verifier")?;
+    // A verifier shorter than RFC 7636 allows can be found from its
+    // challenge, which every authorize URL shows, and then the code alone
+    // redeems. Such a verifier can never match, so it is refused like a
+    // wrong one, before the code is read.
+    if !is_pkce_verifier(&verifier) {
+        return Err(OAuthError::invalid_grant(
+            "code_verifier must be 43 to 128 characters of A-Z, a-z, 0-9, \"-\", \".\", \"_\" and \"~\" (RFC 7636 section 4.1)",
+        ));
+    }
     let code_hash = opaque_hash(&code);
 
     // Read first, validate everything, consume last: a wrong verifier must
@@ -539,6 +548,25 @@ pub(super) fn opaque_hash(secret: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(secret.as_bytes()))
 }
 
+/// A PKCE verifier as RFC 7636 section 4.1 shapes it: 43 to 128 unreserved
+/// characters. The lower bound is what makes it unguessable from its
+/// challenge.
+pub(super) fn is_pkce_verifier(verifier: &str) -> bool {
+    (43..=128).contains(&verifier.len())
+        && verifier
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~'))
+}
+
+/// An S256 challenge as RFC 7636 section 4.2 shapes it: the unpadded
+/// base64url SHA-256 of a verifier, which is always 43 characters.
+pub(super) fn is_s256_challenge(challenge: &str) -> bool {
+    challenge.len() == 43
+        && challenge
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
 /// A new refresh token and its stored hash.
 fn new_refresh_token() -> (String, String) {
     let mut raw = [0u8; 32];
@@ -563,6 +591,32 @@ mod tests {
         for wider in ["message:post", "workspace:read token:mint", " "] {
             let err = narrowed_scope(Some(wider), &granted).unwrap_err();
             assert_eq!(err.code, OAuthErrorCode::InvalidScope, "{wider:?}");
+        }
+    }
+
+    #[test]
+    fn a_verifier_is_43_to_128_unreserved_characters_and_a_challenge_is_an_s256_digest() {
+        let verifier = "a".repeat(43);
+        assert!(is_pkce_verifier(&verifier));
+        assert!(is_pkce_verifier(&"Az09-._~".repeat(16)));
+        for bad in [
+            "a".repeat(42),
+            "a".repeat(129),
+            format!("{}+", "a".repeat(42)),
+            format!("{} ", "a".repeat(42)),
+            String::new(),
+        ] {
+            assert!(!is_pkce_verifier(&bad), "{bad:?}");
+        }
+        let challenge = opaque_hash(&verifier);
+        assert!(is_s256_challenge(&challenge), "{challenge}");
+        for bad in [
+            "abc".to_string(),
+            "a".repeat(44),
+            format!("{}=", &challenge[..42]),
+            format!("{challenge}A"),
+        ] {
+            assert!(!is_s256_challenge(&bad), "{bad:?}");
         }
     }
 

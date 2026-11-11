@@ -98,6 +98,8 @@
     "get_workspace_occupancy",
     "register_thread_pull",
     "get_swarm_metrics",
+    "get_credits",
+    "top_up_credits",
     "wait_for_event",
     "find_thread",
     "find_threads",

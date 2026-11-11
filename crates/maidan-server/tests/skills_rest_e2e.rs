@@ -283,7 +283,7 @@ async fn an_agent_cannot_grant_itself_a_governance_skill() {
     };
 
     // The escalation this closes: the agent naming itself.
-    for skill in ["land_gate", "review"] {
+    for skill in ["land_gate", "pre-review", "review"] {
         assert_eq!(
             grant(worker_token.clone(), agent.id, skill).await,
             StatusCode::FORBIDDEN,
@@ -354,6 +354,32 @@ async fn an_agent_cannot_grant_itself_a_governance_skill() {
         .unwrap()
         .iter()
         .any(|s| s.skill == "land_gate"));
+
+    // `pre-review` is what lets a review post the status a merge gate reads:
+    // conferred and revoked by the operator, the same way.
+    assert_eq!(
+        grant(admin_token.clone(), agent.id, "pre-review").await,
+        StatusCode::NO_CONTENT
+    );
+    assert!(store
+        .list_member_skills(agent.id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|s| s.skill == "pre-review"));
+    let revoked = client
+        .delete(format!("{base}/members/{}/skills/pre-review", agent.id.0))
+        .bearer_auth(admin_token.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
+    assert!(!store
+        .list_member_skills(agent.id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|s| s.skill == "pre-review"));
 
     // Admin authority over governance is not authority over routing tags: those
     // stay the member's own.

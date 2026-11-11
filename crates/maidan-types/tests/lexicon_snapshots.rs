@@ -509,6 +509,15 @@ fn sample_event(kind: EventKind) -> Event {
             quantity: 100_001,
             allowance: 100_000,
         },
+        EventKind::CreditsDeposited => Event::CreditsDeposited {
+            occurred_at,
+            workspace_id,
+            top_up_id: id(15),
+            usd_micros: 5_001_234,
+            balance_micros: 5_001_234,
+            chain: "base".into(),
+            tx_hash: "0x54e2797a303047b8271f8c7cd19947e4e96eda740a01591dc2839d7b8820d997".into(),
+        },
         EventKind::MessagePosted => Event::MessagePosted {
             occurred_at,
             workspace_id,
@@ -672,6 +681,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::IntakeAccepted
             | EventKind::IntakeRejected
             | EventKind::UsageOverAllowance
+            | EventKind::CreditsDeposited
             | EventKind::MessagePosted
             | EventKind::MessageEdited
             | EventKind::MessageTombstoned

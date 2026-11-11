@@ -94,6 +94,13 @@ problem_response!(
     "The `Idempotency-Key` was already used for a different request (type `problems/idempotency-key-reused`)."
 );
 
+problem_response!(
+    /// 402: added by [`MiddlewareResponses`](super::MiddlewareResponses) to
+    /// every bearer operation, which the hard allowance cutoff can refuse.
+    PaymentRequired,
+    "The workspace is an open sign-up past its free allowance on a meter this month (type `problems/payment-required`). The detail names the meter and how to top up credits: `POST /workspaces/{id}/credits/top-ups`."
+);
+
 /// 429: added by [`MiddlewareResponses`](super::MiddlewareResponses).
 pub struct TooManyRequests;
 

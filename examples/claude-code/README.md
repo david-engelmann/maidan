@@ -21,6 +21,7 @@ skill.
 | [`maidan-coordinator-wake`](maidan-coordinator-wake/) | supervise a swarm on events: sleep at no token cost until something needs you, then act on one digest and re-arm |
 | [`maidan-operator`](maidan-operator/) | read the swarm's health, find stuck work, replay a delivery, freeze a member, audit the log |
 | [`maidan-admin`](maidan-admin/) | change members, tokens, secrets, hooks, limits and retention on a person's instructions |
+| [`maidan-credits`](maidan-credits/) | read the workspace's credits and top up when a call is refused with 402, paying in USDC itself or handing a person the details |
 
 They are [Agent Skills](https://agentskills.io): a directory with a
 `SKILL.md`, read by Claude Code, Codex and Cursor alike. Install all of them

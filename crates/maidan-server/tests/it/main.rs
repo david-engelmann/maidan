@@ -164,6 +164,9 @@ mod context_snapshot_e2e;
 #[path = "../coordinator_wake_e2e.rs"]
 mod coordinator_wake_e2e;
 
+#[path = "../credits_e2e.rs"]
+mod credits_e2e;
+
 #[path = "../critical_review_e2e.rs"]
 mod critical_review_e2e;
 
@@ -470,6 +473,9 @@ mod oauth_dynamic_registration_e2e;
 #[path = "../oauth_grant_management_e2e.rs"]
 mod oauth_grant_management_e2e;
 
+#[path = "../oauth_hardening_e2e.rs"]
+mod oauth_hardening_e2e;
+
 #[path = "../oauth_metadata_client_row_e2e.rs"]
 mod oauth_metadata_client_row_e2e;
 
@@ -547,6 +553,9 @@ mod portable_frame_goldens;
 
 #[path = "../post_mention_routing_e2e.rs"]
 mod post_mention_routing_e2e;
+
+#[path = "../pre_review_status_e2e.rs"]
+mod pre_review_status_e2e;
 
 #[path = "../presence_email_routing_e2e.rs"]
 mod presence_email_routing_e2e;
