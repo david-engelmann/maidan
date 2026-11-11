@@ -1040,7 +1040,7 @@ message posted there; mute that kind
 `{"kind": "message_posted", "muted": true}`) so its inbox holds only what
 needs it.
 
-**Sleep on the wake script.** [`scripts/coordinator-wake.sh`](../scripts/coordinator-wake.sh)
+**Sleep on the wake script.** [`scripts/coordinator-wake.sh`](https://github.com/david-engelmann/maidan/blob/main/scripts/coordinator-wake.sh)
 long-polls `wait_for_notification` on `/mcp/coordinator` with the longest
 timeout the server allows (300 seconds), and calls it again for as long as
 nothing needs the coordinator. It reads `MAIDAN_URL` and `MAIDAN_TOKEN` and
