@@ -5792,6 +5792,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5806,6 +5807,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5818,6 +5820,7 @@ macro_rules! store_delegations {
                 Ok(WebhookSubscriptionWithSecret {
                     subscription: row.subscription,
                     secret_ciphertext: row.secret_ciphertext,
+                    created_by_token: row.created_by_token,
                 })
             }
 
@@ -6173,6 +6176,21 @@ macro_rules! store_delegations {
                 config_id: &str,
             ) -> Result<bool, StoreError> {
                 a2a::delete_task_push_config(self.pool(), task_id, config_id).await
+            }
+
+            async fn delete_a2a_task_push_config_created_by(
+                &self,
+                task_id: &str,
+                config_id: &str,
+                created_by_token: Option<ApiTokenId>,
+            ) -> Result<bool, StoreError> {
+                a2a::delete_task_push_config_created_by(
+                    self.pool(),
+                    task_id,
+                    config_id,
+                    created_by_token,
+                )
+                .await
             }
         }
     };
