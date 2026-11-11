@@ -206,8 +206,10 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <main className="content" id="main" tabIndex={-1}>
         <motion.section
           key={route}
-          initial={reduce ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
+          // A slide, not a fade: a screen's skeletons and empty states must be
+          // visible from its first frame, so the place never enters at opacity 0.
+          initial={reduce ? false : { y: 8 }}
+          animate={{ y: 0 }}
           transition={reduce ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={shellTitle(signedOut, current.title)}
         >

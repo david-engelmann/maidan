@@ -2,7 +2,7 @@
 // workspace's footprint lists, and the swarm builder's role circuit.
 // Everything here is plain data in, plain data out, so it can be tested.
 import { handleFrom, nameRefusal } from "./addAgent.ts";
-import { apiPath, bearerRefusal, hasToken, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { ApiError, apiPath, bearerRefusal, guarded, hasToken, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Thread } from "./board.ts";
 import type { ControlFrame } from "./live.ts";
 
@@ -307,7 +307,31 @@ export function nextWell(role: Role, key: string): Role {
 
 // ---- Reads and writes ----------------------------------------------------
 
-export class PeopleError extends Error {}
+export class PeopleError extends ApiError {}
+
+/**
+ * What to say when some channels' tasks failed to load and the rest did. The
+ * list still shows what loaded; this names what is missing from it, so one
+ * failing channel never just drops its tasks without a word.
+ */
+export function missingChannels(names: string[]): string | null {
+  if (!names.length) return null;
+  const tags = names.map((n) => `#${n}`);
+  const list = tags.length === 1 ? tags[0] : `${tags.slice(0, -1).join(", ")} and ${tags[tags.length - 1]}`;
+  return `Could not load the tasks in ${list}, so this list may be missing some.`;
+}
+
+/**
+ * Whether the invites panel asks the server at all. A token is exactly its
+ * grant, so one without workspace:admin is told no here, with no request
+ * the browser would log as a failure. A person's own sign-in carries no
+ * workspace:admin of its own (the server checks their membership instead), so
+ * only the server can answer for it.
+ */
+export function asksForInvites(mode: CredentialMode | null, grant: { capabilities: string[] } | null): boolean {
+  if (mode === "bearer" || mode === "delegated") return Boolean(grant?.capabilities.includes("workspace:admin"));
+  return true;
+}
 
 /** A refused add: only a workspace admin adds agents, from their own sign-in or an admin token. */
 export const ADD_AGENT_REFUSED = "Only a workspace admin can add an agent. Ask one to add it for you.";
@@ -331,7 +355,9 @@ export class PeopleApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    // An unreachable server reads as the shared offline sentence, never the
+    // browser's own "Failed to fetch".
+    this.fetchFn = guarded(fetchFn, PeopleError);
     this.creds = creds;
     this.mode = mode;
   }

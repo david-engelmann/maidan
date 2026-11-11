@@ -331,11 +331,12 @@ export function Threads() {
         )
       ) : (
         <section className="conv-open conv-none" aria-hidden="true">
-          <div className="pane-empty">
-            <span className="pane-empty-mark" />
-            <strong>No conversation open</strong>
-            <p className="muted">Pick a task or a direct message from the list.</p>
-          </div>
+          <EmptyState
+            icon="threads"
+            title="No conversation open"
+            body="Pick a task or a direct message from the list."
+            action={<a className="button ghost" href="#/board">Open the board</a>}
+          />
         </section>
       )}
     </div>

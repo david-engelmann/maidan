@@ -6,6 +6,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useS
 import { BoardApi, ago, chromeFor, leaseLeft, movesBoard, stateLabel, type Channel, type Gate, type Thread } from "../core/board.ts";
 import { liveActions, liveBus } from "../core/bus.ts";
 import {
+  asksForInvites,
+  missingChannels,
   METER_LABELS,
   NO_SEATS,
   REASON_LABELS,
@@ -54,6 +56,7 @@ import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hoo
 import { useSession } from "../hooks/useSession.ts";
 import { LoadError } from "../shell/LoadError";
 import { EmptyState } from "../shell/EmptyState";
+import { couldNotLoad } from "../shell/DataState.tsx";
 
 type Tab = "people" | "swarm";
 
@@ -139,25 +142,26 @@ function useWorkspaceWork(workspace: string | null, api: BoardApi): WorkLoad {
     if (!quiet) setState((s) => ({ ...s, status: "loading", error: null }));
     try {
       const channels = await api.channels(workspace);
-      let failed = 0;
+      const failed: string[] = [];
       const groups = await mapBounded(channels, WORK_FETCH, async (channel: Channel) => {
         try {
           return { channel, threads: await api.threads(channel.id) };
         } catch {
-          failed += 1;
+          failed.push(channel.name);
           return { channel, threads: [] as Thread[] };
         }
       });
       if (mine !== gen.current) return;
-      if (channels.length > 0 && failed === channels.length) {
-        setState((s) => (s.workspace === workspace ? { status: "error", error: "Could not load work", threads: [], channelCount: channels.length, workspace } : s));
+      if (channels.length > 0 && failed.length === channels.length) {
+        setState((s) => (s.workspace === workspace ? { status: "error", error: couldNotLoad("work"), threads: [], channelCount: channels.length, workspace } : s));
         return;
       }
       const threads = mergeChannelThreads(groups);
-      setState((s) => (s.workspace === workspace ? { status: "ready", error: null, threads, channelCount: channels.length, workspace } : s));
+      const partial = missingChannels(failed.sort());
+      setState((s) => (s.workspace === workspace ? { status: "ready", error: partial, threads, channelCount: channels.length, workspace } : s));
     } catch (e) {
       if (mine !== gen.current) return;
-      const message = e instanceof Error ? e.message : "Could not load work";
+      const message = e instanceof Error && e.message ? e.message : couldNotLoad("work");
       setState((s) => (s.workspace !== workspace || (quiet && s.status === "ready") ? s : { status: "error", error: message, threads: [], channelCount: 0, workspace }));
     }
   }, [workspace, api]);
@@ -201,12 +205,13 @@ function WorkList({ rows, empty, gates, channelCount }: { rows: WorkThread[]; em
 
 function Work({ id, board }: { id: string; board: WorkBoard }) {
   const head = <h3 className="work-h">Work</h3>;
-  if (board.status === "error") return <section className="work" aria-label="Work">{head}<p className="muted small" role="alert">Could not load work: {board.error ?? "try again"}</p></section>;
+  if (board.status === "error") return <section className="work" aria-label="Work">{head}<p className="muted small" role="alert">{board.error ?? couldNotLoad("work")}</p></section>;
   if (board.status !== "ready") return <section className="work" aria-label="Work" aria-busy="true">{head}<div className="ghost-line" /><div className="ghost-line" /></section>;
   const { now, recent } = workOf(id, board.threads);
   return (
     <section className="work" aria-label="Work">
       {head}
+      {board.error ? <p className="state-stale" role="status">{board.error}</p> : null}
       <h4 className="work-sub">Now</h4>
       <WorkList rows={now} empty="Nothing claimed right now." gates={board.gates} channelCount={board.channelCount} />
       <h4 className="work-sub">Recent results</h4>
@@ -288,11 +293,7 @@ function Roster({ loaded, onRetry, rows, open, api, board, active }: { loaded: L
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
-          <div className="pane-empty">
-            <span className="pane-empty-mark" />
-            <strong>No member selected</strong>
-            <p className="muted">Pick a member to see their details and tokens.</p>
-          </div>
+          <EmptyState icon="people" title="No member selected" body="Pick a member to see their details and tokens." />
         </section>
       )}
     </div>
@@ -475,9 +476,11 @@ function AddAgentCard({ api, onAdded }: { api: PeopleApi; onAdded: () => void })
 
 function Invites({ api }: { api: PeopleApi }) {
   const { session } = useSession();
-  const workspace = session.status === "signed-in" ? session.workspaceId : null;
-  // Only a workspace admin invites; the list answers 403 to anyone else, and
-  // the panel then stays hidden rather than showing a form that cannot work.
+  // Only a workspace admin invites. A token's grant settles it before any
+  // request; for a sign-in the list answers 403 to anyone else. Either way the
+  // form shows only once the list loaded, so a failed read never offers a
+  // form that cannot work.
+  const workspace = session.status === "signed-in" && asksForInvites(session.mode, session.grant) ? session.workspaceId : null;
   const [refused, setRefused] = useState(false);
   const [version, setVersion] = useState(0);
   const [list, setList] = useState<{ value: Invite[] | null; error: string | null }>({ value: null, error: null });
@@ -496,13 +499,16 @@ function Invites({ api }: { api: PeopleApi }) {
         if (value === null) setRefused(true);
         else setList({ value, error: null });
       },
-      (e: unknown) => live && setList((l) => ({ value: l.value, error: e instanceof Error ? e.message : "Could not load invites" })),
+      (e: unknown) => live && setList((l) => ({ value: l.value, error: e instanceof Error && e.message ? e.message : couldNotLoad("invites") })),
     );
     return () => {
       live = false;
     };
   }, [api, workspace, version]);
   if (!workspace || refused) return null;
+  if (list.value === null) {
+    return list.error ? <LoadError message={list.error} onRetry={() => setVersion((v) => v + 1)} /> : null;
+  }
   async function run(f: () => Promise<void>) {
     if (busy) return;
     setBusy(true);
@@ -544,8 +550,8 @@ function Invites({ api }: { api: PeopleApi }) {
         <p className="muted small">The person signs in with this email to join. The link works once and expires in 7 days. An invite cannot grant more than you hold.</p>
       </form>
       {link ? <SecretOnce title={link.title} secret={link.value} onDone={() => setLink(null)} /> : null}
-      {list.error ? <p className={list.value ? "stale" : "err"} role="alert">{list.error}</p> : null}
-      {list.value?.length ? (
+      {list.error ? <p className="stale" role="alert">{list.error}</p> : null}
+      {list.value.length ? (
         <ul className="swarm-list invite-list" aria-label="Invites">
           {list.value.map((i) => {
             const state = inviteState(i, now);
