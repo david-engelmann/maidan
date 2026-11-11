@@ -5791,6 +5791,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5805,6 +5806,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5817,6 +5819,7 @@ macro_rules! store_delegations {
                 Ok(WebhookSubscriptionWithSecret {
                     subscription: row.subscription,
                     secret_ciphertext: row.secret_ciphertext,
+                    created_by_token: row.created_by_token,
                 })
             }
 

@@ -611,6 +611,9 @@ mod recipes_mcp_e2e;
 #[path = "../references_reverse_e2e.rs"]
 mod references_reverse_e2e;
 
+#[path = "../registration_owner_e2e.rs"]
+mod registration_owner_e2e;
+
 #[path = "../reindex_job_e2e.rs"]
 mod reindex_job_e2e;
 

@@ -71,6 +71,7 @@ async fn subscribed(
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "not-a-ciphertext".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();

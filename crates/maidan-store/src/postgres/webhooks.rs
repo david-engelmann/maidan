@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewWebhookSubscription, WebhookDelivery, WebhookSubscription, WebhookSubscriptionDelivery,
-    WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, NewWebhookSubscription, WebhookDelivery, WebhookSubscription,
+    WebhookSubscriptionDelivery, WebhookSubscriptionId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -9,13 +9,13 @@ use uuid::Uuid;
 use crate::automation_deliveries::AutomationDeliveryFilter;
 use crate::error::StoreError;
 
-const SUB_COLS: &str =
-    "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at";
+const SUB_COLS: &str = "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 #[derive(Debug, Clone)]
 pub struct WebhookSubscriptionRow {
     pub subscription: WebhookSubscription,
     pub secret_ciphertext: String,
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 pub async fn create(
@@ -26,8 +26,8 @@ pub async fn create(
     let kinds_json = serde_json::to_string(&new.event_kinds)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_webhook_subscriptions
-            (id, workspace_id, url, label, event_kinds, secret_ciphertext)
-         VALUES ($1, $2, $3, $4, $5, $6)
+            (id, workspace_id, url, label, event_kinds, secret_ciphertext, created_by_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING {SUB_COLS}"
     ))
     .bind(id)
@@ -36,6 +36,7 @@ pub async fn create(
     .bind(&new.label)
     .bind(&kinds_json)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(pool)
     .await?;
     row_to_subscription(&row)
@@ -55,6 +56,7 @@ pub async fn get(
     let subscription = row_to_subscription(&row)?;
     Ok(WebhookSubscriptionRow {
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: created_by_token(&row),
         subscription,
     })
 }
@@ -94,6 +96,7 @@ pub async fn list_enabled_for_workspace(
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: created_by_token(row),
                 subscription,
             })
         })
@@ -113,6 +116,7 @@ pub async fn list_enabled(pool: &PgPool) -> Result<Vec<WebhookSubscriptionRow>, 
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: created_by_token(row),
                 subscription,
             })
         })
@@ -368,4 +372,9 @@ fn row_to_subscription(row: &sqlx::postgres::PgRow) -> Result<WebhookSubscriptio
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         revoked_at: row.get("revoked_at"),
     })
+}
+
+fn created_by_token(row: &sqlx::postgres::PgRow) -> Option<ApiTokenId> {
+    row.get::<Option<Uuid>, _>("created_by_token")
+        .map(ApiTokenId)
 }

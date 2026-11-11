@@ -278,6 +278,9 @@ mod media_retention;
 #[path = "../member_display_name_event.rs"]
 mod member_display_name_event;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_emails.rs"]
 mod member_emails;
 

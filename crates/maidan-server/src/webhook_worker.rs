@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
 use tracing::{info, warn};
 
+use crate::registration_owner::NotActing;
 use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 use crate::webhooks::{
@@ -16,6 +17,9 @@ use crate::webhooks::{
 };
 
 const DELIVERY_BATCH: i64 = 64;
+/// How long a delivery waits when its creator's authority could not be
+/// checked (a suspended workspace, a failed lookup) before it is tried again.
+const CREATOR_HELD_DEFER_SECS: i64 = 60;
 const RECONNECT_INITIAL: Duration = Duration::from_millis(100);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
@@ -170,12 +174,32 @@ async fn enqueue_matches(
         .list_enabled_webhook_subscriptions_for_workspace(workspace_id)
         .await
         .map_err(|e| e.to_string())?;
+    // The workspace's mention route also gets every mention, whatever kinds
+    // its subscription names.
+    let mention_webhook_id = if kind == EventKind::MentionRecorded {
+        state
+            .store
+            .get_workspace_mention_webhook_id(workspace_id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     // Build the payload lazily — only once a subscription actually matches.
     let mut payload: Option<String> = None;
-    let mut enqueued = std::collections::HashSet::new();
     for sub in &subs {
         let subscription = &sub.subscription;
-        if !kinds_match(subscription, &kind) {
+        if !kinds_match(subscription, &kind) && mention_webhook_id != Some(subscription.id) {
+            continue;
+        }
+        // A subscription delivers for the token that registered it, and only
+        // what that token may read: a private channel or a DM its creator is
+        // not in stays out of the creator's webhook (SEC-017).
+        let Ok(creator) = creator_or_retire(state, sub).await else {
+            continue;
+        };
+        if !crate::agui_stream::event_visible(state.store.as_ref(), &creator, event).await {
             continue;
         }
         if payload.is_none() {
@@ -189,33 +213,61 @@ async fn enqueue_matches(
             .enqueue_webhook_delivery(subscription.id, log_id, body)
             .await
             .map_err(|e| e.to_string())?;
-        enqueued.insert(subscription.id);
-    }
-    if kind == EventKind::MentionRecorded
-        && let Ok(Some(mention_webhook_id)) = state
-            .store
-            .get_workspace_mention_webhook_id(workspace_id)
-            .await
-    {
-        // `subs` is already scoped to this workspace (H1).
-        if !enqueued.contains(&mention_webhook_id)
-            && subs.iter().any(|s| {
-                s.subscription.id == mention_webhook_id && s.subscription.revoked_at.is_none()
-            })
-        {
-            if payload.is_none() {
-                payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
-            }
-            if let Some(body) = payload.as_deref() {
-                state
-                    .store
-                    .enqueue_webhook_delivery(mention_webhook_id, log_id, body)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-        }
     }
     Ok(())
+}
+
+/// The authority `sub` delivers with: its creator's, while it could still
+/// register the subscription (`workspace:admin`). A subscription whose
+/// creator's authority has ended is revoked, once, with the reason in the
+/// audit trail, so it neither fires again nor writes a row per event; one
+/// whose check could not finish is held this time only.
+async fn creator_or_retire(
+    state: &AppState,
+    sub: &maidan_types::WebhookSubscriptionWithSecret,
+) -> Result<maidan_auth::AuthContext, NotActing> {
+    let subscription = &sub.subscription;
+    match crate::registration_owner::creator_authority(
+        state,
+        sub.created_by_token,
+        subscription.workspace_id,
+        maidan_auth::capability::WORKSPACE_ADMIN,
+    )
+    .await
+    {
+        Ok(creator) => Ok(creator),
+        Err(NotActing::Held(reason)) => {
+            warn!(webhook = %subscription.id, reason, "webhook held");
+            Err(NotActing::Held(reason))
+        }
+        Err(NotActing::Ended(reason)) => {
+            crate::webhooks::forget_webhook_secret(&state.webhooks.secrets, subscription.id);
+            match state
+                .store
+                .revoke_webhook_subscription(subscription.workspace_id, subscription.id)
+                .await
+            {
+                Ok(_) => {
+                    crate::registration_owner::record_skip(
+                        state,
+                        subscription.workspace_id,
+                        "webhook",
+                        Some(subscription.id.0),
+                        reason,
+                        serde_json::json!({ "revoked": true }),
+                    )
+                    .await;
+                }
+                // Another replica, or an earlier delivery, revoked it first
+                // and recorded why.
+                Err(maidan_store::StoreError::NotFound) => {}
+                Err(err) => {
+                    warn!(webhook = %subscription.id, error = %err, reason, "webhook revoke failed");
+                }
+            }
+            Err(NotActing::Ended(reason))
+        }
+    }
 }
 
 async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>) {
@@ -283,6 +335,22 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
                 "quarantined delivery for revoked webhook"
             );
             continue;
+        }
+        // A delivery queued while its creator held authority does not go out
+        // after it ended: a retry can come hours after the event.
+        match creator_or_retire(state, &sub).await {
+            Ok(_) => {}
+            Err(NotActing::Ended(_)) => {
+                let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
+                continue;
+            }
+            Err(NotActing::Held(_)) => {
+                let until = chrono::Utc::now() + chrono::Duration::seconds(CREATOR_HELD_DEFER_SECS);
+                if let Err(err) = state.store.defer_webhook_delivery(delivery.id, until).await {
+                    warn!(delivery_id = delivery.id, error = %err, "webhook deferral failed");
+                }
+                continue;
+            }
         }
         let Some(secret) = resolve_webhook_secret(
             &state.webhooks,

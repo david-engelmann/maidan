@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ThreadId, WorkspaceId, DM_CHANNEL_NAME};
+use maidan_types::{ApiTokenId, ThreadId, WorkspaceId, DM_CHANNEL_NAME};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -191,13 +191,22 @@ type PushRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<Uuid>,
 );
 
 const PUSH_COLS: &str = "task_id, config_id, push_url, token_ciphertext, auth_scheme, \
-                         auth_credentials_ciphertext";
+                         auth_credentials_ciphertext, created_by_token";
 
 fn push_row(
-    (task_id, config_id, url, token_ciphertext, auth_scheme, auth_credentials_ciphertext): PushRow,
+    (
+        task_id,
+        config_id,
+        url,
+        token_ciphertext,
+        auth_scheme,
+        auth_credentials_ciphertext,
+        created_by_token,
+    ): PushRow,
 ) -> A2aPushConfigRow {
     A2aPushConfigRow {
         task_id,
@@ -206,6 +215,7 @@ fn push_row(
         token_ciphertext,
         auth_scheme,
         auth_credentials_ciphertext,
+        created_by_token: created_by_token.map(ApiTokenId),
     }
 }
 
@@ -215,13 +225,14 @@ pub async fn upsert_task_push_config(
 ) -> Result<(), StoreError> {
     sqlx::query(
         "INSERT INTO maidan_a2a_task_push_configs
-            (task_id, config_id, push_url, token_ciphertext, auth_scheme, auth_credentials_ciphertext)
-         VALUES ($1, $2, $3, $4, $5, $6)
+            (task_id, config_id, push_url, token_ciphertext, auth_scheme, auth_credentials_ciphertext, created_by_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (task_id, config_id) DO UPDATE SET
             push_url = EXCLUDED.push_url,
             token_ciphertext = EXCLUDED.token_ciphertext,
             auth_scheme = EXCLUDED.auth_scheme,
-            auth_credentials_ciphertext = EXCLUDED.auth_credentials_ciphertext",
+            auth_credentials_ciphertext = EXCLUDED.auth_credentials_ciphertext,
+            created_by_token = EXCLUDED.created_by_token",
     )
     .bind(&config.task_id)
     .bind(&config.config_id)
@@ -229,6 +240,7 @@ pub async fn upsert_task_push_config(
     .bind(&config.token_ciphertext)
     .bind(&config.auth_scheme)
     .bind(&config.auth_credentials_ciphertext)
+    .bind(config.created_by_token.map(|token| token.0))
     .execute(pool)
     .await?;
     Ok(())
