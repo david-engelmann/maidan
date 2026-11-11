@@ -5001,6 +5001,55 @@ fn log_reads(h: &Harness, job: i64) -> usize {
 /// per head, that it opened, that a check failed (with the end of the
 /// failing job's log, read once) and that the checks are done.
 #[tokio::test]
+/// A failing verdict status (`pre-review`, always a verdict context) is not
+/// a CI failure: the pull request's CI reads as passed and no `ci_failed` is
+/// said, while a real failing check still is.
+#[tokio::test]
+async fn a_failing_verdict_status_is_not_reported_as_a_ci_failure() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 91, "feature/someone");
+    h.fake.lock().unwrap().checks.insert(
+        91,
+        vec![
+            check_run("lint", Some("SUCCESS"), Some(601)),
+            check_run("pre-review", Some("FAILURE"), None),
+        ],
+    );
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let watch = format!("/workspaces/{}/pull-watches", h.a.workspace_id.0);
+    let (status, watched) =
+        post_json(&h, &token, &watch, json!({"repo": REPO, "pull_number": 91})).await;
+    assert_eq!(status, StatusCode::OK, "{watched}");
+    let thread: uuid::Uuid = watched["thread_id"].as_str().unwrap().parse().unwrap();
+
+    change_sweep::sweep_once(&h.state).await;
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["status"], "success", "{view}");
+    let kinds: Vec<&str> = view["notices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["kind"].as_str().unwrap())
+        .collect();
+    assert!(
+        !kinds.contains(&"ci_failed"),
+        "a verdict is not CI: {kinds:?}"
+    );
+
+    // A real failure on the same head is still said.
+    h.fake.lock().unwrap().checks.insert(
+        91,
+        vec![
+            check_run("lint", Some("FAILURE"), Some(601)),
+            check_run("pre-review", Some("FAILURE"), None),
+        ],
+    );
+    change_sweep::sweep_once(&h.state).await;
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["failing_jobs"], json!(["lint"]), "{view}");
+}
+
 async fn a_watched_pull_says_it_opened_failed_and_finished_once_per_head() {
     let h = harness().await;
     h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
