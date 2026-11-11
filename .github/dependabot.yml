@@ -1,0 +1,109 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /web/console
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /web/landing
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /ui-tests
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /deploy/cloudflare
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /scripts/mcp-sdk-clients/typescript
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /sdk/typescript
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /crates/maidan-server
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /deploy/cloudflare/demo
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /examples/recipes
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "*"

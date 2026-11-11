@@ -51,7 +51,7 @@ jobs:
         working-directory: .
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       # main is prod: a release tag deploys only when its commit is on main,
@@ -62,8 +62,8 @@ jobs:
           git fetch -q origin main
           git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main \
             || { echo "$TAG is not on main; promote it from dev first" >&2; exit 1; }
-      - uses: sigstore/cosign-installer@v3
-      - uses: actions/setup-node@v4
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm

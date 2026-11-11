@@ -20,18 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: install repository-script dependencies
         run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/maidan-mcp
       - name: generate MCP reference
         run: cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
-      - uses: peaceiris/actions-mdbook@v2
+      - uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2
         with:
           mdbook-version: "0.4.40"
       - name: install mdbook-linkcheck
@@ -49,7 +49,7 @@ jobs:
         run: mdbook build book
       - name: verify published presentation contracts
         run: ./scripts/check-docs-presentation.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mdbook
           path: book/build
@@ -69,20 +69,20 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mdbook
           path: book/build
       - name: configure pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: upload pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           # linkcheck is a second renderer, so mdBook nests HTML under build/html
           path: book/build/html
       - name: deploy pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 
   # docs.maidan.world (deploy/cloudflare/wrangler.docs.jsonc). Off until the
   # repository variable DOCS_DOMAIN is "true", which is set once the DNS record
@@ -102,16 +102,16 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       MDBOOK_OUTPUT__HTML__SITE_URL: /
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: crates/maidan-mcp
       - name: generate MCP reference
         run: cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
-      - uses: peaceiris/actions-mdbook@v2
+      - uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2
         with:
           mdbook-version: "0.4.40"
       - name: install mdBook renderers
@@ -123,7 +123,7 @@ jobs:
         run: bash book/sync-docs.sh && mdbook build book
       - name: add response headers
         run: cp deploy/cloudflare/docs-headers book/build/html/_headers
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm

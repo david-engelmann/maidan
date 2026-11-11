@@ -86,15 +86,15 @@ jobs:
             packages: --package maidan-bus
             shard: --shard 3/4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: install cargo-mutants
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           # Pinned: which mutants a version generates, and how it shards them,
           # change between releases.
@@ -120,7 +120,7 @@ jobs:
         run: scripts/mutants.sh report "${{ matrix.name }}" "${{ steps.mutants.outputs.code }}"
       - name: keep the outcomes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mutants-${{ strategy.job-index }}
           path: mutants.out/
@@ -145,14 +145,14 @@ jobs:
       total: ${{ steps.plan.outputs.total }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: install cargo-mutants
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-mutants@27.1.0
       - name: plan
@@ -175,16 +175,16 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.mutation-store-plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: install cargo-mutants and nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-mutants@27.1.0,cargo-nextest
       - name: mutants
@@ -214,7 +214,7 @@ jobs:
         run: scripts/mutants.sh report "store shard ${{ matrix.shard }}/${{ needs.mutation-store-plan.outputs.total }}" "${{ steps.mutants.outputs.code }}"
       - name: keep the outcomes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mutants-store-${{ matrix.shard }}
           path: mutants.out/
@@ -226,13 +226,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: bench store hot path
         run: cargo bench -p maidan-store --bench store_hot --no-run
 
@@ -262,19 +262,19 @@ jobs:
       # Move it forward deliberately, on a night the build is checked.
       FUZZ_TOOLCHAIN: nightly-2026-10-31
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install rust (nightly, for the sanitizer)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.FUZZ_TOOLCHAIN }}
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: fuzz
       - name: install cargo-fuzz
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-fuzz
       - name: build every target
@@ -284,7 +284,7 @@ jobs:
       # accumulates instead of restarting from the seeds every run. The key is
       # unique per run, and the prefix restores the newest saved corpus.
       - name: restore the corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
@@ -354,13 +354,13 @@ jobs:
       # are still coverage.
       - name: save the corpus
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
       - name: keep what crashed
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/
@@ -380,19 +380,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cursor arithmetic (maidan-types)
-        uses: model-checking/kani-github-action@v1
+        uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: "0.68.0"
           command: cargo-kani
           args: -p maidan-types --output-format terse
       - name: capability containment (maidan-auth)
-        uses: model-checking/kani-github-action@v1
+        uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: "0.68.0"
           command: cargo-kani

@@ -68,7 +68,7 @@ jobs:
       # contract tests) otherwise.
       shards: ${{ steps.filter.outputs.shards }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -129,16 +129,18 @@ jobs:
     # (#1680); the shared cache below keeps most runs warm.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           # Release-stream truth is derived from the real tag set.
           fetch-depth: 0
       - name: install repository-script dependencies
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: actions are pinned to commit SHAs
+        run: ./scripts/check-pinned-actions.sh
       - name: integration binary roots are up to date
         run: python3 scripts/gen-integration-main.py --check
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -146,11 +148,11 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           # One key for every lint run, saved only from dev (the default
           # branch, so every PR and main can restore it), so a pull request
@@ -184,7 +186,7 @@ jobs:
         # (#[cfg(test)]) aren't compiled here, and tests/ + benches are excluded.
         run: cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used
       - name: install cargo-deny
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-deny
       - name: deny check
@@ -230,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -243,19 +245,19 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      - uses: helm/kind-action@v1
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           install_only: true
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
         with:
           version: v3.14.4
       - name: download the shipped server image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-image
           path: images
       - name: download maidan-postgres
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: smoke-images
           path: images
@@ -275,12 +277,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: trufflehog scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@188766766fd81cde66e5500b0db0379235637134 # main
         with:
           path: .
           extra_args: --only-verified
@@ -297,7 +299,7 @@ jobs:
     # A cold build (no cargo cache) took 6m43s for the archive on 2026-11-09.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # The target dir outgrew the runner's disk in 2026-10 (MinIO then
@@ -312,7 +314,7 @@ jobs:
             /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
             /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
             /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby >/dev/null 2>&1 &
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -320,16 +322,16 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           # One key for the dev/test profile, saved only from dev (the default
           # branch, which every branch can restore from).
           shared-key: test-build
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - name: install nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
       # A docs-only change still builds everything: its doc contract tests
@@ -337,7 +339,7 @@ jobs:
       - name: build and archive every test binary
         run: cargo nextest archive --workspace --tests --profile ci --archive-file nextest-archive.tar.zst
       - name: upload the test archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nextest-archive
           path: nextest-archive.tar.zst
@@ -358,7 +360,7 @@ jobs:
           ls -l bins bins.tar.zst
       - name: upload the binaries
         if: needs.changes.outputs.code == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bins
           path: bins.tar.zst
@@ -383,15 +385,15 @@ jobs:
         run: |
           echo "build=$BUILD"
           [ "$BUILD" = success ]
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
       - name: download the test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: nextest-archive
       # Lib and bin unit tests: every binary in the archive that is not an
@@ -406,7 +408,7 @@ jobs:
           --profile ci -E 'not kind(test)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: junit-unit
           path: target/nextest/ci/junit.xml
@@ -424,11 +426,11 @@ jobs:
     # Not a required check (docs/Decisions.md); the binding behaviour is also
     # gated by the required Rust e2e tests. Runs the build job's binaries.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
@@ -436,7 +438,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bins"
           zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: a2a tck
@@ -454,10 +456,10 @@ jobs:
     # (the `loom` feature swaps in loom's locks). Not a required check
     # (docs/Decisions.md).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -465,9 +467,9 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: loom
           save-if: ${{ github.ref == 'refs/heads/dev' }}
@@ -491,18 +493,18 @@ jobs:
     # Inspector release should never block a merge before it is triaged.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
         run: |
           mkdir -p "$RUNNER_TEMP/bins"
           zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # The Inspector requires Node >= 22.19.
           node-version: "22"
@@ -526,18 +528,18 @@ jobs:
     # scenarios should be triaged, not block a merge.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
         run: |
           mkdir -p "$RUNNER_TEMP/bins"
           zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
       - name: mcp conformance suite
@@ -547,7 +549,7 @@ jobs:
         run: scripts/mcp-conformance.sh
       - name: upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mcp-conformance-results
           path: mcp-conformance-results
@@ -562,11 +564,11 @@ jobs:
     # Model-checks the TLA+ specs in specs/tla with TLC (pinned in
     # scripts/tla.sh). Not a required check (docs/Decisions.md).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: set up java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "21"
@@ -585,10 +587,10 @@ jobs:
     # .config/osv-scanner.toml. Not a required check (docs/Decisions.md): a new
     # advisory can turn it red with no change in this repo.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -596,7 +598,7 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: osv-scanner
         run: scripts/osv-scan.sh
 
@@ -614,10 +616,10 @@ jobs:
     # them, so a publisher's upstream change cannot alter the result. Not a
     # required check (docs/Conventions.md, "Dependencies").
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -625,9 +627,9 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: install cargo-vet
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-vet@0.10.2
       - name: cargo vet
@@ -648,11 +650,11 @@ jobs:
     # The server and CLI come from the build job; only the Rust SDK compiles
     # here (its own crate, under the toolchain rust-toolchain.toml pins).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
@@ -660,13 +662,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bins"
           zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
           echo "MAIDAN_BIN_DIR=$RUNNER_TEMP/bins" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
       - name: install pytest
@@ -694,23 +696,23 @@ jobs:
     # and a new SDK release should be triaged, not block a merge.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
         run: |
           mkdir -p "$RUNNER_TEMP/bins"
           zstd -dc bins.tar.zst | tar -C "$RUNNER_TEMP/bins" -xf -
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: scripts/mcp-sdk-clients/typescript/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: typescript and python SDK clients
@@ -738,7 +740,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.changes.outputs.shards) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -753,11 +755,11 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
       - name: download the test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: nextest-archive
       # A full disk shows up only as a storage error deep in one test, so
@@ -797,7 +799,7 @@ jobs:
             --profile ci -E "$docs | $contracts"
       - name: upload JUnit report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: junit-integration-${{ matrix.shard }}
           path: target/nextest/ci/junit.xml
@@ -830,7 +832,7 @@ jobs:
     # had passed (2026-10-15 and 2026-10-16).
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # The pgvector tests pull from Docker Hub, which failed this job on main
@@ -844,7 +846,7 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -852,9 +854,9 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       # Reading the dependency graph is enough to prove the default build
@@ -884,10 +886,10 @@ jobs:
     # compiled once, by `release image`.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -895,9 +897,9 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: no-default-features
           save-if: ${{ github.ref == 'refs/heads/dev' }}
@@ -915,10 +917,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -926,11 +928,11 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: aarch64-unknown-linux-gnu
       - name: install cross
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cross
       - name: build the web assets for the cross container
@@ -959,7 +961,7 @@ jobs:
     # .config/coverage-floors.toml. It is not a required check (see
     # docs/Decisions.md, "Coverage floors are per crate and advisory").
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -984,7 +986,7 @@ jobs:
             /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
           docker system prune -af --volumes >/dev/null
           df -h /
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -992,15 +994,15 @@ jobs:
             web/landing/package-lock.json
             web/console/package-lock.json
       - name: install rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: llvm-tools-preview
       - name: cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest + cargo-llvm-cov
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest,cargo-llvm-cov
       - name: test the floor check
@@ -1021,7 +1023,7 @@ jobs:
           cargo llvm-cov report --html --output-dir coverage-html
       - name: line coverage floors
         run: python3 scripts/coverage-floors.py lcov.info
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
         with:
           name: coverage
@@ -1030,7 +1032,7 @@ jobs:
             coverage-html
       - name: upload to Codecov
         if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
@@ -1047,12 +1049,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: build the shipped server image (cached)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: crates/maidan-server/Dockerfile
@@ -1064,7 +1066,7 @@ jobs:
           # filled by entries no other branch reads.
           cache-to: ${{ github.ref == 'refs/heads/dev' && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
       - name: upload the image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-image
           path: ${{ runner.temp }}/server-release.tar
@@ -1082,7 +1084,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1096,7 +1098,7 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
@@ -1120,7 +1122,7 @@ jobs:
           test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "ci"
           test "$(docker run --rm maidan-cli:ci --version)" = "$("$RUNNER_TEMP/bins/maidan" --version)"
       - name: upload the images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: smoke-images
           path: images
@@ -1141,7 +1143,7 @@ jobs:
         run: |
           echo "upstream=$RESULT"
           [ "$RESULT" = success ]
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1171,7 +1173,7 @@ jobs:
           python3 -m unittest discover -s examples/seat-runner/tests
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); tomllib.load(open('examples/seat-runner/seats.example.toml','rb')); print('mcp configs valid')"
       - name: download the smoke images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: smoke-images
           path: images
@@ -1237,7 +1239,7 @@ jobs:
         run: |
           echo "upstream=$RESULT"
           [ "$RESULT" = success ]
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1251,7 +1253,7 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: download the smoke images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: smoke-images
           path: images
@@ -1275,7 +1277,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1289,7 +1291,7 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: download maidan-postgres
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: smoke-images
           path: images
@@ -1310,7 +1312,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -1324,7 +1326,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -1341,7 +1343,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1359,7 +1361,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install sqlite3
@@ -1377,7 +1379,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: install promtool
@@ -1426,7 +1428,7 @@ jobs:
         run: |
           echo "upstream=$RESULT"
           [ "$RESULT" = success ]
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1443,12 +1445,12 @@ jobs:
       # proves the image that ships exports OTLP; it only needs /health and
       # /metrics. compose.yaml names it maidan-server:dev.
       - name: download the shipped server image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-image
           path: images
       - name: download maidan-postgres
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: smoke-images
           path: images
@@ -1481,7 +1483,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -1495,11 +1497,11 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
       - name: download the test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: nextest-archive
       - name: bring up a primary + streaming standby
@@ -1533,16 +1535,16 @@ jobs:
     # person to look at before a UI change merges. It fails on a screen that
     # scrolls sideways or a page that throws. Not a required check.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/landing/package-lock.json
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
@@ -1569,7 +1571,7 @@ jobs:
         run: npm run gallery
       - name: upload the gallery
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ui-gallery
           path: ui-tests/gallery-out/
@@ -1586,14 +1588,14 @@ jobs:
     # and serves the built console; Playwright drives it in a browser.
     # See ui-tests/README.md.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
       - name: download the binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bins
       - name: unpack the binaries
@@ -1624,7 +1626,7 @@ jobs:
       # failed attempt leaves a screenshot, so a clean run uploads nothing.
       - name: upload report on a failed attempt
         if: ${{ !cancelled() && hashFiles('ui-tests/test-results/**/*.png') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: |
