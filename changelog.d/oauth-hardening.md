@@ -1,9 +1,0 @@
-### The OAuth authorization server, audited before launch
-
-- **Security:** a client metadata document is fetched only from a public address. A listed host that resolves to a loopback, private or link-local address is refused before any connection (403), and the connection is pinned to the addresses that were checked. The development escape hatch `MAIDAN_ALLOW_PRIVATE_EGRESS` does not open it.
-- **Security:** a client metadata document must name its own URL as its `client_id`, may be at most 16 KiB, and its `client_name` is held to the rules a self-registered client's is (no control or invisible formatting characters, at most 100 characters). A document that breaks any of them is refused, and leaves no client row behind.
-- **Security:** an agent member, or a removed one, cannot consent to an OAuth client, even on a browser session no token made. Only a person consents.
-- **Security:** deactivating or deprovisioning a member over SCIM revokes every OAuth lineage they consented to (grants, access tokens and refresh tokens), with an `oauth_lineage.revoke` audit row each. Before, the refresh token minted new access tokens while the member was out, and kept the app connected after they came back.
-- **Security:** PKCE is held to RFC 7636's shapes for every client, confidential ones included. `/oauth/authorize` refuses a `code_challenge` that is not a 43-character S256 digest, and `/oauth/token` refuses a `code_verifier` that is not 43 to 128 unreserved characters (`invalid_grant`).
-- **Security:** the trace layer marks the `Location` response header sensitive, so the redirect that hands a client its authorization code no longer writes the code to a `DEBUG` log or an exported span.
-- **Changed:** the launch gate test connects the OAuth client with the person's consent and runs the agent on its own worker token, as the hosted run does, and checks that the agent seat cannot consent.
