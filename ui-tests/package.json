@@ -11,7 +11,7 @@
     "gallery": "playwright test --config gallery.config.ts"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.10.1",
-    "@playwright/test": "1.63.0"
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0"
   }
 }

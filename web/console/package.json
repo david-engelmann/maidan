@@ -12,24 +12,24 @@
     "check:spec": "node scripts/check-spec.mjs && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "motion": "12.23.24",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "motion": "14.10.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.1",
+    "@eslint/js": "10.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
-    "@vitejs/plugin-react": "5.1.0",
-    "eslint": "9.39.1",
-    "eslint-plugin-react-hooks": "7.0.1",
-    "globals": "16.5.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
     "happy-dom": "^21.0.4",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.46.2",
-    "vite": "^7.3.7",
+    "typescript": "7.0.2",
+    "typescript-eslint": "8.72.1",
+    "vite": "^8.3.6",
     "vitest": "^5.1.0"
   },
   "overrides": {

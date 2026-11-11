@@ -10,7 +10,7 @@
     "@cloudflare/containers": "0.3.7"
   },
   "devDependencies": {
-    "wrangler": "4.150.0"
+    "wrangler": "4.158.0"
   },
   "overrides": {
     "undici": "7.30.1"
