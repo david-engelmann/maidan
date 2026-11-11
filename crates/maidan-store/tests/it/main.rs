@@ -518,6 +518,9 @@ mod slash_command_sqlite;
 #[path = "../spawn_budget.rs"]
 mod spawn_budget;
 
+#[path = "../spawn_budget_race.rs"]
+mod spawn_budget_race;
+
 #[path = "../spawn_enforce.rs"]
 mod spawn_enforce;
 
