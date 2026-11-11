@@ -47,6 +47,7 @@ bash scripts/check-agent-contract.sh     # golden JSON under contracts/ (CI: --n
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the quickstart agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the release the tree records
 bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
+bash scripts/check-action-pins.sh        # every `uses:` names a commit SHA with a `# vX.Y.Z` comment (resolve with gh api repos/<o>/<r>/commits/<tag>)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 python3 scripts/test-mcp-fault-injection.py   # the Python claimants behind scripts/mcp-fault-proxy.py (in `lint`)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)

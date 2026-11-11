@@ -141,6 +141,14 @@ the `lint` job, holds the script to both caps.
 - CI runs a secrets scan on every PR.
 - Fixtures use synthetic data only.
 
+**GitHub Actions.** Every `uses:` names a full commit SHA with the version as
+a trailing comment (`actions/checkout@<sha> # v4.4.0`); `scripts/check-action-pins.sh`
+in `lint` refuses a tag, a branch or a missing comment. Resolve a SHA with
+`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`, which dereferences an
+annotated tag to its commit. Dependabot (`.github/dependabot.yml`) opens one
+grouped pull request a week per ecosystem (actions, Cargo, npm, the
+Dockerfiles' base images); a Cargo bump still needs the `cargo vet` steps above.
+
 ## CI matrix
 
 Jobs in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). A docs-only
