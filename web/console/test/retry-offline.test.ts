@@ -102,4 +102,9 @@ test("the banner: offline in the browser first, and since when once it is old", 
   assert.match(offlineBanner(r.getSnapshot(), now + 10 * 60_000) ?? "", /^You're offline\. What you see is from .+ and may be out of date/);
   r.browser(true);
   assert.equal(offlineBanner(r.getSnapshot()), null);
+  // A request that failed while offline does not hold the line up once the browser is back.
+  r.browser(false);
+  r.unreachable();
+  r.browser(true);
+  assert.equal(offlineBanner(r.getSnapshot()), null);
 });

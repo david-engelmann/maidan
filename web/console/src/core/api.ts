@@ -337,8 +337,9 @@ export class ReachStore {
   unreachable(): void {
     this.set({ browserOnline: this.state.browserOnline, serverReachable: false });
   }
+  /** The browser's own word. Back online, a failure while offline no longer counts: the next request decides. */
   browser(online: boolean): void {
-    this.set({ browserOnline: online, serverReachable: this.state.serverReachable });
+    this.set({ browserOnline: online, serverReachable: online ? true : this.state.serverReachable });
   }
 }
 
