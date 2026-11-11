@@ -144,6 +144,10 @@ struct Fake {
     /// a fine-grained token granted Actions and Commit statuses read; they
     /// 404 otherwise.
     actions_readable: bool,
+    /// Refuse, with GitHub's bare 403, a tree that writes a file under
+    /// `.github/workflows/`, as GitHub does for a token without the
+    /// Workflows permission.
+    refuse_workflows: bool,
 }
 
 impl Fake {
@@ -363,6 +367,17 @@ async fn github(
             reply(StatusCode::CREATED, json!({"sha": sha}))
         }
         ("POST", "git/trees") => {
+            let touches_workflow = body["tree"].as_array().unwrap().iter().any(|entry| {
+                entry["path"]
+                    .as_str()
+                    .is_some_and(|path| path.starts_with(".github/workflows/"))
+            });
+            if fake.refuse_workflows && touches_workflow {
+                return reply(
+                    StatusCode::FORBIDDEN,
+                    json!({"message": "Resource not accessible by personal access token"}),
+                );
+            }
             let base = body["base_tree"].as_str().unwrap();
             let mut tree = fake.trees[base].clone();
             for entry in body["tree"].as_array().unwrap() {
@@ -2102,6 +2117,168 @@ async fn the_token_reaches_no_delivery_record_or_audit_row_when_github_fails() {
     for row in h.deliveries(&h.a).await {
         assert!(!format!("{row:?}").contains(TOKEN), "{row:?}");
     }
+}
+
+const WORKFLOW: &str = "name: test\non: push\n";
+const WORKFLOW_DIFF: &str = "diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml\nindex 3333333..4444444 100644\n--- a/.github/workflows/test.yml\n+++ b/.github/workflows/test.yml\n@@ -1,2 +1,2 @@\n name: test\n-on: push\n+on: [push, pull_request]\n";
+
+#[tokio::test]
+async fn a_workflow_push_github_refuses_fails_at_once_naming_the_file_and_tells_the_creator_and_the_builder(
+) {
+    let h = harness().await;
+    h.allow_change().await;
+    let base = {
+        let mut f = h.fake.lock().unwrap();
+        let base = f.commit_files(
+            &[
+                ("README.md", "readme\n"),
+                ("src/greeting.txt", GREETING),
+                ("src/bridge/x.rs", BRIDGE),
+                (".github/workflows/test.yml", WORKFLOW),
+            ],
+            vec![h.base_sha.clone()],
+        );
+        f.refs.insert("dev".into(), base.clone());
+        f.refuse_workflows = true;
+        base
+    };
+    let person = |handle: &str, kind: MemberKind| NewMember {
+        workspace_id: h.a.workspace_id,
+        handle: handle.into(),
+        display_name: None,
+        kind,
+    };
+    let creator = h
+        .store
+        .create_member(person("filer", MemberKind::Human))
+        .await
+        .unwrap();
+    let bystander = h
+        .store
+        .create_member(person("bystander", MemberKind::Agent))
+        .await
+        .unwrap();
+    let thread = h
+        .store
+        .create_thread(NewThread {
+            channel_id: h.a.channel_id,
+            parent_thread_id: None,
+            title: Some("fix the workflow".into()),
+            description: None,
+            created_by: Some(creator.id),
+        })
+        .await
+        .unwrap();
+    // The builder is tenant A's agent: it sets the result.
+    let task = Tenant {
+        workspace_id: h.a.workspace_id,
+        channel_id: h.a.channel_id,
+        thread_id: thread.id,
+        member_id: h.a.member_id,
+    };
+    let mut result = change("changed", &base, BRANCH, &format!("{DIFF}{WORKFLOW_DIFF}"));
+    result["deliver_to"] = json!([
+        {"surface": "github_branch", "repo": REPO, "branch": BRANCH, "base": "dev"},
+    ]);
+    h.route(&task, &result, 1).await;
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+    assert_eq!((stats.dead, stats.retried), (1, 0), "{stats:?}");
+    assert_eq!(h.store.count_dead_egress().await.unwrap(), 1);
+    assert!(
+        h.store
+            .claim_next_due_egress(Utc::now() + chrono::Duration::hours(2), 120)
+            .await
+            .unwrap()
+            .is_none(),
+        "nothing is left to retry"
+    );
+    let trees = h
+        .fake
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| r.ends_with("/git/trees"))
+        .count();
+    assert_eq!(trees, 1, "GitHub was asked once");
+    assert_eq!(
+        h.fake.lock().unwrap().refs.get(BRANCH),
+        Some(&base),
+        "nothing was committed"
+    );
+
+    let row = h.delivery(&task, "github_branch").await;
+    assert_eq!(row.status, status::FAILED);
+    let reason = row.last_error.unwrap_or_default();
+    for part in [
+        "status 403",
+        "`.github/workflows/test.yml`",
+        "Drop the workflow edit",
+        "Workflows permission",
+    ] {
+        assert!(reason.contains(part), "{part} in {reason}");
+    }
+    assert!(
+        !reason.contains("src/greeting.txt"),
+        "only the refused path is named: {reason}"
+    );
+
+    let events = h
+        .store
+        .list_events_matching(
+            h.a.workspace_id,
+            None,
+            Some(thread.id),
+            &[EventKind::ResultDeliveryFailed],
+            0,
+            100,
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1, "the failure is said once");
+    let stored = &events[0];
+    let event = stored.opened_event().unwrap();
+    let Event::ResultDeliveryFailed { last_error, .. } = &event else {
+        panic!("not a result_delivery_failed: {event:?}");
+    };
+    assert!(last_error
+        .as_deref()
+        .is_some_and(|e| e.contains("`.github/workflows/test.yml`")));
+    notification_router::route_event(&h.state, stored.id, &event)
+        .await
+        .unwrap();
+    let told = |member: MemberId| {
+        let store = h.store.clone();
+        async move {
+            store
+                .list_notifications(member, false, 100)
+                .await
+                .unwrap()
+                .into_iter()
+                .filter(|n| n.kind == EventKind::ResultDeliveryFailed)
+                .map(|n| (n.thread_id, n.actor_id))
+                .collect::<Vec<_>>()
+        }
+    };
+    assert_eq!(
+        told(creator.id).await,
+        vec![(Some(thread.id), None)],
+        "the member who filed the task is told"
+    );
+    assert_eq!(
+        told(h.a.member_id).await,
+        vec![(Some(thread.id), None)],
+        "the builder is told, so it can drop the workflow edit and resubmit"
+    );
+    assert!(
+        told(bystander.id).await.is_empty(),
+        "a member who neither filed, built nor follows it is not told"
+    );
+    assert!(
+        told(h.b.member_id).await.is_empty(),
+        "another workspace hears nothing"
+    );
 }
 
 #[tokio::test]

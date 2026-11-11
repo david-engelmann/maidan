@@ -1,0 +1,5 @@
+### A branch delivery GitHub refuses for a workflow file says so, and the people who can fix it hear
+
+- **Fixed:** a change whose `github_branch` delivery GitHub refuses with a 403 while the diff touches `.github/workflows/` fails at once, with no retry, and its `last_error` names the refused files and the two ways out: drop the workflow edit, or give the delivery token the Workflows permission. A rate-limited 403 still retries, and names the files too.
+- **Fixed:** `result_delivery_failed` now notifies the thread's creator and the member who produced the result (the assignee when no result is stored), as well as the owner and the followers #2211 added, each only while they can read the thread. A creator and a builder who followed nothing were never told, and the task sat in review.
+- **Added:** `MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS` (off by default). On, setting a change result whose branch delivery would edit a workflow file is refused over REST (`422`) and MCP, naming the files, so the builder hears at once. The hosted Worker forwards it.

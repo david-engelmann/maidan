@@ -260,6 +260,10 @@ pub struct McpServer {
     /// server sets it after the router's state holds a clone. The default
     /// takes no payment.
     credit_terms: Arc<std::sync::RwLock<Arc<maidan_types::CreditTerms>>>,
+    /// Whether `set_thread_result` refuses a change that would push a
+    /// workflow file (`MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS`). REST reads it
+    /// from here too, so both doors refuse alike. Shared by every clone.
+    refuse_workflow_paths: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// The tool error a call refused past the allowance answers: the same text
@@ -364,7 +368,28 @@ impl McpServer {
             pull_refresher: Arc::default(),
             approval_confirmations: Arc::new(std::sync::OnceLock::new()),
             credit_terms: Arc::default(),
+            refuse_workflow_paths: Arc::new(std::sync::atomic::AtomicBool::new(
+                maidan_types::switch_is_on(
+                    std::env::var(maidan_types::REFUSE_WORKFLOW_PATHS_ENV)
+                        .ok()
+                        .as_deref(),
+                ),
+            )),
         }
+    }
+
+    /// Whether a change result that would push a workflow file is refused
+    /// when it is set ([`maidan_types::workflow_paths_refusal`]).
+    pub fn refuses_workflow_paths(&self) -> bool {
+        self.refuse_workflow_paths
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Turn the workflow-path refusal on or off (tests and embedders; the
+    /// server reads it from the environment).
+    pub fn set_refuse_workflow_paths(&self, on: bool) {
+        self.refuse_workflow_paths
+            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Install what `approval_decide` sends confirmation links with. Set once;
@@ -8467,6 +8492,113 @@ mod tests {
             .await
             .unwrap();
         assert!(store.get_thread_result(thread.id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn set_thread_result_refuses_a_workflow_push_only_while_the_switch_is_on() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::{NewThread, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA};
+
+        let pool = maidan_search::sqlite_pool_options()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let builder = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "builder".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+                description: None,
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, builder.id).await.unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            builder.id,
+            ws.id,
+            vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let lease = store.claim_lease_for(thread.id, builder.id).await.unwrap();
+        let change = |diff: &str| {
+            json!({
+                "thread_id": thread.id.0,
+                "claim_lease_id": lease.0,
+                "result": {
+                    "schema": WAITER_RESULT_SCHEMA,
+                    "result_kind": CHANGE_RESULT_KIND,
+                    "status": "changed",
+                    "branch": "feature/agent-fix-ci-1a2b",
+                    "diff": diff,
+                    "deliver_to": [{"surface": "github_branch", "repo": "acme/app",
+                                    "branch": "feature/agent-fix-ci-1a2b", "base": "dev"}],
+                },
+            })
+        };
+        let workflow = "--- a/.github/workflows/test.yml\n+++ b/.github/workflows/test.yml\n@@ -1 +1 @@\n-a\n+b\n";
+        let source = "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-a\n+b\n";
+
+        server.set_refuse_workflow_paths(true);
+        let err = server
+            .call_tool(&auth, "set_thread_result", &change(workflow))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, McpError::InvalidParams(m)
+                if m.contains("`.github/workflows/test.yml`") && m.contains("Workflows permission")),
+            "{err:?}"
+        );
+        assert!(
+            store.get_thread_result(thread.id).await.unwrap().is_none(),
+            "nothing stored"
+        );
+        server
+            .call_tool(&auth, "set_thread_result", &change(source))
+            .await
+            .unwrap();
+
+        server.set_refuse_workflow_paths(false);
+        server
+            .call_tool(&auth, "set_thread_result", &change(workflow))
+            .await
+            .unwrap();
+        let stored = store.get_thread_result(thread.id).await.unwrap().unwrap();
+        assert_eq!(stored.result["diff"], json!(workflow));
     }
 
     #[tokio::test]

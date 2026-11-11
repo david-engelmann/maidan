@@ -89,6 +89,13 @@ test("the GitHub ingress secret and the CI backstop reach the container", () => 
   assert.equal(env.MAIDAN_CHANGE_CI_BACKSTOP_SECS, "900");
 });
 
+test("the workflow-path refusal reaches the container", () => {
+  // A hosted delivery token without the Workflows permission is the case
+  // the switch is for: the builder hears at once instead of after the push.
+  const env = serverEnv({ MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS: "1" });
+  assert.equal(env.MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS, "1");
+});
+
 test("SERVER_ENV is sorted, unique, and forwards rotation keys and integration secrets", () => {
   const sorted = [...SERVER_ENV].sort();
   assert.deepEqual(SERVER_ENV, sorted);

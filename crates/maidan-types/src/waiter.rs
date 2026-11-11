@@ -1065,6 +1065,45 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
     })
 }
 
+/// The switch an operator turns on when the server's GitHub delivery token
+/// has no Workflows permission. A change whose branch delivery would edit a
+/// file under [`crate::WORKFLOW_DIR`] is then refused when its result is set,
+/// so the producer hears why at once instead of after GitHub refuses the push.
+pub const REFUSE_WORKFLOW_PATHS_ENV: &str = "MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS";
+
+/// Whether a switch's value turns it on: `1`, `true`, `on` or `yes`, in any
+/// case. Anything else, or unset, leaves it off.
+pub fn switch_is_on(raw: Option<&str>) -> bool {
+    raw.map(str::trim).is_some_and(|value| {
+        ["1", "true", "on", "yes"]
+            .iter()
+            .any(|on| value.eq_ignore_ascii_case(on))
+    })
+}
+
+/// Why a change result is refused while [`REFUSE_WORKFLOW_PATHS_ENV`] is on,
+/// or `None` when it may be stored: it is not a change, it has no
+/// `github_branch` target (nothing is pushed), or its diff touches no
+/// workflow file.
+pub fn workflow_paths_refusal(value: &Value) -> Option<String> {
+    let change = parse_change_result(value)?;
+    let pushes = parse_waiter_result(value)?
+        .deliver_to
+        .iter()
+        .any(|target| matches!(target, DeliverTarget::GithubBranch { .. }));
+    if !pushes {
+        return None;
+    }
+    let paths = crate::workflow_paths(change.diff.as_deref()?);
+    if paths.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "this change edits {}, and this server's GitHub delivery token cannot push workflow files ({REFUSE_WORKFLOW_PATHS_ENV} is on), so its branch delivery would fail. Drop the workflow edit from the diff and set the result again, or ask the operator to give the delivery token the Workflows permission",
+        crate::named_paths(&paths)
+    ))
+}
+
 /// Whether `key` is an issue key such as `ENG-1234`: an uppercase letter,
 /// uppercase letters or digits, a hyphen and digits, at most 32 characters.
 pub fn is_issue_key(key: &str) -> bool {
@@ -1326,6 +1365,59 @@ fn parse_deliver_target(entry: &Value) -> Option<DeliverTarget> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn workflow_change(diff: &str, deliver_to: Value) -> Value {
+        json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": CHANGE_RESULT_KIND,
+            "status": "changed",
+            "branch": "feature/agent-x",
+            "diff": diff,
+            "deliver_to": deliver_to,
+        })
+    }
+
+    const WORKFLOW_DIFF: &str =
+        "--- a/.github/workflows/test.yml\n+++ b/.github/workflows/test.yml\n@@ -1 +1 @@\n-a\n+b\n";
+
+    #[test]
+    fn a_change_pushing_a_workflow_file_is_refused_naming_it() {
+        let branch = json!([{"surface": "github_branch", "repo": "acme/app", "branch": "feature/agent-x", "base": "dev"}]);
+        let reason = workflow_paths_refusal(&workflow_change(WORKFLOW_DIFF, branch.clone()))
+            .expect("refused");
+        assert!(reason.contains("`.github/workflows/test.yml`"), "{reason}");
+        assert!(reason.contains(REFUSE_WORKFLOW_PATHS_ENV), "{reason}");
+        assert!(reason.contains("Workflows permission"), "{reason}");
+        let other = "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-a\n+b\n";
+        assert_eq!(
+            workflow_paths_refusal(&workflow_change(other, branch)),
+            None
+        );
+    }
+
+    #[test]
+    fn a_workflow_change_that_pushes_nowhere_or_is_not_a_change_is_not_refused() {
+        let slack_only = json!([{"surface": "slack", "channel": "C0123ABCDEF"}]);
+        assert_eq!(
+            workflow_paths_refusal(&workflow_change(WORKFLOW_DIFF, slack_only)),
+            None
+        );
+        assert_eq!(
+            workflow_paths_refusal(&json!({"diff": WORKFLOW_DIFF})),
+            None
+        );
+    }
+
+    #[test]
+    fn a_switch_is_on_only_when_it_says_so() {
+        for on in ["1", "true", "TRUE", " on ", "Yes"] {
+            assert!(switch_is_on(Some(on)), "{on}");
+        }
+        for off in ["0", "false", "off", "", "enabled"] {
+            assert!(!switch_is_on(Some(off)), "{off}");
+        }
+        assert!(!switch_is_on(None));
+    }
 
     #[test]
     fn prod_behind_any_remote_prefix_is_never_a_base() {

@@ -1181,16 +1181,8 @@ pub fn diff_lines(diff: &str) -> i64 {
 pub fn diff_paths(diff: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut paths = Vec::new();
-    for line in diff.lines() {
-        let Some(path) = line
-            .strip_prefix("--- a/")
-            .or_else(|| line.strip_prefix("+++ b/"))
-        else {
-            continue;
-        };
-        // git appends a tab before a timestamp on some diffs.
-        let path = path.split('\t').next().unwrap_or(path).trim_end();
-        if path.is_empty() || !seen.insert(path.to_string()) {
+    for path in each_diff_path(diff) {
+        if !seen.insert(path) {
             continue;
         }
         paths.push(path.to_string());
@@ -1199,6 +1191,48 @@ pub fn diff_paths(diff: &str) -> Vec<String> {
         }
     }
     paths
+}
+
+/// Every `--- a/` and `+++ b/` path in a diff, repeats included.
+fn each_diff_path(diff: &str) -> impl Iterator<Item = &str> {
+    diff.lines().filter_map(|line| {
+        let path = line
+            .strip_prefix("--- a/")
+            .or_else(|| line.strip_prefix("+++ b/"))?;
+        // git appends a tab before a timestamp on some diffs.
+        let path = path.split('\t').next().unwrap_or(path).trim_end();
+        (!path.is_empty()).then_some(path)
+    })
+}
+
+/// Where GitHub keeps a repository's Actions workflows. GitHub refuses a
+/// push that adds, edits or deletes a file here to a token without the
+/// Workflows permission (the `workflow` scope on a classic token), whatever
+/// else the token may write.
+pub const WORKFLOW_DIR: &str = ".github/workflows/";
+
+/// The workflow files a diff touches ([`WORKFLOW_DIR`]), first seen first,
+/// deduplicated. Read like [`diff_paths`] but never cut at
+/// [`ROUND_PATH_LIMIT`]: a workflow edit past the cap still decides whether
+/// the delivery token can push the change.
+pub fn workflow_paths(diff: &str) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+    for path in each_diff_path(diff).filter(|path| path.starts_with(WORKFLOW_DIR)) {
+        if !paths.iter().any(|seen| seen == path) {
+            paths.push(path.to_string());
+        }
+    }
+    paths
+}
+
+/// `paths` as the text a refusal or a failure names them with:
+/// `` `a`, `b` ``.
+pub fn named_paths(paths: &[String]) -> String {
+    paths
+        .iter()
+        .map(|path| format!("`{path}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -1726,6 +1760,35 @@ mod tests {
         assert_eq!(json["by_size"][0]["size"], "M");
         assert_eq!(json["by_risk"][0]["threat_model"], false);
         assert!(json.get("totals").is_none(), "{json}");
+    }
+
+    #[test]
+    fn workflow_paths_name_each_added_edited_or_deleted_workflow_once() {
+        let diff = "diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml\n\
+--- a/.github/workflows/test.yml\n+++ b/.github/workflows/test.yml\n@@ -1 +1 @@\n-a\n+b\n\
+diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-a\n+b\n\
+diff --git a/.github/workflows/old.yml b/.github/workflows/old.yml\n\
+--- a/.github/workflows/old.yml\n+++ /dev/null\n@@ -1 +0,0 @@\n-a\n\
+diff --git a/.github/workflows-notes.md b/.github/workflows-notes.md\n\
+--- /dev/null\n+++ b/.github/workflows-notes.md\n@@ -0,0 +1 @@\n+a\n";
+        assert_eq!(
+            workflow_paths(diff),
+            vec![".github/workflows/test.yml", ".github/workflows/old.yml"]
+        );
+        assert_eq!(
+            named_paths(&workflow_paths(diff)),
+            "`.github/workflows/test.yml`, `.github/workflows/old.yml`"
+        );
+        assert!(workflow_paths("--- a/src/lib.rs\n+++ b/src/lib.rs\n").is_empty());
+    }
+
+    #[test]
+    fn a_workflow_edit_past_the_round_path_cap_is_still_found() {
+        let mut diff: String = (0..ROUND_PATH_LIMIT + 5)
+            .map(|i| format!("--- a/f{i}\n+++ b/f{i}\n"))
+            .collect();
+        diff.push_str("--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n");
+        assert_eq!(workflow_paths(&diff), vec![".github/workflows/ci.yml"]);
     }
 
     #[test]

@@ -2189,6 +2189,11 @@ pub(super) async fn set_thread_result(
     if let Some(reason) = maidan_types::unroutable_waiter_result(&a.result) {
         return Err(McpError::InvalidParams(reason));
     }
+    if server.refuses_workflow_paths()
+        && let Some(reason) = maidan_types::workflow_paths_refusal(&a.result)
+    {
+        return Err(McpError::InvalidParams(reason));
+    }
     let result = server
         .store
         .set_thread_result(

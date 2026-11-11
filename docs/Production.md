@@ -348,6 +348,13 @@ commit status on the head it delivered (or, for a `no_change` round, the
 head the check ran on), make **Commit statuses** read and write. Only a GitHub App can create check runs; with a token, the summary
 comment carries the verdict.
 
+**Workflow files.** A change that adds, edits or deletes a file under
+`.github/workflows/` also needs **Workflows** (read and write; the
+`workflow` scope on a classic token). Without it GitHub refuses the push,
+and the delivery fails at once naming the files. If the token is meant not
+to have it, set `MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS=1`, so such a change is
+refused when its result is set and the agent hears why right away.
+
 **A GitHub App instead.** Set `MAIDAN_GITHUB_APP_ID`,
 `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`.
 Every GitHub call then uses a short-lived installation token, renewed before

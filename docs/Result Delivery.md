@@ -426,6 +426,19 @@ reason in `last_error` on the delivery-status API (`GET
 /threads/:id/deliveries`). A GitHub 5xx or rate limit retries with backoff
 like any delivery; a 401/403/404 dead-letters the target.
 
+**A workflow file needs the Workflows permission.** GitHub refuses a push that
+adds, edits or deletes a file under `.github/workflows/` to a token without
+it (the `workflow` scope on a classic token), with a bare `403: Resource not
+accessible by personal access token`. When a change that touches such a file
+gets a 403 that is not a rate limit, the delivery fails at once, with no
+retry, and `last_error` names the files and both ways out: drop the workflow
+edit from the diff and set the result again, or give the delivery token the
+Workflows permission. A rate-limited 403 still retries, and its `last_error`
+names the files too. An operator who knows the token cannot push workflows
+sets `MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS=1`, and setting such a result is
+refused with a `422` before anything is queued
+([Configuration](Configuration.md)).
+
 **Idempotent per thread and result.** The commit message carries a trailer
 `Maidan-Change: <thread_id>/<digest>`, the digest covering `base_sha` and the
 diff (and, for a squash-rebase round, the `rebase` flag, so a rebase never
@@ -636,6 +649,12 @@ different unit of work.
   traffic disables the link rather than retrying forever. The same status on a
   **result** delivery dead-letters that target without disabling the projector
   link — a result must not take down room-to-issue relay.
+- **A failed or skipped target reaches the people who can act on it.** Besides
+  the `result_delivery_failed` event, the notification router writes a
+  `result_delivery_failed` notification to the thread's creator, to the
+  member who produced the result (the thread's assignee if no result is
+  stored), to the thread's owner, and to the followers of the thread, its
+  channel and that producer. Each must still be able to read the thread.
 - **A non-`reviewed` status is surfaced as a failure**, using `status` alone. It
   is never rendered as a passing review and never quietly skipped.
 - Every delivery attempt is audited.

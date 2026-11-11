@@ -116,6 +116,9 @@ mod chain_verify_e2e;
 #[path = "../change_flow_e2e.rs"]
 mod change_flow_e2e;
 
+#[path = "../change_workflow_refusal_e2e.rs"]
+mod change_workflow_refusal_e2e;
+
 #[path = "../channel_access_e2e.rs"]
 mod channel_access_e2e;
 
