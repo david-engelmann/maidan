@@ -605,6 +605,9 @@ mod rate_limit_e2e;
 #[path = "../reactions_pins_e2e.rs"]
 mod reactions_pins_e2e;
 
+#[path = "../read_visibility_e2e.rs"]
+mod read_visibility_e2e;
+
 #[path = "../recipe_rest_e2e.rs"]
 mod recipe_rest_e2e;
 

@@ -13,7 +13,7 @@ use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 use crate::webhooks::{
     build_payload, deliver_http, delivery_backoff, event_kind_from_payload, kinds_match,
-    max_attempts_from_env, poll_interval_ms_from_env, resolve_webhook_secret,
+    max_attempts_from_env, resolve_webhook_secret, POLL_INTERVAL_MS,
 };
 
 const DELIVERY_BATCH: i64 = 64;
@@ -305,7 +305,7 @@ async fn creator_or_retire(
 
 async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>) {
     let max_attempts = max_attempts_from_env();
-    let interval = Duration::from_millis(poll_interval_ms_from_env());
+    let interval = Duration::from_millis(POLL_INTERVAL_MS);
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,

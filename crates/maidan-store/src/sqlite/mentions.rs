@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Event, MemberId, Mention, MessageId, StoredEvent};
+use maidan_types::{Event, MemberId, Mention, MessageId, StoredEvent, DM_CHANNEL_NAME};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::sqlite::{events, members};
+use crate::thread_access::mention_visible_to;
 
 /// Record a mention without an event. The `@handle` router does, and
 /// publishes `MentionRecorded` itself. It checks the member against the
@@ -70,15 +71,17 @@ pub async fn list_for_member(
     member_id: MemberId,
     limit: i64,
 ) -> Result<Vec<Mention>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT message_id, member_id, created_at
-         FROM maidan_mentions
-         WHERE member_id = ?
-         ORDER BY created_at DESC
-         LIMIT ?",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT m.message_id, m.member_id, m.created_at
+         FROM maidan_mentions m
+         WHERE m.member_id = ?1 AND {}
+         ORDER BY m.created_at DESC
+         LIMIT ?2",
+        mention_visible_to("m", "?1", "?3")
+    ))
     .bind(member_id.0)
     .bind(limit)
+    .bind(DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     Ok(rows

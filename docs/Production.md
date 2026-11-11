@@ -582,7 +582,7 @@ procedures in CI.
 ### Retention
 
 Nothing but unreferenced media is pruned unless you set a retention. Each knob
-is an age in days; the sweeper runs daily (`MAIDAN_RETENTION_SWEEP_SECS`) in
+is an age in days; the sweeper runs daily in
 batches of 5000 and counts what it deletes in
 `maidan_retention_pruned_total{table}`. A workspace under a
 [legal hold](#legal-holds) loses nothing.
