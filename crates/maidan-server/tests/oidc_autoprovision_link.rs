@@ -624,18 +624,6 @@ async fn a_verified_email_links_only_a_member_nobody_signed_in_as(store: Arc<dyn
         .await
         .unwrap_or_else(|_| panic!("gail's first sign-in was refused"));
     assert_eq!(first, (gail_a, LoginMember::Linked));
-    assert!(!store
-        .member_has_other_oidc_identity(ws_a, gail_a, ISSUER, "sub-gail")
-        .await
-        .unwrap());
-    assert!(store
-        .member_has_other_oidc_identity(ws_a, gail_a, ISSUER, "sub-other")
-        .await
-        .unwrap());
-    assert!(!store
-        .member_has_other_oidc_identity(ws_b, gail_a, ISSUER, "sub-other")
-        .await
-        .unwrap());
 
     // Another identity with the same verified email: the link goes nowhere.
     let refused = link_as(
@@ -706,4 +694,52 @@ async fn a_verified_email_links_only_a_member_nobody_signed_in_as_postgres() {
         pool,
     )))
     .await;
+}
+
+/// Different identities asserting one verified email at once: the store
+/// checks and binds in one step, so exactly one of them links the member and
+/// every other is refused, with no identity row of its own.
+async fn racing_identities_link_one_member_at_most_once(store: Arc<dyn Store>) {
+    let (ws, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let ivy = member_with_handle(store.as_ref(), ws, "ivy@corp.example").await;
+    let logins: Vec<_> = (0..8)
+        .map(|i| {
+            let store = store.clone();
+            tokio::spawn(async move {
+                let subject = format!("sub-ivy-{i}");
+                let got = link_as(store.as_ref(), ws, &subject, "ivy@corp.example", false).await;
+                (subject, got)
+            })
+        })
+        .collect();
+    let mut linked = Vec::new();
+    for login in logins {
+        let (subject, got) = login.await.unwrap();
+        match got {
+            Ok(how) => {
+                assert_eq!(how, (ivy, LoginMember::Linked));
+                linked.push(subject);
+            }
+            Err(maidan_server::error::ApiError::Forbidden(m))
+                if m == maidan_server::oidc::NOT_PROVISIONED =>
+            {
+                assert!(store.get_oidc_identity(ws, ISSUER, &subject).await.is_err());
+            }
+            Err(other) => panic!("{subject}: {other:?}"),
+        }
+    }
+    assert_eq!(linked.len(), 1, "{linked:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn racing_identities_link_one_member_at_most_once_sqlite() {
+    racing_identities_link_one_member_at_most_once(sqlite().await).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn racing_identities_link_one_member_at_most_once_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    racing_identities_link_one_member_at_most_once(Arc::new(PostgresStore::for_tests(pool))).await;
 }

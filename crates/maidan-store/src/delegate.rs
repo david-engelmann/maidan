@@ -1869,21 +1869,11 @@ macro_rules! store_delegations {
                 oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
             }
 
-            async fn member_has_other_oidc_identity(
+            async fn link_unclaimed_oidc_identity(
                 &self,
-                workspace_id: WorkspaceId,
-                member_id: MemberId,
-                issuer: &str,
-                subject: &str,
-            ) -> Result<bool, StoreError> {
-                oidc::member_has_other_identity(
-                    self.pool(),
-                    workspace_id,
-                    member_id,
-                    issuer,
-                    subject,
-                )
-                .await
+                new: NewOidcIdentity,
+            ) -> Result<Option<OidcIdentity>, StoreError> {
+                oidc::link_unclaimed_identity(self.pool(), new).await
             }
 
             async fn list_identity_workspaces(

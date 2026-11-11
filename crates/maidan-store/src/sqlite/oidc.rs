@@ -14,6 +14,14 @@ pub async fn upsert_identity(
     pool: &SqlitePool,
     new: NewOidcIdentity,
 ) -> Result<OidcIdentity, StoreError> {
+    let mut conn = pool.acquire().await?;
+    upsert_identity_on(&mut conn, new).await
+}
+
+async fn upsert_identity_on(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewOidcIdentity,
+) -> Result<OidcIdentity, StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(
@@ -36,7 +44,7 @@ pub async fn upsert_identity(
     .bind(new.email.as_deref())
     .bind(now)
     .bind(now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     row_to_identity(&row)
 }
@@ -61,29 +69,42 @@ pub async fn get_identity(
     row_to_identity(&row)
 }
 
-/// Whether `member_id` already signed in under an identity other than
-/// `(issuer, subject)` in `workspace_id`: a member some other login already
-/// claimed is never handed to a new identity by email.
-pub async fn member_has_other_identity(
+/// Bind `new` to its member only while no other identity signs in as that
+/// member. The check and the write share one transaction under SQLite's write lock (`BEGIN IMMEDIATE`),
+/// so two identities racing to link one member cannot both bind it. `None`
+/// when another identity already holds the member, or the member is gone. A
+/// row for `new`'s own `(issuer, subject)` comes back as the upsert leaves it.
+pub async fn link_unclaimed_identity(
     pool: &SqlitePool,
-    workspace_id: WorkspaceId,
-    member_id: MemberId,
-    issuer: &str,
-    subject: &str,
-) -> Result<bool, StoreError> {
-    let found: bool = sqlx::query_scalar(
+    new: NewOidcIdentity,
+) -> Result<Option<OidcIdentity>, StoreError> {
+    let mut tx = super::tx::begin_write(pool).await?;
+    let member = sqlx::query("SELECT 1 FROM maidan_members WHERE id = ? AND workspace_id = ?")
+        .bind(new.member_id.0)
+        .bind(new.workspace_id.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if member.is_none() {
+        return Ok(None);
+    }
+    let claimed: bool = sqlx::query_scalar(
         "SELECT EXISTS (
              SELECT 1 FROM maidan_oidc_identities
              WHERE workspace_id = ? AND member_id = ?
                AND NOT (issuer = ? AND subject = ?))",
     )
-    .bind(workspace_id.0)
-    .bind(member_id.0)
-    .bind(issuer)
-    .bind(subject)
-    .fetch_one(pool)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(&new.issuer)
+    .bind(&new.subject)
+    .fetch_one(&mut *tx)
     .await?;
-    Ok(found)
+    if claimed {
+        return Ok(None);
+    }
+    let identity = upsert_identity_on(&mut tx, new).await?;
+    tx.commit().await?;
+    Ok(Some(identity))
 }
 
 /// The workspaces the identity `identity_id` can switch to: every workspace
