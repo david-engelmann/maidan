@@ -437,7 +437,66 @@ fn skip_non_code(src: &[u8], i: usize) -> usize {
             };
         }
     }
+    if src[i] == b'\x27'
+        && let Some(end) = skip_char_literal(src, i)
+    {
+        return end;
+    }
     i
+}
+
+/// Index just past a character literal opening at `open`. `None` when this
+/// `'` starts a lifetime (`'a`, `'static`) or is not a char literal.
+fn skip_char_literal(src: &[u8], open: usize) -> Option<usize> {
+    let mut i = open + 1;
+    if i >= src.len() {
+        return None;
+    }
+    if src[i] == b'\\' {
+        i += 1;
+        if i >= src.len() {
+            return None;
+        }
+        match src[i] {
+            b'x' => {
+                if i + 2 >= src.len()
+                    || !src[i + 1].is_ascii_hexdigit()
+                    || !src[i + 2].is_ascii_hexdigit()
+                {
+                    return None;
+                }
+                i += 3;
+            }
+            b'u' => {
+                if src.get(i + 1) != Some(&b'{') {
+                    return None;
+                }
+                i += 2;
+                let hex_start = i;
+                while i < src.len() && src[i].is_ascii_hexdigit() {
+                    i += 1;
+                }
+                if i == hex_start || i - hex_start > 6 || src.get(i) != Some(&b'}') {
+                    return None;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    } else {
+        // One Unicode scalar, then a closing quote. A lifetime such as `'a`
+        // or `'static` has no closing quote after the first character.
+        if src[i] == b'\x27' {
+            return None;
+        }
+        let ch = std::str::from_utf8(&src[i..]).ok()?.chars().next()?;
+        i += ch.len_utf8();
+    }
+    if src.get(i) == Some(&b'\x27') {
+        Some(i + 1)
+    } else {
+        None
+    }
 }
 
 fn skip_cooked(src: &[u8], quote_at: usize) -> usize {
@@ -655,5 +714,17 @@ fn named_exceptions_still_match_the_catalog() {
     assert!(
         missing.is_empty(),
         "pinned tools must still be in the catalog: {missing:?}"
+    );
+}
+
+#[test]
+fn close_of_skips_char_literals_and_leaves_lifetimes() {
+    let src = r#"fn handle<'a, 'static>(x: &'a str) { let _ = '}'; let _ = '{'; let _ = '"'; let _ = '\''; let _ = '\n'; foo(); }"#;
+    let open = src.find('{').expect("function body");
+    let end = close_of(src.as_bytes(), open);
+    assert_eq!(
+        &src[open..end],
+        r#"{ let _ = '}'; let _ = '{'; let _ = '"'; let _ = '\''; let _ = '\n'; foo(); }"#,
+        "braces inside char literals must not end the body; lifetimes must not be read as chars"
     );
 }
