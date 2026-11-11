@@ -188,8 +188,7 @@ Email linking is scoped to whichever issuer is configured now. If you change
 issuer is not email-linked to the new issuer's identity: the old identity
 counts as another sign-in. With auto-provisioning off, that person's sign-in
 is refused; with it on, they get a new member without the original member's
-access. Plan the move before switching issuers (for example, a fresh member
-with the email as its handle that the new issuer's first sign-in links).
+access. Plan how people move to the new issuer before switching.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
    A person who is a member of several workspaces has one identity row and one
    member in each. An OIDC session records the identity row it signed in with
