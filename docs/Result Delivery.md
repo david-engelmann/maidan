@@ -540,7 +540,8 @@ a comment naming the reason; the branch stays
 and queued, and the successor's rounds deliver to it as their own: a
 `no_change` round posts its check on its head, a changed round pushes to its
 branch (dequeued first, as above). Ending the successor without landing
-withdraws it then ([A follow-up round](Swarms.md#a-follow-up-round)).
+withdraws it then, unless that round is itself superseded by a successor,
+which takes it on ([A follow-up round](Swarms.md#a-follow-up-round)).
 
 **Credentials.** The commit and the pull request are made with
 `MAIDAN_GITHUB_TOKEN` (see [Production](Production.md#result-delivery-to-github-and-slack)),

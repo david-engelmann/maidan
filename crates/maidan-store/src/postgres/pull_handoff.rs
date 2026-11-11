@@ -53,8 +53,9 @@ pub(crate) async fn hand_off_pulls_in_tx(
     if pulls.is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }
-    // Locked, so a cancel of the successor either commits first (and is seen
-    // here) or waits and then finds the moved pull requests to withdraw.
+    // Locked (already, by the close, before its first event), so a cancel of
+    // the successor either commits first (and is seen here) or waits and then
+    // finds the moved pull requests to withdraw.
     let state: Option<String> = sqlx::query_scalar(
         "SELECT state::text FROM maidan_threads WHERE id = $1 AND tombstoned_at IS NULL FOR UPDATE",
     )
@@ -100,7 +101,7 @@ pub(crate) async fn hand_off_pulls_in_tx(
             )));
         }
         sqlx::query(
-            "UPDATE maidan_change_pulls SET thread_id = $4, handed_at = now()
+            "UPDATE maidan_change_pulls SET thread_id = $4, handed_at = clock_timestamp()
              WHERE workspace_id = $1 AND repo = $2 AND pull_number = $3",
         )
         .bind(workspace_id)
@@ -160,5 +161,18 @@ pub(crate) async fn hand_off_pulls_in_tx(
         );
         handed.push(HandedPull { repo, pull_number });
     }
+    // Whoever worked the superseded task wrote what the pull request holds,
+    // so the successor's review gate must not count their approval of it.
+    // No `last_held_seq`: they never held the successor, and a change
+    // request goes to whoever does.
+    sqlx::query(
+        "INSERT INTO maidan_thread_workers (thread_id, member_id, first_held_at)
+         SELECT $2, member_id, first_held_at FROM maidan_thread_workers WHERE thread_id = $1
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(from.0)
+    .bind(to.0)
+    .execute(&mut **tx)
+    .await?;
     Ok((handed, stored))
 }

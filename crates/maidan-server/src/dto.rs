@@ -136,7 +136,8 @@ pub struct CreateThread {
     /// task. In the same transaction as the create, that thread is closed as
     /// `superseded` by the new one, exactly as `POST
     /// /threads/{id}/close-abandoned` with `duplicate_of` would close it: its
-    /// dependents move here and its open pull requests are handed here, not
+    /// dependents move here and the open pull requests the change flow opened
+    /// for it are handed here, not
     /// withdrawn. It does not hold its ticket against the new thread, so a
     /// round can be replaced without cancelling it first. It must be an open
     /// or in-review thread of this workspace that you may close (its

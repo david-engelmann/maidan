@@ -581,6 +581,16 @@ pub(crate) async fn close_abandoned_in_tx(
         }
         (_, None) => None,
     };
+    // A superseding close may hand the successor its pull requests, which
+    // locks the successor. Taken now, before the first event append holds
+    // the workspace's log lock, so a cancel of the successor (which locks it,
+    // then appends) waits here instead of deadlocking against the handoff.
+    if let (CloseReason::Superseded, Some(successor)) = (close.reason, close.duplicate_of) {
+        sqlx::query("SELECT 1 AS one FROM maidan_threads WHERE id = $1 FOR UPDATE")
+            .bind(successor.0)
+            .fetch_optional(&mut **tx)
+            .await?;
+    }
 
     let mut stored = Vec::new();
     if let Some((src, dst, kind)) = relation {

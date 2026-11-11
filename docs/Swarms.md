@@ -411,7 +411,9 @@ to its dependents depends on the reason:
 - **`abandoned`, or `superseded` with no `duplicate_of`:** dependents keep
   waiting; re-plan the work or remove the dependency.
 
-What happens to the thread's open pull requests depends on the reason too:
+What happens to the pull requests the change flow opened for the thread (a
+watched one, or one a session registered, is never touched) depends on the
+reason too:
 
 - **`superseded` with `duplicate_of`:** each pull request a close would
   withdraw is handed to `duplicate_of` instead, in the same transaction. It
@@ -419,8 +421,9 @@ What happens to the thread's open pull requests depends on the reason too:
   `duplicate_of` answers for it from then on: that thread's next round
   delivers to it (a `no_change` round posts its check on its head, a changed
   round pushes to its branch), its CI, merge and deploy notices go there, and
-  ending that thread without landing withdraws it. Each move is audited as
-  `thread.pull_handed_off`, listed in the close's audit row as
+  ending that thread without landing withdraws it, unless it too is closed
+  as `superseded` with a successor, which passes it on again. Each move is
+  audited as `thread.pull_handed_off`, listed in the close's audit row as
   `handed_pulls`, and said on both threads with
   `{"notice": "pull_handed_off"}` naming the pull request. The successor must
   be open or in review, and must not already track an open pull request in
@@ -545,7 +548,12 @@ even while the old build is still running.
   delivered to since are left alone. Maidan also refuses to mark an ended
   task's pull request ready or to enqueue it. A task closed as `superseded`
   with a successor queues no withdrawal: its pull requests move to the
-  successor, whose own cancel or close withdraws them later.
+  successor, whose own cancel or close withdraws them later (or passes them
+  on, if it too is superseded by a successor). Whoever worked the superseded
+  task is recorded as having worked the successor, so the successor's review
+  gate does not count their approval of the code they wrote. A merge of a
+  handed pull request before the successor has an owner or a result stays
+  unsettled and is tried again, so the successor still lands.
 - **The branch:** left. Deleting a branch is destructive, so it is the
   producer's or a person's call.
 - **Queued deliveries:** Maidan. A change delivery (the branch commit and

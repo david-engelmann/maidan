@@ -149,5 +149,18 @@ pub(crate) async fn hand_off_pulls_in_tx(
         );
         handed.push(HandedPull { repo, pull_number });
     }
+    // Whoever worked the superseded task wrote what the pull request holds,
+    // so the successor's review gate must not count their approval of it.
+    // No `last_held_seq`: they never held the successor, and a change
+    // request goes to whoever does.
+    sqlx::query(
+        "INSERT INTO maidan_thread_workers (thread_id, member_id, first_held_at)
+         SELECT ?2, member_id, first_held_at FROM maidan_thread_workers WHERE thread_id = ?1
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(from.0)
+    .bind(to.0)
+    .execute(&mut **tx)
+    .await?;
     Ok((handed, stored))
 }

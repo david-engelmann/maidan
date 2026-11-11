@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maidan_store::store::Supersede;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::UniqueAttributeKey::{LinearIssue, Repo};
 use maidan_types::*;
@@ -54,6 +55,19 @@ async fn room(store: &dyn Store, name: &str) -> Room {
         channel: channel.id,
         producer: producer.id,
     }
+}
+
+async fn member(store: &dyn Store, room: &Room, handle: &str) -> MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id: room.ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id
 }
 
 fn new_thread(room: &Room, title: &str) -> NewThread {
@@ -202,6 +216,8 @@ async fn a_superseded_close_with_a_successor_hands_its_pull_request_on_and_withd
     let room = room(store.as_ref(), "handoff").await;
     let old = task(store.as_ref(), &room, "round 4").await;
     let successor = task(store.as_ref(), &room, "round 5").await;
+    let coder = member(store.as_ref(), &room, "coder").await;
+    store.claim_lease_for(old, coder).await.unwrap();
     delivered(store.as_ref(), &room, old, 7).await;
     assert_eq!(
         store.change_pull_thread(room.ws, REPO, 7).await.unwrap(),
@@ -231,6 +247,28 @@ async fn a_superseded_close_with_a_successor_hands_its_pull_request_on_and_withd
         store.change_pull_thread(room.ws, REPO, 7).await.unwrap(),
         Some(successor),
         "the superseded task's earlier delivery no longer answers for it"
+    );
+    // A delivery of the superseded task that was already writing when it
+    // closed, and finishes after the move, does not take it back.
+    let late = store
+        .list_result_deliveries(old)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|d| d.surface == "github_branch")
+        .unwrap();
+    store
+        .mark_result_delivered(late.id, Some(&format!("{:0>40}#7", 8)), chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(
+        store.change_pull_thread(room.ws, REPO, 7).await.unwrap(),
+        Some(successor),
+        "an ended task's late delivery does not answer for a handed pull request"
+    );
+    assert!(
+        store.has_worked_thread(successor, coder).await.unwrap(),
+        "the superseded task's worker wrote the pull request, so the successor's review gate excludes them"
     );
     let notice = vec![(REPO.to_string(), 7)];
     assert_eq!(handoff_notices(store.as_ref(), old).await, notice);
@@ -600,6 +638,56 @@ async fn a_round_cannot_supersede_a_closed_thread(store: Arc<dyn Store>) {
     );
 }
 
+/// A handed pull request that merges before its successor has an owner or
+/// a result has nobody to land it in the name of. It stays unsettled, so the
+/// successor still lands once it produces, instead of never.
+async fn a_merge_before_the_successor_produces_waits_and_then_lands_it(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "merge-early").await;
+    let old = task(store.as_ref(), &room, "round 1").await;
+    let successor = task(store.as_ref(), &room, "round 2").await;
+    delivered(store.as_ref(), &room, old, 71).await;
+    close(
+        store.as_ref(),
+        &room,
+        old,
+        CloseReason::Superseded,
+        Some(successor),
+    )
+    .await
+    .unwrap();
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(room.ws, REPO, 71, Some(at), Some("c0ffee"), at)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(room.ws, REPO, 71).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    assert_eq!(
+        store
+            .list_unsettled_change_pulls(room.ws, 10)
+            .await
+            .unwrap(),
+        vec![(REPO.to_string(), 71)],
+        "still owed a settlement"
+    );
+
+    let coder = member(store.as_ref(), &room, "coder").await;
+    store
+        .set_thread_result_claiming(successor, coder, &serde_json::json!({"summary": "green"}))
+        .await
+        .unwrap();
+    match store.settle_change_pull(room.ws, REPO, 71).await.unwrap() {
+        ChangeSettlement::Landed(_) => {}
+        other => panic!("expected the merge to land the successor, got {other:?}"),
+    }
+    assert_eq!(
+        store.get_thread(successor).await.unwrap().state,
+        ThreadState::Closed
+    );
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
@@ -669,4 +757,5 @@ on_both_backends!(
     nothing_is_superseded_across_workspaces,
     a_round_created_to_supersede_the_ticket_holder_takes_its_ticket_and_pull_request,
     a_round_cannot_supersede_a_closed_thread,
+    a_merge_before_the_successor_produces_waits_and_then_lands_it,
 );
