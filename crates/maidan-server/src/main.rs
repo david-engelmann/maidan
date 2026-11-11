@@ -538,6 +538,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.usage_allowance = std::sync::Arc::new(
         maidan_server::usage_meters::allowance_from_env().map_err(anyhow::Error::msg)?,
     );
+    // Credits (`MAIDAN_CREDITS_ADDRESS`, `MAIDAN_OVERAGE_PRICES`): read once;
+    // a malformed value refuses boot. Unset, nothing is charged and nothing
+    // watches the chain.
+    let (credit_terms, credits_watcher) =
+        maidan_server::credits::from_env().map_err(anyhow::Error::msg)?;
+    state.set_credit_terms(credit_terms);
     // Built once the state is: it counts embeddings into the state's usage
     // meters.
     let indexer_last_error = Arc::new(RwLock::new(None));
@@ -1029,6 +1035,18 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         let interval = maidan_server::usage_meters::interval_from_env();
         tokio::spawn(async move {
             maidan_server::usage_meters::run(meter_state, interval).await;
+        });
+    }
+
+    // Credits deposit watcher: only with `MAIDAN_CREDITS_ADDRESS`. It reads the
+    // chain (never signs or sends) and credits workspaces whose top-up
+    // intents were paid.
+    if let Some(config) = credits_watcher {
+        let reader = maidan_server::credits::JsonRpcReader::new(&config.rpc_url)
+            .map_err(anyhow::Error::msg)?;
+        let watcher_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::credits::run(watcher_state, std::sync::Arc::new(reader), config).await;
         });
     }
 

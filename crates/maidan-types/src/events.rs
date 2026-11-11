@@ -194,6 +194,7 @@ pub enum EventKind {
     IntakeAccepted,
     IntakeRejected,
     UsageOverAllowance,
+    CreditsDeposited,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -249,6 +250,7 @@ impl EventKind {
             Self::IntakeAccepted => "intake_accepted",
             Self::IntakeRejected => "intake_rejected",
             Self::UsageOverAllowance => "usage_over_allowance",
+            Self::CreditsDeposited => "credits_deposited",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -304,6 +306,7 @@ impl EventKind {
             "intake_accepted" => Some(Self::IntakeAccepted),
             "intake_rejected" => Some(Self::IntakeRejected),
             "usage_over_allowance" => Some(Self::UsageOverAllowance),
+            "credits_deposited" => Some(Self::CreditsDeposited),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -384,6 +387,7 @@ impl EventKind {
         Self::IntakeAccepted,
         Self::IntakeRejected,
         Self::UsageOverAllowance,
+        Self::CreditsDeposited,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -511,6 +515,9 @@ impl EventKind {
             // An allowance crossing reads this deployment's meters against its
             // own allowance; a peer has no standing to report one.
             Self::UsageOverAllowance => false,
+            // A deposit is this deployment's ledger, read from its own chain
+            // watcher; a peer has no standing to credit a workspace.
+            Self::CreditsDeposited => false,
             // A memory-block update is a locally-derived signal over local
             // shared state; a peer must not inject one.
             Self::MemoryBlockUpdated => false,
@@ -1101,6 +1108,21 @@ pub enum Event {
         quantity: i64,
         allowance: i64,
     },
+    /// A deposit of USDC was matched to one of the workspace's top-up intents
+    /// and credited. Appended with the ledger row and its admins'
+    /// notifications in one transaction. Locally derived: not federatable.
+    CreditsDeposited {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        top_up_id: uuid::Uuid,
+        /// The amount credited, in USD micros.
+        usd_micros: i64,
+        /// The balance after it.
+        balance_micros: i64,
+        /// `base` or `base-sepolia`.
+        chain: String,
+        tx_hash: String,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -1254,6 +1276,7 @@ impl Event {
             Self::IntakeAccepted { .. } => EventKind::IntakeAccepted,
             Self::IntakeRejected { .. } => EventKind::IntakeRejected,
             Self::UsageOverAllowance { .. } => EventKind::UsageOverAllowance,
+            Self::CreditsDeposited { .. } => EventKind::CreditsDeposited,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -1309,6 +1332,7 @@ impl Event {
             | Self::IntakeAccepted { occurred_at, .. }
             | Self::IntakeRejected { occurred_at, .. }
             | Self::UsageOverAllowance { occurred_at, .. }
+            | Self::CreditsDeposited { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -1364,6 +1388,7 @@ impl Event {
             | Self::IntakeAccepted { workspace_id, .. }
             | Self::IntakeRejected { workspace_id, .. }
             | Self::UsageOverAllowance { workspace_id, .. }
+            | Self::CreditsDeposited { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -1892,6 +1917,7 @@ mod kind_tests {
                 | EventKind::IntakeAccepted
                 | EventKind::IntakeRejected
                 | EventKind::UsageOverAllowance
+                | EventKind::CreditsDeposited
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -1989,6 +2015,7 @@ mod kind_tests {
             EventKind::IntakeAccepted,
             EventKind::IntakeRejected,
             EventKind::UsageOverAllowance,
+            EventKind::CreditsDeposited,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,
             EventKind::StatusDeclared,

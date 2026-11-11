@@ -663,6 +663,12 @@ fn apply_route_defaults(
     if path == "/threads/{id}/pull" && method == "PUT" {
         return b.json(&json!({ "repo": "example/app", "pull_number": 1 }));
     }
+    if path == "/operator/workspaces/{id}/credits/grants" && method == "POST" {
+        return b.json(&json!({ "usd_micros": 5000000, "note": "capability matrix" }));
+    }
+    if path == "/workspaces/{id}/credits/top-ups" && method == "POST" {
+        return b.json(&json!({ "usd": 5, "method": "usdc" }));
+    }
     if path == "/workspaces/{id}/pull-watches" && method == "POST" {
         return b.json(&json!({ "repo": "example/app", "pull_number": 1 }));
     }

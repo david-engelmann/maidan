@@ -845,6 +845,25 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             quantity,
             allowance,
         },
+        // Non-federatable (this deployment's ledger), classified like the
+        // allowance crossing above.
+        CreditsDeposited {
+            occurred_at,
+            workspace_id: _,
+            top_up_id,
+            usd_micros,
+            balance_micros,
+            chain,
+            tx_hash,
+        } => CreditsDeposited {
+            occurred_at,
+            workspace_id,
+            top_up_id,
+            usd_micros,
+            balance_micros,
+            chain,
+            tx_hash,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

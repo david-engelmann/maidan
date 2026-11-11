@@ -47,7 +47,7 @@ ids replaced by short names and responses trimmed to the fields that matter:
 ```jsonc
 // → initialize
 {"serverInfo":{"name":"maidan"}}
-// 263 tools in tools/list at full capability; a narrower token sees fewer
+// 265 tools in tools/list at full capability; a narrower token sees fewer
 
 // → claim_next_thread {"channel_id":"c-build","lease_secs":900}
 {"id":"t-42","title":"Fix the flaky login test","claim_lease_id":"l-7"}

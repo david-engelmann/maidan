@@ -255,6 +255,22 @@ pub struct McpServer {
     /// Shared by every clone, so it can be set after the server is cloned
     /// into the router's state.
     approval_confirmations: Arc<std::sync::OnceLock<ApprovalConfirmationKeys>>,
+    /// Where this instance takes payment and what overage costs, for
+    /// `get_credits` and `top_up_credits`. Shared by every clone, since the
+    /// server sets it after the router's state holds a clone. The default
+    /// takes no payment.
+    credit_terms: Arc<std::sync::RwLock<Arc<maidan_types::CreditTerms>>>,
+}
+
+/// The tool error a call refused past the allowance answers: the same text
+/// as the HTTP 402, and the meter in `structuredContent`.
+fn over_allowance_result(meter: maidan_types::UsageMeter) -> Value {
+    let text = maidan_types::over_allowance_detail(meter);
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": { "error": "over_allowance", "meter": meter.as_str(), "detail": text },
+        "isError": true,
+    })
 }
 
 /// What a caller with no credential may do on a dev instance: discover the
@@ -347,6 +363,7 @@ impl McpServer {
             usage_meters: None,
             pull_refresher: Arc::default(),
             approval_confirmations: Arc::new(std::sync::OnceLock::new()),
+            credit_terms: Arc::default(),
         }
     }
 
@@ -488,6 +505,20 @@ impl McpServer {
         &self,
     ) -> Option<&Arc<dyn crate::land_gate_advice::LandGateAdvising>> {
         self.land_gate_advisor.get()
+    }
+
+    /// Set the instance's credit terms (the server does, at boot).
+    pub fn set_credit_terms(&self, terms: Arc<maidan_types::CreditTerms>) {
+        if let Ok(mut held) = self.credit_terms.write() {
+            *held = terms;
+        }
+    }
+
+    pub(crate) fn credit_terms(&self) -> Arc<maidan_types::CreditTerms> {
+        self.credit_terms
+            .read()
+            .map(|held| held.clone())
+            .unwrap_or_default()
     }
 
     /// Install the GitHub refresh `get_swarm_metrics` runs first, as the
@@ -965,6 +996,13 @@ impl McpServer {
             self.tools_call_unscoped(params, auth, profile),
         )
         .await;
+        // Past the allowance the refusal is a tool error, not a protocol
+        // error, so the model reads what to do (top up) rather than its
+        // client swallowing a JSON-RPC error.
+        let result = match result {
+            Err(McpError::OverAllowance(meter)) => Ok(over_allowance_result(meter)),
+            other => other,
+        };
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
         let succeeded = result
             .as_ref()
@@ -1029,7 +1067,11 @@ impl McpServer {
         // Counted once the call is authorized to run, whatever it answers.
         if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
             // The hard allowance cutoff: refused before it runs, not counted.
-            if meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::McpCalls) {
+            // The credit tools stay open past it, so an agent cut off can
+            // read its balance and ask for a top-up to pay its own way back.
+            if meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::McpCalls)
+                && !tools::REACHABLE_PAST_CUTOFF.contains(&name)
+            {
                 return Err(McpError::OverAllowance(maidan_types::UsageMeter::McpCalls));
             }
             // Stored bytes are refused by the store's message and artifact

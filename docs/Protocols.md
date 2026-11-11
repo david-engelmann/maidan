@@ -77,7 +77,7 @@ IT stack already uses.
 | Installed apps | `/oauth/app/token` | App-scoped bearer tokens for installed apps. |
 | Metrics | `GET /metrics`, OTLP | Prometheus text. Plug it into the scrape you already run. |
 
-MCP tool count is **263**. There is **no** MCP tool that creates a workspace or a member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Set up the workspace and its members over REST or the CLI, then use MCP to claim, wait, post and `transition_thread`.
+MCP tool count is **265**. There is **no** MCP tool that creates a workspace or a member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Set up the workspace and its members over REST or the CLI, then use MCP to claim, wait, post and `transition_thread`.
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit
 `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the

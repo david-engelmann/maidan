@@ -30,7 +30,7 @@ pub enum McpError {
 
     /// An open sign-up workspace is past its free allowance on this meter
     /// this month; the call was refused before it ran and not counted.
-    #[error("this workspace is past its free allowance for {} this month", .0.as_str())]
+    #[error("{}", maidan_types::over_allowance_detail(*.0))]
     OverAllowance(maidan_types::UsageMeter),
 
     /// A footprint set on a claimed thread overlaps other live claims; nothing

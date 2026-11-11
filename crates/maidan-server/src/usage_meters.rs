@@ -42,21 +42,26 @@ pub fn unmetered(path: &str) -> bool {
 }
 
 /// Paths an open sign-up workspace past its request allowance may still
-/// read, so its admin can see why it was cut off: its usage, and its
-/// members' notifications (where the crossing notice lands). Reads only.
+/// reach, so it can see why it was cut off and pay its way back: its usage,
+/// its credits, its members' notifications (where the crossing notice
+/// lands), and opening a top-up intent, which moves no money.
 pub fn readable_past_cutoff(method: &axum::http::Method, matched: Option<&str>) -> bool {
-    method == axum::http::Method::GET
+    let read = method == axum::http::Method::GET
         && matches!(
             matched,
             Some("/workspaces/{id}/usage-meters")
+                | Some("/workspaces/{id}/credits")
                 | Some("/members/{id}/notifications")
                 | Some("/members/{id}/notifications/grouped")
-        )
+        );
+    let top_up =
+        method == axum::http::Method::POST && matched == Some("/workspaces/{id}/credits/top-ups");
+    read || top_up
 }
 
 /// One authenticated request, on any binding (the HTTP bearer middleware,
 /// the gRPC A2A service): an open sign-up workspace past its request
-/// allowance is refused (429) before the work runs, and the refusal is not
+/// allowance is refused (402) before the work runs, and the refusal is not
 /// counted; otherwise the request is counted. `readable` is a read the
 /// cutoff still lets through (its usage, its notifications). Past the
 /// stored-bytes allowance, the store refuses the writes that add bytes
@@ -98,13 +103,11 @@ pub async fn member_cut_off(
     }
 }
 
-/// The refusal for metered work past the free allowance: `429 Too Many
-/// Requests`, naming the meter. Only an open sign-up workspace is refused.
+/// The refusal for metered work past the free allowance: `402 Payment
+/// Required`, naming the meter and how to top up. Only an open sign-up
+/// workspace is refused.
 pub fn cut_off_error(meter: maidan_types::UsageMeter) -> crate::error::ApiError {
-    crate::error::ApiError::TooManyRequests(format!(
-        "this workspace is past its free allowance for {} this month",
-        meter.as_str()
-    ))
+    crate::error::ApiError::PaymentRequired(meter)
 }
 
 /// Reload the hard allowance cutoff from the store: the current month's
@@ -151,9 +154,9 @@ pub async fn record_for_member(
     }
 }
 
-/// The workspace's admins, to be told of a crossing: members holding a live
-/// `token:admin` token.
-async fn workspace_admins(
+/// The workspace's admins, to be told of a crossing or a deposit: members
+/// holding a live `token:admin` token.
+pub(crate) async fn workspace_admins(
     state: &AppState,
     workspace_id: maidan_types::WorkspaceId,
 ) -> Result<Vec<maidan_types::MemberId>, maidan_store::StoreError> {
@@ -180,7 +183,10 @@ async fn workspace_admins(
 }
 
 /// Mark each of `touched` past the allowance on a meter in the month its
-/// rows were written for, once, telling its admins. The month is the rows'
+/// rows were written for, once, telling its admins. An open sign-up
+/// workspace past the allowance on a meter this instance prices is charged
+/// for it from its credits instead, and is marked (cut off) only when its
+/// balance cannot cover the charge. The month is the rows'
 /// day, not the check's clock, so a count from the last minutes of a month
 /// flushed after midnight UTC is judged against the month it belongs to.
 /// Returns how many were marked.
@@ -224,6 +230,7 @@ async fn check_workspace(
     }
     let already = state.store.list_over_allowance(workspace_id, label).await?;
     let mut admins = None;
+    let mut open = None;
     for meter in over {
         if already.iter().any(|m| m.meter == meter.meter) {
             continue;
@@ -231,6 +238,39 @@ async fn check_workspace(
         let Some(allowance) = meter.allowance else {
             continue;
         };
+        if let Some(price) = state.credit_terms.price(meter.meter) {
+            let open = match open {
+                Some(open) => open,
+                None => *open.insert(
+                    state.store.workspace_origin(workspace_id).await?
+                        == maidan_types::WorkspaceOrigin::Open,
+                ),
+            };
+            // Only an open sign-up workspace is cut off, so only one is
+            // charged; the others are marked as before.
+            if open {
+                let outcome = state
+                    .store
+                    .charge_credits(&maidan_types::CreditCharge {
+                        workspace_id,
+                        meter: meter.meter,
+                        month: label.to_string(),
+                        through_units: meter.quantity.saturating_sub(allowance),
+                        price,
+                        at: chrono::Utc::now(),
+                    })
+                    .await?;
+                if outcome.balance_micros >= 0 {
+                    continue;
+                }
+                tracing::info!(
+                    workspace_id = %workspace_id.0,
+                    meter = meter.meter.as_str(),
+                    balance_micros = outcome.balance_micros,
+                    "usage meters: credits do not cover the overage; cut off"
+                );
+            }
+        }
         let admins = match &admins {
             Some(admins) => admins,
             None => admins.insert(workspace_admins(state, workspace_id).await?),

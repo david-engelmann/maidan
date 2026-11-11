@@ -2945,6 +2945,28 @@ pub fn find_thread() {}
     ))]
 pub fn get_workspace_usage_meters() {}
 
+/// The workspace's prepaid credits: balance, open top-up intents, recent ledger and the overage prices
+#[utoipa::path(get, path = "/workspaces/{id}/credits", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Credits),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_workspace_credits() {}
+
+/// Open a top-up intent: the exact USDC amount to send on Base, where, and an EIP-681 wallet link. Moves no money
+#[utoipa::path(post, path = "/workspaces/{id}/credits/top-ups", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = TopUpRequest,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = TopUp),
+        (status = 403, response = Forbidden),
+        (status = 409, response = Conflict),
+    ))]
+pub fn create_credit_top_up() {}
+
 /// Swarm ramp metrics: per agent pull request and per repository
 #[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SwarmMetricsQuery),

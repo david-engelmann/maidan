@@ -342,6 +342,14 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_workspace_usage_meters),
         )
         .route(
+            "/workspaces/{id}/credits",
+            get(routes::get_workspace_credits),
+        )
+        .route(
+            "/workspaces/{id}/credits/top-ups",
+            post(routes::create_credit_top_up),
+        )
+        .route(
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),
         )
@@ -1208,6 +1216,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/operator/usage-meters",
             get(routes::list_operator_usage_meters),
+        )
+        .route(
+            "/operator/credits/unmatched",
+            get(routes::list_unmatched_credit_deposits),
+        )
+        .route(
+            "/operator/workspaces/{id}/credits/grants",
+            post(routes::grant_workspace_credits),
         )
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(

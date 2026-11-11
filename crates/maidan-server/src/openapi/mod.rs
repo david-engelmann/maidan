@@ -21,7 +21,8 @@ use crate::land_gate_advisor::{
 };
 use crate::openapi::responses::{
     BadRequest, Conflict, Forbidden, Gone, IdempotencyKeyReused, InternalServerError, NotFound,
-    Overloaded, PayloadTooLarge, TooManyRequests, Unauthorized, UnsupportedMediaType,
+    Overloaded, PayloadTooLarge, PaymentRequired, TooManyRequests, Unauthorized,
+    UnsupportedMediaType,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
@@ -70,6 +71,10 @@ impl Modify for SecurityAddon {
 /// - **401** — every operation with a security requirement sits behind a layer
 ///   that refuses a missing or bad credential: bearer (`auth::middleware`),
 ///   session cookie, share ticket, or federation peer.
+/// - **402** — every bearer operation: past its free allowance on requests,
+///   an open sign-up workspace is refused by the bearer layer
+///   (`usage_meters::admit_request`), and past another meter by the handler
+///   that meters it.
 /// - **429** — `rate_limit::middleware` wraps every route but the ones
 ///   [`rate_limit::exempt_path`] names, and `quota::middleware` enforces
 ///   per-token capability quotas on the bearer routes.
@@ -90,11 +95,17 @@ impl Modify for MiddlewareResponses {
             let sheddable = !crate::load_shed::exempt_path(path);
             for op in operations_mut(item) {
                 let requires_credential = requires_credential(op);
+                let bearer = bearer_secured(op);
                 let responses = &mut op.responses.responses;
                 if requires_credential {
                     responses
                         .entry("401".to_owned())
                         .or_insert_with(|| Ref::from_response_name("Unauthorized").into());
+                }
+                if bearer {
+                    responses
+                        .entry("402".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("PaymentRequired").into());
                 }
                 if rate_limited {
                     responses
@@ -249,6 +260,21 @@ fn operations_mut(item: &mut PathItem) -> impl Iterator<Item = &mut Operation> {
 
 /// An operation requires a credential when any of its security requirements
 /// names a scheme; `security(())` (an empty requirement) marks a public one.
+/// Whether an operation takes the API bearer token, the credential the
+/// allowance cutoff is applied behind.
+fn bearer_secured(op: &Operation) -> bool {
+    op.security.iter().flatten().any(|requirement| {
+        serde_json::to_value(requirement)
+            .ok()
+            .and_then(|value| {
+                value
+                    .as_object()
+                    .map(|scheme| scheme.contains_key("bearerAuth"))
+            })
+            .unwrap_or(false)
+    })
+}
+
 fn requires_credential(op: &Operation) -> bool {
     op.security.iter().flatten().any(|requirement| {
         serde_json::to_value(requirement)
@@ -603,6 +629,10 @@ fn requires_credential(op: &Operation) -> bool {
         paths::get_swarm_metrics,
         paths::get_workspace_usage_meters,
         paths::list_operator_usage_meters,
+        paths::get_workspace_credits,
+        paths::create_credit_top_up,
+        paths::list_unmatched_credit_deposits,
+        paths::grant_workspace_credits,
         paths::watch_pull,
         paths::find_thread,
         paths::list_repo_pauses,
@@ -712,6 +742,7 @@ fn requires_credential(op: &Operation) -> bool {
         Gone,
         PayloadTooLarge,
         UnsupportedMediaType,
+        PaymentRequired,
         TooManyRequests,
         InternalServerError,
         Overloaded,
@@ -1007,6 +1038,18 @@ fn requires_credential(op: &Operation) -> bool {
         SuspendWorkspace,
         LiftedSuspension,
         MonthlyUsage,
+        Credits,
+        CreditChain,
+        CreditEntry,
+        CreditEntryKind,
+        MeterPrice,
+        TopUp,
+        TopUpStatus,
+        TopUpMethod,
+        CreditSource,
+        TopUpRequest,
+        CreditGrantRequest,
+        UnmatchedDeposit,
         FleetConformance,
         TaskClassRouting,
         SeatCosts,
