@@ -164,6 +164,12 @@ the target's repository, only when every rule holds:
 
 - **The thread is a review.** A result on any other thread is delivered as
   before, and a change keeps the change flow's own `check`.
+- **The reporter holds the `pre-review` skill.** The member that set the
+  result must currently hold `pre-review`, a governance skill: an operator
+  with `channel:admin` grants and revokes it (`POST /members/:id/skills`,
+  `DELETE /members/:id/skills/pre-review`), and a member can never declare it
+  about itself. Without it nothing is posted
+  (`pre_review_skill_missing: <handle> does not hold the pre-review skill`).
 - **`check.context` is exactly `pre-review`.** It is the only entry in the
   allowlist, so a review can never post a context another gate owns
   (`stamp`, `security`, `review-lane`). Any other context posts nothing.

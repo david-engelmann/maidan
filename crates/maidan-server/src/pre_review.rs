@@ -4,7 +4,9 @@
 //! A review agent claims a review thread and sets a result naming its
 //! `verdict` and a `check`. The comment carries the verdict for people; a
 //! merge gate that reads a `pre-review` status needs it on the commit. That
-//! status is a gate, so everything a model controls is held to it here: only
+//! status is a gate, so it is posted only for a reporter an operator granted
+//! the `pre-review` governance skill, and everything a model controls is held
+//! to it here: only
 //! the one allowed context, only `PASS` or `FIX-FIRST`, only at the head the
 //! review was briefed on, and with a description Maidan builds from what it
 //! knows itself (the reporting member's handle and the provider family its
@@ -13,7 +15,7 @@
 
 use maidan_types::{
     is_git_sha, ChangeCheck, CommitStatusState, EgressOutbox, EgressTarget, TaskKind, ThreadResult,
-    WaiterResult, CHANGE_CHECK_DESCRIPTION_MAX_CHARS, PROVIDER_FAMILIES,
+    WaiterResult, CHANGE_CHECK_DESCRIPTION_MAX_CHARS, PRE_REVIEW_SKILL, PROVIDER_FAMILIES,
 };
 
 use crate::github::GithubSender;
@@ -45,6 +47,8 @@ pub const PRE_REVIEW_VERDICT_REFUSED: &str = "pre_review_verdict_refused";
 pub const PRE_REVIEW_HEAD_REFUSED: &str = "pre_review_head_refused";
 /// The member that set the result could not be read in the thread's workspace.
 pub const PRE_REVIEW_REPORTER_UNKNOWN: &str = "pre_review_reporter_unknown";
+/// The reporter does not hold the [`PRE_REVIEW_SKILL`] governance skill.
+pub const PRE_REVIEW_SKILL_MISSING: &str = "pre_review_skill_missing";
 /// Neither the reporter's usage nor the `result_kind` names a known family.
 pub const PRE_REVIEW_FAMILY_UNKNOWN: &str = "pre_review_family_unknown";
 /// The description could not be built in the form the gate parses.
@@ -306,6 +310,23 @@ async fn decide_and_post(
         .get_member_in(entry.workspace_id, stored.produced_by)
         .await
         .map_err(|err| warning(PRE_REVIEW_REPORTER_UNKNOWN, &err.to_string()))?;
+    // The status is a merge gate's input, so posting it is approval
+    // authority: only a member an operator granted the governance skill may,
+    // never one that declared a routing tag about itself.
+    let skills = state
+        .store
+        .list_member_skills(reporter.id)
+        .await
+        .map_err(|err| read_failed("the reporter's skills", &err))?;
+    if !skills.iter().any(|held| held.skill == PRE_REVIEW_SKILL) {
+        return Err(warning(
+            PRE_REVIEW_SKILL_MISSING,
+            &format!(
+                "{} does not hold the {PRE_REVIEW_SKILL} skill",
+                reporter.handle
+            ),
+        ));
+    }
     let family = reporter_family(state, entry, &stored, &waiter).await?;
     let description = status_description(verdict, &head, family, &reporter.handle)
         .map_err(|why| warning(PRE_REVIEW_DESCRIPTION_REFUSED, &why))?;

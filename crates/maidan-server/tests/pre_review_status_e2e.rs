@@ -3,7 +3,8 @@
 //! worker, with the production `GithubApiClient` pointed at an in-memory fake
 //! of GitHub that records every call.
 //!
-//! The status is posted only for a review thread, only under the context
+//! The status is posted only for a review thread whose reporter holds the
+//! `pre-review` governance skill, only under the context
 //! `pre-review`, only for a `PASS` or `FIX-FIRST` verdict, and only at the
 //! head the thread was briefed on; its description is built by Maidan from
 //! the reporter's own handle and family. Anything refused posts nothing and
@@ -30,9 +31,9 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{egress_worker, github::GithubApiClient, notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ChannelId, EgressSurface, Event, MemberId, MemberKind, NewChannel, NewEgressTarget, NewMember,
-    NewThread, NewWorkspace, ResultDelivery, TaskAttributes, TaskKind, ThreadId, WorkspaceId,
-    WAITER_RESULT_SCHEMA,
+    AuditScope, ChannelId, EgressSurface, Event, MemberId, MemberKind, NewAuditEvent, NewChannel,
+    NewEgressTarget, NewMember, NewThread, NewWorkspace, ResultDelivery, TaskAttributes, TaskKind,
+    ThreadId, WorkspaceId, PRE_REVIEW_SKILL, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 
@@ -138,7 +139,45 @@ async fn harness() -> Harness {
 }
 
 impl Harness {
+    /// A tenant whose reviewer an operator granted the `pre-review` skill.
     async fn tenant(&self, name: &str, reviewer_handle: &str) -> Tenant {
+        let tenant = self.tenant_without_skill(name, reviewer_handle).await;
+        self.grant_pre_review(&tenant).await;
+        tenant
+    }
+
+    /// Grant the reviewer `pre-review` the way `POST /members/{id}/skills`
+    /// does for a governance skill: through the audited governance grant, by
+    /// an operator of the reviewer's workspace.
+    async fn grant_pre_review(&self, tenant: &Tenant) {
+        let admin = self
+            .store
+            .create_member(NewMember {
+                workspace_id: tenant.workspace_id,
+                handle: format!("admin-{}", uuid::Uuid::now_v7().simple()),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        self.store
+            .grant_governance_skill_audited(
+                tenant.reviewer,
+                PRE_REVIEW_SKILL,
+                NewAuditEvent {
+                    scope: AuditScope::Workspace(tenant.workspace_id),
+                    actor_id: Some(admin.id),
+                    action: "member_skill.grant_governance".into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(tenant.reviewer.0),
+                    metadata: json!({ "skill": PRE_REVIEW_SKILL }),
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    async fn tenant_without_skill(&self, name: &str, reviewer_handle: &str) -> Tenant {
         let ws = self
             .store
             .create_workspace(NewWorkspace { name: name.into() })
@@ -540,4 +579,95 @@ async fn each_tenants_status_names_its_own_reporter_and_family() {
     );
     assert_comment_delivered(&h, "Review: alpha");
     assert_comment_delivered(&h, "Review: beta");
+}
+
+#[tokio::test]
+async fn a_reviewer_without_the_pre_review_skill_posts_nothing_and_warns_naming_it() {
+    let h = harness().await;
+    let tenant = h.tenant_without_skill("alpha", "reviewer-a").await;
+    let review = h.review(&tenant).await;
+    h.deliver(
+        &review,
+        Some(("deepseek", "deepseek-chat")),
+        &review_result("PASS", "pre-review", HEAD, "Review: ungranted"),
+    )
+    .await;
+
+    assert!(h.statuses().is_empty(), "{:?}", h.statuses());
+    assert_comment_delivered(&h, "Review: ungranted");
+    let row = h.github_row(&review).await;
+    assert_eq!(row.status, maidan_types::status::DELIVERED);
+    assert_eq!(
+        row.delivery_warnings,
+        vec!["pre_review_skill_missing: reviewer-a does not hold the pre-review skill".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn a_revoked_pre_review_skill_stops_the_next_status() {
+    let h = harness().await;
+    let tenant = h.tenant("alpha", "reviewer-a").await;
+    let review = h.review(&tenant).await;
+    h.deliver(
+        &review,
+        Some(("deepseek", "deepseek-chat")),
+        &review_result("PASS", "pre-review", HEAD, "Review: first round"),
+    )
+    .await;
+    assert_eq!(h.statuses().len(), 1, "{:?}", h.statuses());
+
+    // Held is read at delivery, not at claim: an operator's revoke stops the
+    // next round's status.
+    assert!(h
+        .store
+        .remove_member_skill(tenant.reviewer, PRE_REVIEW_SKILL)
+        .await
+        .unwrap());
+    h.store.unassign_thread(review.thread_id).await.unwrap();
+    // A newer revision, so the delivery row re-arms.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    h.deliver(
+        &review,
+        Some(("deepseek", "deepseek-chat")),
+        &review_result("FIX-FIRST", "pre-review", HEAD, "Review: second round"),
+    )
+    .await;
+
+    assert_eq!(
+        h.statuses().len(),
+        1,
+        "no second status: {:?}",
+        h.statuses()
+    );
+    assert_comment_delivered(&h, "Review: second round");
+    let row = h.github_row(&review).await;
+    assert_eq!(row.delivery_warnings.len(), 1, "{row:?}");
+    assert!(
+        row.delivery_warnings[0].starts_with("pre_review_skill_missing:"),
+        "{row:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_pre_review_skill_held_in_another_workspace_does_not_count() {
+    let h = harness().await;
+    let alpha = h.tenant_without_skill("alpha", "reviewer-a").await;
+    // Another workspace's operator grants its own reviewer; alpha's reviewer
+    // stays without it.
+    let beta = h.tenant("beta", "reviewer-a").await;
+    assert_ne!(alpha.reviewer, beta.reviewer);
+    let review = h.review(&alpha).await;
+    h.deliver(
+        &review,
+        Some(("deepseek", "deepseek-chat")),
+        &review_result("PASS", "pre-review", HEAD, "Review: alpha ungranted"),
+    )
+    .await;
+
+    assert!(h.statuses().is_empty(), "{:?}", h.statuses());
+    let row = h.github_row(&review).await;
+    assert!(
+        row.delivery_warnings[0].starts_with("pre_review_skill_missing:"),
+        "{row:?}"
+    );
 }
