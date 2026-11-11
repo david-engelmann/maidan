@@ -208,6 +208,7 @@ async fn seed(store: &dyn Store, receiver: &str) -> (WorkspaceId, Event) {
             label: None,
             event_kinds: vec!["thread_state_changed".into()],
             secret_ciphertext: sealed.clone(),
+            created_by_token: Some(token),
         })
         .await
         .expect("webhook");

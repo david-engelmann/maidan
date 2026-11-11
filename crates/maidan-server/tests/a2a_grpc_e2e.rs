@@ -436,16 +436,12 @@ async fn a2a_grpc_serves_the_whole_service() {
         assert_eq!(created.id, id);
         assert_eq!(created.task_id, task.id);
     }
-    // A config writes no event, so the call is recorded under its method.
+    // Each config records who registered it, so the call needs no
+    // `mutation` row of its own.
     let recorded = store.list_audit(100).await.unwrap();
     let created_rows = recorded
         .iter()
-        .filter(|row| {
-            row.action == maidan_server::auth::MUTATION_ACTION
-                && row.actor_id == Some(member)
-                && row.metadata["binding"] == "grpc"
-                && row.metadata["operation"] == "CreateTaskPushNotificationConfig"
-        })
+        .filter(|row| row.action == "a2a_push_config.create" && row.actor_id == Some(member))
         .count();
     assert_eq!(created_rows, 2, "{recorded:?}");
     assert!(

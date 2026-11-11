@@ -411,6 +411,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             label: None,
             event_kinds: vec!["member_joined".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .expect("subscription");

@@ -281,6 +281,9 @@ mod member_display_name_event;
 #[path = "../member_emails.rs"]
 mod member_emails;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_freezes.rs"]
 mod member_freezes;
 

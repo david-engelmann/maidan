@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use maidan_types::{Event, NewThread, TaskSchedule};
 
+use crate::registration_owner::NotActing;
 use crate::state::AppState;
 
 /// Belt-and-suspenders bound on firings per tick, so a large due backlog can't
@@ -61,6 +62,12 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         if crate::suspension::held_back(state, sched.workspace_id).await {
             continue;
         }
+        // A schedule opens threads as its creator, so it fires only while
+        // the creator could open them itself (SEC-018).
+        if let Err(not_acting) = creator_may_fire(state, &sched).await {
+            skip(state, &sched, not_acting).await;
+            continue;
+        }
         match sched.recipe_id {
             Some(_) => fire_recipe(state, &sched).await,
             None => fire_bare_thread(state, &sched).await,
@@ -73,6 +80,56 @@ pub async fn sweep_once(state: &AppState) -> u32 {
         );
     }
     fired
+}
+
+/// Whether `sched`'s creator may still open a thread in its channel: the
+/// member is not removed or deactivated, and is still in the channel if it is
+/// private. Ending a member's authority pauses their schedules; this also
+/// covers a member who left a private channel since, and one ended another
+/// way.
+async fn creator_may_fire(state: &AppState, sched: &TaskSchedule) -> Result<(), NotActing> {
+    let store = state.store.as_ref();
+    match store.get_member(sched.created_by).await {
+        Ok(member) if member.tombstoned_at.is_none() => {}
+        Ok(_) | Err(maidan_store::StoreError::NotFound) => {
+            return Err(NotActing::Ended("creator removed"));
+        }
+        Err(_) => return Err(NotActing::Held("creator check failed")),
+    }
+    match store.get_scim_user(sched.created_by).await {
+        Ok(Some(user)) if !user.active => return Err(NotActing::Ended("creator deactivated")),
+        Ok(_) => {}
+        Err(_) => return Err(NotActing::Held("creator check failed")),
+    }
+    let creator =
+        maidan_auth::AuthContext::from_session(sched.created_by, sched.workspace_id, Vec::new());
+    match maidan_auth::can_access_channel(store, &creator, sched.channel_id).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(NotActing::Ended("creator is not in the channel")),
+        Err(_) => Err(NotActing::Held("creator check failed")),
+    }
+}
+
+/// Record a skipped firing. A schedule whose creator's authority has ended is
+/// paused, so it does not skip, and record, on every tick from now on; one
+/// whose check could not finish only misses this run.
+async fn skip(state: &AppState, sched: &TaskSchedule, not_acting: NotActing) {
+    crate::metrics::record_task_schedule_fired("skipped");
+    let paused = matches!(not_acting, NotActing::Ended(_))
+        && state
+            .store
+            .set_task_schedule_active(sched.id, false)
+            .await
+            .is_ok();
+    crate::registration_owner::record_skip(
+        state,
+        sched.workspace_id,
+        "task_schedule",
+        Some(sched.id.0),
+        not_acting.reason(),
+        serde_json::json!({ "created_by": sched.created_by.0, "paused": paused }),
+    )
+    .await;
 }
 
 /// Fire a plain schedule: create one titled thread in its channel.
