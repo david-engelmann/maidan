@@ -1,0 +1,59 @@
+/* Live board: health and stale strips, the by-agent view, presence,
+   votes, Activity and card vote badges. */
+/* Board health strip: live tasks that may need a look, each a filter. */
+.health { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.health-chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: var(--text-base); cursor: pointer; }
+.health-chip[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.health-stalled, .health-blocked, .health-ending { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.health-clear { color: var(--muted); }
+
+/* Stale-data banner: the board stopped following live changes. */
+.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: var(--text-base); }
+.stale-banner .chip-btn { min-height: 44px; }
+
+/* Board view toggle and the by-agent view. */
+.view-pick { display: inline-flex; gap: 6px; }
+.view-pick .chip-btn { min-height: var(--control-h); }
+.view-pick .chip-btn[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.agents { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 12px; }
+.agent-group { min-width: 0; }
+
+/* Presence strip: who is online or away, and how many tasks each holds. */
+.presence-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.presence-strip ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.here { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--r-pill); border: 1px solid var(--line); font-size: 13px; }
+.here .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.here-online .dot { background: var(--ok); }
+.here-away { color: var(--muted); }
+
+/* Long lanes: off-screen cards skip layout and paint until scrolled near. */
+.cards > li { content-visibility: auto; contain-intrinsic-size: auto 84px; }
+.more-cards { width: 100%; min-height: 44px; margin-top: 8px; }
+
+/* Votes on a message (console-19). */
+.votes { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 4px 0 0; padding: 0; }
+.vote { font-size: 12px; padding: 1px 8px; border-radius: var(--r-pill); border: 1px solid var(--line); }
+.vote-approve { border-color: var(--vote-yes); color: var(--vote-yes); }
+.vote-request_changes { border-color: var(--vote-no); color: var(--vote-no); }
+.vote.mine { font-weight: 600; }
+
+/* Activity stream (console-20). */
+.activity { padding: 16px; }
+.activity-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.activity-head h1 { margin: 0 auto 0 0; font-size: 18px; }
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-channel { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+.activity-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 32px; }
+
+/* Card vote badges (console-22). */
+.chip-votes { display: inline-flex; gap: 6px; }
+.vote-n.approve { color: var(--vote-yes); }
+.vote-n.changes { color: var(--vote-no); }
+
+/* Wide board: the lanes fill what the strips above them leave, so a health,
+   presence or stale strip never pushes the page past the viewport. */
+@media (min-width: 900px) {
+  .content:has(.lanes.wide) { display: flex; flex-direction: column; }
+  .content > :has(.lanes.wide), .board:has(> .lanes.wide) { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .board > .lanes.wide { flex: 1 0 auto; min-height: 240px; }
+}

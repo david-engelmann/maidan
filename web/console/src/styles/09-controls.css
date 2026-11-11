@@ -1,0 +1,37 @@
+/* Controls: one hover, press, focus and disabled language, and skeletons. */
+/* Interaction layer: one hover, press, focus and disabled language for every control. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
+.button, .btn, .icon-btn, .conv, .seg a, .seg button, .tabs a, .task, .chip {
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease), transform var(--dur-1) var(--ease);
+}
+@media (hover: hover) {
+  .icon-btn:hover, .conv:not(.on):hover, .button.ghost:not([disabled]):hover, .btn:not(.go):not([disabled]):hover { background: var(--hover); }
+  .seg a:not([aria-selected="true"]):hover, .seg button:not(.on):hover, .tabs a:not([aria-current="page"]):hover { color: var(--ink); }
+  .button.ink:not([disabled]):hover, .btn.go:not([disabled]):hover { background: var(--primary-hover); }
+  .task:hover { border-color: var(--line-strong); box-shadow: var(--shadow-2); }
+}
+.button:focus-visible, .btn:focus-visible, .conv:focus-visible, .seg a:focus-visible, .seg button:focus-visible, .task:focus-visible, .lane-pick button:focus-visible, .channel-pick select:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.seg a:focus-visible, .seg button:focus-visible { outline-offset: -2px; }
+/* Disabled reads as disabled without dropping text below AA. */
+.button[disabled], .btn[disabled], .btn.send:disabled { opacity: 1; background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; cursor: not-allowed; }
+.seg { flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg a, .seg button { white-space: nowrap; flex: none; }
+.seg button.on, .seg a[aria-selected="true"] { box-shadow: var(--shadow-1); }
+time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
+.toast { border-radius: var(--r-md); box-shadow: var(--shadow-3); }
+.new-pill { border-radius: var(--r-pill); box-shadow: var(--shadow-3); }
+.card { border-radius: var(--r-xl); }
+/* Skeletons hold the layout while the first load is in flight. */
+.skeleton { display: block; border-radius: var(--r-md); background: linear-gradient(90deg, var(--paper-2) 0, var(--hover) 50%, var(--paper-2) 100%) 0 0 / 200% 100%; animation: shimmer 1.4s var(--ease) infinite; }
+.skeleton.row-sk { height: 60px; margin-bottom: var(--space-1); }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Screens. */
+.top h1 { font-size: var(--text-2xl); letter-spacing: -0.035em; }
+/* Avatars read as initials, not code. */
+.avatar { font-family: var(--sans); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.02em; }
+/* Many tabs wrap on a wide screen and scroll on a phone. */
+/* Counts read as text, not code. */
+.roster-count { font-family: var(--sans); font-size: var(--text-xs); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Cards share one radius and padding. */
+.card, .need-card { border-radius: var(--r-lg); }

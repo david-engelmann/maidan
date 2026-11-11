@@ -1,0 +1,57 @@
+/* Finish: the skip link, surfaces, numbers, icons, selection, wide and
+   narrow screens, and print. */
+/* ── Skip link: off screen until focused, then the first thing on the page ── */
+.skip-link { position: fixed; left: 12px; top: -100px; z-index: 100; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--primary); color: var(--primary-ink); font-weight: 600; text-decoration: none; }
+.skip-link:focus, .skip-link:focus-visible { top: calc(env(safe-area-inset-top, 0px) + 8px); }
+.content:focus { outline: none; }
+
+/* ---- Finish ------------------------------------------------------------- */
+/* Three surfaces above the page. In light the steps share the card; in dark
+   each is a shade lighter, with hairlines that sit back instead of glaring. */
+.need, .tool-panel, .content .card { background: var(--elev-1); border-color: var(--hairline); }
+.sheet { background: var(--sheet-bg); border-color: var(--hairline); }
+.palette { background: var(--elev-3); border-color: var(--hairline); }
+.rail { border-color: var(--hairline); }
+
+/* Names wait for the member list instead of flashing an id. */
+.name-pending { display: inline-block; vertical-align: -0.15em; width: 7ch; height: 0.95em; border-radius: var(--r-sm); background: var(--hover); color: transparent; }
+.name-pending::selection { background: transparent; }
+
+/* Numbers that line up: counts, times, ids. */
+time, .count, .mono-id, .needs-count, .board-summary, .lane-head, .conv-when, .need-meta { font-variant-numeric: tabular-nums; }
+h1, h2, h3, strong, b { font-weight: 600; }
+
+/* Icons sit on the text's optical centre, not its baseline. */
+.icon, .tabs a svg, .button svg, .btn svg, .chip svg { flex: none; vertical-align: -0.2em; }
+.button, .btn, .chip, .chip-btn, .tabs a { line-height: 1.2; }
+
+/* Selection and scrollbars in the house colours. */
+::selection { background: color-mix(in srgb, var(--signal) 28%, transparent); color: inherit; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-pill); border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Wide screens: content stops growing and sits centred, so nothing stretches. */
+@media (min-width: 1100px) {
+  .content, .content:has(.board), .content:has(.threads) { max-width: var(--content-max); width: 100%; }
+}
+/* Narrow phones: nothing wider than the screen. */
+@media (max-width: 380px) {
+  :root { --pad: max(0.85rem, env(safe-area-inset-left), env(safe-area-inset-right)); }
+  /* An 8rem title plus the live chip and Search overran 360px, and the sticky
+     header took a second row. The title gives way and ellipsizes instead. */
+  .top h1 { font-size: var(--text-xl); flex-basis: 6rem; }
+  .content { overflow-wrap: anywhere; }
+}
+
+/* Print: the content on white paper, without chrome. */
+@media print {
+  :root, :root[data-theme] { color-scheme: light; --paper: #fff; --paper-2: #fff; --page-bg: #fff; --card: #fff; --elev-1: #fff; --elev-2: #fff; --elev-3: #fff; --ink: #111; --muted: #444; --line: #ccc; --line-strong: #999; --hairline: #ccc; --hover: transparent; --sheet-bg: #fff; --lane-bg: transparent; --lane-line: #ccc; --signal-ink: #a83a0d; --ok: #256b41; --danger: #b4231a; --review: #4a55c9; --idle: #7d7a72; --vote-yes: #2a7030; --vote-no: #b42222; }
+  .rail, .tabs, .top .live, .top button, .skip-link, .composer, .toasts, .palette-scrim, .need-actions, .new-pill { display: none !important; }
+  .shell { display: block !important; }
+  .top { position: static; backdrop-filter: none; background: none; padding: 0 0 12px; }
+  .content { max-width: none; padding: 0; }
+  .card, .need, .task, .msg { box-shadow: none !important; break-inside: avoid; }
+  * { animation: none !important; transition: none !important; }
+}

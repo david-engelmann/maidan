@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 
 // WCAG AA for the pairs every screen is made of, in both themes: body and
 // muted text on each surface (4.5:1), status ink used as text (4.5:1), and the
 // status dots that carry meaning as a graphic (1.4.11, 3:1).
 
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = sheet().replace(/\/\*[\s\S]*?\*\//g, "");
 
 /** Top-level rules as [selector, body], skipping every at-rule block (media, print, keyframes). */
 export function topLevelRules(source: string): Array<[string, string]> {
