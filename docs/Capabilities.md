@@ -42,6 +42,15 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v449.0.0](https://github.com/david-engelmann/maidan/releases/tag/v449.0.0) — a failure a newer run replaced waits for that run, and 1 more
+
+branch delivery names a workflow-path refusal; CI watch ignores a failed job superseded by a newer run.
+
+- A failure a newer run replaced waits for that run
+- A branch delivery GitHub refuses for a workflow file says so, and the people who can fix it hear
+
+`CHANGELOG.md` under `[449.0.0]` has every entry.
+
 ## [v448.0.0](https://github.com/david-engelmann/maidan/releases/tag/v448.0.0) — OAuth: client metadata documents held five minutes, refresh lineages end at 90 days, and 3 more
 
 audit security fixes: admin-only automation, fair long-polls, bridge outsiders refused, hooks as their creator, stream caps.
