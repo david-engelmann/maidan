@@ -605,6 +605,9 @@ mod thread_results;
 #[path = "../thread_transition.rs"]
 mod thread_transition;
 
+#[path = "../thread_transition_state_machine.rs"]
+mod thread_transition_state_machine;
+
 #[path = "../thread_unclaimable.rs"]
 mod thread_unclaimable;
 
