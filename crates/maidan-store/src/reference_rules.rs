@@ -109,7 +109,10 @@ mod tests {
     }
 
     fn input(err: ReferenceRuleError, result: Result<(), StoreError>) {
-        assert_eq!(result, Err(StoreError::InvalidInput(err.as_str().into())));
+        match result {
+            Err(StoreError::InvalidInput(message)) => assert_eq!(message, err.as_str()),
+            other => panic!("expected invalid input {:?}, got {other:?}", err.as_str()),
+        }
     }
 
     #[test]
@@ -150,6 +153,7 @@ mod tests {
 
     #[test]
     fn accepts_a_same_workspace_edge() {
-        assert_eq!(check(&edge(1, 2), Some(ws(1)), Some(ws(1)), false), Ok(()));
+        let result = check(&edge(1, 2), Some(ws(1)), Some(ws(1)), false);
+        assert!(result.is_ok(), "expected Ok, got {result:?}");
     }
 }
