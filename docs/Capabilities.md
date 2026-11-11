@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v448.0.0](https://github.com/david-engelmann/maidan/releases/tag/v448.0.0) — OAuth: client metadata documents held five minutes, refresh lineages end at 90 days, and 3 more
+
+audit security fixes: admin-only automation, fair long-polls, bridge outsiders refused, hooks as their creator, stream caps.
+
+- OAuth: client metadata documents held five minutes, refresh lineages end at 90 days
+- A gate's verdict is not a CI failure
+- Automation registration is admin-only, long-polls are fair, and bridges stop outsiders
+- FSM hooks run as their creator, and one credential's open streams are capped
+
+`CHANGELOG.md` under `[448.0.0]` has every entry.
+
 ## [v447.0.0](https://github.com/david-engelmann/maidan/releases/tag/v447.0.0) — a cancelled check that a newer run replaced is not a CI failure, and 7 more
 
 USDC credits, OAuth hardening, the pre-review status, GLM as a review family, and a coordinator that wakes on events.
