@@ -51,6 +51,21 @@ const VIEWPORTS = [
   { tag: "phone", width: 390, height: 844, mobile: true },
 ] as const;
 
+// Requests the console sends knowing the server may refuse them: probes whose
+// refusal is the answer. Chromium logs each refusal as a console error. Each
+// entry is a known debt, not a pass: a screen should ask for what it may
+// read, not learn it from a failure. Any refusal not listed here fails the
+// shot, so a new probe has to be argued for here.
+const EXPECTED_REFUSALS: { status: number; path: RegExp; why: string }[] = [
+  { status: 404, path: /^\/support$/, why: "the shell checks whether this server has a support page" },
+  { status: 401, path: /^\/auth\/session$/, why: "a page asks whether a browser session exists before it has one" },
+  { status: 404, path: /^\/threads\/[^/]+\/result$/, why: "a task with no result yet answers 404 for its result" },
+];
+function expectedRefusal(text: string, path: string): boolean {
+  const status = Number(/status of (\d{3})/.exec(text)?.[1] ?? 0);
+  return EXPECTED_REFUSALS.some((r) => r.status === status && r.path.test(path));
+}
+
 interface Row {
   shot: string;
   width: number;
@@ -97,7 +112,10 @@ for (const vp of VIEWPORTS) {
       errors = [];
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
       page.on("console", (m) => {
-        if (m.type() === "error") errors.push(`console: ${m.text()}${m.location().url ? ` (${new URL(m.location().url).pathname})` : ""}`);
+        if (m.type() !== "error") return;
+        const at = m.location().url ? new URL(m.location().url).pathname : "";
+        if (expectedRefusal(m.text(), at)) return;
+        errors.push(`console: ${m.text()}${at ? ` (${at})` : ""}`);
       });
       // A stylesheet, script, font or image that fails leaves a page that
       // throws nothing and looks broken.
