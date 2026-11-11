@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install repository-script dependencies
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: bash scripts/ci-install-ripgrep.sh
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo

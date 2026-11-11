@@ -135,7 +135,7 @@ jobs:
           # Release-stream truth is derived from the real tag set.
           fetch-depth: 0
       - name: install repository-script dependencies
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: bash scripts/ci-install-ripgrep.sh
       - name: integration binary roots are up to date
         run: python3 scripts/gen-integration-main.py --check
       - uses: actions/setup-node@v4
@@ -1564,7 +1564,7 @@ jobs:
         run: npm ci
       - name: install chromium
         working-directory: ui-tests
-        run: npx playwright install --with-deps chromium
+        run: timeout 300 npx playwright install --with-deps chromium || npx playwright install chromium
       # The capture harness reads the landing's index.html from disk (the
       # assets are embedded); the build job's tree is not here, so build it.
       - name: build the landing for the harness
@@ -1615,7 +1615,7 @@ jobs:
         run: npm ci
       - name: install chromium
         working-directory: ui-tests
-        run: npx playwright install --with-deps chromium
+        run: timeout 300 npx playwright install --with-deps chromium || npx playwright install chromium
       # The landing specs serve the landing's dist from disk (the server
       # embeds it at compile time, but the specs route / to the files); the
       # build job's tree is not here, so build it, as the gallery does.
