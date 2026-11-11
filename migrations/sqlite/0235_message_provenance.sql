@@ -1,5 +1,5 @@
 -- Where a bridged message came from, and the bridge ingress key; see the
--- Postgres twin (0234).
+-- Postgres twin (0235).
 ALTER TABLE maidan_messages ADD COLUMN origin TEXT
     CHECK (origin IN ('github', 'slack'));
 ALTER TABLE maidan_messages ADD COLUMN origin_ref TEXT;
