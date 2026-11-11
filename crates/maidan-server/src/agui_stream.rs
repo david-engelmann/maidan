@@ -95,6 +95,9 @@ pub async fn stream(
     crate::delivery::ensure_subscribe_cursor(state.store.as_ref(), filter.workspace_id, after_id)
         .await?;
 
+    // Taken before anything subscribes, so a refused stream costs nothing.
+    let slot = state.stream_limit.open(&auth)?;
+
     // Each frame carries `(log_id, agui_json)` so the SSE `id:` is the source
     // event-log id — the resume anchor a reconnect sends back as Last-Event-ID.
     let (sse_tx, sse_rx) = mpsc::channel::<Result<SseEvent, Infallible>>(256);
@@ -123,7 +126,7 @@ pub async fn stream(
     let stream = crate::stream_guard::guard(
         state.store.clone(),
         &guard_auth,
-        ReceiverStream::new(sse_rx),
+        slot.hold(ReceiverStream::new(sse_rx)),
     );
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()

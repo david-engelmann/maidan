@@ -126,6 +126,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_MARK_READY_BASES",
     "MAIDAN_MAX_BODY_BYTES",
     "MAIDAN_MAX_CONCURRENT_REQUESTS",
+    "MAIDAN_MAX_STREAMS_PER_CREDENTIAL",
     "MAIDAN_MAX_WS_CONNECTIONS",
     "MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS",
     "MAIDAN_MEDIA_QUOTA_BYTES",
@@ -984,6 +985,10 @@ mod tests {
         ),
         (
             "MAIDAN_MAX_CONCURRENT_REQUESTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MAX_STREAMS_PER_CREDENTIAL",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (

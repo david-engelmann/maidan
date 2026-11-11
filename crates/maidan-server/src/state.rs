@@ -179,6 +179,9 @@ pub struct AppState {
     /// The in-flight HTTP request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,
     /// default 1024, `0` off); past it, requests are shed with a 503.
     pub request_limit: crate::load_shed::RequestLimit,
+    /// Open event streams per credential (`MAIDAN_MAX_STREAMS_PER_CREDENTIAL`,
+    /// default 64, `0` off); past it, a new stream gets a 429.
+    pub stream_limit: crate::stream_limit::StreamLimit,
     /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// Apply the built-in per-client and per-workspace rate limits when
@@ -413,6 +416,7 @@ impl AppState {
                 .filter(|n: &usize| *n > 0)
                 .unwrap_or(10_000),
             request_limit: crate::load_shed::RequestLimit::from_env(),
+            stream_limit: crate::stream_limit::StreamLimit::from_env(),
             rate_limit_redis: None,
             rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),

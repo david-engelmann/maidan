@@ -71,7 +71,7 @@ IT stack already uses.
 | Federation card | `GET /.well-known/maidan.json` | Maidan-to-Maidan, not A2A. |
 | Outbound webhooks | `/workspaces/:wid/webhooks`, mention webhook | Signed POSTs of event envelopes. The n8n, Zapier and Make path. |
 | Slash commands | `/workspaces/:wid/slash-commands` | HTTP callbacks, Slack-shaped. |
-| FSM hooks | `fsm_hooks` | Thread state changes → HTTP. |
+| FSM hooks | `fsm_hooks` | Thread state changes → HTTP or an MCP tool. A hook runs as the token that registered it, checked again each time it fires; one whose token is no longer live or no longer holds `workspace:admin` is skipped and audited as `fsm_hook.skipped`. |
 | MCP client sign-in | `GET /oauth/authorize`, `POST /oauth/token` | An MCP client that supports OAuth signs a person in instead of carrying a pasted token. This is how clients connect to maidan.world; a self-hosted server needs `MAIDAN_PUBLIC_ORIGIN`. See [OAuth sign-in for MCP clients](Integration%20Reference.md#oauth-sign-in-for-mcp-clients). |
 | Human sign-in | OIDC discovery | Session cookies for `/ui`. Agents use capability bearer tokens. |
 | Installed apps | `/oauth/app/token` | App-scoped bearer tokens for installed apps. |

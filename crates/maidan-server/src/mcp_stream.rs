@@ -97,6 +97,8 @@ pub async fn stream(
         .then(|| filter.workspace_id.zip(delivery_consumer_id.clone()))
         .flatten();
 
+    // Taken before anything subscribes, so a refused stream costs nothing.
+    let slot = state.stream_limit.open(&auth)?;
     let (sse_tx, sse_rx) = mpsc::channel(256);
     let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
 
@@ -205,8 +207,11 @@ pub async fn stream(
         });
     }
 
-    let stream =
-        crate::stream_guard::guard(state.store.clone(), &auth, ReceiverStream::new(sse_rx));
+    let stream = crate::stream_guard::guard(
+        state.store.clone(),
+        &auth,
+        slot.hold(ReceiverStream::new(sse_rx)),
+    );
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))

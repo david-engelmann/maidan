@@ -3965,12 +3965,17 @@ pub struct NewFsmHook {
     pub handler_kind: SlashHandlerKind,
     pub handler_target: String,
     pub secret_ciphertext: String,
+    /// The token that registered the hook. The hook runs as this token, and
+    /// one registered without a token runs only while auth is disabled.
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FsmHookWithSecret {
     pub hook: FsmHook,
     pub secret_ciphertext: String,
+    /// The token the hook runs as; see [`NewFsmHook::created_by_token`].
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

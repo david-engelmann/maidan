@@ -105,6 +105,7 @@ pub mod stall;
 pub mod state;
 pub mod status;
 pub mod stream_guard;
+pub mod stream_limit;
 pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;

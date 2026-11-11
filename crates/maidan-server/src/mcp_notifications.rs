@@ -30,6 +30,8 @@ pub async fn stream(
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
 
+    // Taken before listening, so a refused stream costs nothing.
+    let slot = state.stream_limit.open(&auth)?;
     let notification_stream = state
         .mcp
         .listen(&auth, McpSession::Stateless)
@@ -42,7 +44,7 @@ pub async fn stream(
         });
 
     let notification_stream =
-        crate::stream_guard::guard(state.store.clone(), &auth, notification_stream);
+        crate::stream_guard::guard(state.store.clone(), &auth, slot.hold(notification_stream));
 
     Ok(Sse::new(notification_stream).keep_alive(
         KeepAlive::new()
