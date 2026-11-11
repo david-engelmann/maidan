@@ -72,7 +72,22 @@ pub fn verdict_contexts(raw: Option<&str>) -> Vec<String> {
 /// last pass, or has nothing in its place, is a failure.
 fn failed(check: &GithubCheck, checks: &[GithubCheck]) -> bool {
     match check.state {
-        GithubCheckState::Failed => true,
+        // A failure that a newer run of the same check replaced, one still
+        // running or passed, is the old run's: a rerun on the same head (or a
+        // run that failed only because its first job was cancelled) is
+        // waited for, not reported. Only GitHub Actions jobs can be ordered,
+        // so a failure with no job id on either side still fails.
+        GithubCheckState::Failed => !checks.iter().any(|other| {
+            other.name == check.name
+                && matches!(
+                    other.state,
+                    GithubCheckState::Pending | GithubCheckState::Passed
+                )
+                && matches!(
+                    (other.job_id, check.job_id),
+                    (Some(newer), Some(failed)) if newer > failed
+                )
+        }),
         GithubCheckState::Cancelled => !checks.iter().any(|other| {
             other.name == check.name
                 && matches!(
@@ -538,5 +553,41 @@ mod tests {
             verdict_contexts(Some(" review-lane, stamp,,pre-review ,security")),
             vec!["pre-review", "review-lane", "stamp", "security"]
         );
+    }
+
+    #[test]
+    fn a_failure_a_newer_run_of_the_same_check_replaced_waits_for_that_run() {
+        // The first run's change detection was cancelled and every job after
+        // it failed; a fresh run of the workflow on the same head is going.
+        let checks = [
+            check("Change Detection", GithubCheckState::Cancelled, Some(10)),
+            check("unit tests", GithubCheckState::Failed, Some(11)),
+            check("lint", GithubCheckState::Failed, Some(12)),
+            check("Change Detection", GithubCheckState::Passed, Some(20)),
+            check("unit tests", GithubCheckState::Pending, Some(21)),
+            check("lint", GithubCheckState::Pending, Some(22)),
+        ];
+        let summary = summarize(&checks);
+        assert_eq!(summary.status, CiStatus::Pending);
+        assert!(summary.failing_jobs.is_empty());
+
+        // The newer run failing is a failure.
+        let rerun_failed = [
+            check("unit tests", GithubCheckState::Failed, Some(11)),
+            check("unit tests", GithubCheckState::Failed, Some(21)),
+        ];
+        assert_eq!(summarize(&rerun_failed).status, CiStatus::Failure);
+        // A failure newer than the pass beside it still fails.
+        let failed_after_a_pass = [
+            check("unit tests", GithubCheckState::Passed, Some(11)),
+            check("unit tests", GithubCheckState::Failed, Some(21)),
+        ];
+        assert_eq!(summarize(&failed_after_a_pass).status, CiStatus::Failure);
+        // A failure that cannot be ordered (no job id) still fails.
+        let unordered = [
+            check("ci/status", GithubCheckState::Failed, None),
+            check("ci/status", GithubCheckState::Pending, Some(30)),
+        ];
+        assert_eq!(summarize(&unordered).status, CiStatus::Failure);
     }
 }
