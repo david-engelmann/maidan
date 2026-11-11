@@ -1538,7 +1538,9 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .board-bar .board-filters { flex: 1 1 360px; flex-wrap: wrap; min-width: 0; margin: 0; }
 .board-bar .filter-q { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
 .board-bar .board-filters .filter-pick select { min-width: 11ch; }
-.board-bar .health, .board-bar .presence-strip, .board-bar .presence-strip ul { flex-wrap: nowrap; margin: 0; }
+/* Health and presence chips keep their own wrapping above the phone width, so
+   four long names can never push the row past the window. */
+.board-bar .health, .board-bar .presence-strip { margin: 0; }
 .board-bar .health { gap: var(--space-1); }
 .board-bar .health-chip { padding: 0 var(--space-3); font-size: var(--text-sm); white-space: nowrap; }
 .board-bar .here { white-space: nowrap; }
@@ -1552,6 +1554,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
   .board-bar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 2px; }
   .board-bar::-webkit-scrollbar { display: none; }
   .board-bar > *, .board-bar .board-filters > * { flex: none; }
+  .board-bar .health, .board-bar .presence-strip, .board-bar .presence-strip ul { flex-wrap: nowrap; }
   .board-bar .board-filters { flex: none; }
   .board-bar .filter-q { flex: none; width: 180px; max-width: none; }
   .board-bar .new-task { order: -1; margin-left: 0; }

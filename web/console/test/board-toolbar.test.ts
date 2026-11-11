@@ -48,8 +48,14 @@ test("the row contains its hidden labels, and the filter group can wrap instead 
   assert.equal(last(".board-bar .board-filters", "flex-wrap"), "wrap");
 });
 
+test("above the phone width, health and presence chips may wrap rather than widen the row", () => {
+  const wide = css.slice(0, css.lastIndexOf("@media (max-width: 599px)"));
+  assert.doesNotMatch(wide, /\.board-bar \.(health|presence-strip)[^{]*\{[^}]*flex-wrap: nowrap/);
+});
+
 test("on a phone the toolbar is one line that scrolls inside itself, New task first", () => {
   const phone = css.slice(css.lastIndexOf("@media (max-width: 599px)"));
   assert.match(phone, /\.board-bar \{ flex-wrap: nowrap; overflow-x: auto;/);
   assert.match(phone, /\.board-bar \.new-task \{ order: -1;/);
+  assert.match(phone, /\.board-bar \.health, \.board-bar \.presence-strip, \.board-bar \.presence-strip ul \{ flex-wrap: nowrap; \}/);
 });
