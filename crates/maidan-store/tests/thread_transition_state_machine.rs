@@ -265,6 +265,10 @@ proptest! {
 #[test]
 fn thread_transitions_follow_the_model_postgres() {
     let rt = Runtime::new().unwrap();
+    // The container stops itself on drop through the current Tokio handle,
+    // so the world must drop while this runtime is entered. The guard is
+    // declared first so it outlives `world`.
+    let _entered = rt.enter();
     let Some(world) = rt.block_on(postgres_world()) else {
         return;
     };
