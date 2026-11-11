@@ -181,6 +181,7 @@ automation|list_slash_commands|workspace_id=${ws}|list_slash_commands|workspace_
 budget|usage_rollup|workspace_id=${ws}|usage_rollup|workspace_id=not-a-uuid|workspace_id
 change_pull|get_swarm_metrics|workspace_id=${ws}|get_swarm_metrics|workspace_id=not-a-uuid|workspace_id
 channel|list_channels|workspace_id=${ws}|list_channels|workspace_id=not-a-uuid|workspace_id
+credits|get_credits|workspace_id=${ws}|get_credits|workspace_id=not-a-uuid|workspace_id
 delivery|list_result_deliveries|thread_id=${thread}|list_result_deliveries|thread_id=not-a-uuid|thread_id
 event_log|get_log_snapshot|workspace_id=${ws}|get_log_snapshot|workspace_id=not-a-uuid|workspace_id
 event_wait|wait_for_event|kinds=[\"thread_landed\"] timeout_ms=1|wait_for_event|kinds=[\"no_such_kind\"]|no_such_kind
