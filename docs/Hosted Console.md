@@ -23,7 +23,7 @@ behaviour.
 | Piece | Where | What it does |
 | --- | --- | --- |
 | OIDC sign-in | `crates/maidan-server/src/oidc/handlers.rs` | `GET /auth/oidc/login?workspace_id=…` stores a one-time `state`, a nonce and a PKCE verifier bound to that workspace (`maidan_oidc_pending`), then redirects to the provider. `GET /auth/oidc/callback` checks the ID token's signature, nonce and issuer, resolves a member, and creates a server-side session (`session.create`, audited). |
-| Identity to member | `crates/maidan-server/src/oidc/member.rs` | `resolve_member_for_login` looks up `(workspace, issuer, subject)` in `maidan_oidc_identities`. Failing that, it links a pre-provisioned member whose handle equals a verified email (`MAIDAN_OIDC_LINK_EMAIL`). Failing that, it creates a human member (`MAIDAN_OIDC_AUTO_PROVISION`). Otherwise it refuses with "not provisioned in this workspace". |
+| Identity to member | `crates/maidan-server/src/oidc/member.rs` | `resolve_member_for_login` looks up `(workspace, issuer, subject)` in `maidan_oidc_identities`. Failing that, it links a pre-provisioned member whose handle equals a verified email (`MAIDAN_OIDC_LINK_EMAIL`), only while no other identity has signed in as that member (`member_has_other_oidc_identity`). Failing that, it creates a human member (`MAIDAN_OIDC_AUTO_PROVISION`). Otherwise it refuses with "not provisioned in this workspace". |
 | Identity rows | `migrations/*/0012_oidc_sessions.sql` | `maidan_oidc_identities` is unique on `(workspace_id, issuer, subject)`. The same person has one row per workspace they have signed in to, each pointing at that workspace's member. |
 | Sessions | `crates/maidan-server/src/session/` | A `maidan_sessions` row has a workspace, a member and, for a session made from a token, the token's id. The signed `maidan_session` cookie names the row. `SessionContext` carries `session_id`, `member_id`, `workspace_id` and the token's authority, if any. Nothing on the row says which identity signed in. |
 | Session authority | `crates/maidan-server/src/auth.rs` | An OIDC session gets fixed capabilities on the `/ui/api` routes: `OIDC_READ_CAPABILITIES` (read, subscribe, search) and `OIDC_WRITE_CAPABILITIES` (adds write, post, transition, upload). It never holds `token:admin`. A session made from a token holds exactly that token's authority. |
@@ -36,7 +36,8 @@ behaviour.
 
 [OIDC](OIDC.md) has the whole sign-in flow and its configuration. The
 Keycloak recipe there (#1320) is the tested end-to-end path: SCIM creates the
-member, and link-by-verified-email binds the identity on first sign-in.
+member, and link-by-verified-email binds the identity on first sign-in. A
+member someone already signs in as is never linked to a second identity.
 
 ## Sign-up through the existing OIDC provider
 

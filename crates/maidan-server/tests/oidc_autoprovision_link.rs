@@ -574,3 +574,136 @@ async fn a_handle_taken_at_insert_time_falls_back_to_the_subject_handle_postgres
     })
     .await;
 }
+
+async fn link_as(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    subject: &str,
+    email: &str,
+    auto_provision: bool,
+) -> Result<(MemberId, LoginMember), maidan_server::error::ApiError> {
+    resolve_member_for_login(
+        store,
+        ws,
+        ISSUER,
+        subject,
+        Some(email),
+        true,
+        auto_provision,
+        Some(ISSUER),
+    )
+    .await
+}
+
+async fn member_with_handle(store: &dyn Store, ws: WorkspaceId, handle: &str) -> MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+/// A handle equal to an email pre-provisions a first sign-in only. Once one
+/// identity signs in as the member, another identity asserting the same
+/// verified email is not linked to it: refused without auto-provision, a new
+/// member of its own with it. A member nobody signed in as still links, in
+/// this tenant and in another one where the same address is unclaimed.
+async fn a_verified_email_links_only_a_member_nobody_signed_in_as(store: Arc<dyn Store>) {
+    let (ws_a, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let (ws_b, _) = workspace_with_admin(store.as_ref(), "b").await;
+    let gail_a = member_with_handle(store.as_ref(), ws_a, "gail@corp.example").await;
+    let hank_a = member_with_handle(store.as_ref(), ws_a, "hank@corp.example").await;
+    let gail_b = member_with_handle(store.as_ref(), ws_b, "gail@corp.example").await;
+
+    let first = link_as(store.as_ref(), ws_a, "sub-gail", "gail@corp.example", false)
+        .await
+        .unwrap_or_else(|_| panic!("gail's first sign-in was refused"));
+    assert_eq!(first, (gail_a, LoginMember::Linked));
+    assert!(!store
+        .member_has_other_oidc_identity(ws_a, gail_a, ISSUER, "sub-gail")
+        .await
+        .unwrap());
+    assert!(store
+        .member_has_other_oidc_identity(ws_a, gail_a, ISSUER, "sub-other")
+        .await
+        .unwrap());
+    assert!(!store
+        .member_has_other_oidc_identity(ws_b, gail_a, ISSUER, "sub-other")
+        .await
+        .unwrap());
+
+    // Another identity with the same verified email: the link goes nowhere.
+    let refused = link_as(
+        store.as_ref(),
+        ws_a,
+        "sub-gail-2",
+        "gail@corp.example",
+        false,
+    )
+    .await;
+    assert!(
+        matches!(&refused, Err(maidan_server::error::ApiError::Forbidden(m)) if m == maidan_server::oidc::NOT_PROVISIONED),
+        "{refused:?}"
+    );
+    assert!(store
+        .get_oidc_identity(ws_a, ISSUER, "sub-gail-2")
+        .await
+        .is_err());
+    let (own, how) = link_as(
+        store.as_ref(),
+        ws_a,
+        "sub-gail-2",
+        "gail@corp.example",
+        true,
+    )
+    .await
+    .unwrap_or_else(|_| panic!("auto-provision refused the second identity"));
+    assert_eq!(how, LoginMember::Provisioned);
+    assert_ne!(own, gail_a);
+    assert_ne!(own, hank_a);
+
+    // The member nobody signed in as still links, to itself and no other.
+    let hank = link_as(store.as_ref(), ws_a, "sub-hank", "hank@corp.example", false)
+        .await
+        .unwrap_or_else(|_| panic!("hank's first sign-in was refused"));
+    assert_eq!(hank, (hank_a, LoginMember::Linked));
+
+    // Tenant B's member of the same address is unclaimed there, so it links.
+    let in_b = link_as(
+        store.as_ref(),
+        ws_b,
+        "sub-gail-2",
+        "gail@corp.example",
+        false,
+    )
+    .await
+    .unwrap_or_else(|_| panic!("tenant B's first sign-in was refused"));
+    assert_eq!(in_b, (gail_b, LoginMember::Linked));
+
+    // The first identity still signs in as the member it claimed.
+    let again = link_as(store.as_ref(), ws_a, "sub-gail", "gail@corp.example", false)
+        .await
+        .unwrap_or_else(|_| panic!("gail's identity stopped resolving"));
+    assert_eq!(again, (gail_a, LoginMember::Existing));
+}
+
+#[tokio::test]
+async fn a_verified_email_links_only_a_member_nobody_signed_in_as_sqlite() {
+    a_verified_email_links_only_a_member_nobody_signed_in_as(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn a_verified_email_links_only_a_member_nobody_signed_in_as_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    a_verified_email_links_only_a_member_nobody_signed_in_as(Arc::new(PostgresStore::for_tests(
+        pool,
+    )))
+    .await;
+}

@@ -58,6 +58,31 @@ pub async fn get_identity(
     row_to_identity(&row)
 }
 
+/// Whether `member_id` already signed in under an identity other than
+/// `(issuer, subject)` in `workspace_id`: a member some other login already
+/// claimed is never handed to a new identity by email.
+pub async fn member_has_other_identity(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    issuer: &str,
+    subject: &str,
+) -> Result<bool, StoreError> {
+    let found: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM maidan_oidc_identities
+             WHERE workspace_id = $1 AND member_id = $2
+               AND NOT (issuer = $3 AND subject = $4))",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(issuer)
+    .bind(subject)
+    .fetch_one(pool)
+    .await?;
+    Ok(found)
+}
+
 /// The workspaces the identity `identity_id` can switch to: every workspace
 /// where the same issuer and subject have an identity row, with the member each
 /// maps to, newest sign-in first, at most `limit`. The identity's own workspace

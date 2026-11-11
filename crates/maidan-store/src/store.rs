@@ -1778,6 +1778,16 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// Whether the member already signed in under an identity other than
+    /// `(issuer, subject)` in this workspace. Linking a verified email to a
+    /// member by handle is only for a member no login has claimed yet.
+    async fn member_has_other_oidc_identity(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<bool, StoreError>;
     /// The workspaces a signed-in identity can switch to (the workspace
     /// switcher): every workspace where the same issuer and subject have an
     /// identity row, newest sign-in first, at most `limit`. Its own workspace

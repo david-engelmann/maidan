@@ -79,11 +79,17 @@ pub async fn resolve_member_for_login(
 
     // Linking by email trusts the issuer that asserted the address, so it is
     // scoped to the one issuer named for it. An email verified by any other
-    // issuer falls through to provisioning, or is refused (#1625).
+    // issuer falls through to provisioning, or is refused (#1625). A handle
+    // equal to the email is a pre-provisioning key for a first sign-in only:
+    // a member some other identity already signs in as is never handed to a
+    // new one, so whoever set the handle cannot redirect a later login.
     if link_email_issuer == Some(issuer)
         && email_verified
         && let Some(email) = email
         && let Ok(member) = store.get_member_by_handle(workspace_id, email).await
+        && !store
+            .member_has_other_oidc_identity(workspace_id, member.id, issuer, subject)
+            .await?
     {
         let bound = claim_identity(
             store,
