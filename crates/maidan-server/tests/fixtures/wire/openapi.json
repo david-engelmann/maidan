@@ -30580,7 +30580,14 @@
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
           "422": {
-            "$ref": "#/components/responses/IdempotencyKeyReused"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The `Idempotency-Key` was already used for a different request (type `problems/idempotency-key-reused`), or, while `MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS` is on, a `maidan.change.result/1` with status `changed` and a `github_branch` target edits a file under `.github/workflows/`, which this server's GitHub token cannot push (type `problems/unprocessable-entity`; the detail names the files). Nothing is stored."
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"

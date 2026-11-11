@@ -3689,7 +3689,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_thread_result`
 
-**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output. Fenced by your claim: pass claim_lease_id from the claim response; if the lease lapsed and someone else took the thread (or it was released), the call is refused (claim_lost) and nothing is stored, so stop the work.
+**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output. Fenced by your claim: pass claim_lease_id from the claim response; if the lease lapsed and someone else took the thread (or it was released), the call is refused (claim_lost) and nothing is stored, so stop the work. When the server sets MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS (its GitHub token cannot push workflow files), a maidan.change.result/1 with status changed, a github_branch target and a diff touching .github/workflows/ is refused with invalid params naming the files and nothing is stored: drop the workflow edit and set the result again.
 
 **Capability:** `thread:transition`
 

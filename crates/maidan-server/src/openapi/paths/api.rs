@@ -2753,6 +2753,7 @@ pub fn remove_thread_required_skill() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
+        (status = 422, description = "The `Idempotency-Key` was already used for a different request (type `problems/idempotency-key-reused`), or, while `MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS` is on, a `maidan.change.result/1` with status `changed` and a `github_branch` target edits a file under `.github/workflows/`, which this server's GitHub token cannot push (type `problems/unprocessable-entity`; the detail names the files). Nothing is stored.", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn set_thread_result() {}
 

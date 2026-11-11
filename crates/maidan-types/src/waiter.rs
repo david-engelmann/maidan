@@ -1082,11 +1082,15 @@ pub fn switch_is_on(raw: Option<&str>) -> bool {
 }
 
 /// Why a change result is refused while [`REFUSE_WORKFLOW_PATHS_ENV`] is on,
-/// or `None` when it may be stored: it is not a change, it has no
-/// `github_branch` target (nothing is pushed), or its diff touches no
-/// workflow file.
+/// or `None` when it may be stored: it is not a change, it is not a
+/// `changed` round (a `no_change` round posts only a commit status, and
+/// nothing else is committed), it has no `github_branch` target, or its diff
+/// touches no workflow file. Only a push needs the Workflows permission.
 pub fn workflow_paths_refusal(value: &Value) -> Option<String> {
     let change = parse_change_result(value)?;
+    if !change.is_changed() {
+        return None;
+    }
     let pushes = parse_waiter_result(value)?
         .deliver_to
         .iter()
@@ -1406,6 +1410,16 @@ mod tests {
             workflow_paths_refusal(&json!({"diff": WORKFLOW_DIFF})),
             None
         );
+    }
+
+    #[test]
+    fn a_workflow_diff_on_a_round_that_commits_nothing_is_not_refused() {
+        let branch = json!([{"surface": "github_branch", "repo": "acme/app", "branch": "feature/agent-x", "base": "dev"}]);
+        for status in ["no_change", "seat_error", "rebase_conflict"] {
+            let mut result = workflow_change(WORKFLOW_DIFF, branch.clone());
+            result["status"] = json!(status);
+            assert_eq!(workflow_paths_refusal(&result), None, "{status}");
+        }
     }
 
     #[test]
