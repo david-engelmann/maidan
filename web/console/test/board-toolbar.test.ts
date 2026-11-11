@@ -43,6 +43,11 @@ test("wide lanes size to their cards instead of stretching to the bottom of the 
   assert.equal(last(".lanes.wide", "min-height"), "0");
 });
 
+test("the row contains its hidden labels, and the filter group can wrap instead of overflowing its neighbours", () => {
+  assert.equal(last(".board-bar", "position"), "relative");
+  assert.equal(last(".board-bar .board-filters", "flex-wrap"), "wrap");
+});
+
 test("on a phone the toolbar is one line that scrolls inside itself, New task first", () => {
   const phone = css.slice(css.lastIndexOf("@media (max-width: 599px)"));
   assert.match(phone, /\.board-bar \{ flex-wrap: nowrap; overflow-x: auto;/);

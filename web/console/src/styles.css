@@ -1528,8 +1528,14 @@ h1, h2, h3, strong, b { font-weight: 600; }
    share one row, wrapping only when the window cannot hold them, so the first
    task sits right under the controls. Health and presence are chips in the row,
    not rows of their own. */
-.board-bar { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
-.board-bar .board-filters { flex: 1 1 360px; flex-wrap: nowrap; min-width: 0; margin: 0; }
+/* The row is the containing block of what it holds: a visually hidden label
+   is absolutely placed, and with the row as its block a phone's sideways
+   scroll keeps it inside the row instead of widening the page. */
+.board-bar { position: relative; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+/* The filters may wrap inside their own group (the count and Clear join them
+   while a filter is on); a group that could not wrap overflowed onto the
+   presence chips beside it. */
+.board-bar .board-filters { flex: 1 1 360px; flex-wrap: wrap; min-width: 0; margin: 0; }
 .board-bar .filter-q { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
 .board-bar .board-filters .filter-pick select { min-width: 11ch; }
 .board-bar .health, .board-bar .presence-strip, .board-bar .presence-strip ul { flex-wrap: nowrap; margin: 0; }
