@@ -281,6 +281,9 @@ mod member_display_name_event;
 #[path = "../member_emails.rs"]
 mod member_emails;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_freezes.rs"]
 mod member_freezes;
 
@@ -355,6 +358,9 @@ mod oidc_signup;
 
 #[path = "../oldest_event_after_of_kinds.rs"]
 mod oldest_event_after_of_kinds;
+
+#[path = "../one_delivery_per_event.rs"]
+mod one_delivery_per_event;
 
 #[path = "../ops_alerts.rs"]
 mod ops_alerts;
@@ -601,6 +607,9 @@ mod thread_results;
 
 #[path = "../thread_transition.rs"]
 mod thread_transition;
+
+#[path = "../thread_transition_state_machine.rs"]
+mod thread_transition_state_machine;
 
 #[path = "../thread_unclaimable.rs"]
 mod thread_unclaimable;

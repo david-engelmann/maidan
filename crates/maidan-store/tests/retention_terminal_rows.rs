@@ -411,13 +411,15 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             label: None,
             event_kinds: vec!["member_joined".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .expect("subscription");
     let delivered = store
         .enqueue_webhook_delivery(sub.id, 1, "{}")
         .await
-        .expect("webhook");
+        .expect("webhook")
+        .expect("a new delivery");
     store
         .mark_webhook_delivery_delivered(delivered)
         .await
@@ -425,7 +427,8 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     let quarantined = store
         .enqueue_webhook_delivery(sub.id, 2, "{}")
         .await
-        .expect("webhook");
+        .expect("webhook")
+        .expect("a new delivery");
     store
         .quarantine_webhook_delivery(quarantined)
         .await
@@ -433,7 +436,8 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     store
         .enqueue_webhook_delivery(sub.id, 3, "{}")
         .await
-        .expect("pending webhook");
+        .expect("pending webhook")
+        .expect("a new delivery");
     let automation = |payload: &str| NewAutomationDelivery {
         workspace_id: ws.id,
         source_kind: AutomationSourceKind::SlashCommand,
@@ -442,11 +446,13 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
         header_name: "X-Maidan-Event".into(),
         header_value: "slash".into(),
         payload: payload.into(),
+        log_id: None,
     };
     let delivered = store
         .enqueue_automation_delivery(automation("delivered"))
         .await
-        .expect("automation");
+        .expect("automation")
+        .expect("a new delivery");
     store
         .mark_automation_delivery_delivered(delivered)
         .await
@@ -454,7 +460,8 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     store
         .enqueue_automation_delivery(automation("pending"))
         .await
-        .expect("pending automation");
+        .expect("pending automation")
+        .expect("a new delivery");
     Tenant {
         workspace: ws.id,
         member,

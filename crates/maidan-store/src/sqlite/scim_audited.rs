@@ -106,9 +106,10 @@ pub async fn deprovision(
 
 /// End every authority the member holds in the workspace, each with its own
 /// audit row naming `reason`: the OAuth lineages it consented to, its live
-/// tokens, the delegation grants it holds as delegate, and its browser
-/// sessions. Deactivation and deprovision both call it, so a session ends with
-/// the change rather than at its next request.
+/// tokens, the delegation grants it holds as delegate, its task schedules,
+/// the share tickets it owns or made, the invites it sent that are still
+/// open, and its browser sessions. Deactivation and deprovision both call it,
+/// so a session ends with the change rather than at its next request.
 async fn end_member_authority(
     conn: &mut sqlx::SqliteConnection,
     workspace_id: WorkspaceId,
@@ -206,6 +207,98 @@ async fn end_member_authority(
                     "workspace_id": workspace_id.0,
                     "subject_id": subject_id,
                     "delegate_id": member_id.0,
+                    "reason": reason,
+                }),
+            },
+        )
+        .await?;
+    }
+    // What the member left running acts on its word: a schedule opens
+    // threads as its creator, a share ticket shows a channel on its owner's
+    // and creator's authority, and an invite admits someone on its inviter's.
+    // Each ends here with that authority instead of outliving it.
+    let schedules: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE maidan_task_schedules SET active = 0, updated_at = ?3
+         WHERE workspace_id = ?1 AND created_by = ?2 AND active = 1
+         RETURNING id",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(Utc::now().to_rfc3339())
+    .fetch_all(&mut *conn)
+    .await?;
+    for schedule_id in schedules {
+        audit::append_scoped(
+            &mut *conn,
+            workspace_id,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "task_schedule.pause".into(),
+                target_kind: Some("task_schedule".into()),
+                target_id: Some(schedule_id),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "created_by": member_id.0,
+                    "reason": reason,
+                }),
+            },
+        )
+        .await?;
+    }
+    let tickets: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE maidan_share_tickets SET revoked_at = datetime('now')
+         WHERE workspace_id = ?1 AND (owner_id = ?2 OR created_by = ?2)
+           AND revoked_at IS NULL
+         RETURNING id",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    for ticket_id in tickets {
+        audit::append_scoped(
+            &mut *conn,
+            workspace_id,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "share_ticket.revoke".into(),
+                target_kind: Some("share_ticket".into()),
+                target_id: Some(ticket_id),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "member_id": member_id.0,
+                    "reason": reason,
+                }),
+            },
+        )
+        .await?;
+    }
+    let invites: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE maidan_workspace_invites SET revoked_at = ?3
+         WHERE workspace_id = ?1 AND created_by = ?2
+           AND revoked_at IS NULL AND accepted_at IS NULL
+         RETURNING id",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(Utc::now())
+    .fetch_all(&mut *conn)
+    .await?;
+    for invite_id in invites {
+        audit::append_scoped(
+            &mut *conn,
+            workspace_id,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "workspace_invite.revoke".into(),
+                target_kind: Some("workspace_invite".into()),
+                target_id: Some(invite_id),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "created_by": member_id.0,
                     "reason": reason,
                 }),
             },

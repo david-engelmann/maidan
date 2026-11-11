@@ -109,6 +109,22 @@ const ALLOWED: &[(&str, &str)] = &[
         "the other half of the entry above",
     ),
     (
+        "unique pg_only maidan_webhook_deliveries(created_at,log_id,subscription_id)",
+        "one delivery per subscription and event (0234). The partition key must be in the index, so a delivery takes its event's occurred_at as created_at, and the key is as strong as (subscription_id, log_id); SQLite keys on that pair",
+    ),
+    (
+        "unique sqlite_only maidan_webhook_deliveries(log_id,subscription_id)",
+        "the other half of the entry above",
+    ),
+    (
+        "unique pg_only maidan_automation_deliveries(created_at,log_id,source_id,source_kind)",
+        "the one-delivery-per-event entry above (0234), for an FSM hook's delivery",
+    ),
+    (
+        "unique sqlite_only maidan_automation_deliveries(log_id,source_id,source_kind)",
+        "the other half of the entry above",
+    ),
+    (
         "fk pg_only maidan_task_schedules.recipe_id -> maidan_recipes",
         "SQLite cannot add an FK to an existing column (migration 0074); the scheduler treats a dangling recipe_id as a plain schedule",
     ),
