@@ -86,13 +86,15 @@ async fn run_suite(store: &impl Store) {
             label: None,
             event_kinds: vec![],
             secret_ciphertext: "sealed".into(),
+            created_by_token: None,
         })
         .await
         .expect("sub");
     store
         .enqueue_webhook_delivery(sub.id, stored.id, "{}")
         .await
-        .expect("enqueue hook");
+        .expect("enqueue hook")
+        .expect("a new delivery");
     let deliveries = store
         .list_pending_webhook_deliveries(20)
         .await

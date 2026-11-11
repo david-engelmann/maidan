@@ -19,14 +19,60 @@ release_attempts = 4         # tries for a release the server did not answer
 release_backoff_secs = 2     # doubled after each try
 
 [harness]
+# codex (Codex CLI), claude (Claude Code) or gemini (Gemini CLI). README.md,
+# "Harnesses", has each command line; the other two are commented out below.
 name = "codex"
 models = ["example-model"]   # the models this runner may start; `model` must be one
 model = "example-model"
+# Who serves the model. Maidan reads the family (here openai) from it and the
+# model; second-family review routes on it. Defaults: codex openai, claude
+# anthropic, gemini google. `family` defaults to what Maidan reads, and a
+# config that says otherwise is refused.
+# provider = "openai"
 pass_token = true            # Codex's MCP config reads the token from token_env
 # bin = "codex"
 # prompt = "examples/seat-runner/prompt.md"
 # A prompt per task kind; a review thread runs the red-team runbook.
 # prompts = { review = "examples/seat-runner/review-prompt.md" }
+
+# A Claude Code seat on an Anthropic plan:
+#   name = "claude"
+#   models = ["claude-sonnet-5"]
+#   model = "claude-sonnet-5"
+#   allowed_domains = ["maidan.example.com", "github.com"]   # sandboxed Bash's network; default: the Maidan host
+#
+# A GLM coding-plan seat: Claude Code pointed at z.ai. The key is read from
+# the variable env_from names, never from this file:
+#   name = "claude"
+#   provider = "z.ai"          # required: Maidan reads z.ai and glm-… as zhipu
+#   models = ["glm-5.3"]
+#   model = "glm-5.3"
+#   env = { ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic", API_TIMEOUT_MS = "3000000" }
+#   env_from = { ANTHROPIC_AUTH_TOKEN = "ZAI_API_KEY" }
+#
+# A Google AI plan seat on Gemini CLI, signed in as the plan's account (or
+# env_from = { GEMINI_API_KEY = "SOME_VAR" } for an API key):
+#   name = "gemini"
+#   models = ["gemini-3-pro"]
+#   model = "gemini-3-pro"
+#
+# A GLM coding-plan seat on ZCode, Z.ai's own CLI (built from source; README.md,
+# "ZCode"). No sandbox, so it runs --mode guarded and its repos take no
+# writable_roots. The key is read from the variable api_key_env names:
+#   name = "zcode"
+#   bin = ["node", "/abs/ZCode/apps/zcode-cli/packages/cli/dist/zcode.cjs"]
+#   models = ["glm-5.3"]
+#   model = "glm-5.3"
+#   api_key_env = "ZAI_API_KEY"
+#   # api_type = "anthropic-messages"
+#   # api_base_url = "https://api.z.ai/api/anthropic"
+#
+# claude, gemini and zcode: the Maidan endpoint (/mcp/streamable, /mcp/worker or
+# /mcp/reviewer; the runbooks need /mcp/streamable), and where a gemini or zcode
+# run's 0600 files go (a 0700 directory per run, outside every checkout,
+# removed after it).
+# mcp_path = "/mcp/streamable"
+# state_dir = "/tmp/maidan-seat-runner"
 
 [caps]
 # `capped` ships in this repository (scripts/capped). It runs a command under

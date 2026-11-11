@@ -1,0 +1,72 @@
+# Moves the pins that scripts/check-action-pins.sh (in `lint`) and the
+# digest-pinned base images hold still. Without it a pinned SHA only ages.
+# Each ecosystem opens at most one grouped pull request a week, against `dev`
+# (the default branch), so the updates land through the same batch CI as any
+# other change. A Cargo.lock bump also needs `cargo vet` (docs/Conventions.md,
+# "Dependencies") before it can merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: build
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  # The lockfiles a build, a deploy or a CI job installs from. sdk/typescript
+  # has no dependencies.
+  - package-ecosystem: npm
+    directories:
+      - /web/console
+      - /web/landing
+      - /deploy/cloudflare
+      - /ui-tests
+      - /scripts/mcp-sdk-clients/typescript
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: build
+    groups:
+      npm:
+        patterns: ["*"]
+
+  # Base images in the Dockerfiles. compose.yaml, k8s/ and the Helm values are
+  # left out on purpose: scripts/check-deploy-contract.sh requires their MinIO
+  # digest to match across all three, and the release record moves the server
+  # pins.
+  - package-ecosystem: docker
+    directories:
+      - /crates/maidan-server
+      - /docker
+      - /deploy/cloudflare/demo
+      - /examples/recipes
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: build
+    # A new major (node 22 to 24, ubuntu 24.04 to 26.04) changes the glibc or
+    # runtime generation the release binaries are built against; that is a
+    # decision, not a weekly bump.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker:
+        patterns: ["*"]

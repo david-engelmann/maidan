@@ -168,8 +168,18 @@ pub async fn create_slash_command(
             handler_kind,
             handler_target,
             secret_ciphertext,
+            // The command runs only while this token could register it again.
+            created_by_token: auth.token_id,
         })
         .await?;
+    crate::registration_owner::record_registration(
+        &state,
+        &auth,
+        workspace_id,
+        "slash_command",
+        command.id.0,
+    )
+    .await;
 
     if let Some(secret) = secret_plain {
         remember_slash_secret(&state.slash.secrets, command.id, secret.clone());
@@ -254,6 +264,32 @@ pub async fn dispatch_slash_command(
     let Ok(registration) = lookup else {
         return json!({ "ok": false, "error": "unknown_command" });
     };
+    // A command runs for whoever registered it as much as for whoever types
+    // it: an http handler receives what members type, so it stops when its
+    // creator's authority does (SEC-017).
+    if let Err(not_acting) = crate::registration_owner::creator_authority(
+        state,
+        registration.created_by_token,
+        workspace_id,
+        WORKSPACE_WRITE,
+    )
+    .await
+    {
+        crate::registration_owner::record_skip(
+            state,
+            workspace_id,
+            "slash_command",
+            Some(registration.command.id.0),
+            not_acting.reason(),
+            json!({ "name": parsed.name, "thread_id": thread_id.0 }),
+        )
+        .await;
+        return json!({
+            "ok": false,
+            "error": "command_creator_not_authorized",
+            "reason": not_acting.reason(),
+        });
+    }
 
     let dispatch = async {
         match registration.command.handler_kind {

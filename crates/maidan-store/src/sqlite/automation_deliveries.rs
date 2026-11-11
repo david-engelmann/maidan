@@ -11,14 +11,20 @@ use crate::error::StoreError;
 
 const PENDING: &str = "delivered_at IS NULL AND quarantined_at IS NULL";
 
-pub async fn enqueue(pool: &SqlitePool, new: NewAutomationDelivery) -> Result<i64, StoreError> {
+/// Enqueue a delivery; one made for an event is enqueued once per source and
+/// event. `None` when it was already there. See the Postgres twin.
+pub async fn enqueue(
+    pool: &SqlitePool,
+    new: NewAutomationDelivery,
+) -> Result<Option<i64>, StoreError> {
     let now = Utc::now().to_rfc3339();
     let (traceparent, tracestate) = crate::trace::current_columns();
     let row = sqlx::query(
         "INSERT INTO maidan_automation_deliveries
             (workspace_id, source_kind, source_id, target_url, header_name, header_value, payload, next_attempt_at,
-             traceparent, tracestate)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             traceparent, tracestate, log_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (source_kind, source_id, log_id) DO NOTHING
          RETURNING id",
     )
     .bind(new.workspace_id.0)
@@ -31,9 +37,10 @@ pub async fn enqueue(pool: &SqlitePool, new: NewAutomationDelivery) -> Result<i6
     .bind(&now)
     .bind(&traceparent)
     .bind(&tracestate)
-    .fetch_one(pool)
+    .bind(new.log_id)
+    .fetch_optional(pool)
     .await?;
-    Ok(row.get("id"))
+    Ok(row.map(|row| row.get("id")))
 }
 
 pub async fn list_pending(
@@ -56,6 +63,33 @@ pub async fn list_pending(
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_pending).collect()
+}
+
+/// Claim the oldest due delivery by leasing it `lease_secs` forward; see the
+/// Postgres twin.
+pub async fn claim_next(
+    pool: &SqlitePool,
+    lease_secs: i64,
+) -> Result<Option<AutomationDeliveryPending>, StoreError> {
+    let now = Utc::now();
+    let lease = (now + chrono::Duration::seconds(lease_secs)).to_rfc3339();
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_automation_deliveries
+         SET next_attempt_at = ?
+         WHERE id = (
+             SELECT id FROM maidan_automation_deliveries
+             WHERE {PENDING} AND next_attempt_at <= ?
+             ORDER BY id ASC
+             LIMIT 1
+         )
+         RETURNING id, workspace_id, source_kind, source_id, target_url, header_name, header_value,
+                   payload, attempts, traceparent, tracestate"
+    ))
+    .bind(&lease)
+    .bind(now.to_rfc3339())
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_pending).transpose()
 }
 
 pub async fn list_for_workspace(

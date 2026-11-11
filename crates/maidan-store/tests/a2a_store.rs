@@ -238,6 +238,7 @@ async fn run_suite(store: &dyn Store) {
         token_ciphertext: None,
         auth_scheme: None,
         auth_credentials_ciphertext: None,
+        created_by_token: None,
     };
     store
         .upsert_a2a_task_push_config(&config("t0", "a", "https://a.example"))
@@ -345,6 +346,68 @@ async fn run_suite(store: &dyn Store) {
         .delete_a2a_task_push_config("t0", "a")
         .await
         .expect("delete again"));
+
+    // A config retired for its creator is deleted only while that creator
+    // still owns it: one re-registered under the same id by another token
+    // stays.
+    let member = store
+        .create_member(maidan_types::NewMember {
+            workspace_id: ws.id,
+            handle: "registrar".into(),
+            display_name: None,
+            kind: maidan_types::MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let mut tokens = Vec::new();
+    for hash in ["1", "2"] {
+        tokens.push(
+            store
+                .create_api_token(maidan_types::NewApiToken {
+                    workspace_id: ws.id,
+                    member_id: member.id,
+                    app_installation_id: None,
+                    token_hash: hash.repeat(64),
+                    label: None,
+                    capabilities: vec!["workspace:write".into()],
+                    expires_at: None,
+                })
+                .await
+                .expect("token")
+                .id,
+        );
+    }
+    let owned = |token| A2aPushConfigRow {
+        created_by_token: Some(token),
+        ..config("t0", "owned", "https://owned.example")
+    };
+    store
+        .upsert_a2a_task_push_config(&owned(tokens[0]))
+        .await
+        .expect("register as the first token");
+    store
+        .upsert_a2a_task_push_config(&owned(tokens[1]))
+        .await
+        .expect("re-register as the second");
+    assert!(
+        !store
+            .delete_a2a_task_push_config_created_by("t0", "owned", Some(tokens[0]))
+            .await
+            .expect("delete as the first"),
+        "a config another token re-registered was deleted for the first"
+    );
+    assert_eq!(
+        store
+            .get_a2a_task_push_config("t0", "owned")
+            .await
+            .expect("get")
+            .and_then(|row| row.created_by_token),
+        Some(tokens[1])
+    );
+    assert!(store
+        .delete_a2a_task_push_config_created_by("t0", "owned", Some(tokens[1]))
+        .await
+        .expect("delete as the second"));
 }
 
 /// Rows written before migration 0131 have no thread; seed such rows, run

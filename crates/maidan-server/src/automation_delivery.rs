@@ -25,7 +25,8 @@ pub fn poll_interval_ms_from_env() -> u64 {
         .unwrap_or(50)
 }
 
-pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<i64, String> {
+/// `None` when a delivery for the same source and event was already queued.
+pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<Option<i64>, String> {
     state
         .store
         .enqueue_automation_delivery(new)
@@ -122,18 +123,24 @@ pub async fn enqueue_slash_http(
             header_name: "X-Maidan-Command".to_string(),
             header_value: command_name.to_string(),
             payload: body.to_string(),
+            log_id: None,
         },
     )
-    .await
+    .await?
+    // A request, not an event, made it, so there is no duplicate to skip.
+    .ok_or_else(|| "slash command delivery was not queued".to_string())
 }
 
+/// Queue hook `hook_id`'s delivery for event `log_id`; `None` when it was
+/// already queued.
 pub async fn enqueue_fsm_http(
     state: &AppState,
     workspace_id: WorkspaceId,
     hook_id: FsmHookId,
+    log_id: i64,
     target_url: &str,
     body: &str,
-) -> Result<i64, String> {
+) -> Result<Option<i64>, String> {
     enqueue(
         state,
         NewAutomationDelivery {
@@ -144,6 +151,7 @@ pub async fn enqueue_fsm_http(
             header_name: "X-Maidan-Event".to_string(),
             header_value: "thread_state_changed".to_string(),
             payload: body.to_string(),
+            log_id: Some(log_id),
         },
     )
     .await
