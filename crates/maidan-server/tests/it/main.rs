@@ -542,6 +542,9 @@ mod portable_frame_goldens;
 #[path = "../post_mention_routing_e2e.rs"]
 mod post_mention_routing_e2e;
 
+#[path = "../pre_review_status_e2e.rs"]
+mod pre_review_status_e2e;
+
 #[path = "../presence_email_routing_e2e.rs"]
 mod presence_email_routing_e2e;
 
