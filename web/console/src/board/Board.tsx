@@ -45,7 +45,7 @@ function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
 
 const WIDE = "(min-width: 900px)";
 const VIEW_KEY = "maidan_console_board_view";
-const PRESENCE_SHOWN = 8;
+const PRESENCE_SHOWN = 4;
 function useWide(): boolean {
   return useSyncExternalStore(
     (fn) => {
@@ -213,7 +213,10 @@ export function Board() {
   const visible = (query.state ? [query.state] : LANES.map((l) => l.key)).reduce((n, k) => n + lanes[k].length, 0);
   return (
     <div className={opened ? "board drawer-open" : "board"}>
-      <div className="board-bar">
+      {/* One toolbar row: where, how, which, who and the next action. Filters,
+          health and presence are chips in it, not rows of their own, so the
+          first task sits right under it. */}
+      <div className="board-bar" role="group" aria-label="Board controls">
         <ChannelPick
           channels={data.channels}
           channelId={data.channelId}
@@ -227,6 +230,41 @@ export function Board() {
           <button type="button" className="chip-btn" aria-pressed={view === "lanes"} onClick={() => setView("lanes")}>Lanes</button>
           <button type="button" className="chip-btn" aria-pressed={view === "agents"} onClick={() => setView("agents")}>By agent</button>
         </div>
+        <FilterBar query={query} agents={agents} onChange={(q) => setQuery({ ...q, task: query.task })} total={total} visible={visible} />
+        {health.length > 0 && (
+          <div className="health" role="group" aria-label="Board health">
+            {health.map((h) => (
+              <button
+                key={h.key}
+                type="button"
+                className={`health-chip health-${h.key}`}
+                aria-pressed={active === h.key}
+                title={`${h.title}. ${active === h.key ? "Show every task" : "Show only these"}`}
+                onClick={() => setFocus(active === h.key ? null : h.key)}
+              >
+                {h.text}
+              </button>
+            ))}
+            {active && (
+              <button type="button" className="health-chip health-clear" onClick={() => setFocus(null)}>Show all</button>
+            )}
+          </div>
+        )}
+        {here.length > 0 && (
+          <div className="presence-strip" role="group" aria-label="Who is here">
+            <ul>
+              {here.slice(0, PRESENCE_SHOWN).map((p) => (
+                <li key={p.id} className={`here here-${p.status}`} title={`${p.name}: ${presenceWords(p)}`}>
+                  <span className="dot" aria-hidden="true" />
+                  {/* The status rides inside the name's span: as a flex item of its own it got the chip's gap, a space before the comma. */}
+                  <span>{p.name}<span className="visually-hidden">{`, ${presenceWords(p)}`}</span></span>
+                  {p.holding > 0 && <span className="count" title="Tasks held in this channel" aria-hidden="true">{p.holding}</span>}
+                </li>
+              ))}
+            </ul>
+            {here.length > PRESENCE_SHOWN && <a href="#/people" className="muted small">{`+${here.length - PRESENCE_SHOWN} more`}</a>}
+          </div>
+        )}
         <p className="board-summary" role="status" aria-live="polite">
           {data.status === "loading" ? "Loading…" : data.status === "error" && !data.threads.length ? "" : data.error ?? summary(all, data.channels.length)}
         </p>
@@ -265,48 +303,10 @@ export function Board() {
         />
       )}
 
-      <FilterBar query={query} agents={agents} onChange={(q) => setQuery({ ...q, task: query.task })} total={total} visible={visible} />
-
       {stale && (
         <div className="stale-banner" role="status">
           <span>{stale}</span>
           <button type="button" className="chip-btn" onClick={() => void refresh()}>Refresh now</button>
-        </div>
-      )}
-
-      {here.length > 0 && (
-        <div className="presence-strip" role="group" aria-label="Who is here">
-          <ul>
-            {here.slice(0, PRESENCE_SHOWN).map((p) => (
-              <li key={p.id} className={`here here-${p.status}`} title={`${p.name}: ${presenceWords(p)}`}>
-                <span className="dot" aria-hidden="true" />
-                {/* The status rides inside the name's span: as a flex item of its own it got the chip's gap, a space before the comma. */}
-                <span>{p.name}<span className="visually-hidden">{`, ${presenceWords(p)}`}</span></span>
-                {p.holding > 0 && <span className="count" title="Tasks held in this channel" aria-hidden="true">{p.holding}</span>}
-              </li>
-            ))}
-          </ul>
-          {here.length > PRESENCE_SHOWN && <a href="#/people" className="muted small">{`+${here.length - PRESENCE_SHOWN} more`}</a>}
-        </div>
-      )}
-
-      {health.length > 0 && (
-        <div className="health" role="group" aria-label="Board health">
-          {health.map((h) => (
-            <button
-              key={h.key}
-              type="button"
-              className={`health-chip health-${h.key}`}
-              aria-pressed={active === h.key}
-              title={`${h.title}. ${active === h.key ? "Show every task" : "Show only these"}`}
-              onClick={() => setFocus(active === h.key ? null : h.key)}
-            >
-              {h.text}
-            </button>
-          ))}
-          {active && (
-            <button type="button" className="health-chip health-clear" onClick={() => setFocus(null)}>Show all</button>
-          )}
         </div>
       )}
 
