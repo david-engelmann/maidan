@@ -53,7 +53,10 @@ pub struct StreamLimit {
 
 /// One open stream's place under its credential's ceiling, given back on drop.
 #[derive(Debug)]
-pub struct StreamSlot(Option<Held>);
+pub struct StreamSlot {
+    // Never read: dropping it gives the slot back.
+    _held: Option<Held>,
+}
 
 #[derive(Debug)]
 struct Held {
@@ -82,7 +85,7 @@ impl StreamLimit {
     /// are not counted: there is no credential to hold to it.
     pub fn open(&self, auth: &AuthContext) -> Result<StreamSlot, ApiError> {
         if self.max == 0 || auth.bypass {
-            return Ok(StreamSlot(None));
+            return Ok(StreamSlot { _held: None });
         }
         let credential = match auth.token_id {
             Some(token_id) => Credential::Token(token_id),
@@ -105,10 +108,12 @@ impl StreamLimit {
         }
         *count += 1;
         self.open.total.fetch_add(1, Ordering::Relaxed);
-        Ok(StreamSlot(Some(Held {
-            open: Arc::clone(&self.open),
-            credential,
-        })))
+        Ok(StreamSlot {
+            _held: Some(Held {
+                open: Arc::clone(&self.open),
+                credential,
+            }),
+        })
     }
 
     /// Streams open right now, across every credential.
