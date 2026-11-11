@@ -593,6 +593,9 @@ mod thread_owner;
 #[path = "../thread_page_filters.rs"]
 mod thread_page_filters;
 
+#[path = "../thread_parent_checks.rs"]
+mod thread_parent_checks;
+
 #[path = "../thread_plans.rs"]
 mod thread_plans;
 

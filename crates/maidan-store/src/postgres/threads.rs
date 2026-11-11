@@ -24,6 +24,7 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     // The thread and its default routing land together, so no claimer sees
     // it unrouted.
     let mut tx = pool.begin().await?;
+    validate_parent_on(&mut tx, new.channel_id, new.parent_thread_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -222,6 +223,7 @@ pub(crate) async fn insert_on(
     priority_by: Option<(i64, maidan_types::MemberId)>,
     exempt: Option<ThreadId>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    validate_parent_on(tx, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
@@ -1941,6 +1943,39 @@ pub async fn page_for_channel(
     rows.iter().map(row_to_board_thread).collect()
 }
 
+/// The parent check that decides, inside the insert's transaction. The
+/// [`validate_parent`] precheck runs on the pool, so a parent archived or
+/// removed after it would otherwise still take the child. `FOR SHARE` (not
+/// `FOR KEY SHARE`, which an archive's update does not wait on) holds the
+/// parent until this transaction ends: an archive that committed first is seen
+/// here, and one that starts later waits for the child to land.
+async fn validate_parent_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    channel_id: ChannelId,
+    parent_thread_id: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    let Some(parent_id) = parent_thread_id else {
+        return Ok(());
+    };
+    let row = sqlx::query(
+        "SELECT channel_id, state, tombstoned_at IS NOT NULL AS gone
+         FROM maidan_threads WHERE id = $1 FOR SHARE",
+    )
+    .bind(parent_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    if row.get::<Uuid, _>("channel_id") != channel_id.0 || row.get::<bool, _>("gone") {
+        return Err(StoreError::NotFound);
+    }
+    if row.get::<String, _>("state") == ThreadState::Archived.as_str() {
+        return Err(StoreError::Conflict(
+            "cannot create child under an archived parent".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn validate_parent(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -1950,12 +1985,9 @@ async fn validate_parent(
         return Ok(());
     };
     let parent = get(pool, parent_id).await?;
-    if parent.channel_id != channel_id {
-        return Err(StoreError::InvalidInput(
-            "parent thread must be in the same channel".into(),
-        ));
-    }
-    if parent.tombstoned_at.is_some() {
+    // A parent in another channel reads as missing, like one that does not
+    // exist, so the refusal does not tell a caller which ids are real.
+    if parent.channel_id != channel_id || parent.tombstoned_at.is_some() {
         return Err(StoreError::NotFound);
     }
     if parent.state == ThreadState::Archived {
