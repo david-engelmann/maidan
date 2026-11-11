@@ -893,9 +893,14 @@ pub enum GithubCheckState {
     Pending,
     /// Finished without failing: success, neutral or skipped.
     Passed,
-    /// Finished failing: failure, timed out, cancelled, needing action, or
-    /// a status that errored.
+    /// Finished failing: failure, timed out, needing action, or a status
+    /// that errored.
     Failed,
+    /// Cancelled. GitHub cancels a run when a newer one starts on the same
+    /// head (marking a pull request ready, a concurrency group), so this is a
+    /// failure only when no check of the same name has taken its place
+    /// ([`crate::ci_watch::summarize`]).
+    Cancelled,
 }
 
 /// One check run or commit status on a pull request's head.
@@ -3138,10 +3143,10 @@ fn check_from(node: &serde_json::Value) -> Option<GithubCheck> {
                 GithubCheckState::Pending
             } else {
                 match text("conclusion") {
-                    Some(
-                        "FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED"
-                        | "STARTUP_FAILURE",
-                    ) => GithubCheckState::Failed,
+                    Some("CANCELLED") => GithubCheckState::Cancelled,
+                    Some("FAILURE" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE") => {
+                        GithubCheckState::Failed
+                    }
                     _ => GithubCheckState::Passed,
                 }
             };
@@ -3549,7 +3554,7 @@ mod tests {
         assert_eq!(
             read,
             vec![
-                ("lint", GithubCheckState::Failed, Some(5)),
+                ("lint", GithubCheckState::Cancelled, Some(5)),
                 ("review", GithubCheckState::Pending, None),
                 ("ci/legacy", GithubCheckState::Failed, None),
                 ("ci/new", GithubCheckState::Pending, None),
