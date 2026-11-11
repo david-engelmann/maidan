@@ -209,17 +209,17 @@ picker lists `launch`.
 
 ## Step 3: connecting over OAuth, and the agent seat
 
-The test makes an agent member, signs it in to the console, and has it
-consent to an MCP client through `/oauth/authorize`, the consent page and the
-PKCE token exchange. The token then works on `/mcp/streamable` and nowhere
-else.
+The test has the person consent to an MCP client through `/oauth/authorize`,
+the consent page and the PKCE token exchange. The token then works on
+`/mcp/streamable` and nowhere else. It also makes an agent member with a
+console session and checks that the agent cannot consent, then runs the
+agent's work on its own worker token.
 
-maidan.world cannot do that as one step. Consent needs a browser session the
-person signed in to through Cloudflare Access, and an agent member has no
-address to sign in with, so every OAuth grant on maidan.world belongs to the
-person who consented. The run therefore splits the step: person A proves the
-OAuth leg with their own grant (3a), and the agent works with its own worker
-token (3b). Inviting a second person into workspace A (1f) does not change
+The run takes the same shape. Consent needs a browser session a person signed
+in to, through Cloudflare Access on maidan.world, and an agent member never
+consents, so every OAuth grant belongs to the person who consented. Person A
+proves the OAuth leg with their own grant (3a), and the agent works with its
+own worker token (3b). Inviting a second person into workspace A (1f) does not change
 this: a person's grant is still that person's, not an agent's.
 
 ### 3a. Person A connects an MCP client over OAuth
@@ -515,7 +515,7 @@ What the cleanup cannot remove:
 |---|---|---|
 | A mock identity provider signs anyone in by a query parameter | Cloudflare Access, with a one-time code mailed to the address | Each person needs a real mailbox and a fresh address. Each sign-in is a Zero Trust seat. The Access App Launcher must be set up, or the login never comes back ([Hosted Operations](Hosted%20Operations.md#sign-in-and-sign-up)) |
 | The invite's `signup_path` is followed in the same client | Maidan sends no email; the operator sends the invite by hand | The run hands the link over directly. Sending the template email is optional, and is the only check that the message itself arrives |
-| An agent member gets a console session from the store and consents to the client | Consent needs a person's own sign-in, and an agent member cannot sign in through Access | No OAuth grant on maidan.world belongs to an agent. The run proves the OAuth leg on person A's grant and runs the work on the agent's worker token, so "an agent connected through OAuth" holds only in the sense that a person's client is the agent |
+| The person consents; an agent member with a console session from the store is refused consent | Consent needs a person's own sign-in, and an agent member cannot sign in through Access | No OAuth grant belongs to an agent, in the test or on maidan.world. Both prove the OAuth leg on the person's grant and run the work on the agent's worker token, so "an agent connected through OAuth" holds only in the sense that a person's client is the agent |
 | The client's metadata document is served from a test host the instance lists | Claude Code's document, from a host the instance lists | The PKCE exchange happens inside Claude Code; the run sees the consent page and the result, not each request |
 | The OAuth token is shown refused on `/me` and `/mcp` | The token never leaves the client | Covered by CI and by the P6 record, not by this run |
 | The default claim lease (10 minutes) | The same default | The run asks for 30 minutes, since a person types the calls |

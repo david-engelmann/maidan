@@ -247,9 +247,19 @@ pub async fn load_preregistered_clients(state: &AppState) -> ApiResult<usize> {
     Ok(inserted)
 }
 
+/// The largest client metadata document read. The ones real clients serve
+/// are under a kilobyte; past this a listed host could hold the server's
+/// memory with one authorize request.
+pub const MAX_METADATA_DOCUMENT_BYTES: usize = 16 * 1024;
+
 /// A client metadata document (RFC 7591 / CIMD subset).
 #[derive(Debug, Deserialize)]
 struct ClientMetadataDocument {
+    /// The document's own URL. A document whose `client_id` names any other
+    /// is not this client's (draft-ietf-oauth-client-id-metadata-document
+    /// section 4.1), so serving it would let one listed URL speak for a
+    /// client at another.
+    client_id: Option<String>,
     client_name: Option<String>,
     redirect_uris: Vec<String>,
     #[serde(default)]
@@ -321,12 +331,8 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
 
     // Fetch the document. No redirects: a redirect would lead the fetch to
     // a host the guard above never checked, so any non-2xx is a refusal.
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| ApiError::Internal(format!("building HTTP client: {e}")))?;
-    let response = client
+    let response = metadata_fetch_client(hosts, &url)
+        .await?
         .get(hosts.fetch_url(&url))
         .send()
         .await
@@ -337,10 +343,24 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
             response.status()
         )));
     }
-    let doc: ClientMetadataDocument = response
-        .json()
-        .await
+    let body = read_bounded(response, MAX_METADATA_DOCUMENT_BYTES).await?;
+    let doc: ClientMetadataDocument = serde_json::from_slice(&body)
         .map_err(|e| ApiError::BadRequest(format!("invalid client metadata document: {e}")))?;
+    if doc.client_id.as_deref() != Some(client_id) {
+        return Err(ApiError::BadRequest(
+            "the client metadata document's client_id must be the URL it is served from".into(),
+        ));
+    }
+    // Every listed host is trusted to say who its clients are, but the name
+    // still reaches the consent page, so it is held to the rules a
+    // self-registered client's is: no control or invisible formatting
+    // characters that make one name render as another.
+    let name = match doc.client_name.as_deref().map(str::trim) {
+        None | Some("") => client_id.to_string(),
+        Some(raw) => super::register::clean_client_name(Some(raw)).map_err(|e| {
+            ApiError::BadRequest(format!("client metadata document: {}", e.description()))
+        })?,
+    };
 
     if doc.redirect_uris.is_empty() {
         return Err(ApiError::BadRequest(
@@ -359,7 +379,7 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
         .upsert_oauth_metadata_client(
             NewOAuthClient {
                 client_id: client_id.to_string(),
-                name: doc.client_name.unwrap_or_else(|| client_id.to_string()),
+                name,
                 redirect_uris: doc.redirect_uris,
                 client_secret_hash: None, // CIMD clients are public (PKCE only)
                 allowed_scopes: document_scopes(doc.scope.as_deref()),
@@ -388,6 +408,90 @@ fn document_scopes(scope: Option<&str>) -> Vec<String> {
     } else {
         named
     }
+}
+
+/// The HTTP client a client metadata document is fetched with: no redirects,
+/// the egress timeouts, and a connection only to the public addresses the
+/// host resolved to, checked before anything is sent and pinned so a second
+/// lookup cannot answer differently. This is the egress guard's test
+/// without its development escape hatch (`MAIDAN_ALLOW_PRIVATE_EGRESS`): a
+/// document a listed host serves is public by definition, so no instance
+/// needs to fetch one from a private network. Only a test that serves its
+/// documents from loopback through the fetch origin override skips it.
+async fn metadata_fetch_client(
+    hosts: &ClientMetadataHosts,
+    url: &Url,
+) -> ApiResult<reqwest::Client> {
+    let builder = crate::egress_http::bounded().redirect(reqwest::redirect::Policy::none());
+    let build = |builder: reqwest::ClientBuilder| {
+        builder
+            .build()
+            .map_err(|e| ApiError::Internal(format!("building HTTP client: {e}")))
+    };
+    if hosts.fetch_origin_override.is_some() {
+        return build(builder);
+    }
+    let not_public = || {
+        ApiError::Forbidden(
+            "client metadata host does not resolve to a public network address".into(),
+        )
+    };
+    let target = maidan_auth::parse_egress_target(url.as_str()).map_err(|_| not_public())?;
+    let host = target.host_str().ok_or_else(not_public)?.to_string();
+    let port = target.port_or_known_default().ok_or_else(not_public)?;
+    let addresses: Vec<std::net::SocketAddr> = match tokio::time::timeout(
+        maidan_auth::EGRESS_RESOLUTION_TIMEOUT,
+        tokio::net::lookup_host((host.as_str(), port)),
+    )
+    .await
+    {
+        Ok(Ok(found)) => found.collect(),
+        Ok(Err(_)) | Err(_) => {
+            return Err(ApiError::BadRequest(format!(
+                "client metadata host {host} could not be resolved"
+            )));
+        }
+    };
+    if addresses.is_empty()
+        || addresses
+            .iter()
+            .any(|addr| !maidan_auth::is_public_ip(addr.ip()))
+    {
+        return Err(not_public());
+    }
+    if matches!(target.host(), Some(url::Host::Domain(_))) {
+        build(builder.resolve_to_addrs(&host, &addresses))
+    } else {
+        build(builder)
+    }
+}
+
+/// Read a response body, refusing it once it passes `limit` bytes rather
+/// than after it has all arrived.
+async fn read_bounded(mut response: reqwest::Response, limit: usize) -> ApiResult<Vec<u8>> {
+    let too_large = || {
+        ApiError::BadRequest(format!(
+            "client metadata document is larger than {limit} bytes"
+        ))
+    };
+    if response
+        .content_length()
+        .is_some_and(|length| length > limit as u64)
+    {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("reading client metadata document: {e}")))?
+    {
+        if body.len() + chunk.len() > limit {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 #[cfg(test)]

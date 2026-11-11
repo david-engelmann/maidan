@@ -107,15 +107,50 @@ pub async fn deprovision(
 }
 
 /// End every authority the member holds in the workspace, each with its own
-/// audit row naming `reason`: its live tokens, the delegation grants it holds
-/// as delegate, and its browser sessions. Deactivation and deprovision both
-/// call it, so a session ends with the change rather than at its next request.
+/// audit row naming `reason`: the OAuth lineages it consented to, its live
+/// tokens, the delegation grants it holds as delegate, and its browser
+/// sessions. Deactivation and deprovision both call it, so a session ends with
+/// the change rather than at its next request.
 async fn end_member_authority(
     conn: &mut sqlx::PgConnection,
     workspace_id: WorkspaceId,
     member_id: MemberId,
     reason: &str,
 ) -> Result<(), StoreError> {
+    // An OAuth grant's refresh token mints new access tokens, so revoking
+    // the live ones below would not end the app's access, and reactivating
+    // the member would quietly reconnect it. Each lineage the member
+    // consented to ends here instead, first, so its row counts its tokens.
+    let lineages: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT lineage_id FROM oauth_grants
+         WHERE workspace_id = $1 AND member_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    for lineage_id in lineages {
+        let ended = super::oauth_as::revoke_lineage_on(&mut *conn, lineage_id).await?;
+        audit::append_scoped(
+            &mut *conn,
+            workspace_id,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "oauth_lineage.revoke".into(),
+                target_kind: Some("oauth_lineage".into()),
+                target_id: Some(lineage_id),
+                metadata: serde_json::json!({
+                    "reason": reason,
+                    "member_id": member_id.0,
+                    "grants_revoked": ended.grants_revoked,
+                    "access_tokens_revoked": ended.access_tokens_revoked,
+                    "refresh_tokens_revoked": ended.refresh_tokens_revoked,
+                }),
+            },
+        )
+        .await?;
+    }
     let revoked: Vec<Uuid> = sqlx::query_scalar(
         "UPDATE maidan_api_tokens SET revoked_at = $1
          WHERE workspace_id = $2 AND member_id = $3 AND revoked_at IS NULL
