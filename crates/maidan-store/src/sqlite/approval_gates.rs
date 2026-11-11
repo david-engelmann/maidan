@@ -137,20 +137,25 @@ pub async fn get(
     row.as_ref().map(row_to_gate).transpose()
 }
 
-/// The pending gates in a workspace, oldest first — the queryable held-gate list.
+/// The pending gates in a workspace that `readable_by` may read, oldest
+/// first — the queryable held-gate list. See [`readable_row`].
 pub async fn list_pending(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
+    readable_by: Option<MemberId>,
     limit: i64,
 ) -> Result<Vec<ApprovalGate>, StoreError> {
+    let readable = readable_row("maidan_approval_gates.thread_id", "?1", "?3", "?4");
     let rows = sqlx::query(&format!(
         "SELECT {GATE_COLUMNS} FROM maidan_approval_gates
-         WHERE workspace_id = ? AND state = 'pending'
+         WHERE workspace_id = ?1 AND state = 'pending' AND {readable}
          ORDER BY created_at ASC
-         LIMIT ?"
+         LIMIT ?2"
     ))
     .bind(workspace_id.0)
     .bind(limit)
+    .bind(readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_gate).collect()

@@ -45,24 +45,28 @@ pub async fn get_delivery_mode(
         .unwrap_or_default())
 }
 
-/// Advance a member's digest watermark to `now` — called after a digest is
-/// emailed, so the next run only counts notifications created since.
-pub async fn set_last_digest_at(
+/// Move a member's digest watermark from `seen` to `to`, only if it still
+/// holds `seen`; see the Postgres twin. The watermark is only ever written
+/// here, as RFC 3339 text, so the text a reader parsed compares equal.
+pub async fn advance_last_digest_at(
     pool: &SqlitePool,
     member_id: MemberId,
-    now: DateTime<Utc>,
-) -> Result<(), crate::error::StoreError> {
-    let now = now.to_rfc3339();
-    sqlx::query(
+    seen: Option<DateTime<Utc>>,
+    to: DateTime<Utc>,
+) -> Result<bool, crate::error::StoreError> {
+    let moved = sqlx::query(
         "INSERT INTO maidan_member_digest_state (member_id, last_digest_at)
-         VALUES (?, ?)
-         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at",
+         VALUES (?1, ?3)
+         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at
+         WHERE maidan_member_digest_state.last_digest_at IS ?2",
     )
     .bind(member_id.0)
-    .bind(&now)
+    .bind(seen.map(|t| t.to_rfc3339()))
+    .bind(to.to_rfc3339())
     .execute(pool)
-    .await?;
-    Ok(())
+    .await?
+    .rows_affected();
+    Ok(moved == 1)
 }
 
 /// Members due for an email digest: digest-mode members with an address who
@@ -173,7 +177,7 @@ pub async fn manager_digest_for_member(
     member_id: MemberId,
     since: DateTime<Utc>,
 ) -> Result<ManagerDigest, crate::error::StoreError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT channel_id,
                 SUM(CASE WHEN kind = 'thread_result_set' THEN 1 ELSE 0 END) AS results,
                 SUM(CASE WHEN kind = 'approval_requested' THEN 1 ELSE 0 END) AS gates,
@@ -183,11 +187,14 @@ pub async fn manager_digest_for_member(
            AND read_at IS NULL
            AND datetime(created_at) > datetime(?2)
            AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_unacknowledged', 'claim_stalled', 'claim_failed', 'wait_timed_out')
+           AND {}
          GROUP BY channel_id
          ORDER BY channel_id IS NOT NULL, channel_id",
-    )
+        crate::thread_access::notification_visible_to("?1", "?3")
+    ))
     .bind(member_id.0)
     .bind(since.to_rfc3339())
+    .bind(maidan_types::DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     let channels = rows

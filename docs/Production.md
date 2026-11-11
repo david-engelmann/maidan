@@ -458,6 +458,31 @@ replicas) and one `MAIDAN_SESSION_SECRET`. Without
 Still per replica: open WebSocket, SSE and MCP sessions (a reconnect resumes
 from the durable cursor), the retry budget, and a running reindex job.
 
+**Background workers.** Every replica runs every background worker, and
+every replica's bus hears every event, so each outbound effect is keyed or
+claimed in Postgres rather than assigned to one replica:
+
+- Webhook deliveries are kept once per subscription and event, FSM hook
+  deliveries once per hook and event, and an FSM hook's run (an MCP-tool hook
+  runs in the worker) is claimed per event before it runs (migration 0234).
+  A replica resuming from the log after lag finds the event already handled.
+- Each delivery poller (webhooks, automation, egress, mail, web push) claims
+  one due row at a time with `FOR UPDATE SKIP LOCKED` and a lease, so two
+  replicas never send the same row; a replica that dies mid-send frees its row
+  when the lease ends (120 s for webhook and automation deliveries).
+- Notifications are kept once per member and event, and only the replica that
+  wrote one emails or pushes it. The outbox relay, the scheduler, the wait
+  sweeper and the claim reaper claim with `SKIP LOCKED`; the digest sweeper's
+  watermark advance is a compare-and-set.
+
+Some work is still repeated per replica, though its effects are not: the
+search indexer embeds each new message once per replica (the embedding call
+and its meter, not the stored vector), and the change and CI sweeps read
+GitHub once per replica. The federation worker also polls each peer once per
+replica, and two replicas that ingest the same remote event at the same moment
+can each append it, so a federated deployment runs one replica until that
+ingest is claimed first.
+
 **Rolling updates.** Every replica migrates on boot under a Postgres advisory
 lock. In a surge the new binary migrates while the old one serves, so that
 migration only adds, as [Migrations](Migrations.md) describes. A migration
@@ -553,7 +578,7 @@ procedures in CI.
 ### Retention
 
 Nothing but unreferenced media is pruned unless you set a retention. Each knob
-is an age in days; the sweeper runs daily (`MAIDAN_RETENTION_SWEEP_SECS`) in
+is an age in days; the sweeper runs daily in
 batches of 5000 and counts what it deletes in
 `maidan_retention_pruned_total{table}`. A workspace under a
 [legal hold](#legal-holds) loses nothing.

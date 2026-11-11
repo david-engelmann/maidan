@@ -276,15 +276,10 @@ pub(super) async fn get_artifact_metadata(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: GetArtifactMetadataArgs = crate::tools::parse_args(args)?;
-    // A blob is deduped across tenants, so gate on the caller's per-workspace
-    // access ref. A missing ref returns NotFound (indistinguishable from a
-    // genuinely-absent artifact — no cross-tenant existence oracle), exactly as
-    // the REST `get_artifact` does.
-    if !auth.bypass
-        && !store
-            .artifact_ref_exists(auth.workspace_id, &a.sha256)
-            .await?
-    {
+    // The one artifact read rule, as the REST `get_artifact` applies it:
+    // another tenant's artifact, or one a private channel or DM the caller is
+    // not in references, is NotFound, the same as one that does not exist.
+    if !maidan_auth::can_read_artifact(store.as_ref(), auth, &a.sha256).await? {
         return Err(McpError::NotFound);
     }
     let artifact = if auth.bypass {
@@ -298,8 +293,8 @@ pub(super) async fn get_artifact_metadata(
 }
 
 /// Artifact bytes plus the caller workspace metadata. Twin of `GET /artifacts/{sha}`:
-/// the access ref is checked first (missing ref is `NotFound`, not a cross-tenant
-/// oracle), then the blob is loaded. `content_base64` is the raw bytes.
+/// [`maidan_auth::can_read_artifact`] is checked first (a hidden artifact is
+/// `NotFound`, not an oracle), then the blob is loaded. `content_base64` is the raw bytes.
 pub(super) async fn get_artifact(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -308,12 +303,7 @@ pub(super) async fn get_artifact(
     let a: GetArtifactMetadataArgs = crate::tools::parse_args(args)?;
     let sha = maidan_artifacts::Sha256::from_hex(&a.sha256)
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if !auth.bypass
-        && !server
-            .store
-            .artifact_ref_exists(auth.workspace_id, &a.sha256)
-            .await?
-    {
+    if !maidan_auth::can_read_artifact(server.store.as_ref(), auth, &a.sha256).await? {
         return Err(McpError::NotFound);
     }
     let artifact = if auth.bypass {

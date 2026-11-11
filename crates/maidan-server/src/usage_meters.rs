@@ -8,22 +8,8 @@ use std::time::Duration;
 
 use crate::state::AppState;
 
-/// Default flush interval (`MAIDAN_USAGE_METER_FLUSH_SECS`).
-pub const DEFAULT_FLUSH_SECS: u64 = 60;
-
-/// The flush interval from the environment: the default when unset or
-/// unparsable, at least one second.
-pub fn interval_from_env() -> Duration {
-    interval_from_raw(std::env::var("MAIDAN_USAGE_METER_FLUSH_SECS").ok())
-}
-
-fn interval_from_raw(raw: Option<String>) -> Duration {
-    let secs = raw
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_FLUSH_SECS)
-        .max(1);
-    Duration::from_secs(secs)
-}
+/// How often the meters flush: a minute, a constant since OPS-006.
+pub const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The instance's free allowance from `MAIDAN_FREE_ALLOWANCE`. Unset is no
 /// allowance; a malformed value refuses boot, naming what is wrong.
@@ -420,18 +406,6 @@ pub async fn run(state: AppState, interval: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_flush_interval_defaults_and_is_at_least_a_second() {
-        let default = Duration::from_secs(DEFAULT_FLUSH_SECS);
-        assert_eq!(interval_from_raw(None), default);
-        assert_eq!(interval_from_raw(Some("soon".into())), default);
-        assert_eq!(
-            interval_from_raw(Some(" 15 ".into())),
-            Duration::from_secs(15)
-        );
-        assert_eq!(interval_from_raw(Some("0".into())), Duration::from_secs(1));
-    }
 
     #[test]
     fn probes_and_the_scrape_are_not_metered() {

@@ -1200,20 +1200,16 @@ impl McpServer {
                         .await?;
                     }
                 }
-                // Artifacts are deduped across tenants, so gate the read on
-                // the caller's per-workspace access ref. A missing ref is
-                // NotFound (no cross-tenant existence oracle), like REST.
-                // The ref is stored as canonical lowercase hex; an uppercase
-                // digest in the URI is the same artifact.
+                // The one artifact read rule, as REST applies it: another
+                // tenant's artifact, or one a private channel or DM the
+                // caller is not in references, is NotFound. The ref is stored
+                // as canonical lowercase hex; an uppercase digest in the URI
+                // is the same artifact.
                 (Some("artifacts"), Some(sha)) => {
                     let owned = maidan_artifacts::Sha256::from_hex(sha)
                         .map(|digest| digest.to_hex())
                         .unwrap_or_else(|_| sha.to_string());
-                    if !self
-                        .store
-                        .artifact_ref_exists(auth.workspace_id, &owned)
-                        .await?
-                    {
+                    if !maidan_auth::can_read_artifact(self.store.as_ref(), auth, &owned).await? {
                         return Err(McpError::NotFound);
                     }
                 }
@@ -9641,6 +9637,7 @@ mod tests {
                 handler_kind: SlashHandlerKind::Http,
                 handler_target: "https://example.test/hook".into(),
                 secret_ciphertext: String::new(),
+                created_by_token: None,
             })
             .await
             .unwrap();

@@ -18,14 +18,13 @@ pub fn max_attempts_from_env() -> u32 {
         .unwrap_or(16)
 }
 
-pub fn poll_interval_ms_from_env() -> u64 {
-    std::env::var("MAIDAN_AUTOMATION_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50)
-}
+/// How often the worker looks for due deliveries. A constant, not a knob
+/// (OPS-006): a due delivery also wakes nothing sooner, and no deployment
+/// had a reason to set it.
+pub const POLL_INTERVAL_MS: u64 = 50;
 
-pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<i64, String> {
+/// `None` when a delivery for the same source and event was already queued.
+pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<Option<i64>, String> {
     state
         .store
         .enqueue_automation_delivery(new)
@@ -122,18 +121,24 @@ pub async fn enqueue_slash_http(
             header_name: "X-Maidan-Command".to_string(),
             header_value: command_name.to_string(),
             payload: body.to_string(),
+            log_id: None,
         },
     )
-    .await
+    .await?
+    // A request, not an event, made it, so there is no duplicate to skip.
+    .ok_or_else(|| "slash command delivery was not queued".to_string())
 }
 
+/// Queue hook `hook_id`'s delivery for event `log_id`; `None` when it was
+/// already queued.
 pub async fn enqueue_fsm_http(
     state: &AppState,
     workspace_id: WorkspaceId,
     hook_id: FsmHookId,
+    log_id: i64,
     target_url: &str,
     body: &str,
-) -> Result<i64, String> {
+) -> Result<Option<i64>, String> {
     enqueue(
         state,
         NewAutomationDelivery {
@@ -144,6 +149,7 @@ pub async fn enqueue_fsm_http(
             header_name: "X-Maidan-Event".to_string(),
             header_value: "thread_state_changed".to_string(),
             payload: body.to_string(),
+            log_id: Some(log_id),
         },
     )
     .await

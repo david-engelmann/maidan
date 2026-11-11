@@ -1456,17 +1456,9 @@ pub async fn deliver_notification_email(
 
 /// The "live" window (seconds) for the Web Push presence gate: a member seen
 /// within this window is treated as connected (they got the realtime WS event)
-/// so a Web Push message is skipped. Default 60s;
-/// `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` overrides. Web Push is "notify iff no live
-/// WS", so unlike the email gate this window is always active (a sensible
-/// default, not opt-in).
-fn web_push_live_window_secs() -> i64 {
-    std::env::var("MAIDAN_WEBPUSH_LIVE_WINDOW_SECS")
-        .ok()
-        .and_then(|s| s.parse::<i64>().ok())
-        .filter(|&s| s > 0)
-        .unwrap_or(60)
-}
+/// so a Web Push message is skipped. Web Push is "notify iff no live WS", so
+/// unlike the email gate this window is always active.
+const WEB_PUSH_LIVE_WINDOW_SECS: i64 = 60;
 
 /// Deliver one notification to a member over Web Push — but only when the
 /// member has **no live WebSocket** (they were not seen within the live
@@ -1505,7 +1497,7 @@ pub async fn deliver_notification_web_push(
     match state.store.get_member_last_seen(member_id).await {
         Ok(Some(last_seen)) => {
             let idle = chrono::Utc::now().signed_duration_since(last_seen);
-            if idle.num_seconds() < web_push_live_window_secs() {
+            if idle.num_seconds() < WEB_PUSH_LIVE_WINDOW_SECS {
                 crate::metrics::record_web_push_delivered("skipped_present");
                 return;
             }

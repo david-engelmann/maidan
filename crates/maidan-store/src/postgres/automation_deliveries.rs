@@ -10,13 +10,21 @@ use crate::error::StoreError;
 
 const PENDING: &str = "delivered_at IS NULL AND quarantined_at IS NULL";
 
-pub async fn enqueue(pool: &PgPool, new: NewAutomationDelivery) -> Result<i64, StoreError> {
+/// Enqueue a delivery. One made for an event (`log_id`) is enqueued once per
+/// source and event, however many replicas see the event: `None` when it was
+/// already there. Its `created_at` is the event's `occurred_at`, so the unique
+/// `(source_kind, source_id, log_id, created_at)` holds across partitions
+/// (0234); a delivery with no event is never a duplicate.
+pub async fn enqueue(pool: &PgPool, new: NewAutomationDelivery) -> Result<Option<i64>, StoreError> {
     let (traceparent, tracestate) = crate::trace::current_columns();
     let row = sqlx::query(
         "INSERT INTO maidan_automation_deliveries
             (workspace_id, source_kind, source_id, target_url, header_name, header_value, payload,
-             traceparent, tracestate)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             traceparent, tracestate, log_id, created_at)
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE(e.occurred_at, NOW())
+         FROM (SELECT 1) AS one
+         LEFT JOIN maidan_events e ON e.id = $10
+         ON CONFLICT (source_kind, source_id, log_id, created_at) DO NOTHING
          RETURNING id",
     )
     .bind(new.workspace_id.0)
@@ -28,9 +36,10 @@ pub async fn enqueue(pool: &PgPool, new: NewAutomationDelivery) -> Result<i64, S
     .bind(&new.payload)
     .bind(&traceparent)
     .bind(&tracestate)
-    .fetch_one(pool)
+    .bind(new.log_id)
+    .fetch_optional(pool)
     .await?;
-    Ok(row.get("id"))
+    Ok(row.map(|row| row.get("id")))
 }
 
 pub async fn list_pending(
@@ -49,6 +58,34 @@ pub async fn list_pending(
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_pending).collect()
+}
+
+/// Claim the oldest due delivery: lease it `lease_secs` forward so no other
+/// replica's poller takes it meanwhile. The send's outcome replaces the lease;
+/// a poller that dies mid-send leaves the row due again when it runs out.
+pub async fn claim_next(
+    pool: &PgPool,
+    lease_secs: i64,
+) -> Result<Option<AutomationDeliveryPending>, StoreError> {
+    let row = sqlx::query(&format!(
+        "WITH due AS (
+             SELECT id, created_at FROM maidan_automation_deliveries
+             WHERE {PENDING} AND next_attempt_at <= NOW()
+             ORDER BY id ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+         )
+         UPDATE maidan_automation_deliveries d
+         SET next_attempt_at = NOW() + make_interval(secs => $1)
+         FROM due
+         WHERE d.id = due.id AND d.created_at = due.created_at
+         RETURNING d.id, d.workspace_id, d.source_kind, d.source_id, d.target_url, d.header_name,
+                   d.header_value, d.payload, d.attempts, d.traceparent, d.tracestate"
+    ))
+    .bind(lease_secs as f64)
+    .fetch_optional(pool)
+    .await?;
+    row.as_ref().map(row_to_pending).transpose()
 }
 
 pub async fn list_for_workspace(

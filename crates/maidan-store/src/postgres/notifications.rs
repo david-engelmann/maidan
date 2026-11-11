@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, EventKind, MemberId, MessageId, NewNotification, Notification, NotificationId,
-    ThreadId, WorkspaceId,
+    ThreadId, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::thread_access::notification_visible_to;
 
 /// Insert one per-recipient notification — see the SQLite twin.
 pub async fn create(pool: &PgPool, new: NewNotification) -> Result<Notification, StoreError> {
@@ -117,24 +118,25 @@ pub async fn list_for_member(
 ) -> Result<Vec<Notification>, StoreError> {
     // Currently-snoozed notifications (snoozed_until in the future) are hidden
     // from the default inbox and resurface when the snooze lapses.
-    let sql = if unread_only {
-        "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
-                message_id, actor_id, created_at, read_at, snoozed_until
-         FROM maidan_notifications
-         WHERE member_id = $1 AND read_at IS NULL
-           AND (snoozed_until IS NULL OR snoozed_until <= now())
-         ORDER BY created_at DESC LIMIT $2"
+    let unread = if unread_only {
+        "AND read_at IS NULL"
     } else {
+        ""
+    };
+    let sql = format!(
         "SELECT id, workspace_id, member_id, kind, source_log_id, channel_id, thread_id,
                 message_id, actor_id, created_at, read_at, snoozed_until
          FROM maidan_notifications
-         WHERE member_id = $1
+         WHERE member_id = $1 {unread}
            AND (snoozed_until IS NULL OR snoozed_until <= now())
-         ORDER BY created_at DESC LIMIT $2"
-    };
-    let rows = sqlx::query(sql)
+           AND {}
+         ORDER BY created_at DESC LIMIT $2",
+        notification_visible_to("$1::uuid", "$3")
+    );
+    let rows = sqlx::query(&sql)
         .bind(member_id.0)
         .bind(limit)
+        .bind(DM_CHANNEL_NAME)
         .fetch_all(pool)
         .await?;
     rows.iter().map(row_to_notification).collect()
@@ -189,12 +191,15 @@ pub async fn mark_all_read(pool: &PgPool, member_id: MemberId) -> Result<u64, St
 }
 
 pub async fn unread_count(pool: &PgPool, member_id: MemberId) -> Result<i64, StoreError> {
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "SELECT COUNT(*) AS n FROM maidan_notifications
          WHERE member_id = $1 AND read_at IS NULL
-           AND (snoozed_until IS NULL OR snoozed_until <= now())",
-    )
+           AND (snoozed_until IS NULL OR snoozed_until <= now())
+           AND {}",
+        notification_visible_to("$1::uuid", "$2")
+    ))
     .bind(member_id.0)
+    .bind(DM_CHANNEL_NAME)
     .fetch_one(pool)
     .await?;
     Ok(row.get::<i64, _>("n"))
