@@ -377,10 +377,12 @@ async fn withdrawal_shreds_the_key_and_the_chain_still_verifies(db: Db) {
     store
         .enqueue_webhook_delivery(sub.id, posted.id, WORDS)
         .await
+        .unwrap()
         .unwrap();
     store
         .enqueue_webhook_delivery(sub.id, kept.id, "kept words")
         .await
+        .unwrap()
         .unwrap();
 
     store

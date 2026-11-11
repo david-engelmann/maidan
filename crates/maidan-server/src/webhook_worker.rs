@@ -16,6 +16,9 @@ use crate::webhooks::{
 };
 
 const DELIVERY_BATCH: i64 = 64;
+/// How far forward a claim leases a delivery. A send takes at most the egress
+/// timeout (10 s); a poller that dies mid-send frees the row after this.
+const DELIVERY_LEASE_SECS: i64 = 120;
 const RECONNECT_INITIAL: Duration = Duration::from_millis(100);
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
@@ -238,13 +241,19 @@ async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>)
 /// cut off on `deliveries` sends nothing and its deliveries are deferred;
 /// every attempt that goes out counts one `deliveries` unit. The spawned
 /// poller calls this every poll interval.
+///
+/// Every replica runs this poller, so each delivery is claimed (leased) one
+/// at a time before it is sent, and a row another replica holds is skipped.
 pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), String> {
-    let pending = state
-        .store
-        .list_pending_webhook_deliveries(DELIVERY_BATCH)
-        .await
-        .map_err(|e| e.to_string())?;
-    for delivery in pending {
+    for _ in 0..DELIVERY_BATCH {
+        let Some(delivery) = state
+            .store
+            .claim_next_webhook_delivery(DELIVERY_LEASE_SECS)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            break;
+        };
         let sub = match state
             .store
             .get_webhook_subscription(delivery.subscription_id)
@@ -338,7 +347,8 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
             let attempt = Attempt::after(i64::from(delivery.attempts));
             if let Some(until) = deferred_until(&state.retry_budget, "webhook", &host, attempt) {
                 if let Err(err) = state.store.defer_webhook_delivery(delivery.id, until).await {
-                    // Still due, so the next poll asks the budget again.
+                    // The claim's lease holds the row, so the budget is asked
+                    // again once the lease runs out.
                     warn!(delivery_id = delivery.id, error = %err, "webhook deferral failed");
                 }
                 continue;

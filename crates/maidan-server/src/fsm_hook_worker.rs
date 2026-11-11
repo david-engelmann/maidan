@@ -108,6 +108,7 @@ async fn consume(
                                 trace,
                                 Box::pin(dispatch_thread_state_changed(
                                     state,
+                                    envelope.log_id,
                                     workspace_id,
                                     channel_id,
                                     thread_id,
@@ -146,6 +147,7 @@ async fn consume(
                                             trace,
                                             Box::pin(dispatch_thread_state_changed(
                                                 &state,
+                                                env.log_id,
                                                 workspace_id,
                                                 channel_id,
                                                 thread_id,

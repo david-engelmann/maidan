@@ -149,3 +149,24 @@ fn created_by_token(row: &sqlx::sqlite::SqliteRow) -> Option<ApiTokenId> {
     row.get::<Option<Uuid>, _>("created_by_token")
         .map(ApiTokenId)
 }
+
+/// Claim hook `hook_id`'s run for event `log_id`; see the Postgres twin.
+pub async fn claim_run(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    hook_id: FsmHookId,
+    log_id: i64,
+) -> Result<bool, StoreError> {
+    let claimed = sqlx::query(
+        "INSERT INTO maidan_fsm_hook_runs (workspace_id, hook_id, log_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT (hook_id, log_id) DO NOTHING",
+    )
+    .bind(workspace_id.0)
+    .bind(hook_id.0)
+    .bind(log_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(claimed == 1)
+}
