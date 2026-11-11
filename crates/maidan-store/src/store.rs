@@ -1718,7 +1718,7 @@ pub trait PresenceDigestStore: Send + Sync {
 
     /// Email digest data model: a per-member delivery mode (`set`/`get`,
     /// default `Immediate` when unset), a digest watermark
-    /// (`set_last_digest_at`, advanced after a digest is sent), and the
+    /// (`advance_last_digest_at`, moved before a digest is sent), and the
     /// sweeper's enumeration (`members_due_for_digest` — digest-mode members
     /// with an address and unread notifications since their last digest). No
     /// worker/routes yet — a zero-blast-radius foundation.
@@ -1729,11 +1729,16 @@ pub trait PresenceDigestStore: Send + Sync {
     ) -> Result<(), StoreError>;
     async fn get_delivery_mode(&self, member_id: MemberId)
         -> Result<EmailDeliveryMode, StoreError>;
-    async fn set_last_digest_at(
+    /// Move a member's digest watermark from `seen` (what the caller read;
+    /// `None` for never digested) to `to`, only if it still holds `seen`.
+    /// `false` when it had moved: another replica's sweeper took this digest,
+    /// so this one sends nothing.
+    async fn advance_last_digest_at(
         &self,
         member_id: MemberId,
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(), StoreError>;
+        seen: Option<chrono::DateTime<chrono::Utc>>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool, StoreError>;
     /// Members of `skip_workspaces` are left out of the page, so a large
     /// workspace past its deliveries allowance cannot fill every page and
     /// starve the rest.
@@ -5140,16 +5145,26 @@ pub trait WebhookStore: Send + Sync {
         &self,
         id: WebhookSubscriptionId,
     ) -> Result<WebhookSubscriptionWithSecret, StoreError>;
+    /// Enqueue one delivery of event `log_id` to a subscription. Every
+    /// replica's worker sees every event, so the store keeps one row per
+    /// subscription and event: `None` when it was already queued.
     async fn enqueue_webhook_delivery(
         &self,
         subscription_id: WebhookSubscriptionId,
         log_id: i64,
         payload: &str,
-    ) -> Result<i64, StoreError>;
+    ) -> Result<Option<i64>, StoreError>;
     async fn list_pending_webhook_deliveries(
         &self,
         limit: i64,
     ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError>;
+    /// Claim the oldest due delivery for this poller by leasing its next
+    /// attempt `lease_secs` forward, so two replicas never send one row at
+    /// once. The send's outcome replaces the lease.
+    async fn claim_next_webhook_delivery(
+        &self,
+        lease_secs: i64,
+    ) -> Result<Option<WebhookSubscriptionDelivery>, StoreError>;
     async fn mark_webhook_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError>;
     async fn record_webhook_delivery_attempt(
         &self,
@@ -5186,14 +5201,23 @@ pub trait WebhookStore: Send + Sync {
 
 #[async_trait]
 pub trait AutomationStore: Send + Sync {
+    /// Enqueue a delivery. One made for an event (`log_id` set) is kept once
+    /// per source and event however many replicas enqueue it: `None` when it
+    /// was already queued.
     async fn enqueue_automation_delivery(
         &self,
         new: NewAutomationDelivery,
-    ) -> Result<i64, StoreError>;
+    ) -> Result<Option<i64>, StoreError>;
     async fn list_pending_automation_deliveries(
         &self,
         limit: i64,
     ) -> Result<Vec<AutomationDeliveryPending>, StoreError>;
+    /// Claim the oldest due delivery by leasing it `lease_secs` forward; see
+    /// [`WebhookStore::claim_next_webhook_delivery`].
+    async fn claim_next_automation_delivery(
+        &self,
+        lease_secs: i64,
+    ) -> Result<Option<AutomationDeliveryPending>, StoreError>;
     async fn list_automation_deliveries(
         &self,
         workspace_id: WorkspaceId,
@@ -5267,6 +5291,14 @@ pub trait FsmHookStore: Send + Sync {
         from_state: ThreadState,
         to_state: ThreadState,
     ) -> Result<Vec<FsmHookWithSecret>, StoreError>;
+    /// Claim a hook's run for one event before running it. Every replica
+    /// sees the event, and only the caller that gets `true` runs the hook.
+    async fn claim_fsm_hook_run(
+        &self,
+        workspace_id: WorkspaceId,
+        hook_id: FsmHookId,
+        log_id: i64,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

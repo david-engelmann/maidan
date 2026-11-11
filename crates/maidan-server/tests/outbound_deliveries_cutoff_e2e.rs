@@ -355,8 +355,10 @@ async fn suite(backend: &Backend) {
             header_name: "X-Maidan-Command".into(),
             header_value: "ping".into(),
             payload: "{}".into(),
+            log_id: None,
         })
         .await
+        .unwrap()
         .unwrap();
     store
         .record_automation_delivery_attempt(

@@ -127,6 +127,7 @@ async fn webhook_suite(backend: &Backend) {
         let id = store
             .enqueue_webhook_delivery(sub.id, log_id, "{}")
             .await
+            .unwrap()
             .unwrap();
         store
             .record_webhook_delivery_attempt(id, "HTTP 503", Utc::now() - Duration::seconds(5))
@@ -138,6 +139,7 @@ async fn webhook_suite(backend: &Backend) {
         store
             .enqueue_webhook_delivery(sub.id, 100 + log_id, "{}")
             .await
+            .unwrap()
             .unwrap();
     }
 
@@ -207,10 +209,15 @@ async fn automation_suite(backend: &Backend) {
         header_name: "X-Maidan-Event".into(),
         header_value: "thread_state_changed".into(),
         payload: "{}".into(),
+        log_id: None,
     };
     let mut backlog = Vec::new();
     for _ in 0..BACKLOG {
-        let id = store.enqueue_automation_delivery(delivery()).await.unwrap();
+        let id = store
+            .enqueue_automation_delivery(delivery())
+            .await
+            .unwrap()
+            .unwrap();
         store
             .record_automation_delivery_attempt(id, "HTTP 503", Utc::now() - Duration::seconds(5))
             .await
@@ -218,7 +225,11 @@ async fn automation_suite(backend: &Backend) {
         backlog.push(id);
     }
     for _ in 0..FRESH {
-        store.enqueue_automation_delivery(delivery()).await.unwrap();
+        store
+            .enqueue_automation_delivery(delivery())
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     // A deferral is made during the poll, so it is bounded by the poll: no

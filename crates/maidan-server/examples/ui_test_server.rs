@@ -1096,7 +1096,8 @@ async fn main() {
     let delivery_id = store
         .enqueue_webhook_delivery(hook.id, 1, "{}")
         .await
-        .expect("delivery");
+        .expect("delivery")
+        .expect("a new delivery");
     store
         .quarantine_webhook_delivery(delivery_id)
         .await

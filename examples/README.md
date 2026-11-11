@@ -77,7 +77,10 @@ connection and the token's tools without a model.
 harness run. Before each run it checks the host's load and disk, polls the
 queue depth for its engine and repository, and runs the repository's
 preflight, all outside the harness sandbox. It then claims, runs the whole
-harness under `capped` and always releases the claim, on SIGTERM too.
+harness under `capped` and always releases the claim, on SIGTERM too. A seat
+runs Codex, Claude Code, Gemini CLI or ZCode, and says which provider
+serves its model, so a GLM seat (ZCode, or Claude Code on z.ai's endpoint)
+reports the `zhipu` family and declines its own family's reviews.
 
 ## Claude Code and Cursor sessions
 
