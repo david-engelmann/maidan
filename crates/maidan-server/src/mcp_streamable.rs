@@ -18,6 +18,7 @@ use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
 use crate::extract::ApiBytes;
+use crate::load_shed::PermitSlot;
 use crate::state::AppState;
 
 /// How often a session's notification task checks that the session is still
@@ -48,6 +49,7 @@ fn last_event_id(headers: &HeaderMap) -> Option<u64> {
 pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Result<Response, ApiError> {
@@ -60,6 +62,12 @@ pub async fn streamable(
         Ok(r) => r,
         Err(rejected) => return Ok(Json(JsonRpcResponse::rejected(rejected)).into_response()),
     };
+    // A long-poll gives back its in-flight permit, as on `POST /mcp`.
+    if let Some(Extension(permit)) = &permit
+        && crate::mcp::parks(&request)
+    {
+        permit.release();
+    }
     // The revision's own checks: on `2026-07-28` the version header, `_meta`,
     // the routing headers and removed methods; on earlier revisions, routing
     // headers that are sent must match the body (SEP-2243, J3.2).

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_mcp::tools;
@@ -104,7 +104,9 @@ pub async fn create_fsm_hook(
     ApiJson(body): ApiJson<CreateFsmHook>,
 ) -> ApiResult<(StatusCode, Json<MintFsmHookResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // A hook acts on every matching transition in the workspace, so making one
+    // is an administrator's call, not any writer's (SEC-013).
+    cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let from_state = parse_opt_state(body.from_state.as_deref())?;
     let to_state = parse_opt_state(body.to_state.as_deref())?;

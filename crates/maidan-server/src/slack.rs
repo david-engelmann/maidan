@@ -155,7 +155,8 @@ pub async fn slack_events(
         // A real event — route it, then ACK fast (Slack retries on non-200).
         Some("event_callback") => {
             if let Some(event) = payload.get("event") {
-                route_slack_event(&state, event).await;
+                let team = payload.get("team_id").and_then(|v| v.as_str());
+                route_slack_event(&state, team, event).await;
             }
             StatusCode::OK.into_response()
         }
@@ -167,12 +168,15 @@ pub async fn slack_events(
 /// posted into the mapped Maidan thread. Best-effort — the ingress always ACKs.
 /// Bot messages and subtype events (edits/deletes/joins) are skipped: only
 /// plain user messages project, and skipping `bot_id` avoids echoing our own
-/// egress back into Maidan.
-async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
+/// egress back into Maidan. A message from another Slack team is skipped too.
+async fn route_slack_event(state: &AppState, team: Option<&str>, event: &serde_json::Value) {
     if event.get("type").and_then(|v| v.as_str()) != Some("message") {
         return;
     }
     if event.get("bot_id").is_some() || event.get("subtype").is_some() {
+        return;
+    }
+    if !from_the_installing_team(team, event) {
         return;
     }
     let (Some(slack_channel), Some(text)) = (
@@ -205,6 +209,23 @@ async fn route_slack_event(state: &AppState, event: &serde_json::Value) {
     match state.store.post_message_with_event(new, None).await {
         Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
         Err(err) => tracing::warn!(error = %err, "slack ingress: post failed"),
+    }
+}
+
+/// Whether the sender belongs to the Slack team the app is installed in. The
+/// message is posted as the member who linked the channel, so a Slack Connect
+/// guest from another organization in a shared channel would otherwise speak
+/// as that member (RED-001). Slack names the sender's team in `user_team`
+/// (`team` on older payloads); a message that names neither is from the
+/// installing team.
+fn from_the_installing_team(team: Option<&str>, event: &serde_json::Value) -> bool {
+    let sender_team = event
+        .get("user_team")
+        .or_else(|| event.get("team"))
+        .and_then(|v| v.as_str());
+    match sender_team {
+        Some(sender) => team == Some(sender),
+        None => true,
     }
 }
 

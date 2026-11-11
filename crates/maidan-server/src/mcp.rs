@@ -18,6 +18,7 @@ use maidan_mcp::{is_supported_protocol_version, JsonRpcError, JsonRpcRequest, Js
 
 use crate::error::ApiError;
 use crate::extract::ApiBytes;
+use crate::load_shed::PermitSlot;
 use crate::state::AppState;
 
 /// Validate the `MCP-Protocol-Version` header (MCP spec: clients send it on
@@ -340,25 +341,41 @@ pub(crate) fn validate_routing_headers(
     Ok(())
 }
 
+/// Whether a request is a `wait_for_*` call. A wait parks for up to five
+/// minutes, so it gives back its in-flight permit rather than hold one of the
+/// instance's shared permits that long (RED-008); the MCP server caps the
+/// waits each workspace may park instead.
+pub(crate) fn parks(request: &JsonRpcRequest) -> bool {
+    request.method == "tools/call"
+        && request
+            .params
+            .get("name")
+            .and_then(|name| name.as_str())
+            .is_some_and(maidan_mcp::parked_waits::parks)
+}
+
 pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
-    json_rpc(state, auth, headers, body, None).await
+    json_rpc(state, auth, permit, headers, body, None).await
 }
 
 /// `POST /mcp/worker`: the worker profile's fixed tool list.
 pub async fn worker(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Worker),
@@ -370,12 +387,14 @@ pub async fn worker(
 pub async fn reviewer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Reviewer),
@@ -387,12 +406,14 @@ pub async fn reviewer(
 pub async fn coordinator(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Coordinator),
@@ -403,11 +424,22 @@ pub async fn coordinator(
 async fn json_rpc(
     state: AppState,
     auth: AuthContext,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     body: axum::body::Bytes,
     profile: Option<maidan_mcp::Profile>,
 ) -> Response {
-    match maidan_mcp::protocol::parse_body(&body) {
+    let parsed = maidan_mcp::protocol::parse_body(&body);
+    if let (Some(Extension(permit)), Ok(request)) = (&permit, &parsed) {
+        let parking = match request {
+            RequestBody::Single(request) => parks(request),
+            RequestBody::Batch(items) => items.iter().flatten().any(parks),
+        };
+        if parking {
+            permit.release();
+        }
+    }
+    match parsed {
         Err(rejected) => Json(JsonRpcResponse::rejected(rejected)).into_response(),
         // Routing headers describe a single op; a batch names many, so they are
         // validated per single request, not against an array. Batches belong

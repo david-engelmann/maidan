@@ -903,9 +903,12 @@ free permit gets a `503` problem with `Retry-After: 1` at once; nothing
 queues. The layer sits outside the rate limiter and authentication, so a
 refused request costs no Redis round-trip, token lookup or pooled
 connection. `/health*` and `/metrics` are exempt, the same paths the rate
-limiter exempts. A permit is held until the response head is ready, so a
-long-poll wait holds one; streamed bodies and WebSockets do not, and have
-their own ceilings. A handler panic answers a `500` problem
+limiter exempts. A permit is held until the response head is ready;
+streamed bodies and WebSockets do not hold one, and have their own ceilings.
+An MCP `wait_for_*` long-poll gives its permit back once it parks, and one
+workspace may park at most 32 waits (the next is refused with `-32029`): a
+wait lasts up to five minutes, so when waits held permits one token could
+take all 1024 and shed every other tenant (2026-11 audit, RED-008). A handler panic answers a `500` problem
 (`CatchPanicLayer`) inside the metrics and request-id layers, so it is
 counted and carries the id its log line has.
 
@@ -919,8 +922,9 @@ ceiling, which is the per-workspace rate limit's job.
 admitted, and a `503` before any work is safe to retry, even for a write.
 Probes stay answered so an overloaded replica is not also restarted.
 
-**To revisit:** if long-poll waits come to dominate the ceiling, move them
-to their own permit pool.
+**To revisit:** if a per-workspace cap of 32 parked waits is too few for a
+busy workspace, or many workspaces together park enough tasks to matter, give
+waits an instance-wide pool of their own.
 
 ## Data
 

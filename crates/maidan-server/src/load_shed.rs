@@ -8,10 +8,13 @@
 //! down until clients time out and retry into the pile.
 //!
 //! A request holds its permit until its response head is ready. A streaming
-//! body (SSE, a download) and an upgraded WebSocket do not hold one; those have
-//! their own ceilings. A long-poll such as an MCP wait tool holds one for as
-//! long as it waits. Health probes and `/metrics` are never shed, so an
-//! overloaded replica is not also restarted or blinded.
+//! body (SSE, a download) and an upgraded WebSocket do not hold one. An MCP
+//! `wait_for_*` long-poll gives its permit back through [`PermitSlot`] once it
+//! is known to park: a wait may last five minutes, so waits that held permits
+//! let one token take every permit and shed every other tenant (RED-008).
+//! Parked waits are bounded per workspace in the MCP server instead. Health
+//! probes and `/metrics` are never shed, so an overloaded replica is not also
+//! restarted or blinded.
 
 use std::sync::Arc;
 
@@ -117,15 +120,44 @@ pub fn overloaded() -> Response {
     response
 }
 
+/// The request's in-flight permit, in its extensions. A handler about to park
+/// for a long time [releases](Self::release) it, so the parked request stops
+/// counting against the instance-wide ceiling.
+#[derive(Clone, Debug)]
+pub struct PermitSlot(Arc<std::sync::Mutex<Option<OwnedSemaphorePermit>>>);
+
+impl PermitSlot {
+    fn holding(permit: OwnedSemaphorePermit) -> Self {
+        Self(Arc::new(std::sync::Mutex::new(Some(permit))))
+    }
+
+    /// Give the permit back now rather than when the response head is ready.
+    pub fn release(&self) {
+        // A poisoned lock still holds the permit or nothing; taking it is right
+        // either way.
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).take();
+    }
+}
+
 /// Shed a request when every permit is taken; otherwise hold one while the
-/// rest of the stack runs.
-pub async fn middleware(State(state): State<AppState>, request: Request, next: Next) -> Response {
+/// rest of the stack runs, unless the handler releases it first.
+pub async fn middleware(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     if exempt_path(request.uri().path()) {
         return next.run(request).await;
     }
     match state.request_limit.admit() {
         Admission::Unlimited => next.run(request).await,
-        Admission::Admitted(_permit) => next.run(request).await,
+        Admission::Admitted(permit) => {
+            let slot = PermitSlot::holding(permit);
+            request.extensions_mut().insert(slot.clone());
+            let response = next.run(request).await;
+            slot.release();
+            response
+        }
         Admission::Refused => {
             counter!("maidan_http_shed_total").increment(1);
             overloaded()

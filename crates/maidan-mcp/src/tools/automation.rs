@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
+use maidan_auth::capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE};
 use maidan_auth::{encrypt_peer_secret, AuthContext, TokenSecret};
 use maidan_store::Store;
 use maidan_types::*;
@@ -200,7 +200,7 @@ pub(super) async fn register_fsm_hook(
         maidan_auth::require_observed_capability(
             auth,
             maidan_auth::AuthorizationSurface::Mcp,
-            WORKSPACE_WRITE,
+            WORKSPACE_ADMIN,
         )
         .map_err(McpError::from)?;
     }
