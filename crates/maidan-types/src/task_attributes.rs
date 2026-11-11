@@ -354,6 +354,11 @@ pub const PROVIDER_FAMILIES: &[(&str, &[&str], &[&str])] = &[
     // A DeepSeek review seat reports `provider: "deepseek"` with models named
     // `deepseek-chat` and `deepseek-reasoner`.
     ("deepseek", &["deepseek"], &[]),
+    // Zhipu's GLM models, on its coding plan through z.ai or bigmodel.cn.
+    // A seat that drives GLM from an Anthropic-compatible harness must report
+    // the provider as `z.ai` (or the model as `glm-…`), or the harness's
+    // "anthropic" would name the family first.
+    ("zhipu", &["zhipu", "z.ai", "bigmodel", "glm"], &[]),
 ];
 
 /// The provider family a usage record names, from its provider and model
@@ -720,6 +725,9 @@ mod review_family_tests {
             provider_family(Some("deepseek"), "deepseek-reasoner"),
             Some("deepseek")
         );
+        assert_eq!(provider_family(Some("z.ai"), "glm-4.6"), Some("zhipu"));
+        assert_eq!(provider_family(None, "glm-4.5-air"), Some("zhipu"));
+        assert_eq!(provider_family(Some("zhipu"), "x"), Some("zhipu"));
         assert_eq!(provider_family(None, "llama-3"), None);
     }
 
