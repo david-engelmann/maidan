@@ -612,7 +612,7 @@ wrote) names the author's family in the attributes:
 { "kind": "review", "engine": "session", "author_family": "openai" }
 ```
 
-`author_family` is `anthropic`, `openai`, `google` or `xai` (any case;
+`author_family` is `anthropic`, `openai`, `google`, `xai`, `deepseek` or `zhipu` (GLM) (any case;
 anything else is refused). The rule holds on every path a thread takes to a
 member: `claim_next` skips the thread for a member whose usage reports name
 that family, and a direct claim or an assign to one (REST and MCP) is
