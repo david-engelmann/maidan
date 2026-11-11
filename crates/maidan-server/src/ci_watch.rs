@@ -47,6 +47,22 @@ pub struct CiSummary {
     pub first_failing_job: Option<i64>,
 }
 
+/// The status contexts that are verdicts, not CI: `pre-review`, which a
+/// review result posts, and any the operator names in a comma-separated
+/// `raw` (`MAIDAN_CI_VERDICT_CONTEXTS`), trimmed, blanks dropped.
+pub fn verdict_contexts(raw: Option<&str>) -> Vec<String> {
+    let mut contexts: Vec<String> = crate::pre_review::REVIEW_STATUS_CONTEXTS
+        .iter()
+        .map(|c| (*c).to_string())
+        .collect();
+    for context in raw.unwrap_or_default().split(',').map(str::trim) {
+        if !context.is_empty() && !contexts.iter().any(|c| c == context) {
+            contexts.push(context.to_string());
+        }
+    }
+    contexts
+}
+
 /// Whether `check` failed the head. A cancelled check that a newer run of
 /// the same name replaced, one still running or passed, was superseded, not
 /// failed: GitHub cancels a run when a newer one starts on the same head, and
@@ -211,7 +227,14 @@ pub async fn record_checks(
     let Some(checks) = snapshot.checks.as_deref() else {
         return 0;
     };
-    let summary = summarize(checks);
+    // A verdict a gate posts as a status is not CI: it stays in the gate's
+    // read below, and out of the CI record and its `ci_failed`.
+    let ci: Vec<GithubCheck> = checks
+        .iter()
+        .filter(|c| !state.ci_verdict_contexts.contains(&c.name))
+        .cloned()
+        .collect();
+    let summary = summarize(&ci);
     let head = snapshot.brief.head_sha.to_ascii_lowercase();
     let log_tail = if summary.failing_jobs.is_empty() {
         None
@@ -506,5 +529,14 @@ mod tests {
             check("unit tests", GithubCheckState::Cancelled, Some(7)),
         ];
         assert_eq!(summarize(&after_a_pass).status, CiStatus::Failure);
+    }
+
+    #[test]
+    fn verdict_contexts_always_hold_pre_review_and_add_what_the_operator_names() {
+        assert_eq!(verdict_contexts(None), vec!["pre-review".to_string()]);
+        assert_eq!(
+            verdict_contexts(Some(" review-lane, stamp,,pre-review ,security")),
+            vec!["pre-review", "review-lane", "stamp", "security"]
+        );
     }
 }
