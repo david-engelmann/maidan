@@ -205,6 +205,7 @@ pub async fn revoke_fsm_hook(
 
 #[derive(Debug, Clone)]
 struct FsmTransitionCtx {
+    log_id: i64,
     workspace_id: WorkspaceId,
     channel_id: ChannelId,
     thread_id: ThreadId,
@@ -225,8 +226,12 @@ struct FsmHttpPayload {
     thread: Thread,
 }
 
+/// Run the hooks matching one `ThreadStateChanged` event, the one at
+/// `log_id`. Every replica's worker sees the event, so each hook's run is
+/// claimed first, and only the replica that gets the claim runs it.
 pub async fn dispatch_thread_state_changed(
     state: &AppState,
+    log_id: i64,
     workspace_id: WorkspaceId,
     channel_id: ChannelId,
     thread_id: ThreadId,
@@ -250,6 +255,7 @@ pub async fn dispatch_thread_state_changed(
         return;
     }
     let ctx = FsmTransitionCtx {
+        log_id,
         workspace_id,
         channel_id,
         thread_id,
@@ -258,6 +264,21 @@ pub async fn dispatch_thread_state_changed(
         to_state,
     };
     for registration in hooks {
+        // Claimed before anything runs, the skip audit included: an MCP-tool
+        // hook acts in this worker, so a second replica's claim-less run was
+        // a second call of the tool.
+        match state
+            .store
+            .claim_fsm_hook_run(workspace_id, registration.hook.id, log_id)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(err) => {
+                tracing::warn!(hook = %registration.hook.id, error = %err, "fsm hook claim failed");
+                continue;
+            }
+        }
         let auth = match creator_authority(state, &registration).await {
             Ok(auth) => auth,
             Err(reason) => {
@@ -388,12 +409,16 @@ async fn dispatch_http(
         state,
         ctx.workspace_id,
         registration.hook.id,
+        ctx.log_id,
         &registration.hook.handler_target,
         &body,
     )
     .await
     {
-        Ok(delivery_id) => json!({ "ok": true, "queued": true, "delivery_id": delivery_id }),
+        Ok(Some(delivery_id)) => {
+            json!({ "ok": true, "queued": true, "delivery_id": delivery_id })
+        }
+        Ok(None) => json!({ "ok": true, "queued": false }),
         Err(err) => json!({ "ok": false, "error": err }),
     }
 }
