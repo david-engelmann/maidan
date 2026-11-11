@@ -658,7 +658,14 @@ rebuild from the domain tables, not a repair of the log. See
 
 ### Metrics, dashboards and alerts
 
-`GET /metrics` serves Prometheus text with no per-workspace labels. There is an
+`GET /metrics` serves Prometheus text with no per-workspace labels. HTTP series
+use a closed method set (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`,
+`OPTIONS`, or `other`) and an `http.route` label that is the matched-path
+template, never the raw URI. In production the path is not on the public listen
+address unless `MAIDAN_METRICS_TOKEN` is set; otherwise the server listens on
+`0.0.0.0:9091` (override with `MAIDAN_METRICS_BIND`) and Kubernetes Service
+manifests expose that port as ClusterIP only, not on Ingress. Development keeps
+`/metrics` on the public port so local scrapes and compose keep working. There is an
 example [Grafana dashboard](https://github.com/david-engelmann/maidan/blob/main/docs/dashboards/maidan-operator.json)
 and a set of [alert rules](https://github.com/david-engelmann/maidan/blob/main/docs/alerts/README.md),
 tested with `scripts/check-alert-rules.sh`. Without Prometheus,
@@ -667,6 +674,7 @@ stalls or keeps failing.
 
 | Metric | Watch for |
 |---|---|
+| `maidan_http_request_total`, `maidan_http_request_duration_seconds` | HTTP traffic (method, route template, status) |
 | `maidan_http_shed_total`, `maidan_http_in_flight_requests` | Load shedding |
 | `maidan_ws_connections`, `maidan_mcp_streamable_sessions` | Live connections |
 | `maidan_indexer_events_behind`, `maidan_indexer_pending_age_seconds` | Search indexing lag |

@@ -3,7 +3,9 @@
 // /metrics as well. Postgres stays the record; this is a view of it.
 //
 // Environment:
-//   MAIDAN_METRICS_TARGET  host:port of maidan-server (default maidan:8080)
+//   MAIDAN_METRICS_TARGET  host:port of maidan-server (default maidan:8080).
+//                          Production serves /metrics on :9091 unless a token
+//                          keeps it on the public port; set maidan:9091 there.
 //   TRACES_OTLP_ENDPOINT   where traces go, e.g. tempo:4317 (default tempo:4317)
 //   PROM_REMOTE_WRITE_URL  Prometheus remote-write URL
 //                          (default http://prometheus:9090/api/v1/write)

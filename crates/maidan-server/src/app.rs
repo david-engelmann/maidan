@@ -1942,7 +1942,7 @@ pub fn router(state: AppState) -> Router {
             post(crate::deploy_ingest::deploy_events),
         )
         .route("/openapi.json", get(openapi::openapi_json))
-        .route("/metrics", get(metrics::scrape))
+        .route("/metrics", get(metrics::scrape_public))
         .route("/", get(landing_page))
         .route("/landing/{name}", get(landing_asset))
         .route("/ui", get(console_index))

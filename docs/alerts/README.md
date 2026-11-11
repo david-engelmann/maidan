@@ -1,7 +1,7 @@
 # SLO alert templates (`v90.0.0`)
 
 Copy-paste starting points for Prometheus / Grafana Alerting / Alertmanager.
-Metrics come from `GET /metrics` on `maidan-server` (see [[Production]]).
+Metrics come from `GET /metrics` on `maidan-server` (see [[Production]]). In production that is the metrics listen address (default `:9091`), not the public port, unless `MAIDAN_METRICS_TOKEN` is set.
 
 ## Files
 

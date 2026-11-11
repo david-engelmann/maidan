@@ -1182,6 +1182,27 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         .with_context(|| format!("bind {}", config.bind))?;
     tracing::info!(addr = %listener.local_addr()?, "listening");
 
+    if let Some(addr) =
+        maidan_server::metrics::listener_addr(maidan_server::config::is_production())
+            .map_err(|err| anyhow::anyhow!("MAIDAN_METRICS_BIND: {err}"))?
+    {
+        let metrics_listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("bind metrics {addr}"))?;
+        tracing::info!(addr = %metrics_listener.local_addr()?, "metrics listening");
+        let metrics_app = axum::Router::new()
+            .route(
+                "/metrics",
+                maidan_server::routing::get(maidan_server::metrics::scrape),
+            )
+            .with_state(state.clone());
+        tokio::spawn(async move {
+            if let Err(err) = axum::serve(metrics_listener, metrics_app).await {
+                tracing::error!(error = %err, "metrics listener ended");
+            }
+        });
+    }
+
     // Drain on SIGINT (ctrl_c) *and* SIGTERM — Kubernetes/systemd send SIGTERM
     // on rollout/stop, and without handling it the process is killed mid-request
     // instead of draining via `with_graceful_shutdown`.

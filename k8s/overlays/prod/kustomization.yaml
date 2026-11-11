@@ -41,6 +41,32 @@ patches:
             cpu: 2
             memory: 1Gi
   - target:
+      kind: ConfigMap
+      name: maidan-config
+    patch: |-
+      - op: add
+        path: /data/MAIDAN_METRICS_BIND
+        value: "0.0.0.0:9091"
+  - target:
+      kind: Service
+      name: maidan-server
+    patch: |-
+      - op: add
+        path: /spec/ports/-
+        value:
+          name: metrics
+          port: 9091
+          targetPort: metrics
+  - target:
+      kind: Deployment
+      name: maidan-server
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/ports/-
+        value:
+          name: metrics
+          containerPort: 9091
+  - target:
       kind: Ingress
       name: maidan-server
     patch: |-

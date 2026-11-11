@@ -374,6 +374,8 @@ A value that is not a positive whole number turns that knob off. For
 
 | Variable | Default | Notes |
 |---|---|---|
+| `MAIDAN_METRICS_BIND` | unset (development); `0.0.0.0:9091` in production when no token is set | Dedicated listen address for `/metrics`. When set, the path is not served on the public port. |
+| `MAIDAN_METRICS_TOKEN` | unset | Bearer token required to scrape `/metrics`. Also accepted as `MAIDAN_METRICS_TOKEN_FILE`. When set and `MAIDAN_METRICS_BIND` is not, `/metrics` stays on the public port and requires `Authorization: Bearer`. |
 | `OTLP_ENDPOINT` | unset | A gRPC OTLP collector for traces, and for metrics when `OTLP_METRICS=1`. Request spans carry the method, the path (never the query) and the headers, with credentials and signatures printed as `Sensitive`. |
 | `OTLP_SERVICE_NAME` | `maidan-server` | The `service.name` resource attribute. |
 | `OTLP_METRICS` | unset | `1` also pushes metrics over OTLP, beside the `/metrics` scrape. |

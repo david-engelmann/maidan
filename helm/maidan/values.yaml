@@ -29,6 +29,9 @@ terminationGracePeriodSeconds: 45
 service:
   type: ClusterIP
   port: 8080
+  # ClusterIP-only scrape port. Rendered when production is true, or when
+  # config.MAIDAN_METRICS_BIND is set. Ingress never points at it.
+  metricsPort: 9091
 
 ingress:
   enabled: false

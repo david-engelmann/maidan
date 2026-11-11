@@ -9,3 +9,6 @@ data:
   {{- range $k, $v := .Values.config }}
   {{ $k }}: {{ tpl (toString $v) $ | quote }}
   {{- end }}
+  {{- if and .Values.production (not (hasKey .Values.config "MAIDAN_METRICS_BIND")) (not (hasKey .Values.config "MAIDAN_METRICS_TOKEN")) }}
+  MAIDAN_METRICS_BIND: "0.0.0.0:9091"
+  {{- end }}

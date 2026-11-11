@@ -1,16 +1,16 @@
 //! Prometheus metrics (Track T.4).
 
 use std::{
-    sync::{atomic::Ordering, Mutex, Once, OnceLock, PoisonError},
-    time::Instant,
+    net::SocketAddr,
+    sync::{atomic::Ordering, Arc, Mutex, Once, OnceLock, PoisonError},
+    time::{Duration, Instant},
 };
 
 use maidan_bus::HydrateSnapshot;
 
 use axum::{
-    extract::Request,
-    extract::State,
-    http::StatusCode,
+    extract::{MatchedPath, Request, State},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -24,6 +24,7 @@ use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gau
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "otel")]
 use metrics_util::layers::FanoutBuilder;
+use metrics_util_prometheus::MetricKindMask;
 
 use crate::state::AppState;
 
@@ -93,17 +94,19 @@ fn install_global_recorder(prom_recorder: metrics_exporter_prometheus::Prometheu
 /// Install the global metrics recorder (idempotent).
 pub fn init() {
     INIT.call_once(|| {
-        let prom_recorder = PrometheusBuilder::new().build_recorder();
+        let prom_recorder = PrometheusBuilder::new()
+            .idle_timeout(MetricKindMask::ALL, Some(PROMETHEUS_IDLE_TIMEOUT))
+            .build_recorder();
         let handle = prom_recorder.handle();
         install_global_recorder(prom_recorder);
         spawn_prometheus_upkeep(handle.clone());
         let _ = PROMETHEUS.set(handle);
         describe_counter!(
-            "http.server.request_total",
+            "maidan_http_request_total",
             "Total HTTP requests served (excludes WebSocket upgrade)"
         );
         describe_histogram!(
-            "http.server.request_duration_seconds",
+            "maidan_http_request_duration_seconds",
             "HTTP request latency in seconds"
         );
         describe_counter!(
@@ -750,37 +753,259 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
 }
 
+/// HTTP method labels accepted on `maidan_http_*`. Anything else, including
+/// CONNECT and TRACE, is recorded as `other` so a caller cannot mint series.
+const HTTP_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+/// A series that is not updated for five minutes is dropped from scrapes.
+const PROMETHEUS_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Default listen address for the metrics-only listener in production when
+/// neither `MAIDAN_METRICS_BIND` nor `MAIDAN_METRICS_TOKEN` is set.
+pub const DEFAULT_PRODUCTION_METRICS_BIND: SocketAddr = SocketAddr::V4(
+    std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 9091),
+);
+
+/// Closed set of HTTP method labels, including `other`.
+pub fn normalize_http_method(method: &Method) -> &'static str {
+    let raw = method.as_str();
+    for known in HTTP_METHODS {
+        if raw.eq_ignore_ascii_case(known) {
+            return known;
+        }
+    }
+    "other"
+}
+
+/// Matched path template, never the raw URI path. Unmatched requests use
+/// `unmatched` so a 404 cannot mint a series per path.
+pub fn http_route(request: &Request) -> String {
+    request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|path| path.as_str().to_string())
+        .unwrap_or_else(|| "unmatched".to_string())
+}
+
+/// Bearer token required to scrape `/metrics` (`MAIDAN_METRICS_TOKEN`).
+pub fn token_from_env() -> Option<Arc<str>> {
+    std::env::var("MAIDAN_METRICS_TOKEN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(Arc::from)
+}
+
+/// Dedicated metrics listen address (`MAIDAN_METRICS_BIND`), if set.
+pub fn bind_from_env() -> Result<Option<SocketAddr>, String> {
+    match std::env::var("MAIDAN_METRICS_BIND") {
+        Ok(raw) if !raw.trim().is_empty() => raw
+            .trim()
+            .parse()
+            .map(Some)
+            .map_err(|err: std::net::AddrParseError| err.to_string()),
+        _ => Ok(None),
+    }
+}
+
+/// Whether `/metrics` belongs on the public router.
+///
+/// A dedicated bind takes it off the public port. In production, if neither a
+/// bind nor a bearer token is set, it is also off the public port (a metrics
+/// listener is started on [`DEFAULT_PRODUCTION_METRICS_BIND`] instead).
+pub fn serve_on_public_router(production: bool) -> bool {
+    serve_on_public_router_inner(
+        production,
+        bind_from_env().ok().flatten().is_some(),
+        token_from_env().is_some(),
+    )
+}
+
+pub(crate) fn serve_on_public_router_inner(
+    production: bool,
+    bind_set: bool,
+    token_set: bool,
+) -> bool {
+    if bind_set {
+        return false;
+    }
+    if production && !token_set {
+        return false;
+    }
+    true
+}
+
+/// Address of the metrics-only listener, if one should be started.
+pub fn listener_addr(production: bool) -> Result<Option<SocketAddr>, String> {
+    Ok(listener_addr_inner(
+        production,
+        bind_from_env()?,
+        token_from_env().is_some(),
+    ))
+}
+
+pub(crate) fn listener_addr_inner(
+    production: bool,
+    bind: Option<SocketAddr>,
+    token_set: bool,
+) -> Option<SocketAddr> {
+    if let Some(addr) = bind {
+        return Some(addr);
+    }
+    if production && !token_set {
+        return Some(DEFAULT_PRODUCTION_METRICS_BIND);
+    }
+    None
+}
+
+fn tokens_equal(provided: &str, expected: &str) -> bool {
+    let a = provided.as_bytes();
+    let b = expected.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut acc = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        acc |= x ^ y;
+    }
+    acc == 0
+}
+
+fn authorized_bearer(headers: &HeaderMap, expected: &str) -> bool {
+    let Some(value) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    let Some(provided) = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))
+    else {
+        return false;
+    };
+    tokens_equal(provided, expected)
+}
+
+/// `GET /metrics` on the public router: hidden when a dedicated listener owns
+/// the path, otherwise the same as [`scrape`].
+pub async fn scrape_public(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !state.metrics_on_public_router {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    scrape(State(state), headers).await
+}
+
 /// `GET /metrics` — Prometheus text exposition.
-pub async fn scrape(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn scrape(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(token) = state.metrics_token.as_deref()
+        && !authorized_bearer(&headers, token)
+    {
+        let mut response = (
+            StatusCode::UNAUTHORIZED,
+            "metrics scrape requires a bearer token\n",
+        )
+            .into_response();
+        response
+            .headers_mut()
+            .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        return response;
+    }
     refresh_runtime_gauges(&state).await;
     let body = PROMETHEUS
         .get()
         .map(|h| h.render())
         .unwrap_or_else(|| "# metrics not initialized\n".to_string());
-    (StatusCode::OK, body)
+    (StatusCode::OK, body).into_response()
 }
 
-/// Count requests and record latency by method + status class.
+/// Count requests and record latency by a closed method set, the matched
+/// route template, and status.
 pub async fn middleware(request: Request, next: Next) -> Response {
-    let method = request.method().as_str().to_string();
+    let method = normalize_http_method(request.method());
+    let route = http_route(&request);
     let started = Instant::now();
     let response = next.run(request).await;
-    let status = response.status().as_u16();
+    let status = response.status().as_u16().to_string();
     let elapsed = started.elapsed().as_secs_f64();
 
     counter!(
-        "http.server.request_total",
-        "method" => method.clone(),
-        "status" => status.to_string()
+        "maidan_http_request_total",
+        "method" => method,
+        "route" => route.clone(),
+        "status" => status
     )
     .increment(1);
     histogram!(
-        "http.server.request_duration_seconds",
-        "method" => method
+        "maidan_http_request_duration_seconds",
+        "method" => method,
+        "route" => route
     )
     .record(elapsed);
 
     response
+}
+
+#[cfg(test)]
+mod http_label_tests {
+    use super::{
+        listener_addr_inner, normalize_http_method, serve_on_public_router_inner,
+        DEFAULT_PRODUCTION_METRICS_BIND, HTTP_METHODS,
+    };
+    use axum::http::Method;
+
+    #[test]
+    fn every_standard_method_keeps_its_own_label() {
+        for method in HTTP_METHODS {
+            assert_eq!(
+                normalize_http_method(&Method::from_bytes(method.as_bytes()).unwrap()),
+                *method
+            );
+        }
+        assert_eq!(
+            normalize_http_method(&Method::from_bytes(b"get").unwrap()),
+            "GET"
+        );
+    }
+
+    #[test]
+    fn connect_trace_and_arbitrary_methods_read_as_other() {
+        for raw in ["CONNECT", "TRACE", "FOO", "PROPFIND", "M199"] {
+            let method = Method::from_bytes(raw.as_bytes()).unwrap();
+            assert_eq!(normalize_http_method(&method), "other", "{raw}");
+        }
+    }
+
+    #[test]
+    fn production_without_a_token_or_bind_leaves_the_public_port() {
+        assert!(!serve_on_public_router_inner(true, false, false));
+        assert_eq!(
+            listener_addr_inner(true, None, false),
+            Some(DEFAULT_PRODUCTION_METRICS_BIND)
+        );
+    }
+
+    #[test]
+    fn a_token_keeps_metrics_on_the_public_port() {
+        assert!(serve_on_public_router_inner(true, false, true));
+        assert_eq!(listener_addr_inner(true, None, true), None);
+        assert!(serve_on_public_router_inner(false, false, true));
+    }
+
+    #[test]
+    fn a_dedicated_bind_takes_metrics_off_the_public_port() {
+        let bind = "127.0.0.1:9091".parse().unwrap();
+        assert!(!serve_on_public_router_inner(false, true, false));
+        assert_eq!(listener_addr_inner(false, Some(bind), false), Some(bind));
+        assert!(!serve_on_public_router_inner(true, true, true));
+        assert_eq!(listener_addr_inner(true, Some(bind), true), Some(bind));
+    }
+
+    #[test]
+    fn development_without_config_keeps_metrics_on_the_public_port() {
+        assert!(serve_on_public_router_inner(false, false, false));
+        assert_eq!(listener_addr_inner(false, None, false), None);
+    }
 }
 
 #[cfg(test)]

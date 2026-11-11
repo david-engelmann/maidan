@@ -291,6 +291,11 @@ pub struct AppState {
     /// Per-host bound on retries, shared by every outbound delivery worker in
     /// this process. Tests swap in one on a manual clock.
     pub retry_budget: Arc<crate::retry_budget::RetryBudget>,
+    /// Bearer token required to scrape `/metrics` (`MAIDAN_METRICS_TOKEN`).
+    pub metrics_token: Option<Arc<str>>,
+    /// When false, `/metrics` is not served on the public router (a dedicated
+    /// listener serves it, or it is off).
+    pub metrics_on_public_router: bool,
 }
 
 /// The MCP server as every `AppState` builds it. One constructor, so a
@@ -429,6 +434,10 @@ impl AppState {
             retry_budget: Arc::new(crate::retry_budget::RetryBudget::new()),
             usage_meters,
             usage_allowance: Arc::default(),
+            metrics_token: crate::metrics::token_from_env(),
+            metrics_on_public_router: crate::metrics::serve_on_public_router(
+                crate::config::is_production(),
+            ),
         }
     }
 

@@ -2961,6 +2961,7 @@ dependencies = [
  "maidan-wasi",
  "metrics",
  "metrics-exporter-prometheus",
+ "metrics-util 0.19.1",
  "metrics-util 0.20.4",
  "openidconnect",
  "p256 0.14.0",

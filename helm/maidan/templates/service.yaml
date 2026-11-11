@@ -11,5 +11,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if or .Values.production (hasKey .Values.config "MAIDAN_METRICS_BIND") }}
+    - port: {{ .Values.service.metricsPort | default 9091 }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
   selector:
     {{- include "maidan.selectorLabels" . | nindent 4 }}

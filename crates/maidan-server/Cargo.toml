@@ -70,6 +70,9 @@ utoipa = { version = "5", features = ["chrono", "uuid"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 metrics-util = { version = "0.20", default-features = false, features = ["layers"] }
+# metrics-exporter-prometheus 0.16 still builds against 0.19; the idle-timeout
+# mask has to be that crate's type.
+metrics-util-prometheus = { package = "metrics-util", version = "0.19", default-features = false }
 openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 url = "2"

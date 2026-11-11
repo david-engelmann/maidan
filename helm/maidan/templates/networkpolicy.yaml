@@ -19,6 +19,10 @@ spec:
     - ports:
         - port: http
           protocol: TCP
+        {{- if or .Values.production (hasKey .Values.config "MAIDAN_METRICS_BIND") }}
+        - port: metrics
+          protocol: TCP
+        {{- end }}
       {{- with .Values.networkPolicy.ingressFrom }}
       from:
         {{- toYaml . | nindent 8 }}

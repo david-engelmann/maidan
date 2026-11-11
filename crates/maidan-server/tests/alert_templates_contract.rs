@@ -9,7 +9,7 @@ fn prometheus_slo_rules_reference_exported_metrics() {
     let body = std::fs::read_to_string(&rules).expect("read rules yaml");
 
     let expected = [
-        "http_server_request_duration_seconds",
+        "maidan_http_request_duration_seconds",
         "maidan_automation_delivery_total",
         "maidan_outbox_pending",
         "maidan_outbox_oldest_pending_seconds",

@@ -41,6 +41,10 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            {{- if or .Values.production (hasKey .Values.config "MAIDAN_METRICS_BIND") }}
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort | default 9091 }}
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "maidan.fullname" . }}-config

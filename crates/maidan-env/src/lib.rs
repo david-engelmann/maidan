@@ -125,6 +125,9 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS",
     "MAIDAN_MEDIA_QUOTA_BYTES",
     "MAIDAN_MERGE_QUEUE_LABELS",
+    "MAIDAN_METRICS_BIND",
+    "MAIDAN_METRICS_TOKEN",
+    "MAIDAN_METRICS_TOKEN_FILE",
     "MAIDAN_OAUTH_CLIENTS",
     "MAIDAN_OAUTH_CLIENT_METADATA_HOSTS",
     "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX",
@@ -986,6 +989,10 @@ mod tests {
         ),
         (
             "MAIDAN_MERGE_QUEUE_LABELS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_METRICS_BIND",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
