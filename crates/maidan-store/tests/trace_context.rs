@@ -93,7 +93,8 @@ async fn run_suite(store: &impl Store) {
     store
         .enqueue_webhook_delivery(sub.id, stored.id, "{}")
         .await
-        .expect("enqueue hook");
+        .expect("enqueue hook")
+        .expect("a new delivery");
     let deliveries = store
         .list_pending_webhook_deliveries(20)
         .await

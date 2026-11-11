@@ -142,27 +142,35 @@ pub async fn revoke(
     row_to_subscription(&row)
 }
 
+/// Enqueue one delivery of event `log_id` to a subscription, unless one is
+/// already queued: every replica's worker sees every event, and a lag resume
+/// sees it again. `None` when the delivery was already there.
+///
+/// The row's `created_at` is the event's `occurred_at`, so every replica
+/// writes the same partition key for the same event and the unique
+/// `(subscription_id, log_id, created_at)` holds across partitions (0234).
+/// An id with no event behind it (a test's) falls back to now.
 pub async fn enqueue_delivery(
     pool: &PgPool,
     subscription_id: WebhookSubscriptionId,
     log_id: i64,
     payload: &str,
-) -> Result<i64, StoreError> {
-    let (traceparent, tracestate) = super::events::trace_columns(pool, log_id).await?;
+) -> Result<Option<i64>, StoreError> {
     let row = sqlx::query(
         "INSERT INTO maidan_webhook_deliveries
-            (subscription_id, log_id, payload, traceparent, tracestate)
-         VALUES ($1, $2, $3, $4, $5)
+            (subscription_id, log_id, payload, traceparent, tracestate, created_at)
+         SELECT $1, $2, $3, e.traceparent, e.tracestate, COALESCE(e.occurred_at, NOW())
+         FROM (SELECT 1) AS one
+         LEFT JOIN maidan_events e ON e.id = $2
+         ON CONFLICT (subscription_id, log_id, created_at) DO NOTHING
          RETURNING id",
     )
     .bind(subscription_id.0)
     .bind(log_id)
     .bind(payload)
-    .bind(traceparent)
-    .bind(tracestate)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(row.get("id"))
+    Ok(row.map(|row| row.get("id")))
 }
 
 const PENDING: &str = "delivered_at IS NULL AND quarantined_at IS NULL";
@@ -181,20 +189,49 @@ pub async fn list_pending_deliveries(
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| WebhookSubscriptionDelivery {
-            id: row.get("id"),
-            subscription_id: WebhookSubscriptionId(row.get("subscription_id")),
-            log_id: row.get("log_id"),
-            payload: row.get("payload"),
-            attempts: row.get("attempts"),
-            trace: maidan_types::TraceContext::from_columns(
-                row.try_get("traceparent").unwrap_or(None),
-                row.try_get("tracestate").unwrap_or(None),
-            ),
-        })
-        .collect())
+    Ok(rows.iter().map(row_to_pending).collect())
+}
+
+/// Claim the oldest due delivery: lease it `lease_secs` forward, so no other
+/// replica's poller takes it while this one sends. Whatever the send does next
+/// (delivered, a recorded attempt, a deferral, quarantine) replaces the lease;
+/// a poller that dies mid-send leaves the row due again when it runs out.
+pub async fn claim_next_delivery(
+    pool: &PgPool,
+    lease_secs: i64,
+) -> Result<Option<WebhookSubscriptionDelivery>, StoreError> {
+    let row = sqlx::query(&format!(
+        "WITH due AS (
+             SELECT id, created_at FROM maidan_webhook_deliveries
+             WHERE {PENDING} AND next_attempt_at <= NOW()
+             ORDER BY id ASC
+             LIMIT 1
+             FOR UPDATE SKIP LOCKED
+         )
+         UPDATE maidan_webhook_deliveries d
+         SET next_attempt_at = NOW() + make_interval(secs => $1)
+         FROM due
+         WHERE d.id = due.id AND d.created_at = due.created_at
+         RETURNING d.id, d.subscription_id, d.log_id, d.payload, d.attempts, d.traceparent, d.tracestate"
+    ))
+    .bind(lease_secs as f64)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_pending))
+}
+
+fn row_to_pending(row: &sqlx::postgres::PgRow) -> WebhookSubscriptionDelivery {
+    WebhookSubscriptionDelivery {
+        id: row.get("id"),
+        subscription_id: WebhookSubscriptionId(row.get("subscription_id")),
+        log_id: row.get("log_id"),
+        payload: row.get("payload"),
+        attempts: row.get("attempts"),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
+    }
 }
 
 pub async fn mark_delivered(pool: &PgPool, delivery_id: i64) -> Result<(), StoreError> {

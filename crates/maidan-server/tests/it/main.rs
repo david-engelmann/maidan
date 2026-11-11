@@ -326,6 +326,9 @@ mod glossary_rest_e2e;
 #[path = "../group_dm_e2e.rs"]
 mod group_dm_e2e;
 
+#[path = "../ha_deliveries_e2e.rs"]
+mod ha_deliveries_e2e;
+
 #[path = "../health_e2e.rs"]
 mod health_e2e;
 

@@ -108,10 +108,13 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(due[0].unread_count, 2);
 
     // A watermark in the future drops A (nothing created after it).
-    store
-        .set_last_digest_at(a, Utc::now() + Duration::hours(1))
+    let future = Utc::now() + Duration::hours(1);
+    assert!(store.advance_last_digest_at(a, None, future).await.unwrap());
+    // A second replica that read A as never digested moves nothing.
+    assert!(!store
+        .advance_last_digest_at(a, None, Utc::now())
         .await
-        .unwrap();
+        .unwrap());
     assert!(
         store
             .members_due_for_digest(100, &[])
@@ -122,10 +125,10 @@ async fn run_suite(store: &dyn Store) {
     );
 
     // A watermark in the past brings A back (its unreads are all newer).
-    store
-        .set_last_digest_at(a, Utc::now() - Duration::hours(1))
+    assert!(store
+        .advance_last_digest_at(a, Some(future), Utc::now() - Duration::hours(1))
         .await
-        .unwrap();
+        .unwrap());
     let due = store.members_due_for_digest(100, &[]).await.unwrap();
     assert_eq!(due.len(), 1);
     assert_eq!(due[0].member_id, a);

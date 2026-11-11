@@ -1814,12 +1814,13 @@ macro_rules! store_delegations {
                 email_digest::get_delivery_mode(self.pool(), member_id).await
             }
 
-            async fn set_last_digest_at(
+            async fn advance_last_digest_at(
                 &self,
                 member_id: MemberId,
-                now: chrono::DateTime<chrono::Utc>,
-            ) -> Result<(), StoreError> {
-                email_digest::set_last_digest_at(self.pool(), member_id, now).await
+                seen: Option<chrono::DateTime<chrono::Utc>>,
+                to: chrono::DateTime<chrono::Utc>,
+            ) -> Result<bool, StoreError> {
+                email_digest::advance_last_digest_at(self.pool(), member_id, seen, to).await
             }
 
             async fn members_due_for_digest(
@@ -5828,7 +5829,7 @@ macro_rules! store_delegations {
                 subscription_id: WebhookSubscriptionId,
                 log_id: i64,
                 payload: &str,
-            ) -> Result<i64, StoreError> {
+            ) -> Result<Option<i64>, StoreError> {
                 webhooks::enqueue_delivery(self.pool(), subscription_id, log_id, payload).await
             }
 
@@ -5837,6 +5838,13 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError> {
                 webhooks::list_pending_deliveries(self.pool(), limit).await
+            }
+
+            async fn claim_next_webhook_delivery(
+                &self,
+                lease_secs: i64,
+            ) -> Result<Option<WebhookSubscriptionDelivery>, StoreError> {
+                webhooks::claim_next_delivery(self.pool(), lease_secs).await
             }
 
             async fn mark_webhook_delivery_delivered(
@@ -5904,7 +5912,7 @@ macro_rules! store_delegations {
             async fn enqueue_automation_delivery(
                 &self,
                 new: NewAutomationDelivery,
-            ) -> Result<i64, StoreError> {
+            ) -> Result<Option<i64>, StoreError> {
                 automation_deliveries::enqueue(self.pool(), new).await
             }
 
@@ -5913,6 +5921,13 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<AutomationDeliveryPending>, StoreError> {
                 automation_deliveries::list_pending(self.pool(), limit).await
+            }
+
+            async fn claim_next_automation_delivery(
+                &self,
+                lease_secs: i64,
+            ) -> Result<Option<AutomationDeliveryPending>, StoreError> {
+                automation_deliveries::claim_next(self.pool(), lease_secs).await
             }
 
             async fn list_automation_deliveries(
@@ -6053,6 +6068,15 @@ macro_rules! store_delegations {
                 to_state: ThreadState,
             ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
                 fsm_hooks::list_matching(self.pool(), workspace_id, from_state, to_state).await
+            }
+
+            async fn claim_fsm_hook_run(
+                &self,
+                workspace_id: WorkspaceId,
+                hook_id: FsmHookId,
+                log_id: i64,
+            ) -> Result<bool, StoreError> {
+                fsm_hooks::claim_run(self.pool(), workspace_id, hook_id, log_id).await
             }
         }
     };

@@ -359,6 +359,9 @@ mod oidc_signup;
 #[path = "../oldest_event_after_of_kinds.rs"]
 mod oldest_event_after_of_kinds;
 
+#[path = "../one_delivery_per_event.rs"]
+mod one_delivery_per_event;
+
 #[path = "../ops_alerts.rs"]
 mod ops_alerts;
 

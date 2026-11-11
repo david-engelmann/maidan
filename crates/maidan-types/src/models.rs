@@ -4085,6 +4085,10 @@ pub struct NewAutomationDelivery {
     pub header_name: String,
     pub header_value: String,
     pub payload: String,
+    /// The event this delivery is for, when an event caused it (an FSM hook).
+    /// The store keeps one delivery per source and event, since every replica
+    /// sees the event. `None` for a slash command, which a request caused.
+    pub log_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

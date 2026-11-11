@@ -115,12 +115,18 @@ async fn a_revoked_webhook_gets_no_retries_and_an_unreadable_secret_does_not_sta
     let revoked_delivery = store
         .enqueue_webhook_delivery(revoked, 1, "{}")
         .await
+        .unwrap()
         .unwrap();
     let locked_delivery = store
         .enqueue_webhook_delivery(locked, 2, "{}")
         .await
+        .unwrap()
         .unwrap();
-    let live_delivery = store.enqueue_webhook_delivery(live, 3, "{}").await.unwrap();
+    let live_delivery = store
+        .enqueue_webhook_delivery(live, 3, "{}")
+        .await
+        .unwrap()
+        .unwrap();
     store
         .revoke_webhook_subscription(ws, revoked)
         .await
