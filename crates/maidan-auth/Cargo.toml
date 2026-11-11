@@ -16,6 +16,7 @@ autotests = false
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 metrics = "0.24"
+rand = "0.8"
 base64 = "0.22"
 chacha20poly1305 = "0.10"
 chrono.workspace = true
