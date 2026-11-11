@@ -29,6 +29,7 @@
 - [MCP tools & resources](./mcp-reference.md)
 - [Self-hosting](docs/Production.md)
 - [Configuration reference](docs/Configuration.md)
+- [Credits](docs/Credits.md)
 - [Benchmark](docs/Benchmark.md)
 - [Embeddings & semantic search](docs/Embeddings.md)
 - [Deploy](docs/Deploy.md)

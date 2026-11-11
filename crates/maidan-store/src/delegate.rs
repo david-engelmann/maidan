@@ -782,6 +782,88 @@ macro_rules! store_delegations {
             ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
                 usage_meters::list(self.read_pool(), workspace_id, since).await
             }
+
+            async fn credit_balance(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError> {
+                credits::balance(self.pool(), workspace_id).await
+            }
+
+            async fn list_credit_ledger(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::CreditEntry>, StoreError> {
+                credits::ledger(self.pool(), workspace_id, limit).await
+            }
+
+            async fn create_credit_top_up(
+                &self,
+                new: &maidan_types::NewTopUp,
+            ) -> Result<maidan_types::TopUp, StoreError> {
+                credits::create_top_up(self.pool(), new).await
+            }
+
+            async fn list_open_credit_top_ups(
+                &self,
+                workspace_id: WorkspaceId,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<Vec<maidan_types::TopUp>, StoreError> {
+                credits::open_top_ups(self.pool(), workspace_id, now).await
+            }
+
+            async fn find_credit_top_up_workspace(
+                &self,
+                log: &maidan_types::DepositLog,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<Option<WorkspaceId>, StoreError> {
+                credits::top_up_workspace(self.pool(), log, now).await
+            }
+
+            async fn record_credit_deposit(
+                &self,
+                log: &maidan_types::DepositLog,
+                effects: &maidan_types::DepositEffects,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<maidan_types::DepositOutcome, StoreError> {
+                credits::record_deposit(self.pool(), log, effects, now).await
+            }
+
+            async fn charge_credits(
+                &self,
+                charge: &maidan_types::CreditCharge,
+            ) -> Result<maidan_types::ChargeOutcome, StoreError> {
+                credits::charge(self.pool(), charge).await
+            }
+
+            async fn grant_credits(
+                &self,
+                grant: &maidan_types::CreditGrant,
+            ) -> Result<maidan_types::CreditEntry, StoreError> {
+                credits::grant(self.pool(), grant).await
+            }
+
+            async fn list_unmatched_credit_deposits(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::UnmatchedDeposit>, StoreError> {
+                credits::unmatched(self.pool(), limit).await
+            }
+
+            async fn credit_cursor(
+                &self,
+                chain: maidan_types::CreditChain,
+                address: &str,
+            ) -> Result<Option<i64>, StoreError> {
+                credits::cursor(self.pool(), chain, address).await
+            }
+
+            async fn set_credit_cursor(
+                &self,
+                chain: maidan_types::CreditChain,
+                address: &str,
+                block: i64,
+            ) -> Result<(), StoreError> {
+                credits::set_cursor(self.pool(), chain, address, block).await
+            }
         }
     };
     ($store:ty, ApprovalGateStore) => {

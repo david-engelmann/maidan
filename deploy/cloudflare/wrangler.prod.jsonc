@@ -66,6 +66,18 @@
     // service costs to run (David, 2026-11-05). Past it a workspace is told;
     // an open sign-up workspace is also cut off until the month turns.
     "MAIDAN_FREE_ALLOWANCE": "requests=2000000,mcp_calls=1000000,embedding_calls=200000,deliveries=10000,wasi_ms=3600000,stored_bytes=5368709120",
+    // Prepaid credits in USDC on Base (docs/Credits.md). The receiving
+    // address is the maintainer's wallet; Maidan only reads transfers to it
+    // and holds no key. PublicNode answers eth_getLogs over a 1,000-block
+    // range with no key, where the chain's own public endpoint rate-limits.
+    "MAIDAN_CREDITS_ADDRESS": "0x2eC8A54B79CD35Bbe1BB375e8C426CC6ee1a839E",
+    "MAIDAN_CREDITS_CHAIN": "base",
+    "MAIDAN_CREDITS_RPC_URL": "https://base-rpc.publicnode.com",
+    // Past the free allowance, in micro-dollars per units: $0.50 per million
+    // requests, $1 per 100,000 MCP calls, $1 per 10,000 embedding calls or
+    // deliveries, and $0.01 per minute of WASI run time. Several times what
+    // each costs to serve on Cloudflare Containers, Neon and R2 at this scale.
+    "MAIDAN_OVERAGE_PRICES": "requests=500000/1000000,mcp_calls=1000000/100000,embedding_calls=1000000/10000,deliveries=1000000/10000,wasi_ms=10000/60000",
     // Media a workspace may hold, matching the allowance's 5 GiB.
     "MAIDAN_MEDIA_QUOTA_BYTES": "5368709120"
   },

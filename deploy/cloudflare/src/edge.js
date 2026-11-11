@@ -77,6 +77,7 @@ export const PROBLEM_TYPES = new Set([
   "bad-request",
   "unauthorized",
   "invalid-signature",
+  "payment-required",
   "forbidden",
   "not-found",
   "method-not-allowed",

@@ -321,14 +321,14 @@ async fn past_its_request_allowance_a_report_is_refused_over_a2a_and_rest_alike(
     h.cut_off(a.ws, UsageMeter::Requests).await;
 
     let (status, resp) = h.send(&a, a_thread, stamped(a_lease)).await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{resp}");
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{resp}");
     assert!(
         resp.to_string().contains("free allowance for requests"),
         "{resp}"
     );
     assert_eq!(
         h.post_usage(&a, a_thread, body(a_lease)).await,
-        StatusCode::TOO_MANY_REQUESTS
+        StatusCode::PAYMENT_REQUIRED
     );
     assert_eq!(h.ledger(a.ws).await, 0, "a refused report records nothing");
     assert_eq!(

@@ -147,6 +147,59 @@ GitHub creates a review. Projector rows aimed at the same issue never call
 Each result POSTs a new COMMENT review (a re-review on a new `head_sha` lands
 on that commit); the summary comment is the object that updates in place.
 
+## The `pre-review` commit status
+
+A review agent that claims a **review thread** (thread attribute
+`kind = review`) can ask for its verdict to be posted as a commit status, for a
+merge gate that reads a `pre-review` status. It sets, beside `rendered` and the
+`github` target:
+
+```json
+{ "status": "reviewed", "verdict": "PASS", "head_sha": "<40 hex>",
+  "check": { "context": "pre-review" } }
+```
+
+After the comment lands, Maidan posts `POST /repos/{repo}/statuses/{sha}` in
+the target's repository, only when every rule holds:
+
+- **The thread is a review.** A result on any other thread is delivered as
+  before, and a change keeps the change flow's own `check`.
+- **The reporter holds the `pre-review` skill.** The member that set the
+  result must currently hold `pre-review`, a governance skill: an operator
+  with `channel:admin` grants and revokes it (`POST /members/:id/skills`,
+  `DELETE /members/:id/skills/pre-review`), and a member can never declare it
+  about itself. Without it nothing is posted
+  (`pre_review_skill_missing: <handle> does not hold the pre-review skill`).
+- **`check.context` is exactly `pre-review`.** It is the only entry in the
+  allowlist, so a review can never post a context another gate owns
+  (`stamp`, `security`, `review-lane`). Any other context posts nothing.
+- **`status` is `reviewed` and `verdict` is exactly `PASS`, `MERGE` or `FIX-FIRST`.**
+  `PASS` and `MERGE` (a red-team review's word for a pass) post `success`,
+  `FIX-FIRST` posts `failure`. `check.state` and
+  `check.description` are ignored.
+- **The head is the briefed one.** The thread's description carries a line
+  `Head to review: <full sha>` (review children Maidan spawns write it;
+  threads filed from outside use the same line). The result's `head_sha` must
+  equal it, in any case, and the status goes on that head.
+- **The description is Maidan's:** `PASS at <sha9> by <family> as <handle>`
+  (or `FIX-FIRST …`), where `<sha9>` is the first nine hex characters of the
+  head, `<handle>` is the reporting member's handle, and `<family>` is the
+  provider family of that member's latest usage record on the thread, else
+  the `result_kind` prefix before its first `.` when that names a known
+  family (`deepseek.redteam/1` is `deepseek`). It is never the thread's
+  `review_family` label. A gate parses it with
+  `^PASS at <sha9> by [A-Za-z0-9][A-Za-z0-9 ._-]*$`, so a family or handle
+  outside that alphabet, or a line over 140 characters, posts nothing.
+
+It is best effort, like the inline review: a refused rule or a status GitHub
+does not take never fails or retries the comment. What stopped it is recorded
+on the GitHub row's `delivery_warnings` (`GET /threads/:id/deliveries`,
+`list_result_deliveries`) as one line, `pre_review_<reason>: <detail>`, for
+example `pre_review_context_refused: stamp` or `pre_review_head_refused:
+briefed <sha> but the result reviewed <sha>`. Each delivery of a review
+thread's result replaces the last one's warnings; a result with no `check`
+asks for no status and records none.
+
 ---
 
 ## The `deliver_to` grammar

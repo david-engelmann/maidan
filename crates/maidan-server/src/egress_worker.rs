@@ -1162,6 +1162,9 @@ async fn github_result(
     // Additive: a review or check-run skip/failure never undoes a landed summary.
     post_result_inline_review(state, sender.as_ref(), repo, issue_number, entry.thread_id).await;
     post_result_check_run(state, sender.as_ref(), repo, entry.thread_id).await;
+    // Only a review thread's result: it may post its guarded `pre-review`
+    // status, and records why not on this row.
+    crate::pre_review::post_status(state, sender.as_ref(), entry, repo, issue_number).await;
     Ok(reference)
 }
 

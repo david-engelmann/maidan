@@ -146,6 +146,7 @@ mod claim_next;
 pub mod content_keyring;
 mod content_keys;
 pub mod context_pack;
+pub mod credit_terms;
 pub mod custody;
 mod delegation_grants;
 mod footprints;

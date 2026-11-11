@@ -936,6 +936,18 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/workspaces/{id}/credits",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{id}/credits/top-ups",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/workspaces/{id}/pull-watches",
     "capability": "workspace:write",
@@ -1496,6 +1508,18 @@
   {
     "method": "GET",
     "path": "/operator/usage-meters",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/credits/unmatched",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/workspaces/{id}/credits/grants",
     "capability": "operator:global",
     "surface": "http"
   },

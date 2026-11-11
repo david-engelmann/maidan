@@ -96,6 +96,11 @@ pub struct AppState {
     /// The instance's free allowance (`MAIDAN_FREE_ALLOWANCE`), set at boot.
     /// Empty (the default, and in tests) marks nobody.
     pub usage_allowance: Arc<maidan_types::UsageAllowance>,
+    /// Where this instance takes payment and what overage costs
+    /// (`MAIDAN_CREDITS_ADDRESS`, `MAIDAN_OVERAGE_PRICES`), set at boot by
+    /// [`AppState::set_credit_terms`]. The default takes no payment and
+    /// charges nothing, which is the instance as it was before credits.
+    pub credit_terms: Arc<maidan_types::CreditTerms>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// The caller an MCP `POST` with no credential reads as, on a dev instance
@@ -317,6 +322,14 @@ fn mcp_server(
 }
 
 impl AppState {
+    /// Set the instance's credit terms, on the routes and on MCP alike. Called
+    /// once, at boot (and by tests).
+    pub fn set_credit_terms(&mut self, terms: maidan_types::CreditTerms) {
+        let terms = Arc::new(terms);
+        self.mcp.set_credit_terms(terms.clone());
+        self.credit_terms = terms;
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: Arc<dyn Store>,
@@ -429,6 +442,7 @@ impl AppState {
             retry_budget: Arc::new(crate::retry_budget::RetryBudget::new()),
             usage_meters,
             usage_allowance: Arc::default(),
+            credit_terms: Arc::default(),
         }
     }
 

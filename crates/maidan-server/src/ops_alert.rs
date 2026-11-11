@@ -1238,7 +1238,7 @@ mod tests {
     /// alerts.
     #[test]
     fn every_spawned_background_loop_is_started_and_guarded() {
-        let modules: [(&str, &str); 12] = [
+        let modules: [(&str, &str); 13] = [
             ("change_sweep", include_str!("change_sweep.rs")),
             ("egress_worker", include_str!("egress_worker.rs")),
             ("web_push_worker", include_str!("web_push_worker.rs")),
@@ -1251,6 +1251,7 @@ mod tests {
             ("digest", include_str!("digest.rs")),
             ("embed_repair", include_str!("embed_repair.rs")),
             ("usage_meters", include_str!("usage_meters.rs")),
+            ("credits", include_str!("credits.rs")),
         ];
         for (name, source) in modules {
             assert!(

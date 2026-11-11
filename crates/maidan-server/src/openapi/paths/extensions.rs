@@ -335,6 +335,28 @@ pub fn list_legal_holds() {}
     ))]
 pub fn list_operator_usage_meters() {}
 
+/// Transfers to the credits receiving address that matched no top-up intent, newest first, for the operator to settle
+#[utoipa::path(get, path = "/operator/credits/unmatched", tag = "operator",
+    params(UnmatchedDepositsQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [UnmatchedDeposit]),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_unmatched_credit_deposits() {}
+
+/// Add credit to a workspace by hand, such as a deposit that matched no top-up; the note says why
+#[utoipa::path(post, path = "/operator/workspaces/{id}/credits/grants", tag = "operator",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = CreditGrantRequest,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = CreditEntry),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn grant_workspace_credits() {}
+
 /// Open another workspace and its first admin
 #[utoipa::path(post, path = "/operator/workspaces", tag = "operator",
     request_body = ProvisionWorkspace,

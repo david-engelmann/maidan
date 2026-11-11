@@ -112,6 +112,30 @@ impl UsageMeter {
     }
 }
 
+/// What a caller refused past the allowance on `meter` is told (HTTP 402,
+/// the MCP tool error, the A2A refusal): the meter, and how to get going
+/// again. A counter can be paid for with credits where the instance takes
+/// them; `stored_bytes` is a level, and only freeing space lifts it.
+pub fn over_allowance_detail(meter: UsageMeter) -> String {
+    let head = format!(
+        "this workspace is past its free allowance for {} this month",
+        meter.as_str()
+    );
+    if meter.is_gauge() {
+        return format!(
+            "{head}. Stored bytes are a hard cap that credits do not lift: delete what the \
+             workspace no longer needs, or ask the operator to raise the allowance"
+        );
+    }
+    format!(
+        "{head}. Where this instance takes credits (GET /workspaces/{{id}}/credits says \
+         `enabled`), top up: POST /workspaces/{{id}}/credits/top-ups with {{\"usd\": 5}} \
+         (MCP: top_up_credits) answers the exact USDC amount to send on Base and a \
+         wallet link, and the cutoff lifts once the deposit confirms. A Top up button on \
+         the console's Usage card follows"
+    )
+}
+
 /// A workspace's month on one meter, against the allowance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
