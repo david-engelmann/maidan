@@ -182,8 +182,44 @@ impl std::fmt::Debug for Config {
     }
 }
 
+/// What `MAIDAN_ENV` says this deployment is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployEnv {
+    /// `MAIDAN_ENV` unset or empty: a local or CI run that named nothing.
+    Unset,
+    /// `MAIDAN_ENV=development`: the operator says this is not production,
+    /// which the switches that hand out identity (the OIDC mock) require.
+    Development,
+    /// `MAIDAN_ENV=production`: every development switch is refused.
+    Production,
+}
+
+/// Parse `MAIDAN_ENV`. Anything but the two names is refused rather than read
+/// as "not production": `prod` or `Production` would otherwise boot with every
+/// production refusal off, which is the opposite of what its operator meant.
+pub fn parse_deploy_env(raw: Option<&str>) -> Result<DeployEnv, ConfigError> {
+    match raw {
+        None | Some("") => Ok(DeployEnv::Unset),
+        Some("production") => Ok(DeployEnv::Production),
+        Some("development") => Ok(DeployEnv::Development),
+        Some(other) => Err(ConfigError::Invalid(
+            "MAIDAN_ENV",
+            format!(
+                "`{other}` is not a deployment kind; set `production` or `development`, or leave it unset"
+            ),
+        )),
+    }
+}
+
+/// `MAIDAN_ENV` as this process reads it. [`Config::from_env`] refuses an
+/// unknown value at boot, so after boot this is never an error.
+pub fn deploy_env() -> Result<DeployEnv, ConfigError> {
+    parse_deploy_env(std::env::var("MAIDAN_ENV").ok().as_deref())
+}
+
+/// The one production check every refusal goes through.
 pub fn is_production() -> bool {
-    std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
+    matches!(deploy_env(), Ok(DeployEnv::Production))
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -262,6 +298,7 @@ impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
     pub fn from_env() -> Result<Self, ConfigError> {
+        deploy_env()?;
         validate_private_egress(is_production(), env_truthy("MAIDAN_ALLOW_PRIVATE_EGRESS"))?;
         validate_credential_guard(is_production(), crate::egress_guard::switched_off())?;
         let bind: SocketAddr = std::env::var("MAIDAN_BIND")
@@ -353,6 +390,40 @@ mod tests {
         assert!(
             shown.contains("db.example") && shown.contains("replica.example"),
             "{shown}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_maidan_env_is_refused_rather_than_read_as_development() {
+        for refused in [
+            "prod",
+            "Production",
+            "PRODUCTION",
+            "dev",
+            "staging",
+            " production",
+        ] {
+            assert!(
+                matches!(
+                    parse_deploy_env(Some(refused)),
+                    Err(ConfigError::Invalid("MAIDAN_ENV", _))
+                ),
+                "{refused:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn maidan_env_names_production_development_or_nothing() {
+        assert_eq!(parse_deploy_env(None).unwrap(), DeployEnv::Unset);
+        assert_eq!(parse_deploy_env(Some("")).unwrap(), DeployEnv::Unset);
+        assert_eq!(
+            parse_deploy_env(Some("production")).unwrap(),
+            DeployEnv::Production
+        );
+        assert_eq!(
+            parse_deploy_env(Some("development")).unwrap(),
+            DeployEnv::Development
         );
     }
 

@@ -24,6 +24,15 @@ images:
 # Production deployments scale wider, expose via a real host, and
 # tighten resource limits.
 patches:
+  # The server's own production refusals (the OIDC mock, AUTH_DISABLED, the
+  # development KEK, fault injection) hold only under MAIDAN_ENV=production.
+  - target:
+      kind: ConfigMap
+      name: maidan-config
+    patch: |-
+      - op: add
+        path: /data/MAIDAN_ENV
+        value: production
   - target:
       kind: Deployment
       name: maidan-server
