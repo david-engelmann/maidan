@@ -67,6 +67,6 @@ test("the board on #build shows a task in each lane", async ({ page }) => {
 test("needs you lists what is waiting on the operator", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/needs");
-  await expect(page.locator(".needs-count")).toHaveText(/waiting on you|Nothing waiting/);
+  await expect(page.locator(".needs-count")).toHaveText(/waiting on you/);
   await expect(page.locator(".needs-group").first()).toBeVisible();
 });

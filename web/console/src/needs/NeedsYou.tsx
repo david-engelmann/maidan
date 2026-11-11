@@ -194,7 +194,8 @@ export function NeedsYou() {
     <div className="needs">
       {link ? <ConfirmPanel api={api} link={link} workspaceId={session.workspaceId} onDone={() => { setLink(null); void refresh(); }} /> : null}
       <h2 id="needs-title" className="visually-hidden" tabIndex={-1}>Needs you</h2>
-      {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
+      {/* Empty says so once, in the caught-up card; the count is only for a list. */}
+      {data.status === "ready" && shown.length > 0 && <p className="needs-count">{`${shown.length} waiting on you`}</p>}
       {data.staleSince !== null && (
         <p className="needs-stale" role="status">
           {data.error ?? `Could not reach the server. Showing what was loaded at ${clock(data.staleSince)}. Reconnecting…`}

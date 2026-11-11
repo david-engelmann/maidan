@@ -5,8 +5,7 @@
 //! rows and sends them again, with backoff, until they succeed, the
 //! subscription is gone, or the attempt cap dead-letters the row.
 //!
-//! Runs when a VAPID sender is configured. Tick defaults to 5s
-//! (`MAIDAN_WEBPUSH_WORKER_TICK_SECS`).
+//! Runs when a VAPID sender is configured. It ticks every 5s.
 
 use std::time::Duration;
 
@@ -25,14 +24,11 @@ pub struct WebPushWorkerConfig {
     pub tick: Duration,
 }
 
-pub fn config_from_env() -> WebPushWorkerConfig {
-    let secs = std::env::var("MAIDAN_WEBPUSH_WORKER_TICK_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .unwrap_or(5);
+/// The worker's tick. Five seconds is a constant, not a knob (OPS-006); the
+/// worker always runs once its sender is configured.
+pub fn config() -> WebPushWorkerConfig {
     WebPushWorkerConfig {
-        tick: Duration::from_secs(secs),
+        tick: Duration::from_secs(5),
     }
 }
 

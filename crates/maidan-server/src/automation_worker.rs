@@ -6,13 +6,16 @@ use tokio::sync::watch;
 use tracing::warn;
 
 use crate::automation_delivery::{
-    backoff, deliver_pending, max_attempts_from_env, poll_interval_ms_from_env,
+    backoff, deliver_pending, max_attempts_from_env, POLL_INTERVAL_MS,
 };
 use crate::metrics;
 use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 
 const DELIVERY_BATCH: i64 = 64;
+/// How far forward a claim leases a delivery. A send takes at most the egress
+/// timeout (10 s); a poller that dies mid-send frees the row after this.
+const DELIVERY_LEASE_SECS: i64 = 120;
 
 pub struct AutomationDeliveryWorker {
     shutdown: watch::Sender<()>,
@@ -37,7 +40,7 @@ impl AutomationDeliveryWorker {
 
 async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
     let max_attempts = max_attempts_from_env();
-    let interval = Duration::from_millis(poll_interval_ms_from_env());
+    let interval = Duration::from_millis(POLL_INTERVAL_MS);
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,
@@ -55,13 +58,19 @@ async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
 /// cut off on `deliveries` sends nothing and its deliveries are deferred;
 /// every attempt that goes out counts one `deliveries` unit. The spawned
 /// worker calls this every poll interval.
+///
+/// Every replica runs this worker, so each delivery is claimed (leased) one
+/// at a time before it is sent, and a row another replica holds is skipped.
 pub async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String> {
-    let pending = state
-        .store
-        .list_pending_automation_deliveries(DELIVERY_BATCH)
-        .await
-        .map_err(|e| e.to_string())?;
-    for delivery in pending {
+    for _ in 0..DELIVERY_BATCH {
+        let Some(delivery) = state
+            .store
+            .claim_next_automation_delivery(DELIVERY_LEASE_SECS)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            break;
+        };
         // The hard allowance cutoff: deferred, not failed, so the delivery
         // keeps its attempt count and goes out once the cutoff lifts.
         if state
@@ -92,7 +101,8 @@ pub async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String
                     .defer_automation_delivery(delivery.id, until)
                     .await
                 {
-                    // Still due, so the next poll asks the budget again.
+                    // The claim's lease holds the row, so the budget is asked
+                    // again once the lease runs out.
                     warn!(delivery_id = delivery.id, error = %err, "automation deferral failed");
                 }
                 continue;

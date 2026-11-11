@@ -604,6 +604,7 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
             handler_kind: SlashHandlerKind::McpTool,
             handler_target: "list_channels".into(),
             secret_ciphertext: String::new(),
+            created_by_token: None,
         })
         .await
         .expect("command");

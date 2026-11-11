@@ -34,6 +34,7 @@ async fn sqlite_creates_slash_command() {
             handler_kind: SlashHandlerKind::McpTool,
             handler_target: "list_channels".into(),
             secret_ciphertext: String::new(),
+            created_by_token: None,
         })
         .await
         .unwrap_or_else(|e| panic!("create slash command: {e:?}"));

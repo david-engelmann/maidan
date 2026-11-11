@@ -42,22 +42,28 @@ pub async fn get_delivery_mode(
         .unwrap_or_default())
 }
 
-/// Advance a member's digest watermark to `now`.
-pub async fn set_last_digest_at(
+/// Move a member's digest watermark from `seen` to `to`, only if it still
+/// holds `seen`: a compare-and-set, so of two replicas that read the member
+/// due, one sends the digest. `false` when it had moved.
+pub async fn advance_last_digest_at(
     pool: &PgPool,
     member_id: MemberId,
-    now: DateTime<Utc>,
-) -> Result<(), crate::error::StoreError> {
-    sqlx::query(
+    seen: Option<DateTime<Utc>>,
+    to: DateTime<Utc>,
+) -> Result<bool, crate::error::StoreError> {
+    let moved = sqlx::query(
         "INSERT INTO maidan_member_digest_state (member_id, last_digest_at)
-         VALUES ($1, $2)
-         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at",
+         VALUES ($1, $3)
+         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at
+         WHERE maidan_member_digest_state.last_digest_at IS NOT DISTINCT FROM $2",
     )
     .bind(member_id.0)
-    .bind(now)
+    .bind(seen)
+    .bind(to)
     .execute(pool)
-    .await?;
-    Ok(())
+    .await?
+    .rows_affected();
+    Ok(moved == 1)
 }
 
 /// Members due for an email digest — see the SQLite twin. Native `timestamptz`
@@ -152,7 +158,7 @@ pub async fn manager_digest_for_member(
     member_id: MemberId,
     since: DateTime<Utc>,
 ) -> Result<ManagerDigest, crate::error::StoreError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT channel_id,
                 COUNT(*) FILTER (WHERE kind = 'thread_result_set') AS results,
                 COUNT(*) FILTER (WHERE kind = 'approval_requested') AS gates,
@@ -162,11 +168,14 @@ pub async fn manager_digest_for_member(
            AND read_at IS NULL
            AND created_at > $2
            AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_unacknowledged', 'claim_stalled', 'claim_failed', 'wait_timed_out')
+           AND {}
          GROUP BY channel_id
          ORDER BY channel_id IS NOT NULL, channel_id",
-    )
+        crate::thread_access::notification_visible_to("$1::uuid", "$3")
+    ))
     .bind(member_id.0)
     .bind(since)
+    .bind(maidan_types::DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     let channels = rows

@@ -1108,7 +1108,7 @@
       "title": "Get artifact",
       "readOnlyHint": {
         "value": true,
-        "reason": "artifact_ref_exists + get_artifact_for_workspace, then artifacts.get reads the blob"
+        "reason": "artifact_visible_to + get_artifact_for_workspace, then artifacts.get reads the blob"
       },
       "destructiveHint": {
         "value": false,
@@ -1127,7 +1127,7 @@
       "title": "Get artifact metadata",
       "readOnlyHint": {
         "value": true,
-        "reason": "only SELECTs: artifact_ref_exists + get_artifact_for_workspace / get_artifact_by_sha"
+        "reason": "only SELECTs: artifact_visible_to + get_artifact_for_workspace / get_artifact_by_sha"
       },
       "destructiveHint": {
         "value": false,
