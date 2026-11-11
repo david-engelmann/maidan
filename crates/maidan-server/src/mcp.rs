@@ -430,14 +430,13 @@ async fn json_rpc(
     profile: Option<maidan_mcp::Profile>,
 ) -> Response {
     let parsed = maidan_mcp::protocol::parse_body(&body);
-    if let (Some(Extension(permit)), Ok(request)) = (&permit, &parsed) {
-        let parking = match request {
-            RequestBody::Single(request) => parks(request),
-            RequestBody::Batch(items) => items.iter().flatten().any(parks),
-        };
-        if parking {
-            permit.release();
-        }
+    // Only a lone wait gives its permit back. A batch runs its items in turn,
+    // so releasing for one wait would let every other item in it run outside
+    // the ceiling.
+    if let (Some(Extension(permit)), Ok(RequestBody::Single(request))) = (&permit, &parsed)
+        && parks(request)
+    {
+        permit.release();
     }
     match parsed {
         Err(rejected) => Json(JsonRpcResponse::rejected(rejected)).into_response(),

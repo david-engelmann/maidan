@@ -165,7 +165,7 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
     );
 
     // A Bot comment (our own egress echo) is not re-ingested — no loop.
-    let bot_body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"body":"echo","user":{"login":"maidan[bot]","type":"Bot"}}}"#;
+    let bot_body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"body":"echo","author_association":"MEMBER","user":{"login":"maidan[bot]","type":"Bot"}}}"#;
     let sig2 = sign_payload(SECRET, bot_body);
     client
         .post(format!("http://{addr}/integrations/github/events"))

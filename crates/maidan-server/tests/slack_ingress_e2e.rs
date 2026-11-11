@@ -309,6 +309,16 @@ async fn a_slack_connect_guest_from_another_team_is_not_posted_as_the_linking_me
     }))
     .await;
 
+    // An event that names no sender team is taken as the installing team's:
+    // Slack's own message examples carry neither field, so refusing it would
+    // drop ordinary messages (the residual in Threat-Model T22).
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "team_id": "THOME",
+        "event": message(serde_json::json!({}), "unnamed team: posted"),
+    }))
+    .await;
+
     let messages = store.list_messages(thread.id, 50).await.unwrap();
     assert!(
         !messages
@@ -322,6 +332,12 @@ async fn a_slack_connect_guest_from_another_team_is_not_posted_as_the_linking_me
             .iter()
             .any(|m| m.author_id == linker.id && m.body == "U1: colleague: looks good"),
         "a message from the installing team is still posted"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.author_id == linker.id && m.body == "U1: unnamed team: posted"),
+        "a message that names no sender team is still posted"
     );
 
     server.abort();

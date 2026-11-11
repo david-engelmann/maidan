@@ -756,8 +756,9 @@ Four rules for using them safely:
   `renew_claim` around a long one, if you must hold the claim across it.
 - **A wait parks without an in-flight slot, up to 32 per workspace.** Every
   other HTTP request counts against the server's in-flight ceiling until its
-  response starts; a `wait_for_*` call gives its slot back once it parks, so
-  waits cannot crowd out other requests. One workspace may park at most 32
+  response starts; a `wait_for_*` call sent on its own gives its slot back
+  once it parks, so waits cannot crowd out other requests (one inside a
+  batch keeps it, since the batch's other items run under the same slot). One workspace may park at most 32
   waits at once, across all its tokens; the next is refused at once with
   `-32029` and `retry_after_ms`, so back off rather than retry in a loop.
 
