@@ -138,6 +138,17 @@ pub async fn pull_thread(
                AND rd.surface = 'github_branch' AND rd.status = 'delivered'
                AND lower(substr(rd.selector, 1, length($1) + 1)) = lower($1) || '@'
                AND rd.external_ref LIKE '%#' || $4
+               -- Once the pull request moved to another thread, a delivery
+               -- made before the move no longer answers for it, nor does one
+               -- an ended thread finished later (a superseded task's
+               -- delivery that was already writing when it closed).
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_change_pulls h
+                   WHERE h.workspace_id = $3 AND h.repo = lower($1) AND h.pull_number = $2
+                     AND h.handed_at IS NOT NULL
+                     AND (rd.updated_at <= h.handed_at
+                          OR (rd.thread_id <> h.thread_id
+                              AND t.state IN ('closed', 'archived'))))
          ) found
          ORDER BY rank, at DESC
          LIMIT 1",
@@ -403,6 +414,7 @@ pub async fn settle(
     // registered: nothing of its own for a gate to judge.
     let Some(row) = sqlx::query(
         "SELECT p.thread_id, p.merged_at IS NOT NULL AS merged, t.state::text AS state,
+                p.handed_at IS NOT NULL AS handed,
                 t.tombstoned_at IS NOT NULL AS tombstoned, t.owner_id, r.produced_by,
                 (r.thread_id IS NULL
                  AND NOT EXISTS (SELECT 1 FROM maidan_result_deliveries d
@@ -444,7 +456,29 @@ pub async fn settle(
     let state: String = row.get("state");
     let from_open = state == ThreadState::Open.as_str();
     let live = from_open || state == ThreadState::InReview.as_str();
-    let (Some(actor), true, false) = (actor, live, row.get::<bool, _>("tombstoned")) else {
+    let tombstoned = row.get::<bool, _>("tombstoned");
+    // A merge of a pull request handed to a successor that has neither an
+    // owner nor a result yet has nobody to land it in the name of. Settled
+    // now, the successor would never land; it stays unsettled and is tried
+    // again, behind fresh closes, until the successor produces or ends.
+    let waiting = actor.is_none()
+        && live
+        && !tombstoned
+        && row.get::<bool, _>("handed")
+        && row.get::<bool, _>("merged");
+    let (Some(actor), true, false) = (actor, live, tombstoned) else {
+        if waiting {
+            sqlx::query(
+                "UPDATE maidan_change_pulls SET settled_at = NULL, retried_at = $3
+                 WHERE repo = $1 AND pull_number = $2 AND workspace_id = $4",
+            )
+            .bind(&repo)
+            .bind(pull_number)
+            .bind(Utc::now())
+            .bind(workspace_id.0)
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
         return Ok(ChangeSettlement::Unchanged);
     };

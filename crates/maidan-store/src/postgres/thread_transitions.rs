@@ -505,16 +505,39 @@ pub async fn close_abandoned(
     actor_id: MemberId,
     maintainer: bool,
     close: &CloseAbandoned,
+    audit: NewAuditEvent,
+) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+    let mut tx = pool.begin().await?;
+    let closed =
+        close_abandoned_in_tx(&mut tx, keys, thread_id, actor_id, maintainer, close, audit).await?;
+    tx.commit().await?;
+    Ok(closed)
+}
+
+/// [`close_abandoned`] on the caller's transaction, so a thread created to
+/// supersede another closes it in the same commit as its own insert.
+///
+/// A thread closed as `superseded` with a successor hands its open pull
+/// requests to that successor (`pull_handoff`) instead of withdrawing them:
+/// the successor carries the same work, and a withdrawn pull request would
+/// strand a round that only re-runs a check. Every other close withdraws them.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn close_abandoned_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+    maintainer: bool,
+    close: &CloseAbandoned,
     mut audit: NewAuditEvent,
 ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
     use crate::thread_access::readable_thread;
-    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
          FROM maidan_threads WHERE id = $1 FOR UPDATE",
     )
     .bind(thread_id.0)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
     let thread = row_to_thread(&row)?;
@@ -558,11 +581,21 @@ pub async fn close_abandoned(
         }
         (_, None) => None,
     };
+    // A superseding close may hand the successor its pull requests, which
+    // locks the successor. Taken now, before the first event append holds
+    // the workspace's log lock, so a cancel of the successor (which locks it,
+    // then appends) waits here instead of deadlocking against the handoff.
+    if let (CloseReason::Superseded, Some(successor)) = (close.reason, close.duplicate_of) {
+        sqlx::query("SELECT 1 AS one FROM maidan_threads WHERE id = $1 FOR UPDATE")
+            .bind(successor.0)
+            .fetch_optional(&mut **tx)
+            .await?;
+    }
 
     let mut stored = Vec::new();
     if let Some((src, dst, kind)) = relation {
         let other = if src == thread_id { dst } else { src };
-        let (ws, _) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        let (ws, _) = events::thread_scope_in_tx(tx, thread_id).await?;
         let readable = readable_thread("t.id", "$2", "$3::uuid", "$4");
         let sql = format!(
             "SELECT 1 AS one FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
@@ -573,7 +606,7 @@ pub async fn close_abandoned(
             .bind(ws.0)
             .bind(actor_id.0)
             .bind(maidan_types::DM_CHANNEL_NAME)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await?;
         if found.is_none() {
             return Err(StoreError::InvalidInput(
@@ -592,7 +625,7 @@ pub async fn close_abandoned(
         .bind(maidan_types::RefSide::Thread.as_str())
         .bind(dst.0)
         .bind(kind.as_str())
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?;
         if let Some(row) = inserted {
             let reference = super::refs::row_to_reference(&row)?;
@@ -600,7 +633,7 @@ pub async fn close_abandoned(
                 occurred_at: Utc::now(),
                 reference,
             };
-            stored.push(events::append_in_tx(&mut tx, &event).await?);
+            stored.push(events::append_in_tx(tx, &event).await?);
         }
     }
 
@@ -608,16 +641,16 @@ pub async fn close_abandoned(
         "SELECT EXISTS(SELECT 1 FROM maidan_thread_results WHERE thread_id = $1) AS had",
     )
     .bind(thread_id.0)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let had_result: bool = sqlx::Row::get(&row, "had");
     if had_result {
-        separation_of_duties_in_tx(&mut tx, &thread, actor_id, ThreadState::Closed).await?;
-        review_gate_in_tx(&mut tx, thread_id).await?;
-        super::land_gate::gate_in_tx(&mut tx, thread_id).await?;
+        separation_of_duties_in_tx(tx, &thread, actor_id, ThreadState::Closed).await?;
+        review_gate_in_tx(tx, thread_id).await?;
+        super::land_gate::gate_in_tx(tx, thread_id).await?;
     }
 
-    let result = land_in_tx(&mut tx, &thread, actor_id, ThreadState::Closed).await?;
+    let result = land_in_tx(tx, &thread, actor_id, ThreadState::Closed).await?;
     // Nothing landed, so the dependents stay waiting: a dependency is met
     // only when it is closed or archived without a row here.
     sqlx::query(
@@ -627,15 +660,39 @@ pub async fn close_abandoned(
     .bind(thread_id.0)
     .bind(close.reason.as_str())
     .bind(actor_id.0)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     let replacement = match (close.reason, close.duplicate_of) {
         (CloseReason::Duplicate | CloseReason::Superseded, Some(other)) => Some(other),
         _ => None,
     };
     let (moved, kept, notices) = match replacement {
-        Some(other) => repoint_dependents_in_tx(&mut tx, keys, thread_id, other, actor_id).await?,
+        Some(other) => repoint_dependents_in_tx(tx, keys, thread_id, other, actor_id).await?,
         None => (Vec::new(), Vec::new(), Vec::new()),
+    };
+    // `result.thread` has no assignee any more; the event names whoever held
+    // the claim, so that claimant can be told to stop.
+    let changed =
+        state_changed_ending_claim_in_tx(tx, actor_id, &result, thread.assignee_id).await?;
+    let successor = match (close.reason, close.duplicate_of) {
+        (CloseReason::Superseded, Some(other)) => Some(other),
+        _ => None,
+    };
+    let (handed, handoff_notices) = match successor {
+        Some(to) => {
+            super::pull_handoff::hand_off_pulls_in_tx(tx, keys, thread_id, to, actor_id, &audit)
+                .await?
+        }
+        None => {
+            super::cancel::queue_pull_withdrawals_in_tx(
+                tx,
+                thread_id,
+                changed.id,
+                &crate::cancel::closed_pull_comment(close.reason.as_str()),
+            )
+            .await?;
+            (Vec::new(), Vec::new())
+        }
     };
     let mut metadata = match std::mem::take(&mut audit.metadata) {
         serde_json::Value::Object(map) => map,
@@ -663,30 +720,23 @@ pub async fn close_abandoned(
             .collect::<Vec<_>>()
             .into(),
     );
+    metadata.insert(
+        "handed_pulls".into(),
+        handed
+            .iter()
+            .map(|p| serde_json::json!({ "repo": p.repo, "pull_number": p.pull_number }))
+            .collect::<Vec<_>>()
+            .into(),
+    );
     metadata.insert("had_result".into(), had_result.into());
     metadata.insert("from_state".into(), result.from_state.as_str().into());
     audit.metadata = serde_json::Value::Object(metadata);
-    super::audit::append_scoped(
-        &mut tx,
-        crate::audit_scope::AuditOwner::Thread(thread_id),
-        audit,
-    )
-    .await?;
-    // `result.thread` has no assignee any more; the event names whoever held
-    // the claim, so that claimant can be told to stop.
-    let changed =
-        state_changed_ending_claim_in_tx(&mut tx, actor_id, &result, thread.assignee_id).await?;
-    super::cancel::queue_pull_withdrawals_in_tx(
-        &mut tx,
-        thread_id,
-        changed.id,
-        &crate::cancel::closed_pull_comment(close.reason.as_str()),
-    )
-    .await?;
+    super::audit::append_scoped(tx, crate::audit_scope::AuditOwner::Thread(thread_id), audit)
+        .await?;
     stored.push(changed);
     stored.extend(notices);
-    stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
-    tx.commit().await?;
+    stored.extend(handoff_notices);
+    stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor_id).await?);
     Ok((result, stored))
 }
 

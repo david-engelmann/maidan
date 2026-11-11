@@ -53,21 +53,42 @@ pub async fn create_thread(
         .attributes
         .map(|attributes| attributes.validated().map_err(ApiError::BadRequest))
         .transpose()?;
-    let created = state
-        .store
-        .create_thread_with_footprint(
-            NewThread {
-                channel_id: ChannelId(channel_id),
-                parent_thread_id: body.parent_thread_id.map(ThreadId),
-                title: body.title,
-                description: body.description,
-                created_by: auth.attribution().map(|a| a.subject_id),
-            },
-            footprint,
-            attributes.clone(),
-            body.priority,
-        )
-        .await;
+    let new = NewThread {
+        channel_id: ChannelId(channel_id),
+        parent_thread_id: body.parent_thread_id.map(ThreadId),
+        title: body.title,
+        description: body.description,
+        created_by: auth.attribution().map(|a| a.subject_id),
+    };
+    let (created, superseded) = match body.supersedes.map(ThreadId) {
+        None => (
+            state
+                .store
+                .create_thread_with_footprint(new, footprint, attributes.clone(), body.priority)
+                .await,
+            None,
+        ),
+        Some(old) => {
+            let supersede = supersede_for(&state, &auth, ctx.workspace_id, old).await?;
+            match state
+                .store
+                .create_thread_superseding(
+                    new,
+                    footprint,
+                    attributes.clone(),
+                    body.priority,
+                    supersede,
+                )
+                .await
+            {
+                Ok(done) => (
+                    Ok((done.thread, done.created)),
+                    Some((old, done.superseded, done.events)),
+                ),
+                Err(err) => (Err(err), None),
+            }
+        }
+    };
     let created = match created {
         Err(err @ maidan_store::StoreError::AttributeHeld { .. }) => {
             return Err(super::disclose_holder(&state, &auth, err).await);
@@ -104,10 +125,56 @@ pub async fn create_thread(
         }
     };
     publish_stored(&state, stored).await;
+    if let Some((old, result, events)) = superseded {
+        publish_transition(&state, ctx.workspace_id, old, &result, events).await;
+    }
     if let (Some(withheld), Some(author_id)) = (t.withheld.as_ref(), actor) {
         record_withheld_notice(&state, author_id, t.id, withheld).await;
     }
     Ok((StatusCode::CREATED, Json(t)))
+}
+
+/// Who closes `old` when a new thread supersedes it, judged as
+/// `close-abandoned` judges it: `thread:transition`, access to the thread,
+/// and being its producer, its claim holder or a maintainer. The store checks
+/// again on the locked row that it is open and in this workspace.
+async fn supersede_for(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    old: ThreadId,
+) -> ApiResult<maidan_store::store::Supersede> {
+    cap(auth, THREAD_TRANSITION)?;
+    let scope = maidan_auth::authorize_thread(state.store.as_ref(), auth, old).await?;
+    if scope.workspace_id != workspace_id {
+        return Err(ApiError::BadRequest(
+            "supersedes is not a thread in this workspace".into(),
+        ));
+    }
+    let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
+    let thread = state.store.get_thread(old).await?;
+    if !maintainer
+        && thread.created_by != Some(auth.member_id)
+        && thread.assignee_id != Some(auth.member_id)
+    {
+        return Err(ApiError::Forbidden(
+            "only the superseded thread's producer, its claim holder, or a maintainer can supersede it"
+                .into(),
+        ));
+    }
+    Ok(maidan_store::store::Supersede {
+        thread_id: old,
+        actor_id: auth.member_id,
+        maintainer,
+        audit: NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
+            actor_id: Some(auth.actor_id),
+            action: "thread.close_abandoned".into(),
+            target_kind: Some("thread".into()),
+            target_id: Some(old.0),
+            metadata: json!({ "superseded_by_create": true }),
+        },
+    })
 }
 
 /// A task withheld as a duplicate at creation says so on the thread too, so

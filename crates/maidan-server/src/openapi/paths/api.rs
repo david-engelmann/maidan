@@ -1278,6 +1278,16 @@ pub fn list_threads() {}
 pub fn list_recently_active_threads() {}
 
 /// Create a thread in a channel
+///
+/// With `supersedes`, the named thread is closed as `superseded` by the new
+/// one in the same transaction, as `POST /threads/{id}/close-abandoned` with
+/// `duplicate_of` would close it: its dependents move to the new thread and
+/// the open pull requests the change flow opened for it are handed to it
+/// rather than withdrawn, and it
+/// does not hold its ticket against the new thread. Use it to start a
+/// follow-up round of a task. It needs `thread:transition` and must name an
+/// open or in-review thread of this workspace that the caller may close;
+/// any refusal creates nothing.
 #[utoipa::path(post, path = "/channels/{cid}/threads", tag = "threads",
     params(("cid" = Uuid, Path, description = "Channel id")),
     request_body = CreateThread,
@@ -1371,6 +1381,16 @@ pub fn transition_thread() {}
 /// superseded thread then depends on `duplicate_of` instead and gets a
 /// notice, unless the move would make a cycle; an abandoned thread's
 /// dependents keep waiting. Audited as `thread.close_abandoned`.
+///
+/// A superseded thread with `duplicate_of` hands the open pull requests the
+/// change flow opened for it (not a watched or session-registered one) to
+/// `duplicate_of`: they stay open and in the merge queue, and that thread's
+/// rounds deliver to them and its cancel withdraws them. Each move is
+/// audited as `thread.pull_handed_off` and noticed on both threads. It is
+/// refused (409, naming the pull request) when `duplicate_of` is not open or
+/// in review, or already tracks an open pull request in the same
+/// repository. Every other close withdraws the pull requests: out of the
+/// merge queue, then closed with a comment naming the reason.
 #[utoipa::path(post, path = "/threads/{id}/close-abandoned", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = CloseAbandonedThread,

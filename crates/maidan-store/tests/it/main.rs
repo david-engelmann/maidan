@@ -527,6 +527,9 @@ mod sqlite_write_contention;
 #[path = "../sqlite_write_lock_contract.rs"]
 mod sqlite_write_lock_contract;
 
+#[path = "../superseded_pull_handoff.rs"]
+mod superseded_pull_handoff;
+
 #[path = "../task_class_usage.rs"]
 mod task_class_usage;
 

@@ -2,7 +2,8 @@
 //! `POST /threads/{id}/close-abandoned` closes the caller's own thread,
 //! refuses a member who neither produced nor holds it, refuses a
 //! `duplicate_of` from another workspace, and never reaches into another
-//! workspace's thread.
+//! workspace's thread. A thread created with `supersedes` closes the one it
+//! replaces the same way, under the same authority.
 
 use std::{
     net::SocketAddr,
@@ -201,6 +202,151 @@ async fn a_producer_closes_its_abandoned_thread_and_no_one_reaches_across_worksp
     // B's thread is untouched.
     assert_eq!(
         store.get_thread(t_b).await.unwrap().state,
+        ThreadState::Open
+    );
+}
+
+async fn create(base: &str, token: &str, room: &Room, body: Value) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .post(format!("{base}/channels/{}/threads", room.channel.0))
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+fn ticket() -> Value {
+    json!({ "kind": "change", "linear_issue": "ENG-7", "repo": "acme/app" })
+}
+
+async fn hold_tickets_per_repo(store: &dyn Store, ws: WorkspaceId) {
+    use maidan_types::UniqueAttributeKey::{LinearIssue, Repo};
+    store
+        .set_workspace_unique_thread_attributes(
+            ws,
+            maidan_types::WorkspaceUniqueThreadAttributes {
+                unique: vec![vec![LinearIssue, Repo]],
+            },
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(ws),
+                actor_id: None,
+                action: "workspace.unique_thread_attributes.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(ws.0),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+}
+
+/// A follow-up round created with `supersedes` takes the ticket the round
+/// before it holds, which closes as superseded in the same call. Without
+/// `supersedes` the held ticket still answers 409.
+#[tokio::test]
+async fn a_round_created_with_supersedes_takes_the_ticket_and_closes_the_round_before_it() {
+    let (base, store) = spawn().await;
+    let a = room(store.as_ref(), "supersede-e2e").await;
+    hold_tickets_per_repo(store.as_ref(), a.ws).await;
+    let (status, old) = create(
+        &base,
+        &a.token,
+        &a,
+        json!({ "title": "round 4", "attributes": ticket() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{old}");
+    let old = ThreadId(old["id"].as_str().unwrap().parse().unwrap());
+
+    let (status, held) = create(
+        &base,
+        &a.token,
+        &a,
+        json!({ "title": "round 5", "attributes": ticket() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{held}");
+    assert_eq!(held["holder_thread_id"], old.0.to_string());
+
+    let (status, round) = create(
+        &base,
+        &a.token,
+        &a,
+        json!({ "title": "round 5", "attributes": ticket(), "supersedes": old.0 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{round}");
+    let round = ThreadId(round["id"].as_str().unwrap().parse().unwrap());
+    assert_eq!(
+        store.get_thread(old).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert_eq!(
+        store.thread_unlanded_close(old).await.unwrap().as_deref(),
+        Some("superseded")
+    );
+    assert_eq!(
+        store.get_thread(round).await.unwrap().state,
+        ThreadState::Open
+    );
+}
+
+/// A `supersedes` naming another workspace's thread, a closed thread, or a
+/// thread the caller may not close creates nothing and closes nothing.
+#[tokio::test]
+async fn a_supersedes_the_caller_may_not_act_on_creates_nothing() {
+    let (base, store) = spawn().await;
+    let a = room(store.as_ref(), "supersede-refused-a").await;
+    let b = room(store.as_ref(), "supersede-refused-b").await;
+    let stranger = token(store.as_ref(), a.ws, "stranger").await;
+    let t_b = create_thread(&base, &b, "b's round").await;
+    let t_closed = create_thread(&base, &a, "already closed").await;
+    let (status, _) = close(&base, &a.token, t_closed, json!({ "reason": "abandoned" })).await;
+    assert_eq!(status, StatusCode::OK);
+    let t_mine = create_thread(&base, &a, "a's round").await;
+    let before = store.list_threads(a.channel).await.unwrap().len();
+
+    let (status, body) = create(
+        &base,
+        &a.token,
+        &a,
+        json!({ "title": "next", "supersedes": t_b.0 }),
+    )
+    .await;
+    assert!(
+        status == StatusCode::FORBIDDEN
+            || status == StatusCode::NOT_FOUND
+            || status == StatusCode::BAD_REQUEST,
+        "{status} {body}"
+    );
+    let (status, body) = create(
+        &base,
+        &a.token,
+        &a,
+        json!({ "title": "next", "supersedes": t_closed.0 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    let (status, body) = create(
+        &base,
+        &stranger,
+        &a,
+        json!({ "title": "next", "supersedes": t_mine.0 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    assert_eq!(store.list_threads(a.channel).await.unwrap().len(), before);
+    assert_eq!(store.list_threads(b.channel).await.unwrap().len(), 1);
+    assert_eq!(
+        store.get_thread(t_b).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert_eq!(
+        store.get_thread(t_mine).await.unwrap().state,
         ThreadState::Open
     );
 }

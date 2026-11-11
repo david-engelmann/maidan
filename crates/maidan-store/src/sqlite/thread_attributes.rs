@@ -19,7 +19,19 @@ pub(crate) async fn insert_on(
     thread_id: ThreadId,
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
-    refuse_held_on(conn, thread_id, attributes).await?;
+    insert_exempting_on(conn, thread_id, attributes, None).await
+}
+
+/// [`insert_on`], with `exempt` (the thread a new one supersedes, closed in
+/// the same transaction) not counted as holding the values the workspace
+/// keeps unique.
+pub(crate) async fn insert_exempting_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+    attributes: &TaskAttributes,
+    exempt: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    refuse_held_on(conn, thread_id, attributes, exempt).await?;
     sqlx::query(
         "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at, repo)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -51,6 +63,7 @@ pub(crate) async fn refuse_held_on(
     conn: &mut sqlx::SqliteConnection,
     thread_id: ThreadId,
     attributes: &TaskAttributes,
+    exempt: Option<ThreadId>,
 ) -> Result<(), StoreError> {
     // Only a change owns its ticket: a review or a plan carrying the same
     // ticket and repository (a red-team review of the change, a planner's
@@ -98,6 +111,7 @@ pub(crate) async fn refuse_held_on(
              JOIN maidan_channels c ON c.id = t.channel_id
              JOIN maidan_thread_attributes a ON a.thread_id = t.id
              WHERE a.kind = 'change' AND c.workspace_id = ? AND {} AND t.id <> ?
+               AND t.id <> ?
                AND t.state NOT IN ('closed', 'archived') AND t.tombstoned_at IS NULL
              ORDER BY t.created_at, t.id
              LIMIT 1",
@@ -107,7 +121,13 @@ pub(crate) async fn refuse_held_on(
         for value in &values {
             query = query.bind(*value);
         }
-        let holder = query.bind(thread_id.0).fetch_optional(&mut *conn).await?;
+        // No exemption binds the thread itself again, which excludes nothing
+        // more.
+        let holder = query
+            .bind(thread_id.0)
+            .bind(exempt.unwrap_or(thread_id).0)
+            .fetch_optional(&mut *conn)
+            .await?;
         if let Some(holder) = holder {
             return Err(StoreError::AttributeHeld {
                 held,
@@ -421,7 +441,7 @@ pub async fn set(
     .bind(attributes.repo.as_deref())
     .execute(&mut *tx)
     .await?;
-    refuse_held_on(&mut tx, thread_id, &attributes).await?;
+    refuse_held_on(&mut tx, thread_id, &attributes, None).await?;
     // Naming the family after a seat of that family already holds the
     // review would leave it holding work it may not do: every claim-time
     // check ran while the thread was unlabeled. Refuse, and roll back.

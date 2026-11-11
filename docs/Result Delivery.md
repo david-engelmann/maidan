@@ -530,6 +530,19 @@ refuses a delivery to its branch before any write: the queue merges the head
 it took, and a later commit would land apart from what was reviewed. Dequeue
 first, then deliver the follow-up.
 
+**When the task ends early.** Cancelling the task, or closing it as
+`abandoned`, `duplicate` or `superseded` with no successor, withdraws its pull
+request: the egress worker takes it out of the merge queue and closes it with
+a comment naming the reason; the branch stays
+([Swarms](Swarms.md#what-ending-early-does-to-partial-work)). A task closed as
+`superseded` with `duplicate_of`, or replaced by a thread created with
+`supersedes`, hands the pull request to its successor instead. It stays open
+and queued, and the successor's rounds deliver to it as their own: a
+`no_change` round posts its check on its head, a changed round pushes to its
+branch (dequeued first, as above). Ending the successor without landing
+withdraws it then, unless that round is itself superseded by a successor,
+which takes it on ([A follow-up round](Swarms.md#a-follow-up-round)).
+
 **Credentials.** The commit and the pull request are made with
 `MAIDAN_GITHUB_TOKEN` (see [Production](Production.md#result-delivery-to-github-and-slack)),
 so they are authored by that token's owner. The token needs `contents:write`

@@ -371,6 +371,12 @@ that closed or was archived some other way answers `409`. A cancel publishes
 no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
 cancelled dependency as finished, as it does any closed one.
 
+A cancel also withdraws the task's pull request (see
+[What ending early does to partial work](#what-ending-early-does-to-partial-work)).
+So don't cancel a task to start its next round: the round's pull request
+would be closed under it. Create the new round with `supersedes` instead
+([A follow-up round](#a-follow-up-round)).
+
 ## Closing a task that will not land
 
 A task that nobody will finish, that duplicates another, or that a later task
@@ -405,6 +411,56 @@ to its dependents depends on the reason:
 - **`abandoned`, or `superseded` with no `duplicate_of`:** dependents keep
   waiting; re-plan the work or remove the dependency.
 
+What happens to the pull requests the change flow opened for the thread (a
+watched one, or one a session registered, is never touched) depends on the
+reason too:
+
+- **`superseded` with `duplicate_of`:** each pull request a close would
+  withdraw is handed to `duplicate_of` instead, in the same transaction. It
+  stays open on GitHub, with its merge-queue label if it had one, and
+  `duplicate_of` answers for it from then on: that thread's next round
+  delivers to it (a `no_change` round posts its check on its head, a changed
+  round pushes to its branch), its CI, merge and deploy notices go there, and
+  ending that thread without landing withdraws it, unless it too is closed
+  as `superseded` with a successor, which passes it on again. Each move is
+  audited as `thread.pull_handed_off`, listed in the close's audit row as
+  `handed_pulls`, and said on both threads with
+  `{"notice": "pull_handed_off"}` naming the pull request. The successor must
+  be open or in review, and must not already track an open pull request in
+  the same repository; otherwise the close answers `409`, names that pull
+  request, and changes nothing.
+- **`duplicate`, `abandoned`, or `superseded` with no `duplicate_of`:** the
+  pull requests are withdrawn, as for a cancel. A duplicate's pull request is
+  a different attempt at the work, so it is not handed on.
+
+### A follow-up round
+
+A round that only re-runs a check, or picks up review comments, is a new
+thread that replaces the old one. Create it with `supersedes` naming the old
+thread:
+
+| | REST | MCP |
+|---|---|---|
+| Create a thread that replaces another | `POST /channels/{cid}/threads` with `{"title": "...", "attributes": {...}, "supersedes": "<old id>"}` | `create_thread` with `supersedes` |
+
+In one transaction the new thread is created and the old one is closed as
+`superseded` with `duplicate_of` set to the new thread, exactly as the
+close above: its dependents move to the new thread and its pull requests are
+handed to it. The old thread does not hold its ticket against the new one,
+so a workspace that keeps `[linear_issue, repo]` unique
+([One owner per ticket](#one-owner-per-ticket)) lets the round be created
+without cancelling the old one first. The old thread must be an open or
+in-review thread of the same workspace that you may close: you need
+`thread:transition` and access to it, and must be its producer, its claim
+holder or a maintainer. A thread in another workspace, a closed one, or a
+pull request the new thread cannot take refuses the create, and nothing is
+created or closed.
+
+When the new round already exists, close the old one with
+`close-abandoned`, `reason: superseded` and `duplicate_of` the new round. A
+plain cancel, or a `superseded` close with no `duplicate_of`, withdraws the
+pull request.
+
 When the closed thread is a plan child, any dependent still waiting on it
 after that is blocked with a notice, and the plan is told once.
 
@@ -416,13 +472,15 @@ restarted releases what its last run held. Each one changes Maidan's own
 records in one transaction. A cancel or a close also queues, in that
 transaction, the withdrawal of the pull request the change flow opened for
 the task; the egress worker sends it to GitHub afterwards, never the cancel
-itself. Maidan never ran the claimant's build, so the claimant cleans up its
+itself. The one exception is a task closed as `superseded` with a
+successor, which hands the pull request to that successor
+([A follow-up round](#a-follow-up-round)). Maidan never ran the claimant's build, so the claimant cleans up its
 own machine.
 
 | Ending | Claim and fencing token | Thread | Branch and pull request | Queued deliveries | Result already written | The claimant's build box |
 |---|---|---|---|---|---|---|
 | `cancel_thread` (`POST /threads/{id}/cancel`) | Ended: assignee, lease and `claim_lease_id` cleared, worked time charged | `closed` around every gate, and parked unclaimable with the reason. A closed thread can only be archived, never reopened | The pull request the change flow opened for the task is taken out of the merge queue and closed, with a comment naming the reason, through the egress outbox. The branch is left | A change delivery not yet writing to GitHub is skipped (`thread_ended`). Messages are still sent, and the cancel's notice also goes to a linked Slack channel or GitHub issue, like any message | Kept and readable, but no longer listed among the channel's accepted decisions in the context pack | The claimant's to stop and clean up |
-| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`, and an explicit claim of it is refused (`409` `thread-ended`). The close parks nothing, and a park the thread already had stays. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | As for a cancel, the comment naming the close reason (`abandoned`, `duplicate`, `superseded`) | A change delivery not yet writing to GitHub is skipped (`thread_ended`). Messages are still sent | Kept, and the reason the landing gates still apply. No longer listed as an accepted decision | The claimant's to stop and clean up |
+| `close_abandoned_thread` (`POST /threads/{id}/close-abandoned`) | Ended, as for a cancel | `closed`, and an explicit claim of it is refused (`409` `thread-ended`). The close parks nothing, and a park the thread already had stays. A thread with a result keeps its landing gates, so the close can be refused (`409` `conflict`) | As for a cancel, the comment naming the close reason (`abandoned`, `duplicate`, `superseded`). A `superseded` close with `duplicate_of` instead hands the pull request, still open and queued, to that thread | A change delivery not yet writing to GitHub is skipped (`thread_ended`). Messages are still sent | Kept, and the reason the landing gates still apply. No longer listed as an accepted decision | The claimant's to stop and clean up |
 | `release_own_claims` (`POST /workspaces/{id}/claims/release-own`) | Each live leased claim the member holds in the workspace is released, fenced by the lease read in the same transaction, worked time charged. A lapsed lease is left to the reaper, a lease-less assignment to its coordinator, and a claim on a thread the member can no longer read is kept until its lease lapses | Unchanged, `open` or `in_review`. An open one is back in the queue at once, and `claim_next` hands it out under its usual rules (blocks, required skills, dependencies, declines, order) | Left as they are | Still sent | Kept | What the old process left is the restarted claimant's to clean up before it claims again |
 
 With [Linear claim comments](#claim-and-release-comments-on-linear) on, a
@@ -488,7 +546,14 @@ even while the old build is still running.
   closes it. A pull request a session opened and registered on the task, one
   only watched, one already seen closed, and one another task's result was
   delivered to since are left alone. Maidan also refuses to mark an ended
-  task's pull request ready or to enqueue it.
+  task's pull request ready or to enqueue it. A task closed as `superseded`
+  with a successor queues no withdrawal: its pull requests move to the
+  successor, whose own cancel or close withdraws them later (or passes them
+  on, if it too is superseded by a successor). Whoever worked the superseded
+  task is recorded as having worked the successor, so the successor's review
+  gate does not count their approval of the code they wrote. A merge of a
+  handed pull request before the successor has an owner or a result stays
+  unsettled and is tried again, so the successor still lands.
 - **The branch:** left. Deleting a branch is destructive, so it is the
   producer's or a person's call.
 - **Queued deliveries:** Maidan. A change delivery (the branch commit and
@@ -761,7 +826,9 @@ same tuple is refused and writes nothing:
   `status` `409`, the same `type`, `key_set` and `holder_thread_id`. The
   holder is named only when the caller may read it. A caller outside its
   private channel or DM learns that the tuple is taken, not by which thread.
-  Work in the holder, or close it first.
+  Work in the holder, close it first, or create the new thread with
+  `supersedes` naming the holder ([A follow-up round](#a-follow-up-round)),
+  which closes it in the same transaction.
 - **What holds.** An open thread is one that is not closed, archived or
   erased. Only open threads in the same workspace hold a tuple:
   - closing the holder frees the tuple, so the ticket can be reworked;

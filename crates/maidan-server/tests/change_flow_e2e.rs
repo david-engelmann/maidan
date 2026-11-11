@@ -542,11 +542,35 @@ async fn github(
             let number: i64 = r["pulls/".len()..].parse().unwrap();
             match fake.pulls.iter_mut().find(|p| p.number == number) {
                 Some(pull) => {
-                    pull.body = body["body"].as_str().unwrap().into();
-                    reply(StatusCode::OK, json!({"number": number}))
+                    // A withdrawal closes; a round edits the body.
+                    if body["state"] == "closed" {
+                        pull.closed_at = Some(Utc::now().to_rfc3339());
+                    } else {
+                        pull.body = body["body"].as_str().unwrap().into();
+                    }
+                    let state = if pull.closed_at.is_some() {
+                        "closed"
+                    } else {
+                        "open"
+                    };
+                    reply(StatusCode::OK, json!({"number": number, "state": state}))
                 }
                 None => not_found(),
             }
+        }
+        // A withdrawal reads the comments for its own marker first.
+        ("GET", r) if r.starts_with("issues/") && r.ends_with("/comments") => {
+            let number: i64 = r["issues/".len()..r.len() - "/comments".len()]
+                .parse()
+                .unwrap();
+            let listed: Vec<Value> = fake
+                .pull_comments
+                .iter()
+                .filter(|(n, _)| *n == number)
+                .enumerate()
+                .map(|(i, (_, text))| json!({"id": 1 + i, "body": text}))
+                .collect();
+            reply(StatusCode::OK, Value::Array(listed))
         }
         ("DELETE", r) if r.starts_with("issues/") && r.contains("/labels/") => {
             let rest = &r["issues/".len()..];
@@ -6414,5 +6438,147 @@ async fn without_the_ingress_every_pass_reads_actions_and_a_metrics_read_none() 
         actions_reads(&h),
         3,
         "the metrics read made no Actions call"
+    );
+}
+
+// ---------------------------------------------------------------- a superseded task's pull request
+
+const QUEUE_LABEL: &str = "merge-queue";
+
+/// The reported case: a task's pull request is open, reviewed and queued,
+/// waiting on one check. A follow-up round replaces the task only to re-run
+/// that check on the same head. Closing the task as superseded by the round
+/// leaves the pull request open and queued, the round's `no_change` check
+/// lands on its head, and ending the round without landing withdraws it then.
+#[tokio::test]
+async fn a_superseded_tasks_pull_request_stays_queued_for_the_round_that_replaces_it() {
+    let mut h = harness().await;
+    h.state.mark_ready_bases = maidan_types::MarkReadyBases::parse(&format!("{REPO}=dev")).unwrap();
+    h.state.merge_queue_labels =
+        maidan_types::MergeQueueLabels::parse(&format!("{REPO}={QUEUE_LABEL}")).unwrap();
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let (number, head) = {
+        let mut f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        let pull = &mut f.pulls[0];
+        // Made ready and queued, as the mark-ready client does.
+        pull.draft = false;
+        pull.labels.push(QUEUE_LABEL.into());
+        (pull.number, head)
+    };
+
+    let round = h
+        .store
+        .create_thread(NewThread {
+            channel_id: h.a.channel_id,
+            parent_thread_id: None,
+            title: Some("round 5: re-run the check".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let lead = h
+        .store
+        .create_member(NewMember {
+            workspace_id: h.a.workspace_id,
+            handle: "lead".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    h.store
+        .close_abandoned_thread(
+            h.a.thread_id,
+            lead,
+            true,
+            &maidan_types::CloseAbandoned {
+                reason: maidan_types::CloseReason::Superseded,
+                duplicate_of: Some(round),
+            },
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(h.a.workspace_id),
+                actor_id: Some(lead),
+                action: "thread.close_abandoned".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(h.a.thread_id.0),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    h.drain().await;
+    {
+        let f = h.fake.lock().unwrap();
+        let pull = &f.pulls[0];
+        assert_eq!(
+            pull.closed_at, None,
+            "the superseded task's pull request stays open"
+        );
+        assert_eq!(pull.labels, vec![QUEUE_LABEL.to_string()], "and queued");
+        assert!(f.pull_comments.is_empty(), "{:?}", f.pull_comments);
+    }
+
+    let successor = Tenant {
+        workspace_id: h.a.workspace_id,
+        channel_id: h.a.channel_id,
+        thread_id: round,
+        member_id: h.a.member_id,
+    };
+    h.route(&successor, &no_change_check(&head, prepush("success")), 2)
+        .await;
+    h.drain().await;
+    assert_eq!(
+        h.delivery(&successor, "github_branch").await.status,
+        status::DELIVERED
+    );
+    {
+        let f = h.fake.lock().unwrap();
+        assert_eq!(
+            f.statuses
+                .last()
+                .map(|(sha, body)| (sha.clone(), body["state"].clone())),
+            Some((head.clone(), json!("success"))),
+            "the round's check is on the pull request's head"
+        );
+        assert_eq!(f.refs[BRANCH], head, "nothing was pushed");
+        assert_eq!(f.pulls[0].closed_at, None);
+        assert_eq!(f.pulls[0].labels, vec![QUEUE_LABEL.to_string()]);
+    }
+
+    match h
+        .store
+        .cancel_thread(
+            round,
+            lead,
+            "the check is green; nothing more to do here",
+            maidan_types::CancelAuthority::Transition,
+        )
+        .await
+        .unwrap()
+    {
+        maidan_types::CancelOutcome::Cancelled { .. } => {}
+        other => panic!("expected a cancel, got {other:?}"),
+    }
+    h.drain().await;
+    let f = h.fake.lock().unwrap();
+    let pull = &f.pulls[0];
+    assert!(
+        pull.closed_at.is_some(),
+        "the round's cancel withdraws the pull request it took"
+    );
+    assert!(pull.labels.is_empty(), "out of the merge queue");
+    assert_eq!(f.pull_comments.len(), 1, "{:?}", f.pull_comments);
+    assert_eq!(f.pull_comments[0].0, number);
+    assert!(
+        f.pull_comments[0].1.contains("nothing more to do here"),
+        "{}",
+        f.pull_comments[0].1
     );
 }

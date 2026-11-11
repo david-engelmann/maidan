@@ -1,0 +1,14 @@
+-- A superseded task hands its pull request to its successor
+-- (crates/maidan-store/src/postgres/pull_handoff.rs).
+--
+-- Closing a thread as `superseded` with a successor moves its open tracked
+-- pull requests onto the successor instead of withdrawing them. The thread
+-- answerable for a pull request is the one whose result was last delivered to
+-- it, so the superseded thread's own earlier deliveries would still answer for
+-- it after the move, and a cancel of the successor would find the pull request
+-- no longer its to withdraw.
+--
+-- `handed_at`: when the pull request last moved to another thread. A delivery
+--   recorded before it no longer answers for the pull request; the thread it
+--   moved to does, until a later delivery.
+ALTER TABLE maidan_change_pulls ADD COLUMN handed_at TIMESTAMPTZ;

@@ -65,6 +65,7 @@ mod pins;
 mod plans;
 mod priorities;
 mod pull_ci;
+mod pull_handoff;
 mod purge_workspace;
 mod push_subscriptions;
 mod reactions;

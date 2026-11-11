@@ -2133,6 +2133,26 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn create_thread_superseding(
+                &self,
+                new: NewThread,
+                footprint: Option<maidan_types::Footprint>,
+                attributes: Option<maidan_types::TaskAttributes>,
+                priority: Option<i64>,
+                supersede: crate::store::Supersede,
+            ) -> Result<crate::store::SupersedingCreate, StoreError> {
+                threads::create_superseding(
+                    self.pool(),
+                    &self.keys,
+                    new,
+                    footprint,
+                    attributes,
+                    priority,
+                    supersede,
+                )
+                .await
+            }
+
             async fn get_task_fingerprint(
                 &self,
                 thread_id: ThreadId,

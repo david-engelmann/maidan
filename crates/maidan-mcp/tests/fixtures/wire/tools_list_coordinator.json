@@ -146,7 +146,7 @@
         "readOnlyHint": false,
         "title": "Create thread"
       },
-      "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.",
+      "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too. With supersedes, the named thread (an open or in-review thread you may close: its producer, its claim holder, or a maintainer, with thread:transition) is closed as superseded by the new one in the same transaction, as close_abandoned_thread with duplicate_of would close it: its dependents move to the new thread and the open pull requests the change flow opened for it are handed to it, not withdrawn, and it does not hold its ticket against the new thread. Use it for a follow-up round of a task. Any refusal creates nothing.",
       "inputSchema": {
         "properties": {
           "attributes": {
@@ -284,6 +284,11 @@
           "priority": {
             "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)",
             "type": "integer"
+          },
+          "supersedes": {
+            "description": "a thread this one replaces, such as the previous round of the same task; it is closed as superseded by the new thread, which takes its dependents and its open pull requests",
+            "format": "uuid",
+            "type": "string"
           },
           "title": {
             "type": "string"
