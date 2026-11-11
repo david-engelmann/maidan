@@ -607,6 +607,18 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
         })
         .await
         .expect("command");
+    let creator = store
+        .create_api_token(NewApiToken {
+            workspace_id: a.ws,
+            member_id: a.bot,
+            app_installation_id: None,
+            token_hash: format!("hook-creator-{}", uuid::Uuid::now_v7()),
+            label: None,
+            capabilities: vec!["workspace:admin".into()],
+            expires_at: None,
+        })
+        .await
+        .expect("creator token");
     let hook = store
         .create_fsm_hook(NewFsmHook {
             workspace_id: a.ws,
@@ -616,9 +628,31 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
             handler_kind: SlashHandlerKind::McpTool,
             handler_target: "list_channels".into(),
             secret_ciphertext: String::new(),
+            created_by_token: Some(creator.id),
         })
         .await
         .expect("hook");
+    // The hook runs as the token that registered it, so dispatch must read
+    // that token back from both the single read and the match.
+    assert_eq!(
+        store
+            .get_fsm_hook(hook.id)
+            .await
+            .expect("get hook")
+            .created_by_token,
+        Some(creator.id)
+    );
+    let matching = store
+        .list_matching_fsm_hooks(a.ws, ThreadState::Open, ThreadState::InReview)
+        .await
+        .expect("matching hooks");
+    assert_eq!(
+        matching
+            .iter()
+            .find(|registration| registration.hook.id == hook.id)
+            .map(|registration| registration.created_by_token),
+        Some(Some(creator.id))
+    );
 
     assert!(matches!(
         store.revoke_slash_command(b.ws, command.id).await,

@@ -210,6 +210,7 @@ See [OAuth](OAuth.md).
 | `MAIDAN_MAX_BODY_BYTES` | `2097152` (2 MiB) | The largest request body outside artifact uploads. Past it, `413`. |
 | `MAIDAN_MAX_CONCURRENT_REQUESTS` | `1024` | HTTP requests in flight at once. Past it a request gets `503` with `Retry-After: 1` before authentication or rate limiting, so overload costs no database work. An MCP `wait_for_*` long-poll gives its slot back once it is admitted to park (32 per workspace per replica); streaming bodies and WebSockets do not hold one. `/health*` and `/metrics` are exempt. `0` turns it off. |
 | `MAIDAN_MAX_WS_CONNECTIONS` | `10000` | Concurrent `/ws/subscribe` connections. Past it, an upgrade gets `503`. Client frames are capped at 64 KiB. |
+| `MAIDAN_MAX_STREAMS_PER_CREDENTIAL` | `64` | Server-sent event streams one credential may hold open at once: `/mcp/stream`, `/mcp/notifications`, `/agui/stream`, `GET /mcp/streamable` and a `2024-11-05` session's `POST /mcp/streamable`, and A2A `SubscribeToTask`. A credential is the API token (bearer, or a session made from one), or the member when no token is behind the request. Past it, a new stream gets `429` (gRPC `RESOURCE_EXHAUSTED`) before it subscribes to anything. Gauge `maidan_sse_streams`, counter `maidan_sse_streams_refused_total`. `0` turns it off. |
 
 ## Live delivery
 

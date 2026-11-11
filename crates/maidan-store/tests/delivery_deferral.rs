@@ -111,6 +111,7 @@ async fn automation_suite(store: &dyn Store) {
             handler_kind: SlashHandlerKind::Http,
             handler_target: "https://hooks.example.com/fsm".into(),
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .expect("hook");

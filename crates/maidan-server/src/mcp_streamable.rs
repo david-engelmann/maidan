@@ -159,6 +159,9 @@ async fn open_new_streamable_session(
     session_header: Option<&str>,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
+    // Taken before the session opens or the request runs, so a refused stream
+    // has done nothing the client would need to retry around.
+    let slot = state.stream_limit.open(auth)?;
     let session_id = state
         .mcp
         .touch_streamable_session(session_header, auth)
@@ -219,7 +222,7 @@ async fn open_new_streamable_session(
             )
         })
     });
-    let stream = crate::stream_guard::guard(state.store.clone(), auth, stream);
+    let stream = crate::stream_guard::guard(state.store.clone(), auth, slot.hold(stream));
 
     let mut resp = Sse::new(stream)
         .keep_alive(
@@ -282,6 +285,8 @@ pub async fn stream_get(
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
     crate::mcp::validate_protocol_version(&headers)?;
+    // Taken before listening, so a refused stream costs nothing.
+    let slot = state.stream_limit.open(&auth)?;
 
     let registry = state.mcp.streamable_sessions();
     let owner = Principal::of(&auth);
@@ -317,8 +322,11 @@ pub async fn stream_get(
                 .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
         });
 
-    let stream =
-        crate::stream_guard::guard(state.store.clone(), &auth, replay.chain(notifications));
+    let stream = crate::stream_guard::guard(
+        state.store.clone(),
+        &auth,
+        slot.hold(replay.chain(notifications)),
+    );
 
     let mut resp = Sse::new(stream)
         .keep_alive(

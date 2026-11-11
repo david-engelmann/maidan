@@ -194,6 +194,7 @@ async fn automation_suite(backend: &Backend) {
             handler_kind: SlashHandlerKind::Http,
             handler_target: target.clone(),
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();

@@ -296,6 +296,9 @@ mod foreign_member_e2e;
 #[path = "../freeze_rest_e2e.rs"]
 mod freeze_rest_e2e;
 
+#[path = "../fsm_hook_creator_e2e.rs"]
+mod fsm_hook_creator_e2e;
+
 #[path = "../fsm_hooks_e2e.rs"]
 mod fsm_hooks_e2e;
 
@@ -745,6 +748,9 @@ mod spawn_denied_event_e2e;
 
 #[path = "../sse_deactivated_member_e2e.rs"]
 mod sse_deactivated_member_e2e;
+
+#[path = "../stream_ceiling_e2e.rs"]
+mod stream_ceiling_e2e;
 
 #[path = "../subscribe_grants_e2e.rs"]
 mod subscribe_grants_e2e;

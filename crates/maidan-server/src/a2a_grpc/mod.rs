@@ -272,6 +272,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<Self::SubscribeToTaskStream>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
+        // Taken before subscribing, so a refused stream costs nothing.
+        let slot = self
+            .state
+            .stream_limit
+            .open(&auth)
+            .map_err(|refused| Status::resource_exhausted(refused.detail()))?;
         let stream = self
             .run(
                 &auth,
@@ -286,7 +292,7 @@ impl A2aService for GrpcA2a {
         let stream = crate::stream_guard::guard_ending(
             self.state.store.clone(),
             &auth,
-            events(stream),
+            slot.hold(events(stream)),
             |reason| {
                 if reason == crate::shutdown::SERVER_RESTARTING {
                     Err(Status::unavailable(reason))

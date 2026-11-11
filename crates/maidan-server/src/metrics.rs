@@ -114,6 +114,14 @@ pub fn init() {
             "maidan_http_shed_total",
             "HTTP requests refused with 503 because the in-flight ceiling was reached"
         );
+        describe_gauge!(
+            "maidan_sse_streams",
+            "Server-sent event streams open now, counted against each credential's ceiling"
+        );
+        describe_counter!(
+            "maidan_sse_streams_refused_total",
+            "Event streams refused with 429 because their credential held its ceiling of open streams"
+        );
         describe_counter!(
             "maidan_artifact_upload_budget_refused_total",
             "Artifact uploads refused with 503 because the in-memory upload byte budget was full"
@@ -688,6 +696,7 @@ async fn refresh_runtime_gauges(state: &AppState) {
 
     gauge!("maidan_ws_connections").set(state.ws_connections.load(Ordering::Relaxed) as f64);
     gauge!("maidan_http_in_flight_requests").set(state.request_limit.in_flight() as f64);
+    gauge!("maidan_sse_streams").set(state.stream_limit.open_streams() as f64);
     gauge!("maidan_mcp_streamable_sessions").set(state.mcp.reap_streamable_sessions().await as f64);
 
     if let Some(routing) = state.read_routing_metrics.as_ref() {

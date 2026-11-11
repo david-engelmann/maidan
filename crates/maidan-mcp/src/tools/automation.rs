@@ -216,7 +216,17 @@ pub(super) async fn register_fsm_hook(
     match handler_kind {
         SlashHandlerKind::Http => validate_http_target(&a.handler_target)?,
         SlashHandlerKind::McpTool => {
-            required_capability(&a.handler_target)?;
+            // The hook runs the tool as this credential, so a tool it may not
+            // call would only ever be refused when the hook fires.
+            let required = required_capability(&a.handler_target)?;
+            if !auth.bypass {
+                maidan_auth::require_observed_capability(
+                    auth,
+                    maidan_auth::AuthorizationSurface::Mcp,
+                    required,
+                )
+                .map_err(McpError::from)?;
+            }
         }
         SlashHandlerKind::Wasi => {
             return Err(McpError::InvalidParams(
@@ -242,6 +252,7 @@ pub(super) async fn register_fsm_hook(
                 handler_kind,
                 handler_target: a.handler_target.trim().to_string(),
                 secret_ciphertext: ciphertext,
+                created_by_token: auth.token_id,
             })
             .await
             .map_err(McpError::from)?;
@@ -261,6 +272,7 @@ pub(super) async fn register_fsm_hook(
             handler_kind,
             handler_target: a.handler_target.trim().to_string(),
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await
         .map_err(McpError::from)?;

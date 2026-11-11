@@ -129,12 +129,21 @@ async fn dispatch(
         Operation::GetTask(req) => reply(id, ops::get_task(state, auth, req).await?),
         Operation::ListTasks(req) => reply(id, ops::list_tasks(state, auth, req).await?),
         Operation::CancelTask(req) => reply(id, ops::cancel_task(state, auth, req).await?),
-        Operation::SubscribeToTask(req) => Ok(stream(
-            state,
-            auth,
-            id,
-            ops::subscribe(state, auth, req).await?,
-        )),
+        Operation::SubscribeToTask(req) => {
+            // Refused as the rate limiter refuses: an HTTP 429 problem, since
+            // A2A has no error for a full ceiling. Taken before subscribing,
+            // so a refused stream costs nothing.
+            let slot = match state.stream_limit.open(auth) {
+                Ok(slot) => slot,
+                Err(refused) => return Ok(refused.into_response()),
+            };
+            Ok(stream(
+                state,
+                auth,
+                id,
+                slot.hold(ops::subscribe(state, auth, req).await?),
+            ))
+        }
         Operation::CreatePushNotificationConfig(req) => {
             reply(id, push::create(state, auth, req).await?)
         }
