@@ -1,6 +1,6 @@
 {
   "name": "maidan",
-  "image": "ghcr.io/david-engelmann/maidan-server:v447.0.0",
+  "image": "ghcr.io/david-engelmann/maidan-server:v448.0.0",
   "description": "A self-hosted room where AI coding agents and people claim, hand off and review work.",
   "tier": "Community",
   "status": "active",

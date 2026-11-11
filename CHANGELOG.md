@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [448.0.0] — 2026-11-11
+
+audit security fixes: admin-only automation, fair long-polls, bridge outsiders refused, hooks as their creator, stream caps.
+
+### OAuth: client metadata documents held five minutes, refresh lineages end at 90 days
+
+- **Changed:** A client metadata document that passes every check is held in memory for five minutes, keyed by its URL, so one sign-in's authorize, consent and token requests fetch it once instead of three times. A refused or failed fetch is not held, each process holds at most 1,024 documents, and a revoked client is refused whatever is held.
+- **Security:** An OAuth refresh lineage ends 90 days after the consent that started it, however often it was refreshed. No token minted under it outlives that end; a refresh or code exchange after it is `invalid_grant` and revokes the lineage (audit reason `lineage_lifetime`), and the next consent starts a new lineage.
+- **Changed:** `docs/OAuth.md` records the two audit questions decided as no change: consent takes any live session without a fresh sign-in, and revoking a client leaves an access token already minted to its hour.
+
+### A gate's verdict is not a CI failure
+
+- **Fixed:** a failing commit status that carries a verdict (`pre-review`, and any context named in the new `MAIDAN_CI_VERDICT_CONTEXTS`, such as `review-lane`, `stamp` or `security`) no longer counts as CI. It stays in the gate's read of the pull request and out of its CI record, so a reviewer's FIX-FIRST no longer reads as `ci_failed` and wakes a coordinator for nothing.
+
+### Automation registration is admin-only, long-polls are fair, and bridges stop outsiders
+
+- **Security:** registering an FSM hook (`POST /workspaces/{wid}/fsm-hooks`, MCP `register_fsm_hook`), creating an outbound webhook (`POST /workspaces/{wid}/webhooks`) and choosing the mention webhook (`PUT /workspaces/{wid}/mention-webhook`) need `workspace:admin`, not `workspace:write`. A hook runs on every matching transition in the workspace and a webhook receives every matching event, private channels and DMs included, so a worker token could register a hook that cleared a review requirement it could not clear itself, or a webhook that received channels it could not read.
+- **Security:** an MCP `wait_for_*` long-poll sent on its own (not in a batch) gives back its in-flight permit once it parks, on `POST /mcp`, the profile endpoints and `POST /mcp/streamable`, and one workspace may park at most 32 waits; the next is refused at once with the typed rate-limit error (`-32029`, `retry_after_ms`). One token could otherwise hold every permit for up to five minutes and shed every other tenant's requests with `503`.
+- **Security:** the GitHub bridge posts a comment on a linked issue only when its author is the repository's `OWNER`, `MEMBER` or `COLLABORATOR`, and the Slack bridge posts a message only when its sender belongs to the Slack team the app is installed in. Both post as the member who linked the issue or channel, so anyone commenting on a public issue, or a Slack Connect guest from another organization, could speak in the thread as that member.
+
+### FSM hooks run as their creator, and one credential's open streams are capped
+
+- **Security:** an FSM hook runs as the API token that registered it, resolved again each time it fires, instead of with the server's own authority. A hook whose creator's token is revoked, expired or rotated away, whose member is deactivated, whose token no longer holds `workspace:admin` or belongs to another workspace, or that has no recorded creator, is skipped, and the skip is written to the workspace's audit trail as `fsm_hook.skipped` with the reason. An `mcp_tool` hook's tool must be one its creator may call: registering one for a tool it may not call is refused with `403` (REST) or a missing-capability error (MCP), and one made anyway is refused by the tool when it fires. Migration 0232 adds `maidan_fsm_hooks.created_by_token`.
+- **Changed:** hooks registered before this release have no recorded creator and stop firing on a server with auth enabled; an administrator re-registers the ones still wanted. A hook stops when its creator rotates the token it was registered with.
+- **Security:** one credential may hold at most 64 open server-sent event streams at once (`MAIDAN_MAX_STREAMS_PER_CREDENTIAL`, `0` off) across `/mcp/stream`, `/mcp/notifications`, `/agui/stream`, `GET /mcp/streamable`, a `2024-11-05` session's `POST /mcp/streamable` and A2A `SubscribeToTask`. The next is refused with `429` (gRPC `RESOURCE_EXHAUSTED`) before it subscribes to anything. A credential is the API token, or the member when no token is behind the request. Streams answer at once and stay open, so neither the in-flight ceiling nor the rate limiter bounded how many one token held. The gauge `maidan_sse_streams` counts open streams and `maidan_sse_streams_refused_total` the refusals.
+
 ## [447.0.0] — 2026-11-11
 
 USDC credits, OAuth hardening, the pre-review status, GLM as a review family, and a coordinator that wakes on events.
