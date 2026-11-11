@@ -8329,7 +8329,7 @@
             ]
           },
           "delivery_warnings": {
-            "description": "What the delivery flagged without failing. For a change: what its pull\nrequest lacks against the producer's template (`missing_testing`,\n`missing_issue_key`), and why the result's `check` became no commit\nstatus (`check_invalid`, `check_not_posted`). A flag, not a failure:\nthe change landed either way. Absent when there is nothing to flag.",
+            "description": "What the delivery flagged without failing. For a change: what its pull\nrequest lacks against the producer's template (`missing_testing`,\n`missing_issue_key`), and why the result's `check` became no commit\nstatus (`check_invalid`, `check_not_posted`). For a review thread's\nGitHub comment: why its `pre-review` commit status was not posted\n(`pre_review_*: <detail>`). A flag, not a failure: the change or the\ncomment landed either way. Absent when there is nothing to flag.",
             "items": {
               "type": "string"
             },

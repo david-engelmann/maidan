@@ -76,6 +76,7 @@ pub mod openapi;
 pub mod ops_alert;
 pub mod outbox_relay;
 pub mod panic_guard;
+pub mod pre_review;
 pub mod presence;
 pub mod quota;
 pub mod rate_limit;
