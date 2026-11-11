@@ -631,7 +631,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 *workspace_id,
                 *channel_id,
                 *thread_id,
-                &worker.into_iter().collect::<Vec<_>>(),
+                worker.as_slice(),
                 None,
             )
             .await?;
@@ -685,7 +685,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 *workspace_id,
                 *channel_id,
                 *thread_id,
-                &worker.into_iter().collect::<Vec<_>>(),
+                worker.as_slice(),
                 Some(*set_by),
             )
             .await?;
@@ -706,7 +706,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 *workspace_id,
                 *channel_id,
                 *thread_id,
-                &member_id.iter().copied().collect::<Vec<_>>(),
+                member_id.as_slice(),
                 *member_id,
             )
             .await?;

@@ -14,7 +14,6 @@ use std::{
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
-use maidan_bus::EventBus;
 use maidan_server::{notification_router::NotificationRouter, router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -131,7 +130,7 @@ async fn the_wake_script_sleeps_through_other_kinds_and_wakes_on_a_question() {
 
     let script =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/coordinator-wake.sh");
-    let child = tokio::process::Command::new("bash")
+    let mut child = tokio::process::Command::new("bash")
         .arg(&script)
         .args(["--max-wait", "90"])
         .env("MAIDAN_URL", format!("http://{addr}"))
@@ -168,7 +167,6 @@ async fn the_wake_script_sleeps_through_other_kinds_and_wakes_on_a_question() {
     assert!(slept, "the router never wrote the assignment notification");
     // Long enough for the wait to see the row and go back to sleep.
     tokio::time::sleep(Duration::from_secs(4)).await;
-    let mut child = child;
     assert!(
         child.try_wait().unwrap().is_none(),
         "the script woke for a kind outside the attention set"

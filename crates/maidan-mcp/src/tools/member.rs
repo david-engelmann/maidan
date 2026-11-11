@@ -318,10 +318,9 @@ async fn notification_line(
         if let Event::IntakeProposed {
             title: item_title, ..
         } = &event
+            && title.is_none()
         {
-            if title.is_none() {
-                title = Some(item_title.clone());
-            }
+            title = Some(item_title.clone());
         }
         reason = attention_reason(&event).map(|r| clip(&r));
     }
