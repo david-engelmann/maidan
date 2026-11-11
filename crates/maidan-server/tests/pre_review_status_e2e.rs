@@ -451,7 +451,11 @@ async fn a_review_thread_without_a_briefed_head_posts_nothing_and_warns() {
     let h = harness().await;
     let tenant = h.tenant("alpha", "reviewer-a").await;
     let review = h
-        .thread(&tenant, TaskKind::Review, Some(format!("Pull request: {REPO}#{PR}")))
+        .thread(
+            &tenant,
+            TaskKind::Review,
+            Some(format!("Pull request: {REPO}#{PR}")),
+        )
         .await;
     h.deliver(
         &review,
@@ -475,9 +479,7 @@ async fn a_result_on_a_thread_that_is_not_a_review_posts_no_status() {
     let h = harness().await;
     let tenant = h.tenant("alpha", "reviewer-a").await;
     let description = format!("Head to review: {HEAD}");
-    let change = h
-        .thread(&tenant, TaskKind::Change, Some(description))
-        .await;
+    let change = h.thread(&tenant, TaskKind::Change, Some(description)).await;
     h.deliver(
         &change,
         Some(("deepseek", "deepseek-chat")),
