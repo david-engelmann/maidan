@@ -229,6 +229,8 @@ struct FsmHttpPayload {
 /// Run the hooks matching one `ThreadStateChanged` event, the one at
 /// `log_id`. Every replica's worker sees the event, so each hook's run is
 /// claimed first, and only the replica that gets the claim runs it.
+// The event's fields, as the worker destructures them from the envelope.
+#[allow(clippy::too_many_arguments)]
 pub async fn dispatch_thread_state_changed(
     state: &AppState,
     log_id: i64,
