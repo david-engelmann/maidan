@@ -5,7 +5,18 @@ metadata:
   labels:
     {{- include "maidan.labels" . | nindent 4 }}
 data:
+  {{- /* A production render always sets MAIDAN_ENV=production so the server
+        refusals match the chart's production: true checks. An explicit
+        non-production value in config is refused rather than overwritten. */}}
+  {{- if .Values.production }}
+  {{- if and (hasKey .Values.config "MAIDAN_ENV") (ne (toString .Values.config.MAIDAN_ENV) "production") }}
+  {{- fail "a production install sets MAIDAN_ENV=production" }}
+  {{- end }}
+  MAIDAN_ENV: "production"
+  {{- end }}
   {{- /* Through tpl, so a value can name the release: the stack's S3_ENDPOINT. */}}
   {{- range $k, $v := .Values.config }}
+  {{- if or (not $.Values.production) (ne $k "MAIDAN_ENV") }}
   {{ $k }}: {{ tpl (toString $v) $ | quote }}
+  {{- end }}
   {{- end }}

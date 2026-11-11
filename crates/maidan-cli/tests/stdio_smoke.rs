@@ -12,6 +12,7 @@ fn mcp_stdio_initialize_roundtrip() {
         // No token here, so the unrestricted context has to be asked for.
         .arg("--allow-insecure-no-auth")
         .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -53,6 +54,7 @@ fn every_line_on_stdout_is_a_json_rpc_message() {
         .arg("mcp-stdio")
         .arg("--allow-insecure-no-auth")
         .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "info")
         .stdin(Stdio::piped())
@@ -99,6 +101,7 @@ fn mcp_stdio_refuses_to_serve_unauthenticated_unless_asked() {
         .env("DATABASE_URL", "sqlite::memory:")
         .env_remove("MAIDAN_MCP_TOKEN")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::null())
         .output()
@@ -256,6 +259,7 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
             "hash-v1",
         ])
         .env("MAIDAN_MCP_TOKEN", secret.as_str())
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
@@ -305,6 +309,7 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
             "hash-v1",
         ])
         .env("MAIDAN_MCP_TOKEN", secret.as_str())
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")

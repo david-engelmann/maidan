@@ -17,6 +17,7 @@ fn maidan(database_url: &str, args: &[&str]) -> Output {
         }
     }
     cmd.env("DATABASE_URL", database_url)
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .args(args)
         .output()

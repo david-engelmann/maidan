@@ -30,6 +30,7 @@ fn maidan(args: &[&str]) -> std::process::Output {
         std::env::var_os("NEXTEST_BIN_EXE_maidan")
             .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into()),
     )
+    .env("MAIDAN_ENV", "development")
     .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
     .args(args)
     .output()

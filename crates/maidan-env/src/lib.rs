@@ -9,8 +9,10 @@
 //! the list honest: every name the server's crates read is on it, and nothing
 //! is on it that nothing reads.
 
+mod deployment;
 mod secret_files;
 
+pub use deployment::{deployment_env, is_production, DeploymentEnv};
 pub use secret_files::{load_secret_files, resolve_secret_files, SecretFileError, SECRET_FILE_ENV};
 
 /// Set to `1` to start with unknown `MAIDAN_*` variables, logging them instead.

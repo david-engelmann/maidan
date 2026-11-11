@@ -15,6 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # A throwaway database, so the public development content KEK is acceptable.
+export MAIDAN_ENV="${MAIDAN_ENV:-development}"
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 lang="${1:-typescript}"

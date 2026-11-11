@@ -27,6 +27,7 @@ fn init_bootstraps_once_then_refuses() {
 
     // First init succeeds and prints a bearer token exactly once.
     let first = Command::new(bin)
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .args([
             "init",
@@ -59,6 +60,7 @@ fn init_bootstraps_once_then_refuses() {
 
     // Second init on the now-populated database is refused (non-zero exit).
     let second = Command::new(bin)
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .args(["init", "--database-url", &url])
         .output()

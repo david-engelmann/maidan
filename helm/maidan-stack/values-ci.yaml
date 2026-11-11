@@ -36,5 +36,6 @@ maidan:
   persistence:
     enabled: false
   config:
+    MAIDAN_ENV: development
     AUTH_DISABLED: "1"
     MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"

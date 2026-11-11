@@ -24,6 +24,7 @@ fn boot_with(database_url: &str) -> Output {
         .env_remove("AUTH_DISABLED")
         .current_dir(dir.path())
         .env("DATABASE_URL", database_url)
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env(
             "MAIDAN_SESSION_SECRET",

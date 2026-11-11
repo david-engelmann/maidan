@@ -53,3 +53,11 @@ patches:
           - hosts:
               - maidan.example.com
             secretName: maidan-tls
+
+  - target:
+      kind: ConfigMap
+      name: maidan-config
+    patch: |-
+      - op: add
+        path: /data/MAIDAN_ENV
+        value: production

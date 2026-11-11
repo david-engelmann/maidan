@@ -23,6 +23,7 @@ The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 minutes:
 
 ```sh
+export MAIDAN_ENV=development
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # development only; production sets MAIDAN_CONTENT_KEK
 export DATABASE_URL="sqlite://maidan.db?mode=rwc"
 MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \

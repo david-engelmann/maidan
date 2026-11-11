@@ -37,3 +37,11 @@ patches:
       - op: replace
         path: /spec/volumeClaimTemplates/0/spec/resources/requests/storage
         value: 2Gi
+
+  - target:
+      kind: ConfigMap
+      name: maidan-config
+    patch: |-
+      - op: add
+        path: /data/MAIDAN_ENV
+        value: development

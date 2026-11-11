@@ -2753,6 +2753,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hmac 0.12.1",
+ "maidan-env",
  "maidan-search",
  "maidan-store",
  "maidan-types",

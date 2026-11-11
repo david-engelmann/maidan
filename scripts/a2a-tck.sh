@@ -20,6 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root="$PWD"
 # A throwaway database, so the public development content KEK is acceptable.
+export MAIDAN_ENV="${MAIDAN_ENV:-development}"
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 # a2aproject/a2a-tck: tag 1.0.0.alpha2 plus harness fixes, speaking A2A v1.0.0.

@@ -20,6 +20,7 @@ persistence:
 config:
   MAIDAN_BIND: "0.0.0.0:8080"
   MAIDAN_LOG: "info,sqlx=warn"
+  MAIDAN_ENV: development
   AUTH_DISABLED: "1"
   MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
   MAIDAN_BOOTSTRAP: "1"

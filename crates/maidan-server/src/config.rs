@@ -183,7 +183,15 @@ impl std::fmt::Debug for Config {
 }
 
 pub fn is_production() -> bool {
-    std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
+    maidan_env::is_production()
+}
+
+/// Refuse an unknown `MAIDAN_ENV` at startup so a typo cannot fall back to
+/// development (or silently become production without a boot error).
+pub(crate) fn validate_deployment_env(raw: Option<&str>) -> Result<(), ConfigError> {
+    maidan_env::DeploymentEnv::parse(raw)
+        .map(|_| ())
+        .map_err(|msg| ConfigError::Invalid("MAIDAN_ENV", msg))
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -262,6 +270,7 @@ impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
     pub fn from_env() -> Result<Self, ConfigError> {
+        validate_deployment_env(std::env::var("MAIDAN_ENV").ok().as_deref())?;
         validate_private_egress(is_production(), env_truthy("MAIDAN_ALLOW_PRIVATE_EGRESS"))?;
         validate_credential_guard(is_production(), crate::egress_guard::switched_off())?;
         let bind: SocketAddr = std::env::var("MAIDAN_BIND")
@@ -485,5 +494,20 @@ mod tests {
             shown.contains("maidan-artifacts") && shown.contains("auto"),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn unknown_maidan_env_is_refused() {
+        assert!(validate_deployment_env(None).is_ok());
+        assert!(validate_deployment_env(Some("")).is_ok());
+        assert!(validate_deployment_env(Some("production")).is_ok());
+        assert!(validate_deployment_env(Some("development")).is_ok());
+        for value in ["prod", "Production", "dev"] {
+            let err = validate_deployment_env(Some(value)).expect_err(value);
+            assert!(
+                matches!(err, ConfigError::Invalid("MAIDAN_ENV", ref msg) if msg.contains(value)),
+                "{err:?}"
+            );
+        }
     }
 }

@@ -17,14 +17,14 @@ full forms are what CI runs.
 | **Test** | `cargo test -p <crate>` | `cargo nextest archive --workspace --tests --profile ci --archive-file a.tar.zst` once (the `build` job), then `-E 'not kind(test)'` (`unit tests`) and `-E 'kind(test)' --partition hash:N/4` (the shards) on that archive |
 | **Lint** | `cargo clippy -p <crate> --all-targets -- -D warnings` | `cargo clippy --all-targets --workspace -- -D warnings`, then the strict pass below |
 | **Format** | `cargo fmt --all` | `cargo fmt --all --check` |
-| **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
+| **Run** | `MAIDAN_ENV=development MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
 | **Mutants** | `cargo mutants -p <crate> --shard 0/20` | nightly: `scripts/mutants.sh plan`, then the shards ([`docs/Conventions.md`](docs/Conventions.md), "Nightly mutation testing") |
 | **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly, in `fuzz/`, for each target that `cargo +nightly fuzz list` prints: `cargo +nightly fuzz run --target x86_64-unknown-linux-gnu <target> corpus/<target> seeds/<target> -- -dict=json.dict -max_total_time=300` (`seeds/<target>` only where it exists; [`docs/Conventions.md`](docs/Conventions.md), "Nightly fuzzing") |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
 
 The server refuses to start without a content key: set `MAIDAN_CONTENT_KEK`, or
-`MAIDAN_ALLOW_INSECURE_DEV_KEK=1` for local work only.
+`MAIDAN_ENV=development` and `MAIDAN_ALLOW_INSECURE_DEV_KEK=1` for local work only.
 
 **Two lint passes, not one.** `--all-targets -- -D warnings` does not enable
 restriction lints, and CI runs a separate strict pass over library code:

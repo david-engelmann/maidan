@@ -87,14 +87,7 @@ impl OidcSettings {
             return Ok(None);
         }
 
-        if std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
-            && env_flag("MAIDAN_OIDC_MOCK")
-        {
-            return Err(ConfigError::Invalid(
-                "MAIDAN_OIDC_MOCK",
-                "cannot be set when MAIDAN_ENV=production".into(),
-            ));
-        }
+        validate_oidc_mock(crate::config::is_production(), env_flag("MAIDAN_OIDC_MOCK"))?;
 
         if std::env::var("MAIDAN_SESSION_SECRET").is_err() {
             return Err(ConfigError::Missing("MAIDAN_SESSION_SECRET"));
@@ -123,8 +116,7 @@ impl OidcSettings {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(600);
-        let cookie_secure = env_flag("MAIDAN_COOKIE_SECURE")
-            || std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
+        let cookie_secure = env_flag("MAIDAN_COOKIE_SECURE") || crate::config::is_production();
 
         let post_logout_redirect_uri = std::env::var("MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI").ok();
         let first_admin_mint = !matches!(
@@ -326,6 +318,18 @@ fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), 
     Ok(())
 }
 
+/// The OIDC mock logs in as any subject and forces auto-provision, so it
+/// cannot run in production.
+pub(crate) fn validate_oidc_mock(production: bool, mock: bool) -> Result<(), ConfigError> {
+    if production && mock {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_OIDC_MOCK",
+            "cannot be set when MAIDAN_ENV=production".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// An open door needs a bot check: with `MAIDAN_ENV=production`, open
 /// sign-up without `MAIDAN_TURNSTILE_SECRET` refuses boot. Outside
 /// production it boots, and `Ok(true)` asks the caller to warn.
@@ -481,6 +485,22 @@ mod open_signup_tests {
     }
 
     #[test]
+    fn oidc_mock_is_refused_in_production() {
+        assert!(validate_oidc_mock(false, true).is_ok());
+        assert!(validate_oidc_mock(false, false).is_ok());
+        assert!(validate_oidc_mock(true, false).is_ok());
+        let err = validate_oidc_mock(true, true).expect_err("mock in production");
+        assert!(
+            matches!(
+                err,
+                ConfigError::Invalid("MAIDAN_OIDC_MOCK", ref msg)
+                    if msg.contains("MAIDAN_ENV=production")
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn closed_signup_needs_no_bot_check_in_either_config() {
         for production in [true, false] {
             assert!(matches!(
@@ -506,6 +526,7 @@ mod emails_verified_env_tests {
     fn emails_verified_with(value: Option<&str>) -> Option<bool> {
         // SAFETY: no other test in this binary reads these variables.
         unsafe {
+            std::env::set_var("MAIDAN_ENV", "development");
             std::env::set_var("MAIDAN_OIDC_ENABLED", "1");
             std::env::set_var("MAIDAN_OIDC_MOCK", "1");
             std::env::set_var(
@@ -538,6 +559,7 @@ mod emails_verified_env_tests {
         }
         unsafe {
             for name in [
+                "MAIDAN_ENV",
                 "MAIDAN_OIDC_ENABLED",
                 "MAIDAN_OIDC_MOCK",
                 "MAIDAN_OIDC_REDIRECT_URI",

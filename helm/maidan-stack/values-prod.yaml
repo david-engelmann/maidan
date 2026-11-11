@@ -49,6 +49,8 @@ maidan:
   # has nothing to re-pull, and `Always` on a re-pointed tag would change the
   # running version on a pod restart.
   production: true
+  config:
+    MAIDAN_ENV: production
   image:
     repository: ghcr.io/david-engelmann/maidan-server
     tag: v446.0.0

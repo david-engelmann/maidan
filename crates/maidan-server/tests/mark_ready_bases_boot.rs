@@ -22,6 +22,7 @@ fn server(dir: &Path) -> Command {
     cmd.env_remove("AUTH_DISABLED")
         .current_dir(dir)
         .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env(
             "MAIDAN_SESSION_SECRET",

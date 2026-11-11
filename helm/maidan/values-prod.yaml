@@ -63,3 +63,8 @@ resources:
 persistence:
   enabled: true
   size: 50Gi
+
+# The server treats an unset MAIDAN_ENV as production, and this makes the
+# pod's environment match the chart's production: true refusals.
+config:
+  MAIDAN_ENV: production

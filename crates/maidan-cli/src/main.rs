@@ -470,7 +470,9 @@ async fn resolve_stdio_auth(
 /// The same content keyring the server uses, so messages written here are
 /// sealed under keys the server can unwrap.
 async fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> {
-    let production = std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
+    let production = maidan_env::deployment_env()
+        .map_err(|msg| anyhow::anyhow!("invalid value for MAIDAN_ENV: {msg}"))?
+        .is_production();
     maidan_store::content_keyring::from_env(production)
         .await
         .map(Arc::new)

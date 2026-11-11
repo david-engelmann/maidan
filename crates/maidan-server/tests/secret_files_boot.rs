@@ -139,6 +139,7 @@ async fn egress_runs_on_its_own_credentials_without_the_ingress_secrets() {
     let github_token = "ghp_egress_only_token_0123456789";
     let mut child = server(dir.path())
         .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ENV", "development")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env(
             "MAIDAN_SESSION_SECRET",

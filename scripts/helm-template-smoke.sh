@@ -83,8 +83,15 @@ helm template maidan "${chart}" -f "${chart}/values-ci.yaml" --set contentKek="$
 db="postgres://maidan:smoke-password@db.internal:5432/maidan"
 ss="smoke-session-secret-0123456789abcdef"
 prod=(maidan "${chart}" -f "${chart}/values-prod.yaml")
-helm template "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
-helm template "${prod[@]}" --set existingSecret=maidan-secrets >/dev/null
+helm template "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}"   | grep -q 'MAIDAN_ENV: "production"' || {
+  echo "a production render must set MAIDAN_ENV=production" >&2
+  exit 1
+}
+helm template "${prod[@]}" --set existingSecret=maidan-secrets   | grep -q 'MAIDAN_ENV: "production"' || {
+  echo "a production render with existingSecret must set MAIDAN_ENV=production" >&2
+  exit 1
+}
+refuses "a production install sets MAIDAN_ENV=production"   "${prod[@]}" --set config.MAIDAN_ENV=development --set existingSecret=maidan-secrets
 # Sign-in needs a session secret, so a production render without one refuses
 # rather than ship a pod that never boots.
 refuses "a production install needs MAIDAN_SESSION_SECRET" \
