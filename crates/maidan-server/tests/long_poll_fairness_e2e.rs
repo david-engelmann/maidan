@@ -224,10 +224,22 @@ async fn waits_parked_by_several_workspaces_do_not_hold_the_permits_another_work
             );
         }
     }
-    assert_eq!(
+    // A wait takes its place under the cap before its remaining checks pass
+    // and only then gives its permit back, so the last wait can count as
+    // parked a moment before its permit returns. A wait that kept its permit
+    // would hold it for its whole 8s timeout, and every wait must still be
+    // parked when the count reaches zero, so a wait that timed out (and gave
+    // back a permit it wrongly kept) cannot pass it.
+    let all = waits.len();
+    let released = eventually(Duration::from_secs(2), || {
+        h.state.request_limit.in_flight() == 0 && parked() == all
+    })
+    .await;
+    assert!(
+        released,
+        "a parked wait still holds an in-flight permit: {} in flight, {} of {all} parked",
         h.state.request_limit.in_flight(),
-        0,
-        "a parked wait still holds an in-flight permit"
+        parked()
     );
 
     for _ in 0..5 {
