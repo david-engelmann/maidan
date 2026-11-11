@@ -12,6 +12,12 @@ use maidan_types::{LogSnapshot, WorkspaceId};
 use serde::Serialize;
 use utoipa::ToSchema;
 
+/// What a client is told about any 500. The cause (`ApiError::Internal`'s
+/// text, often a library error's `to_string()`: a path, a driver message, a
+/// config name) goes to the server log under the request's X-Request-Id
+/// instead, so a 500 never describes the server's insides (OPS-004).
+pub const INTERNAL_DETAIL: &str = "the server failed while handling this request; the X-Request-Id response header names it in the server log";
+
 #[derive(Debug)]
 pub enum ApiError {
     NotFound,
@@ -177,13 +183,13 @@ impl ApiError {
             | Self::UnsupportedMediaType(msg)
             | Self::TooManyRequests(msg)
             | Self::BadGateway(msg)
-            | Self::Internal(msg)
             | Self::UnprocessableEntity(msg)
             | Self::ClaimLost(msg)
             | Self::ThreadEnded(msg)
             | Self::Gone(msg)
             | Self::Overloaded(msg)
             | Self::AttributeHeld { detail: msg, .. } => msg.clone(),
+            Self::Internal(_) => INTERNAL_DETAIL.to_string(),
             Self::CursorTooOld {
                 after_id,
                 oldest_id,
@@ -347,6 +353,11 @@ pub struct ProblemDetails {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status();
+        // Inside the request span, so the line carries the request id the
+        // client was given.
+        if let Self::Internal(cause) = &self {
+            tracing::error!(cause = %cause, "http.internal_error");
+        }
         let snapshot = match &self {
             Self::CursorTooOld { snapshot, .. } => snapshot.clone(),
             _ => None,
@@ -577,5 +588,23 @@ mod tests {
         assert!(err.detail().contains("id=4"));
         assert!(err.detail().contains("content_hash_mismatch"));
         assert_eq!(err.into_response().status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn an_internal_error_answers_a_fixed_detail_and_never_its_cause() {
+        let cause = "connect /var/lib/maidan/secret.sock: FEDERATION_ENCRYPTION_KEY unset";
+        let err = ApiError::Internal(cause.into());
+        assert_eq!(err.detail(), INTERNAL_DETAIL);
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let text = String::from_utf8(body.to_vec()).expect("utf8");
+        assert!(!text.contains("secret.sock"), "{text}");
+        assert!(!text.contains("FEDERATION_ENCRYPTION_KEY"), "{text}");
+        let problem: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(problem["type"], "https://maidan.world/problems/internal");
+        assert_eq!(problem["detail"], INTERNAL_DETAIL);
     }
 }
