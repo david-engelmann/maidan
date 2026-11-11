@@ -82,6 +82,7 @@ export function Chooser({ onClose }: { onClose: () => void }) {
   const base = session.credentials.base;
   const login = session.discovery.oidcLoginPath ?? undefined;
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- a press on the scrim closes the dialog; Escape does from the keyboard.
     <div className="chooser-scrim" onMouseDown={(e) => e.target === e.currentTarget && closeRef.current()}>
       <div className="card chooser" role="dialog" aria-modal="true" aria-label="Choose a workspace" ref={box}>
         <h2>Choose a workspace</h2>

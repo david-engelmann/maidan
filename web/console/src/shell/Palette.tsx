@@ -267,6 +267,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
             {(i === 0 || shown[i - 1].group !== c.group) && (
               <li role="presentation" className="palette-group">{c.group}</li>
             )}
+            {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events -- the keyboard picks from the field, through aria-activedescendant and Enter. */}
             <li
               id={`cmd-${c.id}`}
               role="option"

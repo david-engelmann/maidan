@@ -31,7 +31,7 @@
   border-top: 1px solid var(--line);
 }
 .tabs { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
-.tabs a { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 48px; justify-content: center; text-decoration: none; color: var(--muted); font-size: var(--text-2xs); font-weight: 500; border-radius: var(--r-md); -webkit-tap-highlight-color: transparent; }
+.tabs a { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); min-height: 48px; justify-content: center; text-decoration: none; color: var(--muted); font-size: var(--text-2xs); font-weight: 500; border-radius: var(--r-md); -webkit-tap-highlight-color: transparent; }
 .tabs a[aria-current="page"] { color: var(--ink); }
 .tabs a[aria-current="page"] .icon { color: var(--tab-on-icon); }
 .tabs a > :not(.pill) { position: relative; }
@@ -62,7 +62,7 @@
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); text-align: center; color: var(--muted); }
 .palette-foot { display: flex; align-items: center; gap: var(--space-1); margin: 0; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--line); font-size: var(--text-xs); color: var(--muted); }
 .palette-foot kbd + kbd { margin-left: -2px; }
-@media (max-width: 720px) { .palette-keys, .palette-foot { display: none; } }
+@media (max-width: 899px) { .palette-keys, .palette-foot { display: none; } }
 
 /* ---- Wide: the tab bar becomes a rail ---------------------------------- */
 @media (min-width: 900px) {
@@ -70,7 +70,7 @@
   .rail { display: flex; flex-direction: column; gap: 1.4rem; grid-row: 1 / span 2; position: sticky; top: 0; height: 100dvh; padding: 1.4rem 1rem; border-right: 1px solid var(--line); background: var(--paper-2); }
   .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; letter-spacing: -0.03em; text-decoration: none; font-size: var(--text-lg); }
   .brand .mark { width: 28px; height: 28px; border-radius: 22%; }
-  .rail .tabs { display: flex; flex-direction: column; gap: 2px; }
+  .rail .tabs { display: flex; flex-direction: column; gap: var(--space-0-5); }
   .rail .tabs a { flex-direction: row; justify-content: flex-start; gap: 0.7rem; min-height: 44px; min-width: 44px; padding: 0 0.8rem; font-size: var(--text-md); }
   .rail .pill { inset: 0; }
   .tabbar { display: none; }

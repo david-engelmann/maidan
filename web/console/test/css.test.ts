@@ -110,9 +110,9 @@ test("the skip link sits off screen until it is focused", () => {
 
 test("a phone header shows Search and does not drop the credential word", () => {
   const css = sheet();
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.icon-btn \.btn-label \{ display: inline;/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.live-label \{ position: static;/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.mode-chip \{ display: inline-flex;/);
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.top \.icon-btn \.btn-label \{ display: inline;/);
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.top \.live-label \{ position: static;/);
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.mode-chip \{ display: inline-flex;/);
   const shell = readFileSync(join(root, "src/shell/Shell.tsx"), "utf8");
   assert.match(shell, /className="btn-label">Search</);
   assert.match(shell, /className="live-label"/);

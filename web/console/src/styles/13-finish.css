@@ -1,7 +1,7 @@
 /* Finish: the skip link, surfaces, numbers, icons, selection, wide and
    narrow screens, and print. */
 /* ── Skip link: off screen until focused, then the first thing on the page ── */
-.skip-link { position: fixed; left: 12px; top: -100px; z-index: 100; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--primary); color: var(--primary-ink); font-weight: 600; text-decoration: none; }
+.skip-link { position: fixed; left: 12px; top: -100px; z-index: 100; display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-4); border-radius: var(--r-pill); background: var(--primary); color: var(--primary-ink); font-weight: 600; text-decoration: none; }
 .skip-link:focus, .skip-link:focus-visible { top: calc(env(safe-area-inset-top, 0px) + 8px); }
 .content:focus { outline: none; }
 
@@ -33,7 +33,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Wide screens: content stops growing and sits centred, so nothing stretches. */
-@media (min-width: 1100px) {
+@media (min-width: 900px) {
   .content, .content:has(.board), .content:has(.threads) { max-width: var(--content-max); width: 100%; }
 }
 /* Narrow phones: nothing wider than the screen. */
@@ -50,7 +50,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
   :root, :root[data-theme] { color-scheme: light; --paper: #fff; --paper-2: #fff; --page-bg: #fff; --card: #fff; --elev-1: #fff; --elev-2: #fff; --elev-3: #fff; --ink: #111; --muted: #444; --line: #ccc; --line-strong: #999; --hairline: #ccc; --hover: transparent; --sheet-bg: #fff; --lane-bg: transparent; --lane-line: #ccc; --signal-ink: #a83a0d; --ok: #256b41; --danger: #b4231a; --review: #4a55c9; --idle: #7d7a72; --vote-yes: #2a7030; --vote-no: #b42222; }
   .rail, .tabs, .top .live, .top button, .skip-link, .composer, .toasts, .palette-scrim, .need-actions, .new-pill { display: none !important; }
   .shell { display: block !important; }
-  .top { position: static; backdrop-filter: none; background: none; padding: 0 0 12px; }
+  .top { position: static; backdrop-filter: none; background: none; padding: 0 0 var(--space-3); }
   .content { max-width: none; padding: 0; }
   .card, .need, .task, .msg { box-shadow: none !important; break-inside: avoid; }
   * { animation: none !important; transition: none !important; }

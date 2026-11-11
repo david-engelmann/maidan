@@ -5,7 +5,7 @@
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   --pad: max(1.4rem, env(safe-area-inset-left), env(safe-area-inset-right));
 }
-/* Dark, the default, in the console's palette (web/console/src/styles.css).
+/* Dark, the default, in the console's palette (web/console/src/styles/00-tokens.css).
    /ui/theme.js puts the console's stored choice on <html> first, so someone
    who picked Light in the console sees the light landing too. */
 :root, :root[data-theme="dark"] {

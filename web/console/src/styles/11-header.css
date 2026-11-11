@@ -14,14 +14,14 @@
 }
 /* At 390px the header names its controls. A pasted or delegated token stays
    visible, and Search is a word, so the bar is readable without a tooltip. */
-@media (max-width: 520px) {
+@media (max-width: 599px) {
   .top { flex-wrap: wrap; row-gap: 0.35rem; }
   .top h1 { flex: 1 1 8rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .top-actions { flex-wrap: wrap; justify-content: flex-end; }
-  .top .icon-btn { width: auto; display: inline-flex; align-items: center; padding: 0 12px; gap: 6px; border-radius: var(--r-pill); }
+  .top .icon-btn { width: auto; display: inline-flex; align-items: center; padding: 0 var(--space-3); gap: var(--space-1-5); border-radius: var(--r-pill); }
   .top .icon-btn .btn-label { display: inline; font-size: var(--text-sm); font-weight: 600; }
   .mode-chip { display: inline-flex; align-items: center; max-width: 100%; min-height: 44px; }
-  .top .live { width: auto; height: auto; min-height: 44px; padding: 0 10px; gap: 6px; }
+  .top .live { width: auto; height: auto; min-height: 44px; padding: 0 var(--space-2-5); gap: var(--space-1-5); }
   .top .live-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 }
 
@@ -34,7 +34,7 @@
   .seg-wrap::after { border-radius: 0; bottom: 1px; }
   .seg.seg-scroll { scrollbar-width: none; }
   .seg.seg-scroll { display: flex; gap: var(--space-1); padding: 0; background: none; border: 0; border-radius: 0; overflow-x: auto; }
-  .seg-scroll a { position: relative; min-height: 44px; min-width: 44px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--text-sm); }
+  .seg-scroll a { position: relative; min-height: 44px; min-width: 44px; padding: 0 var(--space-2-5); border-radius: var(--r-sm); font-size: var(--text-sm); }
   .seg-scroll a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
   .seg-scroll a:last-child { margin-right: 0; }
   .seg.seg-scroll a[aria-selected="true"] { background: none; box-shadow: none; color: var(--ink); font-weight: 600; }
@@ -43,9 +43,9 @@
 
 /* Thread: result and evidence as a quiet disclosure, not a bar. */
 .pins.facts-panel { padding: 0 var(--pad); background: none; font-size: var(--text-sm); }
-.pins.facts-panel summary { min-height: 44px; min-width: 44px; gap: 6px; font-weight: 500; color: var(--muted); list-style: none; }
+.pins.facts-panel summary { min-height: 44px; min-width: 44px; gap: var(--space-1-5); font-weight: 500; color: var(--muted); list-style: none; }
 .pins.facts-panel summary::-webkit-details-marker { display: none; }
-.pins.facts-panel summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-right: 4px; }
+.pins.facts-panel summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-right: var(--space-1); }
 .pins.facts-panel[open] summary::before { transform: rotate(45deg); }
 .pins.facts-panel summary:hover { color: var(--ink); }
 summary:focus-visible { border-radius: var(--r-xs); }
