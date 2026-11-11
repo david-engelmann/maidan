@@ -5739,7 +5739,6 @@ mod tests {
 
     #[tokio::test]
     async fn notification_tools_list_count_mark_and_wait() {
-        use chrono::Utc;
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
@@ -5786,6 +5785,7 @@ mod tests {
             })
             .await
             .unwrap();
+        let writer = store.clone();
         // Seed two notifications for the member.
         let mut ids = Vec::new();
         for log_id in 1..=2 {
@@ -5890,25 +5890,59 @@ mod tests {
             "a snoozed notification is off the badge"
         );
 
-        // wait_for_notification wakes on the member's next mention event.
+        // wait_for_notification wakes on the member's next notification row,
+        // whatever its kind, and carries the thread's title and a reason.
         let wait_args = json!({ "member_id": member.id.0, "timeout_ms": 5000 });
-        let mention = Event::MentionRecorded {
-            occurred_at: Utc::now(),
-            workspace_id: ws.id,
-            thread_id: thread.id,
-            message_id: MessageId::new(),
-            member_id: member.id,
-        };
+        let next_log_id = writer.max_event_id().await.unwrap() + 1_000;
         let (out, _) = tokio::join!(
             server.call_tool(&auth, "wait_for_notification", &wait_args),
             async {
                 tokio::time::sleep(Duration::from_millis(150)).await;
-                server.publish_event(mention).await;
+                writer
+                    .create_notification(NewNotification {
+                        workspace_id: ws.id,
+                        member_id: member.id,
+                        kind: EventKind::ClaimStalled,
+                        source_log_id: next_log_id,
+                        channel_id: Some(channel.id),
+                        thread_id: Some(thread.id),
+                        message_id: None,
+                        actor_id: None,
+                    })
+                    .await
+                    .unwrap();
             }
         );
         let woke = unwrap_content(out.unwrap());
-        assert_eq!(woke["kind"], json!("mention_recorded"));
+        assert_eq!(woke["kind"], json!("claim_stalled"));
         assert_eq!(woke["member_id"], json!(member.id.0));
+        assert_eq!(woke["source_log_id"], json!(next_log_id));
+        assert_eq!(woke["title"], json!("t"));
+
+        // A row written before the wait began is returned when the caller
+        // says where it last looked, and not otherwise.
+        let caught_up = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "wait_for_notification",
+                    &json!({ "member_id": member.id.0, "timeout_ms": 1, "since_log_id": next_log_id - 1 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(caught_up["source_log_id"], json!(next_log_id));
+        let lapsed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "wait_for_notification",
+                    &json!({ "member_id": member.id.0, "timeout_ms": 1, "since_log_id": next_log_id }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(lapsed, Value::Null);
     }
 
     #[tokio::test]

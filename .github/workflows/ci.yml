@@ -213,6 +213,11 @@ jobs:
         # runs it, not only a batch: the claim loops are where a lost answer
         # turns into a double claim.
         run: python3 scripts/test-mcp-fault-injection.py
+      - name: coordinator wake script (fake MCP server)
+        # Standard library, curl and jq, a few seconds: the script a
+        # coordinator session sleeps on must wake for what needs it and only
+        # that, and never print its token.
+        run: python3 scripts/test-coordinator-wake.py
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
       - name: links name only domains Maidan owns

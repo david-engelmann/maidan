@@ -5501,7 +5501,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_notifications`
 
-**List notifications.** List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.
+**List notifications.** List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. Each carries its kind, thread_id, the thread's title and a short reason read from the event that caused it, enough for a digest line. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.
 
 **Capability:** `workspace:read`
 
@@ -5741,7 +5741,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_notification`
 
-**Wait for notification.** Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).
+**Wait for notification.** Block until the member has an unread notification of any kind (a mention, or an event routed to them as owner or follower), or the timeout lapses. Reads the notification ledger, so it also returns a row written while you were not waiting: pass since_log_id (the highest source_log_id you have seen) and it returns the oldest unread notification after it; omit it to wait for one newer than this call. Returns that notification with the thread's title and a short reason, or null on timeout. Never marks it read.
 
 **Capability:** `workspace:read`
 
@@ -5755,7 +5755,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "return the oldest unread notification whose source_log_id is greater than this, including one written before the call; omitted, only notifications for events after the call",
       "type": "integer"
     },
     "timeout_ms": {

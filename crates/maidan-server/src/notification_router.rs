@@ -17,14 +17,22 @@
 //! delivery row per `deliver_to` target, and to the critical→`request_changes`
 //! adapter (the close-gate). A change request (`ReviewSubmitted` with
 //! `request_changes`) reaches the thread's last worker.
+//!
+//! Events that wait on a decision (an agent's `needs_input` question, a stalled
+//! claim, a handoff, a failed check or blocked merge, a block, a failed
+//! delivery, a spawn refusal, a change request, an approval gate) also reach
+//! the thread's owner and the followers of the thread and its channel, so a
+//! coordinator that follows its swarm's channels is woken by them
+//! ([`attention_recipients`]). An intake proposal has no thread yet and
+//! reaches the proposer's followers.
 
 use std::collections::HashSet;
 use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
 use maidan_types::{
-    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification,
-    NewWebPushOutbox, ReviewDecision, ThreadId, WorkspaceId,
+    ChannelId, DeclaredStatus, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification,
+    NewWebPushOutbox, ReviewDecision, ThreadId, ThreadNoticeKind, WorkspaceId,
 };
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
@@ -292,7 +300,6 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             channel_id,
             thread_id,
             member_id,
-            thread,
             ..
         }
         | Event::ClaimStalled {
@@ -300,22 +307,20 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             channel_id,
             thread_id,
             member_id,
-            thread,
             ..
         } => {
             // A claim nobody acknowledged, or a live one that stalled, is stuck
-            // work too: its holder took it and never started or went quiet. The owner and the holder's followers hear, as
-            // for an expired claim; the holder is the actor.
-            let mut recipients = HashSet::new();
-            if let Some(owner_id) = thread.owner_id {
-                recipients.insert(owner_id);
-            }
-            add_accessible_member_followers(
+            // work too: its holder took it and never started or went quiet.
+            // A coordinator watches channels rather than each agent, so the
+            // thread's and channel's followers hear as well as the owner and
+            // the holder's followers; the holder is the actor.
+            let recipients = attention_recipients(
                 state,
                 *workspace_id,
-                Some(*thread_id),
-                vec![*member_id],
-                &mut recipients,
+                *channel_id,
+                *thread_id,
+                &[*member_id],
+                &[*member_id],
             )
             .await?;
             for recipient_id in recipients {
@@ -537,7 +542,7 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             reviewer_id,
             actor_id,
             decision: ReviewDecision::RequestChanges,
-            worker_id: Some(worker_id),
+            worker_id,
             ..
         } => {
             // A change request goes to the thread's last worker: the member who
@@ -547,24 +552,201 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             // whoever set the result, because a review agent's own result
             // replaces the worker's. A verdict is never news to the member who
             // gave it, nor to the delegate that gave it for them.
-            if worker_id == reviewer_id || Some(*worker_id) == *actor_id {
-                return Ok(());
+            //
+            // The owner and the thread's and channel's followers hear too: a
+            // coordinator re-plans when work is sent back, and it learns that
+            // from the channels it follows. Not the worker's followers: the
+            // worker itself is told, and that is who acts.
+            let actors: Vec<MemberId> = std::iter::once(*reviewer_id).chain(*actor_id).collect();
+            let mut recipients =
+                attention_recipients(state, *workspace_id, *channel_id, *thread_id, &[], &actors)
+                    .await?;
+            if let Some(worker_id) = worker_id
+                && !actors.contains(worker_id)
+                && member_can_read_thread(state, *workspace_id, *worker_id, *thread_id).await?
+            {
+                recipients.insert(*worker_id);
             }
-            if !member_can_read_thread(state, *workspace_id, *worker_id, *thread_id).await? {
-                return Ok(());
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ReviewSubmitted,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*reviewer_id),
+                )
+                .await?;
             }
-            notify(
+        }
+        Event::StatusDeclared {
+            workspace_id,
+            channel_id,
+            thread_id,
+            status: DeclaredStatus::NeedsInput,
+            declared_by,
+            ..
+        } => {
+            // An agent asking a question is the one declaration somebody has
+            // to answer; `working`, `needs_review`, `blocked` and `done` are
+            // reported elsewhere (claims, reviews, blocks, results), so only
+            // `needs_input` becomes a notification. The agent's followers hear
+            // it with the thread's owner and followers.
+            notify_attention(
                 state,
-                *workspace_id,
-                *worker_id,
-                EventKind::ReviewSubmitted,
                 log_id,
-                Some(*channel_id),
-                Some(*thread_id),
-                None,
-                Some(*reviewer_id),
+                event.kind(),
+                *workspace_id,
+                *channel_id,
+                *thread_id,
+                &[*declared_by],
+                Some(*declared_by),
             )
             .await?;
+        }
+        Event::ThreadNotice {
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice: ThreadNoticeKind::CiFailed | ThreadNoticeKind::GateBlocked,
+            ..
+        } => {
+            // A failed check or a newly blocked merge needs a decision; the
+            // other notices (opened, done, clear, queued, deployed) are
+            // progress a supervisor reads when it next looks. No member
+            // acted: the change sweep read GitHub.
+            let worker = state
+                .store
+                .get_thread(*thread_id)
+                .await
+                .ok()
+                .and_then(|t| t.assignee_id);
+            notify_attention(
+                state,
+                log_id,
+                event.kind(),
+                *workspace_id,
+                *channel_id,
+                *thread_id,
+                &worker.into_iter().collect::<Vec<_>>(),
+                None,
+            )
+            .await?;
+        }
+        Event::ThreadHandoff {
+            workspace_id,
+            channel_id,
+            thread_id,
+            ..
+        }
+        | Event::ResultDeliveryFailed {
+            workspace_id,
+            channel_id,
+            thread_id,
+            ..
+        } => {
+            // A task that stopped converging and a result that never reached
+            // its target both wait on a person or a coordinator now. The
+            // server did it, so there is no actor and no member to follow.
+            notify_attention(
+                state,
+                log_id,
+                event.kind(),
+                *workspace_id,
+                *channel_id,
+                *thread_id,
+                &[],
+                None,
+            )
+            .await?;
+        }
+        Event::ThreadBlocked {
+            workspace_id,
+            channel_id,
+            thread_id,
+            set_by,
+            ..
+        } => {
+            // A parked thread is dispatched by nobody until someone clears
+            // the block. Whoever set it already knows.
+            let worker = state
+                .store
+                .get_thread(*thread_id)
+                .await
+                .ok()
+                .and_then(|t| t.assignee_id);
+            notify_attention(
+                state,
+                log_id,
+                event.kind(),
+                *workspace_id,
+                *channel_id,
+                *thread_id,
+                &worker.into_iter().collect::<Vec<_>>(),
+                Some(*set_by),
+            )
+            .await?;
+        }
+        Event::ThreadSpawnDenied {
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            ..
+        } => {
+            // A member pushing past the spawn budget is a plan going wrong;
+            // the caller already got the refusal, so it is not told again.
+            notify_attention(
+                state,
+                log_id,
+                event.kind(),
+                *workspace_id,
+                *channel_id,
+                *thread_id,
+                &member_id.iter().copied().collect::<Vec<_>>(),
+                *member_id,
+            )
+            .await?;
+        }
+        Event::IntakeProposed {
+            workspace_id,
+            proposed_by,
+            ..
+        } => {
+            // An intake item has no thread or channel yet, so nothing to
+            // follow but the proposer: a coordinator follows the agents and
+            // people whose proposals it triages. Still a member of this
+            // workspace is the only access there is to check.
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                None,
+                vec![*proposed_by],
+                &mut recipients,
+            )
+            .await?;
+            recipients.remove(proposed_by);
+            for recipient_id in recipients {
+                if !member_in_workspace(state, *workspace_id, recipient_id).await? {
+                    continue;
+                }
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::IntakeProposed,
+                    log_id,
+                    None,
+                    None,
+                    None,
+                    Some(*proposed_by),
+                )
+                .await?;
+            }
         }
         Event::ThreadResultSet {
             workspace_id,
@@ -619,15 +801,33 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             requested_by,
             ..
         } => {
-            let mut recipients = HashSet::new();
-            add_accessible_member_followers(
-                state,
-                *workspace_id,
-                *thread_id,
-                vec![*requested_by],
-                &mut recipients,
-            )
-            .await?;
+            let recipients = match (channel_id, thread_id) {
+                // A gate on a thread is held work a coordinator sees from the
+                // channel it follows, as well as the requester's followers.
+                (Some(channel_id), Some(thread_id)) => {
+                    attention_recipients(
+                        state,
+                        *workspace_id,
+                        *channel_id,
+                        *thread_id,
+                        &[*requested_by],
+                        &[*requested_by],
+                    )
+                    .await?
+                }
+                _ => {
+                    let mut recipients = HashSet::new();
+                    add_accessible_member_followers(
+                        state,
+                        *workspace_id,
+                        *thread_id,
+                        vec![*requested_by],
+                        &mut recipients,
+                    )
+                    .await?;
+                    recipients
+                }
+            };
             for recipient_id in recipients {
                 notify(
                     state,
@@ -741,6 +941,114 @@ async fn member_can_read_thread(
     maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Whether `member_id` is a live member of `workspace_id`.
+async fn member_in_workspace(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<bool, String> {
+    match state.store.get_member(member_id).await {
+        Ok(member) => Ok(member.workspace_id == workspace_id && member.tombstoned_at.is_none()),
+        Err(maidan_store::StoreError::NotFound) => Ok(false),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+/// Who hears about something on a thread that needs a decision: the thread's
+/// owner, the followers of the thread and of its channel, and the followers
+/// of `followed` (the agent whose work it is). Each must still be a member of
+/// the workspace who can read the thread now, because a follow outlives a
+/// channel membership. `actors` are left out: an event is never news to the
+/// member who caused it.
+async fn attention_recipients(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    channel_id: ChannelId,
+    thread_id: ThreadId,
+    followed: &[MemberId],
+    actors: &[MemberId],
+) -> Result<HashSet<MemberId>, String> {
+    let mut candidates: HashSet<MemberId> = HashSet::new();
+    match state.store.get_thread(thread_id).await {
+        Ok(thread) => candidates.extend(thread.owner_id),
+        Err(maidan_store::StoreError::NotFound) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    candidates.extend(
+        state
+            .store
+            .thread_followers(thread_id)
+            .await
+            .map_err(|e| e.to_string())?,
+    );
+    candidates.extend(
+        state
+            .store
+            .channel_followers(channel_id)
+            .await
+            .map_err(|e| e.to_string())?,
+    );
+    for followed_id in followed {
+        candidates.extend(
+            state
+                .store
+                .member_followers(*followed_id)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    let mut recipients = HashSet::new();
+    for member_id in candidates {
+        if actors.contains(&member_id) {
+            continue;
+        }
+        if member_can_read_thread(state, workspace_id, member_id, thread_id).await? {
+            recipients.insert(member_id);
+        }
+    }
+    Ok(recipients)
+}
+
+/// Write `kind` for every [`attention_recipients`] of the event, with
+/// `actor` as the notification's actor and the one member left out.
+#[allow(clippy::too_many_arguments)]
+async fn notify_attention(
+    state: &AppState,
+    log_id: i64,
+    kind: EventKind,
+    workspace_id: WorkspaceId,
+    channel_id: ChannelId,
+    thread_id: ThreadId,
+    followed: &[MemberId],
+    actor: Option<MemberId>,
+) -> Result<(), String> {
+    let actors: Vec<MemberId> = actor.into_iter().collect();
+    let recipients = attention_recipients(
+        state,
+        workspace_id,
+        channel_id,
+        thread_id,
+        followed,
+        &actors,
+    )
+    .await?;
+    for recipient_id in recipients {
+        notify(
+            state,
+            workspace_id,
+            recipient_id,
+            kind,
+            log_id,
+            Some(channel_id),
+            Some(thread_id),
+            None,
+            actor,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Fan a `MessagePosted` out to its followers. The router is a serial bus

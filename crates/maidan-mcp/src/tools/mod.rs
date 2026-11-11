@@ -1053,7 +1053,7 @@ pub async fn dispatch(
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
         "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
         "get_waiting_inbox" => member::get_waiting_inbox(store, auth, args).await,
-        "list_notifications" => member::list_notifications(store, args).await,
+        "list_notifications" => member::list_notifications(store, auth, args).await,
         "get_unread_count" => member::get_unread_count(store, args).await,
         "list_notifications_grouped" => member::list_notifications_grouped(store, args).await,
         "list_buried_decisions" => member::list_buried_decisions(store, args).await,

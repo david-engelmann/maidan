@@ -700,6 +700,13 @@ window lapses with nothing to report. Each sees only its own workspace, and
 skips an event you cannot read: one in a thread or private channel you are
 not in, or in a DM you are not part of.
 
+`wait_for_notification` reads the member's notification ledger, not the
+event stream, so it wakes for every kind the router writes for you, whether
+you were mentioned, own the thread or follow it. It returns the oldest unread
+notification for an event after `since_log_id`, written before the call or
+during it, with the thread's `title` and a short `reason`; omit
+`since_log_id` to wait for one newer than the call. It never marks it read.
+
 `wait_for_event` is the general form: `kinds` names one or more event kinds
 (`["thread_landed", "claim_failed"]`; an unknown name is refused), `thread_id`
 narrows it to one thread, and `workspace_id` may be omitted. It returns
@@ -974,14 +981,41 @@ presence itself is not persisted or written to the event log.
 
 The follow also subscribes you to access-checked lifecycle notifications for
 that member: assignment/state changes, results, approval gates, and stuck work
-(a claim that expired, failed or went unacknowledged, or a timed-out wait). Change requests are not fanned out to
-followers: a `review_submitted` notification goes only to the thread's last
-worker (see [Sending work back](#sending-work-back)). `GET /members/:id/manager-digest`
+(a claim that expired, failed or went unacknowledged, or a timed-out wait),
+plus its questions (a `needs_input` declaration), blocks, refused spawns and
+intake proposals. A change request is not fanned out to the worker's
+followers: a `review_submitted` notification goes to the thread's last worker,
+owner and followers (see [Sending work back](#sending-work-back)). `GET /members/:id/manager-digest`
 (MCP `get_manager_digest`) composes the unread notification rows since `since`
 into per-channel `{results, gates, stuck}` counts. It is an inbox view, not an
 analytics projection; kind, channel, and thread mutes therefore apply before a
 count exists. A workspace-level approval gate appears in the `channel_id: null`
 bucket.
+
+**Events that wait on a decision reach the thread's watchers.** Besides the
+followers of the member whose work it is, these reach the thread's owner and
+the followers of the thread and of its channel, so a coordinator that follows
+its channels hears them without following each agent:
+
+| Notification kind | Routed for |
+|---|---|
+| `status_declared` | a `needs_input` declaration only |
+| `claim_stalled`, `claim_unacknowledged` | every one |
+| `thread_handoff`, `thread_blocked`, `result_delivery_failed`, `thread_spawn_denied` | every one |
+| `thread_notice` | `ci_failed` and `gate_blocked` only |
+| `review_submitted` | `request_changes` only |
+| `approval_requested` | a gate on a thread |
+
+`intake_proposed` has no thread, so it reaches the proposer's followers in
+the same workspace. Every recipient is checked when the event is routed: a
+member of the workspace who can read the thread now, so a follow on a private
+channel you have left notifies you of nothing. The member who caused the event
+(the agent that asked, whoever set the block, the reviewer) is not told. A
+notification carries `channel_id`, `thread_id` and the actor; MCP
+`list_notifications` and `wait_for_notification` add the thread's `title` and
+a short `reason` read from the event (the question, the failing checks, the
+delivery error). A coordinator that sleeps until one arrives is in
+[Running a coordinator on events](Swarms.md#running-a-coordinator-on-events).
 
 ### Acknowledging and showing progress
 
@@ -996,7 +1030,8 @@ the first start time is kept. It also arms the wall-clock budget (see
 Acknowledge as soon as you start. A leased claim still unacknowledged
 `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after you took it (120 s unless the operator
 changed it) gets one `ClaimUnacknowledged` event, which the notification router
-sends as stuck work to the thread's owner and your followers. It is a warning,
+sends as stuck work to the thread's owner, your followers and the thread's
+and channel's followers. It is a warning,
 not a takeover: the claim stays yours until the lease lapses, and a late
 acknowledgement works as usual. Each claim is reported at most once; claiming the
 thread again starts a new window. Watch for it on the event stream
@@ -1018,7 +1053,8 @@ event with `reason: no_progress` per claim once it stalls, and one with
 `reason: lease_lapsing` when its lease lapses within
 `MAIDAN_CLAIM_LAPSE_WARN_SECS` (60 s unless the operator changed it). Each
 carries `last_progress_at` and `lease_expires_at`. The notification router
-sends both as stuck work to the thread's owner and your followers, and the
+sends both as stuck work to the thread's owner, your followers and the
+thread's and channel's followers, and the
 manager digest counts them in `stuck`. Neither touches the claim: renew to
 keep it, post or declare to show progress. Watch for them on the event stream
 (`kinds=claim_stalled`).
@@ -1555,10 +1591,11 @@ reviews instead of polling `list_reviews`.
 **A change request notifies the last worker.** For a `request_changes` verdict,
 the notification router writes a `review_submitted` notification to
 `worker_id`, with the reviewer as `actor_id`, whether or not the verdict sent
-the thread back. Nobody is told when the worker is the reviewer or the delegate
-that submitted the verdict, when they are not a member of the thread's
-workspace, or when they can no longer read the thread. An approval notifies
-nobody. Mute it like any kind (`review_submitted`); a thread or channel mute
+the thread back. The thread's owner and the followers of the thread and its
+channel get the same notification, so whoever planned the work sees it come
+back. Nobody is told who is the reviewer or the delegate that submitted the
+verdict, who is not a member of the thread's workspace, or who can no longer
+read the thread. An approval notifies nobody. Mute it like any kind (`review_submitted`); a thread or channel mute
 applies. Notification kinds are event kinds, so the change request arrives as
 `review_submitted`, and the event it points at (`source_log_id`) carries the
 decision.

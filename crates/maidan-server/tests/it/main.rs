@@ -161,6 +161,9 @@ mod context_query_count_e2e;
 #[path = "../context_snapshot_e2e.rs"]
 mod context_snapshot_e2e;
 
+#[path = "../coordinator_wake_e2e.rs"]
+mod coordinator_wake_e2e;
+
 #[path = "../critical_review_e2e.rs"]
 mod critical_review_e2e;
 
@@ -445,6 +448,9 @@ mod message_content_e2e;
 
 #[path = "../metrics_e2e.rs"]
 mod metrics_e2e;
+
+#[path = "../notification_attention_e2e.rs"]
+mod notification_attention_e2e;
 
 #[path = "../notification_prefs_rest_e2e.rs"]
 mod notification_prefs_rest_e2e;
