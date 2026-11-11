@@ -709,7 +709,9 @@ the same filters: `GET /workspaces/{wid}/queue-depth?kind=review&repo=owner/name
 (or `get_workspace_queue_depth` with `kind` and `repo`).
 
 A seat that knows its own family declines a review of that family's change
-when it is handed one: `release_claim` with `decline: "own_family"` releases
+when it is handed one (the
+[seat runner](../examples/seat-runner/README.md#providers-and-families)
+tells each run its family from the seat's `[harness] provider`): `release_claim` with `decline: "own_family"` releases
 the claim and tells `claim_next` not to hand that review to this member
 again. The member's next `claim_next` gets the next eligible thread, or
 nothing, instead of the same review; every other member is still handed it.

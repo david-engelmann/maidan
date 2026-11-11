@@ -213,6 +213,12 @@ jobs:
         # runs it, not only a batch: the claim loops are where a lost answer
         # turns into a double claim.
         run: python3 scripts/test-mcp-fault-injection.py
+      - name: seat runner (fake Maidan, fake capped, fake harnesses)
+        # Standard library only, a couple of minutes. It ran only in the
+        # compose smoke, which a feature PR skips, so a change to the runner
+        # (its harness command lines, where the seat token and a model key may
+        # go, the per-run private files) merged without its own tests.
+        run: python3 -m unittest discover -s examples/seat-runner/tests
       - name: coordinator wake script (fake MCP server)
         # Standard library, curl and jq, a few seconds: the script a
         # coordinator session sleeps on must wake for what needs it and only
@@ -1173,7 +1179,6 @@ jobs:
           bash -n scripts/lease-demo.sh
           node --check examples/lease_demo/claim.mjs
           python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py examples/openrouter/claimant.py examples/seat-runner/seat_runner.py scripts/eval-land-gate-advisor.py
-          python3 -m unittest discover -s examples/seat-runner/tests
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); tomllib.load(open('examples/seat-runner/seats.example.toml','rb')); print('mcp configs valid')"
       - name: download the smoke images
         uses: actions/download-artifact@v4

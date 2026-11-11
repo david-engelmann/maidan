@@ -13,8 +13,10 @@ Each run, per seat (README.md has the detail):
    across its retries, so a claim whose answer was lost is answered again
    rather than taken twice. `null` ends the run; a failed acknowledge
    releases the claim and runs no harness.
-5. Harness: the whole harness process under `capped`, told the thread and
-   lease so it skips the runbook's "Claim" and "Acknowledge" sections.
+5. Harness (`codex`, `claude` or `gemini`): the whole harness process under
+   `capped`, told the thread and lease so it skips the runbook's "Claim" and
+   "Acknowledge" sections, and told its own provider and family so its usage
+   evidence and its own-family decline name the model that really ran.
 6. Release, always, and only once every process the run started is dead.
 
 One JSON log line per run on stdout. SIGTERM or SIGINT stops every seat:
@@ -30,10 +32,13 @@ import http.client
 import ipaddress
 import json
 import os
+import re
+import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -56,6 +61,79 @@ IN_FLIGHT = "https://maidan.world/problems/idempotency-key-in-flight"
 # The longest a Retry-After holds a seat between tries.
 MAX_RETRY_AFTER_SECS = 60.0
 
+# The model families a review is routed between, each with the words that name
+# it in a usage record's provider or model and the bare model prefixes that do.
+# A twin of `PROVIDER_FAMILIES` in crates/maidan-types/src/task_attributes.rs
+# (the tests compare the two): the seat refuses to start when Maidan would read
+# its provider and model as another family than the one it declares, because a
+# wrong family defeats second-family review.
+PROVIDER_FAMILIES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("anthropic", ("anthropic", "claude"), ()),
+    ("openai", ("openai", "gpt", "codex"), ("o1", "o3", "o4")),
+    ("google", ("google", "gemini", "vertex"), ()),
+    ("xai", ("xai", "grok"), ()),
+    ("deepseek", ("deepseek",), ()),
+    ("zhipu", ("zhipu", "z.ai", "bigmodel", "glm"), ()),
+)
+
+
+def provider_family(provider: str, model: str) -> str | None:
+    """The family Maidan reads from a usage record's provider and model."""
+    named = f"{provider} {model}".lower()
+    model = model.lower()
+    for family, words, prefixes in PROVIDER_FAMILIES:
+        if any(word in named for word in words) or any(
+                model == prefix or model.startswith(prefix + "-") for prefix in prefixes):
+            return family
+    return None
+
+
+@dataclass(frozen=True)
+class HarnessKind:
+    bin: str
+    provider: str
+    # The `harness` a run names in its usage evidence (the runbook's table).
+    evidence: str
+    claimant_dir: str
+
+
+HARNESSES = {
+    "codex": HarnessKind("codex", "openai", "codex", "~/.codex/maidan-claimant"),
+    "claude": HarnessKind("claude", "anthropic", "claude-code", "~/.claude/skills/maidan-claimant"),
+    "gemini": HarnessKind("gemini", "google", "gemini-cli", "~/.gemini/maidan-claimant"),
+    # Z.ai's own coding agent, the GLM coding plan's native harness.
+    "zcode": HarnessKind("zcode", "z.ai", "zcode", "~/.zcode/maidan-claimant"),
+}
+# ZCode's model API protocols, and the GLM coding plan's Anthropic-compatible
+# endpoint as the default.
+ZCODE_API_TYPES = ("anthropic-messages", "openai-chat-completions", "openai-responses")
+ZCODE_BASE_URL = "https://api.z.ai/api/anthropic"
+# ZCode reads its runtime config (where MCP servers live) only from
+# ~/.zcode/cli/config.json, so a zcode run gets its own HOME. These keep the
+# tools a run uses on the real home's state, unless already set.
+HOME_PINNED = {"CARGO_HOME": ".cargo", "RUSTUP_HOME": ".rustup",
+               "GIT_CONFIG_GLOBAL": ".gitconfig", "XDG_CONFIG_HOME": ".config"}
+# The endpoints a runner-built MCP config may name. The runbooks call tools
+# outside the worker and reviewer profiles (list_messages, get_thread_result,
+# list_result_deliveries, register_thread_pull; renew and release for a
+# review), so the full catalog is the default.
+MCP_PATHS = ("/mcp/streamable", "/mcp/worker", "/mcp/reviewer")
+# Claude Code's credentials. A seat pointed at another endpoint must not hand
+# an Anthropic key from the runner's environment to that endpoint.
+ANTHROPIC_CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+# A literal `env` value under a name like these would put a secret in the file.
+SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL", re.IGNORECASE)
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Gemini's macOS Seatbelt profiles have five slots for --include-directories.
+GEMINI_MAX_INCLUDE_DIRS = 5
+# The placeholders a prompt file may use.
+PROMPT_FIELDS = re.compile(r"\{(provider|harness|family|model|claimant_dir)\}")
+# Claude Code runs the headersHelper in a shell and reads one JSON object of
+# headers from it. It reads the seat token from the environment, so the token
+# is on no command line and in no file.
+HEADERS_HELPER = ('import json, os, sys; '
+                  'print(json.dumps({"Authorization": "Bearer " + os.environ[sys.argv[1]]}))')
+
 
 class ConfigError(Exception):
     pass
@@ -77,9 +155,31 @@ class Config:
     secret_env: frozenset[str]
     workspace_id: str
     seats: int
-    harness_bin: str
+    harness: str
+    # The harness's argv prefix: a binary, or e.g. ["node", "/abs/zcode.cjs"].
+    harness_bin: list[str]
     model: str
+    # Who serves the model and the family Maidan reads from it: what the
+    # prompts put in the usage evidence and the own-family decline.
+    provider: str
+    family: str
+    evidence_harness: str
+    claimant_dir: str
     pass_token: bool
+    # Literal variables for the harness, and variables copied into it from
+    # the runner's environment (name -> value), e.g. GLM's endpoint and key.
+    harness_env: dict[str, str]
+    harness_secrets: dict[str, str]
+    # Variables the runner's environment must not pass to the harness.
+    harness_drop_env: frozenset[str]
+    mcp_url: str
+    allowed_domains: list[str]
+    state_dir: Path
+    # zcode: the model API it calls and the key for it, read from a named
+    # variable and written only to the run's private provider file.
+    api_type: str
+    api_base_url: str
+    api_key: str
     prompt: str
     # A prompt per task kind (`attributes.kind` on the claimed thread), e.g. a
     # review thread runs the red-team prompt; any other kind runs `prompt`.
@@ -112,14 +212,113 @@ def is_loopback(url: str) -> bool:
         return False
 
 
+def harness_variables(harness: dict, token_env: str,
+                      env: dict[str, str]) -> tuple[dict[str, str], dict[str, str], set[str]]:
+    """`[harness] env` (literal values) and `env_from` (a variable for the
+    harness, filled from a named variable of the runner's environment):
+    `(literal, secret values, the source names)`. A secret is only ever
+    read from the environment, never from the file."""
+    literal = harness.get("env", {})
+    copied = harness.get("env_from", {})
+    if not isinstance(literal, dict) or not isinstance(copied, dict):
+        raise ConfigError("[harness] env and env_from map variable names to strings")
+    for var, value in literal.items():
+        if not ENV_NAME.match(var) or not isinstance(value, str):
+            raise ConfigError(f"[harness] env {var!r} must be a variable name with a string value")
+        if SECRET_NAME.search(var):
+            raise ConfigError(f"[harness] env {var}: a secret never goes in the file; "
+                              f"name the variable that holds it in env_from ({var} = \"SOME_VAR\")")
+    secrets: dict[str, str] = {}
+    for var, source in copied.items():
+        if not ENV_NAME.match(var) or not isinstance(source, str) or not ENV_NAME.match(source):
+            raise ConfigError(f"[harness] env_from {var!r} must name a variable to read it from")
+        value = env.get(source, "")
+        if not value:
+            raise ConfigError(f"[harness] env_from {var}: ${source} is not set")
+        secrets[var] = value
+    for var in {*literal, *copied} & {token_env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH"}:
+        raise ConfigError(f"[harness] env: {var} is set by the runner")
+    return dict(literal), secrets, set(copied.values())
+
+
+def is_anthropic_url(url: str) -> bool:
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return host == "anthropic.com" or host.endswith(".anthropic.com")
+
+
+def claude_endpoint_check(provider: str, family: str, env: dict[str, str],
+                          secrets: dict[str, str]) -> set[str]:
+    """Refuse a Claude Code seat whose endpoint and provider disagree, and
+    return the Anthropic credentials the harness must not inherit. GLM's
+    coding plan is Claude Code pointed at z.ai's Anthropic-compatible URL; a
+    seat that leaves its provider `anthropic` there would report GLM's work
+    as Anthropic's and review Anthropic's changes."""
+    base = env.get("ANTHROPIC_BASE_URL", "")
+    if base:
+        endpoint_check(base, family)
+    if base and not is_anthropic_url(base):
+        if family == "anthropic":
+            host = urllib.parse.urlparse(base).hostname or base
+            raise ConfigError(f"ANTHROPIC_BASE_URL points claude at {host}, not Anthropic, but the "
+                              f"provider is {provider!r}: set [harness] provider to the endpoint's vendor "
+                              "(\"z.ai\" for GLM's coding plan)")
+        # The endpoint's own key comes from env_from; an Anthropic key in the
+        # runner's environment would otherwise go to a third party.
+        return {var for var in ANTHROPIC_CREDENTIALS if var not in secrets}
+    if family != "anthropic":
+        raise ConfigError(f"provider {provider!r} is not Anthropic, but claude talks to Anthropic: "
+                          "set ANTHROPIC_BASE_URL in [harness] env to the provider's endpoint")
+    return set()
+
+
+def harness_argv0(value: object) -> list[str]:
+    if isinstance(value, str) and value:
+        return [value]
+    if isinstance(value, list) and value and all(isinstance(v, str) and v for v in value):
+        return list(value)
+    raise ConfigError("[harness] bin is a program, or a list such as [\"node\", \"/abs/zcode.cjs\"]")
+
+
+def endpoint_check(url: str, family: str) -> None:
+    """A model endpoint whose host names a family (api.z.ai, *.anthropic.com,
+    api.openai.com) must be the seat's own family."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    named = provider_family(host, "")
+    if named is not None and named != family:
+        raise ConfigError(f"the model endpoint {host} is {named}'s, but this seat's family is {family!r}: "
+                          "set [harness] provider to the endpoint's vendor")
+
+
+def zcode_api(harness: dict, family: str, env: dict[str, str]) -> tuple[str, str, str, str]:
+    """`(api_type, base_url, key, key variable)` for a zcode seat's provider
+    file. ZCode takes the key only as plaintext in that file, so the key is
+    read from the variable `api_key_env` names and nowhere else."""
+    api_type = str(harness.get("api_type", ZCODE_API_TYPES[0]))
+    if api_type not in ZCODE_API_TYPES:
+        raise ConfigError(f"[harness] api_type {api_type!r} is not one of {list(ZCODE_API_TYPES)}")
+    base_url = str(harness.get("api_base_url", ZCODE_BASE_URL))
+    if not base_url.startswith("https://"):
+        raise ConfigError(f"[harness] api_base_url {base_url!r}: the model key would cross the network in clear")
+    endpoint_check(base_url, family)
+    key_env = harness.get("api_key_env")
+    if not isinstance(key_env, str) or not ENV_NAME.match(key_env):
+        raise ConfigError("[harness] api_key_env must name the variable holding the model API key")
+    key = env.get(key_env, "")
+    if not key:
+        raise ConfigError(f"[harness] api_key_env: ${key_env} is not set")
+    return api_type, base_url, key, key_env
+
+
 def load_config(path: Path, env: dict[str, str]) -> Config:
     raw = tomllib.loads(path.read_text())
     maidan = raw.get("maidan", {})
     harness = raw.get("harness", {})
     host = raw.get("host", {})
     caps = raw.get("caps", {})
-    if harness.get("name", "codex") != "codex":
-        raise ConfigError("only the codex harness is supported")
+    name = harness.get("name", "codex")
+    spec = HARNESSES.get(name)
+    if spec is None:
+        raise ConfigError(f"[harness] name {name!r} is not one of {sorted(HARNESSES)}")
     models = harness.get("models")
     if not isinstance(models, list) or not models:
         raise ConfigError("[harness] models must list the models this runner may start")
@@ -127,9 +326,50 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     if model not in models:
         raise ConfigError(f"model {model!r} is not in [harness] models {models}")
     token_env = maidan.get("token_env", "MAIDAN_TOKEN")
+    if not ENV_NAME.match(token_env):
+        raise ConfigError(f"[maidan] token_env {token_env!r} is not a variable name")
     token = env.get(token_env, "")
     if not token:
         raise ConfigError(f"no seat token in ${token_env}")
+    pass_token = bool(harness.get("pass_token", True))
+    if name in ("claude", "gemini") and not pass_token:
+        raise ConfigError(f"the {name} harness's MCP config reads the seat token from ${token_env}; "
+                          "pass_token = false is for codex and zcode only")
+    harness_env, harness_secrets, secret_sources = harness_variables(harness, token_env, env)
+    provider = str(harness.get("provider", spec.provider))
+    declared = harness.get("family")
+    read = provider_family(provider, model)
+    if read is None:
+        raise ConfigError(f"Maidan reads no model family from provider {provider!r} and model {model!r}; "
+                          "set [harness] provider to the model's vendor")
+    family = str(declared).lower() if declared is not None else read
+    if family != read:
+        raise ConfigError(f"[harness] family {family!r}, but Maidan reads provider {provider!r} and "
+                          f"model {model!r} as {read!r}: a wrong family defeats second-family review")
+    drop: set[str] = set()
+    if name == "claude":
+        drop = claude_endpoint_check(provider, family, {**env, **harness_env}, harness_secrets)
+    api_type = api_base_url = api_key = ""
+    if name == "zcode":
+        api_type, api_base_url, api_key, key_env = zcode_api(harness, family, env)
+        secret_sources.add(key_env)
+    else:
+        for key in ("api_type", "api_base_url", "api_key_env"):
+            if key in harness:
+                raise ConfigError(f"[harness] {key} is for the zcode harness")
+    url = maidan.get("url", "http://127.0.0.1:8080").rstrip("/")
+    mcp_path = harness.get("mcp_path")
+    if mcp_path is not None and name == "codex":
+        raise ConfigError("[harness] mcp_path: codex reads its MCP server from ~/.codex/config.toml")
+    mcp_path = mcp_path or MCP_PATHS[0]
+    if mcp_path not in MCP_PATHS:
+        raise ConfigError(f"[harness] mcp_path {mcp_path!r} is not one of {list(MCP_PATHS)}")
+    domains = harness.get("allowed_domains")
+    if domains is not None and name != "claude":
+        raise ConfigError("[harness] allowed_domains is Claude Code's sandbox network list; "
+                          f"the {name} harness does not read it")
+    if domains is None:
+        domains = [urllib.parse.urlparse(url).hostname or "127.0.0.1"]
     repos = [
         Repo(
             repo=r["repo"],
@@ -144,6 +384,19 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     for r in repos:
         if not r.preflight:
             raise ConfigError(f"{r.repo}: a preflight (toolchain version and narrow check) is required")
+        if name == "zcode" and r.writable_roots:
+            raise ConfigError(f"{r.repo}: zcode has no sandbox and writes wherever this user can, so "
+                              "writable_roots would promise a limit it does not have; remove it")
+        if name == "gemini" and len(r.writable_roots) > GEMINI_MAX_INCLUDE_DIRS:
+            raise ConfigError(f"{r.repo}: Gemini's sandbox can make at most {GEMINI_MAX_INCLUDE_DIRS} "
+                              "writable_roots writable")
+    state_dir = Path(harness.get("state_dir", Path(tempfile.gettempdir()) / f"maidan-seat-runner-{os.getuid()}"))
+    # Not resolved where it is kept: state_root refuses a symlinked one.
+    state_dir = state_dir.expanduser()
+    for r in repos:
+        if state_dir.resolve().is_relative_to(r.checkout.resolve()):
+            raise ConfigError(f"[harness] state_dir {state_dir} is inside {r.repo}'s checkout; "
+                              "a run's private files never go there")
     prompts = {str(kind): str(Path(path).expanduser()) for kind, path in harness.get("prompts", {}).items()}
     for kind, path in prompts.items():
         if not Path(path).is_file():
@@ -151,7 +404,6 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     seats = int(raw.get("seats", 1))
     if seats < 1:
         raise ConfigError("seats must be at least 1")
-    url = maidan.get("url", "http://127.0.0.1:8080").rstrip("/")
     if not url.startswith("https://") and not is_loopback(url):
         print(f"seat-runner: warning: {url} is not https; the seat token crosses the network in clear",
               file=sys.stderr)
@@ -159,12 +411,26 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
         url=url,
         token=token,
         token_env=token_env,
-        secret_env=frozenset({token_env, *maidan.get("secret_env", [])}),
+        secret_env=frozenset({token_env, *maidan.get("secret_env", []), *secret_sources}),
         workspace_id=maidan["workspace_id"],
         seats=seats,
-        harness_bin=harness.get("bin", "codex"),
+        harness=name,
+        harness_bin=harness_argv0(harness.get("bin", spec.bin)),
         model=model,
-        pass_token=bool(harness.get("pass_token", True)),
+        provider=provider,
+        family=family,
+        evidence_harness=spec.evidence,
+        claimant_dir=str(harness.get("claimant_dir", spec.claimant_dir)),
+        pass_token=pass_token,
+        harness_env=harness_env,
+        harness_secrets=harness_secrets,
+        harness_drop_env=frozenset(drop),
+        mcp_url=url + mcp_path,
+        allowed_domains=[str(d) for d in domains],
+        state_dir=state_dir,
+        api_type=api_type,
+        api_base_url=api_base_url,
+        api_key=api_key,
         prompt=str(Path(harness.get("prompt", Path(__file__).with_name("prompt.md"))).expanduser()),
         prompts=prompts,
         capped=str(Path(caps.get("capped", "scripts/capped")).expanduser()),
@@ -251,10 +517,20 @@ def worth_retrying(status: int, body: object) -> bool:
     return status == 409 and isinstance(body, dict) and body.get("type") == IN_FLIGHT
 
 
-def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
-                    kind: str | None = None) -> list[str]:
+def render_prompt(cfg: Config, text: str) -> str:
+    """Fill a prompt's `{provider}`, `{harness}`, `{family}`, `{model}` and
+    `{claimant_dir}` with this seat's own values. Nothing else in braces is
+    touched, so a prompt can quote JSON."""
+    # A zcode run has its own HOME, where `~` is not the runbook's home.
+    claimant_dir = os.path.expanduser(cfg.claimant_dir) if cfg.harness == "zcode" else cfg.claimant_dir
+    values = {"provider": cfg.provider, "harness": cfg.evidence_harness, "family": cfg.family,
+              "model": cfg.model, "claimant_dir": claimant_dir}
+    return PROMPT_FIELDS.sub(lambda m: values[m.group(1)], text)
+
+
+def run_prompt(cfg: Config, repo: Repo, thread_id: str, lease_id: str, kind: str | None) -> str:
     prompt_path = cfg.prompts.get(kind or "", cfg.prompt)
-    prompt = Path(prompt_path).read_text()
+    prompt = render_prompt(cfg, Path(prompt_path).read_text())
     prompt += (
         f"\n\nThis run's claim is already taken and acknowledged: thread_id "
         f"`{thread_id}`, claim_lease_id `{lease_id}`, repo `{repo.repo}`. Do not "
@@ -265,9 +541,47 @@ def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
             " Skip the runbook's sections \"0b. Before every claim: the toolchain\", "
             "\"1. Claim\" and \"2. Acknowledge\", and start at \"3. Read the task\"."
         )
-    prompt += "\n"
+    return prompt + "\n"
+
+
+def needs_private_dir(cfg: Config) -> bool:
+    """Gemini CLI and ZCode read MCP servers only from a file."""
+    return cfg.harness in ("gemini", "zcode")
+
+
+def write_private(path: Path, body: object) -> None:
+    """Create `path` 0600, its missing parents 0700; never over a file that
+    is already there."""
+    # mkdir(parents=True) gives the intermediate directories the umask's mode.
+    missing = []
+    parent = path.parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    for directory in reversed(missing):
+        directory.mkdir(mode=0o700)
+        os.chmod(directory, 0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(body, f)
+
+
+def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
+                    kind: str | None = None, private: Path | None = None) -> tuple[list[str], dict[str, str]]:
+    """The harness's argv and the variables it needs on top of `Runner.env`.
+    The seat token is never in either: each harness reads it from
+    `token_env` in its own environment."""
+    prompt = run_prompt(cfg, repo, thread_id, lease_id, kind)
+    if cfg.harness == "claude":
+        return claude_command(cfg, repo, prompt), {}
+    if cfg.harness in ("gemini", "zcode"):
+        if private is None:
+            raise ValueError(f"the {cfg.harness} harness needs a private directory for its config")
+        if cfg.harness == "zcode":
+            return zcode_command(cfg, repo, prompt, private)
+        return gemini_command(cfg, repo, prompt, private)
     cmd = [
-        cfg.harness_bin, "exec",
+        *cfg.harness_bin, "exec",
         "-m", cfg.model,
         "--sandbox", "workspace-write",
         "--ephemeral",
@@ -275,7 +589,171 @@ def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
     ]
     if repo.writable_roots:
         cmd += ["-c", "sandbox_workspace_write.writable_roots=" + json.dumps(repo.writable_roots)]
-    return cmd + [prompt]
+    return cmd + [prompt], {}
+
+
+def claude_command(cfg: Config, repo: Repo, prompt: str) -> list[str]:
+    """`claude -p`, with Maidan as the only MCP server, given inline so no
+    file holds it. Its `headersHelper` prints the Authorization header from
+    `token_env` when Claude Code connects. Bash runs in Claude Code's sandbox
+    (writes to the checkout, the temp directory and each `--add-dir`; network
+    to `allowed_domains`), with no retry outside it; edits are accepted and
+    the Maidan tools approved, because nobody is there to answer a prompt."""
+    helper = " ".join(shlex.quote(part) for part in (sys.executable, "-c", HEADERS_HELPER, cfg.token_env))
+    mcp = {"mcpServers": {"maidan": {"type": "http", "url": cfg.mcp_url, "headersHelper": helper}}}
+    settings = {"sandbox": {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "autoAllowBashIfSandboxed": True,
+        "allowUnsandboxedCommands": False,
+        "network": {"allowedDomains": cfg.allowed_domains},
+    }}
+    # The prompt comes straight after -p: --mcp-config, --allowedTools and
+    # --add-dir each take several values and would swallow a trailing one.
+    cmd = [
+        *cfg.harness_bin, "-p", prompt,
+        "--model", cfg.model,
+        "--permission-mode", "acceptEdits",
+        "--allowedTools", "mcp__maidan__*",
+        "--strict-mcp-config",
+        "--mcp-config", json.dumps(mcp),
+        "--settings", json.dumps(settings),
+        "--no-session-persistence",
+    ]
+    for root in repo.writable_roots:
+        cmd += ["--add-dir", root]
+    return cmd
+
+
+def gemini_command(cfg: Config, repo: Repo, prompt: str, private: Path) -> tuple[list[str], dict[str, str]]:
+    """`gemini -p` in its sandbox (on macOS, Seatbelt: writes to the checkout
+    and each `--include-directories`), every tool approved, Maidan the only
+    MCP server. Gemini takes MCP servers only from a settings file, so the
+    runner writes one, 0600 in a 0700 directory, as the system settings file
+    for this run. It names the token's variable, not the token: Gemini
+    expands `${VAR}` in settings values."""
+    settings = {"mcpServers": {"maidan": {
+        "httpUrl": cfg.mcp_url,
+        "headers": {"Authorization": "Bearer ${" + cfg.token_env + "}"},
+        "timeout": 330_000,
+        "trust": True,
+    }}}
+    path = private / "settings.json"
+    write_private(path, settings)
+    cmd = [
+        *cfg.harness_bin, "-p", prompt,
+        "-m", cfg.model,
+        "--approval-mode", "yolo",
+        "--sandbox",
+        "--allowed-mcp-server-names", "maidan",
+    ]
+    if repo.writable_roots:
+        cmd += ["--include-directories", ",".join(repo.writable_roots)]
+    # Headless, nobody can answer the folder-trust check.
+    return cmd, {"GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(path), "GEMINI_CLI_TRUST_WORKSPACE": "true"}
+
+
+def zcode_command(cfg: Config, repo: Repo, prompt: str, private: Path) -> tuple[list[str], dict[str, str]]:
+    """`zcode --prompt` in guarded mode. ZCode has no flag for the model or
+    the config: the model and its key go in a personal provider file
+    (`ZCODE_PERSONAL_PROVIDER_CONFIG_FILE`), and MCP servers only in
+    `~/.zcode/cli/config.json`, read from HOME, so the run gets a private
+    HOME. ZCode does not expand variables in either file, so the provider
+    file holds the model key and the runtime config the seat token: each
+    0600, under the run's 0700 directory, outside the checkout, and removed
+    with it. Guarded mode runs ordinary tools without asking and fails the
+    dangerous commands (force push, `git clean -f`, `rm -rf` and the like)
+    that it would ask about, since nobody can answer; ZCode has no OS
+    sandbox, so yolo, which would run them, is never used."""
+    home = private / "home"
+    provider_file = private / "provider_config.json"
+    write_private(provider_file, {
+        "schemaVersion": 1,
+        "config": {
+            "providerConfigRules": {"providerRules": [{
+                "providerId": "seat",
+                "providerName": cfg.provider,
+                "config": {
+                    "group": "standard-personal",
+                    "access": {"type": "api-key", "apiKey": cfg.api_key},
+                    "api": {"type": cfg.api_type, "baseUrl": cfg.api_base_url},
+                    "personalModelIds": [cfg.model],
+                },
+            }]},
+            "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
+            "defaultModelSelection": {"providerId": "seat", "modelId": cfg.model},
+        },
+    })
+    write_private(home / ".zcode" / "cli" / "config.json", {
+        "features": {"mcp": True},
+        "mcp": {"servers": {"maidan": {
+            "type": "http",
+            "url": cfg.mcp_url,
+            "headers": {"Authorization": f"Bearer {cfg.token}"},
+            "timeoutMs": 330_000,
+            "enabled": True,
+        }}},
+    })
+    real_home = os.path.expanduser("~")
+    env = {var: os.path.join(real_home, sub) for var, sub in HOME_PINNED.items() if var not in os.environ}
+    env.update({
+        "HOME": str(home),
+        "ZCODE_DATA_BASE_DIR": str(home),
+        "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE": str(provider_file),
+    })
+    cmd = [
+        *cfg.harness_bin,
+        "--prompt", prompt,
+        "--cwd", str(repo.checkout.resolve()),
+        "--mode", "guarded",
+        # Tools that wait on a person, who is not there.
+        "--disallowed-tools", "AskUserQuestion EnterPlanMode ExitPlanMode",
+        "--no-color",
+    ]
+    return cmd, env
+
+
+RUN_DIR = re.compile(r"^run-(\d+)-")
+
+
+def state_root(cfg: Config) -> Path:
+    """The runner's 0700 directory for per-run files, refused if it is a
+    symlink or someone else's."""
+    root = cfg.state_dir
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    st = os.lstat(root)
+    if not os.path.isdir(root) or os.path.islink(root) or st.st_uid != os.getuid():
+        raise ConfigError(f"{root} is not a directory this user owns")
+    os.chmod(root, 0o700)
+    return root
+
+
+def private_dir(cfg: Config) -> Path:
+    """A fresh 0700 directory for one run, named for this runner's pid so a
+    later runner can tell it was left by one that died."""
+    return Path(tempfile.mkdtemp(prefix=f"run-{os.getpid()}-", dir=state_root(cfg)))
+
+
+def sweep_private_dirs(cfg: Config) -> list[Path]:
+    """Remove the run directories of runners that are no longer alive: a
+    runner that was SIGKILLed or crashed could not remove its own."""
+    if not cfg.state_dir.is_dir():
+        return []
+    removed = []
+    for entry in state_root(cfg).iterdir():
+        m = RUN_DIR.match(entry.name)
+        if not m or int(m.group(1)) == os.getpid():
+            continue
+        try:
+            os.kill(int(m.group(1)), 0)
+            continue
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        removed.append(entry)
+    return removed
 
 
 def capped(cfg: Config, secs: int, mem_gb: float, cmd: list[str]) -> list[str]:
@@ -402,6 +880,12 @@ class Runner:
         if with_token:
             env[self.cfg.token_env] = self.cfg.token
         return env
+
+    def harness_env(self) -> dict[str, str]:
+        """The preflight's environment plus what the harness alone gets: the
+        seat token, `[harness] env`, and each `env_from` variable."""
+        env = {k: v for k, v in self.env(self.cfg.pass_token).items() if k not in self.cfg.harness_drop_env}
+        return {**env, **self.cfg.harness_env, **self.cfg.harness_secrets}
 
     def host_problem(self, repo: Repo) -> str | None:
         load15 = os.getloadavg()[2]
@@ -552,13 +1036,20 @@ class Runner:
 
                 renewer = threading.Thread(target=renew, daemon=True)
                 renewer.start()
-                code = self.run_process(
-                    seat,
-                    capped(self.cfg, self.cfg.run_secs, self.cfg.run_mem_gb,
-                           harness_command(self.cfg, repo, thread_id, lease_id, kind)),
-                    repo.checkout,
-                    self.env(with_token=self.cfg.pass_token),
-                )
+                private = private_dir(self.cfg) if needs_private_dir(self.cfg) else None
+                try:
+                    cmd, extra = harness_command(self.cfg, repo, thread_id, lease_id, kind, private)
+                    code = self.run_process(
+                        seat,
+                        capped(self.cfg, self.cfg.run_secs, self.cfg.run_mem_gb, cmd),
+                        repo.checkout,
+                        {**self.harness_env(), **extra},
+                    )
+                finally:
+                    # run_process returns only once the harness tree is dead,
+                    # so nothing still reads the files.
+                    if private is not None:
+                        shutil.rmtree(private, ignore_errors=True)
                 outcome = "stopped" if self.stop.is_set() else {
                     0: "ran", CAPPED_TIME: "timed_out", CAPPED_MEMORY: "out_of_memory",
                 }.get(code, "failed")
@@ -616,6 +1107,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"seat-runner: {e}", file=sys.stderr)
         return 2
     runner = Runner(cfg)
+    try:
+        sweep_private_dirs(cfg)
+    except (ConfigError, OSError) as e:
+        print(f"seat-runner: {e}", file=sys.stderr)
+        return 2
     signal.signal(signal.SIGTERM, runner.shutdown)
     signal.signal(signal.SIGINT, runner.shutdown)
     return runner.run(args.once)
