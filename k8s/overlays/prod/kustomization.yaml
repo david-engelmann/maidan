@@ -40,6 +40,14 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 3
+      # Also in the container's own env, as the Helm chart does: a ConfigMap
+      # change alone does not restart running pods, and an explicit env entry
+      # outranks envFrom, so production mode cannot be overridden or missed.
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MAIDAN_ENV
+          value: production
       - op: replace
         path: /spec/template/spec/containers/0/resources
         value:
