@@ -1,5 +1,6 @@
-//! `Maidan-Room-LSN` is the event-log high-water (decimal), always stamped on
-//! REST / WS / MCP / A2A. Distinct from `Maidan-Consistency-Token` (WAL LSN,
+//! `Maidan-Room-LSN` is the caller's room's event-log high-water (decimal),
+//! stamped on REST / MCP / A2A and carried as `room_lsn` in the WebSocket
+//! `subscribe_ack`. Distinct from `Maidan-Consistency-Token` (WAL LSN,
 //! replica-gated). SQLite in-process.
 
 use std::{sync::Arc, time::Duration};
@@ -151,15 +152,13 @@ async fn ws_and_mcp_stamp_header_ack_and_type_on_frames() {
         .into_client_request()
         .unwrap();
     let (mut ws, upgrade) = connect_async(req).await.expect("ws connect");
-    let upgrade_lsn: i64 = upgrade
-        .headers()
-        .get(ROOM_LSN_HEADER)
-        .expect("upgrade Maidan-Room-LSN")
-        .to_str()
-        .unwrap()
-        .parse()
-        .unwrap();
-    assert_eq!(upgrade_lsn, last);
+    // The token arrives in the first frame, after the upgrade, so the upgrade
+    // has no room to report: a room head handed to an unauthenticated caller
+    // would leak a workspace's event volume. The head rides the ack instead.
+    assert!(
+        upgrade.headers().get(ROOM_LSN_HEADER).is_none(),
+        "the pre-auth upgrade carries no Maidan-Room-LSN"
+    );
 
     ws.send(Message::Text(
         json!({

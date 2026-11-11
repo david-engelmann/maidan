@@ -306,13 +306,17 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     await_subscribe_ack(&mut ws).await;
     // A token's subscription is bound to its workspace, and a lagging
     // workspace subscription replays from the event log by itself; the hint
-    // is what it gets when that replay cannot run.
+    // is what it gets when that replay cannot run. Taking the event log away
+    // is that failure.
     sqlx::query("ALTER TABLE maidan_events RENAME TO maidan_events_unreachable")
         .execute(&pool)
         .await
         .unwrap();
 
-    let ws_id = uuid::Uuid::new_v4();
+    // The flood is in the subscriber's own workspace: the bus is sharded by
+    // workspace, so another workspace's traffic never reaches this
+    // subscriber's channel and could never make it lag.
+    let ws_id = tenant.workspace_id.0;
     for i in 0..12 {
         bus.publish(maidan_types::BusEnvelope::synthetic(
             maidan_types::Event::WorkspaceCreated {

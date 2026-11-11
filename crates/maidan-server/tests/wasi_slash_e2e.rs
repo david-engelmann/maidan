@@ -11,7 +11,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, test_support, AppState, FederationRuntime, SlashRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewThread};
+use maidan_types::{MemberKind, NewChannel, NewSlashCommand, NewThread, SlashHandlerKind};
 use serde_json::{json, Value};
 
 fn test_key() -> Option<Arc<[u8; 32]>> {
@@ -93,6 +93,7 @@ struct Ctx {
     thread: maidan_types::ThreadId,
     author: reqwest::Client,
     meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    store: Arc<dyn Store>,
 }
 
 async fn spawn() -> Ctx {
@@ -158,6 +159,7 @@ async fn spawn() -> Ctx {
         thread: thread.id,
         author: author.client(),
         meters,
+        store,
     }
 }
 
@@ -242,7 +244,9 @@ async fn a_wasi_slash_command_runs_its_module() {
     assert_eq!(wasi, vec![ctx.ws]);
 }
 
-/// A sha with no bytes behind it fails cleanly rather than running anything.
+/// A sha with no bytes behind it fails cleanly rather than running anything:
+/// registering one is refused, and a command already on file over one (its
+/// module gone since) is refused when typed, not executed.
 ///
 /// The *tenancy* half of this — a well-formed sha belonging to another
 /// workspace — is covered in `wasi_tenancy_e2e`.
@@ -250,7 +254,42 @@ async fn a_wasi_slash_command_runs_its_module() {
 async fn a_sha_with_no_module_behind_it_is_refused() {
     let ctx = spawn().await;
     let orphan = "a".repeat(64);
-    ctx.register("orphan", &orphan).await;
+    let resp = ctx
+        .client
+        .post(format!(
+            "{}/workspaces/{}/slash-commands",
+            ctx.base, ctx.ws.0
+        ))
+        .json(&json!({
+            "name": "orphan",
+            "handler_kind": "wasi",
+            "handler_target": orphan
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a sha this workspace holds no module for is not registrable"
+    );
+
+    // The registration check cannot stop a command whose module went away
+    // after it was registered, so dispatch checks again. Seeded through the
+    // store, by a creator who could still register it.
+    let creator = test_support::registrar(ctx.store.as_ref(), ctx.ws).await;
+    ctx.store
+        .create_slash_command(NewSlashCommand {
+            workspace_id: ctx.ws,
+            name: "orphan".into(),
+            description: None,
+            handler_kind: SlashHandlerKind::Wasi,
+            handler_target: orphan,
+            secret_ciphertext: String::new(),
+            created_by_token: Some(creator),
+        })
+        .await
+        .unwrap();
 
     let msg = ctx.invoke("/orphan").await;
     let response = &msg["metadata"]["slash_response"];

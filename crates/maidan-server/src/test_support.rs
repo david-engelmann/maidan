@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_store::Store;
-use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{
+    ApiTokenId, MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId,
+};
 
 /// A workspace, its first admin, and that admin's bearer secret.
 #[derive(Debug, Clone)]
@@ -92,8 +94,38 @@ pub async fn token(
     member_id: MemberId,
     capabilities: Vec<String>,
 ) -> String {
+    mint(store, workspace_id, member_id, capabilities).await.1
+}
+
+/// A registration's creator: a new member of `workspace_id` holding every
+/// capability, and the id of its token. A webhook, hook or slash command
+/// seeded through the store records it as `created_by_token`, because a
+/// registration acts only while the token that made it could make it again
+/// (`registration_owner`), and one made without a token never acts.
+pub async fn registrar(store: &dyn Store, workspace_id: WorkspaceId) -> ApiTokenId {
+    let (member, _) = store
+        .create_member_with_event(NewMember {
+            workspace_id,
+            handle: "registrar".to_string(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap_or_else(|err| panic!("create registrar: {err}"));
+    mint(store, workspace_id, member.id, capability::all())
+        .await
+        .0
+}
+
+/// A token for an existing member, by id and bearer secret.
+async fn mint(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    capabilities: Vec<String>,
+) -> (ApiTokenId, String) {
     let secret = TokenSecret::generate();
-    store
+    let token = store
         .create_api_token(NewApiToken {
             workspace_id,
             member_id,
@@ -105,7 +137,7 @@ pub async fn token(
         })
         .await
         .unwrap_or_else(|err| panic!("mint token: {err}"));
-    secret.as_str().to_string()
+    (token.id, secret.as_str().to_string())
 }
 
 /// A bearer secret holding every capability for an existing member.

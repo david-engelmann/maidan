@@ -65,6 +65,21 @@ async fn spawn_postgres_outbox() -> Option<Harness> {
     })
 }
 
+/// The next event on `sub` with a log id past `head`, skipping the rest.
+async fn next_event_after(
+    sub: &mut maidan_bus::EventStream,
+    head: i64,
+) -> Option<Box<maidan_types::BusEnvelope>> {
+    while let Some(item) = sub.next().await {
+        if let BusItem::Event(envelope) = item
+            && envelope.log_id > head
+        {
+            return Some(envelope);
+        }
+    }
+    None
+}
+
 #[tokio::test]
 async fn http_mutation_defers_bus_until_outbox_relay_runs() {
     let Some(h) = spawn_postgres_outbox().await else {
@@ -75,10 +90,17 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
         OutboxBackend::postgres(h.pool.clone(), maidan_store::test_support::dev_keys()),
         h.bus.clone(),
     );
-    // Seeding the caller appended events of its own; relay them before
-    // subscribing so the request's event is the only one left to deliver.
+    // Seeding the caller appended events of its own; relay them so the
+    // request's event is the only one left pending.
     relay.run_once().await.unwrap();
     assert_eq!(outbox::count_pending(&h.pool).await.unwrap(), 0);
+    // The bus delivers through LISTEN/NOTIFY, so a seed event relayed above
+    // can still reach the subscriber made below, late. Anything at or below
+    // the seeded head is one of those; only a later id is the request's.
+    let seeded_head = PostgresStore::for_tests(h.pool.clone())
+        .max_event_id()
+        .await
+        .unwrap();
 
     let mut sub = h.bus.subscribe(EventFilter::all()).await.unwrap();
     let client = h.tenant.client();
@@ -95,18 +117,22 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
     assert!(resp.status().is_success());
     assert!(outbox::count_pending(&h.pool).await.unwrap() >= 1);
 
-    let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
+    let no_event = tokio::time::timeout(
+        Duration::from_millis(400),
+        next_event_after(&mut sub, seeded_head),
+    )
+    .await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
     relay.run_once().await.unwrap();
 
-    let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
-        .await
-        .expect("timeout")
-        .expect("stream ended");
-    let BusItem::Event(envelope) = received else {
-        panic!("expected event");
-    };
+    let envelope = tokio::time::timeout(
+        Duration::from_secs(5),
+        next_event_after(&mut sub, seeded_head),
+    )
+    .await
+    .expect("timeout")
+    .expect("stream ended");
     assert!(envelope.log_id > 0);
     assert_eq!(outbox::count_pending(&h.pool).await.unwrap(), 0);
 

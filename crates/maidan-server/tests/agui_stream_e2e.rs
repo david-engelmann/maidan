@@ -273,14 +273,71 @@ async fn agui_stream_resumes_after_a_last_event_id() {
     h.server.abort();
 }
 
+/// A resume that names no workspace replays the caller's own: a token is
+/// bound to one workspace, so an omitted `workspace_id` means that one, never
+/// "every workspace". Another tenant's run, logged first, must not replay.
 #[tokio::test]
-async fn agui_stream_rejects_after_id_without_workspace() {
-    let h = spawn("no-workspace").await;
+async fn agui_stream_resume_without_a_workspace_replays_only_the_callers() {
+    let h = spawn("own").await;
+    let base = format!("http://{}", h.addr);
+    let post = |token: String, path: String, body: Value| async move {
+        let resp = streaming_client(&token)
+            .post(path)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success(), "POST status {}", resp.status());
+        resp.json::<Value>().await.unwrap()
+    };
+    let start_run = |token: String, workspace_id: uuid::Uuid, title: &'static str| {
+        let base = base.clone();
+        async move {
+            let ch = post(
+                token.clone(),
+                format!("{base}/workspaces/{workspace_id}/channels"),
+                json!({"name": "runs"}),
+            )
+            .await;
+            let channel_id = ch["id"].as_str().unwrap().to_string();
+            post(
+                token,
+                format!("{base}/channels/{channel_id}/threads"),
+                json!({"title": title}),
+            )
+            .await
+        }
+    };
+
+    let other = test_support::tenant(h.store.as_ref(), "other").await;
+    let foreign = start_run(other.token.clone(), other.workspace_id.0, "theirs").await;
+    let own = start_run(h.tenant.token.clone(), h.tenant.workspace_id.0, "ours").await;
+
+    // Resume from the caller's first event, naming no workspace.
+    let from = h
+        .store
+        .min_event_id(h.tenant.workspace_id)
+        .await
+        .unwrap()
+        .unwrap();
     let resp = streaming_client(&h.tenant.token)
-        .get(format!("http://{}/agui/stream?after_id=5", h.addr))
+        .get(format!("{base}/agui/stream?after_id={from}"))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let frames = collect_frames(resp, 1).await;
+    assert_eq!(types(&frames), vec!["RUN_STARTED"]);
+    assert_eq!(
+        frames[0].data["threadId"].as_str(),
+        own["id"].as_str(),
+        "the replay is the caller's run"
+    );
+    assert_ne!(
+        frames[0].data["threadId"].as_str(),
+        foreign["id"].as_str(),
+        "another tenant's run never replays"
+    );
+
     h.server.abort();
 }

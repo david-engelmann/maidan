@@ -325,7 +325,8 @@ async fn run_suite(h: &Harness) {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    let mentions: Vec<serde_json::Value> = admin
+    // A member's mentions are their own: only the bot reads the bot's.
+    let mentions: Vec<serde_json::Value> = bot
         .get(format!("{base}/members/{bot_id}/mentions"))
         .send()
         .await
