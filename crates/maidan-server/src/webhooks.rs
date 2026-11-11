@@ -367,12 +367,9 @@ pub fn max_attempts_from_env() -> u32 {
         .unwrap_or(16)
 }
 
-pub fn poll_interval_ms_from_env() -> u64 {
-    std::env::var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50)
-}
+/// How often the webhook worker looks for due deliveries; a constant, not a
+/// knob (OPS-006).
+pub const POLL_INTERVAL_MS: u64 = 50;
 
 #[cfg(test)]
 mod payload_tests {

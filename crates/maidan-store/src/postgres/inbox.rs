@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, InboxItem, InboxItemKind, MemberId, MemberInbox, MessageId, ThreadId,
+    DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::thread_access::mention_visible_to;
 
 const EPOCH: &str = "1970-01-01T00:00:00Z";
 
@@ -49,13 +51,15 @@ pub async fn advance_last_read_at(
 
 pub async fn unread_count(pool: &PgPool, member_id: MemberId) -> Result<i64, StoreError> {
     let last_read = get_last_read_at(pool, member_id).await?;
-    let row: (i64,) = sqlx::query_as(
+    let row: (i64,) = sqlx::query_as(&format!(
         "SELECT COUNT(*)::bigint
-         FROM maidan_mentions
-         WHERE member_id = $1 AND created_at > $2",
-    )
+         FROM maidan_mentions m
+         WHERE m.member_id = $1 AND m.created_at > $2 AND {}",
+        mention_visible_to("m", "$1::uuid", "$3")
+    ))
     .bind(member_id.0)
     .bind(last_read)
+    .bind(DM_CHANNEL_NAME)
     .fetch_one(pool)
     .await?;
     Ok(row.0)
@@ -68,7 +72,7 @@ pub async fn list_for_member(
 ) -> Result<MemberInbox, StoreError> {
     let last_read = get_last_read_at(pool, member_id).await?;
     let unread = unread_count(pool, member_id).await?;
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT m.message_id, m.member_id, m.created_at,
                 msg.body AS message_body, msg.thread_id, msg.author_id,
                 t.channel_id, author.handle AS author_handle
@@ -76,12 +80,14 @@ pub async fn list_for_member(
          JOIN maidan_messages msg ON msg.id = m.message_id
          JOIN maidan_threads t ON t.id = msg.thread_id
          JOIN maidan_members author ON author.id = msg.author_id
-         WHERE m.member_id = $1
+         WHERE m.member_id = $1 AND {}
          ORDER BY m.created_at DESC
          LIMIT $2",
-    )
+        mention_visible_to("m", "$1::uuid", "$3")
+    ))
     .bind(member_id.0)
     .bind(limit)
+    .bind(DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     let items = rows

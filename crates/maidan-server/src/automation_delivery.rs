@@ -18,12 +18,10 @@ pub fn max_attempts_from_env() -> u32 {
         .unwrap_or(16)
 }
 
-pub fn poll_interval_ms_from_env() -> u64 {
-    std::env::var("MAIDAN_AUTOMATION_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50)
-}
+/// How often the worker looks for due deliveries. A constant, not a knob
+/// (OPS-006): a due delivery also wakes nothing sooner, and no deployment
+/// had a reason to set it.
+pub const POLL_INTERVAL_MS: u64 = 50;
 
 /// `None` when a delivery for the same source and event was already queued.
 pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<Option<i64>, String> {
