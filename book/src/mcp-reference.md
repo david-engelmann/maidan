@@ -7174,7 +7174,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 **Register FSM hook.** Register an FSM hook invoked on matching thread state transitions.
 
-**Capability:** `workspace:write`
+**Capability:** `workspace:admin`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 

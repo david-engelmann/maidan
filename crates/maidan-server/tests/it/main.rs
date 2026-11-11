@@ -98,6 +98,9 @@ mod authorization_observability_e2e;
 #[path = "../automation_delivery_e2e.rs"]
 mod automation_delivery_e2e;
 
+#[path = "../automation_registration_admin_e2e.rs"]
+mod automation_registration_admin_e2e;
+
 #[path = "../body_limit_e2e.rs"]
 mod body_limit_e2e;
 
@@ -391,6 +394,9 @@ mod loadgen;
 
 #[path = "../log_snapshot_e2e.rs"]
 mod log_snapshot_e2e;
+
+#[path = "../long_poll_fairness_e2e.rs"]
+mod long_poll_fairness_e2e;
 
 #[path = "../maidan_operator_gate_e2e.rs"]
 mod maidan_operator_gate_e2e;

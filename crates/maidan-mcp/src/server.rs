@@ -260,6 +260,9 @@ pub struct McpServer {
     /// server sets it after the router's state holds a clone. The default
     /// takes no payment.
     credit_terms: Arc<std::sync::RwLock<Arc<maidan_types::CreditTerms>>>,
+    /// The `wait_for_*` calls each workspace has parked, held to
+    /// [`crate::parked_waits::MAX_PARKED_WAITS_PER_WORKSPACE`].
+    parked_waits: Arc<crate::parked_waits::ParkedWaits>,
 }
 
 /// The tool error a call refused past the allowance answers: the same text
@@ -364,7 +367,13 @@ impl McpServer {
             pull_refresher: Arc::default(),
             approval_confirmations: Arc::new(std::sync::OnceLock::new()),
             credit_terms: Arc::default(),
+            parked_waits: Arc::default(),
         }
+    }
+
+    /// The `wait_for_*` calls `workspace_id` has parked right now.
+    pub fn parked_waits(&self, workspace_id: maidan_types::WorkspaceId) -> usize {
+        self.parked_waits.parked(workspace_id)
     }
 
     /// Install what `approval_decide` sends confirmation links with. Set once;
@@ -1064,6 +1073,21 @@ impl McpServer {
             )
             .map_err(McpError::from)?;
         }
+        // Held until the call returns. A long-poll gives back the server's
+        // in-flight permit while it parks, so this is what keeps one tenant
+        // from parking without bound (RED-008). Auth-disabled callers share
+        // no tenant to protect.
+        let _parked = if crate::parked_waits::parks(name) && !auth.bypass {
+            Some(
+                self.parked_waits
+                    .park(auth.workspace_id)
+                    .ok_or(McpError::RateLimited {
+                        retry_after_ms: 1_000,
+                    })?,
+            )
+        } else {
+            None
+        };
         // Counted once the call is authorized to run, whatever it answers.
         if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
             // The hard allowance cutoff: refused before it runs, not counted.

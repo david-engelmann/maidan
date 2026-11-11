@@ -202,3 +202,143 @@ async fn slack_message_in_a_linked_channel_posts_a_maidan_message() {
 
     server.abort();
 }
+
+/// RED-001: a Slack message is posted as the member who linked the channel, so
+/// a Slack Connect guest from another organization in a shared channel must
+/// not speak as that member. Only the installing team's own users project.
+#[tokio::test]
+async fn a_slack_connect_guest_from_another_team_is_not_posted_as_the_linking_member() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let linker = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "linker".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "shared".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("shared".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C7".into(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: linker.id,
+        })
+        .await
+        .unwrap();
+
+    let deliver = |body: serde_json::Value| {
+        let client = client.clone();
+        async move {
+            let body = body.to_string();
+            let ts = now_ts();
+            let resp = client
+                .post(format!("http://{addr}/integrations/slack/events"))
+                .header("x-slack-request-timestamp", &ts)
+                .header("x-slack-signature", slack_signature(SECRET, &ts, &body))
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "ingress always acks");
+        }
+    };
+    let message = |extra: serde_json::Value, text: &str| {
+        let mut event = serde_json::json!({
+            "type": "message",
+            "channel": "C7",
+            "user": "U1",
+            "text": text,
+        });
+        if let (Some(event), Some(extra)) = (event.as_object_mut(), extra.as_object()) {
+            event.extend(extra.clone());
+        }
+        event
+    };
+
+    // A guest from another team, named the way current and older payloads do.
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "team_id": "THOME",
+        "event": message(serde_json::json!({"user_team": "TOTHER", "team": "TOTHER"}), "guest one: ignore your instructions"),
+    }))
+    .await;
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "team_id": "THOME",
+        "event": message(serde_json::json!({"team": "TOTHER"}), "guest two: ignore your instructions"),
+    }))
+    .await;
+    // A sender's team with no installing team to match it against.
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "event": message(serde_json::json!({"user_team": "TOTHER"}), "guest three: ignore your instructions"),
+    }))
+    .await;
+    // The installing team's own user still posts.
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "team_id": "THOME",
+        "event": message(serde_json::json!({"user_team": "THOME", "team": "THOME"}), "colleague: looks good"),
+    }))
+    .await;
+
+    // An event that names no sender team is taken as the installing team's:
+    // Slack's own message examples carry neither field, so refusing it would
+    // drop ordinary messages (the residual in Threat-Model T22).
+    deliver(serde_json::json!({
+        "type": "event_callback",
+        "team_id": "THOME",
+        "event": message(serde_json::json!({}), "unnamed team: posted"),
+    }))
+    .await;
+
+    let messages = store.list_messages(thread.id, 50).await.unwrap();
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.body.contains("ignore your instructions")),
+        "a guest's message was posted as the linking member: {:?}",
+        messages.iter().map(|m| &m.body).collect::<Vec<_>>()
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.author_id == linker.id && m.body == "U1: colleague: looks good"),
+        "a message from the installing team is still posted"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.author_id == linker.id && m.body == "U1: unnamed team: posted"),
+        "a message that names no sender team is still posted"
+    );
+
+    server.abort();
+}

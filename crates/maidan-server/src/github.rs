@@ -381,6 +381,9 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
     {
         return; // our own egress comment — don't re-ingest (loop prevention)
     }
+    if !speaks_for_the_repository(comment) {
+        return;
+    }
     let (Some(repo), Some(issue_number), Some(text)) = (
         payload
             .get("repository")
@@ -420,6 +423,20 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
         Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
         Err(err) => tracing::warn!(error = %err, "github ingress: post failed"),
     }
+}
+
+/// Whether a comment's author has a role on the repository. The comment is
+/// posted as the member who linked the issue, so on a public repository anyone
+/// else could put words in that member's mouth, and an agent reading the thread
+/// would take them as the member's (RED-001). A comment without the field is
+/// treated as an outsider's.
+fn speaks_for_the_repository(comment: Option<&serde_json::Value>) -> bool {
+    matches!(
+        comment
+            .and_then(|c| c.get("author_association"))
+            .and_then(|v| v.as_str()),
+        Some("OWNER" | "MEMBER" | "COLLABORATOR")
+    )
 }
 
 /// A failed GitHub API call.

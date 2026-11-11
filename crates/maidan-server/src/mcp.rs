@@ -18,6 +18,7 @@ use maidan_mcp::{is_supported_protocol_version, JsonRpcError, JsonRpcRequest, Js
 
 use crate::error::ApiError;
 use crate::extract::ApiBytes;
+use crate::load_shed::PermitSlot;
 use crate::state::AppState;
 
 /// Validate the `MCP-Protocol-Version` header (MCP spec: clients send it on
@@ -343,22 +344,25 @@ pub(crate) fn validate_routing_headers(
 pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
-    json_rpc(state, auth, headers, body, None).await
+    json_rpc(state, auth, permit, headers, body, None).await
 }
 
 /// `POST /mcp/worker`: the worker profile's fixed tool list.
 pub async fn worker(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Worker),
@@ -370,12 +374,14 @@ pub async fn worker(
 pub async fn reviewer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Reviewer),
@@ -387,12 +393,14 @@ pub async fn reviewer(
 pub async fn coordinator(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
     json_rpc(
         state,
         auth,
+        permit,
         headers,
         body,
         Some(maidan_mcp::Profile::Coordinator),
@@ -403,6 +411,7 @@ pub async fn coordinator(
 async fn json_rpc(
     state: AppState,
     auth: AuthContext,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     body: axum::body::Bytes,
     profile: Option<maidan_mcp::Profile>,
@@ -430,10 +439,30 @@ async fn json_rpc(
             }
             batch_response(&state, &auth, items, profile).await
         }
+        // Only a lone request can give its permit back. A batch runs its
+        // items in turn, so a wait in one would let the others run outside
+        // the ceiling.
         Ok(RequestBody::Single(request)) => {
-            single_response(&state, &auth, &headers, request, profile).await
+            let response = single_response(&state, &auth, &headers, request, profile);
+            match permit {
+                Some(Extension(permit)) => releasing_when_parked(permit, response).await,
+                None => response.await,
+            }
         }
     }
+}
+
+/// Run one request with a way to give back its in-flight permit. The MCP
+/// server uses it only for a `wait_for_*` call it has admitted: the caller
+/// holds the tool's capability, its workspace has a parking place, and its
+/// arguments and channel access passed (RED-008). A request refused before
+/// that keeps its permit until it answers, like any other. A request that
+/// took no permit (shedding off, or an exempt path) has nothing to give back.
+pub(crate) async fn releasing_when_parked<F: std::future::Future>(
+    permit: PermitSlot,
+    request: F,
+) -> F::Output {
+    maidan_mcp::parked_waits::with_permit_release(move || permit.release(), request).await
 }
 
 async fn single_response(
