@@ -124,7 +124,11 @@ async fn authorize(
             "http://{addr}/workspaces/{wid}/apps/{app_id}/oauth/authorize"
         ))
         .header("Authorization", auth)
-        .json(&json!({"redirect_uri": "https://app.example/cb", "state": "xyz"}))
+        .json(&json!({
+            "redirect_uri": "https://app.example/cb",
+            "state": "xyz",
+            "code_challenge": PKCE_CHALLENGE
+        }))
         .send()
         .await
         .unwrap();
@@ -154,7 +158,11 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     let code = authorize(&client, h.addr, &wid, &app_id, &auth).await;
     let mismatch = client
         .post(format!("http://{}/oauth/app/token", h.addr))
-        .json(&json!({"code": code, "redirect_uri": "https://evil.example/cb"}))
+        .json(&json!({
+            "code": code,
+            "redirect_uri": "https://evil.example/cb",
+            "code_verifier": PKCE_VERIFIER
+        }))
         .send()
         .await
         .unwrap();
@@ -163,7 +171,11 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     // The same code still exchanges with the correct redirect URI.
     let retry = client
         .post(format!("http://{}/oauth/app/token", h.addr))
-        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .json(&json!({
+            "code": code,
+            "redirect_uri": "https://app.example/cb",
+            "code_verifier": PKCE_VERIFIER
+        }))
         .send()
         .await
         .unwrap();
@@ -177,7 +189,11 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     let code = authorize(&client, h.addr, &wid, &app_id, &auth).await;
     let exch = client
         .post(format!("http://{}/oauth/app/token", h.addr))
-        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .json(&json!({
+            "code": code,
+            "redirect_uri": "https://app.example/cb",
+            "code_verifier": PKCE_VERIFIER
+        }))
         .send()
         .await
         .unwrap();
@@ -233,7 +249,11 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     // A second exchange of the same code is rejected (single-use, store-enforced).
     let replay = client
         .post(format!("http://{}/oauth/app/token", h.addr))
-        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .json(&json!({
+            "code": code,
+            "redirect_uri": "https://app.example/cb",
+            "code_verifier": PKCE_VERIFIER
+        }))
         .send()
         .await
         .unwrap();
@@ -282,6 +302,59 @@ async fn oauth_pkce_requires_matching_verifier() {
         }
     };
 
+    // SEC-016: a code is minted only against an S256 challenge. None, or one
+    // that is not 43 base64url characters, is a 400.
+    for challenge in [None, Some("plain-verifier"), Some(&"=".repeat(43)[..])] {
+        let mut body = json!({"redirect_uri": "https://app.example/cb", "state": "s"});
+        if let Some(challenge) = challenge {
+            body["code_challenge"] = json!(challenge);
+        }
+        let resp = client
+            .post(format!(
+                "http://{}/workspaces/{wid}/apps/{app_id}/oauth/authorize",
+                h.addr
+            ))
+            .header("Authorization", &auth)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "challenge {challenge:?}");
+    }
+
+    // A code stored without a challenge (minted before PKCE was required) is
+    // refused at the exchange, not honoured on the code alone.
+    let legacy = "legacy-code-without-a-challenge";
+    h.store
+        .insert_oauth_code(maidan_types::NewOAuthCode {
+            code_hash: {
+                use base64::Engine;
+                use sha2::Digest;
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(sha2::Sha256::digest(legacy.as_bytes()))
+            },
+            app_id: maidan_types::AppId(app_id.parse().unwrap()),
+            workspace_id: maidan_types::WorkspaceId(wid.parse().unwrap()),
+            redirect_uri: "https://app.example/cb".into(),
+            code_challenge: None,
+            expires_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+        })
+        .await
+        .unwrap();
+    for verifier in [None, Some(PKCE_VERIFIER)] {
+        let mut body = json!({"code": legacy, "redirect_uri": "https://app.example/cb"});
+        if let Some(verifier) = verifier {
+            body["code_verifier"] = json!(verifier);
+        }
+        let resp = client
+            .post(format!("http://{}/oauth/app/token", h.addr))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "verifier {verifier:?}");
+    }
+
     // Missing verifier on a PKCE-bound code → 400.
     let code = mint(true).await;
     let no_verifier = client
@@ -320,5 +393,67 @@ async fn oauth_pkce_requires_matching_verifier() {
         .unwrap();
     assert_eq!(ok.status(), 201);
 
+    h.server.abort();
+}
+
+/// SEC-016: registering an app takes token:admin, the capability that installs
+/// it. A workspace:write worker token could otherwise register an app called
+/// "github" for an admin to install later.
+#[tokio::test]
+async fn registering_an_app_needs_token_admin() {
+    let Some(h) = spawn().await else {
+        return;
+    };
+    let (wid, admin_secret) = seed_admin_token(h.store.as_ref()).await;
+    let worker = h
+        .store
+        .create_member(maidan_types::NewMember {
+            workspace_id: wid,
+            handle: "worker".into(),
+            display_name: None,
+            kind: maidan_types::MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let worker_secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: wid,
+            member_id: worker.id,
+            app_installation_id: None,
+            token_hash: hash_secret(worker_secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::WORKSPACE_WRITE.into(),
+                capability::WORKSPACE_READ.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap();
+    let wid = wid.0.to_string();
+    let refused = client
+        .post(format!("http://{}/workspaces/{wid}/apps", h.addr))
+        .header(
+            "Authorization",
+            format!("Bearer {}", worker_secret.as_str()),
+        )
+        .json(&json!({"slug": "github", "name": "GitHub"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 403);
+    assert!(h
+        .store
+        .list_apps(maidan_types::WorkspaceId(wid.parse().unwrap()))
+        .await
+        .unwrap()
+        .is_empty());
+
+    create_app(&client, h.addr, &wid, &format!("Bearer {admin_secret}")).await;
     h.server.abort();
 }
