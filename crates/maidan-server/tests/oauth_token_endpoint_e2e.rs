@@ -997,3 +997,172 @@ async fn a_refresh_token_stays_with_the_tenant_and_client_it_was_issued_to() {
         0
     );
 }
+
+/// Move the start of `t`'s lineage for `client_id` to `age` ago, as if the
+/// member had consented then. The grant row is the lineage's start; its
+/// refresh tokens are left as minted, so only the lineage's age changes.
+async fn age_lineage(h: &Harness, t: &Tenant, client_id: &str, age: chrono::Duration) {
+    let moved = sqlx::query(
+        "UPDATE oauth_grants SET created_at = ?
+         WHERE workspace_id = ? AND client_id = ? AND revoked_at IS NULL",
+    )
+    .bind(chrono::Utc::now() - age)
+    .bind(t.ws.0)
+    .bind(client_id)
+    .execute(&h.pool)
+    .await
+    .unwrap();
+    assert_eq!(moved.rows_affected(), 1, "one live grant to age");
+}
+
+#[tokio::test]
+async fn a_refresh_at_89_days_works_and_one_at_91_days_is_refused_and_ends_the_lineage() {
+    let h = spawn(Some(ORIGIN)).await;
+    let t = tenant(&h, "lifetime").await;
+    let other = tenant(&h, "lifetime-other").await;
+    register(&h, "public-client", None).await;
+    let client = Auth::Public("public-client");
+    let first = issue(&h, &t, "public-client").await;
+    // Another tenant's lineage for the same client, consented today.
+    let bystander = issue(&h, &other, "public-client").await;
+
+    age_lineage(&h, &t, "public-client", chrono::Duration::days(89)).await;
+    let second = pair(refresh(&h, client, &first.refresh, &[]).await).await;
+    assert_eq!(mcp_initialize(&h, &second.access).await, StatusCode::OK);
+
+    age_lineage(&h, &t, "public-client", chrono::Duration::days(91)).await;
+    let refused = refresh(&h, client, &second.refresh, &[]).await;
+    let body = assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_grant").await;
+    assert!(
+        body["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("90 days"),
+        "{body}"
+    );
+
+    // The lineage is gone: its access token stops at once, its grant leaves
+    // the member's list, and its refresh token is revoked, not just refused.
+    assert_eq!(
+        mcp_initialize(&h, &second.access).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(h
+        .store
+        .list_oauth_grants(t.ws, t.member)
+        .await
+        .unwrap()
+        .is_empty());
+    let hash = URL_SAFE_NO_PAD.encode(Sha256::digest(second.refresh.as_bytes()));
+    assert!(h
+        .store
+        .get_oauth_refresh_token(&hash)
+        .await
+        .unwrap()
+        .unwrap()
+        .revoked_at
+        .is_some());
+    assert_eq!(lineage_revocations(&h, t.ws, "lineage_lifetime").await, 1);
+
+    // The other tenant's lineage is untouched.
+    assert_eq!(mcp_initialize(&h, &bystander.access).await, StatusCode::OK);
+    pair(refresh(&h, client, &bystander.refresh, &[]).await).await;
+    assert_eq!(
+        lineage_revocations(&h, other.ws, "lineage_lifetime").await,
+        0
+    );
+
+    // Consenting again starts a lineage with its own 90 days.
+    let fresh = issue(&h, &t, "public-client").await;
+    assert_eq!(mcp_initialize(&h, &fresh.access).await, StatusCode::OK);
+    pair(refresh(&h, client, &fresh.refresh, &[]).await).await;
+}
+
+#[tokio::test]
+async fn a_rotation_near_the_end_of_a_lineage_mints_tokens_that_end_with_it() {
+    let h = spawn(Some(ORIGIN)).await;
+    let t = tenant(&h, "lifetime-edge").await;
+    register(&h, "public-client", None).await;
+    let first = issue(&h, &t, "public-client").await;
+    age_lineage(
+        &h,
+        &t,
+        "public-client",
+        chrono::Duration::days(90) - chrono::Duration::minutes(10),
+    )
+    .await;
+
+    let resp = refresh(&h, Auth::Public("public-client"), &first.refresh, &[]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = resp.json().await.unwrap();
+    let expires_in = body["expires_in"].as_i64().unwrap();
+    assert!(
+        (1..=600).contains(&expires_in),
+        "the access token lives until the lineage ends, not an hour: {expires_in}"
+    );
+    let grant = h
+        .store
+        .list_oauth_grants(t.ws, t.member)
+        .await
+        .unwrap()
+        .remove(0);
+    let ends = grant.created_at + chrono::Duration::days(90);
+    let access = h
+        .store
+        .get_active_api_token_by_hash(&hash_secret(body["access_token"].as_str().unwrap()))
+        .await
+        .unwrap();
+    assert!(access.expires_at.unwrap() <= ends);
+    let hash = URL_SAFE_NO_PAD.encode(Sha256::digest(
+        body["refresh_token"].as_str().unwrap().as_bytes(),
+    ));
+    let rotated = h
+        .store
+        .get_oauth_refresh_token(&hash)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        rotated.expires_at <= ends,
+        "no refresh token outlives its lineage either"
+    );
+}
+
+#[tokio::test]
+async fn a_consent_after_a_lineage_ends_starts_a_new_one_and_a_code_from_an_ended_one_is_refused() {
+    let h = spawn(Some(ORIGIN)).await;
+    let t = tenant(&h, "lifetime-consent").await;
+    register(&h, "public-client", None).await;
+    let client = Auth::Public("public-client");
+
+    // A lineage that ends while its code waits: the exchange is refused and
+    // the lineage revoked, so nothing is minted past its end.
+    let (code, verifier) = code_for(&h, &t, "public-client").await;
+    age_lineage(&h, &t, "public-client", chrono::Duration::days(91)).await;
+    let refused = exchange(&h, client, &code, &verifier).await;
+    assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_grant").await;
+    assert_eq!(lineage_revocations(&h, t.ws, "lineage_lifetime").await, 1);
+
+    // A lineage that ended without being refreshed: the next consent does
+    // not reuse its grant, which would hand the client tokens the next
+    // refresh refuses, but revokes it and starts another.
+    let old = issue(&h, &t, "public-client").await;
+    let old_grant = h
+        .store
+        .list_oauth_grants(t.ws, t.member)
+        .await
+        .unwrap()
+        .remove(0);
+    age_lineage(&h, &t, "public-client", chrono::Duration::days(91)).await;
+    let new = issue(&h, &t, "public-client").await;
+    let grants = h.store.list_oauth_grants(t.ws, t.member).await.unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_ne!(grants[0].lineage_id, old_grant.lineage_id);
+    assert_eq!(
+        mcp_initialize(&h, &old.access).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(mcp_initialize(&h, &new.access).await, StatusCode::OK);
+    pair(refresh(&h, client, &new.refresh, &[]).await).await;
+    assert_eq!(lineage_revocations(&h, t.ws, "lineage_lifetime").await, 2);
+}

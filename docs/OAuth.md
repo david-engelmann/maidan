@@ -79,7 +79,8 @@ P3 shipped. These are its controls and what each one does.
 - **Code exchange.** The code is read and fully validated (client, redirect
   URI, resource, PKCE verifier) before one atomic statement consumes it. The
   exchange returns an access token (one hour) and a refresh token (30 days),
-  minted with their audit row in one transaction.
+  minted with their audit row in one transaction, neither past the end of
+  its lineage.
 - **Refresh rotation.** One transaction marks the presented refresh token used,
   only if it is unused, unrevoked, unexpired and its grant is live, and mints
   the new access token and refresh token under the same grant and lineage. The
@@ -95,6 +96,18 @@ P3 shipped. These are its controls and what each one does.
   the code's client, member, workspace and scope (reason `code_reuse`). The
   code without its verifier is refused and revokes nothing, since anyone who
   saw the redirect holds it.
+- **A lineage lasts 90 days.** It starts when the member consents (the
+  grant's `created_at`) and ends 90 days later, however often it was
+  refreshed (decided 2026-11-10). No access or refresh token minted under it
+  expires after that end, so a rotation late in the lineage returns an
+  `expires_in` under an hour. A refresh or code exchange after the end is
+  `invalid_grant` and revokes the lineage, with an `oauth_lineage.revoke`
+  audit row (reason `lineage_lifetime`); the person consents again. A consent
+  that finds a live grant past its end revokes it the same way and starts a
+  new lineage, rather than reusing one the next refresh would refuse. A
+  second consent within the 90 days, for the same client and scope, reuses
+  the grant and ends with it. The 90 days is a constant
+  (`LINEAGE_LIFETIME_DAYS`), not a setting.
 - **A revoked grant stops its tokens and codes.** The bearer lookup refuses a
   token whose grant is revoked, and a lineage revocation also revokes the
   token rows themselves, so the next request fails either way. A code whose
@@ -118,7 +131,14 @@ P3 shipped. These are its controls and what each one does.
   connection, and the connection is pinned to the addresses checked
   (`MAIDAN_ALLOW_PRIVATE_EGRESS` does not open this). The document must name
   its own URL as its `client_id`, may be at most 16 KiB, and its
-  `client_name` follows the rules a self-registered client's does. The
+  `client_name` follows the rules a self-registered client's does. A
+  document that passes every check is held in memory for five minutes,
+  keyed by its URL, so the authorize, consent and token requests of one
+  sign-in fetch it once (decided 2026-11-10). A refused or failed fetch is
+  not held, a held document is fetched again after five minutes, and each
+  process holds at most 1,024, evicting the oldest. Holding it saves
+  fetches and grants nothing: the pre-registered lookup, the host check and
+  the client row's revocation still apply on every request. The
   guard is against server-side request forgery, which is the operator's
   concern, so it is an instance setting and not a workspace one: a workspace
   fresh from sign-up resolves the same clients as every other. The hosted
@@ -171,16 +191,45 @@ The audit of 2026-11-10 checked the server against OAuth 2.1, RFC 7636, RFC
 | Tokens are bound to the MCP resource and their workspace | An OAuth access token resolves only on `/mcp/streamable` (RFC 8707); `/mcp`, REST and a session from a token refuse it. It acts as its member in its own workspace, and another tenant's resources refuse it | `oauth_token_endpoint_e2e`: `an_oauth_access_token_is_accepted_on_the_mcp_resource_and_nowhere_else`, `a_refresh_token_stays_with_the_tenant_and_client_it_was_issued_to`; `oauth_dynamic_registration_e2e::a_token_a_member_of_a_authorized_for_a_self_registered_client_reads_nothing_of_b`; `launch_gate_e2e` step 8 |
 | Scopes never exceed the grant, the client or the member | Authorize cuts a request to delegatable capabilities the client allows and the member holds; a refresh may narrow, never widen; a narrowed client stops refreshing. `approval:grant` is stripped at mint | `oauth_scope_contract_e2e` (all four tests); `oauth_token_endpoint_e2e::a_refresh_can_narrow_the_scope_but_never_widen_it`; `approval_gate_e2e::an_oauth_token_cannot_accept_a_gate` |
 | Refresh tokens rotate, and a reuse ends the lineage | Each refresh marks the token used and mints a new pair in one transaction; a used one presented again revokes every grant, access token and refresh token of its lineage. A refresh token is bound to its client and resource | `oauth_token_endpoint_e2e`: `a_refresh_rotates_the_pair_and_the_new_pair_works`, `reusing_a_refresh_token_revokes_the_whole_lineage`, `a_refresh_naming_another_resource_is_refused_and_keeps_its_token` |
+| A lineage ends 90 days after consent | The grant's `created_at` starts it. No token minted under it outlives that end; a refresh or exchange after it is `invalid_grant` and revokes the lineage, and a consent after it starts a new one | `oauth_token_endpoint_e2e`: `a_refresh_at_89_days_works_and_one_at_91_days_is_refused_and_ends_the_lineage`, `a_rotation_near_the_end_of_a_lineage_mints_tokens_that_end_with_it`, `a_consent_after_a_lineage_ends_starts_a_new_one_and_a_code_from_an_ended_one_is_refused`; `oauth_grants`: `a_grant_reads_back_when_its_lineage_began_sqlite`, `a_grant_reads_back_when_its_lineage_began_postgres` |
 | Revocation ends access at once | `/oauth/revoke`, the grants page and the grants API revoke the token rows themselves, and the bearer lookup also refuses a token whose grant is revoked | `oauth_token_endpoint_e2e::revocation_ends_an_access_token_or_a_refresh_lineage_and_ignores_other_clients_tokens`; `oauth_grant_management_e2e` (all three tests) |
 | A member who leaves takes their apps with them | SCIM deactivation and deprovision revoke every lineage the member consented to, in the transaction that revokes their tokens and sessions, so reactivating them does not reconnect an app. A tombstoned or SCIM-inactive member's token never resolves | `oauth_hardening_e2e::deactivating_a_member_disconnects_their_apps_for_good_and_leaves_another_tenants` |
 | Dynamic registration grants nothing by itself | Public clients only, with server-chosen ids (`dyn-<uuid>`), loopback, app-scheme or listed `https` redirects, a cleaned and unverified name, bounded bodies, a per-address rate limit and a global cap | `oauth_dynamic_registration_e2e`; `register::tests`; `oauth_registration_rate_limit_e2e` |
-| Client metadata documents cannot be turned on the server | Only listed hosts, `https`, the default port, no redirects, public addresses only, 16 KiB, ten seconds, and a document whose `client_id` is its own URL. The cached row is never an authority | `oauth_authorize_signin_hosts_e2e::a_listed_host_resolves_for_every_fresh_workspace_and_nothing_else_is_fetched`; `oauth_hardening_e2e`: `a_listed_metadata_host_on_a_private_address_is_never_fetched`, `a_metadata_document_is_this_clients_only_when_its_client_id_is_its_own_url`, `a_metadata_document_past_the_size_limit_or_with_a_disguised_name_is_refused`; `oauth_metadata_client_row_e2e` |
+| Client metadata documents cannot be turned on the server | Only listed hosts, `https`, the default port, no redirects, public addresses only, 16 KiB, ten seconds, and a document whose `client_id` is its own URL. Only a document that passed all of that is held, for five minutes, in memory; a failed fetch is not. Neither the held document nor the client row is an authority: a revoked row is refused whatever is held | `oauth_authorize_signin_hosts_e2e`: `a_listed_host_resolves_for_every_fresh_workspace_and_nothing_else_is_fetched`, `a_document_is_fetched_once_in_five_minutes_and_again_after`, `a_failed_fetch_is_not_held_and_the_next_request_fetches_again`, `a_held_document_never_outranks_a_revoked_client`; `document_cache::tests`; `oauth_hardening_e2e`: `a_listed_metadata_host_on_a_private_address_is_never_fetched`, `a_metadata_document_is_this_clients_only_when_its_client_id_is_its_own_url`, `a_metadata_document_past_the_size_limit_or_with_a_disguised_name_is_refused`; `oauth_metadata_client_row_e2e` |
 | Secrets are unguessable and never stored or logged | Codes and refresh tokens carry 256 random bits, access tokens about 244, and each is stored as its SHA-256. A presented bearer or client secret is compared in constant time. Token responses are `no-store`. Spans omit query strings and mark `Authorization`, `Cookie`, `Set-Cookie` and `Location` sensitive | `oauth_hardening_e2e::the_redirect_that_hands_over_a_code_never_reaches_the_trace`; `trace_redaction_e2e`; `oauth_token_endpoint_e2e` (every `pair` checks `no-store`) |
 | No oracle, and guessing is rate limited | Revocation answers 200 for a known, unknown or foreign token alike; a pending consent request is bound to its member. The token, revocation, authorize and consent endpoints have their own per-client and per-address buckets | `oauth_rate_limit_e2e` (all five tests); `oauth_token_endpoint_e2e::revocation_ends_an_access_token_or_a_refresh_lineage_and_ignores_other_clients_tokens` |
 | MCP discovery follows the specification | RFC 9728 metadata at `/.well-known/oauth-protected-resource/mcp/streamable`, a 401 with `WWW-Authenticate: Bearer resource_metadata=...`, and an RFC 8414 document that lists only what is served | `oauth_resource_metadata_e2e` (all three tests) |
 
 Client identifiers are not secret (RFC 6749 section 2.2), so the token
 endpoint may say that a client is unknown or must authenticate.
+
+### Decided after the audit (2026-11-10)
+
+The audit left four questions for the maintainer. All four are decided.
+
+- **Client metadata documents are held for five minutes.** Built: see
+  "Client metadata hosts" above. Before, one sign-in fetched the client's
+  document up to three times, and a flood of authorize requests became a
+  flood of fetches to the listed hosts. The CIMD draft says a server should
+  cache.
+- **A lineage ends 90 days after consent.** Built: see "A lineage lasts 90
+  days" above. Before, each rotation granted another 30 days, so a client in
+  use stayed connected until someone revoked it.
+- **Consent takes any live session; no fresh sign-in.** Not changed. Consent
+  already needs a session the person signed in to, whose member is a human
+  still in the workspace, on a same-origin request; sessions live up to
+  `MAIDAN_SESSION_TTL_SECS` (8 hours by default). Requiring a recent sign-in
+  (OIDC `max_age` or `prompt=login`) would add a sign-in to every connector
+  setup, for little: someone holding the person's live session can already
+  act as them in the console.
+- **Revoking a client leaves its access tokens to their hour.** Not changed.
+  Revoking a client (`oauth_clients.revoked_at`) or turning off
+  `MAIDAN_OAUTH_DYNAMIC_REGISTRATION` stops every refresh and exchange at
+  once; an access token already minted lives out its hour at most, because
+  the bearer lookup checks the token's grant, not its client. Ending it at
+  once would add a join to `get_active_by_hash`, the hottest query on both
+  backends, to shorten a window that is already at most an hour. Revoking
+  the grants or the member's lineages ends their tokens at once.
 
 ## Dynamic client registration
 
