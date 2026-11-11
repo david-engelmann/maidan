@@ -214,6 +214,18 @@ class CoordinatorWake(unittest.TestCase):
         self.assertTrue(all(w["timeout_ms"] == 300000 for w in waits))
         self.assertTrue(all(c["path"] == "/mcp/coordinator" for c in fake.calls))
 
+    def test_a_late_row_below_the_cursor_still_wakes_it(self):
+        # The router wrote a stall late, with a source_log_id below the row
+        # the wait returned, so no later wait would ever return it.
+        fake = Fake(
+            notes=[note(5, "message_posted", read=True)],
+            waits=[note(6, "message_posted")],
+            also={6: [note(4, "claim_stalled", "no progress for 20m")]},
+        )
+        out = self.against(fake, ["--max-wait", "5"])
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("1 pending: 1 claim_stalled", out.stdout)
+
     def test_an_unread_attention_notification_wakes_it_without_waiting(self):
         fake = Fake(notes=[note(9, "thread_blocked", "blocked (human)")])
         out = self.against(fake)

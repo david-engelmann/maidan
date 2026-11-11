@@ -231,9 +231,18 @@ while :; do
   fi
   got="$(call_retrying wait_for_notification "$(wait_args "$member" "$timeout_ms" "$cursor")" \
     $((timeout_ms / 1000 + 30)))"
-  [ "$got" = null ] && continue
-  cursor="$(jq --argjson c "$cursor" '[.source_log_id, $c] | max' <<<"$got")"
-  if [ "$(jq --argjson kinds "$kinds_json" '.kind as $k | $kinds | any(. == $k)' <<<"$got")" = true ]; then
+  if [ "$got" != null ]; then
+    cursor="$(jq --argjson c "$cursor" '[.source_log_id, $c] | max' <<<"$got")"
+    if [ "$(jq --argjson kinds "$kinds_json" '.kind as $k | $kinds | any(. == $k)' <<<"$got")" = true ]; then
+      digest
+      exit 0
+    fi
+  fi
+  # A row the router wrote late can carry a source_log_id below the cursor,
+  # so the wait never returns it. After a timeout or a row of another kind,
+  # look at what is unread before waiting again.
+  unread="$(call_retrying list_notifications "$(list_args "$member" "$DIGEST_LIMIT" true)" 30)"
+  if [ "$(pending_count <<<"$unread")" -gt 0 ]; then
     digest
     exit 0
   fi
