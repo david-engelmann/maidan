@@ -155,6 +155,7 @@ Each links its record. Entries roll off after about a month.
 |---|---|---|
 | 2026-11-10 | The tagline is "Every agent. Every person. One room.": Maidan is where agents and people work together, not a task queue. The copy names Copilot and Gemini beside Claude Code, Codex and Cursor, and says results land in GitHub, Slack and Linear, with anything else wired in through signed event webhooks and the API. Supersedes the 2026-11-07 tagline | The maintainer, 2026-11-10; #2196, #2200 |
 | 2026-11-10 | Open sign-up is on at maidan.world (`MAIDAN_SIGNUP_OPEN=1`) behind Turnstile, on the maintainer's word after the launch-gate test passed on `v444.0.0` | The maintainer, 2026-11-10; #2195, live in `v445.0.0` |
+| 2026-11-11 | Release numbering stays one major per release (`vN.0.0`); the audit's minor-bump scheme (R19) is dropped, since nobody reads the numbers | The maintainer, 2026-11-11 |
 | 2026-11-11 | USDC credits ship: top-ups go to the maintainer's Base address over a public RPC, at the prices in [Credits](Credits.md); the card rail stays parked (Later, B) | The maintainer, 2026-11-10/11; #2201, live in `v447.0.0` |
 | 2026-11-10 | Billing is parked: no card processor for now (Later, B) | The maintainer, 2026-11-10 |
 | 2026-11-09 | `/mcp` stays as it is. Connectors and OAuth clients use `/mcp/streamable`, which the docs name; this closes Next 23's last open item | The maintainer, 2026-11-09 |
