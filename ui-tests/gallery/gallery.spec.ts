@@ -147,8 +147,8 @@ for (const vp of VIEWPORTS) {
 
     test(`board in flight, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.flight);
-      // A phone shows one lane at a time; a desktop shows all seven tasks.
-      if (vp.mobile) await expect(page.locator("button.task").first()).toBeVisible();
+      // Below 900px the board shows one lane at a time; wider, all seven tasks.
+      if (vp.width < 900) await expect(page.locator("button.task").first()).toBeVisible();
       else await expect(page.locator("button.task")).toHaveCount(7);
       await shoot(page, `board-in-flight-${vp.tag}`, vp.width, errors);
     });
