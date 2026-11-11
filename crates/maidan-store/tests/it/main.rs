@@ -638,6 +638,9 @@ mod tombstoned_member_tokens;
 #[path = "../trace_context.rs"]
 mod trace_context;
 
+#[path = "../typed_reference_rules.rs"]
+mod typed_reference_rules;
+
 #[path = "../unique_thread_attributes.rs"]
 mod unique_thread_attributes;
 

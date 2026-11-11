@@ -6,7 +6,7 @@ use maidan_fsm::ThreadAction;
 use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewReference, NewThread, NewWorkspace, RefSide,
+    MemberKind, NewChannel, NewMember, NewMessage, NewReference, NewThread, NewWorkspace, RefSide,
     RelationKind, ReviewDecision,
 };
 
@@ -140,11 +140,21 @@ async fn run_suite(store: &dyn Store) {
         .transition_thread(t2.id, owner.id, ThreadAction::StartReview)
         .await
         .unwrap();
-    // A message (any UUID) refutes this thread.
+    // A real message on the thread refutes it.
+    let rebuttal = store
+        .post_message(NewMessage {
+            thread_id: t2.id,
+            author_id: reviewer.id,
+            body: "this is wrong".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("rebuttal");
     store
         .add_reference(NewReference {
             src_kind: RefSide::Message,
-            src_id: uuid::Uuid::new_v4(),
+            src_id: rebuttal.id.0,
             dst_kind: RefSide::Thread,
             dst_id: t2.id.0,
             relation: RelationKind::Refutes,
