@@ -68,6 +68,9 @@ const READ_CAP_WRITES: &[(&str, &str)] = &[
     ("set_member_email", capability::WORKSPACE_READ),
     ("set_notification_pref", capability::WORKSPACE_READ),
     ("snooze_notification", capability::WORKSPACE_READ),
+    // A top-up intent moves no money: it records the amount a payment must
+    // match, so any member, and an agent past its allowance, may open one.
+    ("top_up_credits", capability::WORKSPACE_READ),
     ("unfollow_channel", capability::WORKSPACE_READ),
     ("unfollow_member", capability::WORKSPACE_READ),
     ("unfollow_thread", capability::WORKSPACE_READ),
