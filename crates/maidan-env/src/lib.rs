@@ -495,6 +495,7 @@ mod tests {
             "MAIDAN_JEV_BASE_URL",
             "an endpoint that carries no credential",
         ),
+        ("MAIDAN_MAX_STREAMS_PER_CREDENTIAL", "a count"),
         ("MAIDAN_PRIVATE_EGRESS_HOSTS", "a list of hosts"),
         ("MAIDAN_SECRET_EGRESS_ALLOWLIST", "a list of hosts"),
         ("MAIDAN_SIGNUP_PRIVACY_URL", "a public page's address"),
