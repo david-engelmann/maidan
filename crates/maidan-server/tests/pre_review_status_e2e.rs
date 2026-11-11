@@ -5,7 +5,7 @@
 //!
 //! The status is posted only for a review thread whose reporter holds the
 //! `pre-review` governance skill, only under the context
-//! `pre-review`, only for a `PASS` or `FIX-FIRST` verdict, and only at the
+//! `pre-review`, only for a `PASS` (or `MERGE`) or `FIX-FIRST` verdict, and only at the
 //! head the thread was briefed on; its description is built by Maidan from
 //! the reporter's own handle and family. Anything refused posts nothing and
 //! leaves a warning on the delivery row. The comment is delivered every time.
@@ -394,7 +394,8 @@ async fn a_pass_posts_success_at_the_briefed_head_named_by_the_reporters_own_usa
     h.deliver(
         &review,
         Some(("openai", "gpt-5")),
-        &review_result("PASS", "pre-review", HEAD, "Review: PASS"),
+        // A red-team review says MERGE for a pass; the status says PASS.
+        &review_result("MERGE", "pre-review", HEAD, "Review: PASS"),
     )
     .await;
 

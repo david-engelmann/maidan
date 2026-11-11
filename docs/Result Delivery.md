@@ -173,8 +173,9 @@ the target's repository, only when every rule holds:
 - **`check.context` is exactly `pre-review`.** It is the only entry in the
   allowlist, so a review can never post a context another gate owns
   (`stamp`, `security`, `review-lane`). Any other context posts nothing.
-- **`status` is `reviewed` and `verdict` is exactly `PASS` or `FIX-FIRST`.**
-  `PASS` posts `success`, `FIX-FIRST` posts `failure`. `check.state` and
+- **`status` is `reviewed` and `verdict` is exactly `PASS`, `MERGE` or `FIX-FIRST`.**
+  `PASS` and `MERGE` (a red-team review's word for a pass) post `success`,
+  `FIX-FIRST` posts `failure`. `check.state` and
   `check.description` are ignored.
 - **The head is the briefed one.** The thread's description carries a line
   `Head to review: <full sha>` (review children Maidan spawns write it;

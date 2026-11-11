@@ -71,12 +71,14 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// Exactly `PASS` or `FIX-FIRST`. No case folding or trimming: the gate
-    /// compares the words, and a verdict a model spelled another way is not
-    /// one Maidan should guess at.
+    /// Exactly `PASS`, `MERGE` or `FIX-FIRST`. A red-team review says
+    /// `MERGE` when it found nothing blocking; the status still says `PASS`,
+    /// the gate's word. No case folding or trimming: the gate compares the
+    /// words, and a verdict a model spelled another way is not one Maidan
+    /// should guess at.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw {
-            "PASS" => Some(Self::Pass),
+            "PASS" | "MERGE" => Some(Self::Pass),
             "FIX-FIRST" => Some(Self::FixFirst),
             _ => None,
         }
@@ -434,7 +436,19 @@ mod tests {
             Verdict::parse("FIX-FIRST").map(Verdict::state),
             Some(CommitStatusState::Failure)
         );
-        for refused in ["pass", "Pass", " PASS", "FIX_FIRST", "FAIL", "APPROVE", ""] {
+        // A red-team review's word for a pass; the status still says PASS.
+        assert_eq!(Verdict::parse("MERGE"), Some(Verdict::Pass));
+        assert_eq!(Verdict::parse("MERGE").map(Verdict::as_str), Some("PASS"));
+        for refused in [
+            "pass",
+            "Pass",
+            " PASS",
+            "merge",
+            "FIX_FIRST",
+            "FAIL",
+            "APPROVE",
+            "",
+        ] {
             assert_eq!(Verdict::parse(refused), None, "{refused:?}");
         }
     }
