@@ -329,13 +329,18 @@ async fn a_full_admins_hook_still_fires_as_its_creator() {
 async fn a_narrow_admin_is_refused_the_hook_at_registration_and_when_it_fires() {
     let h = spawn().await;
     let c = case(&h, "narrow").await;
-    // workspace:admin, but not the channel:admin the tool needs.
+    // Every registration capability, but not the channel:admin the tool
+    // needs.
     let narrow = member(h.store.as_ref(), c.ws, "narrow").await;
     let narrow_token = mint(
         h.store.as_ref(),
         c.ws,
         narrow,
-        vec!["workspace:admin".into(), "workspace:read".into()],
+        vec![
+            "workspace:admin".into(),
+            "workspace:write".into(),
+            "workspace:read".into(),
+        ],
     )
     .await;
 
