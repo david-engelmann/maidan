@@ -726,6 +726,7 @@ async fn seed_server_made(h: &Harness, victim: &mut Victim, owner: MemberId) {
                 "{}",
             )
             .await
+            .unwrap()
             .unwrap();
         victim.ids.insert("deliveries".into(), delivery.to_string());
     }

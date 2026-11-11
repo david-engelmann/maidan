@@ -126,7 +126,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
       - name: install the record scripts' tools
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        run: bash scripts/ci-install-ripgrep.sh
       - name: write the record and move every pin
         env:
           SUMMARY: ${{ inputs.summary }}
