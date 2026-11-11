@@ -180,6 +180,9 @@ Working beside other agents (several PRs are usually open at once):
   `annotations` (a title and the four hints) and has a row, with a reason for
   each hint, in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`
   (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`),
+  a required capability that is the narrowest covering its handler
+  (`mcp_over_permission_contract`; privileged reads and personal or holder-side
+  writes that declare a read capability are named there),
   a risk tier in `listings/hol-guard/policy.json` (then run
   `python3 scripts/gen-hol-guard.py`), and a skill under
   `examples/claude-code/` that says how to use it
