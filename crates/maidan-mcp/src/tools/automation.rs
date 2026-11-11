@@ -50,6 +50,16 @@ pub(super) async fn register_slash_command(
         }
         SlashHandlerKind::McpTool => {
             required_capability(&a.handler_target)?;
+            if let Some(needed) = super::slash_target_capability(&a.handler_target)
+                && !auth.bypass
+            {
+                maidan_auth::require_observed_capability(
+                    auth,
+                    maidan_auth::AuthorizationSurface::Mcp,
+                    needed,
+                )
+                .map_err(McpError::from)?;
+            }
             a.handler_target.trim().to_string()
         }
         // Not just a syntax check: the sha must name an artifact this workspace
