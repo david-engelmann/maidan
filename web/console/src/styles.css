@@ -1522,3 +1522,9 @@ h1, h2, h3, strong, b { font-weight: 600; }
   .rail-foot { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; min-height: 44px; min-width: 44px; padding: 0 0.8rem; border-radius: var(--r-md); color: var(--muted); text-decoration: none; font-size: var(--text-md); }
   .rail-foot:hover { background: var(--hover); color: var(--ink); }
 }
+
+/* A growing field in a row form shrinks with its card. Its grid track and its
+   control both default to their content's width, so a select whose longest
+   option is a long task title pushed Files 173px past a 900px window. */
+.row-form .field.grow { flex-basis: 16rem; grid-template-columns: minmax(0, 1fr); }
+.row-form .field.grow select, .row-form .field.grow input { width: 100%; min-width: 0; text-overflow: ellipsis; }
