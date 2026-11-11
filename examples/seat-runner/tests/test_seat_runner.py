@@ -678,7 +678,6 @@ writable_roots = {values['writable_roots']}
             "a plain-http endpoint": (f'{self.ZCODE}\napi_base_url = "http://api.z.ai/api/anthropic"', "[]"),
             "an unknown api_type": (f'{self.ZCODE}\napi_type = "grpc"', "[]"),
             "writable_roots it cannot honour": (self.ZCODE, f'["{self.tmp}"]'),
-            "a state_dir inside the checkout": (f'{self.ZCODE}\nstate_dir = "{self.tmp / "zstate"}"', "[]"),
         }
         os.environ["ZAI_API_KEY"] = "zai-key"
         for why, (extra, roots) in refused.items():
@@ -687,6 +686,12 @@ writable_roots = {values['writable_roots']}
                             writable_roots=roots)
         with self.assertRaises(seat_runner.ConfigError, msg="api_key_env is zcode's"):
             self.runner(maidan, harness_extra=self.ZCODE)
+        path = self.config(maidan, name="zcode", model="glm-5.3", models='["glm-5.3"]',
+                           harness_extra=self.ZCODE, writable_roots="[]")
+        path.write_text(path.read_text().replace(f'state_dir = "{self.state}"',
+                                                 f'state_dir = "{self.tmp / "zstate"}"'))
+        with self.assertRaises(seat_runner.ConfigError, msg="a state_dir inside the checkout"):
+            seat_runner.load_config(path, dict(os.environ))
 
     def test_a_glm_seat_reports_zai_and_gets_only_its_own_key(self):
         os.environ.update({"ZAI_API_KEY": "zai-key", "ANTHROPIC_API_KEY": "anthropic-key"})
