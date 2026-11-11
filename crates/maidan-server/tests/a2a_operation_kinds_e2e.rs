@@ -240,13 +240,15 @@ async fn every_a2a_method_writes_what_its_kind_says() {
 }
 
 /// A change that writes no event of its own gets a `mutation` row naming the
-/// A2A method, not the endpoint it came through.
+/// A2A method, not the endpoint it came through. Deleting a push config is
+/// one (it is idempotent, so the config need not exist); creating one now
+/// records itself as `a2a_push_config.create`.
 #[tokio::test]
 async fn a_change_that_records_nothing_itself_is_recorded_under_its_method() {
     let w = world().await;
     let from = w.last_audit_id().await;
-    let (_, params) = request(Method::CreatePushNotificationConfig);
-    let resp = w.rpc("CreateTaskPushNotificationConfig", params).await;
+    let (_, params) = request(Method::DeletePushNotificationConfig);
+    let resp = w.rpc("DeleteTaskPushNotificationConfig", params).await;
     assert!(resp.get("error").is_none(), "{resp}");
     let audit = w.audit_after(from).await;
     assert_eq!(audit.len(), 1, "{audit:?}");
@@ -258,7 +260,7 @@ async fn a_change_that_records_nothing_itself_is_recorded_under_its_method() {
     assert_eq!(row.metadata["binding"], "jsonrpc");
     assert_eq!(
         row.metadata["operation"],
-        "CreateTaskPushNotificationConfig"
+        "DeleteTaskPushNotificationConfig"
     );
 }
 

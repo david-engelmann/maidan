@@ -281,6 +281,9 @@ mod member_display_name_event;
 #[path = "../member_emails.rs"]
 mod member_emails;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_freezes.rs"]
 mod member_freezes;
 
@@ -356,6 +359,9 @@ mod oidc_signup;
 #[path = "../oldest_event_after_of_kinds.rs"]
 mod oldest_event_after_of_kinds;
 
+#[path = "../one_delivery_per_event.rs"]
+mod one_delivery_per_event;
+
 #[path = "../ops_alerts.rs"]
 mod ops_alerts;
 
@@ -394,6 +400,9 @@ mod reactions_pins;
 
 #[path = "../read_routing.rs"]
 mod read_routing;
+
+#[path = "../read_visibility.rs"]
+mod read_visibility;
 
 #[path = "../reader_pool.rs"]
 mod reader_pool;

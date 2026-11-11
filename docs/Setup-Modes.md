@@ -104,7 +104,9 @@ whole of it. In short:
   `engine` and waiting with `wait_ms`. Footprints keep two seats off the same
   code, and build slots cap how many heavy builds run at once.
   [`examples/seat-runner`](../examples/seat-runner/README.md) keeps harness
-  seats claiming, one task per run.
+  seats claiming, one task per run, on Codex, Claude Code (an Anthropic plan,
+  or GLM's coding plan through z.ai), Gemini CLI or ZCode (GLM's own CLI),
+  each reporting its own provider and family.
 - **Code changes** come back as results. On a repository an operator allowed,
   Maidan commits them and opens a draft pull request, so no seat holds a
   repository credential.

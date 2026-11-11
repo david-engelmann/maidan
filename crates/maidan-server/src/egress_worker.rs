@@ -27,8 +27,7 @@
 //!
 //! **Runs whenever a projector sender is configured** (spawned in `main.rs` only
 //! then — and the projectors only enqueue then, so an unconfigured deployment
-//! neither queues nor drains). Tick defaults to 5s, tunable via
-//! `MAIDAN_EGRESS_WORKER_TICK_SECS`.
+//! neither queues nor drains). It ticks every 5s.
 //!
 //! **At-least-once:** [`claim_next_due_egress`](maidan_store::Store) leases a row
 //! forward, so a worker that crashes mid-post releases it after the lease and
@@ -97,17 +96,11 @@ pub struct EgressWorkerConfig {
     pub tick: Duration,
 }
 
-/// The default tick (5s), overridable via `MAIDAN_EGRESS_WORKER_TICK_SECS` (>0).
-/// Like the mail worker, the egress worker is not opt-in by env — it is spawned
-/// whenever a projector sender is configured — so this always returns a config.
-pub fn config_from_env() -> EgressWorkerConfig {
-    let secs = std::env::var("MAIDAN_EGRESS_WORKER_TICK_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .unwrap_or(5);
+/// The worker's tick. Five seconds is a constant, not a knob (OPS-006); the
+/// worker always runs once its sender is configured.
+pub fn config() -> EgressWorkerConfig {
     EgressWorkerConfig {
-        tick: Duration::from_secs(secs),
+        tick: Duration::from_secs(5),
     }
 }
 

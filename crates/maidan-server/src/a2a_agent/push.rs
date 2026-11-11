@@ -38,6 +38,9 @@ pub(super) struct Prepared {
     token_ciphertext: Option<String>,
     auth_scheme: Option<String>,
     auth_credentials_ciphertext: Option<String>,
+    /// Who registers it: pushes go out only while this credential could
+    /// register the config again and read its task.
+    registered_by: AuthContext,
 }
 
 pub(super) fn prepare(
@@ -94,6 +97,7 @@ pub(super) fn prepare(
         token_ciphertext: seal(config.token)?,
         auth_scheme,
         auth_credentials_ciphertext: seal(credentials)?,
+        registered_by: auth.clone(),
     })
 }
 
@@ -101,9 +105,10 @@ fn scheme_allowed(scheme: &str, private_egress_allowed: bool) -> bool {
     scheme == "https" || private_egress_allowed
 }
 
-/// Store a prepared config for `task_id`.
+/// Store a prepared config for `task_id`, a task of `workspace_id`.
 pub(super) async fn attach(
     state: &AppState,
+    workspace_id: WorkspaceId,
     task_id: &str,
     prepared: Prepared,
 ) -> Result<TaskPushNotificationConfig, A2aError> {
@@ -129,12 +134,31 @@ pub(super) async fn attach(
         token_ciphertext: prepared.token_ciphertext,
         auth_scheme: prepared.auth_scheme,
         auth_credentials_ciphertext: prepared.auth_credentials_ciphertext,
+        created_by_token: prepared.registered_by.token_id,
     };
     state
         .store
         .upsert_a2a_task_push_config(&row)
         .await
         .map_err(store)?;
+    // Recorded under the config's task id, which is what names it.
+    crate::audit::record(
+        state,
+        maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(workspace_id),
+            actor_id: (!prepared.registered_by.bypass).then_some(prepared.registered_by.actor_id),
+            action: "a2a_push_config.create".into(),
+            target_kind: Some("a2a_push_config".into()),
+            target_id: None,
+            metadata: serde_json::json!({
+                "workspace_id": workspace_id.0,
+                "task_id": row.task_id,
+                "config_id": row.config_id,
+                "created_by_token": row.created_by_token.map(|token| token.0),
+            }),
+        },
+    )
+    .await;
     Ok(shown(row))
 }
 
@@ -153,14 +177,18 @@ fn shown(row: A2aPushConfigRow) -> TaskPushNotificationConfig {
 }
 
 /// The task a config request names, which must be a stored task the caller
-/// can read.
-async fn target(state: &AppState, auth: &AuthContext, task_id: &str) -> Result<(), A2aError> {
+/// can read. Its workspace.
+async fn target(
+    state: &AppState,
+    auth: &AuthContext,
+    task_id: &str,
+) -> Result<WorkspaceId, A2aError> {
     auth.require_capability(WORKSPACE_WRITE).map_err(denied)?;
     if task_id.trim().is_empty() {
         return Err(A2aError::invalid_params("taskId is required"));
     }
     match find(state, auth, task_id).await? {
-        Found::Task { .. } => Ok(()),
+        Found::Task { workspace_id, .. } => Ok(workspace_id),
         Found::Gate(_) => Err(A2aError::new(
             A2aErrorKind::PushNotificationNotSupported,
             "approval gate tasks send no push notifications; subscribe to approval events instead",
@@ -174,10 +202,10 @@ pub(crate) async fn create(
     auth: &AuthContext,
     config: TaskPushNotificationConfig,
 ) -> Result<TaskPushNotificationConfig, A2aError> {
-    target(state, auth, &config.task_id).await?;
+    let workspace_id = target(state, auth, &config.task_id).await?;
     let task_id = config.task_id.clone();
     let prepared = prepare(state, auth, config)?;
-    attach(state, &task_id, prepared).await
+    attach(state, workspace_id, &task_id, prepared).await
 }
 
 pub(crate) async fn get(
@@ -278,6 +306,9 @@ pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
             }
         };
         for config in configs {
+            if !creator_may_push(&state, workspace_id, &task.id, &config).await {
+                continue;
+            }
             let Some(headers) = PushHeaders::open(&state, &config) else {
                 metrics::counter!("maidan_a2a_push_total", "result" => "failed").increment(1);
                 continue;
@@ -311,6 +342,91 @@ pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
         })
         .await;
     });
+}
+
+/// Whether `config` may push this update of `task_id`: only while the token
+/// that registered it could register it again and can still read the task
+/// (SEC-017). A config whose creator's authority has ended is deleted, once,
+/// with the reason in the audit trail; one whose creator can no longer read
+/// the task is skipped and recorded each time.
+async fn creator_may_push(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    task_id: &str,
+    config: &A2aPushConfigRow,
+) -> bool {
+    use crate::registration_owner::{creator_authority, NotActing};
+    match creator_authority(
+        state,
+        config.created_by_token,
+        workspace_id,
+        WORKSPACE_WRITE,
+    )
+    .await
+    {
+        Ok(creator) => {
+            if find(state, &creator, task_id).await.is_ok() {
+                return true;
+            }
+            record_push_skip(
+                state,
+                workspace_id,
+                config,
+                "creator cannot read the task",
+                false,
+            )
+            .await;
+            false
+        }
+        Err(NotActing::Held(reason)) => {
+            tracing::warn!(
+                task_id,
+                config_id = config.config_id,
+                reason,
+                "a2a push held"
+            );
+            false
+        }
+        Err(NotActing::Ended(reason)) => {
+            let deleted = state
+                .store
+                .delete_a2a_task_push_config_created_by(
+                    task_id,
+                    &config.config_id,
+                    config.created_by_token,
+                )
+                .await
+                .unwrap_or(false);
+            // Nothing deleted: another replica's delete already recorded why,
+            // or another token re-registered the config since it was read.
+            if deleted {
+                record_push_skip(state, workspace_id, config, reason, true).await;
+            }
+            false
+        }
+    }
+}
+
+async fn record_push_skip(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    config: &A2aPushConfigRow,
+    reason: &str,
+    deleted: bool,
+) {
+    crate::registration_owner::record_skip(
+        state,
+        workspace_id,
+        "a2a_push_config",
+        None,
+        reason,
+        serde_json::json!({
+            "task_id": config.task_id,
+            "config_id": config.config_id,
+            "deleted": deleted,
+        }),
+    )
+    .await;
 }
 
 /// The credentials a delivery presents, unsealed.
