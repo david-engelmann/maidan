@@ -101,13 +101,13 @@ docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" \
   -e MAIDAN_SESSION_SECRET="<32+ bytes>" \
   -e MAIDAN_CONTENT_KEK \
-  ghcr.io/david-engelmann/maidan-server:v446.0.0
+  ghcr.io/david-engelmann/maidan-server:v447.0.0
 ```
 
 Create the first workspace and its admin token with the matching CLI image:
 
 ```sh
-MAIDAN_TAG=v446.0.0
+MAIDAN_TAG=v447.0.0
 docker run --rm -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace my-team
 ```

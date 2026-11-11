@@ -26,6 +26,7 @@
 pub mod authorize;
 pub mod client_auth;
 pub mod consent;
+pub mod document_cache;
 pub mod error;
 pub mod grants;
 pub mod metadata;

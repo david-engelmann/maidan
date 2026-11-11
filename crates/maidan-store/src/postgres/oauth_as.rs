@@ -19,7 +19,8 @@ use crate::error::StoreError;
 
 const CLIENT_COLUMNS: &str = "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at, metadata_url, registered_at";
 const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
-const GRANT_COLUMNS: &str = "id, client_id, member_id, workspace_id, scope, lineage_id, revoked_at";
+const GRANT_COLUMNS: &str =
+    "id, client_id, member_id, workspace_id, scope, lineage_id, created_at, revoked_at";
 
 fn scopes_from(json: &str) -> Result<Vec<String>, StoreError> {
     serde_json::from_str(json)
@@ -64,6 +65,7 @@ fn row_to_grant(row: &sqlx::postgres::PgRow) -> Result<OAuthGrant, StoreError> {
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         scope: scopes_from(&row.get::<String, _>("scope"))?,
         lineage_id: row.get::<Uuid, _>("lineage_id"),
+        created_at: row.get::<DateTime<Utc>, _>("created_at"),
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
     })
 }

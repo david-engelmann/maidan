@@ -19,11 +19,13 @@
 //! A resolved CIMD client is persisted as a row in `oauth_clients`,
 //! marked with its metadata URL (migration 0172): its codes and grants
 //! need the row for their foreign keys, and deleting the row still
-//! cascades to them. The row is a cache, never an authority — a marked
-//! row is never served as pre-registered. Every resolution re-fetches
-//! the document through the fetch guard and refreshes the row from it,
-//! so its redirect URIs and scopes are validated against the live
-//! document the same way as a pre-registered client's are against the
+//! cascades to them. The row is never an authority — a marked row is
+//! never served as pre-registered. Every resolution refreshes the row
+//! from a document validated through the fetch guard within the last
+//! five minutes: the one this process holds in
+//! [`super::document_cache`], or a fresh fetch. So a client's redirect
+//! URIs and scopes are checked against what its document said at most
+//! five minutes ago, the way a pre-registered client's are against the
 //! operator's record.
 
 use std::collections::BTreeSet;
@@ -32,6 +34,7 @@ use maidan_types::{NewOAuthClient, OAuthClient};
 use serde::Deserialize;
 use url::Url;
 
+use super::document_cache::ValidatedDocument;
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -292,9 +295,10 @@ fn validate_redirect_uris(uris: &[String]) -> ApiResult<()> {
 /// Resolve a `client_id` to a client.
 /// 1. Pre-registered (DB) — exact match, not revoked, unmarked.
 /// 2. CIMD: if `client_id` is an HTTPS URL on a host the instance lists in
-///    `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`, fetch the document and validate it. A metadata-document client's row is
-///    refreshed from the document, never served from the cache: a marked
-///    row in the DB takes this path too.
+///    `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`, take the document this process
+///    validated in the last five minutes, or fetch and validate it. A
+///    metadata-document client's row is refreshed from that document,
+///    never served as it stands: a marked row in the DB takes this path too.
 pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAuthClient> {
     // Pre-registered first. A row marked with a metadata URL is not
     // pre-registered, however fresh: it falls through to the fetch.
@@ -329,11 +333,51 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
         )));
     }
 
+    let doc = match state.oauth_document_cache.get(client_id) {
+        Some(doc) => doc,
+        None => {
+            let doc = fetch_document(hosts, &url, client_id).await?;
+            // Only now, with every check passed: a refusal is never held, so
+            // the next request fetches again.
+            state.oauth_document_cache.insert(client_id, doc.clone());
+            doc
+        }
+    };
+
+    // Persist the document's client as a marked row (or refresh the live
+    // one): the codes and grants this client goes on to mint reference
+    // the row through their foreign keys. `None` means the row that
+    // carries this client_id is revoked or pre-registered — neither may
+    // be replaced by a fetched document.
+    let client = state
+        .store
+        .upsert_oauth_metadata_client(
+            NewOAuthClient {
+                client_id: client_id.to_string(),
+                name: doc.name,
+                redirect_uris: doc.redirect_uris,
+                client_secret_hash: None, // CIMD clients are public (PKCE only)
+                allowed_scopes: doc.allowed_scopes,
+            },
+            client_id,
+        )
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("client is revoked".into()))?;
+    Ok(client)
+}
+
+/// Fetch the document at `url` and hold it to every rule a client metadata
+/// document must meet, after the host check has passed.
+async fn fetch_document(
+    hosts: &ClientMetadataHosts,
+    url: &Url,
+    client_id: &str,
+) -> ApiResult<ValidatedDocument> {
     // Fetch the document. No redirects: a redirect would lead the fetch to
     // a host the guard above never checked, so any non-2xx is a refusal.
-    let response = metadata_fetch_client(hosts, &url)
+    let response = metadata_fetch_client(hosts, url)
         .await?
-        .get(hosts.fetch_url(&url))
+        .get(hosts.fetch_url(url))
         .send()
         .await
         .map_err(|e| ApiError::Internal(format!("fetching client metadata: {e}")))?;
@@ -368,27 +412,11 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
         ));
     }
     validate_redirect_uris(&doc.redirect_uris)?;
-
-    // Persist the document's client as a marked row (or refresh the live
-    // one): the codes and grants this client goes on to mint reference
-    // the row through their foreign keys. `None` means the row that
-    // carries this client_id is revoked or pre-registered — neither may
-    // be replaced by a fetched document.
-    let client = state
-        .store
-        .upsert_oauth_metadata_client(
-            NewOAuthClient {
-                client_id: client_id.to_string(),
-                name,
-                redirect_uris: doc.redirect_uris,
-                client_secret_hash: None, // CIMD clients are public (PKCE only)
-                allowed_scopes: document_scopes(doc.scope.as_deref()),
-            },
-            client_id,
-        )
-        .await?
-        .ok_or_else(|| ApiError::BadRequest("client is revoked".into()))?;
-    Ok(client)
+    Ok(ValidatedDocument {
+        name,
+        allowed_scopes: document_scopes(doc.scope.as_deref()),
+        redirect_uris: doc.redirect_uris,
+    })
 }
 
 /// The scopes a metadata-document client may ask for. A document that names

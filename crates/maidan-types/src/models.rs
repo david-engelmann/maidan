@@ -3397,6 +3397,9 @@ pub struct OAuthGrant {
     pub workspace_id: WorkspaceId,
     pub scope: Vec<String>,
     pub lineage_id: uuid::Uuid,
+    /// When the member first consented: the start of the lineage, which a
+    /// refresh can extend for at most 90 days from here.
+    pub created_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
