@@ -390,10 +390,15 @@ async fn creator_may_push(
         Err(NotActing::Ended(reason)) => {
             let deleted = state
                 .store
-                .delete_a2a_task_push_config(task_id, &config.config_id)
+                .delete_a2a_task_push_config_created_by(
+                    task_id,
+                    &config.config_id,
+                    config.created_by_token,
+                )
                 .await
                 .unwrap_or(false);
-            // Another replica's delete already recorded why.
+            // Nothing deleted: another replica's delete already recorded why,
+            // or another token re-registered the config since it was read.
             if deleted {
                 record_push_skip(state, workspace_id, config, reason, true).await;
             }

@@ -7,6 +7,8 @@
 //!   the subscription is revoked, and `webhook.skipped` records why; a live
 //!   admin's subscription in the same workspace still delivers, and only what
 //!   that admin may read;
+//! - a delivery queued while its creator could read the event is not sent
+//!   once the creator has left the private channel it happened in;
 //! - a slash command answers that its creator is not authorized and sends
 //!   nothing to its handler;
 //! - an A2A push config sends nothing and is deleted;
@@ -30,14 +32,15 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{expand_set, hash_secret, TokenSecret, AGENT_WORKER, HUMAN_ADMIN};
 use maidan_bus::InMemoryBus;
 use maidan_server::{
-    router, scheduler, webhook_worker::WebhookWorker, AppState, FederationRuntime, SlashRuntime,
-    WebhookRuntime,
+    router, scheduler, webhook_worker, webhook_worker::WebhookWorker, AppState, FederationRuntime,
+    SlashRuntime, WebhookRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations, A2aTaskWrite};
 use maidan_types::{
-    ApiTokenId, ChannelId, ChannelMemberRole, MemberId, MemberKind, NewApiToken, NewAuditEvent,
-    NewChannel, NewMember, NewShareTicket, NewTaskSchedule, NewThread, NewWebhookSubscription,
-    NewWorkspace, NewWorkspaceInvite, ThreadId, WorkspaceId, WorkspaceInviteRole,
+    ApiTokenId, ChannelId, ChannelMemberRole, EventKind, MemberId, MemberKind, NewApiToken,
+    NewAuditEvent, NewChannel, NewMember, NewShareTicket, NewTaskSchedule, NewThread,
+    NewWebhookSubscription, NewWorkspace, NewWorkspaceInvite, ThreadId, WebhookSubscriptionId,
+    WorkspaceId, WorkspaceInviteRole,
 };
 use serde_json::{json, Value};
 
@@ -137,6 +140,12 @@ async fn record(
 }
 
 async fn spawn(backend: Backend) -> Harness {
+    spawn_with(backend, true).await
+}
+
+/// `worker`: run the webhook worker, which queues and sends deliveries on
+/// its own. Without it a test queues and sends them itself.
+async fn spawn_with(backend: Backend, worker: bool) -> Harness {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
@@ -156,7 +165,7 @@ async fn spawn(backend: Backend) -> Harness {
     );
     state.webhooks = WebhookRuntime::new(Some(Arc::new(KEY)));
     state.slash = SlashRuntime::new(Some(Arc::new(KEY)));
-    let worker = WebhookWorker::spawn(state.clone());
+    let worker = worker.then(|| WebhookWorker::spawn(state.clone()));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -179,7 +188,7 @@ async fn spawn(backend: Backend) -> Harness {
             .timeout(Duration::from_secs(10))
             .build()
             .unwrap(),
-        worker: Some(worker),
+        worker,
         _dir: dir,
         _backend: backend,
     }
@@ -557,6 +566,86 @@ async fn webhooks_suite(backend: Backend) {
     h.shutdown().await;
 }
 
+/// A delivery queued while its creator could read the event is withheld once
+/// the creator has left the private channel the event happened in: a retry
+/// can run long after the event. Another admin still in the channel gets it.
+async fn queued_delivery_suite(backend: Backend) {
+    let h = spawn_with(backend, false).await;
+    let c = h.case("queued").await;
+    let leaver = h.person(c.ws, "leaver", HUMAN_ADMIN).await;
+    let stayer = h.person(c.ws, "stayer", HUMAN_ADMIN).await;
+    let private = h
+        .store
+        .create_channel(NewChannel {
+            workspace_id: c.ws,
+            name: "private".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap()
+        .id;
+    for member in [c.poster.id, leaver.id, stayer.id] {
+        h.store
+            .add_channel_member(private, member, ChannelMemberRole::Member)
+            .await
+            .unwrap();
+    }
+    let private_thread = h.thread(private).await;
+    let mut subscriptions = Vec::new();
+    for (who, hook) in [(&leaver, "left"), (&stayer, "stays")] {
+        let id = h
+            .register_webhook(c.ws, who, hook, &["message_posted"])
+            .await;
+        subscriptions.push(WebhookSubscriptionId(uuid::Uuid::parse_str(&id).unwrap()));
+    }
+    h.post_message(private_thread, &c.poster.secret, "in private")
+        .await;
+    let log_id = h
+        .store
+        .list_events_after(c.ws, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == EventKind::MessagePosted && e.channel_id == Some(private))
+        .expect("the private message's event")
+        .id;
+    // Queued while both admins could read it.
+    for subscription in &subscriptions {
+        let _ = h
+            .store
+            .enqueue_webhook_delivery(*subscription, log_id, r#"{"kind":"message_posted"}"#)
+            .await
+            .unwrap();
+    }
+
+    h.store
+        .remove_channel_member(private, leaver.id)
+        .await
+        .unwrap();
+    webhook_worker::poll_deliveries(&h.state, 16).await.unwrap();
+
+    assert_eq!(
+        h.got("stays").len(),
+        1,
+        "the admin still in the channel got nothing"
+    );
+    assert!(
+        h.got("left").is_empty(),
+        "a queued delivery went to an admin who has left the channel"
+    );
+    assert_eq!(
+        h.store
+            .list_webhook_subscriptions(c.ws)
+            .await
+            .unwrap()
+            .len(),
+        2,
+        "leaving a channel is not the end of the creator's authority"
+    );
+    h.shutdown().await;
+}
+
 /// A slash command whose creator was deactivated sends nothing to its
 /// handler; a live member's still runs.
 async fn slash_suite(backend: Backend) {
@@ -887,6 +976,11 @@ on_both_backends!(
     webhooks_suite,
     a_deactivated_admins_webhooks_stop_and_a_live_one_delivers_only_what_it_may_read_sqlite,
     a_deactivated_admins_webhooks_stop_and_a_live_one_delivers_only_what_it_may_read_postgres
+);
+on_both_backends!(
+    queued_delivery_suite,
+    a_queued_delivery_is_withheld_once_its_creator_leaves_the_private_channel_sqlite,
+    a_queued_delivery_is_withheld_once_its_creator_leaves_the_private_channel_postgres
 );
 on_both_backends!(
     slash_suite,

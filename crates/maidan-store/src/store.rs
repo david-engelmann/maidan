@@ -5323,6 +5323,16 @@ pub trait A2aStore: Send + Sync {
         task_id: &str,
         config_id: &str,
     ) -> Result<bool, StoreError>;
+    /// [`Self::delete_a2a_task_push_config`], only while the config is still
+    /// the one `created_by_token` registered: a config re-registered under the
+    /// same id by another token is left alone. `None` matches a config
+    /// registered without a token.
+    async fn delete_a2a_task_push_config_created_by(
+        &self,
+        task_id: &str,
+        config_id: &str,
+        created_by_token: Option<ApiTokenId>,
+    ) -> Result<bool, StoreError>;
 }
 
 /// The full storage surface: the union of every domain sub-trait above.

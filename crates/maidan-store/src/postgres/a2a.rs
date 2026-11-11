@@ -309,3 +309,21 @@ pub async fn delete_task_push_config(
     .await?;
     Ok(res.rows_affected() > 0)
 }
+
+pub async fn delete_task_push_config_created_by(
+    pool: &PgPool,
+    task_id: &str,
+    config_id: &str,
+    created_by_token: Option<ApiTokenId>,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_a2a_task_push_configs
+         WHERE task_id = $1 AND config_id = $2 AND created_by_token IS NOT DISTINCT FROM $3",
+    )
+    .bind(task_id)
+    .bind(config_id)
+    .bind(created_by_token.map(|token| token.0))
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
+}

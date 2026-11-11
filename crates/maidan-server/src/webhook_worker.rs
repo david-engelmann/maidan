@@ -199,7 +199,11 @@ async fn enqueue_matches(
         let Ok(creator) = creator_or_retire(state, sub).await else {
             continue;
         };
-        if !crate::agui_stream::event_visible(state.store.as_ref(), &creator, event).await {
+        // `workspace:admin` registers a subscription; reading what it carries
+        // takes `workspace:read` as well.
+        if !creator.has_capability(maidan_auth::capability::WORKSPACE_READ)
+            || !crate::agui_stream::event_visible(state.store.as_ref(), &creator, event).await
+        {
             continue;
         }
         if payload.is_none() {
@@ -215,6 +219,32 @@ async fn enqueue_matches(
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Whether `creator` may still read the event at `log_id`, which a queued
+/// delivery carries. `None` when the event could not be read back, so the
+/// delivery waits rather than being dropped on a failed lookup.
+async fn creator_may_read(
+    state: &AppState,
+    creator: &maidan_auth::AuthContext,
+    log_id: i64,
+) -> Option<bool> {
+    if creator.bypass {
+        return Some(true);
+    }
+    if !creator.has_capability(maidan_auth::capability::WORKSPACE_READ) {
+        return Some(false);
+    }
+    let stored = match state.store.get_stored_event(log_id).await {
+        Ok(stored) => stored,
+        // An event that is gone cannot be shown to be readable.
+        Err(maidan_store::StoreError::NotFound) => return Some(false),
+        Err(_) => return None,
+    };
+    let Ok(envelope) = crate::event_stream::envelope_from_stored(&stored) else {
+        return Some(false);
+    };
+    Some(crate::agui_stream::event_visible(state.store.as_ref(), creator, &envelope.event).await)
 }
 
 /// The authority `sub` delivers with: its creator's, while it could still
@@ -338,13 +368,20 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
         }
         // A delivery queued while its creator held authority does not go out
         // after it ended: a retry can come hours after the event.
-        match creator_or_retire(state, &sub).await {
-            Ok(_) => {}
-            Err(NotActing::Ended(_)) => {
+        // Nor does one whose event its creator can no longer read, such as
+        // a message in a private channel the creator has since left.
+        let readable = match creator_or_retire(state, &sub).await {
+            Ok(creator) => creator_may_read(state, &creator, delivery.log_id).await,
+            Err(NotActing::Ended(_)) => Some(false),
+            Err(NotActing::Held(_)) => None,
+        };
+        match readable {
+            Some(true) => {}
+            Some(false) => {
                 let _ = state.store.quarantine_webhook_delivery(delivery.id).await;
                 continue;
             }
-            Err(NotActing::Held(_)) => {
+            None => {
                 let until = chrono::Utc::now() + chrono::Duration::seconds(CREATOR_HELD_DEFER_SECS);
                 if let Err(err) = state.store.defer_webhook_delivery(delivery.id, until).await {
                     warn!(delivery_id = delivery.id, error = %err, "webhook deferral failed");
