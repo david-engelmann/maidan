@@ -92,8 +92,10 @@ pub struct ResultDelivery {
     /// What the delivery flagged without failing. For a change: what its pull
     /// request lacks against the producer's template (`missing_testing`,
     /// `missing_issue_key`), and why the result's `check` became no commit
-    /// status (`check_invalid`, `check_not_posted`). A flag, not a failure:
-    /// the change landed either way. Absent when there is nothing to flag.
+    /// status (`check_invalid`, `check_not_posted`). For a review thread's
+    /// GitHub comment: why its `pre-review` commit status was not posted
+    /// (`pre_review_*: <detail>`). A flag, not a failure: the change or the
+    /// comment landed either way. Absent when there is nothing to flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delivery_warnings: Vec<String>,
     pub created_at: DateTime<Utc>,
