@@ -98,6 +98,9 @@ mod authorization_observability_e2e;
 #[path = "../automation_delivery_e2e.rs"]
 mod automation_delivery_e2e;
 
+#[path = "../automation_registration_admin_e2e.rs"]
+mod automation_registration_admin_e2e;
+
 #[path = "../body_limit_e2e.rs"]
 mod body_limit_e2e;
 
@@ -296,6 +299,9 @@ mod foreign_member_e2e;
 #[path = "../freeze_rest_e2e.rs"]
 mod freeze_rest_e2e;
 
+#[path = "../fsm_hook_creator_e2e.rs"]
+mod fsm_hook_creator_e2e;
+
 #[path = "../fsm_hooks_e2e.rs"]
 mod fsm_hooks_e2e;
 
@@ -391,6 +397,9 @@ mod loadgen;
 
 #[path = "../log_snapshot_e2e.rs"]
 mod log_snapshot_e2e;
+
+#[path = "../long_poll_fairness_e2e.rs"]
+mod long_poll_fairness_e2e;
 
 #[path = "../maidan_operator_gate_e2e.rs"]
 mod maidan_operator_gate_e2e;
@@ -742,6 +751,9 @@ mod spawn_denied_event_e2e;
 
 #[path = "../sse_deactivated_member_e2e.rs"]
 mod sse_deactivated_member_e2e;
+
+#[path = "../stream_ceiling_e2e.rs"]
+mod stream_ceiling_e2e;
 
 #[path = "../subscribe_grants_e2e.rs"]
 mod subscribe_grants_e2e;

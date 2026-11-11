@@ -264,6 +264,9 @@ pub struct McpServer {
     /// workflow file (`MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS`). REST reads it
     /// from here too, so both doors refuse alike. Shared by every clone.
     refuse_workflow_paths: Arc<std::sync::atomic::AtomicBool>,
+    /// The `wait_for_*` calls each workspace has parked, held to
+    /// [`crate::parked_waits::MAX_PARKED_WAITS_PER_WORKSPACE`].
+    parked_waits: Arc<crate::parked_waits::ParkedWaits>,
 }
 
 /// The tool error a call refused past the allowance answers: the same text
@@ -375,6 +378,7 @@ impl McpServer {
                         .as_deref(),
                 ),
             )),
+            parked_waits: Arc::default(),
         }
     }
 
@@ -390,6 +394,11 @@ impl McpServer {
     pub fn set_refuse_workflow_paths(&self, on: bool) {
         self.refuse_workflow_paths
             .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The `wait_for_*` calls `workspace_id` has parked right now.
+    pub fn parked_waits(&self, workspace_id: maidan_types::WorkspaceId) -> usize {
+        self.parked_waits.parked(workspace_id)
     }
 
     /// Install what `approval_decide` sends confirmation links with. Set once;
@@ -1089,6 +1098,21 @@ impl McpServer {
             )
             .map_err(McpError::from)?;
         }
+        // Held until the call returns. A long-poll gives back the server's
+        // in-flight permit while it parks, so this is what keeps one tenant
+        // from parking without bound (RED-008). Auth-disabled callers share
+        // no tenant to protect.
+        let _parked = if crate::parked_waits::parks(name) && !auth.bypass {
+            Some(
+                self.parked_waits
+                    .park(auth.workspace_id)
+                    .ok_or(McpError::RateLimited {
+                        retry_after_ms: 1_000,
+                    })?,
+            )
+        } else {
+            None
+        };
         // Counted once the call is authorized to run, whatever it answers.
         if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
             // The hard allowance cutoff: refused before it runs, not counted.

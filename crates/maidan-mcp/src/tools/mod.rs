@@ -8,7 +8,7 @@
 
 use maidan_auth::capability::{
     ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, TOKEN_ADMIN,
-    WORKSPACE_READ, WORKSPACE_WRITE,
+    WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -498,7 +498,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
         "list_references" => Ok(WORKSPACE_READ),
-        "register_fsm_hook" => Ok(WORKSPACE_WRITE),
+        // A hook acts on every matching transition in the workspace (SEC-013).
+        "register_fsm_hook" => Ok(WORKSPACE_ADMIN),
         "list_fsm_hooks" => Ok(WORKSPACE_READ),
         "link_slack_channel"
         | "unlink_slack_channel"
@@ -975,6 +976,14 @@ pub async fn dispatch(
 ) -> Result<Value, McpError> {
     check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
+    // Admitted: the capability, the workspace's parking place and the
+    // allowance were checked before dispatch, and the arguments and channel
+    // access just now. Only then does a wait stop holding the request's
+    // in-flight permit. An auth-disabled caller holds no parking place, so it
+    // keeps its permit (RED-008).
+    if crate::parked_waits::parks(name) && !auth.bypass {
+        crate::parked_waits::release_permit();
+    }
     let store = &server.store;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,

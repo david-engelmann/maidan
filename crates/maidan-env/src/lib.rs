@@ -40,6 +40,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CHANGE_CI_BACKSTOP_SECS",
     "MAIDAN_CHANGE_REFUSE_WORKFLOW_PATHS",
     "MAIDAN_CHANGE_SWEEP_SECS",
+    "MAIDAN_CI_VERDICT_CONTEXTS",
     "MAIDAN_CLAIM_ACK_TIMEOUT_SECS",
     "MAIDAN_CLAIM_DEFAULT_LEASE_SECS",
     "MAIDAN_CLAIM_LAPSE_WARN_SECS",
@@ -127,6 +128,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_MARK_READY_BASES",
     "MAIDAN_MAX_BODY_BYTES",
     "MAIDAN_MAX_CONCURRENT_REQUESTS",
+    "MAIDAN_MAX_STREAMS_PER_CREDENTIAL",
     "MAIDAN_MAX_WS_CONNECTIONS",
     "MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS",
     "MAIDAN_MEDIA_QUOTA_BYTES",
@@ -495,6 +497,7 @@ mod tests {
             "MAIDAN_JEV_BASE_URL",
             "an endpoint that carries no credential",
         ),
+        ("MAIDAN_MAX_STREAMS_PER_CREDENTIAL", "a count"),
         ("MAIDAN_PRIVATE_EGRESS_HOSTS", "a list of hosts"),
         ("MAIDAN_SECRET_EGRESS_ALLOWLIST", "a list of hosts"),
         ("MAIDAN_SIGNUP_PRIVACY_URL", "a public page's address"),
@@ -985,6 +988,10 @@ mod tests {
         ),
         (
             "MAIDAN_MAX_CONCURRENT_REQUESTS",
+            "self-hosted bind, custody, or sweep tuning",
+        ),
+        (
+            "MAIDAN_MAX_STREAMS_PER_CREDENTIAL",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (

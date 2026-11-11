@@ -102,6 +102,7 @@ async fn another_tenants_admin_cannot_revoke_by_id_via_rest_or_mcp() {
             handler_kind: SlashHandlerKind::McpTool,
             handler_target: "list_channels".into(),
             secret_ciphertext: String::new(),
+            created_by_token: None,
         })
         .await
         .unwrap();

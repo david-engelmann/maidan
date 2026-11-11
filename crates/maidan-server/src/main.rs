@@ -888,6 +888,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         }
     }
 
+    state.ci_verdict_contexts = maidan_server::ci_watch::verdict_contexts(
+        std::env::var("MAIDAN_CI_VERDICT_CONTEXTS").ok().as_deref(),
+    );
+
     // The bases mark-ready may flip each listed repository's agent pull
     // requests into. A malformed value refuses boot: a typo that dropped a
     // repository's pin would let its flips follow the allowlist alone.

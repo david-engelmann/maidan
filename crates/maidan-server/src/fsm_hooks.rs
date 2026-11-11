@@ -6,13 +6,13 @@ use std::time::Duration;
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_mcp::tools;
 use maidan_types::{
-    ChannelId, FsmHook, FsmHookId, FsmHookWithSecret, MemberId, NewFsmHook, SlashHandlerKind,
-    Thread, ThreadId, ThreadState, WorkspaceId,
+    AuditScope, ChannelId, FsmHook, FsmHookId, FsmHookWithSecret, MemberId, NewAuditEvent,
+    NewFsmHook, SlashHandlerKind, Thread, ThreadId, ThreadState, WorkspaceId,
 };
 use serde::Serialize;
 use serde_json::{json, Value as JsonValue};
@@ -91,9 +91,15 @@ fn validate_http_target(url: &str) -> ApiResult<()> {
         .map_err(|error| ApiError::BadRequest(error.to_string()))
 }
 
-fn validate_mcp_target(tool: &str) -> ApiResult<()> {
-    tools::required_capability(tool)
+/// The tool must exist, and the registering credential must be allowed to
+/// call it: the hook runs the tool as that credential, so a tool it may not
+/// call would only ever be refused when the hook fires.
+fn validate_mcp_target(auth: &AuthContext, tool: &str) -> ApiResult<()> {
+    let required = tools::required_capability(tool)
         .map_err(|_| ApiError::BadRequest(format!("unknown mcp tool for fsm hook: {tool}")))?;
+    if !auth.bypass {
+        cap(auth, required)?;
+    }
     Ok(())
 }
 
@@ -104,7 +110,9 @@ pub async fn create_fsm_hook(
     ApiJson(body): ApiJson<CreateFsmHook>,
 ) -> ApiResult<(StatusCode, Json<MintFsmHookResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, WORKSPACE_WRITE)?;
+    // A hook acts on every matching transition in the workspace, so making one
+    // is an administrator's call, not any writer's (SEC-013).
+    cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let from_state = parse_opt_state(body.from_state.as_deref())?;
     let to_state = parse_opt_state(body.to_state.as_deref())?;
@@ -113,7 +121,7 @@ pub async fn create_fsm_hook(
     })?;
     match handler_kind {
         SlashHandlerKind::Http => validate_http_target(&body.handler_target)?,
-        SlashHandlerKind::McpTool => validate_mcp_target(&body.handler_target)?,
+        SlashHandlerKind::McpTool => validate_mcp_target(&auth, &body.handler_target)?,
         SlashHandlerKind::Wasi => {
             return Err(ApiError::BadRequest(
                 "wasi handlers are not supported for fsm hooks".into(),
@@ -145,6 +153,7 @@ pub async fn create_fsm_hook(
             handler_kind,
             handler_target: body.handler_target.trim().to_string(),
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await?;
 
@@ -240,7 +249,6 @@ pub async fn dispatch_thread_state_changed(
     if hooks.is_empty() {
         return;
     }
-    let auth = AuthContext::bypass();
     let ctx = FsmTransitionCtx {
         workspace_id,
         channel_id,
@@ -250,6 +258,13 @@ pub async fn dispatch_thread_state_changed(
         to_state,
     };
     for registration in hooks {
+        let auth = match creator_authority(state, &registration).await {
+            Ok(auth) => auth,
+            Err(reason) => {
+                record_skip(state, &registration.hook, &ctx, reason).await;
+                continue;
+            }
+        };
         let dispatch = async {
             match registration.hook.handler_kind {
                 SlashHandlerKind::Http => {
@@ -282,6 +297,71 @@ pub async fn dispatch_thread_state_changed(
             Err(_) => tracing::warn!(hook = %registration.hook.id, "fsm hook dispatch timed out"),
         }
     }
+}
+
+/// The authority a hook runs with: its creator's token, resolved now as a
+/// bearer of it would be (SEC-013, SEC-017). A hook acts for whoever
+/// registered it, so it may do no more than they may, and it stops when their
+/// token is revoked, expires or rotates away, their member is deactivated, or
+/// the token no longer holds `workspace:admin`. `Err` is the reason it is
+/// skipped.
+async fn creator_authority(
+    state: &AppState,
+    registration: &FsmHookWithSecret,
+) -> Result<AuthContext, &'static str> {
+    let Some(token_id) = registration.created_by_token else {
+        // Only a server with auth disabled registers a hook without a token,
+        // and only there does it run, with that server's authority.
+        return if state.auth_disabled {
+            Ok(AuthContext::bypass())
+        } else {
+            Err("registered without a token")
+        };
+    };
+    let auth = match maidan_auth::resolve_token_id(state.store.as_ref(), token_id).await {
+        Ok(auth) => auth,
+        Err(maidan_auth::AuthError::Forbidden(_)) => return Err("workspace suspended"),
+        // A revoked, expired or rotated token, or a deactivated member, is no
+        // longer found among the live ones.
+        Err(
+            maidan_auth::AuthError::Unauthorized
+            | maidan_auth::AuthError::Store(maidan_store::StoreError::NotFound),
+        ) => return Err("creator token no longer valid"),
+        Err(maidan_auth::AuthError::Store(_)) => return Err("creator check failed"),
+    };
+    if auth.workspace_id != registration.hook.workspace_id {
+        return Err("creator token is for another workspace");
+    }
+    if auth
+        .require_capability(maidan_auth::capability::WORKSPACE_ADMIN)
+        .is_err()
+    {
+        return Err("creator no longer holds workspace:admin");
+    }
+    Ok(auth)
+}
+
+/// A skipped hook is written to the workspace's audit trail, so an
+/// administrator sees which hooks stopped and why, and can re-register them.
+async fn record_skip(state: &AppState, hook: &FsmHook, ctx: &FsmTransitionCtx, reason: &str) {
+    tracing::warn!(hook = %hook.id, reason, "fsm hook skipped");
+    crate::audit::record(
+        state,
+        NewAuditEvent {
+            scope: AuditScope::Workspace(hook.workspace_id),
+            actor_id: None,
+            action: "fsm_hook.skipped".into(),
+            target_kind: Some("fsm_hook".into()),
+            target_id: Some(hook.id.0),
+            metadata: json!({
+                "reason": reason,
+                "thread_id": ctx.thread_id.0,
+                "from_state": ctx.from_state.as_str(),
+                "to_state": ctx.to_state.as_str(),
+            }),
+        },
+    )
+    .await;
 }
 
 async fn dispatch_http(

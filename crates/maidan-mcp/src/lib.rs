@@ -25,6 +25,7 @@ pub mod client_identity;
 pub mod context;
 pub mod error;
 mod land_gate_advice;
+pub mod parked_waits;
 pub mod profiles;
 pub mod prompts;
 pub mod protocol;

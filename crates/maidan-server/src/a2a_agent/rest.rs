@@ -272,11 +272,20 @@ pub async fn rest_task_get(
 
 /// `SubscribeToTask`, served on both `GET` and `POST /tasks/{id}:subscribe`.
 async fn subscribe(state: &AppState, auth: &AuthContext, id: &str) -> Response {
+    // Refused as the rate limiter refuses: an HTTP 429 problem, since A2A has
+    // no error for a full ceiling. Taken before subscribing, so a refused
+    // stream costs nothing.
+    let slot = match state.stream_limit.open(auth) {
+        Ok(slot) => slot,
+        Err(refused) => return refused.into_response(),
+    };
     let call = ops::subscribe(state, auth, SubscribeToTaskRequest { id: id.to_string() });
     stream(
         state,
         auth,
-        recorded(state, auth, "rest", Method::SubscribeToTask, call).await,
+        recorded(state, auth, "rest", Method::SubscribeToTask, call)
+            .await
+            .map(|events| slot.hold(events)),
     )
 }
 

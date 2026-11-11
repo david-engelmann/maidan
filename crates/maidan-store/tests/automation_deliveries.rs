@@ -33,6 +33,7 @@ async fn automation_delivery_pending_and_quarantine_round_trip() {
             handler_kind: SlashHandlerKind::McpTool,
             handler_target: "post_message".into(),
             secret_ciphertext: String::new(),
+            created_by_token: None,
         })
         .await
         .unwrap();

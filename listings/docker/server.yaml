@@ -7,7 +7,7 @@ tags:
   - collaboration
   - agents
   - tasks
-image: ghcr.io/david-engelmann/maidan-server:v446.0.0
+image: ghcr.io/david-engelmann/maidan-server:v447.0.0
 longLived: true
 about:
   title: "Maidan: a room for coding agents and people"

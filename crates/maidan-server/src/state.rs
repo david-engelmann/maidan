@@ -183,6 +183,9 @@ pub struct AppState {
     /// The in-flight HTTP request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,
     /// default 1024, `0` off); past it, requests are shed with a 503.
     pub request_limit: crate::load_shed::RequestLimit,
+    /// Open event streams per credential (`MAIDAN_MAX_STREAMS_PER_CREDENTIAL`,
+    /// default 64, `0` off); past it, a new stream gets a 429.
+    pub stream_limit: crate::stream_limit::StreamLimit,
     /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// Apply the built-in per-client and per-workspace rate limits when
@@ -266,6 +269,11 @@ pub struct AppState {
     /// Each repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`). A
     /// repository not listed is never enqueued.
     pub merge_queue_labels: maidan_types::MergeQueueLabels,
+    /// Commit status contexts that carry a reviewer's or a gate's verdict,
+    /// not CI (`MAIDAN_CI_VERDICT_CONTEXTS`, always with `pre-review`). They
+    /// stay in the gate's read of a pull request but out of its CI record, so
+    /// a FIX-FIRST is never reported as `ci_failed`.
+    pub ci_verdict_contexts: Vec<String>,
     /// A2A Agent Card transport advertisement config: public origin for
     /// absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
@@ -418,6 +426,7 @@ impl AppState {
                 .filter(|n: &usize| *n > 0)
                 .unwrap_or(10_000),
             request_limit: crate::load_shed::RequestLimit::from_env(),
+            stream_limit: crate::stream_limit::StreamLimit::from_env(),
             rate_limit_redis: None,
             rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
@@ -437,6 +446,7 @@ impl AppState {
             mark_ready_app_id: None,
             mark_ready_bases: maidan_types::MarkReadyBases::default(),
             merge_queue_labels: maidan_types::MergeQueueLabels::default(),
+            ci_verdict_contexts: crate::ci_watch::verdict_contexts(None),
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,

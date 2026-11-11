@@ -1,20 +1,21 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    FsmHook, FsmHookId, FsmHookWithSecret, NewFsmHook, SlashHandlerKind, ThreadState, WorkspaceId,
+    ApiTokenId, FsmHook, FsmHookId, FsmHookWithSecret, NewFsmHook, SlashHandlerKind, ThreadState,
+    WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
+const COLS: &str = "id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 pub async fn create(pool: &PgPool, new: NewFsmHook) -> Result<FsmHook, StoreError> {
     let id = Uuid::now_v7();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_fsm_hooks
-            (id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext, created_by_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING {COLS}"
     ))
     .bind(id)
@@ -25,6 +26,7 @@ pub async fn create(pool: &PgPool, new: NewFsmHook) -> Result<FsmHook, StoreErro
     .bind(new.handler_kind.as_str())
     .bind(&new.handler_target)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(pool)
     .await?;
     row_to_hook(&row)
@@ -41,6 +43,7 @@ pub async fn get(pool: &PgPool, id: FsmHookId) -> Result<FsmHookWithSecret, Stor
     let hook = row_to_hook(&row)?;
     Ok(FsmHookWithSecret {
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: created_by_token(&row),
         hook,
     })
 }
@@ -83,6 +86,7 @@ pub async fn list_matching(
             let hook = row_to_hook(row)?;
             Ok(FsmHookWithSecret {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: created_by_token(row),
                 hook,
             })
         })
@@ -136,4 +140,9 @@ fn parse_opt_state(raw: Option<String>) -> Result<Option<ThreadState>, StoreErro
             .ok_or_else(|| StoreError::InvalidInput(format!("bad thread state: {s}")))
             .map(Some),
     }
+}
+
+fn created_by_token(row: &sqlx::postgres::PgRow) -> Option<ApiTokenId> {
+    row.get::<Option<Uuid>, _>("created_by_token")
+        .map(ApiTokenId)
 }

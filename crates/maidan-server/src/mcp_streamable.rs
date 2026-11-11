@@ -18,6 +18,7 @@ use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
 use crate::extract::ApiBytes;
+use crate::load_shed::PermitSlot;
 use crate::state::AppState;
 
 /// How often a session's notification task checks that the session is still
@@ -48,8 +49,24 @@ fn last_event_id(headers: &HeaderMap) -> Option<u64> {
 pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    permit: Option<Extension<PermitSlot>>,
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
+) -> Result<Response, ApiError> {
+    // One request per POST, so an admitted wait may give back its permit, as
+    // on `POST /mcp`.
+    let request = streamable_request(state, auth, headers, body);
+    match permit {
+        Some(Extension(permit)) => crate::mcp::releasing_when_parked(permit, request).await,
+        None => request.await,
+    }
+}
+
+async fn streamable_request(
+    state: AppState,
+    auth: AuthContext,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
     if !auth.bypass {
         auth.require_capability(WORKSPACE_READ)
@@ -142,6 +159,9 @@ async fn open_new_streamable_session(
     session_header: Option<&str>,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
+    // Taken before the session opens or the request runs, so a refused stream
+    // has done nothing the client would need to retry around.
+    let slot = state.stream_limit.open(auth)?;
     let session_id = state
         .mcp
         .touch_streamable_session(session_header, auth)
@@ -202,7 +222,7 @@ async fn open_new_streamable_session(
             )
         })
     });
-    let stream = crate::stream_guard::guard(state.store.clone(), auth, stream);
+    let stream = crate::stream_guard::guard(state.store.clone(), auth, slot.hold(stream));
 
     let mut resp = Sse::new(stream)
         .keep_alive(
@@ -265,6 +285,8 @@ pub async fn stream_get(
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
     crate::mcp::validate_protocol_version(&headers)?;
+    // Taken before listening, so a refused stream costs nothing.
+    let slot = state.stream_limit.open(&auth)?;
 
     let registry = state.mcp.streamable_sessions();
     let owner = Principal::of(&auth);
@@ -300,8 +322,11 @@ pub async fn stream_get(
                 .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
         });
 
-    let stream =
-        crate::stream_guard::guard(state.store.clone(), &auth, replay.chain(notifications));
+    let stream = crate::stream_guard::guard(
+        state.store.clone(),
+        &auth,
+        slot.hold(replay.chain(notifications)),
+    );
 
     let mut resp = Sse::new(stream)
         .keep_alive(
