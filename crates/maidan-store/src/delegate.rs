@@ -893,9 +893,10 @@ macro_rules! store_delegations {
             async fn list_pending_approval_gates(
                 &self,
                 workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
                 limit: i64,
             ) -> Result<Vec<ApprovalGate>, StoreError> {
-                approval_gates::list_pending(self.pool(), workspace_id, limit).await
+                approval_gates::list_pending(self.pool(), workspace_id, readable_by, limit).await
             }
 
             async fn page_pending_approval_gates(
@@ -4468,6 +4469,15 @@ macro_rules! store_delegations {
                 sha256: &str,
             ) -> Result<bool, StoreError> {
                 artifacts::ref_exists(self.pool(), workspace_id, sha256).await
+            }
+
+            async fn artifact_visible_to(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                sha256: &str,
+            ) -> Result<bool, StoreError> {
+                artifacts::visible_to(self.pool(), workspace_id, member_id, sha256).await
             }
 
             async fn erase_artifact_audited(

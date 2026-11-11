@@ -1415,6 +1415,7 @@ impl Event {
             | Self::ThreadResultSet { channel_id, .. }
             | Self::ThreadCancelled { channel_id, .. }
             | Self::ThreadAttributesSet { channel_id, .. }
+            | Self::ThreadBlocked { channel_id, .. }
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimUnacknowledged { channel_id, .. }
@@ -1440,7 +1441,25 @@ impl Event {
             // Already optional: resolved best-effort from the thread.
             Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
             Self::ApprovalRequested { channel_id, .. } => *channel_id,
-            _ => None,
+            // Named, not `_`: a new variant must say where it happened, or it
+            // is read as workspace-wide (`EventVisibility`) and every reader sees it.
+            Self::WorkspaceCreated { .. }
+            | Self::MemberJoined { .. }
+            | Self::MemberFrozen { .. }
+            | Self::MemberUnfrozen { .. }
+            | Self::MemberDisplayNameChanged { .. }
+            | Self::IntakeProposed { .. }
+            | Self::IntakeRejected { .. }
+            | Self::UsageOverAllowance { .. }
+            | Self::CreditsDeposited { .. }
+            | Self::MentionRecorded { .. }
+            | Self::VoteCast { .. }
+            | Self::VoteRetracted { .. }
+            | Self::ReactionAdded { .. }
+            | Self::ReactionRemoved { .. }
+            | Self::ReferenceAdded { .. }
+            | Self::ArtifactUpserted { .. }
+            | Self::MemoryBlockUpdated { .. } => None,
         }
     }
 
@@ -1455,6 +1474,7 @@ impl Event {
             Self::ThreadCancelled { thread_id, .. } => Some(*thread_id),
             Self::ThreadAttributesSet { thread_id, .. } => Some(*thread_id),
             Self::ApprovalRequested { thread_id, .. } => *thread_id,
+            Self::ThreadBlocked { thread_id, .. } => Some(*thread_id),
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimUnacknowledged { thread_id, .. } => Some(*thread_id),
@@ -1482,7 +1502,21 @@ impl Event {
             | Self::MessagePinned { thread_id, .. }
             | Self::MessageUnpinned { thread_id, .. }
             | Self::StatusDeclared { thread_id, .. } => Some(*thread_id),
-            _ => None,
+            // Named, not `_`, for the reason `channel_id` gives.
+            Self::WorkspaceCreated { .. }
+            | Self::MemberJoined { .. }
+            | Self::ChannelCreated { .. }
+            | Self::ScheduleSkipped { .. }
+            | Self::MemberFrozen { .. }
+            | Self::MemberUnfrozen { .. }
+            | Self::MemberDisplayNameChanged { .. }
+            | Self::IntakeProposed { .. }
+            | Self::IntakeRejected { .. }
+            | Self::UsageOverAllowance { .. }
+            | Self::CreditsDeposited { .. }
+            | Self::ReferenceAdded { .. }
+            | Self::ArtifactUpserted { .. }
+            | Self::MemoryBlockUpdated { .. } => None,
         }
     }
 
@@ -1812,6 +1846,26 @@ mod filter_tests {
     use super::*;
     use chrono::Utc;
     use std::collections::HashSet;
+
+    /// A dispatch block names its thread and channel, and its note is free
+    /// text about a thread that may be private. Unlocated, it was stored as
+    /// workspace-wide and shown to every reader of the workspace's events.
+    #[test]
+    fn a_thread_block_says_where_it_happened() {
+        let channel_id = ChannelId(uuid::Uuid::now_v7());
+        let thread_id = ThreadId(uuid::Uuid::now_v7());
+        let event = Event::ThreadBlocked {
+            occurred_at: Utc::now(),
+            workspace_id: WorkspaceId(uuid::Uuid::now_v7()),
+            channel_id,
+            thread_id,
+            reason: BlockedReason::Human,
+            set_by: MemberId(uuid::Uuid::now_v7()),
+            note: Some("the acquisition price is 42".into()),
+        };
+        assert_eq!(event.channel_id(), Some(channel_id));
+        assert_eq!(event.thread_id(), Some(thread_id));
+    }
 
     fn sample_workspace(id: WorkspaceId) -> Workspace {
         Workspace {

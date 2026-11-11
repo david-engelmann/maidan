@@ -397,20 +397,56 @@ fn expirable_sql() -> String {
              JOIN maidan_channels c ON c.id = t.channel_id
              WHERE c.workspace_id = r.workspace_id
                AND m.tombstoned_at IS NULL
-               AND json_valid(m.metadata)
-               AND ((json_type(m.metadata, '$.artifact_sha256') = 'text'
-                     AND json_extract(m.metadata, '$.artifact_sha256') = r.sha256)
-                    OR (json_type(m.metadata, '$.sha256') = 'text'
-                        AND json_extract(m.metadata, '$.sha256') = r.sha256)
-                    OR (json_type(m.metadata, '$.artifacts') = 'array'
-                        AND EXISTS (
-                            SELECT 1 FROM json_each(m.metadata, '$.artifacts') e
-                            WHERE (e.type = 'text' AND e.value = r.sha256)
-                               OR (e.type = 'object'
-                                   AND json_type(e.value, '$.sha256') = 'text'
-                                   AND json_extract(e.value, '$.sha256') = r.sha256)))))",
+               AND {names})",
         kinds = crate::media_retention::MEDIA_KINDS_SQL,
+        names = metadata_names_sha("m", "r.sha256"),
     )
+}
+
+/// Whether the message `message` names the artifact `sha` in its metadata,
+/// in any shape `artifact_shas_from_metadata` reads: see the Postgres twin.
+fn metadata_names_sha(message: &str, sha: &str) -> String {
+    format!(
+        "(json_valid({message}.metadata)
+          AND ((json_type({message}.metadata, '$.artifact_sha256') = 'text'
+                AND json_extract({message}.metadata, '$.artifact_sha256') = {sha})
+               OR (json_type({message}.metadata, '$.sha256') = 'text'
+                   AND json_extract({message}.metadata, '$.sha256') = {sha})
+               OR (json_type({message}.metadata, '$.artifacts') = 'array'
+                   AND EXISTS (
+                       SELECT 1 FROM json_each({message}.metadata, '$.artifacts') e
+                       WHERE (e.type = 'text' AND e.value = {sha})
+                          OR (e.type = 'object'
+                              AND json_type(e.value, '$.sha256') = 'text'
+                              AND json_extract(e.value, '$.sha256') = {sha})))))"
+    )
+}
+
+/// Whether `member` may read the artifact `sha256` in `workspace_id`: see
+/// the Postgres twin.
+pub async fn visible_to(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    sha256: &str,
+) -> Result<bool, StoreError> {
+    let visible = crate::thread_access::artifact_visible_to(
+        "r",
+        "?2",
+        "?4",
+        &metadata_names_sha("vis_m", "r.sha256"),
+    );
+    let exists: bool = sqlx::query_scalar(&format!(
+        "SELECT EXISTS(SELECT 1 FROM maidan_artifact_refs r
+                       WHERE r.workspace_id = ?1 AND r.sha256 = ?3 AND {visible})"
+    ))
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(sha256)
+    .bind(maidan_types::DM_CHANNEL_NAME)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
 }
 
 pub async fn media_bytes(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<i64, StoreError> {
