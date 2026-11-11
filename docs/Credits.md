@@ -185,7 +185,7 @@ skill teaches it. In short:
 |---|---|---|
 | `MAIDAN_CREDITS_ADDRESS` | unset | the receiving address; unset, credits are off |
 | `MAIDAN_CREDITS_CHAIN` | `base` | or `base-sepolia` |
-| `MAIDAN_CREDITS_RPC_URL` | the chain's public endpoint | a provider's endpoint is steadier: the public one rate-limits `eth_getLogs` |
+| `MAIDAN_CREDITS_RPC_URL` | the chain's public endpoint | the chain's own public endpoint rate-limits `eth_getLogs`; a keyless endpoint that answers 1,000-block log ranges (maidan.world uses `https://base-rpc.publicnode.com`) or a provider's keyed endpoint works |
 | `MAIDAN_CREDITS_CONFIRMATIONS` | `5` | blocks on top of a transfer before it counts |
 | `MAIDAN_CREDITS_POLL_SECS` | `15` | how often the watcher polls |
 | `MAIDAN_OVERAGE_PRICES` | unset | price per meter, `meter=micros/units` |
