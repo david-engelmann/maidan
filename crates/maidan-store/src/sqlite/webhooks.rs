@@ -139,17 +139,20 @@ pub async fn revoke(
     row_to_subscription(&row)
 }
 
+/// Enqueue one delivery of event `log_id` to a subscription, unless one is
+/// already queued; see the Postgres twin. `None` when it was already there.
 pub async fn enqueue_delivery(
     pool: &SqlitePool,
     subscription_id: WebhookSubscriptionId,
     log_id: i64,
     payload: &str,
-) -> Result<i64, StoreError> {
+) -> Result<Option<i64>, StoreError> {
     let (traceparent, tracestate) = super::events::trace_columns(pool, log_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_webhook_deliveries
             (subscription_id, log_id, payload, traceparent, tracestate)
          VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (subscription_id, log_id) DO NOTHING
          RETURNING id",
     )
     .bind(subscription_id.0)
@@ -157,9 +160,9 @@ pub async fn enqueue_delivery(
     .bind(payload)
     .bind(traceparent)
     .bind(tracestate)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(row.get("id"))
+    Ok(row.map(|row| row.get("id")))
 }
 
 const PENDING: &str = "d.delivered_at IS NULL AND d.quarantined_at IS NULL";
@@ -182,20 +185,48 @@ pub async fn list_pending_deliveries(
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| WebhookSubscriptionDelivery {
-            id: row.get("id"),
-            subscription_id: WebhookSubscriptionId(row.get::<Uuid, _>("subscription_id")),
-            log_id: row.get("log_id"),
-            payload: row.get("payload"),
-            attempts: row.get("attempts"),
-            trace: maidan_types::TraceContext::from_columns(
-                row.try_get("traceparent").unwrap_or(None),
-                row.try_get("tracestate").unwrap_or(None),
-            ),
-        })
-        .collect())
+    Ok(rows.iter().map(row_to_pending).collect())
+}
+
+/// Claim the oldest due delivery by leasing it `lease_secs` forward; see the
+/// Postgres twin. SQLite runs one writer at a time, so the one statement is
+/// the claim.
+pub async fn claim_next_delivery(
+    pool: &SqlitePool,
+    lease_secs: i64,
+) -> Result<Option<WebhookSubscriptionDelivery>, StoreError> {
+    let now = Utc::now();
+    let lease = (now + chrono::Duration::seconds(lease_secs)).to_rfc3339();
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_webhook_deliveries
+         SET next_attempt_at = ?
+         WHERE id = (
+             SELECT d.id FROM maidan_webhook_deliveries d
+             WHERE {PENDING} AND d.next_attempt_at <= ?
+             ORDER BY d.id ASC
+             LIMIT 1
+         )
+         RETURNING id, subscription_id, log_id, payload, attempts, traceparent, tracestate"
+    ))
+    .bind(&lease)
+    .bind(now.to_rfc3339())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_pending))
+}
+
+fn row_to_pending(row: &sqlx::sqlite::SqliteRow) -> WebhookSubscriptionDelivery {
+    WebhookSubscriptionDelivery {
+        id: row.get("id"),
+        subscription_id: WebhookSubscriptionId(row.get::<Uuid, _>("subscription_id")),
+        log_id: row.get("log_id"),
+        payload: row.get("payload"),
+        attempts: row.get("attempts"),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
+    }
 }
 
 pub async fn mark_delivered(pool: &SqlitePool, delivery_id: i64) -> Result<(), StoreError> {

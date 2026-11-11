@@ -46,6 +46,7 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
     let webhook_id = store
         .enqueue_webhook_delivery(sub.id, 1, r#"{"kind":"message.posted"}"#)
         .await
+        .unwrap()
         .unwrap();
     store.quarantine_webhook_delivery(webhook_id).await.unwrap();
 
@@ -58,8 +59,10 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
             header_name: "X-Test".into(),
             header_value: "v".into(),
             payload: "{}".into(),
+            log_id: None,
         })
         .await
+        .unwrap()
         .unwrap();
     store.quarantine_automation_delivery(auto_id).await.unwrap();
 

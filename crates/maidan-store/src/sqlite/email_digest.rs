@@ -45,24 +45,28 @@ pub async fn get_delivery_mode(
         .unwrap_or_default())
 }
 
-/// Advance a member's digest watermark to `now` — called after a digest is
-/// emailed, so the next run only counts notifications created since.
-pub async fn set_last_digest_at(
+/// Move a member's digest watermark from `seen` to `to`, only if it still
+/// holds `seen`; see the Postgres twin. The watermark is only ever written
+/// here, as RFC 3339 text, so the text a reader parsed compares equal.
+pub async fn advance_last_digest_at(
     pool: &SqlitePool,
     member_id: MemberId,
-    now: DateTime<Utc>,
-) -> Result<(), crate::error::StoreError> {
-    let now = now.to_rfc3339();
-    sqlx::query(
+    seen: Option<DateTime<Utc>>,
+    to: DateTime<Utc>,
+) -> Result<bool, crate::error::StoreError> {
+    let moved = sqlx::query(
         "INSERT INTO maidan_member_digest_state (member_id, last_digest_at)
-         VALUES (?, ?)
-         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at",
+         VALUES (?1, ?3)
+         ON CONFLICT (member_id) DO UPDATE SET last_digest_at = excluded.last_digest_at
+         WHERE maidan_member_digest_state.last_digest_at IS ?2",
     )
     .bind(member_id.0)
-    .bind(&now)
+    .bind(seen.map(|t| t.to_rfc3339()))
+    .bind(to.to_rfc3339())
     .execute(pool)
-    .await?;
-    Ok(())
+    .await?
+    .rows_affected();
+    Ok(moved == 1)
 }
 
 /// Members due for an email digest: digest-mode members with an address who
