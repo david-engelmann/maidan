@@ -63,6 +63,7 @@ async fn run_suite(store: &dyn Store) {
         label: None,
         event_kinds: vec![],
         secret_ciphertext: "sealed".into(),
+        created_by_token: None,
     };
     let sub = store
         .create_webhook_subscription(subscription("https://example.test/a"))

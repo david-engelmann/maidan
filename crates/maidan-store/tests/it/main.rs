@@ -284,6 +284,9 @@ mod member_display_name_event;
 #[path = "../member_emails.rs"]
 mod member_emails;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_freezes.rs"]
 mod member_freezes;
 
@@ -400,6 +403,9 @@ mod reactions_pins;
 
 #[path = "../read_routing.rs"]
 mod read_routing;
+
+#[path = "../read_visibility.rs"]
+mod read_visibility;
 
 #[path = "../reader_pool.rs"]
 mod reader_pool;
@@ -634,6 +640,9 @@ mod tombstoned_member_tokens;
 
 #[path = "../trace_context.rs"]
 mod trace_context;
+
+#[path = "../typed_reference_rules.rs"]
+mod typed_reference_rules;
 
 #[path = "../unique_thread_attributes.rs"]
 mod unique_thread_attributes;

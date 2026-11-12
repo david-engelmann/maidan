@@ -893,9 +893,10 @@ macro_rules! store_delegations {
             async fn list_pending_approval_gates(
                 &self,
                 workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
                 limit: i64,
             ) -> Result<Vec<ApprovalGate>, StoreError> {
-                approval_gates::list_pending(self.pool(), workspace_id, limit).await
+                approval_gates::list_pending(self.pool(), workspace_id, readable_by, limit).await
             }
 
             async fn page_pending_approval_gates(
@@ -4491,6 +4492,15 @@ macro_rules! store_delegations {
                 artifacts::ref_exists(self.pool(), workspace_id, sha256).await
             }
 
+            async fn artifact_visible_to(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                sha256: &str,
+            ) -> Result<bool, StoreError> {
+                artifacts::visible_to(self.pool(), workspace_id, member_id, sha256).await
+            }
+
             async fn erase_artifact_audited(
                 &self,
                 workspace_id: WorkspaceId,
@@ -5812,6 +5822,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5826,6 +5837,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5838,6 +5850,7 @@ macro_rules! store_delegations {
                 Ok(WebhookSubscriptionWithSecret {
                     subscription: row.subscription,
                     secret_ciphertext: row.secret_ciphertext,
+                    created_by_token: row.created_by_token,
                 })
             }
 
@@ -6193,6 +6206,21 @@ macro_rules! store_delegations {
                 config_id: &str,
             ) -> Result<bool, StoreError> {
                 a2a::delete_task_push_config(self.pool(), task_id, config_id).await
+            }
+
+            async fn delete_a2a_task_push_config_created_by(
+                &self,
+                task_id: &str,
+                config_id: &str,
+                created_by_token: Option<ApiTokenId>,
+            ) -> Result<bool, StoreError> {
+                a2a::delete_task_push_config_created_by(
+                    self.pool(),
+                    task_id,
+                    config_id,
+                    created_by_token,
+                )
+                .await
             }
         }
     };

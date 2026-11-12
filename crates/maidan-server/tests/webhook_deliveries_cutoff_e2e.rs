@@ -114,6 +114,7 @@ async fn subscribed(state: &AppState, ws: WorkspaceId, addr: SocketAddr) -> Webh
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();

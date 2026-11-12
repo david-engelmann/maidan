@@ -513,7 +513,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             Err(err) => return Err(err.into()),
         }
     };
-    let subscribe_resume_ttl_secs = maidan_server::subscribe_resume::ttl_secs_from_env();
+    let subscribe_resume_ttl_secs = maidan_server::subscribe_resume::TTL_SECS;
     let mut state = AppState::new(
         store,
         artifacts,
@@ -757,7 +757,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             state.attach_web_push_public_key(public_key);
             tracing::info!("web push (VAPID) configured");
             let push_state = state.clone();
-            let push_cfg = maidan_server::web_push_worker::config_from_env();
+            let push_cfg = maidan_server::web_push_worker::config();
             tokio::spawn(async move {
                 maidan_server::web_push_worker::run(push_state, push_cfg).await;
             });
@@ -774,11 +774,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
 
     // Background mail-outbox worker: drains the durable mail queue with
     // retry/backoff + dead-lettering. Runs whenever a transport is configured
-    // (the router enqueues only then). Tick via `MAIDAN_MAIL_WORKER_TICK_SECS`
-    // (default 5s).
+    // (the router enqueues only then).
     if state.mail.is_some() {
         let mail_state = state.clone();
-        let mail_cfg = maidan_server::mail_worker::config_from_env();
+        let mail_cfg = maidan_server::mail_worker::config();
         tokio::spawn(async move {
             maidan_server::mail_worker::run(mail_state, mail_cfg).await;
         });
@@ -931,14 +930,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Background projector-egress worker: drains the durable egress queue with
     // retry/backoff + dead-lettering. Runs whenever a projector sender is
     // configured — which is exactly when the projectors enqueue, so a
-    // deployment without one neither queues nor drains. Tick via
-    // `MAIDAN_EGRESS_WORKER_TICK_SECS` (default 5s).
+    // deployment without one neither queues nor drains.
     if state.slack_sender.is_some()
         || state.github_sender.is_some()
         || state.linear_sender.is_some()
     {
         let egress_state = state.clone();
-        let egress_cfg = maidan_server::egress_worker::config_from_env();
+        let egress_cfg = maidan_server::egress_worker::config();
         tokio::spawn(async move {
             maidan_server::egress_worker::run(egress_state, egress_cfg).await;
         });
@@ -1032,11 +1030,11 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     }
 
     // Usage meters: requests and MCP calls are counted in memory and flushed
-    // to the daily rollup every `MAIDAN_USAGE_METER_FLUSH_SECS` (60 s), and
+    // to the daily rollup every minute, and
     // once more below after the listener closes.
     {
         let meter_state = state.clone();
-        let interval = maidan_server::usage_meters::interval_from_env();
+        let interval = maidan_server::usage_meters::FLUSH_INTERVAL;
         tokio::spawn(async move {
             maidan_server::usage_meters::run(meter_state, interval).await;
         });
@@ -1130,7 +1128,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         if let Some(backend) = outbox_backend {
             let relay_bus = bus.clone();
             let max_attempts = maidan_server::outbox_relay::max_attempts_from_env();
-            let poll_interval = maidan_server::outbox_relay::poll_interval_from_env();
+            let poll_interval = maidan_server::outbox_relay::POLL_INTERVAL;
             tokio::spawn(async move {
                 let mut relay = maidan_server::outbox_relay::OutboxRelay::with_options(
                     backend,
@@ -1165,7 +1163,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     let webhook_worker = maidan_server::webhook_worker::WebhookWorker::spawn(state.clone());
     tracing::info!(
         max_attempts = maidan_server::webhooks::max_attempts_from_env(),
-        poll_ms = maidan_server::webhooks::poll_interval_ms_from_env(),
+        poll_ms = maidan_server::webhooks::POLL_INTERVAL_MS,
         "webhook worker running"
     );
 
@@ -1180,7 +1178,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         maidan_server::automation_worker::AutomationDeliveryWorker::spawn(state.clone());
     tracing::info!(
         max_attempts = maidan_server::automation_delivery::max_attempts_from_env(),
-        poll_ms = maidan_server::automation_delivery::poll_interval_ms_from_env(),
+        poll_ms = maidan_server::automation_delivery::POLL_INTERVAL_MS,
         "automation delivery worker running"
     );
 

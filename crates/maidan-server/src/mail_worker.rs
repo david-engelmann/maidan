@@ -17,8 +17,8 @@
 //! retried instead of dropped.
 //!
 //! **Runs whenever a transport is configured** (spawned in `main.rs` only when
-//! `state.mail` is set — a queue with no sender would just pile up). Tick
-//! defaults to 5s, tunable via `MAIDAN_MAIL_WORKER_TICK_SECS`.
+//! `state.mail` is set — a queue with no sender would just pile up). It
+//! ticks every 5s.
 //!
 //! **At-least-once:** [`Store::claim_next_due_mail`](maidan_store::Store) leases a
 //! row forward, so a worker that crashes mid-send releases it after the lease
@@ -51,17 +51,11 @@ pub struct MailWorkerConfig {
     pub tick: Duration,
 }
 
-/// The default tick (5s), overridable via `MAIDAN_MAIL_WORKER_TICK_SECS` (>0).
-/// Unlike the digest sweeper, the worker is not opt-in by env — it's spawned
-/// whenever a transport is configured — so this always returns a config.
-pub fn config_from_env() -> MailWorkerConfig {
-    let secs = std::env::var("MAIDAN_MAIL_WORKER_TICK_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&s| s > 0)
-        .unwrap_or(5);
+/// The worker's tick. Five seconds is a constant, not a knob (OPS-006); the
+/// worker always runs once its sender is configured.
+pub fn config() -> MailWorkerConfig {
     MailWorkerConfig {
-        tick: Duration::from_secs(secs),
+        tick: Duration::from_secs(5),
     }
 }
 

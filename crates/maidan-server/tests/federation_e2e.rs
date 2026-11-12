@@ -845,6 +845,151 @@ async fn a_refused_event_does_not_wedge_the_origin_chain() {
     h.shutdown().await;
 }
 
+/// RED-006: ingest rewrites only an event's workspace id, so a peer that
+/// learned a local channel or thread id could place its events inside that
+/// channel, private or not, in any workspace on this server. An event whose
+/// channel or thread id resolves here is refused; one naming the peer's own
+/// locations is ingested, and the chain goes on verifying past the refusals.
+#[tokio::test]
+async fn a_federated_event_naming_a_local_channel_or_thread_is_refused() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-home".to_string(),
+        })
+        .await
+        .unwrap();
+    // The target lives in another workspace on this server.
+    let other = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-private".to_string(),
+        })
+        .await
+        .unwrap();
+    let private = h
+        .store
+        .create_channel(maidan_types::NewChannel {
+            workspace_id: other.id,
+            name: "secret".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    let local_thread = h
+        .store
+        .create_thread(maidan_types::NewThread {
+            channel_id: private.id,
+            parent_thread_id: None,
+            title: Some("local".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let (peer_id, peer_secret) = mint_peer(&h, ws.id, "remote-locations").await;
+
+    let now = chrono::Utc::now();
+    let channel = |id: maidan_types::ChannelId| Event::ChannelCreated {
+        occurred_at: now,
+        workspace_id: ws.id,
+        channel: maidan_types::Channel {
+            id,
+            workspace_id: ws.id,
+            name: "remote".into(),
+            topic: None,
+            private: false,
+            created_at: now,
+            updated_at: now,
+            tombstoned_at: None,
+        },
+    };
+    let remote_channel = maidan_types::ChannelId(uuid::Uuid::now_v7());
+    let events = [
+        (channel(private.id), EventKind::ChannelCreated),
+        (
+            Event::ThreadCreated {
+                occurred_at: now,
+                workspace_id: ws.id,
+                channel_id: remote_channel,
+                thread: local_thread.clone(),
+            },
+            EventKind::ThreadCreated,
+        ),
+        (channel(remote_channel), EventKind::ChannelCreated),
+    ];
+
+    let mut prev = maidan_types::genesis_hash();
+    let mut outcomes = Vec::new();
+    for (i, (event, kind)) in events.into_iter().enumerate() {
+        let id = i as i64 + 1;
+        let payload = serde_json::to_value(&event).unwrap();
+        let content_hash = maidan_types::content_hash(&payload).unwrap();
+        let stored = StoredEvent {
+            id,
+            lsn: id,
+            kind,
+            workspace_id: None,
+            channel_id: None,
+            thread_id: None,
+            payload,
+            occurred_at: now,
+            prev_hash: prev.clone(),
+            content_hash: content_hash.clone(),
+            content_key: None,
+            trace: None,
+        };
+        prev = maidan_types::chain_hash(&stored.prev_hash, &content_hash, id);
+        let res = h
+            .client
+            .post(format!("{}/a2a/v1/events", h.base()))
+            .bearer_auth(&peer_secret)
+            .json(&FederatedEventBatch {
+                events: vec![FederationEnvelope {
+                    origin_peer_id: peer_id,
+                    remote_event_id: id,
+                    event: stored,
+                }],
+            })
+            .send()
+            .await
+            .unwrap();
+        let status = res.status();
+        outcomes.push((
+            status,
+            res.json::<serde_json::Value>().await.unwrap_or(json!({})),
+        ));
+    }
+
+    for (label, (status, body)) in ["local channel id", "local thread id"]
+        .iter()
+        .zip(&outcomes)
+    {
+        assert_eq!(*status, StatusCode::OK, "{label}: {body}");
+        assert_eq!(body["refused"], 1, "{label}: {body}");
+        assert_eq!(body["ingested"], 0, "{label}: {body}");
+    }
+    assert_eq!(outcomes[2].0, StatusCode::OK, "{:?}", outcomes[2].1);
+    assert_eq!(
+        outcomes[2].1["ingested"], 1,
+        "the peer's own channel: {:?}",
+        outcomes[2].1
+    );
+
+    // No logged event names the local channel or thread.
+    let logged = h.store.list_events_after_global(0, 1000).await.unwrap();
+    assert!(
+        logged
+            .iter()
+            .all(|e| e.channel_id != Some(private.id) && e.thread_id != Some(local_thread.id)),
+        "{logged:?}"
+    );
+
+    h.shutdown().await;
+}
+
 /// A poll tick used to return on the first peer whose `list_events` failed,
 /// so one unreachable peer stopped federation for every peer sorted after it,
 /// in every workspace, on every tick. Workspace A's peer sorts first and

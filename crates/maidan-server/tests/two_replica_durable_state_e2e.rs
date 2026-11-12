@@ -24,6 +24,10 @@ use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
+// base64url(SHA256("two-replica-pkce-verifier")), the S256 challenge for that verifier.
+const PKCE_VERIFIER: &str = "two-replica-pkce-verifier";
+const PKCE_CHALLENGE: &str = "QbIYpZB90aWfPgndv68Hurs0CzpCk3yCn21Wp1yMoRs";
+
 /// Build a replica server over `store`/`search` and return its bound address.
 fn spawn_replica(store: Arc<dyn Store>, search: Arc<dyn Search>) -> SocketAddr {
     let dir = std::env::temp_dir().join(format!("maidan-104-{}", uuid::Uuid::new_v4()));
@@ -145,7 +149,11 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
             "http://{replica_a}/workspaces/{wid}/apps/{app_id}/oauth/authorize"
         ))
         .header("Authorization", &auth)
-        .json(&json!({"redirect_uri": "https://app.example/cb", "state": "s"}))
+        .json(&json!({
+            "redirect_uri": "https://app.example/cb",
+            "state": "s",
+            "code_challenge": PKCE_CHALLENGE
+        }))
         .send()
         .await
         .unwrap();
@@ -158,7 +166,11 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
     // Exchange on the OTHER replica — only possible because the code is in the store.
     let exch = client
         .post(format!("http://{replica_b}/oauth/app/token"))
-        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .json(&json!({
+            "code": code,
+            "redirect_uri": "https://app.example/cb",
+            "code_verifier": PKCE_VERIFIER
+        }))
         .send()
         .await
         .unwrap();

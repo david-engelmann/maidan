@@ -608,6 +608,9 @@ mod rate_limit_e2e;
 #[path = "../reactions_pins_e2e.rs"]
 mod reactions_pins_e2e;
 
+#[path = "../read_visibility_e2e.rs"]
+mod read_visibility_e2e;
+
 #[path = "../recipe_rest_e2e.rs"]
 mod recipe_rest_e2e;
 
@@ -616,6 +619,9 @@ mod recipes_mcp_e2e;
 
 #[path = "../references_reverse_e2e.rs"]
 mod references_reverse_e2e;
+
+#[path = "../registration_owner_e2e.rs"]
+mod registration_owner_e2e;
 
 #[path = "../reindex_job_e2e.rs"]
 mod reindex_job_e2e;

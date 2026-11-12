@@ -40,6 +40,7 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
             label: None,
             event_kinds: vec!["message.posted".into()],
             secret_ciphertext: "cipher".into(),
+            created_by_token: None,
         })
         .await
         .unwrap();

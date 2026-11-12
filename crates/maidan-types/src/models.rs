@@ -3946,6 +3946,11 @@ pub struct NewWebhookSubscription {
     pub label: Option<String>,
     pub event_kinds: Vec<String>,
     pub secret_ciphertext: String,
+    /// The token that registered the subscription. Its deliveries go out only
+    /// while this token could register it again, and only for events it may
+    /// read; one registered without a token delivers only while auth is
+    /// disabled.
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone)]
@@ -3963,6 +3968,8 @@ pub struct WebhookSubscriptionDelivery {
 pub struct WebhookSubscriptionWithSecret {
     pub subscription: WebhookSubscription,
     pub secret_ciphertext: String,
+    /// See [`NewWebhookSubscription::created_by_token`].
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4026,12 +4033,18 @@ pub struct NewSlashCommand {
     pub handler_kind: SlashHandlerKind,
     pub handler_target: String,
     pub secret_ciphertext: String,
+    /// The token that registered the command. It runs only while this token
+    /// could register it again; one registered without a token runs only
+    /// while auth is disabled.
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SlashCommandWithSecret {
     pub command: SlashCommand,
     pub secret_ciphertext: String,
+    /// See [`NewSlashCommand::created_by_token`].
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

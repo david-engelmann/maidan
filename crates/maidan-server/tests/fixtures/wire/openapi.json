@@ -1067,6 +1067,7 @@
       "AuthorizeAppInstall": {
         "properties": {
           "code_challenge": {
+            "description": "base64url(SHA-256(code_verifier)), unpadded: PKCE S256, required on\nevery code. The exchange is public (no client secret), so without it a\ncode intercepted on the redirect was as good as a token.",
             "type": [
               "string",
               "null"

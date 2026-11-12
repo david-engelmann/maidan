@@ -975,9 +975,14 @@ pub trait ApprovalGateStore: Send + Sync {
         &self,
         id: ApprovalGateId,
     ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// The pending gates in a workspace, oldest first, that `readable_by`
+    /// may read: those on a thread it can read, and those on no thread.
+    /// `None` keeps every gate and is only for a caller that bypasses auth;
+    /// every other caller names itself.
     async fn list_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
     /// A keyset page of the pending gates, newest first (see
@@ -4004,6 +4009,18 @@ pub trait ArtifactMetaStore: Send + Sync {
         sha256: &str,
     ) -> Result<bool, StoreError>;
 
+    /// Whether `member_id` may read the artifact `sha256` in `workspace_id`:
+    /// the workspace holds a ref, and every thread in the workspace that
+    /// references it is one the member can read, unless the member uploaded
+    /// it. An artifact referenced nowhere is the workspace's. The one rule
+    /// every artifact read goes through (`thread_access::artifact_visible_to`).
+    async fn artifact_visible_to(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+
     /// Erase `workspace_id`'s reference to `sha256`, with its audit row in the
     /// same transaction. The artifact row goes with the last reference; the
     /// caller then deletes the blob. `NotFound` without a reference,
@@ -5377,6 +5394,16 @@ pub trait A2aStore: Send + Sync {
         &self,
         task_id: &str,
         config_id: &str,
+    ) -> Result<bool, StoreError>;
+    /// [`Self::delete_a2a_task_push_config`], only while the config is still
+    /// the one `created_by_token` registered: a config re-registered under the
+    /// same id by another token is left alone. `None` matches a config
+    /// registered without a token.
+    async fn delete_a2a_task_push_config_created_by(
+        &self,
+        task_id: &str,
+        config_id: &str,
+        created_by_token: Option<ApiTokenId>,
     ) -> Result<bool, StoreError>;
 }
 

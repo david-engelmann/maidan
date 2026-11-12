@@ -63,9 +63,6 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_AUTOMATION_MAX_ATTEMPTS", "1") };
-    // SAFETY: test setup. Maidan reads this variable only through std,
-    // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_AUTOMATION_POLL_INTERVAL_MS", "10") };
 
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)

@@ -1,21 +1,21 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewSlashCommand, SlashCommand, SlashCommandId, SlashCommandWithSecret, SlashHandlerKind,
-    WorkspaceId,
+    ApiTokenId, NewSlashCommand, SlashCommand, SlashCommandId, SlashCommandWithSecret,
+    SlashHandlerKind, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
+const COLS: &str = "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 pub async fn create(pool: &SqlitePool, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {
     let id = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO maidan_slash_commands
-            (id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, created_by_token)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -24,6 +24,7 @@ pub async fn create(pool: &SqlitePool, new: NewSlashCommand) -> Result<SlashComm
     .bind(new.handler_kind.as_str())
     .bind(&new.handler_target)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .execute(pool)
     .await?;
     get(pool, SlashCommandId(id)).await.map(|row| row.command)
@@ -44,6 +45,9 @@ pub async fn get(
     Ok(SlashCommandWithSecret {
         command,
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: row
+            .get::<Option<Uuid>, _>("created_by_token")
+            .map(ApiTokenId),
     })
 }
 
@@ -66,6 +70,9 @@ pub async fn get_by_name(
     Ok(SlashCommandWithSecret {
         command,
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: row
+            .get::<Option<Uuid>, _>("created_by_token")
+            .map(ApiTokenId),
     })
 }
 
