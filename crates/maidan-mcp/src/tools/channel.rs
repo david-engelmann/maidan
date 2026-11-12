@@ -410,7 +410,7 @@ struct OpenGroupDmArgs {
     title: Option<String>,
 }
 
-/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `workspace:read`
+/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
 /// and `open_group_dm_conversation`. At least three distinct members, all in
 /// the workspace, as the store requires.
 pub(super) async fn open_group_dm(

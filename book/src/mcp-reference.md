@@ -7714,7 +7714,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `open_group_dm`
 
-**Open group DM.** Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.
+**Open group DM.** Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires message:post. This writes a conversation.
 
 **Capability:** `workspace:read`
 
