@@ -6242,7 +6242,10 @@ mod tests {
         let auth = AuthContext::from_session(
             agent.id,
             ws.id,
-            vec![maidan_auth::capability::WORKSPACE_READ.to_string()],
+            vec![
+                maidan_auth::capability::WORKSPACE_READ.to_string(),
+                maidan_auth::capability::MESSAGE_POST.to_string(),
+            ],
         );
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
