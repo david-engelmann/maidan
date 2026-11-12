@@ -170,7 +170,7 @@ pub fn list_members() {}
     security(("bearerAuth" = [])),
     responses(
         (status = 201, body = CreatedAgentResponse,
-        description = "The agent member and a one-time `maidan.agent.worker` token, created together. `token:admin`; mounted without `MAIDAN_BOOTSTRAP`"),
+        description = "The agent member and a one-time `maidan.agent.worker` token, created together. `token:admin`"),
         (status = 400, response = BadRequest),
         (status = 401, response = Unauthorized),
         (status = 403, response = Forbidden),

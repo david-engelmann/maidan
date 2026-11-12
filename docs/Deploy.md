@@ -212,7 +212,7 @@ and loading it would wake the container on every visit.
 **The mint.** `POST /sandbox` (`crates/maidan-server/src/sandbox.rs`) is on only
 with `MAIDAN_DEMO_SANDBOX=1`, and under `MAIDAN_ENV=production` only beside
 `MAIDAN_DEMO_INSTANCE=1`, the marker that the whole instance is a throwaway.
-Boot refuses it beside `MAIDAN_SIGNUP` or `AUTH_DISABLED`, or without
+Boot refuses it beside `MAIDAN_SIGNUP`, or without
 `MAIDAN_PUBLIC_ORIGIN`. Elsewhere the route answers 404. Each sandbox is an
 ordinary tenant, so one visitor's tokens see nothing of another's
 (`demo_sandbox_e2e`). What bounds it:

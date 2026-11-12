@@ -17,11 +17,7 @@ use super::content_json;
 use crate::error::McpError;
 
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        capability::all()
-    } else {
-        auth.capabilities().to_vec()
-    }
+    auth.capabilities().to_vec()
 }
 
 /// Catalog of named sets and the atomics they expand to.
@@ -266,7 +262,7 @@ pub(super) async fn delegate_token(
         .get_delegation_grant(maidan_types::DelegationGrantId(a.grant_id))
         .await?;
     // As on REST: another workspace's grant reads as absent.
-    if !auth.bypass && grant.workspace_id != auth.workspace_id() {
+    if grant.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     if grant.delegate_id != auth.actor_id() {

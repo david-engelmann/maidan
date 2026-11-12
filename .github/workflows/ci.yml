@@ -50,7 +50,7 @@ jobs:
   # run an image of the debug server (`smoke image`). The shipped image is
   # compiled once, by `release image`, for the OTLP smoke and the kind install.
   # What still compiles on its own does so because its profile or features
-  # differ: clippy (check), bootstrap strip (no default features), the aarch64
+  # differ: clippy (check), bootstrap strip (the bootstrap feature), the aarch64
   # cross build, loom, sqlite-vec and coverage (instrumented). In 2026-11 every
   # one of the eight cargo jobs compiled the workspace cold: 15 per-job cargo
   # caches and two Docker scopes held 11 GB against the 10 GB Actions cache,
@@ -897,11 +897,13 @@ jobs:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    # The only build without default features. The test build compiles the
-    # server's lib and bins under -D warnings, which is what the release
-    # build here used to prove (10-16 minutes); the shipped feature set is
-    # compiled once, by `release image`.
-    timeout-minutes: 25
+    # Bootstrap's seed routes are a test-only feature, off by default and in
+    # every image (scripts/check-deploy-contract.sh). This job proves both
+    # sides: a default build, the feature set a release ships, has none of the
+    # routes, and the feature still builds and serves them for the one test
+    # that turns it on. The second step compiles the server's whole `it`
+    # binary with the feature, hence the timeout.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -918,10 +920,12 @@ jobs:
       - name: cache cargo
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: no-default-features
+          shared-key: bootstrap-strip
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-      - name: e2e without the bootstrap feature
-        run: cargo test -p maidan-server --no-default-features --test bootstrap_absent_e2e
+      - name: a default build has no bootstrap routes
+        run: cargo test -p maidan-server --test bootstrap_absent_e2e
+      - name: the test-only bootstrap feature still serves them
+        run: cargo test -p maidan-server --features bootstrap --test it bootstrap_e2e
 
   # The release's aarch64 Linux build runs under `cross`, whose container has
   # no node; v420.0.0 never published because build.rs needed npm there and no
@@ -1056,9 +1060,9 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
-  # The shipped server image (production build args: no bootstrap, otel on),
-  # compiled once per run through a GitHub Actions layer cache. The OTLP
-  # smoke and the kind install run it.
+  # The shipped server image (the Dockerfile's release features: otel on, no
+  # bootstrap), compiled once per run through a GitHub Actions layer cache.
+  # The OTLP smoke and the kind install run it.
   release-image:
     name: release image
     needs: changes
@@ -1075,13 +1079,12 @@ jobs:
         with:
           context: .
           file: crates/maidan-server/Dockerfile
-          build-args: MAIDAN_ENABLE_BOOTSTRAP=0
           tags: maidan-server:release
           outputs: type=docker,dest=${{ runner.temp }}/server-release.tar
-          cache-from: type=gha,scope=server-bootstrap-0
+          cache-from: type=gha,scope=server-release
           # Written only from dev: the 10 GB Actions cache is otherwise
           # filled by entries no other branch reads.
-          cache-to: ${{ github.ref == 'refs/heads/dev' && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
+          cache-to: ${{ github.ref == 'refs/heads/dev' && 'type=gha,mode=max,scope=server-release' || '' }}
       - name: upload the image
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -1090,8 +1093,8 @@ jobs:
           retention-days: 1
 
   # The compose and scale-out smokes' images, built once: maidan-server:dev
-  # from the build job's debug server (default features, so bootstrap on; it
-  # was a release compile of 10-13 minutes in each smoke) and
+  # from the build job's debug server (default features; it was a release
+  # compile of 10-13 minutes in each smoke) and
   # maidan-postgres:dev. Also the CLI image check that the bootstrap job ran
   # on a release CLI build of its own.
   smoke-image:
@@ -1179,7 +1182,6 @@ jobs:
         # The full end-to-end (pulls a pinned release binary) is verified locally.
         run: |
           docker compose -f compose.quickstart.yaml config -q
-          docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml config -q
           bash -n scripts/quickstart-two-agents.sh
           bash -n scripts/release-image-smoke.sh
           # Guard the demo scripts + MCP configs from bit-rot
@@ -1457,9 +1459,9 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
-      # The shipped image (production build args: no bootstrap), so the smoke
-      # proves the image that ships exports OTLP; it only needs /health and
-      # /metrics. compose.yaml names it maidan-server:dev.
+      # The shipped image, so the smoke proves the image that ships exports
+      # OTLP; it needs /health, /metrics and one authenticated route, with the
+      # dev admin compose.yaml seeds. compose.yaml names it maidan-server:dev.
       - name: download the shipped server image
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

@@ -48,9 +48,7 @@ pub(super) async fn seed_from_message(
     // The source message's access is gated pre-dispatch; the target channel (which
     // may differ from the source's) is checked here.
     let target_channel = a.channel_id.map(ChannelId).unwrap_or(chain.channel_id);
-    if !auth.bypass {
-        maidan_auth::ensure_channel_access(store.as_ref(), auth, target_channel).await?;
-    }
+    maidan_auth::ensure_channel_access(store.as_ref(), auth, target_channel).await?;
 
     // 1. The titled child thread (atomic row + ThreadCreated event).
     let (thread, t_stored) = store
@@ -59,7 +57,7 @@ pub(super) async fn seed_from_message(
             parent_thread_id: None,
             title: Some(a.title.trim().to_string()),
             description: None,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         })
         .await?;
     server.publish_stored(&t_stored).await;

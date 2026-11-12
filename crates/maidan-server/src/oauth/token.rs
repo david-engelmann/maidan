@@ -265,18 +265,16 @@ async fn exchange_code(
     if lineage_end(&grant) <= now {
         return Err(refuse_ended_lineage(state, &grant, &creds.client_id).await);
     }
+    // One minting vocabulary (`routes::mint_vocabulary`): the grant's scopes
+    // were validated as delegatable at authorize time and must still be in it.
     for cap in &grant.scope {
-        if !maidan_auth::capability::is_known(cap) {
+        if !crate::routes::in_mint_vocabulary(cap) {
             return Err(OAuthError::new(
                 OAuthErrorCode::InvalidScope,
                 format!("grant scope {cap:?} is not a known capability"),
             ));
         }
     }
-    // One minting vocabulary (`routes::mint_vocabulary`): the grant's scopes
-    // were validated as delegatable at authorize time and are re-checked as
-    // known capabilities above, which is what it returns for a bypass context.
-    let _ = crate::routes::mint_vocabulary(&maidan_auth::AuthContext::bypass());
 
     let access = TokenSecret::generate();
     let (refresh_secret, refresh_hash) = new_refresh_token();

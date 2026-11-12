@@ -160,7 +160,6 @@ async fn spawn_with(backend: Backend, worker: bool) -> Harness {
         Arc::new(InMemoryBus::with_capacity(512)),
         backend.search.clone(),
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, Some(Arc::new(KEY))),
         Arc::new(AtomicI64::new(0)),

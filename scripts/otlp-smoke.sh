@@ -13,6 +13,9 @@ cd "$(dirname "$0")/.."
 PORT="${MAIDAN_OTLP_PORT:-8082}"
 SERVICE="maidan-otlp-smoke"
 COMPOSE=(docker compose --profile otlp)
+# The admin maidan-otlp seeds (MAIDAN_DEV_ADMIN_TOKEN in compose.yaml), so the
+# traffic below includes authenticated requests, not only public probes.
+DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"
 
 cleanup() { "${COMPOSE[@]}" down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -34,10 +37,21 @@ if [[ -z "${ready}" ]]; then
   exit 1
 fi
 
+# The token must resolve: a 401 here means the seed did not run, and the
+# authenticated traffic below would prove nothing.
+if ! curl -sf -H "Authorization: Bearer ${DEV_ADMIN_TOKEN}" \
+  "http://localhost:${PORT}/me" >/dev/null; then
+  echo "::error::the dev admin token does not resolve on maidan-otlp"
+  "${COMPOSE[@]}" logs maidan-otlp || true
+  exit 1
+fi
+
 # Drive traffic so per-request `http_request` spans + request metrics are emitted.
 for _ in $(seq 1 20); do
   curl -sf "http://localhost:${PORT}/health" >/dev/null 2>&1 || true
   curl -sf "http://localhost:${PORT}/metrics" >/dev/null 2>&1 || true
+  curl -sf -H "Authorization: Bearer ${DEV_ADMIN_TOKEN}" \
+    "http://localhost:${PORT}/me" >/dev/null 2>&1 || true
 done
 
 # Metrics push interval is 2s; the trace batch processor flushes ~5s. Give margin.

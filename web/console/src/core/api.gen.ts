@@ -72,11 +72,10 @@ export type CreatedAgentResponse = { member: Member; token: MintApiTokenResponse
 export type CreateDelegationGrant = { capabilities: string[]; delegate_id: string; expires_at: string; purpose: string; subject_id: string; };
 export type CreateFsmHook = { from_state?: string | null; handler_kind: string; handler_target: string; label?: string | null; to_state?: string | null; };
 export type CreateIntakeItem = { body?: string | null; source?: null | IntakeSource; title: string; };
-export type CreateMember = { display_name?: string | null; handle: string; kind: MemberKind; };
 export type CreateMemoryBlock = { char_limit?: number | null; description?: string | null; label: string; read_only?: boolean; value?: string | null; };
 export type CreateMention = { member_id: string; };
 export type CreateMessage = { body?: string; content?: ContentBlock[] | null; metadata?: unknown; };
-export type CreatePeer = { base_url: string; name: string; remote_workspace_id?: string | null; };
+export type CreatePeer = { base_url: string; name: string; remote_workspace_id?: string | null; secret?: string | null; };
 export type CreateReaction = { emoji: string; };
 export type CreateRecipe = { channel_id: string; name: string; spec: RecipeSpec; };
 export type CreateReference = { dst_id: string; dst_kind: RefSide; relation: string; src_id: string; src_kind: RefSide; };
@@ -87,7 +86,6 @@ export type CreateTaskSchedule = { channel_id: string; first_run_at?: string | n
 export type CreateThread = { attributes?: null | TaskAttributes; description?: string | null; footprint?: null | Footprint; parent_thread_id?: string | null; priority?: number | null; supersedes?: string | null; title?: string | null; };
 export type CreateVote = { confidence?: number | null; kind: VoteKind; };
 export type CreateWebhook = { event_kinds: string[]; label?: string | null; url: string; };
-export type CreateWorkspace = { name: string; };
 export type CreateWorkspaceInvite = { email: string; expires_at?: string | null; role: WorkspaceInviteRole; };
 export type CreditChain = "base" | "base-sepolia";
 export type CreditEntry = { chain?: null | CreditChain; created_at: string; external_ref?: string | null; id: string; kind: CreditEntryKind; log_index?: number | null; meter?: null | UsageMeter; month?: string | null; note?: string | null; source?: null | CreditSource; through_units?: number | null; top_up_id?: string | null; tx_hash?: string | null; units?: number | null; unpaid_micros: number; usd_micros: number; workspace_id: WorkspaceId; };
@@ -211,11 +209,13 @@ export type Mention = { created_at: string; member_id: MemberId; message_id: Mes
 export type MentionWebhookConfig = { webhook_id?: null | WebhookSubscriptionId; };
 export type MergeQueue = { reason?: string | null; state: MergeQueueState; };
 export type MergeQueueState = "ready_to_merge" | "queued" | "dequeued" | "landed";
-export type Message = { author_id: MemberId; body: string; content?: ContentBlock[] | null; edited_at?: string | null; id: MessageId; metadata?: unknown; posted_at: string; thread_id: ThreadId; tombstoned_at?: string | null; };
+export type Message = { author_id: MemberId; body: string; content?: ContentBlock[] | null; edited_at?: string | null; id: MessageId; metadata?: unknown; posted_at: string; provenance?: null | MessageProvenance; thread_id: ThreadId; tombstoned_at?: string | null; };
 export type MessageBacklinks = { message_id: MessageId; pins: Pin[]; reactions: Reaction[]; references: Reference[]; votes: Vote[]; };
 export type MessageEdit = { body_after: string; body_before: string; edited_at: string; editor_id: MemberId; id: number; message_id: MessageId; };
 export type MessageEditView = { body_after?: string | null; body_before?: string | null; edited_at: string; editor_id: MemberId; id: number; message_id: MessageId; };
 export type MessageId = string;
+export type MessageOrigin = "github" | "slack";
+export type MessageProvenance = { external_id?: string | null; origin: MessageOrigin; };
 export type MessageVotes = { ack: number; approve: number; message_id: string; request_changes: number; votes: Vote[]; };
 export type MeterPrice = { meter: UsageMeter; micros: number; per: number; };
 export type MeterUsage = { allowance?: number | null; meter: UsageMeter; over: boolean; quantity: number; };
@@ -842,7 +842,6 @@ export type ApiRoute =
   | "POST /ui/api/workspaces/{wid}/channels"
   | "POST /ui/api/workspaces/{wid}/invites"
   | "POST /waitlist"
-  | "POST /workspaces"
   | "POST /workspaces/export/verify"
   | "POST /workspaces/import"
   | "POST /workspaces/{id}/claims/release-own"
@@ -867,7 +866,6 @@ export type ApiRoute =
   | "POST /workspaces/{wid}/intake"
   | "POST /workspaces/{wid}/intake/{id}/triage"
   | "POST /workspaces/{wid}/invites"
-  | "POST /workspaces/{wid}/members"
   | "POST /workspaces/{wid}/members/{mid}/tokens"
   | "POST /workspaces/{wid}/memory-blocks"
   | "POST /workspaces/{wid}/oauth-grants/{gid}/revoke"

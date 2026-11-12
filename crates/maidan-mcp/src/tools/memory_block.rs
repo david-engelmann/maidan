@@ -319,7 +319,7 @@ pub(super) async fn delete_memory_block(
     let block = store
         .get_memory_block(block_id)
         .await?
-        .filter(|b| auth.bypass || b.workspace_id == auth.workspace_id())
+        .filter(|b| b.workspace_id == auth.workspace_id())
         .ok_or(McpError::NotFound)?;
     if !store.delete_memory_block(block.id).await? {
         return Err(McpError::NotFound);

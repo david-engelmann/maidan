@@ -45,7 +45,6 @@ async fn spawn() -> String {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,

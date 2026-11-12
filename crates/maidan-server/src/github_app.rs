@@ -81,6 +81,12 @@ impl std::fmt::Debug for GithubAppAuth {
 }
 
 impl GithubAppAuth {
+    /// The app id or client id this app was configured with: what GitHub
+    /// names in `performed_via_github_app` on a comment this app made.
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+
     /// The app named by the environment, `None` when none of the three
     /// variables is set. Setting some but not all of them, or a value that
     /// does not parse, is an error naming the variable and never its value:

@@ -8,9 +8,8 @@ use std::{
 use maidan_bus::HydrateSnapshot;
 
 use axum::{
-    extract::Request,
-    extract::State,
-    http::StatusCode,
+    extract::{MatchedPath, Request, State},
+    http::{header::AUTHORIZATION, HeaderMap, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -25,7 +24,7 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "otel")]
 use metrics_util::layers::FanoutBuilder;
 
-use crate::state::AppState;
+use crate::{error::ApiError, state::AppState};
 
 static PROMETHEUS: OnceLock<PrometheusHandle> = OnceLock::new();
 #[cfg(feature = "otel")]
@@ -759,19 +758,127 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
 }
 
-/// `GET /metrics` — Prometheus text exposition.
-pub async fn scrape(State(state): State<AppState>) -> impl IntoResponse {
+/// The variable holding the bearer token a scraper sends to `GET /metrics`.
+pub const METRICS_TOKEN_ENV: &str = "MAIDAN_METRICS_TOKEN";
+
+/// The shortest token accepted. `/metrics` is exempt from the rate limiter
+/// (a scraper must never be shed), so the token alone has to resist guessing.
+const MIN_METRICS_TOKEN_LEN: usize = 32;
+
+/// Who may read `GET /metrics`. The exposition names every route, worker and
+/// queue depth, and serving it costs database work (`refresh_runtime_gauges`),
+/// so a production server does not hand it to whoever reaches the port.
+#[derive(Clone, Default)]
+pub enum MetricsAccess {
+    /// Anyone who reaches the port: development, tests, and the compose and
+    /// kind smokes. What [`AppState::new`] starts with.
+    #[default]
+    Open,
+    /// A request whose `Authorization: Bearer` equals this token
+    /// (`MAIDAN_METRICS_TOKEN`).
+    Bearer(std::sync::Arc<str>),
+    /// Nobody: `MAIDAN_ENV=production` with no token set. The route answers
+    /// 404, as if it did not exist.
+    Closed,
+}
+
+// Written out so the token never reaches a `{:?}`.
+impl std::fmt::Debug for MetricsAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Open => "Open",
+            Self::Bearer(_) => "Bearer(..)",
+            Self::Closed => "Closed",
+        })
+    }
+}
+
+impl MetricsAccess {
+    /// Read [`METRICS_TOKEN_ENV`]: a token puts the scrape behind it, and
+    /// production without one closes it.
+    pub fn from_env(production: bool) -> Result<Self, String> {
+        Self::from_settings(production, std::env::var(METRICS_TOKEN_ENV).ok())
+    }
+
+    pub fn from_settings(production: bool, token: Option<String>) -> Result<Self, String> {
+        match token.filter(|token| !token.is_empty()) {
+            Some(token) if token.len() < MIN_METRICS_TOKEN_LEN => Err(format!(
+                "{METRICS_TOKEN_ENV} must be at least {MIN_METRICS_TOKEN_LEN} bytes (`openssl rand -hex 32`)"
+            )),
+            Some(token) => Ok(Self::Bearer(token.into())),
+            None if production => Ok(Self::Closed),
+            None => Ok(Self::Open),
+        }
+    }
+
+    fn admit(&self, headers: &HeaderMap) -> Result<(), ApiError> {
+        match self {
+            Self::Open => Ok(()),
+            Self::Closed => Err(ApiError::NotFound),
+            Self::Bearer(token) => {
+                let presented = headers
+                    .get(AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.strip_prefix("Bearer "))
+                    .unwrap_or_default();
+                if bool::from(subtle::ConstantTimeEq::ct_eq(
+                    presented.as_bytes(),
+                    token.as_bytes(),
+                )) {
+                    Ok(())
+                } else {
+                    Err(ApiError::Unauthorized)
+                }
+            }
+        }
+    }
+}
+
+/// `GET /metrics` — Prometheus text exposition, for whoever
+/// [`MetricsAccess`] admits.
+pub async fn scrape(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, ApiError> {
+    state.metrics_access.admit(&headers)?;
     refresh_runtime_gauges(&state).await;
     let body = PROMETHEUS
         .get()
         .map(|h| h.render())
         .unwrap_or_else(|| "# metrics not initialized\n".to_string());
-    (StatusCode::OK, body)
+    Ok((StatusCode::OK, body))
 }
 
-/// Count requests and record latency by method + status class.
+/// The request method as a label. HTTP lets a client send any token as a
+/// method, and the recorder keeps every series it has seen for the life of
+/// the process, so a raw method would let anyone add series without bound.
+pub fn method_label(method: &Method) -> &'static str {
+    match *method {
+        Method::GET => "GET",
+        Method::POST => "POST",
+        Method::PUT => "PUT",
+        Method::PATCH => "PATCH",
+        Method::DELETE => "DELETE",
+        Method::HEAD => "HEAD",
+        Method::OPTIONS => "OPTIONS",
+        _ => "other",
+    }
+}
+
+/// The route as a label: the template the router matched (`/threads/{id}`),
+/// never the path, whose ids would make one series per entity. A request no
+/// route matched is `unmatched`.
+fn route_label(request: &Request) -> String {
+    request
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or_else(|| "unmatched".to_string(), |path| path.as_str().to_string())
+}
+
+/// Count requests and record latency by method, matched route and status.
 pub async fn middleware(request: Request, next: Next) -> Response {
-    let method = request.method().as_str().to_string();
+    let method = method_label(request.method());
+    let route = route_label(&request);
     let started = Instant::now();
     let response = next.run(request).await;
     let status = response.status().as_u16();
@@ -779,17 +886,101 @@ pub async fn middleware(request: Request, next: Next) -> Response {
 
     counter!(
         "http.server.request_total",
-        "method" => method.clone(),
+        "method" => method,
+        "route" => route.clone(),
         "status" => status.to_string()
     )
     .increment(1);
     histogram!(
         "http.server.request_duration_seconds",
-        "method" => method
+        "method" => method,
+        "route" => route
     )
     .record(elapsed);
 
     response
+}
+
+#[cfg(test)]
+mod access_tests {
+    use super::*;
+
+    fn bearer(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, value.parse().expect("header"));
+        headers
+    }
+
+    const TOKEN: &str = "a-metrics-token-that-is-long-enough-0123";
+
+    #[test]
+    fn production_without_a_token_closes_the_scrape() {
+        let access = MetricsAccess::from_settings(true, None).expect("boots");
+        assert!(matches!(access, MetricsAccess::Closed));
+        assert!(matches!(
+            access.admit(&HeaderMap::new()),
+            Err(ApiError::NotFound)
+        ));
+        let empty = MetricsAccess::from_settings(true, Some(String::new())).expect("boots");
+        assert!(matches!(empty, MetricsAccess::Closed));
+    }
+
+    #[test]
+    fn development_without_a_token_leaves_the_scrape_open() {
+        let access = MetricsAccess::from_settings(false, None).expect("boots");
+        assert!(access.admit(&HeaderMap::new()).is_ok());
+    }
+
+    #[test]
+    fn a_token_admits_only_its_own_bearer() {
+        for production in [true, false] {
+            let access =
+                MetricsAccess::from_settings(production, Some(TOKEN.into())).expect("boots");
+            assert!(access.admit(&bearer(&format!("Bearer {TOKEN}"))).is_ok());
+            for refused in [
+                HeaderMap::new(),
+                bearer("Bearer wrong-token-of-the-same-sort-0123456789"),
+                bearer(&format!("Basic {TOKEN}")),
+                bearer(&format!("Bearer {TOKEN}x")),
+                bearer("Bearer "),
+            ] {
+                assert!(matches!(
+                    access.admit(&refused),
+                    Err(ApiError::Unauthorized)
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn a_short_token_refuses_boot() {
+        assert!(MetricsAccess::from_settings(false, Some("short".into())).is_err());
+    }
+
+    #[test]
+    fn the_token_never_reaches_debug_output() {
+        let access = MetricsAccess::from_settings(true, Some(TOKEN.into())).expect("boots");
+        assert!(!format!("{access:?}").contains(TOKEN));
+    }
+
+    #[test]
+    fn every_method_maps_to_a_fixed_label() {
+        for (method, label) in [
+            (Method::GET, "GET"),
+            (Method::POST, "POST"),
+            (Method::PUT, "PUT"),
+            (Method::PATCH, "PATCH"),
+            (Method::DELETE, "DELETE"),
+            (Method::HEAD, "HEAD"),
+            (Method::OPTIONS, "OPTIONS"),
+            (Method::CONNECT, "other"),
+            (Method::TRACE, "other"),
+        ] {
+            assert_eq!(method_label(&method), label);
+        }
+        let invented = Method::from_bytes(b"FOOBAR123").expect("a valid token");
+        assert_eq!(method_label(&invented), "other");
+    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 //! Its own test binary so the rate-limit environment it sets reaches no other
 //! test.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
@@ -55,7 +55,6 @@ async fn spawn() -> (
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
     (addr, handle, dir, noisy, quiet)
 }
 

@@ -151,7 +151,6 @@ async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

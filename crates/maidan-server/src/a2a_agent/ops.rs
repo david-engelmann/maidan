@@ -295,12 +295,6 @@ pub(crate) async fn send_message(
     auth: &AuthContext,
     req: SendMessageRequest,
 ) -> Result<Task, A2aError> {
-    if auth.bypass {
-        return Err(A2aError::new(
-            A2aErrorKind::PermissionDenied,
-            "SendMessage needs an authenticated member to author the message",
-        ));
-    }
     require(auth, MESSAGE_POST)?;
     let config = req.configuration.unwrap_or_default();
     let history_length = history_length(config.history_length)?;
@@ -648,7 +642,7 @@ async fn new_thread(state: &AppState, auth: &AuthContext) -> Result<ThreadScope,
             parent_thread_id: None,
             title: Some("A2A conversation".into()),
             description: None,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         })
         .await;
     let (thread, stored) = spawn_checked(state, auth, created).await?;
@@ -959,7 +953,7 @@ pub(crate) async fn list_tasks(
     };
     let context_id = req.context_id.as_deref().filter(|c| !c.is_empty());
     let workspace_id = auth.workspace_id();
-    let readable_by = (!auth.bypass).then_some(auth.member_id());
+    let readable_by = Some(auth.member_id());
     // One more than a page, to know whether another page follows.
     let want = i64::from(page_size) + 1;
 

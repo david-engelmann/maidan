@@ -10,6 +10,7 @@ use maidan_auth::AuthContext;
 use maidan_mcp::{JsonRpcRequest, McpServer};
 use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use serde_json::json;
 use tracing_subscriber::fmt::MakeWriter;
 
@@ -35,7 +36,8 @@ impl<'a> MakeWriter<'a> for Captured {
     }
 }
 
-async fn mk_server() -> McpServer {
+/// A server and a caller holding every capability in a workspace on it.
+async fn mk_server() -> (McpServer, AuthContext) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -47,12 +49,29 @@ async fn mk_server() -> McpServer {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    McpServer::new(
+    let workspace = store
+        .create_workspace(NewWorkspace {
+            name: "request-log".into(),
+        })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: workspace.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let auth = AuthContext::from_session(member.id, workspace.id, maidan_auth::capability::all());
+    let server = McpServer::new(
         store,
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
-    )
+    );
+    (server, auth)
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -65,8 +84,7 @@ async fn every_request_logs_its_tool_and_argument_names_and_never_a_value() {
         .finish();
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let server = mk_server().await;
-    let auth = AuthContext::bypass();
+    let (server, auth) = mk_server().await;
     let call = |name: &str, arguments: serde_json::Value| JsonRpcRequest {
         jsonrpc: "2.0".into(),
         id: Some(json!(1)),

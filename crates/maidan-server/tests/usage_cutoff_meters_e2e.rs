@@ -12,7 +12,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::github::{route_message_to_github, GithubError, GithubSender};
 use maidan_server::web_push::{WebPushError, WebPushSender};
-use maidan_server::{egress_worker, mail_worker, notification_router, test_support, AppState};
+use maidan_server::{egress_worker, mail_worker, notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
@@ -433,17 +433,10 @@ async fn a_wasi_handler_for_a_cut_off_workspace_does_not_run_while_other_tenants
     };
     let run = |(ws, member): (WorkspaceId, MemberId)| {
         let state = state.clone();
-        let store = store.clone();
         let parsed = parsed.clone();
         async move {
-            // The handler runs as the member who sent the command.
-            let token = test_support::admin_token(store.as_ref(), member).await;
-            let auth = maidan_auth::resolve_bearer(store.as_ref(), &token)
-                .await
-                .unwrap();
             maidan_server::wasi_handler::dispatch_wasi(
                 &state,
-                &auth,
                 &wasi_command(ws),
                 &parsed,
                 ws,

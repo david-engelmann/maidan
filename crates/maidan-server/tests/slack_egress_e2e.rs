@@ -1,6 +1,7 @@
 //! Slack projector egress. A Maidan message in a linked thread is relayed to
-//! its Slack channel; a Slack-sourced message (metadata tag) is not echoed back
-//! (loop prevention); an unlinked thread is ignored.
+//! its Slack channel; a Slack-sourced message (its server-set provenance) is
+//! not echoed back (loop prevention), while a member's message that only
+//! claims Slack in its metadata is relayed; an unlinked thread is ignored.
 //!
 //! The relay is durable: `route_message_to_slack` enqueues
 //! and the egress worker posts, so each case sweeps the queue before asserting.
@@ -16,8 +17,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ExternalRef, MemberKind, NewChannel, NewMember, NewMessage, NewSlackChannelLink, NewThread,
-    NewWorkspace,
+    ExternalRef, MemberKind, MessageOrigin, MessageProvenance, NewChannel, NewMember, NewMessage,
+    NewSlackChannelLink, NewThread, NewWorkspace,
 };
 use serde_json::json;
 
@@ -173,15 +174,22 @@ async fn egress_relays_a_linked_thread_message_and_skips_slack_sourced() {
         "the same event routed twice delivers once"
     );
 
-    // A Slack-sourced message (metadata tag) is NOT echoed back — no loop.
-    let from_slack = post(
-        store.as_ref(),
-        thread.id,
-        agent.id,
-        "U9: from slack",
-        json!({ "slack": { "user": "U9", "channel": "C1" } }),
-    )
-    .await;
+    // A message Slack ingress posted carries a Slack provenance and is NOT
+    // echoed back — no loop.
+    let (from_slack, _) = store
+        .post_bridged_message_with_event(
+            NewMessage {
+                thread_id: thread.id,
+                author_id: agent.id,
+                body: "U9: from slack".into(),
+                metadata: json!({ "slack": { "user": "U9", "channel": "C1" } }),
+                content: None,
+            },
+            MessageProvenance::delivered(MessageOrigin::Slack, "Ev01"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     route_message_to_slack(&state, 2, thread.id, &from_slack).await;
     sweep_once(&state).await;
     assert_eq!(
@@ -208,5 +216,74 @@ async fn egress_relays_a_linked_thread_message_and_skips_slack_sourced() {
         sender.sent.lock().unwrap().len(),
         1,
         "an unlinked thread does not relay to Slack"
+    );
+}
+
+/// RED-007: loop prevention reads the server-set provenance, so a member who
+/// writes `metadata.slack` on their own message cannot keep it out of Slack.
+#[tokio::test]
+async fn a_member_message_that_claims_slack_in_its_metadata_is_still_relayed() {
+    let (state, sender, store) = setup().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "member".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("slack".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C2".into(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: member.id,
+        })
+        .await
+        .unwrap();
+
+    let forged = post(
+        store.as_ref(),
+        thread.id,
+        member.id,
+        "keep me out of slack",
+        json!({ "slack": { "user": "U9", "channel": "C2" } }),
+    )
+    .await;
+    assert!(
+        forged.provenance.is_none(),
+        "a member's post has no provenance"
+    );
+    route_message_to_slack(&state, 1, thread.id, &forged).await;
+    sweep_once(&state).await;
+    assert_eq!(
+        sender.sent.lock().unwrap().as_slice(),
+        &[("C2".to_string(), "keep me out of slack".to_string())],
+        "a forged metadata.slack does not trip the loop check"
     );
 }

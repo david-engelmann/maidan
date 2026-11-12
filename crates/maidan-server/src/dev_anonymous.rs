@@ -7,8 +7,7 @@
 //! member at all, with `workspace:read` and only the read-only tools, so it sees
 //! what is public there and nothing a membership grants. Every other request
 //! still needs a credential. The server refuses to boot with the flag under
-//! `MAIDAN_ENV=production` or beside `AUTH_DISABLED`, which is not this mode and
-//! would make it meaningless.
+//! `MAIDAN_ENV=production`.
 
 use maidan_auth::AuthContext;
 use maidan_store::Store;
@@ -23,18 +22,11 @@ pub const SYNTHETIC_PREFIX: &str = maidan_auth::SYNTHETIC_WORKSPACE_PREFIX;
 
 /// Whether the flag may be set at all. Pure over its inputs so it is tested
 /// without touching the process environment.
-pub(crate) fn validate(production: bool, auth_disabled: bool) -> Result<(), ConfigError> {
+pub(crate) fn validate(production: bool) -> Result<(), ConfigError> {
     if production {
         return Err(ConfigError::Invalid(
             ENV,
             "cannot be set when MAIDAN_ENV=production".into(),
-        ));
-    }
-    if auth_disabled {
-        return Err(ConfigError::Invalid(
-            ENV,
-            "cannot be set with AUTH_DISABLED, which already lets every caller do everything"
-                .into(),
         ));
     }
     Ok(())
@@ -43,10 +35,7 @@ pub(crate) fn validate(production: bool, auth_disabled: bool) -> Result<(), Conf
 /// The anonymous reader the flag asks for, or `None` when it is unset. A
 /// malformed id, a missing workspace or one not named `synthetic-…` stops
 /// the boot rather than serving something other than what was asked.
-pub async fn from_env(
-    store: &dyn Store,
-    auth_disabled: bool,
-) -> Result<Option<AuthContext>, ConfigError> {
+pub async fn from_env(store: &dyn Store) -> Result<Option<AuthContext>, ConfigError> {
     let raw = match std::env::var(ENV) {
         Ok(raw) => raw,
         Err(std::env::VarError::NotPresent) => return Ok(None),
@@ -54,7 +43,7 @@ pub async fn from_env(
             return Err(ConfigError::Invalid(ENV, "is not valid Unicode".into()));
         }
     };
-    validate(crate::config::is_production(), auth_disabled)?;
+    validate(crate::config::is_production())?;
     let id = raw
         .trim()
         .parse::<uuid::Uuid>()
@@ -80,9 +69,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_flag_is_refused_in_production_and_beside_auth_disabled() {
-        assert!(validate(true, false).is_err());
-        assert!(validate(false, true).is_err());
-        assert!(validate(false, false).is_ok());
+    fn the_flag_is_refused_in_production() {
+        assert!(validate(true).is_err());
+        assert!(validate(false).is_ok());
     }
 }

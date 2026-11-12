@@ -29,6 +29,12 @@ fn deny_caps(required: &str) -> Vec<String> {
     match required {
         capability::WORKSPACE_READ => vec![],
         capability::WORKSPACE_WRITE => vec![capability::WORKSPACE_READ.into()],
+        // A token minted before `member:self`: read and write, no
+        // personal-state writes (MCP-002).
+        capability::MEMBER_SELF => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         capability::MESSAGE_POST => vec![
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),
@@ -104,7 +110,6 @@ async fn spawn() -> Harness {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

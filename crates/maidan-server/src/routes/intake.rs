@@ -176,7 +176,7 @@ pub async fn triage_intake_item(
             },
         )
         .await;
-    let actor = (!auth.bypass).then_some(auth.member_id());
+    let actor = Some(auth.member_id());
     let (item, stored) = observe_spawn_denial(&state, actor, triaged).await?;
     for stored in stored {
         publish_stored(&state, stored).await;
@@ -219,7 +219,7 @@ async fn accepted_decision(
                     parent_thread_id: None,
                     title: Some(item.title.clone()),
                     description: item.body.clone(),
-                    created_by: auth.attribution().map(|a| a.subject_id),
+                    created_by: Some(auth.member_id()),
                 },
             })
         }

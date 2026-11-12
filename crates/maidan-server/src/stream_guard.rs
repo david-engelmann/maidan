@@ -44,8 +44,6 @@ pub const STREAM_ENDED_EVENT: &str = "stream_ended";
 /// What opened the stream, kept so it can be checked again.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StreamCredential {
-    /// Auth is disabled: nothing to check.
-    Open,
     /// An API token (sent as a bearer, or behind a session made from it).
     /// It must still pass the bearer test, and the members it speaks for must
     /// not be deactivated.
@@ -61,9 +59,6 @@ pub enum StreamCredential {
 
 impl StreamCredential {
     pub fn from_auth(auth: &AuthContext) -> Self {
-        if auth.bypass {
-            return Self::Open;
-        }
         match auth.token_id() {
             Some(token_id) => Self::Token(token_id),
             None => Self::Members {
@@ -78,7 +73,6 @@ impl StreamCredential {
     /// The client reconnects and goes through the normal check.
     pub async fn recheck(&self, store: &dyn Store) -> Result<(), &'static str> {
         let members = match self {
-            Self::Open => return Ok(()),
             Self::Token(token_id) => {
                 let ctx = match maidan_auth::resolve_token_id(store, *token_id).await {
                     Ok(ctx) => ctx,
@@ -230,19 +224,6 @@ where
         if g.ended {
             return None;
         }
-        if g.credential == StreamCredential::Open {
-            tokio::select! {
-                biased;
-                () = begun(&mut g.shutdown) => {
-                    let last = g.end(SERVER_RESTARTING);
-                    return Some((last, g));
-                }
-                next = g.inner.next() => {
-                    let next = next?;
-                    return Some((next, g));
-                }
-            }
-        }
         loop {
             tokio::select! {
                 biased;
@@ -271,14 +252,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn bypass_is_open() {
-        assert_eq!(
-            StreamCredential::from_auth(&AuthContext::bypass()),
-            StreamCredential::Open
-        );
-    }
 
     #[test]
     fn token_context_keeps_the_token() {
@@ -334,11 +307,6 @@ mod tests {
             .await
             .expect("the stream closes after its last frame");
         assert!(after.is_none(), "frames after stream_ended");
-    }
-
-    #[tokio::test]
-    async fn an_open_stream_ends_when_the_server_shuts_down() {
-        ends_on_shutdown(StreamCredential::Open).await;
     }
 
     #[tokio::test]

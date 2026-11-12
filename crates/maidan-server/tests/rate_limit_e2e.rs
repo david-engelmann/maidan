@@ -1,6 +1,6 @@
 //! Rate limit middleware returns 429 when MAIDAN_RATE_LIMIT_MAX is set.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, test_support, test_support::Tenant, AppState};
@@ -40,7 +40,6 @@ async fn spawn() -> (
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
     (addr, handle, dir, tenant)
 }
 

@@ -108,6 +108,7 @@ fn sample_export() -> WorkspaceExport {
             posted_at: at,
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }],
         message_edits: vec![],
         pins: vec![],

@@ -55,15 +55,12 @@ async fn the_header_reports_the_callers_room_not_the_instance() {
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
 
-    // Auth ENABLED — the scope comes from the resolved bearer, so the bypass
-    // path would not exercise this at all.
     let state = AppState::new(
         store.clone(),
         Arc::new(LocalFsStore::new(dir.path())),
         Arc::new(maidan_bus::InMemoryBus::with_capacity(256)),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -177,7 +174,6 @@ async fn an_unauthenticated_response_carries_no_room_head() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -203,8 +199,8 @@ async fn an_unauthenticated_response_carries_no_room_head() {
 /// The same number rides outbound webhook and automation POSTs and the
 /// `subscribe_ack` frame. Those callers used the instance head, so a webhook's
 /// third-party receiver learned how many events every tenant had written. They
-/// now report the subscription's own room; a subscriber with no one room (a
-/// bypass watching every workspace) gets none.
+/// now report the subscription's own room; a subscriber with no one room gets
+/// none.
 #[tokio::test]
 async fn outbound_stamps_and_acks_report_the_room_not_the_instance() {
     let pool = maidan_search::sqlite_pool_options()

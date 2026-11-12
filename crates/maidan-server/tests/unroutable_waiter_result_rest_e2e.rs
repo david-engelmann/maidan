@@ -88,7 +88,6 @@ async fn a_waiter_result_without_result_kind_or_status_is_refused_with_400_and_n
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

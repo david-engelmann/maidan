@@ -37,7 +37,7 @@ pub struct QuarantinedOutboxRow {
 /// disable it in production, so an unlocked `SELECT` meant every replica
 /// relayed every row: N POSTs to each tenant webhook (there is no unique on
 /// `(subscription_id, log_id)`) and N `fsm_hook` firings through
-/// `dispatch_mcp_tool` with `AuthContext::bypass()`.
+/// `dispatch_mcp_tool`, each with its registering token's authority.
 ///
 /// `FOR UPDATE SKIP LOCKED` inside a CTE is the same shape `claim_next_thread`
 /// and `claim_next_due_schedule` already use: concurrent claimers take disjoint

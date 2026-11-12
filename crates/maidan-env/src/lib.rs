@@ -28,6 +28,8 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_ALLOWED_HOSTS",
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+    // Removed with the unauthenticated mode; listed so boot refuses it by name
+    // (`maidan_server::config::REMOVED_AUTH_SWITCHES`) instead of as unknown.
     "MAIDAN_ALLOW_INSECURE_NO_AUTH",
     "MAIDAN_ALLOW_PRIVATE_EGRESS",
     "MAIDAN_ALLOW_UNKNOWN_ENV",
@@ -74,6 +76,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_DEPLOY_HOOK_SECRET",
     "MAIDAN_DEPLOY_HOOK_SECRET_FILE",
+    "MAIDAN_DEV_ADMIN_TOKEN",
     "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
     "MAIDAN_DIGEST_TICK_SECS",
     "MAIDAN_EGRESS_CREDENTIAL_GUARD",
@@ -129,6 +132,8 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS",
     "MAIDAN_MEDIA_QUOTA_BYTES",
     "MAIDAN_MERGE_QUEUE_LABELS",
+    "MAIDAN_METRICS_TOKEN",
+    "MAIDAN_METRICS_TOKEN_FILE",
     "MAIDAN_OAUTH_CLIENTS",
     "MAIDAN_OAUTH_CLIENT_METADATA_HOSTS",
     "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX",
@@ -230,6 +235,7 @@ pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_A_PEER_URL",
     "MAIDAN_A_URL",
     "MAIDAN_BIN_DIR",
+    "MAIDAN_B_PEER_URL",
     "MAIDAN_B_URL",
     "MAIDAN_CHANNEL",
     "MAIDAN_CHAOS_DELAY_MS",
@@ -471,6 +477,10 @@ mod tests {
     /// why. Every other one must be able to come from a mounted file.
     const NOT_SECRETS: &[(&str, &str)] = &[
         ("MAIDAN_ALLOW_INSECURE_DEV_KEK", "a switch, not a key"),
+        (
+            "MAIDAN_DEV_ADMIN_TOKEN",
+            "a development stack's known bearer, refused in production and never forwarded to a hosted container, so it has no mounted-file form",
+        ),
         ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
         (
             "MAIDAN_CREDITS_RPC_URL",
@@ -668,8 +678,8 @@ mod tests {
 
         let insecure = [
             "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
             "MAIDAN_ALLOW_PRIVATE_EGRESS",
+            "MAIDAN_DEV_ADMIN_TOKEN",
             "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
             "MAIDAN_OIDC_MOCK",
             "MAIDAN_OPS_FAULT",
@@ -856,6 +866,10 @@ mod tests {
         (
             "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
             "try.maidan.world only",
+        ),
+        (
+            "MAIDAN_DEV_ADMIN_TOKEN",
+            "dev or insecure switch; never forwarded",
         ),
         (
             "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",

@@ -19,9 +19,6 @@ pub async fn enforce_mcp_quota(
     auth: &AuthContext,
     request: &JsonRpcRequest,
 ) -> Result<(), Box<JsonRpcResponse>> {
-    if auth.bypass {
-        return Ok(());
-    }
     let Some(token_id) = auth.token_id() else {
         return Ok(());
     };

@@ -93,7 +93,6 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         maidan_server::FederationRuntime::new(true, test_key()),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,

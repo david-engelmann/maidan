@@ -131,7 +131,6 @@ async fn spawn() -> H {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, Some(key())),
         Arc::new(AtomicI64::new(0)),
         None,

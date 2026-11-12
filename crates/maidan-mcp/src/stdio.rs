@@ -110,7 +110,23 @@ mod tests {
 
     #[tokio::test]
     async fn a_notification_on_stdio_gets_no_response() {
-        let (server, _store, _dir) = sqlite_server().await;
+        let (server, store, _dir) = sqlite_server().await;
+        let workspace = store
+            .create_workspace(NewWorkspace {
+                name: "stdio".into(),
+            })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: workspace.id,
+                handle: "alice".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let auth = AuthContext::from_session(member.id, workspace.id, capability::all());
 
         let input = [
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
@@ -123,14 +139,9 @@ mod tests {
         ]
         .join("\n");
         let mut output = Vec::new();
-        serve_lines(
-            &server,
-            &AuthContext::bypass(),
-            input.as_bytes(),
-            &mut output,
-        )
-        .await
-        .unwrap();
+        serve_lines(&server, &auth, input.as_bytes(), &mut output)
+            .await
+            .unwrap();
 
         let answers = answers(output);
         let ids: Vec<&Value> = answers.iter().map(|a| &a["id"]).collect();

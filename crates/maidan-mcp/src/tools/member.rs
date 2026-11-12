@@ -183,8 +183,7 @@ async fn wait_for_member_event(
         cursor = cursor.max(envelope.log_id);
         // Addressed to this member, but if it lives in a thread the caller can't
         // access, don't reveal it — keep waiting.
-        if !auth.bypass
-            && let Some(tid) = envelope.event.thread_id()
+        if let Some(tid) = envelope.event.thread_id()
             && !maidan_auth::can_access_thread(store, auth, tid).await?
         {
             continue;
@@ -222,8 +221,7 @@ async fn lookback_member_event(
             if event.member_id() != Some(member_id) {
                 continue;
             }
-            if !auth.bypass
-                && let Some(tid) = event.thread_id()
+            if let Some(tid) = event.thread_id()
                 && !maidan_auth::can_access_thread(store, auth, tid).await?
             {
                 continue;
@@ -277,8 +275,7 @@ impl ThreadCache {
         if let Some(cached) = self.0.get(&thread_id) {
             return Ok(cached.clone());
         }
-        let readable =
-            auth.bypass || maidan_auth::can_access_thread(store, auth, thread_id).await?;
+        let readable = maidan_auth::can_access_thread(store, auth, thread_id).await?;
         let title = if readable {
             Some(store.get_thread(thread_id).await.ok().and_then(|t| t.title))
         } else {
@@ -428,8 +425,7 @@ async fn next_unread_notification(
     rows.retain(|n| n.source_log_id > after);
     rows.sort_by_key(|n| n.source_log_id);
     for row in rows {
-        if !auth.bypass
-            && let Some(thread_id) = row.thread_id
+        if let Some(thread_id) = row.thread_id
             && !maidan_auth::can_access_thread(store, auth, thread_id).await?
         {
             continue;
@@ -503,7 +499,7 @@ pub(super) async fn get_waiting_inbox(
         .list_review_requests(member.workspace_id, member_id)
         .await?
     {
-        if auth.bypass || maidan_auth::can_access_thread(store.as_ref(), auth, thread.id).await? {
+        if maidan_auth::can_access_thread(store.as_ref(), auth, thread.id).await? {
             reviews.push(thread);
         }
     }
@@ -570,7 +566,7 @@ pub(super) async fn get_manager_digest(
     let a: ManagerDigestArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     super::requested_member(server.store.as_ref(), auth, member_id).await?;
-    if !auth.bypass && auth.token_id().is_none() && auth.member_id() != member_id {
+    if auth.token_id().is_none() && auth.member_id() != member_id {
         return Err(McpError::Forbidden(
             "a session caller may only read its own manager digest".into(),
         ));
@@ -1032,9 +1028,7 @@ pub(super) async fn get_member_occupancy(
         .await?;
     let mut visible = Vec::with_capacity(assigned.len());
     for thread in assigned {
-        if auth.bypass
-            || maidan_auth::can_access_thread(server.store.as_ref(), auth, thread.id).await?
-        {
+        if maidan_auth::can_access_thread(server.store.as_ref(), auth, thread.id).await? {
             visible.push(thread);
         }
     }

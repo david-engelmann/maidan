@@ -40,7 +40,7 @@ pub(super) async fn create_recipe(
     let ctx = resolve_channel_context(store.as_ref(), channel_id)
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if !auth.bypass && ctx.workspace_id != auth.workspace_id() {
+    if ctx.workspace_id != auth.workspace_id() {
         return Err(McpError::InvalidParams(
             "channel is not in the caller's workspace".into(),
         ));
@@ -66,9 +66,6 @@ pub(super) async fn list_recipes(
     _args: &Value,
 ) -> Result<Value, McpError> {
     let recipes = store.list_recipes(auth.workspace_id()).await?;
-    if auth.bypass {
-        return Ok(content_json(&recipes));
-    }
     let mut visible = Vec::with_capacity(recipes.len());
     for r in recipes {
         if maidan_auth::can_access_channel(store.as_ref(), auth, r.channel_id).await? {
@@ -98,7 +95,7 @@ pub(super) async fn instantiate_recipe(
     let a: InstantiateArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = server.store.get_recipe(recipe_id).await?;
-    if !auth.bypass && recipe.workspace_id != auth.workspace_id() {
+    if recipe.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     maidan_auth::ensure_channel_access(server.store.as_ref(), auth, recipe.channel_id).await?;
@@ -129,7 +126,7 @@ pub(super) async fn delete_recipe(
     let a: DeleteRecipeArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = store.get_recipe(recipe_id).await?;
-    if !auth.bypass && recipe.workspace_id != auth.workspace_id() {
+    if recipe.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     maidan_auth::ensure_channel_access(store.as_ref(), auth, recipe.channel_id).await?;

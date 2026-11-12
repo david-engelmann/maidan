@@ -55,7 +55,6 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

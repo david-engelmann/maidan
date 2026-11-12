@@ -6,10 +6,10 @@
 //! where a request needs a credential: the page holds no bearer token, and the
 //! browser sends none of this server's cookies to the page's name. It gains a
 //! request with no credential everything that request may do, which here means
-//! `AUTH_DISABLED` and the anonymous dev reader of MCP.
+//! the anonymous dev reader of MCP.
 //!
 //! A rebinding page presents a public name it controls, which always has a
-//! dot. So a request that rides one of those open modes is refused (403) when
+//! dot. So a request that rides that open mode is refused (403) when
 //! its `Host` is a dotted name that is neither a loopback name nor listed in
 //! `MAIDAN_ALLOWED_HOSTS`, and when it carries an `Origin` whose authority is
 //! not its `Host`. An IP address, a name without a dot (a compose service such
@@ -17,12 +17,9 @@
 //! not rebound names. The rule holds however the server is bound, including on
 //! every interface as a container is.
 //!
-//! For the anonymous reader, a request that carries a credential is not judged
-//! here: it takes the bearer path, which refuses a token it does not know, so a
-//! reverse proxy that forwards a public `Host` keeps working. Under
-//! `AUTH_DISABLED` every request is judged, because no credential is checked and
-//! a page can attach any header; behind such a proxy, list its name in
-//! `MAIDAN_ALLOWED_HOSTS`.
+//! A request that carries a credential is not judged here: it takes the bearer
+//! path, which refuses a token it does not know, so a reverse proxy that
+//! forwards a public `Host` keeps working.
 
 use axum::{
     extract::{Request, State},
@@ -44,9 +41,6 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
 
 /// Whether the request would be served without a credential.
 fn rides_an_open_mode(state: &AppState, req: &Request) -> bool {
-    if state.auth_disabled {
-        return true;
-    }
     state.dev_anonymous_reader.is_some()
         && req.method() == Method::POST
         && crate::rate_limit::is_mcp_jsonrpc_path(req.uri().path())

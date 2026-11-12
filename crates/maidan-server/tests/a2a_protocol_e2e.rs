@@ -68,7 +68,6 @@ async fn spawn() -> H {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

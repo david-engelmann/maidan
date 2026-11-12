@@ -3,16 +3,14 @@ name: maidan-quickstart
 # One-command local evaluation stack. Runs a
 # single Maidan server on SQLite + local-filesystem artifacts, bound to loopback.
 #
-# Default-secure: authentication is ON, exactly like production. Seed the first admin
-# and mint a bearer token with `maidan init` (bundled in the image), then use it:
+# Every request is authenticated, exactly like production. `maidan init` (bundled in
+# the image) opens the first workspace and prints its admin token once; the demo then
+# creates its two agents and posts with that token:
 #
 #   docker compose -f compose.quickstart.yaml up -d --build --wait
 #   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
 #   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
 #
-# MAIDAN_BOOTSTRAP=1 keeps the unauthenticated member-seed route open so the demo can
-# create its two agents; content operations (post/read) require the token. To explore
-# without minting a token (local only), layer compose.quickstart.insecure.yaml on top.
 # Never expose this to a network or use it in production. For a hardened deployment use
 # compose.yaml (Postgres + object store) or the Helm chart.
 services:
@@ -30,12 +28,9 @@ services:
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      # Auth is ON. Dev-only HMAC key for signed session/resume tokens (32+ bytes) —
-      # replace for any real deployment.
+      # Dev-only HMAC key for signed session/resume tokens (32+ bytes) — replace for
+      # any real deployment.
       MAIDAN_SESSION_SECRET: "quickstart-dev-session-secret-32bytes"
-      # Keep the unauthenticated seed routes (workspace/member create) open so the demo
-      # can create its two agents. Unset this once a real deployment has its admin.
-      MAIDAN_BOOTSTRAP: "1"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
     # Loopback-only by design. The host port is overridable because 8080 is

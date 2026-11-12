@@ -5,8 +5,8 @@
 //! `BusItem::Lagged` arriving before the first event therefore resumed from 0 —
 //! replaying the entire global log, across every workspace. For
 //! `fsm_hook_worker` that means re-firing every historical hook through
-//! `dispatch_mcp_tool` with `AuthContext::bypass()`; for `webhook_worker`,
-//! re-POSTing all history to every tenant's endpoint.
+//! `dispatch_mcp_tool`; for `webhook_worker`, re-POSTing all history to every
+//! tenant's endpoint.
 //!
 //! This pins the consequence directly: resuming from the attach watermark
 //! replays nothing, while resuming from 0 replays everything.
@@ -96,7 +96,6 @@ async fn state_with_history(events: usize) -> Fixture {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

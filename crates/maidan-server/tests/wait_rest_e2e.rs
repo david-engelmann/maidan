@@ -32,14 +32,12 @@ async fn thread_wait_set_get_cancel_over_rest() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    // Auth ENABLED: the set handler persists `auth.member_id` (created_by FK).
     let state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

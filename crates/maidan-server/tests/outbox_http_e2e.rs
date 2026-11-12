@@ -30,7 +30,6 @@ async fn spawn_postgres_outbox() -> Option<Harness> {
             .await
             .expect("connect the bus"),
     );
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =

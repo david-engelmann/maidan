@@ -37,7 +37,7 @@ pub(super) async fn snapshot_thread_context(
         .put(bytes.clone())
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let uploaded_by = (!auth.bypass).then_some(auth.member_id());
+    let uploaded_by = Some(auth.member_id());
     let (artifact, stored) = super::artifact::upsert_uploaded_artifact(
         server,
         auth,

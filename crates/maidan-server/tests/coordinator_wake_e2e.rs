@@ -63,7 +63,6 @@ async fn the_wake_script_sleeps_through_other_kinds_and_wakes_on_a_question() {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

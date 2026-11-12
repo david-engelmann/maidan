@@ -62,7 +62,6 @@ async fn serve(backend: &Backend) -> Api {
         backend.search.clone(),
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, Some(Arc::new([0x5e; 32]))),
         Arc::new(AtomicI64::new(0)),
         None,

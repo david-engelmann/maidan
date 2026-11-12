@@ -71,6 +71,9 @@ mod automation_deliveries;
 #[path = "../backend_parity.rs"]
 mod backend_parity;
 
+#[path = "../bridge_provenance.rs"]
+mod bridge_provenance;
+
 #[path = "../browser_sessions.rs"]
 mod browser_sessions;
 
@@ -298,6 +301,9 @@ mod member_last_seen;
 
 #[path = "../member_references.rs"]
 mod member_references;
+
+#[path = "../member_self_migration.rs"]
+mod member_self_migration;
 
 #[path = "../member_skills.rs"]
 mod member_skills;

@@ -14,8 +14,8 @@ use serde_json::{json, Value};
 use super::content_json;
 use crate::error::McpError;
 
-/// Verify the target member is in the caller's workspace (bypass exempt), and
-/// return the member's workspace.
+/// Verify the target member is in the caller's workspace, and return the
+/// member's workspace.
 async fn ensure_same_workspace(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
