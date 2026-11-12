@@ -18,7 +18,13 @@ for dir in crates/*/; do
   crate=$(basename "$dir")
   level=forbid
   case "$deny_crates" in *" $crate "*) level=deny ;; esac
-  if ! grep -qx "unsafe_code = \"$level\"" "$dir/Cargo.toml"; then
+  # The line must sit in the `[lints.rust]` table: the same line under
+  # `[package.metadata]` would pass a plain grep and set nothing.
+  if ! awk -v want="unsafe_code = \"$level\"" '
+    /^\[/ { in_rust = ($0 == "[lints.rust]") }
+    in_rust && $0 == want { found = 1 }
+    END { exit !found }
+  ' "$dir/Cargo.toml"; then
     echo "$dir/Cargo.toml: [lints.rust] needs unsafe_code = \"$level\"" >&2
     bad=1
   fi
