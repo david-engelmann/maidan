@@ -6,6 +6,8 @@
 //!   snippets. Semantic search via `pgvector` arrives in Cluster C PR #3.
 //! - [`SqliteSearch`] — FTS5 lexical search; semantic search over stored embeddings.
 
+#![deny(unsafe_code)]
+
 pub mod embedding_batcher;
 pub mod embedding_handler;
 pub mod embedding_provider;

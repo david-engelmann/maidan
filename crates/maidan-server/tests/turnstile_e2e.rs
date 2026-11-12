@@ -69,6 +69,7 @@ async fn spawn_siteverify() -> (String, Seen) {
 async fn spawn(turnstile: Option<TurnstileSettings>) -> String {
     // SAFETY: test setup. Maidan reads these variables only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe {
         std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
         std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_MAX", "1000");

@@ -56,6 +56,7 @@ async fn sqlite_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
 }
 
 async fn spawn() -> (String, reqwest::Client, Arc<dyn Store>) {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe {
         std::env::set_var("MAIDAN_RETENTION_EVENTS_DAYS", INSTANCE_EVENTS_DAYS);
         std::env::set_var("MAIDAN_RETENTION_MESSAGES_DAYS", INSTANCE_MESSAGES_DAYS);

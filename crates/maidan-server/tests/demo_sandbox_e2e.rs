@@ -23,6 +23,7 @@ async fn spawn(sandbox: Option<i64>) -> String {
     // into its own address bucket with forwarded addresses.
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1") };
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)

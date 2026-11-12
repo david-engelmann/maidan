@@ -22,20 +22,25 @@ use serde_json::json;
 async fn spawn() -> String {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_MAX", "3") };
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS", "3600") };
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX", "2") };
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS", "3600") };
     // The limiter's buckets are process-global, so the two tests steer
     // themselves into separate address buckets with forwarded addresses.
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1") };
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)

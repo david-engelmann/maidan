@@ -3,6 +3,8 @@
 //! Call [`init`] once at process startup; keep the returned [`Guard`] alive
 //! until shutdown, then call [`Guard::shutdown`].
 
+#![forbid(unsafe_code)]
+
 mod metrics;
 mod thread_trace;
 mod trace;

@@ -137,3 +137,6 @@ path = "tests/it/main.rs"
 [[test]]
 name = "bootstrap_absent_e2e"
 path = "tests/bootstrap_absent_e2e.rs"
+
+[lints.rust]
+unsafe_code = "deny"

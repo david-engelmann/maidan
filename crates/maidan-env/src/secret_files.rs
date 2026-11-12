@@ -140,6 +140,7 @@ pub fn resolve_secret_files(
 /// No other thread may read or write the process environment while this runs,
 /// since it calls `std::env::set_var`. Calling it first thing in `main`, before
 /// an async runtime or any other thread starts, meets this.
+#[allow(unsafe_code)] // edition 2024 makes env writes unsafe; callers run this before any runtime
 pub unsafe fn load_secret_files() -> Result<Vec<&'static str>, SecretFileError> {
     let resolved = resolve_secret_files(|name| std::env::var_os(name))?;
     Ok(resolved

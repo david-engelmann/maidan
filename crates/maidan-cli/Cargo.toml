@@ -50,3 +50,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"

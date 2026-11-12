@@ -148,6 +148,7 @@ async fn spawn(backend: Backend) -> Harness {
 async fn spawn_with(backend: Backend, worker: bool) -> Harness {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
     let store = backend.store.clone();
     let dir = tempfile::tempdir().unwrap();

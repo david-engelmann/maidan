@@ -4,6 +4,8 @@
 //! integration tests can build the same router in-process and exercise
 //! it through `reqwest` against a real listener.
 
+#![deny(unsafe_code)]
+
 pub mod a2a_agent;
 pub mod a2a_grpc;
 pub mod agui;

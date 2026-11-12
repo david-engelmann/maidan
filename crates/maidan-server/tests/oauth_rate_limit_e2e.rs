@@ -19,6 +19,7 @@ static ENV: Once = Once::new();
 /// process-global, so each test keys its traffic distinctly (its own
 /// client ids and forwarded addresses) and shares these values.
 fn env() {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     ENV.call_once(|| unsafe {
         std::env::set_var("MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX", "3");
         std::env::set_var("MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS", "60");

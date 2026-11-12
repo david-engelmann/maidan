@@ -3,6 +3,8 @@
 //! Defines [`Store`], a backend-agnostic async interface, plus Postgres
 //! and SQLite implementations backed by `sqlx`.
 
+#![forbid(unsafe_code)]
+
 pub mod a2a;
 pub mod approval_policy;
 pub mod attribution;

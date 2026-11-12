@@ -17,6 +17,7 @@ async fn spawn() -> (
     Tenant,
     Tenant,
 ) {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe {
         // Per-workspace fairness on; global per-client limit left off so this
         // test isolates the workspace dimension.

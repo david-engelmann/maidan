@@ -226,6 +226,8 @@ jobs:
         run: python3 scripts/test-coordinator-wake.py
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
+      - name: no unsafe code outside the listed sites
+        run: ./scripts/check-unsafe-code.sh
       - name: links name only domains Maidan owns
         run: ./scripts/check-our-domains.sh
       - name: every action pinned to a commit SHA

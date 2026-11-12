@@ -814,6 +814,7 @@ mod tests {
             let previous_hosts = std::env::var(DCR_REDIRECT_HOSTS_VAR).ok();
             // SAFETY: no other test in this binary reads these variables, and
             // the previous values are restored before this test returns.
+            #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
             unsafe {
                 match flag {
                     Some(value) => std::env::set_var(DYNAMIC_REGISTRATION_VAR, value),
@@ -826,6 +827,7 @@ mod tests {
             }
             let read = DynamicRegistration::from_env();
             // SAFETY: same as above; restore the process environment before returning.
+            #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
             unsafe {
                 match previous_flag {
                     Some(value) => std::env::set_var(DYNAMIC_REGISTRATION_VAR, value),

@@ -1,0 +1,3 @@
+### No unsafe code without a reason at the site
+
+- **Changed:** every workspace crate now sets the `unsafe_code` lint, so a new `unsafe` block fails to compile. Ten crates (types, store, bus, fsm, router, artifacts, mcp, a2a, observability, wasi) forbid it outright. Five deny it and allow it one site at a time, each with a one-line reason: maidan-server, maidan-cli and maidan-env for environment writes (edition 2024 makes `std::env::set_var` and `remove_var` unsafe) in tests or before the runtime starts in `main`, maidan-auth for environment writes in tests, and maidan-search for the sqlite-vec FFI. `scripts/check-unsafe-code.sh`, in the lint job, fails if a crate drops the setting or an allow comes without its reason. No behaviour change.

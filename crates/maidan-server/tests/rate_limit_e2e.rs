@@ -13,6 +13,7 @@ async fn spawn() -> (
     tempfile::TempDir,
     Tenant,
 ) {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe {
         std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "3");
         std::env::set_var("MAIDAN_RATE_LIMIT_WINDOW_SECS", "60");

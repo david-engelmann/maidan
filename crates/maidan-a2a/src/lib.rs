@@ -1,5 +1,7 @@
 //! Maidan federation wire format plus Google A2A protocol v1.0 client types.
 
+#![forbid(unsafe_code)]
+
 pub mod batch;
 pub mod client;
 pub mod envelope;

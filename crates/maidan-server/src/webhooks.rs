@@ -419,6 +419,7 @@ mod timeout_tests {
     async fn a_receiver_that_never_answers_fails_the_delivery_within_the_timeout() {
         // SAFETY: test setup. Maidan reads this variable only through std,
         // whose environment lock serializes the read with this write.
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
         unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
