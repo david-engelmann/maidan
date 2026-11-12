@@ -231,7 +231,7 @@ The provider must report the email as verified, and the email must match the inv
 The person then joins the workspace as a human member with the invite's role. Each
 invite works once. An invite that is expired, revoked, used or from another workspace
 returns "the invite is no longer valid". A viewer's session keeps only the read
-capabilities, and a person who joined by invite cannot mint the first admin token.
+capabilities and `member:self` (its own follows, mutes and notification marks), and a person who joined by invite cannot mint the first admin token.
 Minting and accepting are rate limited, and each is audited as `workspace_invite.create`,
 `workspace_invite.revoke` or `workspace_invite.accept`. The audit row never holds the
 email.

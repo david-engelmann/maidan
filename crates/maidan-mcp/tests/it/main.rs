@@ -11,6 +11,9 @@
 #[path = "../arg_strictness_contract.rs"]
 mod arg_strictness_contract;
 
+#[path = "../bridged_provenance.rs"]
+mod bridged_provenance;
+
 #[path = "../cache_hints_contract.rs"]
 mod cache_hints_contract;
 

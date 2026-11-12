@@ -694,7 +694,16 @@ rebuild from the domain tables, not a repair of the log. See
 
 ### Metrics, dashboards and alerts
 
-`GET /metrics` serves Prometheus text with no per-workspace labels. There is an
+`GET /metrics` serves Prometheus text with no per-workspace labels. Under
+`MAIDAN_ENV=production` it answers `404` unless `MAIDAN_METRICS_TOKEN` is set,
+and then only to that bearer: give Prometheus the same value
+(`authorization: { credentials_file: … }` in its scrape config,
+`bearer_token` in Grafana Alloy, `secrets.MAIDAN_METRICS_TOKEN` in the Helm
+chart). The HTTP metrics (`http_server_request_total`,
+`http_server_request_duration_seconds`) are labelled by the matched route
+template (`route="/threads/{id}"`, `unmatched` for no route), never the path,
+and by a method from a fixed set (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`HEAD`, `OPTIONS`, or `other`), so a client cannot add series. There is an
 example [Grafana dashboard](https://github.com/david-engelmann/maidan/blob/main/docs/dashboards/maidan-operator.json)
 and a set of [alert rules](https://github.com/david-engelmann/maidan/blob/main/docs/alerts/README.md),
 tested with `scripts/check-alert-rules.sh`. Without Prometheus,

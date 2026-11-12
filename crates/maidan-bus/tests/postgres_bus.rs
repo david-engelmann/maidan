@@ -153,6 +153,7 @@ async fn publish_rejects_legacy_synthetic_payload_too_large() {
         posted_at: Utc::now(),
         edited_at: None,
         tombstoned_at: None,
+        provenance: None,
     };
     let event = Event::MessagePosted {
         occurred_at: Utc::now(),
@@ -207,6 +208,7 @@ async fn pointer_delivery_for_large_persisted_event() {
             posted_at: Utc::now(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         },
         sealed: None,
     };

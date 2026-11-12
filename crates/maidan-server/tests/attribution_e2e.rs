@@ -110,7 +110,11 @@ async fn world() -> World {
             secret.as_str().to_string()
         }
     };
-    let work = vec![capability::WORKSPACE_READ, capability::MESSAGE_POST];
+    let work = vec![
+        capability::WORKSPACE_READ,
+        capability::MESSAGE_POST,
+        capability::MEMBER_SELF,
+    ];
     let admin_tok = mint(
         ids[0],
         vec![
@@ -171,7 +175,11 @@ impl World {
             .json(&json!({
                 "subject_id": self.worker.0,
                 "delegate_id": self.orchestrator.0,
-                "capabilities": [capability::WORKSPACE_READ, capability::MESSAGE_POST],
+                "capabilities": [
+                    capability::WORKSPACE_READ,
+                    capability::MESSAGE_POST,
+                    capability::MEMBER_SELF,
+                ],
                 "purpose": "post for the worker",
                 "expires_at": Utc::now() + ChronoDuration::hours(1),
             }))
