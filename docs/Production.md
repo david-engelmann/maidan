@@ -23,7 +23,11 @@ artifact store, so the server holds no state of its own.
 Set `MAIDAN_ENV=production`. It refuses every development switch (running
 without authentication, the public development content key, the mock OIDC
 provider, private-network egress) and marks session cookies `Secure`, so
-reach the console over HTTPS or on `localhost`.
+reach the console over HTTPS or on `localhost`. The Helm chart sets it
+whenever `production: true` (both charts' `values-prod.yaml`), and so does
+`k8s/overlays/prod`. Boot refuses any other value than `production` or
+`development`, so a typo such as `prod` cannot start a server with the
+production refusals off.
 
 **Secrets as files.** Every secret has a `<NAME>_FILE` form naming a file that
 holds it, such as `MAIDAN_CONTENT_KEK_FILE=/run/secrets/content_kek`. Use it

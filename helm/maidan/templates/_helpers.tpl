@@ -204,4 +204,25 @@ a production render that supplies none would ship a pod that never starts. */}}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* The server refuses any MAIDAN_ENV but these two, and a production render
+sets it from `production` (deployment.yaml), where a config value saying
+otherwise would only read as if it applied. */}}
+{{- if hasKey .Values.config "MAIDAN_ENV" }}
+{{- $env := toString .Values.config.MAIDAN_ENV }}
+{{- if not (has $env (list "" "production" "development")) }}
+{{- fail (printf "config.MAIDAN_ENV %q is not production or development: the server refuses it at boot" $env) }}
+{{- end }}
+{{- if and .Values.production (ne $env "production") }}
+{{- fail (printf "config.MAIDAN_ENV is %q in a production render, which sets MAIDAN_ENV=production: remove it" $env) }}
+{{- end }}
+{{- end }}
+{{- /* Under MAIDAN_ENV=production the server refuses to boot with any of
+these, so a production render that carries one ships a pod that never starts. */}}
+{{- if .Values.production }}
+{{- range (list "AUTH_DISABLED" "MAIDAN_ALLOW_INSECURE_DEV_KEK" "MAIDAN_OIDC_MOCK" "MAIDAN_ALLOW_PRIVATE_EGRESS" "MAIDAN_OPS_FAULT") }}
+{{- if hasKey $.Values.config . }}
+{{- fail (printf "config.%s is a development switch that MAIDAN_ENV=production refuses, and a production render sets MAIDAN_ENV=production: remove it" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end -}}
