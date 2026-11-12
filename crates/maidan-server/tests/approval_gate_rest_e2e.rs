@@ -268,6 +268,8 @@ impl World {
             .len()
     }
 
+    /// A live subscription for `token` that asserts a grant for the private
+    /// channel: the server keeps it only for a member of that channel.
     async fn subscribe(
         &self,
         token: &str,
@@ -278,7 +280,11 @@ impl World {
             .await
             .unwrap();
         ws.send(Message::Text(
-            json!({ "token": token, "filter": {} }).to_string(),
+            json!({
+                "token": token,
+                "filter": { "channel_grants": [self.private_channel.0] },
+            })
+            .to_string(),
         ))
         .await
         .unwrap();
@@ -521,8 +527,9 @@ async fn answering_a_gate_announces_approval_resolved_only_to_those_who_can_read
     assert_eq!(on_standalone["state"], "declined");
     assert!(on_standalone.get("thread_id").is_none_or(Value::is_null));
 
-    // carol is in the workspace but not the private channel: she hears the
-    // workspace-level gate and nothing of the private one.
+    // carol is in the workspace but not the private channel, so her asserted
+    // grant was dropped: she hears the workspace-level gate and nothing of the
+    // private one.
     let carol = drain(&mut carol_ws, Duration::from_millis(300)).await;
     assert!(
         carol.iter().all(|f| f["gate_id"] != private),
