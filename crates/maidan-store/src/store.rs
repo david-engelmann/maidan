@@ -1877,6 +1877,16 @@ pub trait SessionStore: Send + Sync {
     async fn delete_expired_session(&self, id: SessionId) -> Result<(), StoreError>;
 }
 
+/// Names for a set of channel, thread and member ids, read in one pass by
+/// [`ChannelStore::display_names`]. An id outside the workspace, or one that
+/// no longer resolves, is absent; so is a thread with no title.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DisplayNames {
+    pub channels: std::collections::HashMap<ChannelId, String>,
+    pub threads: std::collections::HashMap<ThreadId, String>,
+    pub members: std::collections::HashMap<MemberId, String>,
+}
+
 #[async_trait]
 pub trait ChannelStore: Send + Sync {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
@@ -1890,6 +1900,27 @@ pub trait ChannelStore: Send + Sync {
     ) -> Result<(Channel, StoredEvent), StoreError>;
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
+
+    /// Every channel in `workspace_id`, each paired with whether `member_id`
+    /// has a membership row in it, in one query. Visibility is decided from
+    /// the pair (`maidan_auth::visible_channels`), so listing channels costs
+    /// one round trip however many private channels the workspace has.
+    async fn list_channels_with_membership(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<(Channel, bool)>, StoreError>;
+
+    /// Channel names, thread titles and member handles for the given ids,
+    /// limited to `workspace_id`. Search uses it to name its hits with a fixed
+    /// number of queries instead of up to three point reads per hit.
+    async fn display_names(
+        &self,
+        workspace_id: WorkspaceId,
+        channels: &[ChannelId],
+        threads: &[ThreadId],
+        members: &[MemberId],
+    ) -> Result<DisplayNames, StoreError>;
 
     /// Per-channel membership. Public channels are open to the workspace and
     /// need no rows; these gate private channels. `add` is an idempotent upsert
