@@ -92,7 +92,7 @@ impl BatchConfig {
         Self {
             queue_capacity,
             batch_size,
-            retry: RetryPolicy::from_env(),
+            retry: RetryPolicy::standard(),
         }
     }
 }
@@ -107,13 +107,13 @@ pub struct RetryPolicy {
 }
 
 impl RetryPolicy {
-    /// `MAIDAN_INDEXER_RETRIES` (default 3) and `MAIDAN_INDEXER_RETRY_BASE_MS`
-    /// (default 250). With the defaults a batch is tried for about two seconds
-    /// before the repair sweep takes it over.
-    pub fn from_env() -> Self {
+    /// Three retries from 250 ms: a batch is tried for about two seconds
+    /// before the repair sweep takes it over. Constants since OPS-006; the
+    /// repair sweep, not a longer retry, is what recovers an outage.
+    pub fn standard() -> Self {
         Self {
-            retries: env_usize("MAIDAN_INDEXER_RETRIES", 3).min(10) as u32,
-            base: Duration::from_millis(env_usize("MAIDAN_INDEXER_RETRY_BASE_MS", 250) as u64),
+            retries: 3,
+            base: Duration::from_millis(250),
             max_delay: Duration::from_secs(10),
         }
     }

@@ -158,7 +158,7 @@ pub async fn manager_digest_for_member(
     member_id: MemberId,
     since: DateTime<Utc>,
 ) -> Result<ManagerDigest, crate::error::StoreError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT channel_id,
                 COUNT(*) FILTER (WHERE kind = 'thread_result_set') AS results,
                 COUNT(*) FILTER (WHERE kind = 'approval_requested') AS gates,
@@ -168,11 +168,14 @@ pub async fn manager_digest_for_member(
            AND read_at IS NULL
            AND created_at > $2
            AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_unacknowledged', 'claim_stalled', 'claim_failed', 'wait_timed_out')
+           AND {}
          GROUP BY channel_id
          ORDER BY channel_id IS NOT NULL, channel_id",
-    )
+        crate::thread_access::notification_visible_to("$1::uuid", "$3")
+    ))
     .bind(member_id.0)
     .bind(since)
+    .bind(maidan_types::DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     let channels = rows

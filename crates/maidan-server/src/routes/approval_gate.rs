@@ -139,7 +139,8 @@ fn round_cap_refusal(result: ApiResult<()>) -> ApiResult<()> {
 }
 
 /// List a workspace's pending approval gates, each with its `request_state`.
-/// `workspace:read`.
+/// `workspace:read`. Only the gates the caller can read: those on a thread it
+/// can read, and those on no thread.
 pub async fn list_approval_gates(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -156,7 +157,7 @@ pub async fn list_approval_gates(
         .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
     let gates = state
         .store
-        .list_pending_approval_gates(workspace_id, 200)
+        .list_pending_approval_gates(workspace_id, (!auth.bypass).then_some(auth.member_id), 200)
         .await?;
     let mut requests = state
         .store
@@ -214,14 +215,17 @@ pub async fn answer_approval_gate(
             ));
         }
     };
-    // The gate must exist in the caller's workspace; an out-of-workspace or
-    // unknown id reads as not-found (no cross-tenant existence oracle).
+    // The caller must be able to read the gate: in its workspace, and able
+    // to read its thread when it has one. Anything else reads as not found,
+    // so a gate id is no oracle, across tenants or into a private channel.
     let gate = state
         .store
         .get_approval_gate(gate_id)
         .await?
-        .filter(|g| auth.bypass || g.workspace_id == auth.workspace_id)
         .ok_or(ApiError::NotFound)?;
+    if !maidan_auth::can_read_gate(state.store.as_ref(), &auth, &gate).await? {
+        return Err(ApiError::NotFound);
+    }
     // Integrity of the untrusted `/ui` round-trip: the answer must echo the
     // server-issued token for this gate.
     // No signing key means no `requestState` could have been issued, so nothing
@@ -388,8 +392,11 @@ pub async fn confirm_approval_gate(
         .store
         .get_approval_gate(confirmation.gate_id)
         .await?
-        .filter(|g| g.workspace_id == auth.workspace_id)
         .ok_or(ApiError::NotFound)?;
+    // Confirming is answering: the person must still read the gate's thread.
+    if !maidan_auth::can_read_gate(state.store.as_ref(), &auth, &gate).await? {
+        return Err(ApiError::NotFound);
+    }
     let asked = [Some(gate.requested_by), gate.requested_actor_id];
     let answering = [auth.member_id, auth.actor_id];
     // The cap gate's requester is the reviewer the link was sent to. Refusing

@@ -75,6 +75,11 @@ async fn active_token_context(
 ) -> Result<AuthContext, AuthError> {
     ensure_workspace_active(store, token.workspace_id).await?;
     if let Some(grant_id) = token.delegation_grant_id {
+        // No revoked_at or expires_at check here on purpose: `token` came from
+        // `get_active_api_token_by_hash`, whose SQL already requires the
+        // grant to be unrevoked and unexpired (postgres/tokens.rs and
+        // sqlite/tokens.rs, `get_active_by_hash`). A token on a dead grant
+        // never reaches this line.
         let grant = store.get_delegation_grant(grant_id).await?;
         return Ok(AuthContext::from_delegated_token(
             token.id,

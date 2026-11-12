@@ -331,11 +331,9 @@ export function Threads() {
         )
       ) : (
         <section className="conv-open conv-none" aria-hidden="true">
-          <div className="pane-empty">
-            <span className="pane-empty-mark" />
-            <strong>No conversation open</strong>
-            <p className="muted">Pick a task or a direct message from the list.</p>
-          </div>
+          {/* No action here: on a wide screen this pane is aria-hidden until a
+              conversation opens, and a link inside it would be focusable but unseen. */}
+          <EmptyState icon="threads" title="No conversation open" body="Pick a task or a direct message from the list." />
         </section>
       )}
     </div>

@@ -71,7 +71,7 @@ async fn run_suite(store: &dyn Store) {
 
     // No gates outstanding at the start.
     assert!(store
-        .list_pending_approval_gates(ws.id, 50)
+        .list_pending_approval_gates(ws.id, None, 50)
         .await
         .expect("list empty")
         .is_empty());
@@ -116,7 +116,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("some");
     assert_eq!(got.prompt, "Deploy to prod?");
     let pending = store
-        .list_pending_approval_gates(ws.id, 50)
+        .list_pending_approval_gates(ws.id, None, 50)
         .await
         .expect("list pending");
     assert_eq!(pending.len(), 1);
@@ -158,7 +158,7 @@ async fn run_suite(store: &dyn Store) {
 
     // A resolved gate leaves the pending queue.
     assert!(store
-        .list_pending_approval_gates(ws.id, 50)
+        .list_pending_approval_gates(ws.id, None, 50)
         .await
         .expect("list after resolve")
         .is_empty());
@@ -203,7 +203,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Both resolved → the pending queue is empty again.
     assert!(store
-        .list_pending_approval_gates(ws.id, 50)
+        .list_pending_approval_gates(ws.id, None, 50)
         .await
         .expect("list final")
         .is_empty());

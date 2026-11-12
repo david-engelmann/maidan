@@ -406,15 +406,9 @@ pub fn reconcile_stability_window_from_env() -> std::time::Duration {
         .unwrap_or_else(|| std::time::Duration::from_secs(2))
 }
 
-/// Poll cadence for the reconcile loop (a NOTIFY also wakes it). Default 1s.
-pub fn reconcile_interval_from_env() -> std::time::Duration {
-    std::env::var("MAIDAN_DELIVERY_RECONCILE_MS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|&ms| ms > 0)
-        .map(std::time::Duration::from_millis)
-        .unwrap_or_else(|| std::time::Duration::from_millis(1000))
-}
+/// Poll cadence for the reconcile loop. A NOTIFY also wakes it, so the poll
+/// is only the backstop and needs no knob (OPS-006).
+pub const RECONCILE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Cursor-driven **at-least-once** delivery.
 ///
