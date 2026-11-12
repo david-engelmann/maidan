@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `53df1b9a` (2026-11-11, `v449.0.0`).
+on a decision. Last reconciled against `main` at `6242a75c` (2026-11-12, `v450.0.0`).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -29,7 +29,7 @@ maidan.world reports the tag. A rerun resumes where the last one stopped
 (#2124, #2125). `deploy prod` runs in the `prod` GitHub environment (#1738),
 which allows only `main` and `v*` tags, after a Neon pre-deploy branch and
 with automatic rollback to the release that was running (#1969).
-maidan.world and try.maidan.world run `v449.0.0` (checked 2026-11-11), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
+maidan.world and try.maidan.world run `v450.0.0` (checked 2026-11-12), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
 `v437.0.0` `deploy prod` run sampled `/health` once a second through the swap
 (`scripts/measure-deploy-gap.sh`, #2137): no probe went unanswered and the
 slowest answered in 8.9 s. The probe sees only its own requests; see Claims. There is no pins PR any more:
@@ -282,7 +282,7 @@ Each links its record. Entries roll off after about a month.
 | A pasted bearer token lives in `localStorage` | Tokens are capability-scoped, revocable and rotatable (#1116); #1093 escapes the page's `innerHTML` writes; #1142 exchanges the token for an `HttpOnly` session; `/ui` sends a Content-Security-Policy (#1213) | A script injected into the page can act as the session while the page is open but cannot take the credential away (Threat-Model T17) | #1142, #1213 |
 | Admin merges while branch protection is not strict (F-43, kept off on 2026-10-01) | The merge loop reads the checks of the PR's exact head commit, requires all eight required checks there and every CodeRabbit comment answered, merges with `--match-head-commit`, and first builds the PR merged onto current `main` and runs the static contracts | A break that only a full test run on the merged tree would catch; `main`'s own CI catches it after the merge | `main` CI; Process below |
 | Events delivered at most once on the optimistic path | Transactional outbox, quarantine and replay; opt-in `at_least_once` delivery per `consumer_id` | A client that does not opt in can see a gap or a duplicate | `maidan_outbox_quarantined`, `MaidanOutboxQuarantined` |
-| `AUTH_DISABLED` or bootstrap left on | Both refuse boot without an explicit acknowledgement, and always in production; hardened builds strip the path | A dev binary exposed to a network | Boot checks |
+| A development admin token left on | The server has no unauthenticated mode: boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH` by name (#2258), and bootstrap and the OIDC mock exist only in test builds. `MAIDAN_DEV_ADMIN_TOKEN` opens a dev stack's first admin; it is refused under `MAIDAN_ENV=production` and when shorter than 32 bytes | A non-production deployment reachable from a network with a known dev token | Boot checks |
 | The embedding indexer falls behind | Retries, a repair sweep, and `/health/ready` degraded past `INDEXER_STALE_SECS` | `INDEXER_STALE_SECS` is off by default | `maidan_indexer_last_event_age_seconds` |
 | `hash-v1` embeddings are not semantic | A boot warning; `openai-compatible` for real use | A deployment that ignores the warning | Boot log |
 | The Postgres bus listener drops | Reconnect with back-fill from the log | Delay while it reconnects | `/health/ready`, `maidan_bus_lag_total` |
