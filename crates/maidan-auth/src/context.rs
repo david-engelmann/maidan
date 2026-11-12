@@ -36,7 +36,6 @@ pub struct AuthContext {
     app_installation_id: Option<AppInstallationId>,
     delegation_grant_id: Option<DelegationGrantId>,
     capabilities: Vec<String>,
-    pub bypass: bool,
     anonymous: bool,
 }
 
@@ -84,7 +83,6 @@ impl AuthContext {
                 app_installation_id: None,
                 delegation_grant_id: None,
                 capabilities,
-                bypass: false,
                 anonymous: false,
             }
         }
@@ -106,7 +104,6 @@ impl AuthContext {
                 app_installation_id: Some(app_installation_id),
                 delegation_grant_id: None,
                 capabilities,
-                bypass: false,
                 anonymous: false,
             }
         }
@@ -126,23 +123,8 @@ impl AuthContext {
                 app_installation_id: None,
                 delegation_grant_id: None,
                 capabilities,
-                bypass: false,
                 anonymous: false,
             }
-        }
-    }
-
-    pub fn bypass() -> Self {
-        Self {
-            token_id: None,
-            actor_id: MemberId(uuid::Uuid::nil()),
-            member_id: MemberId(uuid::Uuid::nil()),
-            workspace_id: WorkspaceId(uuid::Uuid::nil()),
-            app_installation_id: None,
-            delegation_grant_id: None,
-            capabilities: Vec::new(),
-            bypass: true,
-            anonymous: false,
         }
     }
 
@@ -150,8 +132,8 @@ impl AuthContext {
         /// A caller with no credential on a dev instance's MCP endpoint, reading
         /// one synthetic workspace as `member_id`. It holds `workspace:read` and
         /// nothing else, and the MCP server also refuses every tool that writes,
-        /// because some writes ask only for `workspace:read`. It is never a bypass,
-        /// so every workspace check applies to it.
+        /// because some writes ask only for `workspace:read`. Every workspace
+        /// check applies to it.
         fn anonymous_reader(member_id: MemberId, workspace_id: WorkspaceId) -> Self {
             Self {
                 token_id: None,
@@ -161,7 +143,6 @@ impl AuthContext {
                 app_installation_id: None,
                 delegation_grant_id: None,
                 capabilities: vec![crate::capability::WORKSPACE_READ.to_string()],
-                bypass: false,
                 anonymous: true,
             }
         }
@@ -200,29 +181,26 @@ impl AuthContext {
                 app_installation_id: None,
                 delegation_grant_id: Some(delegation_grant_id),
                 capabilities,
-                bypass: false,
                 anonymous: false,
             }
         }
     }
 
-    /// Who is acting and for whom, for recording against whatever this request
-    /// writes. `None` when auth is bypassed: there is no real principal, so
-    /// claiming one — the nil member — would be recording a fiction.
-    pub fn attribution(&self) -> Option<maidan_types::Attribution> {
-        (!self.bypass).then_some(maidan_types::Attribution {
+    /// Who is acting and for whom, for recording against whatever this
+    /// request writes.
+    pub fn attribution(&self) -> maidan_types::Attribution {
+        maidan_types::Attribution {
             actor_id: self.actor_id,
             subject_id: self.member_id,
             grant_id: self.delegation_grant_id,
-        })
+        }
     }
 
     pub fn has_capability(&self, cap: &str) -> bool {
-        self.bypass || self.capabilities.iter().any(|c| c == cap)
+        self.capabilities.iter().any(|c| c == cap)
     }
 
-    /// The capabilities granted to this caller. Empty for a bypass caller (auth
-    /// disabled).
+    /// The capabilities granted to this caller.
     pub fn capabilities(&self) -> &[String] {
         &self.capabilities
     }
@@ -238,7 +216,7 @@ impl AuthContext {
     }
 
     pub fn ensure_workspace(&self, workspace_id: WorkspaceId) -> Result<(), crate::AuthError> {
-        if self.bypass || self.workspace_id == workspace_id {
+        if self.workspace_id == workspace_id {
             Ok(())
         } else {
             Err(crate::AuthError::Forbidden(

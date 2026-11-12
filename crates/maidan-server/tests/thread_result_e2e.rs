@@ -104,7 +104,6 @@ async fn set_get_result_over_http_and_event() {
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -186,7 +185,6 @@ async fn serve(store: Arc<dyn Store>, pool: sqlx::SqlitePool) -> String {
         Arc::new(InMemoryBus::with_capacity(64)),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

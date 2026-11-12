@@ -265,10 +265,10 @@ impl Client {
             None,
         )
     }
-    /// Member provisioning. [`Members::create`] is the unauthenticated seed
-    /// route, present only on a server built with the `bootstrap` feature;
-    /// production turns it off and provisions through `maidan init` plus
-    /// [`Client::tokens`].
+    /// Adds agents. Needs `token:admin`.
+    pub fn agents(&self) -> Agents<'_> {
+        Agents { c: self }
+    }
     pub fn members(&self) -> Members<'_> {
         Members { c: self }
     }
@@ -611,10 +611,6 @@ pub struct Workspaces<'a> {
     c: &'a Client,
 }
 impl Workspaces<'_> {
-    pub fn create(&self, name: &str) -> Result<Workspace> {
-        self.c
-            .send_as("POST", "/workspaces", Some(&json!({ "name": name })))
-    }
     pub fn get(&self, id: &str) -> Result<Workspace> {
         self.c.send_as("GET", &format!("/workspaces/{id}"), None)
     }
@@ -630,6 +626,34 @@ impl Workspaces<'_> {
     }
 }
 
+// --- Agents ---
+
+pub struct Agents<'a> {
+    c: &'a Client,
+}
+
+impl Agents<'_> {
+    /// `POST /workspaces/{wid}/agents`: the agent member and its
+    /// `maidan.agent.worker` token, created together. `token.secret` is
+    /// returned here once and never again.
+    pub fn create(
+        &self,
+        workspace_id: &str,
+        handle: &str,
+        display_name: Option<&str>,
+    ) -> Result<CreatedAgent> {
+        let mut body = json!({ "handle": handle });
+        if let Some(name) = display_name {
+            body["display_name"] = json!(name);
+        }
+        self.c.send_as(
+            "POST",
+            &format!("/workspaces/{workspace_id}/agents"),
+            Some(&body),
+        )
+    }
+}
+
 // --- Members ---
 
 pub struct Members<'a> {
@@ -637,24 +661,6 @@ pub struct Members<'a> {
 }
 
 impl Members<'_> {
-    pub fn create(
-        &self,
-        workspace_id: &str,
-        handle: &str,
-        kind: MemberKind,
-        display_name: Option<&str>,
-    ) -> Result<Member> {
-        let mut body = json!({ "handle": handle, "kind": kind });
-        if let Some(name) = display_name {
-            body["display_name"] = json!(name);
-        }
-        self.c.send_as(
-            "POST",
-            &format!("/workspaces/{workspace_id}/members"),
-            Some(&body),
-        )
-    }
-
     pub fn list(&self, workspace_id: &str) -> Result<Vec<Member>> {
         self.c
             .send_as("GET", &format!("/workspaces/{workspace_id}/members"), None)

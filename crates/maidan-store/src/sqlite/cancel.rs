@@ -153,7 +153,7 @@ pub(crate) async fn cancel_in_tx(
     let message_row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, NULL, ?)
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(Uuid::now_v7())
     .bind(thread_id.0)

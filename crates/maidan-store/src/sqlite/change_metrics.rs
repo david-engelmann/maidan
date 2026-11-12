@@ -689,14 +689,12 @@ async fn close_watch_in_tx(
         "closed without merging"
     };
     let mut stored = vec![
-        super::plans::post_notice_in_tx(
+        super::plans::post_notice_from_in_tx(
             tx,
             keys,
             thread_id,
             actor,
             format!("{repo}#{pull_number} {ended}, so this watch is closed."),
-            // `github` keeps egress from posting the message back onto the
-            // pull request it is about, as for the sweep's close notices.
             serde_json::json!({
                 "github": {
                     "repo": repo,
@@ -704,6 +702,10 @@ async fn close_watch_in_tx(
                     "closed_unmerged": !merged,
                 }
             }),
+            // The GitHub origin keeps egress from posting the message back
+            // onto the pull request it is about, as for the sweep's close
+            // notices.
+            Some(maidan_types::MessageOrigin::Github),
         )
         .await?,
     ];

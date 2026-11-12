@@ -54,7 +54,6 @@ async fn relay_publishes_enqueued_event_to_bus() {
     let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
 

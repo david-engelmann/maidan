@@ -47,7 +47,7 @@ fn get_json(base: &str, path: &str) -> Value {
         .unwrap()
 }
 
-// Create an isolated queue in the token's bootstrap workspace.
+// Create an isolated queue in the token's workspace.
 fn seed(c: &Client, base: &str) -> (String, String, Channel, Thread) {
     let wid = workspace();
     let me = get_json(base, "/me");
@@ -322,8 +322,7 @@ fn subscribe_delivers_a_message() {
 }
 
 #[test]
-fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
-    // The first thing an integrator does after `maidan init`.
+fn agents_create_adds_an_agent_with_its_worker_token() {
     let Some(base) = base() else {
         return;
     };
@@ -331,12 +330,29 @@ fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
     let wid = workspace();
     let handle = unique("provisioned");
 
-    let member = c
-        .members()
-        .create(&wid, &handle, MemberKind::Agent, None)
+    let created = c
+        .agents()
+        .create(&wid, &handle, Some("Provisioned"))
         .unwrap();
+    let (member, worker) = (created.member, created.token);
     assert_eq!(member.handle, handle);
     assert_eq!(member.kind, MemberKind::Agent);
+    assert_eq!(member.display_name.as_deref(), Some("Provisioned"));
+    assert_eq!(worker.member_id, member.id);
+    assert_eq!(worker.workspace_id, wid);
+    assert!(
+        !worker.secret.is_empty(),
+        "the worker secret is returned once, in the create response"
+    );
+    assert_eq!(
+        Client::new(&base, &worker.secret)
+            .workspaces()
+            .get(&wid)
+            .unwrap()
+            .id,
+        wid,
+        "the worker token works on its own"
+    );
     assert!(c
         .members()
         .list(&wid)
@@ -466,10 +482,10 @@ fn every_documented_operation_returns_its_declared_model() {
         assert_modeled!(e.unwrap());
     }
 
-    let fresh = assert_modeled!(c
-        .members()
-        .create(&wid, &unique("typed"), MemberKind::Agent, None)
-        .unwrap());
+    let created = assert_modeled!(c.agents().create(&wid, &unique("typed"), None).unwrap());
+    assert_eq!(created.member.kind, MemberKind::Agent);
+    assert_eq!(created.token.member_id, created.member.id);
+    let fresh = created.member;
     assert_modeled!(c
         .tokens()
         .mint(&wid, &fresh.id, &["workspace:read"], &Default::default())
@@ -534,9 +550,9 @@ fn the_servers_problem_types_arrive_as_their_variants() {
         "bad-request",
     );
     assert!(matches!(e, MaidanError::BadRequest(_)));
-    // Bootstrap creates only the first workspace; `maidan init` already made it.
+    let other_wid = std::env::var("MAIDAN_OTHER_WORKSPACE").unwrap_or_default();
     let e = check(
-        c.workspaces().create("second").unwrap_err(),
+        c.workspaces().get(&other_wid).unwrap_err(),
         403,
         "forbidden",
     );

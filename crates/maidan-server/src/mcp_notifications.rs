@@ -25,10 +25,8 @@ pub async fn stream(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
-    }
+    auth.require_capability(WORKSPACE_READ)
+        .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
 
     // Taken before listening, so a refused stream costs nothing.
     let slot = state.stream_limit.open(&auth)?;

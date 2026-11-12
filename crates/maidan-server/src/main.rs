@@ -435,12 +435,18 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         ),
     }
 
-    let auth_disabled = maidan_server::auth::auth_disabled_from_env();
-    if auth_disabled {
-        tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
-    }
     #[cfg(feature = "bootstrap")]
     let bootstrap_enabled = maidan_server::bootstrap::bootstrap_enabled_from_env();
+    // A release build has no bootstrap routes. Saying so beats serving without
+    // the seed routes the operator expected.
+    #[cfg(not(feature = "bootstrap"))]
+    if std::env::var_os("MAIDAN_BOOTSTRAP").is_some() {
+        anyhow::bail!(
+            "MAIDAN_BOOTSTRAP is set, but this build has no bootstrap routes (they exist only in \
+             test builds). Seed the first admin with `maidan init`, or MAIDAN_DEV_ADMIN_TOKEN on a \
+             development instance, and unset MAIDAN_BOOTSTRAP"
+        );
+    }
     #[cfg(not(feature = "bootstrap"))]
     let bootstrap_enabled = false;
     #[cfg(feature = "bootstrap")]
@@ -487,7 +493,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     let oidc_runtime =
         match maidan_server::oidc::OidcSettings::from_env().map_err(anyhow::Error::from)? {
             Some(settings) => {
-                tracing::info!(mock = settings.mock, "OIDC login enabled");
+                tracing::info!(mock = settings.is_mock(), "OIDC login enabled");
                 Some(
                     maidan_server::oidc::OidcRuntime::init(settings)
                         .await
@@ -501,15 +507,6 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     } else {
         match maidan_server::subscribe_resume::secret_from_env() {
             Ok(s) => Some(s),
-            Err(err) if auth_disabled => {
-                tracing::warn!(
-                    %err,
-                    "subscribe resume uses built-in test secret; set MAIDAN_SESSION_SECRET for production"
-                );
-                Some(Arc::from(
-                    maidan_server::subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET,
-                ))
-            }
             Err(err) => return Err(err.into()),
         }
     };
@@ -520,7 +517,6 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         bus.clone(),
         search,
         embedding_provider,
-        auth_disabled,
         bootstrap_enabled,
         federation,
         indexer_heartbeat.clone(),
@@ -632,6 +628,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // A2A Agent Card transport advertisement: public origin for absolute
     // interface URLs + the advertised gRPC address (§5.2 negotiation).
     state.a2a_card = maidan_server::a2a_agent::A2aCardConfig::from_env();
+    state.metrics_access =
+        maidan_server::metrics::MetricsAccess::from_env(maidan_server::config::is_production())
+            .map_err(anyhow::Error::msg)?;
+    tracing::info!(access = ?state.metrics_access, "metrics scrape access");
     state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
         &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
     );
@@ -668,11 +668,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.turnstile =
         maidan_server::turnstile::TurnstileSettings::from_env(state.public_origin.as_deref())?
             .map(Arc::new);
-    state.sandbox = maidan_server::sandbox::SandboxSettings::from_env(
-        state.public_origin.as_deref(),
-        auth_disabled,
-    )?
-    .map(Arc::new);
+    state.sandbox =
+        maidan_server::sandbox::SandboxSettings::from_env(state.public_origin.as_deref())?
+            .map(Arc::new);
     if let Some(sandbox) = &state.sandbox {
         tracing::warn!(
             max_sandboxes = sandbox.max_sandboxes,
@@ -686,8 +684,25 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     if oauth_clients > 0 {
         tracing::info!("loaded {oauth_clients} pre-registered OAuth clients");
     }
+    match maidan_server::dev_admin::seed_from_env(state.store.as_ref()).await? {
+        Some(maidan_server::dev_admin::DevAdmin::Seeded(workspace_id)) => tracing::warn!(
+            %workspace_id,
+            "{} opened the first workspace with that admin token; development only",
+            maidan_server::dev_admin::ENV
+        ),
+        Some(maidan_server::dev_admin::DevAdmin::Present(workspace_id)) => tracing::info!(
+            %workspace_id,
+            "{} already holds this instance's admin token",
+            maidan_server::dev_admin::ENV
+        ),
+        Some(maidan_server::dev_admin::DevAdmin::Skipped) => tracing::warn!(
+            "{} is set but this instance already has workspaces; it opens only the first",
+            maidan_server::dev_admin::ENV
+        ),
+        None => {}
+    }
     state.dev_anonymous_reader =
-        maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
+        maidan_server::dev_anonymous::from_env(state.store.as_ref()).await?;
     if let Some(reader) = &state.dev_anonymous_reader {
         tracing::warn!(
             workspace_id = %reader.workspace_id(),

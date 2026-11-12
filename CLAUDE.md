@@ -17,11 +17,16 @@ full forms are what CI runs.
 | **Test** | `cargo test -p <crate>` | `cargo nextest archive --workspace --tests --profile ci --archive-file a.tar.zst` once (the `build` job), then `-E 'not kind(test)'` (`unit tests`) and `-E 'kind(test)' --partition hash:N/4` (the shards) on that archive |
 | **Lint** | `cargo clippy -p <crate> --all-targets -- -D warnings` | `cargo clippy --all-targets --workspace -- -D warnings`, then the strict pass below |
 | **Format** | `cargo fmt --all` | `cargo fmt --all --check` |
-| **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
+| **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_DEV_ADMIN_TOKEN=dev-admin-token-change-me-0123456789 cargo run --bin maidan-server`, then call with `Authorization: Bearer dev-admin-token-change-me-0123456789` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
 | **Mutants** | `cargo mutants -p <crate> --shard 0/20` | nightly: `scripts/mutants.sh plan`, then the shards ([`docs/Conventions.md`](docs/Conventions.md), "Nightly mutation testing") |
 | **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly, in `fuzz/`, for each target that `cargo +nightly fuzz list` prints: `cargo +nightly fuzz run --target x86_64-unknown-linux-gnu <target> corpus/<target> seeds/<target> -- -dict=json.dict -max_total_time=300` (`seeds/<target>` only where it exists; [`docs/Conventions.md`](docs/Conventions.md), "Nightly fuzzing") |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
+
+Every caller is authenticated; there is no unauthenticated mode. The Run
+command's `MAIDAN_DEV_ADMIN_TOKEN` opens the first workspace with that admin
+token; elsewhere mint one with `maidan init`. Bootstrap routes and the OIDC
+mock exist only in test builds (`test-support`, `bootstrap` features).
 
 The server refuses to start without a content key: set `MAIDAN_CONTENT_KEK`, or
 `MAIDAN_ALLOW_INSECURE_DEV_KEK=1` for local work only.
@@ -95,7 +100,7 @@ change.
 
 ## Current state (2026-11-07)
 
-- **Releases:** latest **`v449.0.0`** (2026-11-11). The newest record in
+- **Releases:** latest **`v450.0.0`** (2026-11-12). The newest record in
   `docs/Capabilities.md` says what it carries. A release is one button: run
   the `cut release` workflow from `dev` (`gh workflow run cut-release.yml -R
   david-engelmann/maidan --ref dev`, optionally `-f summary='…'`). It writes
@@ -119,8 +124,9 @@ change.
   #1325 a gate is accepted only by a browser session the person signed in to
   or `approval:grant`, nobody accepts their own request, and
   `approval_decide` (#1332) sends a person to confirm in the console unless
-  the workspace set a threshold. `AUTH_DISABLED` checks nothing and is never
-  a deployment mode.
+  the workspace set a threshold. Every caller is authenticated (R11): there is
+  no `AUTH_DISABLED` (boot refuses it), and a dev stack's first token comes
+  from `maidan init` or `MAIDAN_DEV_ADMIN_TOKEN`.
 - **The swarm runs `dev`** (2026-11-07): a private infra repo deploys each
   `dev` commit whose CI passed to the swarm's own instance (it was a local
   stack from 2026-10-14). This repo names no private project or deployment;
@@ -428,8 +434,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `deploy/cloudflare/test/try-theme.test.js`, and its shared tokens to the
   landing's values; the demo deploy copies `theme.js` in beside it.
 - **Splitting a large source file into a module directory** can break the
-  `bootstrap compile-time strip` job (imports unused under
-  `--no-default-features`) and `check-agent-contract.sh` (it greps paths).
+  `bootstrap compile-time strip` job (imports used only under the test-only
+  `bootstrap` feature, which the default build lacks) and
+  `check-agent-contract.sh` (it greps paths).
 
 ## Harness gotchas (for agents)
 

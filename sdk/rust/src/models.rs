@@ -209,6 +209,15 @@ model! {
 }
 
 model! {
+    /// An agent member and its `maidan.agent.worker` token. `token.secret` is
+    /// returned here once and never again.
+    CreatedAgent {
+        member: Member,
+        token: MintedToken,
+    }
+}
+
+model! {
     /// Token metadata; it never carries the secret.
     TokenSummary {
         id: String,

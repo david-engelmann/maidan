@@ -102,6 +102,7 @@ fn message() -> Message {
         posted_at: ts(),
         edited_at: None,
         tombstoned_at: None,
+        provenance: None,
     }
 }
 

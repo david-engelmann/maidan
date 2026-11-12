@@ -36,7 +36,9 @@ pub async fn open_group_dm(
     cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
-    let member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();
+    let mut member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();
+    // The opener is one of the group's members, as a 1:1 DM's opener is.
+    member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id());
     let group = state
         .store
         .open_group_dm_conversation(workspace_id, &member_ids, body.title)
@@ -75,7 +77,7 @@ pub async fn get_group_dm(
         .await?;
     ensure_workspace(&auth, group.workspace_id)?;
     // Only a participant may read a group DM's roster — see `get_dm`.
-    if !auth.bypass && !group.member_ids.contains(&auth.member_id()) {
+    if !group.member_ids.contains(&auth.member_id()) {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));

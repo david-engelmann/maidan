@@ -54,8 +54,6 @@ pub enum McpSession {
 /// its capabilities. Two credentials of one member are two principals.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Principal {
-    /// Auth disabled, or a trusted in-process caller.
-    Bypass,
     Caller {
         workspace_id: WorkspaceId,
         member_id: MemberId,
@@ -75,7 +73,6 @@ impl Principal {
             id.map_or_else(|| "-".to_string(), |id| id.to_string())
         }
         match self {
-            Self::Bypass => "bypass".to_string(),
             Self::Caller {
                 workspace_id,
                 member_id,
@@ -96,9 +93,6 @@ impl Principal {
     }
 
     pub fn of(auth: &AuthContext) -> Self {
-        if auth.bypass {
-            return Self::Bypass;
-        }
         Self::Caller {
             workspace_id: auth.workspace_id(),
             member_id: auth.member_id(),
@@ -531,7 +525,6 @@ mod tests {
         assert_ne!(one, other_token);
         assert_ne!(one, other_workspace);
         assert!(one.starts_with(&format!("{}/{}/", ws.0, member.0)));
-        assert_eq!(Principal::of(&AuthContext::bypass()).key(), "bypass");
     }
 
     #[test]

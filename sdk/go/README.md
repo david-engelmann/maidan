@@ -76,11 +76,12 @@ func main() {
 - `Threads.Transition(id, action)` takes the action string; `ClaimNextThread(cid, opts)`
   takes `*ClaimOptions` (`LeaseSecs`).
 - Usage (0.3.0): `NormalizeUsage(provider, body, UsageOptions{Model, Provider})` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response body into a `NormalizedUsage` (the `model`, `tokens` and `evidence` of a `report_usage` body), and `USDMicros(tokens, price)` is the charge the server checks. A body it cannot read returns a `*UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration Reference.md`.
-- Surface (frozen v1): `Workspaces.{Create,Get,Import}`, `Channels.{List,Create}`,
+- Surface (frozen v1): `Workspaces.{Get,Import}`, `Channels.{List,Create}`,
   `Threads.{Create,Get,Context,Transition,SetResult,GetResult}`, `ClaimNextThread`,
   `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,
   `Workspaces.ListEvents`, `FollowLog` (HTTP backfill then WS), and the `WaitFor*`
   helpers. See the repo's `docs/Client Contract.md`.
+- Agents: `Agents.Create(workspaceID, handle, displayName)` (`POST /workspaces/{wid}/agents`, needs `token:admin`; `displayName` may be empty) adds an agent member and mints its `maidan.agent.worker` token together, returning `*CreatedAgent` (`Member`, `Token`); `Token.Secret` is shown only in that response. `Members.List(workspaceID)` and `Tokens.{Mint,List}` cover the rest. A workspace is opened by its operator, not through this client.
 - Restart (0.3.0): `ReleaseOwnClaims(workspaceID, note)` (`POST /workspaces/{id}/claims/release-own`) releases every live claim this token's member holds in the workspace, for a waiter whose old process took its `ClaimLeaseID`s with it, and returns `*ReleasedClaims`. Call it once before the first claim, never while another live process shares the token.
 - Caching (0.3.0): `c.Channels.Boot(cid)` returns the channel's boot prefix as served, with its SHA256 (for `evidence.pack_sha256`). `CachedPrefix(provider, text, ttl)` places it with a cache breakpoint, `CacheKey(workspaceID, group)` and `CacheKeyFields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `GatewaySession(gateway, threadID, path, name)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 

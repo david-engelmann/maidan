@@ -27,7 +27,10 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![capability::WORKSPACE_READ.into()],
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::MEMBER_SELF.into(),
+            ],
             expires_at: None,
         })
         .await
@@ -88,7 +91,6 @@ async fn email_lifecycle(store: Arc<dyn Store>, search: Arc<dyn maidan_search::S
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -214,7 +216,6 @@ async fn a_bearer_cannot_rewrite_another_members_delivery_address() {
         Arc::new(InMemoryBus::with_capacity(16)),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

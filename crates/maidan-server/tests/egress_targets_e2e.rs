@@ -1,6 +1,5 @@
-//! The egress trust boundary over HTTP. Auth ENABLED — the whole surface is
-//! `token:admin`, and the point of an allowlist is who may change it, so a
-//! bypass run would prove nothing.
+//! The egress trust boundary over HTTP. The whole surface is `token:admin`:
+//! the point of an allowlist is who may change it.
 //!
 //! Walks the operator's loop (empty ⇒ deliver nowhere → bless → the
 //! authorization check now passes → revoke) and the two refusals that matter: a
@@ -67,7 +66,6 @@ async fn spawn() -> (
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

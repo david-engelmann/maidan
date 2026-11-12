@@ -20,6 +20,7 @@ from maidan import (
     ClaimedThread,
     Client,
     ConflictError,
+    CreatedAgent,
     ForbiddenError,
     ImportResult,
     MaidanError,
@@ -60,7 +61,7 @@ def _me():
 
 
 def _seed():
-    """Create an isolated queue in the token's bootstrap workspace."""
+    """Create an isolated queue in the token's workspace."""
     c = _client()
     me = _me()
     ws = {"id": WORKSPACE}
@@ -195,15 +196,18 @@ def test_subscribe_delivers_a_posted_message():
         sub.close()
 
 
-def test_provisioning_seeds_a_member_and_mints_a_scoped_token():
-    """The first thing an integrator does after `maidan init`: create an agent and
-    mint it a narrow bearer. Both were reachable only through the private
-    transport before, which is why the hero demo used `_req`."""
+def test_agents_create_adds_an_agent_with_its_worker_token():
     c = _client()
     handle = f"provisioned-{uuid.uuid4().hex}"
-    member = c.members.create(WORKSPACE, handle)
+    created = c.agents.create(WORKSPACE, handle, display_name="Provisioned")
+    member, token = created.member, created.token
     assert member.handle == handle
     assert member.kind == "agent"
+    assert member.display_name == "Provisioned"
+    assert token.member_id == member.id
+    assert token.workspace_id == WORKSPACE
+    assert token.secret, "the worker secret is returned once, in the create response"
+    assert Client(BASE, token.secret).workspaces.get(WORKSPACE).id == WORKSPACE
     assert any(m.id == member.id for m in c.members.list(WORKSPACE))
 
     minted = c.tokens.mint(WORKSPACE, member.id, ["workspace:read"], label="scoped worker")
@@ -304,7 +308,10 @@ def test_every_documented_operation_returns_its_declared_model():
     assert events and all(e.type == f"maidan.event.{e.kind}/1" for e in events)
     assert_modeled(list(c.list_events_all(WORKSPACE, {"limit": 25})), [StoredEvent])
 
-    fresh = assert_modeled(c.members.create(WORKSPACE, f"typed-{uuid.uuid4().hex}"), Member)
+    created = assert_modeled(c.agents.create(WORKSPACE, f"typed-{uuid.uuid4().hex}"), CreatedAgent)
+    fresh = assert_modeled(created.member, Member)
+    assert fresh.kind == "agent"
+    assert_modeled(created.token, MintedToken)
     assert_modeled(c.tokens.mint(WORKSPACE, fresh.id, ["workspace:read"]), MintedToken)
     assert_modeled(c.tokens.list(WORKSPACE, fresh.id), [TokenSummary])
 
@@ -319,8 +326,7 @@ def test_every_documented_operation_returns_its_declared_model():
         (lambda c, t: c.threads.get("00000000-0000-0000-0000-000000000000"), NotFoundError, 404, "not-found"),
         (lambda c, t: Client(BASE, "maid_not_a_token").workspaces.get(WORKSPACE), UnauthorizedError, 401, "unauthorized"),
         (lambda c, t: c.threads.transition(t.id, {"action": "fly"}), BadRequestError, 400, "bad-request"),
-        # Bootstrap creates only the first workspace; `maidan init` already made it.
-        (lambda c, t: c.workspaces.create("second"), ForbiddenError, 403, "forbidden"),
+        (lambda c, t: c.workspaces.get(OTHER_WORKSPACE), ForbiddenError, 403, "forbidden"),
         (lambda c, t: c.workspaces.import_(_export(), "restore"), ConflictError, 409, "conflict"),
     ],
 )

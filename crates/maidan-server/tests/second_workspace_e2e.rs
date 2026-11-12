@@ -58,7 +58,6 @@ async fn spawn() -> Harness {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -155,6 +154,7 @@ async fn operator_opens_a_second_workspace_without_bootstrap() {
     let denied_body = denied.text().await.unwrap();
     assert!(denied_body.contains("operator:global"), "{denied_body}");
 
+    // The bootstrap route is not built into this server at all.
     let bootstrap = h
         .client
         .post(format!("{base}/workspaces"))
@@ -162,7 +162,7 @@ async fn operator_opens_a_second_workspace_without_bootstrap() {
         .send()
         .await
         .unwrap();
-    assert_eq!(bootstrap.status(), StatusCode::FORBIDDEN);
+    assert_eq!(bootstrap.status(), StatusCode::NOT_FOUND);
 
     let blank = h
         .client

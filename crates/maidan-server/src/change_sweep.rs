@@ -69,7 +69,10 @@
 
 use std::time::Duration;
 
-use maidan_types::{ChangeSettlement, MemberId, PostedNotice, ThreadId, WorkspaceId};
+use maidan_types::{
+    ChangeSettlement, MemberId, MessageOrigin, MessageProvenance, PostedNotice, ThreadId,
+    WorkspaceId,
+};
 
 use crate::github::{ActionsRead, ChecksUnread, GithubError, GithubPullSnapshot};
 use crate::state::AppState;
@@ -744,16 +747,24 @@ async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut
                 thread_id: task.thread_id,
                 author_id,
                 body: line.clone(),
-                // `github` keeps egress from posting the line onto the pull
-                // request, as for the change notices.
                 metadata: serde_json::json!({
                     "github": { "repo": task.repo, "issue": task.pull_number },
                     "handoff": { "rounds": rounds },
                 }),
                 content: None,
             };
-            match state.store.post_message_with_event(new, None).await {
-                Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+            // The GitHub origin keeps egress from posting the line onto the
+            // pull request, as for the change notices.
+            let posted = state
+                .store
+                .post_bridged_message_with_event(
+                    new,
+                    MessageProvenance::reported(MessageOrigin::Github),
+                )
+                .await;
+            match posted {
+                Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+                Ok(None) => {}
                 Err(err) => tracing::warn!(error = %err, "handoff: message not posted"),
             }
         }
@@ -952,16 +963,21 @@ pub async fn post_notice(state: &AppState, posted: PostedNotice) {
         thread_id: posted.thread_id,
         author_id,
         body: notice.sentence(),
-        // `github` keeps egress from posting the notice onto the pull
-        // request it is about, as for the close notices.
         metadata: serde_json::json!({
             "github": { "repo": notice.repo, "issue": notice.pull_number },
             "change_notice": { "kind": notice.kind.as_str() },
         }),
         content: None,
     };
-    match state.store.post_message_with_event(new, None).await {
-        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+    // The GitHub origin keeps egress from posting the notice onto the pull
+    // request it is about, as for the close notices.
+    let posted = state
+        .store
+        .post_bridged_message_with_event(new, MessageProvenance::reported(MessageOrigin::Github))
+        .await;
+    match posted {
+        Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+        Ok(None) => {}
         Err(err) => tracing::warn!(
             repo = notice.repo,
             pull_number = notice.pull_number,
@@ -1068,8 +1084,6 @@ impl Notice<'_> {
             thread_id: self.thread_id,
             author_id: self.author_id,
             body,
-            // `github` keeps egress from posting the notice back onto the
-            // pull request it is about.
             metadata: serde_json::json!({
                 "github": {
                     "repo": self.repo,
@@ -1079,8 +1093,18 @@ impl Notice<'_> {
             }),
             content: None,
         };
-        match state.store.post_message_with_event(new, None).await {
-            Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        // The GitHub origin keeps egress from posting the notice back onto
+        // the pull request it is about.
+        let posted = state
+            .store
+            .post_bridged_message_with_event(
+                new,
+                MessageProvenance::reported(MessageOrigin::Github),
+            )
+            .await;
+        match posted {
+            Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+            Ok(None) => {}
             Err(err) => tracing::warn!(
                 repo = self.repo,
                 pull_number = self.pull_number,

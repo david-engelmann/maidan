@@ -55,7 +55,6 @@ async fn spawn() -> Ctx {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

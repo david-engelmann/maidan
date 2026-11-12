@@ -285,20 +285,16 @@ pub(super) async fn approval_decide(
         )
         .await;
     }
-    if !auth.bypass {
-        let asked = [Some(gate.requested_by), gate.requested_actor_id];
-        let answering = [auth.member_id(), auth.actor_id()];
-        if answering.iter().any(|m| asked.contains(&Some(*m))) {
-            return Err(McpError::Forbidden(
-                "an approval cannot be granted by whoever requested it".into(),
-            ));
-        }
+    let asked = [Some(gate.requested_by), gate.requested_actor_id];
+    let answering = [auth.member_id(), auth.actor_id()];
+    if answering.iter().any(|m| asked.contains(&Some(*m))) {
+        return Err(McpError::Forbidden(
+            "an approval cannot be granted by whoever requested it".into(),
+        ));
     }
     let policy = server.store.get_approval_policy(gate.workspace_id).await?;
     let needs_confirmation = policy.needs_confirmation(gate.risk);
-    // Auth disabled has no person to confirm and no credential to judge, as
-    // on REST.
-    if auth.bypass || (auth.has_capability(APPROVAL_GRANT) && !needs_confirmation) {
+    if auth.has_capability(APPROVAL_GRANT) && !needs_confirmation {
         return resolve(
             server,
             auth,
@@ -343,8 +339,8 @@ async fn decide_round_cap(
     via: &GateDecisionVia,
     call: &CallContext,
 ) -> Result<Value, McpError> {
-    let admin = auth.bypass || auth.has_capability(CHANNEL_ADMIN);
-    let grant = auth.bypass || auth.has_capability(APPROVAL_GRANT);
+    let admin = auth.has_capability(CHANNEL_ADMIN);
+    let grant = auth.has_capability(APPROVAL_GRANT);
     if decision == Decision::Decline {
         if admin || grant {
             return resolve(
@@ -362,7 +358,7 @@ async fn decide_round_cap(
         return Err(McpError::Forbidden(ROUND_CAP_REFUSAL.into()));
     }
     let policy = server.store.get_approval_policy(gate.workspace_id).await?;
-    if auth.bypass || (grant && !policy.needs_confirmation(gate.risk)) {
+    if grant && !policy.needs_confirmation(gate.risk) {
         return resolve(
             server,
             auth,

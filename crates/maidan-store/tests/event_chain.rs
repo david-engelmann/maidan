@@ -396,6 +396,7 @@ async fn assert_exponent_numbers_survive_the_round_trip(store: &dyn Store) {
                 posted_at: now,
                 edited_at: None,
                 tombstoned_at: None,
+                provenance: None,
             },
             sealed: None,
         })

@@ -1,11 +1,6 @@
 //! A WASI handler runs only over a module its own
 //! workspace owns — refused at registration, and still refused at dispatch.
 //!
-//! Auth is **enabled** here on purpose. Under `AUTH_DISABLED` the upload path
-//! records no access links at all, so ownership is not a thing that exists to
-//! test — the sibling `wasi_slash_e2e` covers the run path in that mode, and
-//! this covers the boundary in the mode that has one.
-//!
 //! Without the check, a registration could name any sha on the instance and
 //! turn a slash command into a cross-tenant artifact reader — it executes the
 //! bytes, so it would also be a cross-tenant *code* reader.
@@ -72,8 +67,7 @@ async fn a_handler_cannot_run_another_tenants_module() {
         Arc::new(InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED — the whole point
-        true,
+        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

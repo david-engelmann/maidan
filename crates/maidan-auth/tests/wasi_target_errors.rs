@@ -7,7 +7,7 @@
 //! A database outage during slash-command registration told the operator their
 //! request was malformed.
 
-use maidan_auth::{resolve_wasi_handler_target, AuthContext, WasiTargetError};
+use maidan_auth::{resolve_wasi_handler_target, WasiTargetError};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewMember, NewWorkspace, WorkspaceId};
 
@@ -42,14 +42,10 @@ async fn store_with_workspace() -> (SqliteStore, sqlx::SqlitePool, WorkspaceId, 
     (store, pool, ws.id, member.id)
 }
 
-fn auth(workspace_id: WorkspaceId, member_id: MemberId) -> AuthContext {
-    AuthContext::from_session(member_id, workspace_id, maidan_auth::capability::all())
-}
-
 #[tokio::test]
 async fn a_malformed_target_is_the_callers_fault() {
-    let (store, _pool, ws, member) = store_with_workspace().await;
-    let err = resolve_wasi_handler_target(&store, &auth(ws, member), ws, "not-a-sha")
+    let (store, _pool, ws, _member) = store_with_workspace().await;
+    let err = resolve_wasi_handler_target(&store, ws, "not-a-sha")
         .await
         .expect_err("a malformed target must be refused");
     assert!(
@@ -60,9 +56,9 @@ async fn a_malformed_target_is_the_callers_fault() {
 
 #[tokio::test]
 async fn a_sha_this_workspace_does_not_own_is_the_callers_fault() {
-    let (store, _pool, ws, member) = store_with_workspace().await;
+    let (store, _pool, ws, _member) = store_with_workspace().await;
     let unowned = "a".repeat(64);
-    let err = resolve_wasi_handler_target(&store, &auth(ws, member), ws, &unowned)
+    let err = resolve_wasi_handler_target(&store, ws, &unowned)
         .await
         .expect_err("an unowned sha must be refused");
     match err {
@@ -79,11 +75,11 @@ async fn a_sha_this_workspace_does_not_own_is_the_callers_fault() {
 /// already renders as an internal failure, and not a complaint about the input.
 #[tokio::test]
 async fn a_store_that_cannot_answer_is_not_a_bad_request() {
-    let (store, pool, ws, member) = store_with_workspace().await;
+    let (store, pool, ws, _member) = store_with_workspace().await;
     let sha = "b".repeat(64);
     pool.close().await;
 
-    let err = resolve_wasi_handler_target(&store, &auth(ws, member), ws, &sha)
+    let err = resolve_wasi_handler_target(&store, ws, &sha)
         .await
         .expect_err("a closed pool cannot resolve a target");
     assert!(

@@ -62,11 +62,16 @@ clients.
 
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
-| `workspaces.create` | `POST /workspaces` | (bootstrap / write) | Body `{ "name" }`. Confirm against OpenAPI; not every gate lists this path. Hero seed is REST/CLI; there is **no** MCP create-workspace tool |
 | `workspaces.get` | `GET /workspaces/{id}` | `workspace:read` | |
 | `workspaces.import` | `POST /workspaces/import` | `token:admin` | **Admin-only.** Expose it, but do not hide that the caller token must be admin. Not part of the agent hero loop |
 
-There is **no** `workspaces.list`. Do not invent one.
+There is **no** `workspaces.list` and no `workspaces.create`: the first workspace comes from `maidan init`, and another from `POST /operator/workspaces` with an operator token. Do not invent either.
+
+### Agents
+
+| SDK | HTTP | Capability | Notes |
+|-----|------|------------|-------|
+| `agents.create` | `POST /workspaces/{wid}/agents` | `token:admin` | Body `{ "handle", "display_name"? }`. Returns the agent member and its one-time `maidan.agent.worker` token |
 
 ### Channels
 
@@ -271,7 +276,7 @@ An agent token for the README snippet needs:
 
 Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 `workspace:write` only if the cookbook creates channels/threads
-(the 278 loop usually seeds those via CLI / bootstrap).
+(the 278 loop usually seeds those via the CLI or `agents.create`).
 
 ---
 
@@ -346,8 +351,8 @@ starts with `claim_lost`, as before.
 
 There is **no** MCP create workspace or member. An agent creates a
 channel with `create_channel` and a thread with `create_thread` (both
-`workspace:write`). Workspace and member bootstrap stay on REST, the CLI,
-or the SDK, then MCP for claim / wait / post.
+`workspace:write`). Workspaces and agents come from the CLI, REST or the
+SDK (`agents.create`), then MCP for claim / wait / post.
 
 MCP endpoint: `POST /mcp/streamable`. Pin `mcp>=1.9,<2` in
 examples, not in the SDK. Protocol: `2026-07-28` (default).

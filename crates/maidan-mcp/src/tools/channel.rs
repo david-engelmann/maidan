@@ -50,7 +50,7 @@ async fn own_channel(
     channel_id: ChannelId,
 ) -> Result<Channel, McpError> {
     let channel = store.get_channel(channel_id).await?;
-    if !auth.bypass && channel.workspace_id != auth.workspace_id() {
+    if channel.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     Ok(channel)
@@ -189,7 +189,6 @@ struct CreateChannelArgs {
 
 /// Create a channel. `workspace:write`, same as `POST /workspaces/:wid/channels`.
 /// A private channel adds the caller as its admin so they are not locked out.
-/// Bypass callers have no real member, so they are not added.
 pub(super) async fn create_channel(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -207,7 +206,7 @@ pub(super) async fn create_channel(
             private: a.private,
         })
         .await?;
-    if channel.private && !auth.bypass {
+    if channel.private {
         let actor = auth.actor_id();
         server
             .store
@@ -400,8 +399,9 @@ struct OpenGroupDmArgs {
 }
 
 /// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
-/// and `open_group_dm_conversation`. At least three distinct members, all in
-/// the workspace, as the store requires.
+/// and `open_group_dm_conversation`. The caller is added when the list leaves
+/// them out; then at least three distinct members, all in the workspace, as
+/// the store requires.
 pub(super) async fn open_group_dm(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -411,7 +411,9 @@ pub(super) async fn open_group_dm(
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
-    let member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
+    let mut member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
+    // The opener is one of the group's members, as a 1:1 DM's opener is.
+    member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id());
     let group = store
         .open_group_dm_conversation(workspace_id, &member_ids, a.title)
         .await?;
@@ -449,7 +451,7 @@ struct GetGroupDmArgs {
 }
 
 /// One group DM. Twin of `GET /group-dms/{id}`: workspace match, and only a
-/// participant may read the roster (bypass excluded, as on REST).
+/// participant may read the roster, as on REST.
 pub(super) async fn get_group_dm(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -461,7 +463,7 @@ pub(super) async fn get_group_dm(
         .await?;
     auth.ensure_workspace(group.workspace_id)
         .map_err(McpError::from)?;
-    if !auth.bypass && !group.member_ids.contains(&auth.member_id()) {
+    if !group.member_ids.contains(&auth.member_id()) {
         return Err(McpError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));
