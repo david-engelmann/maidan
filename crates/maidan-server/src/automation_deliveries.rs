@@ -98,11 +98,7 @@ pub async fn replay_automation_delivery(
         .store
         .replay_automation_delivery(delivery_id, workspace_id)
         .await?;
-    let actor_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id())
-    };
+    let actor_id = Some(auth.member_id());
     state
         .store
         .append_audit(NewAuditEvent {

@@ -43,9 +43,6 @@ async fn approval_gate_tools_request_and_poll() {
         Arc::new(HashV1Provider),
     )
     .with_event_bus(bus);
-    // `request_approval` persists `requested_by = auth.member_id` (a real-member
-    // FK), so this runs with a from_session auth — the nil-member bypass would
-    // FK-fail.
     let auth = AuthContext::from_session(
         agent.id,
         ws.id,

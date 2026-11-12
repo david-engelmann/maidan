@@ -237,7 +237,7 @@ pub(super) async fn find_threads(
                 after: a.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: (!auth.bypass).then_some(auth.member_id()),
+                reader_id: Some(auth.member_id()),
             },
         )
         .await?;
@@ -302,7 +302,7 @@ pub(super) async fn create_thread(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: CreateThreadArgs = crate::tools::parse_args(args)?;
-    let actor = (!auth.bypass).then_some(auth.member_id());
+    let actor = Some(auth.member_id());
     let footprint = a
         .footprint
         .map(|footprint| {
@@ -324,7 +324,7 @@ pub(super) async fn create_thread(
         parent_thread_id: a.parent_thread_id.map(ThreadId),
         title: a.title,
         description: None,
-        created_by: auth.attribution().map(|a| a.subject_id),
+        created_by: Some(auth.member_id()),
     };
     let (created, superseded) = match a.supersedes.map(ThreadId) {
         None => (
@@ -395,7 +395,7 @@ async fn supersede_for(
     workspace_id: WorkspaceId,
     old: ThreadId,
 ) -> Result<maidan_store::store::Supersede, McpError> {
-    if !auth.bypass && !auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
+    if !auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
         return Err(McpError::Forbidden(
             "supersedes closes a thread, which needs thread:transition".into(),
         ));
@@ -406,7 +406,7 @@ async fn supersede_for(
             "supersedes is not a thread in this workspace".into(),
         ));
     }
-    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let maintainer = auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
     let thread = server.store.get_thread(old).await?;
     if !maintainer
         && thread.created_by != Some(auth.member_id())
@@ -795,7 +795,7 @@ pub(super) async fn close_abandoned_thread(
 ) -> Result<Value, McpError> {
     let a: CloseAbandonedArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
-    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let maintainer = auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
     let thread = server.store.get_thread(thread_id).await?;
     if !maintainer
         && thread.created_by != Some(auth.member_id())
@@ -1363,9 +1363,6 @@ pub(super) async fn list_assigned_threads(
     let threads = store
         .list_assigned_threads(member.workspace_id, member_id)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for t in threads {
         if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
@@ -1949,11 +1946,11 @@ pub(super) async fn watch_pull(
             pull_number: a.pull_number,
             channel_id: a.channel_id.map(ChannelId),
             title: a.title,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         },
     )
     .await?;
-    if !outcome.watched.created && !auth.bypass {
+    if !outcome.watched.created {
         maidan_auth::ensure_thread_access(store, auth, outcome.watched.thread_id).await?;
     }
     for stored in &outcome.events {
@@ -1986,7 +1983,7 @@ pub(super) async fn list_active_claims(
         .map(|repo| normalize_repo(&repo).map_err(McpError::InvalidParams))
         .transpose()?;
     let claims = store
-        .list_active_claims(workspace_id, repo, queue_reader(auth))
+        .list_active_claims(workspace_id, repo, Some(auth.member_id()))
         .await?;
     Ok(content_json(&claims))
 }
@@ -2022,9 +2019,7 @@ pub(super) async fn add_thread_dependency(
             "dependency thread is in a different workspace".into(),
         ));
     }
-    if !auth.bypass {
-        maidan_auth::ensure_thread_access(store.as_ref(), auth, depends_on).await?;
-    }
+    maidan_auth::ensure_thread_access(store.as_ref(), auth, depends_on).await?;
     store.add_thread_dependency(thread_id, depends_on).await?;
     Ok(content_json(&json!({ "ok": true })))
 }
@@ -2056,12 +2051,6 @@ struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
 
-/// The member whose read rule a queue count applies: the caller, unless it
-/// bypasses auth and so may count everything.
-fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
-    (!auth.bypass).then_some(auth.member_id())
-}
-
 /// A channel's task-queue depth: `{open, ready, assigned, blocked}` counts of
 /// its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`.
 /// Channel access is enforced pre-dispatch (the `channel_id` arg); the counts
@@ -2074,7 +2063,7 @@ pub(super) async fn get_queue_depth(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let depth = store
-        .channel_queue_depth(ChannelId(a.channel_id), queue_reader(auth))
+        .channel_queue_depth(ChannelId(a.channel_id), Some(auth.member_id()))
         .await?;
     Ok(content_json(&depth))
 }
@@ -2090,7 +2079,7 @@ pub(super) async fn get_channel_occupancy(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let occupancy = store
-        .channel_occupancy(ChannelId(a.channel_id), queue_reader(auth))
+        .channel_occupancy(ChannelId(a.channel_id), Some(auth.member_id()))
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2139,7 +2128,7 @@ pub(super) async fn get_workspace_queue_depth(
     let depth = store
         .workspace_queue_depth(
             workspace_id,
-            queue_reader(auth),
+            Some(auth.member_id()),
             repo.as_deref(),
             a.engine,
             a.kind,
@@ -2158,7 +2147,7 @@ pub(super) async fn get_workspace_occupancy(
 ) -> Result<Value, McpError> {
     let workspace_id = queue_workspace(auth, args)?;
     let occupancy = store
-        .workspace_occupancy(workspace_id, queue_reader(auth))
+        .workspace_occupancy(workspace_id, Some(auth.member_id()))
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2228,9 +2217,6 @@ pub(super) async fn list_run_threads(
     let threads = store
         .list_threads_for_run(auth.workspace_id(), parent_run_id)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for t in threads {
         if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
@@ -2382,9 +2368,6 @@ pub(super) async fn list_thread_results(
     let results = store
         .list_thread_results(auth.workspace_id(), a.result_kind.as_deref(), limit)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&results));
-    }
     let mut visible = Vec::with_capacity(results.len());
     for result in results {
         if maidan_auth::can_access_thread(store.as_ref(), auth, result.thread_id).await? {
@@ -2624,7 +2607,7 @@ pub(super) async fn get_dependency_results(
     let mut out = Vec::with_capacity(deps.len());
     for dep in deps {
         let dep_id = dep.depends_on_thread_id;
-        if !auth.bypass && !maidan_auth::can_access_thread(store.as_ref(), auth, dep_id).await? {
+        if !maidan_auth::can_access_thread(store.as_ref(), auth, dep_id).await? {
             continue;
         }
         // Project to the raw payload (or null) — the parent wants each

@@ -175,10 +175,10 @@ pub(crate) async fn recorded<T, E>(
     method: Method,
     call: impl std::future::Future<Output = Result<T, E>>,
 ) -> Result<T, E> {
-    let attribution = auth.attribution();
+    let attribution = Some(auth.attribution());
     let (result, recorded) =
         maidan_store::attribution::with_attribution_tracked(attribution, call).await;
-    if attribution.is_some() && result.is_ok() && !recorded && method.changes() {
+    if result.is_ok() && !recorded && method.changes() {
         maidan_store::attribution::with_attribution(
             attribution,
             crate::audit::record(

@@ -75,10 +75,8 @@ pub async fn expand_event_filter(
     // `ensure_thread_access` is DM-participant-aware, so a non-participant can
     // no longer tail a DM / group-DM by supplying its `dm_conversation_id`
     // (expanded to `thread_id` above) or its `thread_id` directly — the events
-    // analog of the 180 read gap. Bypass is exempt.
-    if let Some(thread_id) = filter.thread_id
-        && !auth.bypass
-    {
+    // analog of the 180 read gap.
+    if let Some(thread_id) = filter.thread_id {
         maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
             .await
             .map_err(ApiError::from)?;
@@ -147,9 +145,7 @@ pub async fn get_dm_conversation(
     // used to apply to sessions only and let any bearer through; an
     // orchestrator acting for a participant now holds a delegated token that
     // *is* that participant.
-    if !auth.bypass {
-        ensure_dm_participant(&dm, auth.member_id())?;
-    }
+    ensure_dm_participant(&dm, auth.member_id())?;
     Ok(Json(dm))
 }
 
@@ -217,9 +213,7 @@ pub async fn list_dm_messages(
     // The messages are the DM: only its participants read them, as only they
     // read its metadata (`get_dm_conversation`) or post to it. The workspace
     // check alone let any member with `workspace:read` and the id read it.
-    if !auth.bypass {
-        ensure_dm_participant(&dm, auth.member_id())?;
-    }
+    ensure_dm_participant(&dm, auth.member_id())?;
     Ok(Json(
         state.store.list_messages(dm.thread_id, q.limit).await?,
     ))

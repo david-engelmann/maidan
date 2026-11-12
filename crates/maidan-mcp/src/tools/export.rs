@@ -184,7 +184,6 @@ pub(super) async fn import_workspace(
 
     let origin = maidan_store::usage_meters::import_origin(
         server.store.as_ref(),
-        auth.bypass,
         auth.workspace_id(),
         (mode == "restore").then_some(to_write.workspace.id),
     )

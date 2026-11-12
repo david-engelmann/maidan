@@ -56,7 +56,6 @@ async fn replica(pool: &PgPool, artifacts: &std::path::Path) -> Replica {
         Arc::new(maidan_search::PostgresSearch::new(pool.clone())),
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

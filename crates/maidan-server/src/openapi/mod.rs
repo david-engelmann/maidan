@@ -858,6 +858,8 @@ fn requires_credential(op: &Operation) -> bool {
         Thread,
         ThreadState,
         Message,
+        MessageProvenance,
+        MessageOrigin,
         ContentBlock,
         MessageEdit,
         Mention,

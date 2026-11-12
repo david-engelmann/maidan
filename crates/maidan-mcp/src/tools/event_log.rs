@@ -81,7 +81,7 @@ pub(super) async fn get_log_snapshot(
 ) -> Result<Value, McpError> {
     let a: SnapshotArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
-    if a.include_graph && !auth.bypass {
+    if a.include_graph {
         maidan_auth::require_observed_capability(
             auth,
             maidan_auth::AuthorizationSurface::Mcp,
@@ -102,14 +102,12 @@ pub(super) async fn catch_up_events(
     let workspace_id = workspace(auth, a.workspace_id)?;
     // The whole log, bodies from every private channel and DM included, as one
     // chain: a workspace admin's read, as on REST.
-    if !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            TOKEN_ADMIN,
-        )
-        .map_err(|_| McpError::Forbidden("catch_up_events requires token:admin".into()))?;
-    }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        TOKEN_ADMIN,
+    )
+    .map_err(|_| McpError::Forbidden("catch_up_events requires token:admin".into()))?;
     let limit = a.limit.unwrap_or(100).clamp(1, CATCH_UP_LIMIT);
     let page = catch_up_since(store.as_ref(), workspace_id, a.after_lsn, limit)
         .await

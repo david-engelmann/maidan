@@ -75,7 +75,6 @@ async fn resolve_bearer_returns_context_with_minted_capabilities() {
     assert_eq!(ctx.member_id(), member_id);
     assert_eq!(ctx.workspace_id(), workspace_id);
     assert!(ctx.token_id().is_some());
-    assert!(!ctx.bypass);
     assert!(ctx.has_capability("workspace:read"));
     assert!(ctx.has_capability("message:post"));
     assert!(!ctx.has_capability("token:admin"));

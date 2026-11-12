@@ -9,9 +9,9 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/templates/list`, and `
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
 - **Streamable HTTP:** `POST /mcp/streamable` — every revision from `2025-03-26` on is stateless: one JSON-RPC response per POST, no `Mcp-Session-Id`, a notification answered `202`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers. Only a `2024-11-05` client (by `initialize` or `MCP-Protocol-Version`) gets the SSE-session model (the first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Server→client messages ride `GET /mcp/streamable` or `GET /mcp/stream`
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
-- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses unless `--allow-insecure-no-auth` is passed
+- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses to start
 
-Bearer token required unless `AUTH_DISABLED=1`.
+Bearer token required.
 
 ## JSON-RPC methods
 
@@ -861,9 +861,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mute_thread`
 
-**Mute thread.** Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.
+**Mute thread.** Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -884,9 +884,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unmute_thread`
 
-**Unmute thread.** Unmute a thread you previously muted. Returns unmuted=false if it was not muted.
+**Unmute thread.** Unmute a thread you previously muted. Returns unmuted=false if it was not muted. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -907,9 +907,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mute_channel`
 
-**Mute channel.** Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.
+**Mute channel.** Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -930,9 +930,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unmute_channel`
 
-**Unmute channel.** Unmute a channel you previously muted. Returns unmuted=false if it was not muted.
+**Unmute channel.** Unmute a channel you previously muted. Returns unmuted=false if it was not muted. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5507,9 +5507,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mark_inbox_read`
 
-**Mark inbox read.** Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.
+**Mark inbox read.** Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5748,9 +5748,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mark_notification_read`
 
-**Mark notification read.** Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).
+**Mark notification read.** Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's). Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5776,9 +5776,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `snooze_notification`
 
-**Snooze notification.** Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).
+**Snooze notification.** Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's). Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5843,9 +5843,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_notification_pref`
 
-**Set notification pref.** Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.
+**Set notification pref.** Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5898,9 +5898,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_delivery_mode`
 
-**Set delivery mode.** Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.
+**Set delivery mode.** Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -5952,9 +5952,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_member_email`
 
-**Set member email.** Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.
+**Set member email.** Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6002,9 +6002,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `delete_member_email`
 
-**Delete member email.** Clear a member's delivery email address (opt out of email). Returns {deleted}.
+**Delete member email.** Clear a member's delivery email address (opt out of email). Returns {deleted}. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6025,9 +6025,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `follow_channel`
 
-**Follow channel.** Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.
+**Follow channel.** Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6053,9 +6053,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unfollow_channel`
 
-**Unfollow channel.** Stop following a channel (removed=false if not following).
+**Unfollow channel.** Stop following a channel (removed=false if not following). Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6104,9 +6104,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `follow_thread`
 
-**Follow thread.** Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.
+**Follow thread.** Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6132,9 +6132,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unfollow_thread`
 
-**Unfollow thread.** Stop following a thread (removed=false if not following).
+**Unfollow thread.** Stop following a thread (removed=false if not following). Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6183,9 +6183,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `follow_member`
 
-**Follow member.** Follow another same-workspace member's work occupancy. Self-follow is rejected.
+**Follow member.** Follow another same-workspace member's work occupancy. Self-follow is rejected. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -6237,9 +6237,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unfollow_member`
 
-**Unfollow member.** Stop following another member's work occupancy (removed=false if not following).
+**Unfollow member.** Stop following another member's work occupancy (removed=false if not following). Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
@@ -8251,7 +8251,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_message_edits`
 
-**List message edits.** List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.
+**List message edits.** List the edit history of a message. A tombstoned message returns an empty list. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -8280,9 +8280,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mark_all_notifications_read`
 
-**Mark all notifications read.** Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.
+**Mark all notifications read.** Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires member:self.
 
-**Capability:** `workspace:read`
+**Capability:** `member:self`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 

@@ -8,7 +8,9 @@
 #     read back through the LB (typically the other replica);
 #   * an embedding reindex job started on one
 #     replica and polled to completion on another.
-# Replicas run with AUTH_DISABLED=1, so no bearer is needed.
+# Every call carries a bearer: maidan-r1 seeds the shared database's dev admin
+# (MAIDAN_DEV_ADMIN_TOKEN in compose.yaml), which opens the smoke's workspace,
+# and that workspace's own admin token does the rest.
 #
 # Coverage split: the WebSocket/SSE cross-replica paths (resource notifications,
 # presence/typing) and the app-OAuth mint-then-exchange path need real auth and
@@ -23,6 +25,7 @@ set -euo pipefail
 LB_PORT="${MAIDAN_SCALE_LB_PORT:-8090}"
 LB="http://localhost:${LB_PORT}"
 COMPOSE=(docker compose -f compose.yaml --profile scale)
+DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"
 
 cleanup() {
   echo "=== tearing down ==="
@@ -42,8 +45,7 @@ echo "=== building images ==="
 # CI loads maidan-server:dev and maidan-postgres:dev from the smoke image job,
 # which builds them once for every smoke.
 if [ "${MAIDAN_SMOKE_PREBUILT:-}" != "1" ]; then
-  docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
-    -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+  docker build -t maidan-server:dev -f crates/maidan-server/Dockerfile .
   docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
 fi
 
@@ -65,24 +67,28 @@ echo "LB healthy: $(cat /tmp/scale_health.json)"
 
 # --- workspace + thread round-trip through the LB ---
 echo "=== workspace/thread round-trip ==="
-WID=$(curl -sf -X POST "$LB/workspaces" -H 'content-type: application/json' \
-  -d '{"name":"scale-smoke"}' | jq -r '.id') || fail "create workspace"
+OPENED=$(curl -sf -X POST "$LB/operator/workspaces" -H 'content-type: application/json' \
+  -H "Authorization: Bearer $DEV_ADMIN_TOKEN" \
+  -d '{"name":"scale-smoke","admin_handle":"admin"}') || fail "open workspace"
+WID=$(echo "$OPENED" | jq -r '.workspace.id')
+TOKEN=$(echo "$OPENED" | jq -r '.token.secret')
+AUTH=(-H "Authorization: Bearer $TOKEN")
 CID=$(curl -sf -X POST "$LB/workspaces/$WID/channels" -H 'content-type: application/json' \
-  -d '{"name":"general"}' | jq -r '.id') || fail "create channel"
+  "${AUTH[@]}" -d '{"name":"general"}' | jq -r '.id') || fail "create channel"
 TID=$(curl -sf -X POST "$LB/channels/$CID/threads" -H 'content-type: application/json' \
-  -d '{}' | jq -r '.id') || fail "create thread"
+  "${AUTH[@]}" -d '{}' | jq -r '.id') || fail "create thread"
 # Read it back (likely a different replica) — shared store must serve it.
-curl -sf "$LB/threads/$TID" | jq -e --arg id "$TID" '.id == $id' >/dev/null \
+curl -sf "${AUTH[@]}" "$LB/threads/$TID" | jq -e --arg id "$TID" '.id == $id' >/dev/null \
   || fail "thread not readable cross-replica"
 echo "thread round-trip OK ($TID)"
 
 # --- reindex job: start, then poll status (any replica serves it from the store) ---
 echo "=== reindex job start → poll ==="
 JOB=$(curl -sf -X POST "$LB/operator/reindex-embeddings" -H 'content-type: application/json' \
-  -d "{\"workspace_id\":\"$WID\"}" | jq -r '.job_id') || fail "start reindex"
+  "${AUTH[@]}" -d "{\"workspace_id\":\"$WID\"}" | jq -r '.job_id') || fail "start reindex"
 done_job=0
 for _ in $(seq 1 60); do
-  st=$(curl -sf "$LB/operator/reindex-embeddings/$JOB" | jq -r '.status') || true
+  st=$(curl -sf "${AUTH[@]}" "$LB/operator/reindex-embeddings/$JOB" | jq -r '.status') || true
   if [ "$st" = "completed" ]; then done_job=1; break; fi
   [ "$st" = "failed" ] && fail "reindex job failed"
   sleep 1

@@ -24,9 +24,6 @@ use crate::state::AppState;
 /// Every token-minting route must bound its capabilities by this vocabulary.
 /// See `tests/token_minting_vocabulary_contract.rs`.
 pub fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        return capability::all();
-    }
     capability::all()
         .into_iter()
         .filter(|cap| {
@@ -35,12 +32,16 @@ pub fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
         .collect()
 }
 
+/// Whether `cap` is in the minting vocabulary at all: what [`mint_vocabulary`]
+/// returns for a caller that holds every capability. A mint with no caller to
+/// bound it (an OAuth code exchange, an app installation token) is held to
+/// this, after its grant or installation was bounded when it was made.
+pub fn in_mint_vocabulary(cap: &str) -> bool {
+    capability::is_known(cap)
+}
+
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        capability::all()
-    } else {
-        auth.capabilities().to_vec()
-    }
+    auth.capabilities().to_vec()
 }
 
 async fn parent_expires_at(
@@ -416,7 +417,7 @@ pub async fn delegate_api_token(
     let grant = state.store.get_delegation_grant(grant_id).await?;
     // Another workspace's grant reads as absent, as on revoke: a 403 here would
     // confirm that the id exists somewhere.
-    if !auth.bypass && grant.workspace_id != auth.workspace_id() {
+    if grant.workspace_id != auth.workspace_id() {
         return Err(ApiError::NotFound);
     }
     if grant.delegate_id != auth.actor_id() {

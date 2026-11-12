@@ -161,8 +161,6 @@ async fn memory_block_tools_create_read_rewrite_and_attach() {
         .create_workspace(NewWorkspace { name: "mb".into() })
         .await
         .unwrap();
-    // A real member: create_memory_block stamps owner_id (a NOT-NULL FK), so
-    // the nil-member bypass would FK-fail — use a from_session auth.
     let owner = store
         .create_member(NewMember {
             workspace_id: ws.id,
@@ -529,7 +527,7 @@ async fn skill_tools_declare_and_list() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };

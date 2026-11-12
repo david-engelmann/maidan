@@ -469,6 +469,7 @@ mod tests {
                 posted_at: chrono::Utc::now(),
                 edited_at: None,
                 tombstoned_at: None,
+                provenance: None,
             },
             sealed: None,
         })
@@ -543,6 +544,7 @@ mod tests {
                 posted_at: chrono::Utc::now(),
                 edited_at: None,
                 tombstoned_at: None,
+                provenance: None,
             },
             sealed: None,
         }

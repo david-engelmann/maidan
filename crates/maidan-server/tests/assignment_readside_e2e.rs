@@ -34,7 +34,6 @@ async fn spawn() -> (SocketAddr, Arc<dyn Store>, tokio::task::JoinHandle<()>) {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        true,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

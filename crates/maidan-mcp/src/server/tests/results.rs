@@ -68,8 +68,6 @@ async fn result_tools_set_get_wait_and_aggregate() {
         Arc::new(HashV1Provider),
     )
     .with_event_bus(Arc::new(InMemoryBus::new()));
-    // A real session member so `produced_by` (a NOT-NULL FK) resolves — the
-    // bypass nil member would FK-fail set_thread_result.
     let auth = AuthContext::from_session(
         agent.id,
         ws.id,

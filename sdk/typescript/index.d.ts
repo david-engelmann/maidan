@@ -199,6 +199,12 @@ export interface MintedToken {
   quotas: TokenQuota[];
 }
 
+/** An agent member and its `maidan.agent.worker` token. `token.secret` is returned here once. */
+export interface CreatedAgent {
+  member: Member;
+  token: MintedToken;
+}
+
 /** Token metadata; never carries the secret. */
 export interface TokenSummary {
   id: string;
@@ -630,7 +636,6 @@ export declare class Client {
   constructor(baseUrl?: string, token?: string, options?: ClientOptions);
 
   workspaces: {
-    create(name: string): Promise<Workspace>;
     get(id: WorkspaceId): Promise<Workspace>;
     /** Admin-only (`token:admin`). `bundle` is a signed `maidan.workspace.export/1` envelope. */
     import(bundle: unknown, mode?: "new" | "restore"): Promise<ImportResult>;
@@ -639,8 +644,11 @@ export declare class Client {
     /** Every event after `query.after_id`, fetching `query.limit` (default 100, at most {@link MAX_PAGE_SIZE}) per page. */
     eventsAll(id: WorkspaceId, query?: Record<string, string | number>): AsyncGenerator<StoredEvent>;
   };
+  agents: {
+    /** POST /workspaces/{wid}/agents — needs `token:admin`. */
+    create(wid: WorkspaceId, handle: string, displayName?: string): Promise<CreatedAgent>;
+  };
   members: {
-    create(wid: WorkspaceId, handle: string, kind?: MemberKind, displayName?: string): Promise<Member>;
     list(wid: WorkspaceId): Promise<Member[]>;
   };
 

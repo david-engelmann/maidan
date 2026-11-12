@@ -64,7 +64,7 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 
 | Flag | Lever |
 |------|-------|
-| `MAIDAN_ALLOW_INSECURE_NO_AUTH` (+ `AUTH_DISABLED`) | Auth is fail-closed: disabling it needs this explicit ack, and never in production. Leave unset in prod. |
+| `MAIDAN_DEV_ADMIN_TOKEN` | Development stacks only: opens the first workspace with this admin token. Refused in production. Boot also refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH`: there is no unauthenticated mode. |
 | `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables. Lower it to throttle a spike. |
 | `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413`. |
 | `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Instance ceiling on the hosts a workspace may trust with its secret values. Each workspace lists its own hosts (`/workspaces/:wid/secret-egress-hosts`, `secret:admin` + `secret:read`); set, a host outside this comma-separated list never receives a substituted value and cannot be added. Unset ⇒ no ceiling. Set empty ⇒ no host receives a value (the off switch). |
@@ -627,7 +627,10 @@ required check.
   that code no longer needs them and lower the floor there.
 - A new crate needs a floor in the same PR. Take its measured coverage from
   the job, subtract one point and round down to the half point.
-- Raise a floor when a crate's coverage rises, the same way, citing the run.
+- Raise a floor when a crate's coverage rises: take the lowest of the last
+  three `main` coverage runs, subtract one point, round down to the half point,
+  and cite the runs. One run is not enough; `maidan-cli` moved 1.7 points
+  between three consecutive runs on 2026-11-11.
 
 ### Codecov (optional)
 

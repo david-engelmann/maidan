@@ -110,7 +110,7 @@ async fn unsubscribe_suppresses_future_notifications() {
 
 /// A tenant cannot subscribe to another tenant's resources or read its
 /// workspace record, and its listener receives nothing of theirs — not
-/// even when an in-process (bypass) caller watches the same URI.
+/// even while a second member of the other workspace watches the same URI.
 #[tokio::test]
 async fn resource_notifications_stay_in_the_subscribers_workspace() {
     let (server, thread_a, member_a) = mk_server().await;
@@ -147,10 +147,10 @@ async fn resource_notifications_stay_in_the_subscribers_workspace() {
         .error
         .is_none());
 
-    let bypass = AuthContext::bypass();
+    let auth_carol = member_auth(add_member(&server, ws_a, "carol").await, ws_a);
     let mut listen_a = server.listen(&auth_a, McpSession::Stateless).await;
     let mut listen_b = server.listen(&auth_b, McpSession::Stateless).await;
-    let mut listen_bypass = server.listen(&bypass, McpSession::Stateless).await;
+    let mut listen_carol = server.listen(&auth_carol, McpSession::Stateless).await;
     assert!(
         subscribe_in(&server, &auth_a, &McpSession::Stateless, &uri_a)
             .await
@@ -158,7 +158,7 @@ async fn resource_notifications_stay_in_the_subscribers_workspace() {
             .is_none()
     );
     assert!(
-        subscribe_in(&server, &bypass, &McpSession::Stateless, &uri_a)
+        subscribe_in(&server, &auth_carol, &McpSession::Stateless, &uri_a)
             .await
             .error
             .is_none()
@@ -166,7 +166,7 @@ async fn resource_notifications_stay_in_the_subscribers_workspace() {
     post(&server, &auth_a, thread_a).await;
 
     assert!(uris(&listen_a.drain()).contains(&uri_a));
-    assert!(uris(&listen_bypass.drain()).contains(&uri_a));
+    assert!(uris(&listen_carol.drain()).contains(&uri_a));
     assert!(
         listen_b.drain().is_empty(),
         "B's listener received A's update"
@@ -406,20 +406,23 @@ async fn closing_a_session_ends_its_subscriptions() {
 async fn resource_notifier_delivers_to_local_subscribers_via_listener() {
     use maidan_bus::InMemoryResourceNotifier;
 
-    let (server, thread_id, _member_id) = mk_server().await;
+    let (server, thread_id, member_id) = mk_server().await;
     let notifier = Arc::new(InMemoryResourceNotifier::new());
     let server = Arc::new(server.with_resource_notifier(notifier));
     server.spawn_resource_notify_listener();
 
-    let auth = AuthContext::bypass();
+    let ws = server
+        .store
+        .get_member(member_id)
+        .await
+        .unwrap()
+        .workspace_id;
+    let auth = admin_auth(member_id, ws);
     let uri = format!("maidan://threads/{}", thread_id.0);
     let mut listener = server.listen(&auth, McpSession::Stateless).await;
     subscribe_in(&server, &auth, &McpSession::Stateless, &uri).await;
     server
-        .publish_resource_uris(vec![ResourceUpdate::new(
-            WorkspaceId(uuid::Uuid::new_v4()),
-            uri.clone(),
-        )])
+        .publish_resource_uris(vec![ResourceUpdate::new(ws, uri.clone())])
         .await;
 
     // Delivery routes through the notifier and the listener loop.

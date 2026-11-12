@@ -13,7 +13,7 @@ use super::*;
 /// `tools/member.rs` too.
 #[tokio::test]
 async fn a_member_tool_cannot_mutate_another_members_personal_state() {
-    use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
+    use maidan_auth::capability::{MEMBER_SELF, MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
@@ -72,6 +72,7 @@ async fn a_member_tool_cannot_mutate_another_members_personal_state() {
         vec![
             WORKSPACE_READ.to_string(),
             WORKSPACE_WRITE.to_string(),
+            MEMBER_SELF.to_string(),
             MESSAGE_POST.to_string(),
         ],
     );
@@ -150,7 +151,7 @@ async fn a_member_tool_cannot_mutate_another_members_personal_state() {
 /// own either, because a delegated token is its subject, not both parties.
 #[tokio::test]
 async fn a_delegated_token_acts_as_its_subject_and_no_one_else() {
-    use maidan_auth::capability::WORKSPACE_READ;
+    use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
@@ -204,7 +205,7 @@ async fn a_delegated_token_acts_as_its_subject_and_no_one_else() {
         worker.id,
         ws_a.id,
         maidan_types::DelegationGrantId(uuid::Uuid::new_v4()),
-        vec![WORKSPACE_READ.to_string()],
+        vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
     );
 
     server

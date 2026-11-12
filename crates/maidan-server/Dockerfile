@@ -9,15 +9,13 @@
 #   3. `builder` compiles maidan-server in release mode.
 #   4. `runtime` is a minimal glibc image (Chainguard glibc-dynamic) holding only the binary.
 #
-# Bootstrap seed routes (`POST /workspaces`) are omitted unless
-# `MAIDAN_ENABLE_BOOTSTRAP=1` (CI smoke / local seed). Production deploys
-# should leave the build arg at 0.
-# Leaving it at 0 drops the default features, so the build names `otel`
-# again: without it the release image silently ignores `OTLP_ENDPOINT`.
+# The build names its features (`--no-default-features --features otel`), so
+# the image holds exactly what a release ships whatever the crate's defaults
+# become, and never the test-only `bootstrap` seed routes. `otel` is named
+# because without it the image silently ignores `OTLP_ENDPOINT`.
 
 ARG RUST_VERSION=1.99
 ARG DEBIAN_CODENAME=bookworm
-ARG MAIDAN_ENABLE_BOOTSTRAP=0
 
 # The public landing is a Vite app. Build it before the Rust compile so the
 # binary can embed the bundle. The Rust builder skips its own npm build.
@@ -47,19 +45,13 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS cacher
-ARG MAIDAN_ENABLE_BOOTSTRAP=0
 COPY --from=planner /app/recipe.json recipe.json
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
-      cargo chef cook --release --recipe-path recipe.json --bin maidan-server; \
-    else \
-      cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features --features otel; \
-    fi
+RUN cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features --features otel
 
 FROM chef AS builder
-ARG MAIDAN_ENABLE_BOOTSTRAP=0
 # Release tag baked into the binary's reported version (see version() in
 # maidan-server). Placing the ENV right before the build means a changed tag
 # invalidates this layer and forces a recompile, so the image never reports a
@@ -76,11 +68,7 @@ ENV MAIDAN_SKIP_LANDING_BUILD=1
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
-      cargo build --release --bin maidan-server; \
-    else \
-      cargo build --release --bin maidan-server --no-default-features --features otel; \
-    fi
+RUN cargo build --release --bin maidan-server --no-default-features --features otel
 
 # Chainguard's glibc-dynamic: glibc, libgcc, CA certificates and a nonroot
 # user, no shell and no OpenSSL. Distroless's cc-debian12 carried a libssl3 the

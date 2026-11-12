@@ -4,8 +4,7 @@
 //! required); private channels are gated to explicit members. The DM system
 //! channel (`__dm__`) is exempt — DM and group-DM membership is enforced
 //! per-conversation by the `dm` / `group_dm` participant checks, which remain
-//! authoritative. `bypass` callers (auth disabled / tests) always pass,
-//! matching `has_capability` / `ensure_workspace`.
+//! authoritative.
 
 use maidan_store::Store;
 use maidan_types::{
@@ -23,9 +22,6 @@ pub async fn ensure_channel_access(
     auth: &AuthContext,
     channel_id: ChannelId,
 ) -> Result<(), AuthError> {
-    if auth.bypass {
-        return Ok(());
-    }
     let channel = store.get_channel(channel_id).await?;
     auth.ensure_workspace(channel.workspace_id)?;
     if !channel.private || channel.name == DM_CHANNEL_NAME {
@@ -66,15 +62,12 @@ fn listed_for_member(channel: &Channel, is_member: bool) -> bool {
 }
 
 /// The channels in `workspace_id` the caller may see listed, in one store
-/// query (REST and MCP `list_channels`). `bypass` callers get every channel.
+/// query (REST and MCP `list_channels`).
 pub async fn visible_channels(
     store: &dyn Store,
     auth: &AuthContext,
     workspace_id: WorkspaceId,
 ) -> Result<Vec<Channel>, AuthError> {
-    if auth.bypass {
-        return Ok(store.list_channels(workspace_id).await?);
-    }
     Ok(store
         .list_channels_with_membership(workspace_id, auth.member_id())
         .await?
@@ -86,8 +79,7 @@ pub async fn visible_channels(
 
 /// The private (non-DM) channels in `workspace_id` the caller is **not** a
 /// member of — the set to exclude at the query level so inaccessible hits don't
-/// crowd out a search's requested `limit`. `bypass` callers get an empty set
-/// (they see everything). DM threads are intentionally excluded: DM access is
+/// crowd out a search's requested `limit`. DM threads are intentionally excluded: DM access is
 /// participant-based, not channel-membership, so it stays with the
 /// authoritative thread-level post-filter. This is a *pre-filter*, never the
 /// sole check. One store query, however many private channels there are.
@@ -96,9 +88,6 @@ pub async fn private_channel_deny_set(
     auth: &AuthContext,
     workspace_id: WorkspaceId,
 ) -> Result<Vec<ChannelId>, AuthError> {
-    if auth.bypass {
-        return Ok(Vec::new());
-    }
     Ok(store
         .list_channels_with_membership(workspace_id, auth.member_id())
         .await?
@@ -149,8 +138,7 @@ pub struct ThreadScope {
 /// fetches again); this does the fetch once and returns the [`ThreadScope`] the
 /// handler needs. The access rule is identical to [`ensure_thread_access`] —
 /// workspace isolation, then DM-conversation participation for a `__dm__`
-/// thread or `channel_members` for a private channel. `bypass` skips the checks
-/// but still returns the scope (the handler needs the location regardless).
+/// thread or `channel_members` for a private channel.
 ///
 /// Listings that filter in the query use the store's SQL form of this rule
 /// (`maidan-store/src/thread_access.rs`); a change here changes it too, and
@@ -167,9 +155,6 @@ pub async fn authorize_thread(
         channel_id: channel.id,
         thread_id,
     };
-    if auth.bypass {
-        return Ok(scope);
-    }
     auth.ensure_workspace(channel.workspace_id)?;
     if channel.name == DM_CHANNEL_NAME {
         ensure_dm_participant(store, auth, thread_id).await?;
@@ -195,9 +180,6 @@ pub async fn ensure_thread_access(
     auth: &AuthContext,
     thread_id: ThreadId,
 ) -> Result<(), AuthError> {
-    if auth.bypass {
-        return Ok(());
-    }
     authorize_thread(store, auth, thread_id).await.map(|_| ())
 }
 
@@ -229,9 +211,6 @@ pub async fn can_read_gate(
     auth: &AuthContext,
     gate: &ApprovalGate,
 ) -> Result<bool, AuthError> {
-    if auth.bypass {
-        return Ok(true);
-    }
     if gate.workspace_id != auth.workspace_id() {
         return Ok(false);
     }
@@ -252,9 +231,6 @@ pub async fn can_read_artifact(
     auth: &AuthContext,
     sha256: &str,
 ) -> Result<bool, AuthError> {
-    if auth.bypass {
-        return Ok(true);
-    }
     Ok(store
         .artifact_visible_to(auth.workspace_id(), auth.member_id(), sha256)
         .await?)
@@ -271,18 +247,19 @@ async fn is_workspace_admin(
     member_id: MemberId,
 ) -> Result<bool, AuthError> {
     let now = chrono::Utc::now();
-    Ok(auth.bypass
-        || (auth.member_id() == member_id && auth.has_capability(crate::TOKEN_ADMIN))
-        || (auth.delegation_grant_id().is_none()
-            && store
-                .list_api_tokens_for_member(workspace_id, member_id)
-                .await?
-                .iter()
-                .any(|t| {
-                    t.revoked_at.is_none()
-                        && t.expires_at.is_none_or(|at| at > now)
-                        && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
-                })))
+    Ok(
+        (auth.member_id() == member_id && auth.has_capability(crate::TOKEN_ADMIN))
+            || (auth.delegation_grant_id().is_none()
+                && store
+                    .list_api_tokens_for_member(workspace_id, member_id)
+                    .await?
+                    .iter()
+                    .any(|t| {
+                        t.revoked_at.is_none()
+                            && t.expires_at.is_none_or(|at| at > now)
+                            && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
+                    })),
+    )
 }
 
 /// The reviews that name no reviewer and fall to `member_id`: those it owns,
@@ -301,7 +278,7 @@ pub async fn visible_unassigned_reviews(
         .list_unassigned_reviews(workspace_id, member_id, is_admin)
         .await?
     {
-        if auth.bypass || can_access_thread(store, auth, thread.id).await? {
+        if can_access_thread(store, auth, thread.id).await? {
             visible.push(thread);
         }
     }
@@ -335,7 +312,7 @@ pub async fn visible_human_waits(
     let mut waits = HumanWaits::default();
     for (tid, title, owner, block) in store.list_human_gate_blocked_threads(workspace_id).await? {
         let reaches = owner == Some(member_id) || (owner.is_none() && is_admin);
-        if reaches && (auth.bypass || can_access_thread(store, auth, tid).await?) {
+        if reaches && can_access_thread(store, auth, tid).await? {
             waits.blocked.push((tid, title, owner, block));
         }
     }
@@ -345,7 +322,7 @@ pub async fn visible_human_waits(
         }
         let answerer = owner.filter(|o| *o != question.declared_by);
         let reaches = answerer == Some(member_id) || (answerer.is_none() && is_admin);
-        if reaches && (auth.bypass || can_access_thread(store, auth, tid).await?) {
+        if reaches && can_access_thread(store, auth, tid).await? {
             waits.questions.push((tid, title, owner, question));
         }
     }
@@ -366,8 +343,7 @@ pub struct MessageScope {
 /// Resolve a message's workspace/channel/thread **and** authorize the caller in
 /// one pass — the message-keyed twin of [`authorize_thread`], for handlers that
 /// used `resolve_message_chain` (get_message + thread + channel) and then
-/// `ensure_thread_access` (thread + channel again). `bypass` skips the checks
-/// but still returns the scope.
+/// `ensure_thread_access` (thread + channel again).
 pub async fn authorize_message(
     store: &dyn Store,
     auth: &AuthContext,
@@ -390,9 +366,6 @@ pub async fn ensure_message_access(
     auth: &AuthContext,
     message_id: MessageId,
 ) -> Result<(), AuthError> {
-    if auth.bypass {
-        return Ok(());
-    }
     authorize_message(store, auth, message_id).await.map(|_| ())
 }
 
@@ -432,21 +405,13 @@ pub enum WasiTargetError {
 /// Both failures return the same message on purpose: "this sha is not yours"
 /// and "this sha does not exist" must be indistinguishable, or registration
 /// becomes an oracle for which artifacts exist on the instance.
-///
-/// `bypass` skips the check. Under `AUTH_DISABLED` the upload path records no
-/// access links at all, so a ref check would reject every module — the same
-/// carve-out dispatch makes.
 pub async fn resolve_wasi_handler_target(
     store: &dyn Store,
-    auth: &AuthContext,
     workspace_id: WorkspaceId,
     target: &str,
 ) -> Result<String, WasiTargetError> {
     let hex = maidan_types::normalize_wasi_handler_target(target)
         .map_err(|e| WasiTargetError::Invalid(e.to_string()))?;
-    if auth.bypass {
-        return Ok(hex);
-    }
     if store.artifact_ref_exists(workspace_id, &hex).await? {
         Ok(hex)
     } else {

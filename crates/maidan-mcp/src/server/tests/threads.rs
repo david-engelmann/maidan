@@ -513,7 +513,7 @@ async fn mcp_human_dm_reply_clears_the_declared_status() {
 /// and self leaf mute/unmute.
 #[tokio::test]
 async fn threading_tools_children_recent_and_mute() {
-    use maidan_auth::capability::WORKSPACE_READ;
+    use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
@@ -589,7 +589,11 @@ async fn threading_tools_children_recent_and_mute() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+    let auth = AuthContext::from_session(
+        member.id,
+        ws.id,
+        vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+    );
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };

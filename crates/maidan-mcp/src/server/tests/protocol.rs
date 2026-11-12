@@ -165,8 +165,9 @@ async fn whoami_returns_identity_and_initialize_carries_instructions() {
 
 #[tokio::test]
 async fn initialize_echoes_negotiated_version_and_the_initialized_notification_is_accepted() {
-    let (server, _thread, _member) = mk_server().await;
-    let auth = AuthContext::bypass();
+    let (server, _thread, member) = mk_server().await;
+    let ws = server.store.get_member(member).await.unwrap().workspace_id;
+    let auth = admin_auth(member, ws);
     let init = server
         .handle(
             request(1, "initialize", json!({ "protocolVersion": "2024-11-05" })),
@@ -185,9 +186,10 @@ async fn initialize_echoes_negotiated_version_and_the_initialized_notification_i
 async fn initialize_reports_the_configured_server_version() {
     // The embedder's release version, threaded through with_server_version:
     // without it, initialize reports this crate's version (0.0.0).
-    let (server, _thread, _member) = mk_server().await;
+    let (server, _thread, member) = mk_server().await;
     let server = server.with_server_version("413.0.0-test");
-    let auth = AuthContext::bypass();
+    let ws = server.store.get_member(member).await.unwrap().workspace_id;
+    let auth = admin_auth(member, ws);
     let init = server
         .handle(
             request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),
@@ -203,8 +205,9 @@ async fn initialize_reports_the_configured_server_version() {
 async fn initialize_negotiates_the_2026_revision_when_requested() {
     // A current (2026-07-28) client's initialize is echoed that revision (J3.1);
     // 2026 clients need not call initialize, but when they do it must negotiate.
-    let (server, _thread, _member) = mk_server().await;
-    let auth = AuthContext::bypass();
+    let (server, _thread, member) = mk_server().await;
+    let ws = server.store.get_member(member).await.unwrap().workspace_id;
+    let auth = admin_auth(member, ws);
     let init = server
         .handle(
             request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),

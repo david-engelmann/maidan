@@ -40,14 +40,12 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    // auth ENABLED — so the capability gate is actually exercised.
     let mut state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

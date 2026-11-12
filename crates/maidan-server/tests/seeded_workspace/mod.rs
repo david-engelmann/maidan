@@ -104,7 +104,6 @@ pub async fn spawn_with(configure: impl FnOnce(&mut AppState)) -> Harness {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(false, key.clone()),
         Arc::new(AtomicI64::new(0)),
         None,

@@ -1,7 +1,7 @@
 //! `POST /workspaces/{wid}/agents`: a `token:admin` holder connects an agent
-//! (member plus `maidan.agent.worker` token) on a server with bootstrap off,
-//! where `POST /workspaces/{wid}/members` is refused. Refusals create nothing,
-//! and another tenant's admin cannot create an agent here.
+//! (member plus `maidan.agent.worker` token) on a server built without
+//! bootstrap, where `POST /workspaces/{wid}/members` does not exist. Refusals
+//! create nothing, and another tenant's admin cannot create an agent here.
 
 use std::{
     net::SocketAddr,
@@ -57,7 +57,6 @@ async fn spawn() -> Harness {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -180,7 +179,8 @@ async fn an_admin_connects_an_agent_with_bootstrap_off() {
     let h = spawn().await;
     let a = tenant(&h, "a").await;
 
-    // The bootstrap route this replaces is refused on this server.
+    // The bootstrap route this replaces is not built into this server: the
+    // path answers only GET.
     let bootstrap = h
         .client
         .post(format!("{}/workspaces/{}/members", h.base(), a.id.0))
@@ -189,7 +189,7 @@ async fn an_admin_connects_an_agent_with_bootstrap_off() {
         .send()
         .await
         .unwrap();
-    assert_eq!(bootstrap.status(), StatusCode::FORBIDDEN);
+    assert_eq!(bootstrap.status(), StatusCode::METHOD_NOT_ALLOWED);
 
     let res = post_agent(
         &h,

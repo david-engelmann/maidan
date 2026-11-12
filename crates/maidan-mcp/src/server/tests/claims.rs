@@ -312,13 +312,22 @@ async fn get_queue_depth_tool_reports_counts() {
     let t2 = store.create_thread(mk("t2")).await.unwrap();
     store.add_thread_dependency(t2.id, t1.id).await.unwrap();
 
+    let reader = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "reader".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
     let server = McpServer::new(
         store,
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(reader.id, ws.id);
     let out = server
         .call_tool(
             &auth,

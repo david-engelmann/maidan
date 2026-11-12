@@ -6,7 +6,7 @@ use super::*;
 /// The per-channel mute MCP tools (self-scoped).
 #[tokio::test]
 async fn channel_mute_tools_mute_and_unmute() {
-    use maidan_auth::capability::WORKSPACE_READ;
+    use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
@@ -46,7 +46,11 @@ async fn channel_mute_tools_mute_and_unmute() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+    let auth = AuthContext::from_session(
+        member.id,
+        ws.id,
+        vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+    );
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -153,7 +157,7 @@ async fn waiting_inbox_tool_composes_assigned_and_gates() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(agent.id, ws.id);
     let inbox: Value = serde_json::from_str(
         server
             .call_tool(
@@ -253,7 +257,7 @@ async fn notification_tools_list_count_mark_and_wait() {
         Arc::new(HashV1Provider),
     )
     .with_event_bus(Arc::new(InMemoryBus::new()));
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -418,7 +422,7 @@ async fn notification_pref_tools_set_and_list() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -495,7 +499,7 @@ async fn delivery_mode_tools_get_and_set() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -582,7 +586,7 @@ async fn email_tools_set_get_delete() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -709,7 +713,7 @@ async fn follow_tools_channel_thread_and_member() {
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
     );
-    let auth = AuthContext::bypass();
+    let auth = admin_auth(member.id, ws.id);
     let unwrap_content = |v: Value| -> Value {
         serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
     };
@@ -847,7 +851,8 @@ async fn follow_tools_channel_thread_and_member() {
 #[tokio::test]
 async fn inbox_tools_surface_a_members_mentions() {
     let (server, thread, member) = mk_server().await;
-    let auth = AuthContext::bypass();
+    let ws = server.store.get_member(member).await.unwrap().workspace_id;
+    let auth = admin_auth(member, ws);
 
     // Post a message and record a mention of the member.
     let msg = server

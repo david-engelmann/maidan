@@ -1024,7 +1024,7 @@ impl McpServer {
         auth: &AuthContext,
         profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
-        let attribution = auth.attribution();
+        let attribution = Some(auth.attribution());
         let (result, recorded) = maidan_store::attribution::with_attribution_tracked(
             attribution,
             self.tools_call_unscoped(params, auth, profile),
@@ -1041,7 +1041,7 @@ impl McpServer {
         let succeeded = result
             .as_ref()
             .is_ok_and(|out| out.get("isError") != Some(&Value::Bool(true)));
-        if attribution.is_some() && succeeded && !recorded && !tools::is_read_only(name) {
+        if succeeded && !recorded && !tools::is_read_only(name) {
             let ids: serde_json::Map<String, Value> = params
                 .get("arguments")
                 .and_then(Value::as_object)
@@ -1089,20 +1089,14 @@ impl McpServer {
                 profile.name()
             )));
         }
-        if !auth.bypass {
-            let cap = tools::required_capability(name)?;
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                cap,
-            )
+        let cap = tools::required_capability(name)?;
+        maidan_auth::require_observed_capability(auth, maidan_auth::AuthorizationSurface::Mcp, cap)
             .map_err(McpError::from)?;
-        }
+
         // Held until the call returns. A long-poll gives back the server's
         // in-flight permit while it parks, so this is what keeps one tenant
-        // from parking without bound (RED-008). Auth-disabled callers share
-        // no tenant to protect.
-        let _parked = if crate::parked_waits::parks(name) && !auth.bypass {
+        // from parking without bound (RED-008).
+        let _parked = if crate::parked_waits::parks(name) {
             Some(
                 self.parked_waits
                     .park(auth.workspace_id())
@@ -1114,7 +1108,7 @@ impl McpServer {
             None
         };
         // Counted once the call is authorized to run, whatever it answers.
-        if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
+        if let Some(meters) = &self.usage_meters {
             // The hard allowance cutoff: refused before it runs, not counted.
             // The credit tools stay open past it, so an agent cut off can
             // read its balance and ask for a top-up to pay its own way back.
@@ -1147,14 +1141,13 @@ impl McpServer {
     }
 
     async fn prompts_get(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
@@ -1168,10 +1161,6 @@ impl McpServer {
     /// A workspace URI must be the caller's own: `resources/read` of another
     /// workspace's URI returned its record.
     async fn authorize_resource(&self, uri: &str, auth: &AuthContext) -> Result<(), McpError> {
-        if auth.bypass {
-            return Ok(());
-        }
-
         if let Some(rest) = uri.strip_prefix("maidan://") {
             let mut parts = rest.splitn(2, '/');
             match (parts.next(), parts.next()) {
@@ -1220,14 +1209,13 @@ impl McpServer {
     }
 
     async fn resources_read(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let uri = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1255,14 +1243,13 @@ impl McpServer {
         auth: &AuthContext,
         session: &McpSession,
     ) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1279,14 +1266,13 @@ impl McpServer {
         };
         let subscriber = Subscriber::new(auth, session.clone());
         if subscriber.session == McpSession::Stateless {
-            let caller = (!auth.bypass).then_some(auth);
             let subscribed = self
                 .store
                 .subscribe_mcp_resource(
                     &NewMcpSubscription {
                         subscriber: subscriber.principal.key(),
-                        workspace_id: caller.map(|a| a.workspace_id()),
-                        member_id: caller.map(|a| a.member_id()),
+                        workspace_id: Some(auth.workspace_id()),
+                        member_id: Some(auth.member_id()),
                         uri: uri.to_string(),
                         expires_at: self.stateless_expiry(Utc::now()),
                     },
@@ -1314,14 +1300,13 @@ impl McpServer {
         auth: &AuthContext,
         session: &McpSession,
     ) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1394,7 +1379,7 @@ impl McpServer {
     pub(crate) async fn deliver_resource_updates(&self, updates: &[ResourceUpdate]) {
         for update in updates {
             for (subscriber, auth) in self.subscriptions.watchers(&update.uri) {
-                if !auth.bypass && auth.workspace_id() != update.workspace_id {
+                if auth.workspace_id() != update.workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), &auth, &update.uri).await {
@@ -1442,7 +1427,7 @@ impl McpServer {
                 let Some((subscriber, auth)) = listening.get(&watch.subscriber) else {
                     continue;
                 };
-                if !auth.bypass && auth.workspace_id() != workspace_id {
+                if auth.workspace_id() != workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), auth, &watch.uri).await

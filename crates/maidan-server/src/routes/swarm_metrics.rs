@@ -79,7 +79,7 @@ pub async fn watch_pull(
             pull_number: body.pull_number,
             channel_id: body.channel_id,
             title: body.title,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         },
     )
     .await?;

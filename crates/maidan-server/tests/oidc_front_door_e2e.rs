@@ -70,7 +70,6 @@ async fn spawn_with(auto_provision: bool, link_email: bool) -> Env {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

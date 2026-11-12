@@ -105,6 +105,11 @@ async fn mk_server() -> (McpServer, ThreadId, MemberId) {
     (server, thread.id, member.id)
 }
 
+/// A member of `workspace_id` holding every capability.
+fn admin_auth(member_id: MemberId, workspace_id: WorkspaceId) -> AuthContext {
+    AuthContext::from_session(member_id, workspace_id, maidan_auth::capability::all())
+}
+
 fn request(id: i64, method: &str, params: Value) -> JsonRpcRequest {
     JsonRpcRequest {
         jsonrpc: "2.0".into(),
