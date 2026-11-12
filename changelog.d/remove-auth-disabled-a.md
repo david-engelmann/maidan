@@ -1,4 +1,0 @@
-### A caller is something a credential proved
-
-- **Security:** `AuthContext` is sealed. Its fields are private and its constructors are private to `maidan-auth`, so no other crate can make a caller or change one it was handed; the server reaches one only through `maidan-auth`'s resolvers: a bearer, a token id, a stored and unexpired browser session (`resolve_session`), the dev anonymous reader (`resolve_anonymous_reader`), or a member the server acts for (`member_can_access_thread`, `member_can_access_channel`). `auth_context_seal_contract` checks the source, and the release build cannot compile such a call (SEC-003, R11).
-- **Changed:** the server's tests run with authentication on. `AppState::for_tests` no longer disables auth, the `maidan-test-member-id` header is gone, and a test calls with a real token minted through `maidan_server::test_support` (a workspace, its admin and a bearer).
