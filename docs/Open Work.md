@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `53df1b9a` (2026-11-11, `v449.0.0`).
+on a decision. Last reconciled against `main` at `6242a75c` (2026-11-12, `v450.0.0`).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -29,7 +29,7 @@ maidan.world reports the tag. A rerun resumes where the last one stopped
 (#2124, #2125). `deploy prod` runs in the `prod` GitHub environment (#1738),
 which allows only `main` and `v*` tags, after a Neon pre-deploy branch and
 with automatic rollback to the release that was running (#1969).
-maidan.world and try.maidan.world run `v449.0.0` (checked 2026-11-11), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
+maidan.world and try.maidan.world run `v450.0.0` (checked 2026-11-12), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
 `v437.0.0` `deploy prod` run sampled `/health` once a second through the swap
 (`scripts/measure-deploy-gap.sh`, #2137): no probe went unanswered and the
 slowest answered in 8.9 s. The probe sees only its own requests; see Claims. There is no pins PR any more:
@@ -126,6 +126,7 @@ One line per item, promoted into Next when it gets acceptance criteria.
 - **G — developer experience and governance:** a fitness-function catalog; semver checks for the SDKs; a glossary-grounding lint; active benchmarking with k6; a devcontainer, pipeline parity, typed config, a cross-build matrix and an S3 test double.
 - **U — the web UI:** design tokens; a code editor, log stream and DAG view; a reference-graph pane over the backlink index; an interactive OpenAPI reference; recorded demos; one-click token mint in Connect; a member last-active endpoint; cross-channel palette search; delivery and allowlist panels.
 - **W — swarm outcomes:** a builder scorecard per area, model and effort that charges FIX-FIRST rounds and review cost to the builder who authored the change, read from the review verdicts and usage Maidan already records (proposed 2026-11-02 from the Moneyball write-up); admission of builder sessions by machine capacity, measured in landings per hour, belongs to the swarm operator, not Maidan.
+- **K — dependency upgrades** (each its own PR with `cargo vet` or a full npm run, since Dependabot's weekly groups now take compatible updates only, #2268): sqlx 0.9; tower-http 0.7; the RustCrypto 0.11 set (chacha20poly1305, sha2, hmac) with rand 0.10, behind a content-seal round-trip test against rows sealed by 0.10; base64 0.23; testcontainers 0.24; on the web side TypeScript 7 (after typescript-eslint supports it), ESLint 10, Vite 8 with @vitejs/plugin-react 6, and motion 14; Ubuntu's next LTS for the quickstart image.
 - **Federation** (when federation gets real multi-peer use): a versioned envelope contract; cross-peer causal order; verifiable-credential peer trust.
 - **Parked evaluations** (revisit on a concrete trigger): OPA/ABAC; Tantivy; compile-time SQL; SOPS; a CI egress allowlist; an in-flight-run drain signal; allocator and zero-copy micro-evaluations; an MCP registry policy.
 - **B — billing:** prepaid USDC credits are live on maidan.world since `v447.0.0` (#2201; [Credits](Credits.md)): one balance in USD micros, a top-up matched by exact amount on Base after five confirmations, overage charged per meter at the prices in `MAIDAN_OVERAGE_PRICES`, and 402 in place of 429 past the allowance. Open: a live top-up has not been exercised end to end (the maintainer, 2026-11-11: not needed to test), and a card rail waits, because a processor needs business paperwork the maintainer is not taking on now.
@@ -153,6 +154,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-11-12 | Dependabot's weekly groups take compatible updates only (cargo patch releases, npm and Docker minors and patches; Ubuntu stays on LTS); breaking upgrades are deliberate PRs listed under Later K | #2268 |
 | 2026-11-10 | The tagline is "Every agent. Every person. One room.": Maidan is where agents and people work together, not a task queue. The copy names Copilot and Gemini beside Claude Code, Codex and Cursor, and says results land in GitHub, Slack and Linear, with anything else wired in through signed event webhooks and the API. Supersedes the 2026-11-07 tagline | The maintainer, 2026-11-10; #2196, #2200 |
 | 2026-11-10 | Open sign-up is on at maidan.world (`MAIDAN_SIGNUP_OPEN=1`) behind Turnstile, on the maintainer's word after the launch-gate test passed on `v444.0.0` | The maintainer, 2026-11-10; #2195, live in `v445.0.0` |
 | 2026-11-11 | Release numbering stays one major per release (`vN.0.0`); the audit's minor-bump scheme (R19) is dropped, since nobody reads the numbers | The maintainer, 2026-11-11 |
@@ -282,7 +284,7 @@ Each links its record. Entries roll off after about a month.
 | A pasted bearer token lives in `localStorage` | Tokens are capability-scoped, revocable and rotatable (#1116); #1093 escapes the page's `innerHTML` writes; #1142 exchanges the token for an `HttpOnly` session; `/ui` sends a Content-Security-Policy (#1213) | A script injected into the page can act as the session while the page is open but cannot take the credential away (Threat-Model T17) | #1142, #1213 |
 | Admin merges while branch protection is not strict (F-43, kept off on 2026-10-01) | The merge loop reads the checks of the PR's exact head commit, requires all eight required checks there and every CodeRabbit comment answered, merges with `--match-head-commit`, and first builds the PR merged onto current `main` and runs the static contracts | A break that only a full test run on the merged tree would catch; `main`'s own CI catches it after the merge | `main` CI; Process below |
 | Events delivered at most once on the optimistic path | Transactional outbox, quarantine and replay; opt-in `at_least_once` delivery per `consumer_id` | A client that does not opt in can see a gap or a duplicate | `maidan_outbox_quarantined`, `MaidanOutboxQuarantined` |
-| `AUTH_DISABLED` or bootstrap left on | Both refuse boot without an explicit acknowledgement, and always in production; hardened builds strip the path | A dev binary exposed to a network | Boot checks |
+| A development admin token left on | The server has no unauthenticated mode: boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH` by name (#2258), and bootstrap and the OIDC mock exist only in test builds. `MAIDAN_DEV_ADMIN_TOKEN` opens a dev stack's first admin; it is refused under `MAIDAN_ENV=production` and when shorter than 32 bytes | A non-production deployment reachable from a network with a known dev token | Boot checks |
 | The embedding indexer falls behind | Retries, a repair sweep, and `/health/ready` degraded past `INDEXER_STALE_SECS` | `INDEXER_STALE_SECS` is off by default | `maidan_indexer_last_event_age_seconds` |
 | `hash-v1` embeddings are not semantic | A boot warning; `openai-compatible` for real use | A deployment that ignores the warning | Boot log |
 | The Postgres bus listener drops | Reconnect with back-fill from the log | Delay while it reconnects | `/health/ready`, `maidan_bus_lag_total` |
