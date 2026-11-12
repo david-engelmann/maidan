@@ -515,13 +515,46 @@ func (s *ReviewsService) Status(threadID string) (*ReviewStatus, error) {
 	return call[ReviewStatus](s.c, http.MethodGet, "/threads/"+threadID+"/review-status", nil)
 }
 
-// ApprovalGatesService is the human side of approval gates. List returns the
-// workspace's pending gates, each with the RequestState an answer must echo.
-// Accepting needs a person's signed-in session or a token holding
-// approval:grant, and nobody accepts a gate they asked for; declining or
-// cancelling needs workspace:write. A gate is opened over MCP
-// (request_approval).
+// ApprovalGatesService opens and reads approval gates and is their human side.
+// Request opens one and Get reads it back; Client.WaitForApprovalDecision waits
+// for its answer. List returns the workspace's pending gates, each with the
+// RequestState an answer must echo. Accepting needs a person's signed-in
+// session or a token holding approval:grant, and nobody accepts a gate they
+// asked for; declining or cancelling needs workspace:write.
 type ApprovalGatesService struct{ c *Client }
+
+// ApprovalRequestOptions are the optional fields of a new gate. ThreadID holds
+// that thread from claim-next while the gate is pending; Risk is "low",
+// "medium" or "high" (the server's default when empty).
+type ApprovalRequestOptions struct {
+	Schema   any
+	ThreadID string
+	Risk     string
+}
+
+// Request opens a gate for a person to answer (message:post), the twin of MCP
+// request_approval. The gate is the caller's and starts pending. opts may be nil.
+func (s *ApprovalGatesService) Request(workspaceID, prompt string, opts *ApprovalRequestOptions) (*ApprovalGate, error) {
+	body := M{"prompt": prompt}
+	if opts != nil {
+		if opts.Schema != nil {
+			body["schema"] = opts.Schema
+		}
+		if opts.ThreadID != "" {
+			body["thread_id"] = opts.ThreadID
+		}
+		if opts.Risk != "" {
+			body["risk"] = opts.Risk
+		}
+	}
+	return call[ApprovalGate](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/approval-gates", body)
+}
+
+// Get reads one gate, pending or answered. A gate the caller cannot read is a
+// 404, the same as no gate.
+func (s *ApprovalGatesService) Get(gateID string) (*ApprovalGate, error) {
+	return call[ApprovalGate](s.c, http.MethodGet, "/approval-gates/"+gateID, nil)
+}
 
 func (s *ApprovalGatesService) List(workspaceID string) ([]ApprovalGateView, error) {
 	return callList[ApprovalGateView](s.c, "/workspaces/"+workspaceID+"/approval-gates")

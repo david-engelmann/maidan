@@ -797,8 +797,16 @@ export declare class Client {
     status(tid: ThreadId): Promise<ReviewStatus>;
   };
 
-  /** Approval gates, the human side. A gate is opened over MCP (`request_approval`). */
+  /** Approval gates: open one, read it back, list the pending ones, answer one. */
   approvalGates: {
+    /** Open a gate for a person to answer (`message:post`). 201 with the pending gate. */
+    request(
+      wid: WorkspaceId,
+      prompt: string,
+      opts?: { schema?: unknown; threadId?: ThreadId; risk?: "low" | "medium" | "high" },
+    ): Promise<ApprovalGate>;
+    /** One gate by id. A gate the caller cannot read is a 404, the same as no gate. */
+    get(gateId: string): Promise<ApprovalGate>;
     list(wid: WorkspaceId): Promise<ApprovalGateView[]>;
     answer(
       gateId: string,
@@ -876,6 +884,8 @@ export declare class Client {
   waitForReady(workspaceId: WorkspaceId, channelId?: ChannelId, timeoutMs?: number): Promise<EventFrame | null>;
   /** The next `approval_requested` event in the workspace. */
   waitForApprovalRequest(workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
+  /** The `approval_resolved` event for one gate. Only an answer given after the wait starts is heard. */
+  waitForApprovalDecision(gateId: string, workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
 }
 
 /** The ledger's token tiers. `input` is uncached input on every provider. */
