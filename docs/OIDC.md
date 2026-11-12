@@ -55,8 +55,8 @@ Client --Authorization: Bearer <api_token>--> maidan-server
               resolve_bearer -> AuthContext { member_id, workspace_id, capabilities }
 ```
 
-- Bootstrap: `POST /workspaces`, `POST /workspaces/:wid/members` when
-  `MAIDAN_BOOTSTRAP=1` (or `AUTH_DISABLED=1` for tests).
+- First admin: `maidan init`, or `MAIDAN_DEV_ADMIN_TOKEN` on a development
+  stack. Every caller is authenticated; there is no unauthenticated mode.
 - Token mint: `POST /workspaces/:wid/members/:mid/tokens` requires existing
   bearer with `token:admin`.
 - Web UI (`/ui/`): a person signs in with the identity provider (authorization
@@ -251,7 +251,7 @@ settings are:
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Optional server-side code-exchange secret. |
 | `MAIDAN_OIDC_REDIRECT_URI` | OIDC | Registered callback, such as `https://maidan.example/auth/oidc/callback`. |
 | `MAIDAN_OIDC_SCOPES` | no | Space-separated scopes; default `openid profile email`. |
-| `MAIDAN_OIDC_MOCK` | no | Deterministic dev/CI provider; rejected with `MAIDAN_ENV=production`. |
+| `MAIDAN_OIDC_MOCK` | no | Test builds only: a deterministic provider for the server's own tests. A build that ships has no mock and refuses the variable. |
 | `MAIDAN_OIDC_AUTO_PROVISION` | no | `1` permits a new OIDC identity to create a human member; otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member whose handle is that email, on its first sign-in only: a member another identity already signs in as never links. |
 | `MAIDAN_OIDC_EMAILS_VERIFIED` | no | `1` treats an `email` claim that arrives without `email_verified` as verified. Set it only for a provider whose every login proves the address, such as Cloudflare Access with the emailed one-time code as its only login method. An explicit `email_verified: false` stays unverified. |
@@ -271,8 +271,7 @@ settings are:
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |
 | `MAIDAN_COOKIE_SECURE` | no | `1` adds `Secure` to session cookies; production also enables it. |
 
-`MAIDAN_OIDC_MOCK=1` uses a deterministic callback path and must not be used in
-production. For a real provider, boot performs discovery and retains the
+`MAIDAN_OIDC_MOCK=1` exists only in test builds. For a real provider, boot performs discovery and retains the
 provider's logout endpoint when one is advertised.
 
 ## Recipe: Keycloak

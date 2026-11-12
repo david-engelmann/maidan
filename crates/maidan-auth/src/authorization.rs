@@ -68,12 +68,12 @@ impl AuthorizationDecision {
     ) -> Self {
         Self {
             surface,
-            principal: (!auth.bypass).then_some(auth.actor_id()),
+            principal: Some(auth.actor_id()),
             subject: auth.delegation_grant_id().map(|_| auth.member_id()),
             grant_id: auth.delegation_grant_id().map(|id| id.0),
             action: bounded_action(capability),
             outcome,
-            resource_workspace: (!auth.bypass).then_some(auth.workspace_id()),
+            resource_workspace: Some(auth.workspace_id()),
         }
     }
 
@@ -175,9 +175,11 @@ pub async fn record_delegated_authorization(
     // response exists, so the outcome is known. It re-enters the scope so the
     // row records the delegate as actor and the member as subject, like every
     // other audit row, instead of falling back to "the actor acted for itself".
-    let written =
-        maidan_store::attribution::with_attribution(auth.attribution(), store.append_audit(event))
-            .await;
+    let written = maidan_store::attribution::with_attribution(
+        Some(auth.attribution()),
+        store.append_audit(event),
+    )
+    .await;
     if let Err(err) = written {
         tracing::error!(
             target: "audit",

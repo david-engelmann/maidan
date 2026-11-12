@@ -44,7 +44,7 @@ pub async fn suspend_workspace(
 ) -> ApiResult<Json<WorkspaceSuspension>> {
     cap(&auth, OPERATOR_GLOBAL)?;
     let workspace_id = WorkspaceId(id);
-    if !auth.bypass && workspace_id == auth.workspace_id() {
+    if workspace_id == auth.workspace_id() {
         return Err(ApiError::BadRequest(
             "an operator may not suspend its own workspace".into(),
         ));
@@ -55,7 +55,7 @@ pub async fn suspend_workspace(
             "reason is 1 to {REASON_LIMIT} characters"
         )));
     }
-    let actor = (!auth.bypass).then_some(auth.actor_id());
+    let actor = Some(auth.actor_id());
     let suspension = state
         .store
         .suspend_workspace(
@@ -84,7 +84,7 @@ pub async fn lift_workspace_suspension(
 ) -> ApiResult<Json<LiftedSuspension>> {
     cap(&auth, OPERATOR_GLOBAL)?;
     let workspace_id = WorkspaceId(id);
-    let actor = (!auth.bypass).then_some(auth.actor_id());
+    let actor = Some(auth.actor_id());
     let lifted = state
         .store
         .lift_workspace_suspension(

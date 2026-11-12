@@ -184,7 +184,6 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

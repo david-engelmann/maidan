@@ -40,8 +40,8 @@ CRATES = [
     "maidan-cli",
 ]
 # Test files that stay their own binary, each with a [[test]] entry in the
-# crate's Cargo.toml. bootstrap_absent_e2e runs under --no-default-features,
-# which the rest of the suite was never written to build under.
+# crate's Cargo.toml. bootstrap_absent_e2e is run by name in ci.yml's bootstrap
+# strip job, apart from `it`, which that job builds with the bootstrap feature.
 # maidan-search's sqlite_vec files need the sqlite-vec feature
 # (required-features), which the default build of `it` leaves out.
 OWN_BINARY = {

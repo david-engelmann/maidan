@@ -89,6 +89,10 @@ helm template "${prod[@]}" --set existingSecret=maidan-secrets >/dev/null
 # rather than ship a pod that never boots.
 refuses "a production install needs MAIDAN_SESSION_SECRET" \
   "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}"
+# No config key waives it: the server has no unauthenticated mode to fall back on.
+refuses "a production install needs MAIDAN_SESSION_SECRET" \
+  "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}" \
+  --set config.AUTH_DISABLED=1
 helm template "${prod[@]}" -f "${chart}/values-cert-manager.yaml" \
   --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 # A production render names a release image, never the local development one.

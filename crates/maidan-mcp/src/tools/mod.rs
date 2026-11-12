@@ -58,19 +58,15 @@ mod agent_gap_tests;
 
 pub use catalog::{catalog, declared_arguments};
 
-/// The tool catalog filtered to the tools the caller may invoke. Bypass callers
-/// (auth disabled) see everything; otherwise a tool whose required capability
-/// the caller lacks is omitted, so a capability-scoped agent gets a smaller,
-/// relevant `tools/list` — fewer tokens and no tools it would only get 403s
-/// from. The unfiltered [`catalog`] is unchanged (contract tests +
+/// The tool catalog filtered to the tools the caller may invoke. A tool whose
+/// required capability the caller lacks is omitted, so a capability-scoped
+/// agent gets a smaller, relevant `tools/list` — fewer tokens and no tools it
+/// would only get 403s from. The unfiltered [`catalog`] is unchanged (contract tests +
 /// full-capability callers rely on it).
 pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
     catalog()
         .into_iter()
         .filter(|tool| {
-            if auth.bypass {
-                return true;
-            }
             tool.get("name")
                 .and_then(|n| n.as_str())
                 .and_then(|name| required_capability(name).ok())
@@ -592,7 +588,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
 /// same error. Anything more specific would confirm that a member id exists on
 /// this instance.
 fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Result<(), McpError> {
-    if auth.bypass || !MEMBER_SCOPED_TOOLS.contains(&name) {
+    if !MEMBER_SCOPED_TOOLS.contains(&name) {
         return Ok(());
     }
     let Some(claimed) = args
@@ -751,9 +747,8 @@ pub async fn dispatch(
     // Admitted: the capability, the workspace's parking place and the
     // allowance were checked before dispatch, and the arguments and id
     // access just now. Only then does a wait stop holding the request's
-    // in-flight permit. An auth-disabled caller holds no parking place, so it
-    // keeps its permit (RED-008).
-    if crate::parked_waits::parks(name) && !auth.bypass {
+    // in-flight permit (RED-008).
+    if crate::parked_waits::parks(name) {
         crate::parked_waits::release_permit();
     }
     let store = &server.store;
@@ -990,7 +985,7 @@ async fn dispatch_rest(
         "post_message" => message::post_message(server, auth, args).await,
         "edit_message" => message::edit_message(server, auth, args).await,
         "tombstone_message" => message::tombstone_message(server, auth, args).await,
-        "list_message_edits" => message::list_message_edits(store, auth, args).await,
+        "list_message_edits" => message::list_message_edits(store, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,
         "cast_vote" => social::cast_vote(server, auth, args).await,
@@ -1048,11 +1043,7 @@ async fn dispatch_rest(
             // query, so the pack needs no per-thread access check after it
             // is built. Filter before serialize so the bytes stay the
             // canonical struct order REST uses.
-            let reader_id = if auth.bypass {
-                None
-            } else {
-                Some(auth.member_id())
-            };
+            let reader_id = Some(auth.member_id());
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
             Ok(content_json(&packed))
@@ -1080,8 +1071,7 @@ async fn dispatch_rest(
 }
 
 /// The workspace a thread belongs to, which an audit row about it is stamped
-/// with. The pre-dispatch gate has already held it to the caller's workspace;
-/// under bypass it can be any.
+/// with. The pre-dispatch gate has already held it to the caller's workspace.
 pub(super) async fn thread_workspace(
     store: &dyn maidan_store::Store,
     thread_id: maidan_types::ThreadId,
@@ -1099,9 +1089,6 @@ pub(super) async fn requested_member(
     auth: &AuthContext,
     id: maidan_types::MemberId,
 ) -> Result<maidan_types::Member, McpError> {
-    if auth.bypass {
-        return Ok(store.get_member(id).await?);
-    }
     Ok(store.get_member_in(auth.workspace_id(), id).await?)
 }
 
@@ -1141,12 +1128,6 @@ mod catalog_filter_tests {
             .iter()
             .filter_map(|t| t["name"].as_str().map(str::to_string))
             .collect()
-    }
-
-    #[test]
-    fn bypass_sees_the_whole_catalog() {
-        let auth = AuthContext::bypass();
-        assert_eq!(catalog_for(&auth).len(), catalog().len());
     }
 
     #[test]

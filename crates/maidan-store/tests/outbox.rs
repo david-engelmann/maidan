@@ -273,7 +273,7 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
 /// replica relay every row. Downstream that is not a benign duplicate:
 /// `maidan_webhook_deliveries` has no unique on `(subscription_id, log_id)`, so
 /// each tenant endpoint got N POSTs, and `fsm_hook_worker` re-fired every hook
-/// through `dispatch_mcp_tool` with `AuthContext::bypass()`.
+/// through `dispatch_mcp_tool`.
 #[tokio::test]
 async fn concurrent_relays_claim_disjoint_outbox_rows() {
     let Some((_container, pool)) = postgres_pool().await else {

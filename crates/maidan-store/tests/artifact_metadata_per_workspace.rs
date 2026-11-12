@@ -111,8 +111,8 @@ async fn run_suite(store: &dyn Store) {
         Err(StoreError::NotFound)
     ));
 
-    // An artifact no workspace holds a ref to (an unscoped, bypass upload) has
-    // no tenant to protect and reads as the shared row from anywhere.
+    // An artifact no workspace holds a ref to has no tenant to protect and
+    // reads as the shared row from anywhere.
     let unscoped = "b".repeat(64);
     store
         .upsert_artifact_with_event(

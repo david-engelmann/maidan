@@ -43,6 +43,10 @@ fn env_flag(name: &'static str) -> bool {
 #[derive(Clone)]
 pub struct OidcSettings {
     pub enabled: bool,
+    /// Sign in as whoever the callback names, with no identity provider. A
+    /// test build's only: a release build has no such field, refuses
+    /// `MAIDAN_OIDC_MOCK`, and [`Self::is_mock`] is `false` there.
+    #[cfg(any(test, feature = "test-support"))]
     pub mock: bool,
     pub issuer: String,
     pub redirect_uri: String,
@@ -81,26 +85,59 @@ pub struct OidcSettings {
     pub terms_url: Option<String>,
 }
 
+/// `MAIDAN_OIDC_MOCK`, in a test build: refused under production.
+#[cfg(any(test, feature = "test-support"))]
+fn mock_from_env() -> Result<bool, ConfigError> {
+    let mock = env_flag("MAIDAN_OIDC_MOCK");
+    if mock && crate::config::is_production() {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_OIDC_MOCK",
+            "cannot be set when MAIDAN_ENV=production".into(),
+        ));
+    }
+    Ok(mock)
+}
+
+/// `MAIDAN_OIDC_MOCK`, in a build that runs: there is no mock identity
+/// provider here, so the variable is refused by name rather than ignored.
+#[cfg(not(any(test, feature = "test-support")))]
+fn mock_from_env() -> Result<bool, ConfigError> {
+    if std::env::var_os("MAIDAN_OIDC_MOCK").is_some() {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_OIDC_MOCK",
+            "this build has no mock identity provider (it exists only in test builds); \
+             unset it and configure MAIDAN_OIDC_ISSUER"
+                .into(),
+        ));
+    }
+    Ok(false)
+}
+
 impl OidcSettings {
+    /// Whether sign-in skips the identity provider. Always `false` outside a
+    /// test build.
+    pub fn is_mock(&self) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            self.mock
+        }
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            false
+        }
+    }
+
     pub fn from_env() -> Result<Option<Self>, ConfigError> {
         if !env_flag("MAIDAN_OIDC_ENABLED") {
             return Ok(None);
         }
 
-        if std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
-            && env_flag("MAIDAN_OIDC_MOCK")
-        {
-            return Err(ConfigError::Invalid(
-                "MAIDAN_OIDC_MOCK",
-                "cannot be set when MAIDAN_ENV=production".into(),
-            ));
-        }
+        let mock = mock_from_env()?;
 
         if std::env::var("MAIDAN_SESSION_SECRET").is_err() {
             return Err(ConfigError::Missing("MAIDAN_SESSION_SECRET"));
         }
 
-        let mock = env_flag("MAIDAN_OIDC_MOCK");
         let issuer = std::env::var("MAIDAN_OIDC_ISSUER").unwrap_or_else(|_| {
             if mock {
                 "https://mock.idp.local".to_string()
@@ -178,6 +215,7 @@ impl OidcSettings {
 
         Ok(Some(Self {
             enabled: true,
+            #[cfg(any(test, feature = "test-support"))]
             mock,
             issuer,
             redirect_uri,
@@ -218,7 +256,7 @@ pub struct OidcRuntime {
 impl OidcRuntime {
     pub async fn init(settings: OidcSettings) -> Result<Self, OidcInitError> {
         let session_secret = session_secret_from_env()?;
-        if settings.mock {
+        if settings.is_mock() {
             return Ok(Self {
                 settings,
                 session_secret,

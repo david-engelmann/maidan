@@ -103,7 +103,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     // clients, and neither protocol defines this header.
     let path = req.uri().path();
     let own_envelope = path.starts_with("/scim/") || path.starts_with("/a2a/");
-    if !writes || auth.bypass || own_envelope {
+    if !writes || own_envelope {
         return next.run(req).await;
     }
     let Some(key) = raw

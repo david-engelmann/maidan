@@ -79,8 +79,7 @@ impl SpawnDenial {
     /// The `ThreadSpawnDenied` observability event for this refusal. `actor` is
     /// who tried to spawn — the one fact the store's gate can't know on the
     /// thread-create path — so REST and MCP build the same event from the same
-    /// denial. `None` is an unattributed caller (bypass auth), matching how the
-    /// audit trail records its `actor_id`.
+    /// denial.
     pub fn denied_event(&self, actor: Option<MemberId>) -> Event {
         Event::ThreadSpawnDenied {
             occurred_at: Utc::now(),

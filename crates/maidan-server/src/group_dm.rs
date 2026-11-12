@@ -73,7 +73,7 @@ pub async fn get_group_dm(
         .await?;
     ensure_workspace(&auth, group.workspace_id)?;
     // Only a participant may read a group DM's roster — see `get_dm`.
-    if !auth.bypass && !group.member_ids.contains(&auth.member_id()) {
+    if !group.member_ids.contains(&auth.member_id()) {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));

@@ -179,7 +179,7 @@ a key two extra sources both hold.
 {{- fail (printf "secrets.%s is empty: set it, or set existingSecret to a Secret that holds %s" $k $k) }}
 {{- end }}
 {{- end }}
-{{- /* With sign-in on, the server refuses to boot without a session secret, so
+{{- /* The server always authenticates and signs sessions with this secret, so
 a production render that supplies none would ship a pod that never starts. */}}
 {{- $sessionFromExtra := false }}
 {{- range .Values.secretFiles.extra }}
@@ -187,7 +187,7 @@ a production render that supplies none would ship a pod that never starts. */}}
 {{- $sessionFromExtra = true }}
 {{- end }}
 {{- end }}
-{{- if not (or .Values.existingSecret .Values.extraEnvFrom $sessionFromExtra (hasKey .Values.secrets "MAIDAN_SESSION_SECRET") (hasKey .Values.config "AUTH_DISABLED")) }}
+{{- if not (or .Values.existingSecret .Values.extraEnvFrom $sessionFromExtra (hasKey .Values.secrets "MAIDAN_SESSION_SECRET")) }}
 {{- fail "a production install needs MAIDAN_SESSION_SECRET (32 bytes or more, `openssl rand -hex 32`): set secrets.MAIDAN_SESSION_SECRET, or put it in existingSecret" }}
 {{- end }}
 {{- end }}

@@ -34,7 +34,6 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    // auth ENABLED — the fifth positional arg is `auth_disabled`.
     let mut state = AppState::new(
         store.clone(),
         artifacts,
@@ -42,7 +41,6 @@ async fn spawn() -> (
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        true,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

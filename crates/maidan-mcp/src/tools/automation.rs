@@ -27,14 +27,12 @@ pub(super) async fn register_slash_command(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    if !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            WORKSPACE_WRITE,
-        )
-        .map_err(McpError::from)?;
-    }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        WORKSPACE_WRITE,
+    )
+    .map_err(McpError::from)?;
     let a: RegisterSlashCommandArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
@@ -66,7 +64,6 @@ pub(super) async fn register_slash_command(
         // owns, or the command would be registrable and permanently unrunnable.
         SlashHandlerKind::Wasi => maidan_auth::resolve_wasi_handler_target(
             store.as_ref(),
-            auth,
             workspace_id,
             &a.handler_target,
         )
@@ -132,14 +129,14 @@ async fn record_slash_registration(
 ) {
     let event = NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
-        actor_id: (!auth.bypass).then_some(auth.actor_id()),
+        actor_id: Some(auth.actor_id()),
         action: "slash_command.create".into(),
         target_kind: Some("slash_command".into()),
         target_id: Some(command.id.0),
         metadata: json!({
             "workspace_id": workspace_id.0,
             "created_by_token": auth.token_id().map(|token| token.0),
-            "member_id": (!auth.bypass).then_some(auth.member_id().0),
+            "member_id": Some(auth.member_id().0),
         }),
     };
     if let Err(err) = store.append_audit(event).await {
@@ -158,14 +155,12 @@ pub(super) async fn list_slash_commands(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    if !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            WORKSPACE_READ,
-        )
-        .map_err(McpError::from)?;
-    }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        WORKSPACE_READ,
+    )
+    .map_err(McpError::from)?;
     let a: ListSlashCommandsArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
@@ -235,14 +230,12 @@ pub(super) async fn register_fsm_hook(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    if !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            WORKSPACE_ADMIN,
-        )
-        .map_err(McpError::from)?;
-    }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        WORKSPACE_ADMIN,
+    )
+    .map_err(McpError::from)?;
     let a: RegisterFsmHookArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
@@ -258,14 +251,12 @@ pub(super) async fn register_fsm_hook(
             // The hook runs the tool as this credential, so a tool it may not
             // call would only ever be refused when the hook fires.
             let required = required_capability(&a.handler_target)?;
-            if !auth.bypass {
-                maidan_auth::require_observed_capability(
-                    auth,
-                    maidan_auth::AuthorizationSurface::Mcp,
-                    required,
-                )
-                .map_err(McpError::from)?;
-            }
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                required,
+            )
+            .map_err(McpError::from)?;
         }
         SlashHandlerKind::Wasi => {
             return Err(McpError::InvalidParams(
@@ -329,14 +320,12 @@ pub(super) async fn list_fsm_hooks(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    if !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            WORKSPACE_READ,
-        )
-        .map_err(McpError::from)?;
-    }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        WORKSPACE_READ,
+    )
+    .map_err(McpError::from)?;
     let a: ListFsmHooksArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)

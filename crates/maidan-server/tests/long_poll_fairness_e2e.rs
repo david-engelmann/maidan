@@ -8,7 +8,7 @@
 //!   the typed rate-limit error, while another workspace's wait still parks.
 //! - A wait gives its permit back only once it is admitted. One refused for a
 //!   missing capability, another workspace's thread, or a full workspace
-//!   keeps its permit until it answers; an auth-disabled caller keeps it too.
+//!   keeps its permit until it answers.
 
 use std::{
     sync::{
@@ -427,15 +427,6 @@ async fn a_wait_gives_back_its_permit_only_once_it_is_admitted() {
     let (released, body) = releases(&h, &auth, wait_request(mine.thread, 50)).await;
     assert!(rate_limited(&body), "{body}");
     assert_eq!(released, 0, "a wait refused at the cap kept its permit");
-
-    // An auth-disabled caller holds no parking place, so it keeps its permit.
-    let (released, _) = releases(
-        &h,
-        &maidan_auth::AuthContext::bypass(),
-        wait_request(mine.thread, 50),
-    )
-    .await;
-    assert_eq!(released, 0, "an auth-disabled wait gave back its permit");
 
     for handle in parked {
         handle.await.unwrap();

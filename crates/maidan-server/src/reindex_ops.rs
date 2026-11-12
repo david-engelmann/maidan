@@ -80,11 +80,9 @@ pub async fn start_reindex_embeddings(
             state.store.get_workspace(wid).await?;
             // A workspace past its embedding allowance cannot re-embed
             // itself: that is the same provider work the indexer refuses it.
-            if !auth.bypass {
-                state
-                    .usage_meters
-                    .refuse(wid, maidan_types::UsageMeter::EmbeddingCalls)?;
-            }
+            state
+                .usage_meters
+                .refuse(wid, maidan_types::UsageMeter::EmbeddingCalls)?;
         }
         // Every workspace's embeddings: an instance operator's call, not
         // one workspace admin's (`token:admin` is scoped to its workspace).
@@ -98,7 +96,7 @@ pub async fn start_reindex_embeddings(
     };
     // A workspace's own reindex is metered and stops at the cutoff batch by
     // batch; an operator's is not.
-    let metered = workspace_id.is_some() && !auth.bypass;
+    let metered = workspace_id.is_some();
 
     let job_id = Uuid::now_v7();
     let model = state.embedding_provider.model_name().to_string();
@@ -122,11 +120,7 @@ pub async fn start_reindex_embeddings(
     let provider = state.embedding_provider.clone();
     let store = state.store.clone();
     let meters = state.usage_meters.clone();
-    let actor_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id())
-    };
+    let actor_id = Some(auth.member_id());
     let audit_workspace = workspace_id.map(|w| w.0);
     let mut job_clone = job.clone();
     maidan_store::attribution::spawn(async move {

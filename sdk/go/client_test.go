@@ -83,7 +83,7 @@ func unique(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixNano(), seedID.Add(1))
 }
 
-// seed creates an isolated queue in the token's bootstrap workspace.
+// seed creates an isolated queue in the token's workspace.
 func seed(t *testing.T, c *Client) (wid, memberID string, channel *Channel, thread *Thread) {
 	t.Helper()
 	wid = os.Getenv("MAIDAN_WORKSPACE")
@@ -291,15 +291,21 @@ func TestSubscribeDeliversAMessage(t *testing.T) {
 	}
 }
 
-func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
-	// The first thing an integrator does after `maidan init`.
+func TestAgentsCreateAddsAnAgentWithItsWorkerToken(t *testing.T) {
 	c := testClient(t)
 	wid := os.Getenv("MAIDAN_WORKSPACE")
 	handle := unique("provisioned")
 
-	member := must(c.Members.Create(wid, handle, MemberAgent, ""))
-	if member.Handle != handle || member.Kind != MemberAgent {
+	created := must(c.Agents.Create(wid, handle, "Provisioned"))
+	member, token := created.Member, created.Token
+	if member.Handle != handle || member.Kind != MemberAgent || member.DisplayName == nil || *member.DisplayName != "Provisioned" {
 		t.Fatalf("unexpected member %+v", member)
+	}
+	if token.Secret == "" || token.MemberID != member.ID || token.WorkspaceID != wid {
+		t.Fatalf("unexpected worker token for %s: member %s, workspace %s", member.ID, token.MemberID, token.WorkspaceID)
+	}
+	if ws := must(New(c.BaseURL, token.Secret).Workspaces.Get(wid)); ws.ID != wid {
+		t.Fatalf("the worker token read workspace %s", ws.ID)
 	}
 	found := false
 	for _, m := range must(c.Members.List(wid)) {
@@ -405,7 +411,11 @@ func TestEveryDocumentedOperationReturnsItsDeclaredModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fresh := must(c.Members.Create(wid, unique("typed"), "", ""))
+	created := must(c.Agents.Create(wid, unique("typed"), ""))
+	if created.Member.Kind != MemberAgent || created.Token.MemberID != created.Member.ID {
+		t.Fatalf("created agent %+v", created.Member)
+	}
+	fresh := created.Member
 	must(c.Tokens.Mint(wid, fresh.ID, []string{"workspace:read"}, nil))
 	must(c.Tokens.List(wid, fresh.ID))
 
@@ -448,9 +458,8 @@ func TestTheServersProblemTypesArriveAsTheirErrorTypes(t *testing.T) {
 	check("bad token", err, &un, 401, "unauthorized")
 	_, err = c.Threads.Transition(thread.ID, "fly")
 	check("bad action", err, &br, 400, "bad-request")
-	// Bootstrap creates only the first workspace; `maidan init` already made it.
-	_, err = c.Workspaces.Create("second")
-	check("second workspace", err, &fb, 403, "forbidden")
+	_, err = c.Workspaces.Get(os.Getenv("MAIDAN_OTHER_WORKSPACE"))
+	check("another workspace", err, &fb, 403, "forbidden")
 	_, err = c.Workspaces.Import(bundle, ImportRestore)
 	check("restore over itself", err, &cfl, 409, "conflict")
 }

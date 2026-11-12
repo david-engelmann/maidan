@@ -1,5 +1,5 @@
-//! Operator DLQ for the durable projector egress. Auth ENABLED — `token:admin`
-//! is the whole point of the surface, so a bypass run would prove nothing.
+//! Operator DLQ for the durable projector egress. `token:admin` is the whole
+//! point of the surface.
 //! Covers the loop an operator actually walks: a delivery dead-letters, it
 //! shows up with the surface's own error, a requeue makes it deliverable again,
 //! and a workspace-scoped token cannot see any of it.
@@ -59,7 +59,6 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

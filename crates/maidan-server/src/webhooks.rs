@@ -243,7 +243,7 @@ pub async fn set_mention_webhook(
         &state,
         maidan_types::NewAuditEvent {
             scope: maidan_types::AuditScope::Workspace(workspace_id),
-            actor_id: (!auth.bypass).then_some(auth.actor_id()),
+            actor_id: Some(auth.actor_id()),
             action: "mention_webhook.set".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),

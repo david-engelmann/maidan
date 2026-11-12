@@ -7,9 +7,8 @@
 //! away, its member not deactivated, in the registration's workspace, and
 //! still holding the capability registering takes. Revoking or deactivating
 //! the member who made a registration therefore stops it, where before it
-//! fired until someone found and revoked it. A registration with no token runs
-//! only on a server with auth disabled, the one place it is made without one.
-//! FSM hooks follow the same rule in `fsm_hooks.rs`.
+//! fired until someone found and revoked it. A registration with no token
+//! never fires. FSM hooks follow the same rule in `fsm_hooks.rs`.
 
 use maidan_auth::AuthContext;
 use maidan_types::{ApiTokenId, AuditScope, NewAuditEvent, WorkspaceId};
@@ -44,12 +43,10 @@ pub async fn creator_authority(
     workspace_id: WorkspaceId,
     capability: &str,
 ) -> Result<AuthContext, NotActing> {
+    // A registration made on a browser session has no token to act as, and
+    // nothing may act for nobody, so it never fires.
     let Some(token_id) = created_by_token else {
-        return if state.auth_disabled {
-            Ok(AuthContext::bypass())
-        } else {
-            Err(NotActing::Ended("registered without a token"))
-        };
+        return Err(NotActing::Ended("registered without a token"));
     };
     let auth = match maidan_auth::resolve_token_id(state.store.as_ref(), token_id).await {
         Ok(auth) => auth,
@@ -117,14 +114,14 @@ pub fn registration_event(
 ) -> NewAuditEvent {
     NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
-        actor_id: (!auth.bypass).then_some(auth.actor_id()),
+        actor_id: Some(auth.actor_id()),
         action: format!("{kind}.create"),
         target_kind: Some(kind.into()),
         target_id: Some(target_id),
         metadata: json!({
             "workspace_id": workspace_id.0,
             "created_by_token": auth.token_id().map(|token| token.0),
-            "member_id": (!auth.bypass).then_some(auth.member_id().0),
+            "member_id": Some(auth.member_id().0),
         }),
     }
 }

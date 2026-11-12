@@ -34,8 +34,8 @@ pub async fn create_channel(
         })
         .await?;
     // Auto-add the creator as an admin of a new private channel so they don't
-    // lock themselves out. Bypass callers have no real member.
-    if c.private && !auth.bypass {
+    // lock themselves out.
+    if c.private {
         let actor = auth.actor_id();
         state
             .store
@@ -104,14 +104,6 @@ pub async fn get_channel_boot(
     Ok(Json(boot))
 }
 
-/// The member whose read rule a queue count applies: the caller, unless it
-/// bypasses auth and so may count everything. The channel check passes the
-/// shared `__dm__` channel for every member, so without it that channel's
-/// counts were every member's DMs.
-fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
-    (!auth.bypass).then_some(auth.member_id())
-}
-
 /// Task-queue depth for a channel: ready / assigned / blocked counts of its
 /// open task threads, for an orchestrator deciding whether to scale workers.
 /// `workspace:read` + channel access; only threads the caller may read count.
@@ -124,9 +116,11 @@ pub async fn get_channel_queue_depth(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    // The channel check passes the shared `__dm__` channel for every member, so
+    // without the reader that channel's counts were every member's DMs.
     let depth = state
         .store
-        .channel_queue_depth(channel.id, queue_reader(&auth))
+        .channel_queue_depth(channel.id, Some(auth.member_id()))
         .await?;
     Ok(Json(depth))
 }
@@ -155,7 +149,7 @@ pub async fn get_workspace_queue_depth(
         .store
         .workspace_queue_depth(
             workspace_id,
-            queue_reader(&auth),
+            Some(auth.member_id()),
             repo.as_deref(),
             q.engine,
             q.kind,
@@ -210,7 +204,7 @@ pub async fn get_channel_occupancy(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let occupancy = state
         .store
-        .channel_occupancy(channel.id, queue_reader(&auth))
+        .channel_occupancy(channel.id, Some(auth.member_id()))
         .await?;
     Ok(Json(occupancy))
 }
@@ -229,7 +223,7 @@ pub async fn get_workspace_occupancy(
     state.store.get_workspace(workspace_id).await?;
     let occupancy = state
         .store
-        .workspace_occupancy(workspace_id, queue_reader(&auth))
+        .workspace_occupancy(workspace_id, Some(auth.member_id()))
         .await?;
     Ok(Json(occupancy))
 }

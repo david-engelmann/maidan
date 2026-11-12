@@ -123,7 +123,6 @@ fn token_context_grants_only_its_listed_capabilities() {
         .expect_err("missing cap must be forbidden");
     assert!(matches!(err, maidan_auth::AuthError::Forbidden(_)));
     assert!(err.to_string().contains(WORKSPACE_WRITE));
-    assert!(!ctx.bypass);
     assert!(ctx.app_installation_id().is_none());
 }
 
@@ -148,18 +147,6 @@ fn session_context_has_no_token_id() {
     assert!(ctx.token_id().is_none());
     assert!(ctx.has_capability(WORKSPACE_READ));
     assert!(!ctx.has_capability(MESSAGE_POST));
-}
-
-#[test]
-fn bypass_context_satisfies_every_capability_and_workspace() {
-    let ctx = AuthContext::bypass();
-    assert!(ctx.bypass);
-    // bypass short-circuits every capability check, including unknown strings.
-    assert!(ctx.has_capability(TOKEN_ADMIN));
-    assert!(ctx.has_capability("anything:at:all"));
-    assert!(ctx.require_capability(FEDERATION_ADMIN).is_ok());
-    // ...and any workspace.
-    assert!(ctx.ensure_workspace(workspace()).is_ok());
 }
 
 #[test]

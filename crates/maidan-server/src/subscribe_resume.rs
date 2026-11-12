@@ -7,6 +7,7 @@ use crate::config::ConfigError;
 use crate::session::session_secret_from_env;
 
 /// Fixed secret for integration tests (`AppState::for_tests`).
+#[cfg(any(test, feature = "test-support"))]
 pub const TEST_SUBSCRIBE_RESUME_SECRET: &[u8] = b"test-subscribe-resume-secret-32b!!";
 
 pub fn secret_from_env() -> Result<Arc<[u8]>, ConfigError> {

@@ -230,7 +230,6 @@ export class Client {
     this.lastRoomLsn = undefined;
 
     this.workspaces = {
-      create: (name) => this._req("POST", "/workspaces", { name }),
       get: (id) => this._req("GET", `/workspaces/${id}`),
       import: (bundle, mode) =>
         this._req("POST", `/workspaces/import${mode ? `?mode=${mode}` : ""}`, bundle),
@@ -238,16 +237,15 @@ export class Client {
       /** Every event after `query.after_id`, page by page (`limit` per page, at most MAX_PAGE_SIZE). */
       eventsAll: (id, query = {}) => this._eventsAll(id, query),
     };
-    // Provisioning. `members.create` is the unauthenticated seed route, present
-    // only on a server built with the `bootstrap` feature; production turns it
-    // off and provisions through `maidan init` plus `tokens.mint`.
-    this.members = {
-      create: (wid, handle, kind = "agent", displayName) =>
-        this._req("POST", `/workspaces/${wid}/members`, {
+    // Needs `token:admin`. The worker token's secret is in the response once.
+    this.agents = {
+      create: (wid, handle, displayName) =>
+        this._req("POST", `/workspaces/${wid}/agents`, {
           handle,
-          kind,
           ...(displayName === undefined ? {} : { display_name: displayName }),
         }),
+    };
+    this.members = {
       list: (wid) => this._req("GET", `/workspaces/${wid}/members`),
     };
     // Needs `token:admin` — the capability `maidan init`'s admin token carries.
