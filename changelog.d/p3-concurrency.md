@@ -1,4 +1,0 @@
-### Usage is reported only through the claim fence, and a child's parent is checked in its own transaction
-
-- **Removed:** the unfenced `Store::report_thread_usage` and both backends' `report_usage`. Every caller already went through the claim-fenced `report_accounted_usage`; the old path read the holder without a lock and cleared the claim by thread id alone, so a stale holder could stop the next holder's run (CONC-001).
-- **Fixed:** a child thread's parent is checked inside the insert's transaction, holding the parent row (`FOR SHARE` on Postgres, the write lock on SQLite), so a parent archived while the child is being created refuses it instead of taking it. A parent in another channel or workspace now reads as not found, like an unknown id, instead of a distinct invalid-input refusal that told a caller the id exists (CONC-002).

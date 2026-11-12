@@ -7,6 +7,235 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [450.0.0] — 2026-11-12
+
+This release carries 31 changes: a superseded task hands its pull request to the round that replaces it; an over-permission scan of the MCP tool surface; thread transitions follow a store model; the seat runner runs Claude Code, Gemini CLI and ZCode seats; one delivery per event, however many replicas run; the MCP id guard fails closed; every registration has an owner; every GitHub Action pinned to a commit; one visibility rule for every read; worker timings are constants, and the configuration reference is checked; typed references are refused when they break the room's rules; the console says loading, empty and failed the same way everywhere; the Board opens on one toolbar row; an accessibility gate over every console place; security tails from the November audit (R26 P3); email linking claims a member on its first sign-in only; usage is reported only through the claim fence, and a child's parent is checked in its own transaction; channel listing, the search pre-filter and search hit names take one query; one child takes a parent's last spawn slot; a read-only token can no longer open group DMs or approval gates; production deployments run in production mode; a caller is something a credential proved; a retried write is the same write, and offline says so; a group DM's opener is one of its members; bridged text carries a server-set provenance and posts once per delivery; HTTP metrics that a client cannot inflate, behind a token in production; a read-only token can no longer change personal state; existing tokens keep it; fewer fixed sleeps in the test suites; coverage floors re-measured and raised; every caller is authenticated; the default media quota is held by tests.
+
+### A superseded task hands its pull request to the round that replaces it
+
+- **Fixed:** closing a task as `superseded` with `duplicate_of` no longer withdraws its pull request. The open pull requests the change flow opened for it (not a watched or session-registered one) move to the successor in the same transaction (the change-pull row and its deploys), keep their merge-queue label, and answer to the successor from then on: its `no_change` round posts its check on their head, a changed round pushes to their branch, and its own cancel or close withdraws them, unless it too is superseded by a successor, which takes them on. The superseded task's workers count as the successor's for its review gate, and a merge before the successor has an owner or a result stays unsettled until it does. Each move is audited as `thread.pull_handed_off`, listed as `handed_pulls` on the close's audit row, and noticed on both threads. A successor that is not open or in review, or already tracks an open pull request in the same repository, refuses the close with `409` naming the pull request. Superseded with no successor, abandoned, duplicate and cancel still withdraw. A follow-up round that re-ran a check on the same head used to strand its pull request, closed, until a person reopened it.
+- **Added:** `POST /channels/{cid}/threads` and MCP `create_thread` take `supersedes`: in one transaction the new thread is created and the named thread is closed as superseded by it, with its dependents and pull requests handed over. The old thread does not hold its ticket against the new one, so a workspace that keeps `[linear_issue, repo]` unique lets a round be replaced without cancelling it first. It needs `thread:transition` and an open or in-review thread of the same workspace that the caller may close; any refusal creates nothing.
+- **Fixed:** the thread answerable for a pull request (`change_pull_thread`) ignores deliveries made before the pull request moved threads, so the merge-path guards and the withdrawal see the successor, not the closed task. Migration 0233 adds `maidan_change_pulls.handed_at`.
+
+### An over-permission scan of the MCP tool surface
+
+- **Added:** `mcp_over_permission_contract` checks that every MCP tool
+  declares a known capability, that a read-only tool declares a read
+  capability (or is named in the privileged-read pin), and that a
+  mutating tool does not declare a read capability unless it is named
+  in the read-cap-write pin. An unpinned mutating tool may declare any
+  non-read capability. A fixed list of privileged store calls is
+  checked one handler-call level deep against the declaration;
+  reviewed exceptions (holder-side token mint and rotate, and seating
+  the creator of a private channel) are named and pinned.
+
+### Thread transitions follow a store model
+
+- **Added:** `thread_transition_state_machine` runs random sequences of thread lifecycle actions (`start_review`, `request_changes`, `close`, `archive`), including a parent/child pair, against a small model and the real SQLite and Postgres stores. After every step each thread's state and transition log match the model. An illegal action, or one that would put a child ahead of its parent, changes nothing.
+
+### The seat runner runs Claude Code, Gemini CLI and ZCode seats
+
+- **Added:** `examples/seat-runner` takes `[harness] name = "claude"` (Claude Code, `claude -p` with Maidan inline in `--mcp-config` and its Bash sandbox on) and `"gemini"` (Gemini CLI, `gemini -p --sandbox` with a per-run 0600 settings file that names the token's variable, removed after the run and swept after a killed runner), beside `codex`. The seat token is on no command line and in no file a run leaves.
+- **Added:** `[harness] name = "zcode"`, Z.ai's ZCode CLI, the GLM coding plan's native harness: `zcode --prompt --mode guarded`, with its model and key in a per-run 0600 provider file and Maidan in a 0600 runtime config under a private `HOME`, both removed with the run. Guarded, not yolo: ZCode has no sandbox, so its dangerous commands fail instead of running.
+- **Added:** `[harness] provider` and `family`, defaulting per harness (`openai`, `anthropic`, `google`), and `env` and `env_from` for the harness's environment, so a GLM coding-plan seat is Claude Code on z.ai's Anthropic-compatible endpoint with its key read from a named variable. A `claude` seat pointed away from Anthropic while its provider says `anthropic`, or a family other than the one Maidan reads from the provider and model, is refused at startup.
+- **Changed:** `prompt.md` and `review-prompt.md` take `{provider}`, `{harness}`, `{family}`, `{model}` and `{claimant_dir}`, so each run reports its own usage evidence and declines reviews of its own family, instead of always saying `openai` and `codex`.
+
+### One delivery per event, however many replicas run
+
+- **Fixed:** with more than one replica, every webhook endpoint got one POST per replica for each event, every HTTP FSM hook likewise, and every MCP-tool FSM hook ran once per replica: each replica's worker enqueued its own delivery for the event its bus handed it, again on a lag resume from the log, and each replica's poller sent every due row. Webhook deliveries are now kept once per subscription and event and FSM hook deliveries once per hook and event (unique keys, inserted `ON CONFLICT DO NOTHING`, on both backends), an FSM hook's run is claimed per event before any handler runs, and the webhook and automation pollers claim one due row at a time under a 120-second lease (`FOR UPDATE SKIP LOCKED` on Postgres). Migration 0234 removes existing duplicate webhook deliveries, adds `maidan_automation_deliveries.log_id` and the `maidan_fsm_hook_runs` table. On Postgres a delivery made for an event takes the event's `occurred_at` as its `created_at`, so the key holds across the monthly partitions.
+- **Fixed:** two replicas running the email digest sweeper could both email the same digest. Advancing a member's digest watermark is now a compare-and-set on the value the sweep read (`advance_last_digest_at` replaces `set_last_digest_at`), and only the replica whose advance lands sends.
+
+### The MCP id guard fails closed
+
+- **Security:** every id argument an MCP tool's schema declares (`*_id`,
+  `*_ids`, `sha256`, or a `uuid` format) now has one recorded decision:
+  checked before dispatch for channel, thread or message access, held to the
+  caller by the workspace and member gates, or exempt with the reason its
+  handler binds it. A tool with an id argument nobody classified is refused
+  before it runs, where the old name list's default let it through
+  unchecked (MCP-005). Which callers may call which tools is unchanged.
+- **Added:** classification tests for `thread_id` and `message_id` beside the
+  `channel_id` and `member_id` ones, a contract that walks every tool's
+  schema, a planted unclassified tool that dispatch refuses, and a
+  two-tenant check that a thread-scoped tool refuses another workspace's
+  thread.
+
+### Every registration has an owner
+
+- **Security:** a webhook subscription, a slash command and an A2A push config record the API token that registered them and act only while that token could register them again, resolved each time they fire, as an FSM hook has since migration 0232. One whose creator's token is revoked, expired or rotated away, whose member is deactivated, whose token no longer holds `workspace:admin` (a webhook) or `workspace:write` (a command or push config), or that names another workspace's token, does not fire: the skip is recorded as `webhook.skipped`, `slash_command.skipped` or `a2a_push_config.skipped` with the reason, a webhook whose creator's authority has ended is revoked and its queued deliveries quarantined, and such a push config is deleted. The workspace's mention route stops with its subscription. A slash command that does not fire answers `command_creator_not_authorized`.
+- **Security:** a webhook delivers only events its creator may read: a message in a private channel or DM the creator is not in no longer reaches it.
+- **Security:** deactivating or deprovisioning a member over SCIM pauses its task schedules and revokes the share tickets it owns or made and the invites it sent that are still open, in the same transaction, each with an audit row. A schedule whose creator is removed, deactivated or no longer in its private channel is skipped and paused when it comes due, with a `task_schedule.skipped` row.
+- **Added:** registering a webhook, a slash command or an A2A push config, and choosing the mention webhook, writes an audit row naming the member and token (`webhook.create`, `slash_command.create`, `a2a_push_config.create`, `mention_webhook.set`).
+- **Changed:** migration 0236 adds `created_by_token` to `maidan_webhook_subscriptions`, `maidan_slash_commands` and `maidan_a2a_task_push_configs`, and deletes the rows that predate it, which have no creator; an administrator re-registers the ones still wanted. A registration stops when its creator rotates the token it was registered with.
+
+### Every GitHub Action pinned to a commit
+
+- **Security:** every `uses:` in `.github/workflows/` names a full commit SHA with its version as a trailing comment, instead of a tag or branch its owner could move (`trufflesecurity/trufflehog@main` and `dtolnay/rust-toolchain@master` included); the secrets scan also pins its scanner image to 3.99.8. `scripts/check-action-pins.sh` in the `lint` job fails on any unpinned `uses:`.
+- **Security:** the `maidan-postgres` and quickstart images build from base images pinned by digest (`pgvector/pgvector:pg16`, `ubuntu:24.04`).
+- **Added:** `.github/dependabot.yml` opens one grouped pull request a week each for GitHub Actions, Cargo, the npm lockfiles that a build, deploy or CI job installs from, and the Dockerfiles' base images.
+
+### One visibility rule for every read
+
+- **Security:** `GET /dm/{id}/messages` now needs a participant of the DM,
+  as `GET /dm/{id}` and posting to it did; any member with `workspace:read`
+  and the id could read the conversation.
+- **Security:** an artifact is read (`GET /artifacts/{sha}` and `/meta`,
+  their console twins, MCP `get_artifact`, `get_artifact_metadata` and
+  `resources/read`) only when every thread in the workspace that
+  references it, by a thread link, a land-gate verdict or a private or DM
+  message's metadata, is one the caller can read, or the caller uploaded
+  it. Anything else is not found. A sha from a private channel no longer
+  opens its file for the rest of the workspace, and linking it somewhere
+  public does not unlock it.
+- **Security:** the inbox, the mention list, notifications, their unread
+  counts and the manager digest show only what the member can read now,
+  checked when they are read rather than when they were written, so a
+  mention from a private channel the member is not in stays out and
+  leaving a channel or DM takes its rows away. The pending-gate lists
+  (REST, the console and the waiting-on-you inbox on REST and MCP) skip
+  gates on threads the caller cannot read, and reading or answering one
+  (REST answer, console confirmation, MCP `get_approval_gate` and
+  `approval_decide`) answers as not found.
+- **Security:** `ThreadBlocked` events carry their thread and channel, so
+  the event log and live streams show them only to the thread's readers;
+  they were stored as workspace-wide, note included. The event location
+  accessors name every variant, so a new one must say where it happened.
+- **Changed:** `Store::list_pending_approval_gates` takes the reader, and
+  `Store::artifact_visible_to` is the one artifact read rule.
+
+### Worker timings are constants, and the configuration reference is checked
+
+- **Removed:** 17 timing and pacing variables, now constants: `MAIDAN_OUTBOX_POLL_INTERVAL_MS`, `MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS`, `MAIDAN_WEBHOOK_POLL_INTERVAL_MS`, `MAIDAN_AUTOMATION_POLL_INTERVAL_MS`, `MAIDAN_DELIVERY_RECONCILE_MS`, `MAIDAN_MAIL_WORKER_TICK_SECS`, `MAIDAN_EGRESS_WORKER_TICK_SECS`, `MAIDAN_WEBPUSH_WORKER_TICK_SECS`, `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS`, `MAIDAN_PRESENCE_HEARTBEAT_SECS`, `MAIDAN_PRESENCE_TTL_SECS`, `MAIDAN_USAGE_METER_FLUSH_SECS`, `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS`, `MAIDAN_INDEXER_RETRIES`, `MAIDAN_INDEXER_RETRY_BASE_MS`, `MAIDAN_RETENTION_SWEEP_SECS` and `MAIDAN_RETENTION_BATCH`. Each keeps its old default. Boot now refuses them as unknown, so a deployment that set one must drop it.
+- **Added:** `env_registry_contract` fails on a server variable with no row in `docs/Configuration.md` (a secret's `_FILE` form counts with its secret), and on a variable the server reads without the `MAIDAN_` prefix that is not on its closed list of unprefixed names.
+- **Fixed:** `docs/Configuration.md` documents `MAIDAN_ENV_FINGERPRINT`, and Threat Model T13 says who registers each outbound URL instead of calling them all operator-supplied.
+
+### Typed references are refused when they break the room's rules
+
+- **Added:** `add_reference` now refuses a self-link, a cross-workspace
+  link, a link whose source or target does not exist, and a cycle along
+  `depends`, `supersedes`, or `duplicates`. Each refusal is
+  `InvalidInput` (REST 400 / MCP InvalidParams). An identical edge is
+  still a 409. Free-form `Other` relations and mixed thread/message
+  pairs stay allowed.
+
+### The console says loading, empty and failed the same way everywhere
+
+- **Added:** one data-state primitive (`shell/DataState.tsx`): a read is loading, empty, failed or ready, decided by one rule (rows on screen outrank a later failure, a failure outranks loading, loading outranks empty), with the "Could not load …" sentence in one place.
+- **Fixed:** Activity said "Nothing has happened yet" while its first read was still in flight; it now shows skeleton rows until the read answers.
+- **Fixed:** a place no longer fades in from opacity 0, so its skeletons and empty states show from the first frame.
+- **Fixed:** People showed the browser's own "Failed to fetch" when the server was unreachable; its reads now use the shared offline sentence like every other screen.
+- **Fixed:** the invite form showed to a non-admin whenever the invites read failed with anything but 403. The form now shows only once the list has loaded, a failure offers Try again, and a token (or a browser session made from one) without `workspace:admin` is never sent the request (no failed request in the browser console).
+- **Fixed:** a member's work list counted channels whose tasks failed to load as empty; it now names them above the list.
+- **Changed:** the empty Threads, People and Catalog detail panes show the place's own icon instead of a blank steel square. An empty Needs you says so once, in the caught-up card, not also as "Nothing waiting" above it.
+
+### The Board opens on one toolbar row
+
+- **Changed:** the Board's channel, view, search and filters, health chips (unclaimed, stalled and the rest), who is here, the task count and New task now share one toolbar row, which wraps only when the window cannot hold it. Before, they took up to five rows above the first card. Presence shows four names, then "+N more".
+- **Changed:** on a phone the row is one line that scrolls sideways inside itself, with New task first, so the lanes start right under it and the page never scrolls sideways.
+- **Fixed:** wide lanes no longer stretch to the bottom of the window whatever their content; each lane is as tall as its cards.
+
+### An accessibility gate over every console place
+
+- **Added:** `ui-tests/tests/console-axe.spec.ts` runs axe (WCAG 2.2 AA tags) over all eight console places, in the dark and light themes, at 1440 and 390 px, once each place's data has loaded. A serious or critical violation fails `ui tests (playwright)` and names its nodes. Before, axe ran in two specs and on none of the places.
+- **Changed:** the review gallery also shoots 1024 x 768 and 768 x 1024, adds People, Activity, Catalog and Files, and fails on a console error as it already did on a page error.
+- **Fixed:** Files scrolled sideways at tablet widths: the "Choose a task" select took its longest option's width and pushed past its card. Growing row-form fields now shrink with the card.
+
+### Security tails from the November audit (R26 P3)
+
+- **Changed:** a minted API token is `maid_`, 256 bits from the OS in base62 and a 6-digit base62 CRC32 of them, in place of two UUIDv4s (244 bits, no checksum). A secret scanner can now tell a leaked token from a lookalike offline (`maidan_auth::is_checksummed_token`), and the egress guard refuses the new shape in an outbound send. Tokens minted before keep working (SEC-002).
+- **Fixed:** a delegated-token mint holds its grant row (`FOR SHARE`) until it commits, so a mint racing a revoke of the grant on Postgres either waits and is refused or lands before the revoke's cascade reaches it. No live token row is left on a revoked grant. Such a token was already refused at use (SEC-006).
+- **Changed:** registering an app (`POST /workspaces/{wid}/apps`) needs `token:admin`, the capability that installs it, not `workspace:write`. Every app authorization code needs a PKCE S256 `code_challenge`, and every exchange the matching `code_verifier`. A code without a challenge is refused (SEC-016).
+- **Changed:** binding a slash command to an MCP tool that is not read-only needs `channel:admin`, over REST and MCP, because the command runs as whoever types it. A writer could otherwise bind `/help` to a destructive tool and wait for an admin to type it. A read-only tool still needs only `workspace:write` (RED-004).
+- **Fixed:** a federated event whose channel or thread id names a channel or thread on this server is refused and counted in `refused`. A peer that learned a local id could otherwise place events inside that channel, private or not (RED-006).
+- **Fixed:** a 500 answers a fixed detail that points at the X-Request-Id, and logs its cause under that id. Before, about 40 call sites sent a library error's text, such as a path, a driver message or a configuration name, to the client (OPS-004).
+- **Fixed:** the hosted Worker strips `x-maidan-env-fingerprint` from every answer once it has compared it. The header is an unsalted hash over every container setting, secrets included (OPS-003).
+
+### Email linking claims a member on its first sign-in only
+
+- **Security:** with `MAIDAN_OIDC_LINK_EMAIL=1`, a verified email links only to a member that no other identity has signed in as. A handle equal to an email stays the pre-provisioning key, and SCIM-provisioned members still link, but a member someone already signs in as is never handed to a second identity asserting the same address (SEC-007).
+
+### Usage is reported only through the claim fence, and a child's parent is checked in its own transaction
+
+- **Removed:** the unfenced `Store::report_thread_usage` and both backends' `report_usage`. Every caller already went through the claim-fenced `report_accounted_usage`; the old path read the holder without a lock and cleared the claim by thread id alone, so a stale holder could stop the next holder's run (CONC-001).
+- **Fixed:** a child thread's parent is checked inside the insert's transaction, holding the parent row (`FOR SHARE` on Postgres, the write lock on SQLite), so a parent archived while the child is being created refuses it instead of taking it. A parent in another channel or workspace now reads as not found, like an unknown id, instead of a distinct invalid-input refusal that told a caller the id exists (CONC-002).
+
+### Channel listing, the search pre-filter and search hit names take one query
+
+- **Changed:** listing channels (REST and MCP `list_channels`) and building the private-channel pre-filter that search and the census apply read membership with one store query, `list_channels_with_membership`, instead of one `channel_is_member` read per private channel. Both now decide from one rule, `listed_for_member` in `maidan-auth`.
+- **Changed:** MCP `search_messages` names its hits (channel name, thread title, author handle) with one batched store read, `display_names`, instead of up to three point reads per distinct id. The names come only from the searched workspace.
+- **Added:** `maidan_store::test_support::statements::count`, which counts the SQL statements a future runs on Postgres, so a test can pin a read to a fixed number of round trips.
+
+### One child takes a parent's last spawn slot
+
+- **Fixed:** two child threads created at once under a parent with one `max_children` slot left could both land, because the spawn budget was counted on the pool before the insert's transaction. The count now runs inside that transaction on both backends, for `create_thread`, `create_thread_with_event`, superseding creates, intake accepts, and plan submit and amend. On Postgres a create under a capped parent first locks the parent row `FOR NO KEY UPDATE`, which serializes it against sibling creates and against a plan's `FOR UPDATE`; on SQLite the transaction already holds the write lock. Exactly one racer takes the slot and the other gets `SpawnRejected`.
+
+### A read-only token can no longer open group DMs or approval gates
+
+- **Changed:** opening a group DM (`POST /workspaces/{wid}/group-dms` and MCP `open_group_dm`) and opening an approval gate (MCP `request_approval`) now need `message:post` instead of `workspace:read`. Both reach people, so a compromised read-only token can no longer put members in a conversation or ask them to approve something. The worker preset and the recipe agent scope already carry `message:post`; a token minted with only `workspace:read` (or `workspace:read` plus `workspace:write`) is now refused with `403`.
+
+### Production deployments run in production mode
+
+- **Security:** the Helm chart's production render (`production: true`, both charts' `values-prod.yaml`) and `k8s/overlays/prod` set `MAIDAN_ENV=production` on the server. Until now `production: true` drove only the chart's render-time checks, so a Helm or kustomize production pod accepted the OIDC mock, `MAIDAN_OPS_FAULT` and the other development switches the server refuses only in production. A production render now also refuses those switches in `config`, and a `config.MAIDAN_ENV` other than `production`.
+- **Changed:** boot refuses a `MAIDAN_ENV` other than `production` or `development` (or unset), so a typo such as `prod` or `Production` no longer starts a server with every production refusal off. Every production check in the server goes through `config::is_production()`.
+- **Security:** `MAIDAN_OIDC_MOCK`, which signs anyone in as anyone, needs `MAIDAN_ENV=development`; it is refused in production, as before, and now also when `MAIDAN_ENV` is unset.
+
+### A caller is something a credential proved
+
+- **Security:** `AuthContext` is sealed. Its fields are private and its constructors are private to `maidan-auth`, so no other crate can make a caller or change one it was handed; the server reaches one only through `maidan-auth`'s resolvers: a bearer, a token id, a stored and unexpired browser session (`resolve_session`), the dev anonymous reader (`resolve_anonymous_reader`), or a member the server acts for (`member_can_access_thread`, `member_can_access_channel`). `auth_context_seal_contract` checks the source, and the release build cannot compile such a call (SEC-003, R11).
+- **Changed:** the server's tests run with authentication on. `AppState::for_tests` no longer disables auth, the `maidan-test-member-id` header is gone, and a test calls with a real token minted through `maidan_server::test_support` (a workspace, its admin and a bearer).
+
+### A retried write is the same write, and offline says so
+
+- **Fixed:** a person retrying a console write whose answer never arrived (a dropped connection, a timeout, or a 408, 429 or 5xx) sent a new `Idempotency-Key`, so a write that had landed was made twice. The retry of the identical request (same method, URL and body) now reuses the first attempt's key for 15 minutes, and the server replays the first result. Any other answer settles the write, so sending the same words again afterwards is a new write. An identical write sent while the first is still pending gets its own key, and a new credential starts fresh.
+- **Added:** while the browser is offline or the server cannot be reached, one line above every signed-in place says that what is on screen may be out of date (and since when, once the last answer is a minute old, even if nothing else changes) and that changes won't send until the connection is back. It goes on the first answer from the server. Board's own stale line steps aside while it shows.
+
+### A group DM's opener is one of its members
+
+- **Fixed:** opening a group DM (REST `POST /workspaces/{wid}/group-dms` and the MCP `open_group_dm` tool) accepted a member list that left the caller out, so a token could open a conversation among others that it could not post into. The opener is now added when the list leaves them out, as a 1:1 DM always includes its opener. A list that already names the caller is unchanged.
+
+### Bridged text carries a server-set provenance and posts once per delivery
+
+- **Security:** where a message came from is a server-set `provenance` (`origin` `github` or `slack`, and the bridge's `external_id`) instead of the `metadata.github` and `metadata.slack` keys any member could write on a post or replace on an edit. Only GitHub and Slack ingress, and the server's own sentences about a linked pull request, set it; a REST or MCP post or edit that names it is refused, and no edit changes or clears it. Slack and GitHub egress decide what not to echo back from it, so a member can no longer keep a message out of Slack or off GitHub with a metadata key, and the keys in `metadata` count for nothing (RED-007).
+- **Added:** `Message.provenance`, read-only, on every message read over REST, MCP and the event stream, and in the OpenAPI spec (`MessageProvenance`, `MessageOrigin`). Omitted for a message a member posted, so the event log's hashes of earlier messages do not change.
+- **Fixed:** a GitHub comment redelivered, or a captured delivery replayed, posted the same message again, and so did a Slack event Slack retried after 3 s without an answer. Ingress is now keyed on (workspace, origin, external id), the GitHub comment id or the Slack `event_id`, in the same transaction as the post; a key already taken posts nothing and is still answered `200`. A Slack event without an `event_id` is not posted. A pull request's unmerged close is keyed on when it closed (RED-002).
+- **Fixed:** GitHub ingress dropped every comment from a `Bot`, third-party review apps included, and let back in the comments egress posted with a personal access token. It now skips only comments our own GitHub App made (by `performed_via_github_app`), and GitHub egress takes the ingress key for each comment it posts, so its webhook echo posts nothing (RED-003). Migration 0235 adds `maidan_messages.origin` and `origin_ref` and the `maidan_bridge_receipts` table.
+
+### HTTP metrics that a client cannot inflate, behind a token in production
+
+- **Security:** the HTTP metrics label the method from a fixed set (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `other`). They used the raw method, so 200 requests with random extension methods added 2,000 series, which the recorder kept for the life of the process.
+- **Added:** `http_server_request_total` and `http_server_request_duration_seconds` carry a `route` label: the matched route template (`/threads/{id}/result`), or `unmatched`, never the path.
+- **Security:** `MAIDAN_METRICS_TOKEN` (32 bytes or more, with a `_FILE` form) puts `GET /metrics` behind that bearer. Under `MAIDAN_ENV=production` without it, `/metrics` answers `404`; it used to answer anyone on the app port. Outside production it stays open, as before. The Cloudflare Worker forwards the token, the Helm chart can mount it as a secret file, and the Alloy workbench scrape sends it.
+
+### A read-only token can no longer change personal state; existing tokens keep it
+
+- **Added:** a `member:self` capability for writes to the caller's own personal state: follow and unfollow a channel, thread or member, mute and unmute a thread or channel, mark notifications read, mark all read, snooze, notification preferences, delivery mode, the member email, and the inbox read mark. It is in `maidan.agent.worker`, `maidan.human.admin`, the default mint, browser sessions and the recipe agent scopes, and it is delegatable.
+- **Changed:** those 18 MCP tools and their 18 REST twins now need `member:self` instead of `workspace:read` (MCP-002). A token minted from now on with only `workspace:read` is refused with `403`. Their `GET` twins still take `workspace:read`.
+- **Changed:** migration 0237 grants `member:self` to every stored token, delegation grant, app installation and OAuth client, grant, code and pending request whose capabilities hold `workspace:read`, so a token minted before this release keeps marking notifications read and following threads with no change on the caller's side.
+
+### Fewer fixed sleeps in the test suites
+
+- **Changed:** sixteen wall-clock sleeps in `crates/*/tests` are gone or now wait on a condition. `PostgresBus::connect`, `PostgresPresenceNotifier::connect` and `PostgresResourceNotifier::connect` return only after `LISTEN` is registered, so the 200–300 ms "let LISTEN attach" sleeps after them waited for nothing; a server spawned on an already bound `TcpListener` accepts at once, so the 50 ms sleep after `axum::serve` went too. The hydrate-miss test waits for the `not_found` counter to move, and the NOTIFY chaos soak waits for every published id instead of a fixed 4 s. Tests only; no production change.
+
+### Coverage floors re-measured and raised
+
+- **Changed:** the per-crate line-coverage floors in `.config/coverage-floors.toml` are re-measured on three `main` coverage runs from 2026-11-11 (43060492563, 42978179970, 42965976876) and raised to one point under the lowest of the three, rounded down to the half point: the workspace from 85.5 to 91.0, `maidan-observability` from 54.5 to 81.5, `maidan-artifacts` from 61.5 to 75.0, `maidan-search` from 78.0 to 86.5, `maidan-server` from 77.5 to 86.5, and ten more crates by one to nine points. `maidan-env` and `maidan-mcp` keep their floors, which already sit above what the rule gives. `maidan-artifacts` is the one crate under 80%: its `helpers.rs` (90 lines, no caller in the workspace) is untested, and deleting it or testing it lifts the crate to about 88%.
+
+### Every caller is authenticated
+
+- **Removed:** the unauthenticated mode. `AUTH_DISABLED`, `MAIDAN_ALLOW_INSECURE_NO_AUTH`, `AuthContext::bypass()` and the 191 branches that read its flag are gone, and boot refuses either variable by name whatever its value. A registration recorded with no creator token (a webhook, slash command, A2A push config or FSM hook made on a browser session) never acts. `maidan mcp-stdio` has no `--allow-insecure-no-auth`: it serves only `MAIDAN_MCP_TOKEN` (SEC-004, R11).
+- **Changed:** the `bootstrap` feature (`POST /workspaces`, `POST /workspaces/{wid}/members`, `MAIDAN_BOOTSTRAP`) and the OIDC mock (`MAIDAN_OIDC_MOCK`) exist only in test builds. Bootstrap is no longer a default feature, no release tarball or image has it, the `-demo` image leg is gone, and a build without either refuses its variable at boot (SEC-008, SEC-001).
+- **Added:** `MAIDAN_DEV_ADMIN_TOKEN`. On a non-production instance with no workspace yet, boot opens workspace `dev` with an admin holding every capability whose bearer is that value: a real, audited, revocable token. The compose federation, scale-out and OTLP stacks, the Helm CI values, the smoke, demo and SDK scripts use it, and open further workspaces with `POST /operator/workspaces`; the quickstart stays on `maidan init` and creates its agents with `POST /workspaces/{wid}/agents`. `compose.quickstart.insecure.yaml` is deleted.
+- **Security:** `auth_context_seal_contract` fails on any trace of the old mode in library code, so the count of bypass references outside tests stays at zero.
+- **Added:** `POST /workspaces/{wid}/peers` takes an optional `secret`: the bearer the remote issued for this instance, presented when polling it and accepted when it pushes. Two instances on two databases share no peer row, so with no unauthenticated mode a pull peer needs one; the federation pull smoke registers A's issued secret on B.
+
+### The default media quota is held by tests
+
+- **Fixed:** a test on both store backends and one over REST now fail if
+  `MAIDAN_MEDIA_QUOTA_BYTES` unset stops meaning the documented 20 GiB
+  per-workspace cap. A workspace with no quota of its own is refused a media
+  upload past the default, another workspace is not, and an explicit `0` or
+  `off` still lifts it (OPS-004). The default itself has shipped since #1366.
+
 ## [449.0.0] — 2026-11-11
 
 branch delivery names a workflow-path refusal; CI watch ignores a failed job superseded by a newer run.

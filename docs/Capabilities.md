@@ -42,6 +42,44 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v450.0.0](https://github.com/david-engelmann/maidan/releases/tag/v450.0.0) — a superseded task hands its pull request to the round that replaces it, and 30 more
+
+This release carries 31 changes: a superseded task hands its pull request to the round that replaces it; an over-permission scan of the MCP tool surface; thread transitions follow a store model; the seat runner runs Claude Code, Gemini CLI and ZCode seats; one delivery per event, however many replicas run; the MCP id guard fails closed; every registration has an owner; every GitHub Action pinned to a commit; one visibility rule for every read; worker timings are constants, and the configuration reference is checked; typed references are refused when they break the room's rules; the console says loading, empty and failed the same way everywhere; the Board opens on one toolbar row; an accessibility gate over every console place; security tails from the November audit (R26 P3); email linking claims a member on its first sign-in only; usage is reported only through the claim fence, and a child's parent is checked in its own transaction; channel listing, the search pre-filter and search hit names take one query; one child takes a parent's last spawn slot; a read-only token can no longer open group DMs or approval gates; production deployments run in production mode; a caller is something a credential proved; a retried write is the same write, and offline says so; a group DM's opener is one of its members; bridged text carries a server-set provenance and posts once per delivery; HTTP metrics that a client cannot inflate, behind a token in production; a read-only token can no longer change personal state; existing tokens keep it; fewer fixed sleeps in the test suites; coverage floors re-measured and raised; every caller is authenticated; the default media quota is held by tests.
+
+- A superseded task hands its pull request to the round that replaces it
+- An over-permission scan of the MCP tool surface
+- Thread transitions follow a store model
+- The seat runner runs Claude Code, Gemini CLI and ZCode seats
+- One delivery per event, however many replicas run
+- The MCP id guard fails closed
+- Every registration has an owner
+- Every GitHub Action pinned to a commit
+- One visibility rule for every read
+- Worker timings are constants, and the configuration reference is checked
+- Typed references are refused when they break the room's rules
+- The console says loading, empty and failed the same way everywhere
+- The Board opens on one toolbar row
+- An accessibility gate over every console place
+- Security tails from the November audit (R26 P3)
+- Email linking claims a member on its first sign-in only
+- Usage is reported only through the claim fence, and a child's parent is checked in its own transaction
+- Channel listing, the search pre-filter and search hit names take one query
+- One child takes a parent's last spawn slot
+- A read-only token can no longer open group DMs or approval gates
+- Production deployments run in production mode
+- A caller is something a credential proved
+- A retried write is the same write, and offline says so
+- A group DM's opener is one of its members
+- Bridged text carries a server-set provenance and posts once per delivery
+- HTTP metrics that a client cannot inflate, behind a token in production
+- A read-only token can no longer change personal state; existing tokens keep it
+- Fewer fixed sleeps in the test suites
+- Coverage floors re-measured and raised
+- Every caller is authenticated
+- The default media quota is held by tests
+
+`CHANGELOG.md` under `[450.0.0]` has every entry.
+
 ## [v449.0.0](https://github.com/david-engelmann/maidan/releases/tag/v449.0.0) — a failure a newer run replaced waits for that run, and 1 more
 
 branch delivery names a workflow-path refusal; CI watch ignores a failed job superseded by a newer run.
