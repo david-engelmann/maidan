@@ -1,0 +1,5 @@
+### Production deployments run in production mode
+
+- **Security:** the Helm chart's production render (`production: true`, both charts' `values-prod.yaml`) and `k8s/overlays/prod` set `MAIDAN_ENV=production` on the server. Until now `production: true` drove only the chart's render-time checks, so a Helm or kustomize production pod accepted the OIDC mock, `MAIDAN_OPS_FAULT` and the other development switches the server refuses only in production. A production render now also refuses those switches in `config`, and a `config.MAIDAN_ENV` other than `production`.
+- **Changed:** boot refuses a `MAIDAN_ENV` other than `production` or `development` (or unset), so a typo such as `prod` or `Production` no longer starts a server with every production refusal off. Every production check in the server goes through `config::is_production()`.
+- **Security:** `MAIDAN_OIDC_MOCK`, which signs anyone in as anyone, needs `MAIDAN_ENV=development`; it is refused in production, as before, and now also when `MAIDAN_ENV` is unset.

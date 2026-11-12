@@ -32,7 +32,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_ARTIFACT_MAX_BODY_BYTES",
     "MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES",
     "MAIDAN_AUTOMATION_MAX_ATTEMPTS",
-    "MAIDAN_AUTOMATION_POLL_INTERVAL_MS",
     "MAIDAN_BIND",
     "MAIDAN_BOOTSTRAP",
     "MAIDAN_BUS_BROADCAST_CAP",
@@ -65,7 +64,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DB_REPLICA_URL",
     "MAIDAN_DB_REPLICA_URL_FILE",
     "MAIDAN_DB_STATEMENT_TIMEOUT_MS",
-    "MAIDAN_DELIVERY_RECONCILE_MS",
     "MAIDAN_DELIVERY_STABILITY_SECS",
     "MAIDAN_DEMO_INSTANCE",
     "MAIDAN_DEMO_SANDBOX",
@@ -77,7 +75,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
     "MAIDAN_DIGEST_TICK_SECS",
     "MAIDAN_EGRESS_CREDENTIAL_GUARD",
-    "MAIDAN_EGRESS_WORKER_TICK_SECS",
     "MAIDAN_EMAIL_PRESENCE_WINDOW_SECS",
     "MAIDAN_EMBEDDING_API_KEY",
     "MAIDAN_EMBEDDING_API_KEY_FILE",
@@ -109,8 +106,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_HUMAN_TIMEOUT_SECS",
     "MAIDAN_INDEXER_BATCH_SIZE",
     "MAIDAN_INDEXER_QUEUE_CAPACITY",
-    "MAIDAN_INDEXER_RETRIES",
-    "MAIDAN_INDEXER_RETRY_BASE_MS",
     "MAIDAN_INTERNAL_EGRESS_HOSTS",
     "MAIDAN_JEV_BASE_URL",
     "MAIDAN_JEV_GREEN_MIN_CONFIDENCE",
@@ -123,7 +118,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_LINEAR_API_KEY_FILE",
     "MAIDAN_LOG",
     "MAIDAN_LOG_FORMAT",
-    "MAIDAN_MAIL_WORKER_TICK_SECS",
     "MAIDAN_MARK_READY_APP_ID",
     "MAIDAN_MARK_READY_BASES",
     "MAIDAN_MAX_BODY_BYTES",
@@ -163,13 +157,9 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_OPS_ALERT_CHANNEL",
     "MAIDAN_OPS_FAULT",
     "MAIDAN_OUTBOX_MAX_ATTEMPTS",
-    "MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS",
-    "MAIDAN_OUTBOX_POLL_INTERVAL_MS",
     "MAIDAN_OUTBOX_RELAY",
     "MAIDAN_OUTBOX_RELAY_MODE",
     "MAIDAN_OVERAGE_PRICES",
-    "MAIDAN_PRESENCE_HEARTBEAT_SECS",
-    "MAIDAN_PRESENCE_TTL_SECS",
     "MAIDAN_PRIVATE_EGRESS_HOSTS",
     "MAIDAN_PUBLIC_ORIGIN",
     "MAIDAN_RATE_LIMIT_MAX",
@@ -177,13 +167,11 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_RATE_LIMIT_REDIS_URL_FILE",
     "MAIDAN_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_RETENTION_AUDIT_DAYS",
-    "MAIDAN_RETENTION_BATCH",
     "MAIDAN_RETENTION_DELIVERIES_DAYS",
     "MAIDAN_RETENTION_EVENTS_DAYS",
     "MAIDAN_RETENTION_MEDIA_DAYS",
     "MAIDAN_RETENTION_MESSAGES_DAYS",
     "MAIDAN_RETENTION_NOTIFICATIONS_DAYS",
-    "MAIDAN_RETENTION_SWEEP_SECS",
     "MAIDAN_SCHEDULER_TICK_SECS",
     "MAIDAN_SECRET_EGRESS_ALLOWLIST",
     "MAIDAN_SESSION_SECRET",
@@ -214,13 +202,11 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_STALL_SECS",
     "MAIDAN_SUBSCRIBE_RESUME_SECRET",
     "MAIDAN_SUBSCRIBE_RESUME_SECRET_FILE",
-    "MAIDAN_SUBSCRIBE_RESUME_TTL_SECS",
     "MAIDAN_TRUSTED_PROXY_HOPS",
     "MAIDAN_TURNSTILE_HOSTNAME",
     "MAIDAN_TURNSTILE_SECRET",
     "MAIDAN_TURNSTILE_SECRET_FILE",
     "MAIDAN_TURNSTILE_SITE_KEY",
-    "MAIDAN_USAGE_METER_FLUSH_SECS",
     "MAIDAN_VAPID_PRIVATE_KEY",
     "MAIDAN_VAPID_PRIVATE_KEY_FILE",
     "MAIDAN_VAPID_PUBLIC_KEY",
@@ -229,9 +215,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_WAIT_SWEEP_TICK_SECS",
     "MAIDAN_WEBHOOK_MAX_ATTEMPTS",
-    "MAIDAN_WEBHOOK_POLL_INTERVAL_MS",
-    "MAIDAN_WEBPUSH_LIVE_WINDOW_SECS",
-    "MAIDAN_WEBPUSH_WORKER_TICK_SECS",
     "MAIDAN_WORKSPACE_KEY_CUSTODY",
     "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
     "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
@@ -796,10 +779,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_AUTOMATION_POLL_INTERVAL_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_BOOTSTRAP",
             "dev or insecure switch; never forwarded",
         ),
@@ -864,10 +843,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_DELIVERY_RECONCILE_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_DELIVERY_STABILITY_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
@@ -893,10 +868,6 @@ mod tests {
         (
             "MAIDAN_EGRESS_CREDENTIAL_GUARD",
             "dev or insecure switch; never forwarded",
-        ),
-        (
-            "MAIDAN_EGRESS_WORKER_TICK_SECS",
-            "self-hosted bind, custody, or sweep tuning",
         ),
         (
             "MAIDAN_EMAIL_PRESENCE_WINDOW_SECS",
@@ -936,14 +907,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_INDEXER_RETRIES",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_INDEXER_RETRY_BASE_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_JEV_BASE_URL",
             "self-hosted bind, custody, or sweep tuning",
         ),
@@ -972,10 +935,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         ("MAIDAN_LOG", "self-hosted bind, custody, or sweep tuning"),
-        (
-            "MAIDAN_MAIL_WORKER_TICK_SECS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
         (
             "MAIDAN_MARK_READY_APP_ID",
             "self-hosted bind, custody, or sweep tuning",
@@ -1073,27 +1032,11 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_OUTBOX_POLL_INTERVAL_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_OUTBOX_RELAY",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
             "MAIDAN_OUTBOX_RELAY_MODE",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_PRESENCE_HEARTBEAT_SECS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_PRESENCE_TTL_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
@@ -1110,10 +1053,6 @@ mod tests {
         ),
         (
             "MAIDAN_RETENTION_AUDIT_DAYS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_RETENTION_BATCH",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
@@ -1134,10 +1073,6 @@ mod tests {
         ),
         (
             "MAIDAN_RETENTION_NOTIFICATIONS_DAYS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_RETENTION_SWEEP_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
@@ -1177,14 +1112,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_SUBSCRIBE_RESUME_TTL_SECS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_USAGE_METER_FLUSH_SECS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX",
             "self-hosted bind, custody, or sweep tuning",
         ),
@@ -1198,18 +1125,6 @@ mod tests {
         ),
         (
             "MAIDAN_WEBHOOK_MAX_ATTEMPTS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_WEBHOOK_POLL_INTERVAL_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_WEBPUSH_LIVE_WINDOW_SECS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_WEBPUSH_WORKER_TICK_SECS",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (

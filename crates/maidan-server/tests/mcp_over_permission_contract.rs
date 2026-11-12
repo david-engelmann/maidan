@@ -46,8 +46,9 @@ const PRIVILEGED_READS: &[(&str, &str)] = &[
 
 /// Mutating tools that declare a read capability. Personal self-scoped
 /// state and holder-side token operations, plus the documented HTTP twins
-/// (`POST /workspaces/{wid}/group-dms`, `POST /tokens/attenuate`, secret
-/// resolve) that use the same cap.
+/// (`POST /tokens/attenuate`, secret resolve) that use the same cap. A write
+/// that reaches other people (a group DM, an approval gate) is not one of
+/// them: it needs `message:post` (MCP-003).
 const READ_CAP_WRITES: &[(&str, &str)] = &[
     ("attenuate_token", capability::WORKSPACE_READ),
     ("delegate_token", capability::WORKSPACE_READ),
@@ -60,14 +61,15 @@ const READ_CAP_WRITES: &[(&str, &str)] = &[
     ("mark_notification_read", capability::WORKSPACE_READ),
     ("mute_channel", capability::WORKSPACE_READ),
     ("mute_thread", capability::WORKSPACE_READ),
-    ("open_group_dm", capability::WORKSPACE_READ),
-    ("request_approval", capability::WORKSPACE_READ),
     ("resolve_secret", capability::SECRET_READ),
     ("rotate_token", capability::WORKSPACE_READ),
     ("set_delivery_mode", capability::WORKSPACE_READ),
     ("set_member_email", capability::WORKSPACE_READ),
     ("set_notification_pref", capability::WORKSPACE_READ),
     ("snooze_notification", capability::WORKSPACE_READ),
+    // A top-up intent moves no money: it records the amount a payment must
+    // match, so any member, and an agent past its allowance, may open one.
+    ("top_up_credits", capability::WORKSPACE_READ),
     ("unfollow_channel", capability::WORKSPACE_READ),
     ("unfollow_member", capability::WORKSPACE_READ),
     ("unfollow_thread", capability::WORKSPACE_READ),

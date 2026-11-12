@@ -1370,7 +1370,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/apps",
-    "capability": "workspace:write",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
@@ -1890,7 +1890,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/group-dms",
-    "capability": "workspace:read",
+    "capability": "message:post",
     "surface": "http"
   },
   {

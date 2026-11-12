@@ -6,8 +6,10 @@ use maidan_types::{
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::audit_scope;
 use crate::error::StoreError;
 use crate::postgres::events;
+use crate::reference_rules;
 use crate::thread_access::readable_thread;
 
 fn map_ref_err(err: sqlx::Error) -> StoreError {
@@ -19,7 +21,58 @@ fn map_ref_err(err: sqlx::Error) -> StoreError {
     }
 }
 
-pub async fn create(pool: &PgPool, new: NewReference) -> Result<Reference, StoreError> {
+async fn endpoint_workspace(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    kind: RefSide,
+    id: Uuid,
+) -> Result<Option<WorkspaceId>, StoreError> {
+    let sql = match kind {
+        RefSide::Thread => audit_scope::THREAD_WORKSPACE,
+        RefSide::Message => audit_scope::MESSAGE_WORKSPACE,
+    };
+    let row = sqlx::query(sql).bind(id).fetch_optional(&mut **tx).await?;
+    Ok(row.map(|row| WorkspaceId(row.get::<Uuid, _>("workspace_id"))))
+}
+
+async fn cycle_exists(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new: &NewReference,
+) -> Result<bool, StoreError> {
+    let hit = sqlx::query(reference_rules::CYCLE_SQL)
+        .bind(new.dst_kind.as_str())
+        .bind(new.dst_id)
+        .bind(new.relation.as_str())
+        .bind(new.src_kind.as_str())
+        .bind(new.src_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    Ok(hit.is_some())
+}
+
+/// Shared write-time check used by `create`, `create_with_event`, and
+/// close-abandoned, so a reference that breaks the rules is not stored.
+pub(crate) async fn validate_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new: &NewReference,
+) -> Result<(), StoreError> {
+    let src_workspace = endpoint_workspace(tx, new.src_kind, new.src_id).await?;
+    let dst_workspace = endpoint_workspace(tx, new.dst_kind, new.dst_id).await?;
+    let would_cycle = match (src_workspace, dst_workspace) {
+        (Some(src), Some(dst))
+            if src == dst && reference_rules::is_acyclic_relation(&new.relation) =>
+        {
+            cycle_exists(tx, new).await?
+        }
+        _ => false,
+    };
+    reference_rules::check(new, src_workspace, dst_workspace, would_cycle)
+}
+
+async fn insert_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new: NewReference,
+) -> Result<Reference, StoreError> {
+    validate_in_tx(tx, &new).await?;
     let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation)
@@ -32,10 +85,17 @@ pub async fn create(pool: &PgPool, new: NewReference) -> Result<Reference, Store
     .bind(new.dst_kind.as_str())
     .bind(new.dst_id)
     .bind(new.relation.as_str())
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .map_err(map_ref_err)?;
     row_to_reference(&row)
+}
+
+pub async fn create(pool: &PgPool, new: NewReference) -> Result<Reference, StoreError> {
+    let mut tx = pool.begin().await?;
+    let reference = insert_in_tx(&mut tx, new).await?;
+    tx.commit().await?;
+    Ok(reference)
 }
 
 /// Insert a reference and append its `ReferenceAdded` event in one transaction
@@ -44,23 +104,8 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewReference,
 ) -> Result<(Reference, StoredEvent), StoreError> {
-    let id = Uuid::now_v7();
     let mut tx = pool.begin().await?;
-    let row = sqlx::query(
-        "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, src_kind, src_id, dst_kind, dst_id, relation, created_at",
-    )
-    .bind(id)
-    .bind(new.src_kind.as_str())
-    .bind(new.src_id)
-    .bind(new.dst_kind.as_str())
-    .bind(new.dst_id)
-    .bind(new.relation.as_str())
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(map_ref_err)?;
-    let reference = row_to_reference(&row)?;
+    let reference = insert_in_tx(&mut tx, new).await?;
     let event = Event::ReferenceAdded {
         occurred_at: Utc::now(),
         reference: reference.clone(),

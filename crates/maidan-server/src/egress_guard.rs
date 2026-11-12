@@ -360,9 +360,17 @@ fn private_key(s: &[u8]) -> Option<CredentialKind> {
         .then_some(CredentialKind::PrivateKey)
 }
 
-/// `maid_`, `maid_share_` or `maid_inv_` and 32 or more lowercase hex digits
-/// (minted secrets carry 64).
+/// A bearer token in the checksummed shape (`maid_`, 43 base62 digits and a
+/// 6-digit CRC32), or `maid_`, `maid_share_` or `maid_inv_` and 32 or more
+/// lowercase hex digits (share tickets, invites and tokens minted before the
+/// checksum carry 64).
 fn maidan(s: &[u8]) -> Option<CredentialKind> {
+    const CHECKSUMMED_LEN: usize = "maid_".len() + 43 + 6;
+    if s.len() >= CHECKSUMMED_LEN
+        && std::str::from_utf8(&s[..CHECKSUMMED_LEN]).is_ok_and(maidan_auth::is_checksummed_token)
+    {
+        return Some(CredentialKind::Maidan);
+    }
     let rest = s.strip_prefix(b"maid_")?;
     let rest = rest
         .strip_prefix(b"share_")
@@ -514,6 +522,16 @@ mod tests {
         }
         assert_eq!(kind("maid_test"), None);
         assert_eq!(kind(&format!("mermaid_{hex}")), None, "inside a word");
+    }
+
+    #[test]
+    fn a_checksummed_bearer_token_is_caught() {
+        let token = maidan_auth::TokenSecret::generate();
+        assert_eq!(kind(token.as_str()), Some("maidan_token"));
+        assert_eq!(
+            kind(&format!("see {} here", token.as_str())),
+            Some("maidan_token")
+        );
     }
 
     #[test]

@@ -50,6 +50,16 @@ pub(super) async fn register_slash_command(
         }
         SlashHandlerKind::McpTool => {
             required_capability(&a.handler_target)?;
+            if let Some(needed) = super::slash_target_capability(&a.handler_target)
+                && !auth.bypass
+            {
+                maidan_auth::require_observed_capability(
+                    auth,
+                    maidan_auth::AuthorizationSurface::Mcp,
+                    needed,
+                )
+                .map_err(McpError::from)?;
+            }
             a.handler_target.trim().to_string()
         }
         // Not just a syntax check: the sha must name an artifact this workspace
@@ -84,9 +94,11 @@ pub(super) async fn register_slash_command(
                 handler_kind,
                 handler_target,
                 secret_ciphertext: ciphertext,
+                created_by_token: auth.token_id,
             })
             .await
             .map_err(McpError::from)?;
+        record_slash_registration(store, auth, workspace_id, &command).await;
         return Ok(content_json(&json!({
             "command": command,
             "secret": secret.as_str()
@@ -102,10 +114,37 @@ pub(super) async fn register_slash_command(
             handler_kind,
             handler_target,
             secret_ciphertext,
+            created_by_token: auth.token_id,
         })
         .await
         .map_err(McpError::from)?;
+    record_slash_registration(store, auth, workspace_id, &command).await;
     Ok(content_json(&command))
+}
+
+/// The audit row naming who registered a command, as the REST route writes
+/// it: the command runs only while that token could register it again.
+async fn record_slash_registration(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    command: &SlashCommand,
+) {
+    let event = NewAuditEvent {
+        scope: AuditScope::Workspace(workspace_id),
+        actor_id: (!auth.bypass).then_some(auth.actor_id),
+        action: "slash_command.create".into(),
+        target_kind: Some("slash_command".into()),
+        target_id: Some(command.id.0),
+        metadata: json!({
+            "workspace_id": workspace_id.0,
+            "created_by_token": auth.token_id.map(|token| token.0),
+            "member_id": (!auth.bypass).then_some(auth.member_id.0),
+        }),
+    };
+    if let Err(err) = store.append_audit(event).await {
+        tracing::error!(target: "audit", %err, action = "slash_command.create", "audit.write_failed");
+    }
 }
 
 #[derive(Deserialize)]

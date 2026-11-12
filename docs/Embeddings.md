@@ -44,8 +44,6 @@ only needed for a model change.
 |---|---|---|
 | `MAIDAN_INDEXER_QUEUE_CAPACITY` | `1024` | Bound on queued messages; a full queue applies backpressure to the bus. |
 | `MAIDAN_INDEXER_BATCH_SIZE` | `32` | Messages per provider call. |
-| `MAIDAN_INDEXER_RETRIES` | `3` | Further attempts after a failed call or upsert (max 10). |
-| `MAIDAN_INDEXER_RETRY_BASE_MS` | `250` | First retry delay; each doubles, capped at 10 s. |
 | `MAIDAN_EMBED_REPAIR_INTERVAL_SECS` | `300` | How often the repair sweep runs; `0` disables it. |
 | `MAIDAN_EMBED_REPAIR_BATCH` | `256` | Messages the sweep embeds per pass. |
 

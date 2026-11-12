@@ -639,14 +639,6 @@ macro_rules! store_delegations {
                 budget::add_usage(self.pool(), thread_id, delta).await
             }
 
-            async fn report_thread_usage(
-                &self,
-                thread_id: ThreadId,
-                delta: UsageDelta,
-            ) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
-                budget::report_usage(self.pool(), thread_id, delta).await
-            }
-
             async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
                 dlq::record(self.pool(), new).await
             }
@@ -893,9 +885,10 @@ macro_rules! store_delegations {
             async fn list_pending_approval_gates(
                 &self,
                 workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
                 limit: i64,
             ) -> Result<Vec<ApprovalGate>, StoreError> {
-                approval_gates::list_pending(self.pool(), workspace_id, limit).await
+                approval_gates::list_pending(self.pool(), workspace_id, readable_by, limit).await
             }
 
             async fn page_pending_approval_gates(
@@ -1814,12 +1807,13 @@ macro_rules! store_delegations {
                 email_digest::get_delivery_mode(self.pool(), member_id).await
             }
 
-            async fn set_last_digest_at(
+            async fn advance_last_digest_at(
                 &self,
                 member_id: MemberId,
-                now: chrono::DateTime<chrono::Utc>,
-            ) -> Result<(), StoreError> {
-                email_digest::set_last_digest_at(self.pool(), member_id, now).await
+                seen: Option<chrono::DateTime<chrono::Utc>>,
+                to: chrono::DateTime<chrono::Utc>,
+            ) -> Result<bool, StoreError> {
+                email_digest::advance_last_digest_at(self.pool(), member_id, seen, to).await
             }
 
             async fn members_due_for_digest(
@@ -1866,6 +1860,13 @@ macro_rules! store_delegations {
                 subject: &str,
             ) -> Result<OidcIdentity, StoreError> {
                 oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
+            }
+
+            async fn link_unclaimed_oidc_identity(
+                &self,
+                new: NewOidcIdentity,
+            ) -> Result<Option<OidcIdentity>, StoreError> {
+                oidc::link_unclaimed_identity(self.pool(), new).await
             }
 
             async fn list_identity_workspaces(
@@ -1997,6 +1998,25 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
             ) -> Result<Vec<Channel>, StoreError> {
                 channels::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn list_channels_with_membership(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<(Channel, bool)>, StoreError> {
+                channels::list_with_membership(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn display_names(
+                &self,
+                workspace_id: WorkspaceId,
+                channels: &[ChannelId],
+                threads: &[ThreadId],
+                members: &[MemberId],
+            ) -> Result<$crate::DisplayNames, StoreError> {
+                display_names::load(self.read_pool(), workspace_id, channels, threads, members)
+                    .await
             }
 
             #[cfg(feature = "test-support")]
@@ -4470,6 +4490,15 @@ macro_rules! store_delegations {
                 artifacts::ref_exists(self.pool(), workspace_id, sha256).await
             }
 
+            async fn artifact_visible_to(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                sha256: &str,
+            ) -> Result<bool, StoreError> {
+                artifacts::visible_to(self.pool(), workspace_id, member_id, sha256).await
+            }
+
             async fn erase_artifact_audited(
                 &self,
                 workspace_id: WorkspaceId,
@@ -5791,6 +5820,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5805,6 +5835,7 @@ macro_rules! store_delegations {
                     .map(|row| WebhookSubscriptionWithSecret {
                         subscription: row.subscription,
                         secret_ciphertext: row.secret_ciphertext,
+                        created_by_token: row.created_by_token,
                     })
                     .collect())
             }
@@ -5817,6 +5848,7 @@ macro_rules! store_delegations {
                 Ok(WebhookSubscriptionWithSecret {
                     subscription: row.subscription,
                     secret_ciphertext: row.secret_ciphertext,
+                    created_by_token: row.created_by_token,
                 })
             }
 
@@ -5825,7 +5857,7 @@ macro_rules! store_delegations {
                 subscription_id: WebhookSubscriptionId,
                 log_id: i64,
                 payload: &str,
-            ) -> Result<i64, StoreError> {
+            ) -> Result<Option<i64>, StoreError> {
                 webhooks::enqueue_delivery(self.pool(), subscription_id, log_id, payload).await
             }
 
@@ -5834,6 +5866,13 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError> {
                 webhooks::list_pending_deliveries(self.pool(), limit).await
+            }
+
+            async fn claim_next_webhook_delivery(
+                &self,
+                lease_secs: i64,
+            ) -> Result<Option<WebhookSubscriptionDelivery>, StoreError> {
+                webhooks::claim_next_delivery(self.pool(), lease_secs).await
             }
 
             async fn mark_webhook_delivery_delivered(
@@ -5901,7 +5940,7 @@ macro_rules! store_delegations {
             async fn enqueue_automation_delivery(
                 &self,
                 new: NewAutomationDelivery,
-            ) -> Result<i64, StoreError> {
+            ) -> Result<Option<i64>, StoreError> {
                 automation_deliveries::enqueue(self.pool(), new).await
             }
 
@@ -5910,6 +5949,13 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<AutomationDeliveryPending>, StoreError> {
                 automation_deliveries::list_pending(self.pool(), limit).await
+            }
+
+            async fn claim_next_automation_delivery(
+                &self,
+                lease_secs: i64,
+            ) -> Result<Option<AutomationDeliveryPending>, StoreError> {
+                automation_deliveries::claim_next(self.pool(), lease_secs).await
             }
 
             async fn list_automation_deliveries(
@@ -6051,6 +6097,15 @@ macro_rules! store_delegations {
             ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
                 fsm_hooks::list_matching(self.pool(), workspace_id, from_state, to_state).await
             }
+
+            async fn claim_fsm_hook_run(
+                &self,
+                workspace_id: WorkspaceId,
+                hook_id: FsmHookId,
+                log_id: i64,
+            ) -> Result<bool, StoreError> {
+                fsm_hooks::claim_run(self.pool(), workspace_id, hook_id, log_id).await
+            }
         }
     };
     ($store:ty, A2aStore) => {
@@ -6149,6 +6204,21 @@ macro_rules! store_delegations {
                 config_id: &str,
             ) -> Result<bool, StoreError> {
                 a2a::delete_task_push_config(self.pool(), task_id, config_id).await
+            }
+
+            async fn delete_a2a_task_push_config_created_by(
+                &self,
+                task_id: &str,
+                config_id: &str,
+                created_by_token: Option<ApiTokenId>,
+            ) -> Result<bool, StoreError> {
+                a2a::delete_task_push_config_created_by(
+                    self.pool(),
+                    task_id,
+                    config_id,
+                    created_by_token,
+                )
+                .await
             }
         }
     };

@@ -40,19 +40,34 @@ form.
 In the tables, "boot refuses" means the server exits at startup with an error
 naming the variable.
 
+`env_registry_contract` holds this page to the server: a variable the server
+reads that has no row here fails it, and so does a variable read without the
+`MAIDAN_` prefix that is not on its short list of unprefixed names.
+
+**Timings are not settings.** How often a background worker polls or ticks,
+and how a sweep paces itself, are constants in the code: the outbox relay
+(50 ms, backing off to 1 s when idle), the webhook and automation workers
+(50 ms), the at-least-once reconcile (1 s; a `NOTIFY` also wakes it), the
+mail, result-delivery and Web Push workers (5 s), the presence heartbeat and
+TTL (10 s and 30 s), the Web Push live window (60 s), usage-meter flushes
+(60 s), subscribe resume tokens (1 hour), embedding retries (3, from 250 ms)
+and the retention sweep (daily, 5000 rows a batch). A variable that once set
+one of these is now unknown, and boot refuses it with the rest.
+
 ## Core
 
 | Variable | Default | Notes |
 |---|---|---|
 | `DATABASE_URL` | required | `postgres://…` (recommended) or `sqlite:…`; the prefix picks the backend. A managed Postgres (Neon, RDS, Cloud SQL and the like) needs TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the certificate. The server carries its own root certificates, so this works on the shell-less image. SQLite connections turn on `foreign_keys`, WAL and a busy timeout. |
 | `MAIDAN_BIND` | `0.0.0.0:8080` | The address the HTTP server listens on. |
-| `MAIDAN_ENV` | unset | `production` refuses every development switch: `AUTH_DISABLED`, the development KEK, `MAIDAN_OIDC_MOCK`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. |
+| `MAIDAN_ENV` | unset | `production` refuses every development switch: `AUTH_DISABLED`, the development KEK, `MAIDAN_OIDC_MOCK`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. `development` names a deployment that is not production, which `MAIDAN_OIDC_MOCK` needs. An empty value counts as unset: not production, so the production refusals stay off. Any other value (`prod`, `Production`) refuses boot. The Helm chart's production render and the `k8s/overlays/prod` overlay set `production`. |
 | `MAIDAN_PUBLIC_ORIGIN` | unset | This instance's public origin, such as `https://maidan.example.com` (`https`, or `http` on a loopback host, with no path). OAuth identifiers are built from it; unset, the instance serves no OAuth metadata. A malformed value refuses boot. See [OAuth](OAuth.md). |
 | `MAIDAN_CONSOLE_ORIGIN` | origin of `MAIDAN_OIDC_REDIRECT_URI` | The console's absolute origin, used in the one-time links `approval_decide` gives a person. With neither set, the links are host-relative and no URL elicitation is offered. |
 | `MAIDAN_SHUTDOWN_DRAIN_SECS` | `0` | Seconds the server keeps serving after SIGTERM, with readiness at `503`, before it closes its listener. The Helm chart and `k8s/base` set `10`. See [Rolling restarts](Production.md#rolling-restarts). |
 | `MAIDAN_LOG` | `info,sqlx=warn` | A `tracing` filter for the server and the CLI. |
 | `MAIDAN_LOG_FORMAT` | `plain` | `json` for one JSON object per line. |
 | `MAIDAN_ALLOW_UNKNOWN_ENV` | unset | `1` starts despite unknown `MAIDAN_*` variables and logs them. |
+| `MAIDAN_ENV_FINGERPRINT` | unset | Set by the hosted Worker, not by an operator: a SHA-256 hex digest of the settings it started the container with. The server echoes it in `x-maidan-env-fingerprint` so the Worker can recycle a container that came back on older settings. Anything but 64 hex characters is ignored. Unset, no header is sent. |
 
 ## Encryption and signing keys
 
@@ -99,7 +114,6 @@ Unset, keys carry no instance tag and nothing is swept. Metrics:
 | `MAIDAN_SESSION_SECRET` | required with auth on | At least 32 bytes. Signs browser session cookies and subscribe resume tokens; must be the same on every replica. Required when OIDC is on. With OIDC off, `MAIDAN_SUBSCRIBE_RESUME_SECRET` can stand in for it; the console then makes no session from a pasted token and keeps the token in the tab. |
 | `MAIDAN_SESSION_TTL_SECS` | `28800` | Browser session lifetime (8 hours), OIDC or token. A token's session also ends with the token. |
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | `MAIDAN_SESSION_SECRET` | A separate key for subscribe resume tokens only. |
-| `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | `3600` | Resume token lifetime. |
 | `MAIDAN_COOKIE_SECURE` | unset | `1` marks session cookies `Secure`. Production does this already. |
 | `AUTH_DISABLED` | unset | Serve every request unauthenticated. Takes effect only with `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` as well, and never with `MAIDAN_ENV=production`; either violation refuses boot. Development, tests and CI only. |
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` | unset | The acknowledgement `AUTH_DISABLED` needs. Never set it in production. |
@@ -126,7 +140,7 @@ The design and provider recipes are in [OIDC](OIDC.md).
 | `MAIDAN_OIDC_AUTO_PROVISION` | unset | `1` lets a new identity create a human member. Otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | unset | `1` links a verified email claim to an existing member with that handle. |
 | `MAIDAN_OIDC_EMAILS_VERIFIED` | unset | `1` treats an `email` claim without `email_verified` as verified. Only for a provider whose every login proves the address. An explicit `email_verified: false` stays unverified. |
-| `MAIDAN_OIDC_MOCK` | unset | `1` for a deterministic development and CI provider. Refused in production. |
+| `MAIDAN_OIDC_MOCK` | unset | `1` for a deterministic development and CI provider. Needs `MAIDAN_ENV=development`; refused in production and when `MAIDAN_ENV` is unset. |
 
 ## Sign-up and waitlist
 
@@ -218,14 +232,9 @@ See [OAuth](OAuth.md).
 |---|---|---|
 | `MAIDAN_OUTBOX_RELAY` | `1` | `0` turns off the transactional outbox relay (publish in-process after append). Refused in production. |
 | `MAIDAN_OUTBOX_RELAY_MODE` | `notify` | `notify` publishes through Postgres `NOTIFY` to every replica. `polled` publishes to this process only; a single-process stopgap when `LISTEN` is broken. |
-| `MAIDAN_OUTBOX_POLL_INTERVAL_MS` | `50` | The relay's fast poll, used while it drains and right after activity. |
-| `MAIDAN_OUTBOX_MAX_POLL_INTERVAL_MS` | `1000` | The idle ceiling. When caught up the relay doubles its sleep up to this; a new row wakes it at once. |
 | `MAIDAN_OUTBOX_MAX_ATTEMPTS` | `16` | Failed publishes before a row is quarantined. |
 | `MAIDAN_DELIVERY_STABILITY_SECS` | `2` | At-least-once subscriptions deliver only events older than this. Keep it above your longest write transaction. `0` turns the gate off. |
-| `MAIDAN_DELIVERY_RECONCILE_MS` | `1000` | The at-least-once reconcile poll. A `NOTIFY` also wakes it. |
 | `MAIDAN_BUS_BROADCAST_CAP` | `1024` | The in-process broadcast buffer per channel. Larger lets a slow subscriber fall further behind before it lags, at the cost of memory. |
-| `MAIDAN_PRESENCE_HEARTBEAT_SECS` | `10` | How often each replica re-announces its connected members. Cross-replica presence needs Postgres `NOTIFY` mode. |
-| `MAIDAN_PRESENCE_TTL_SECS` | `30` | A remote member with no heartbeat for this long leaves the roster. Keep it a small multiple of the heartbeat. |
 | `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS` | `3600` | How long a stateless MCP client's resource subscriptions outlive its last open listener. |
 
 ## Work queue
@@ -252,15 +261,10 @@ See [OAuth](OAuth.md).
 | `MAIDAN_SCHEDULER_TICK_SECS` | unset | Turns on the scheduled-task worker at this interval. Unset, it never starts. |
 | `MAIDAN_WAIT_SWEEP_TICK_SECS` | unset | Turns on the wait-escalation sweeper. |
 | `MAIDAN_DIGEST_TICK_SECS` | unset | Turns on the email digest sweeper. |
-| `MAIDAN_MAIL_WORKER_TICK_SECS` | `5` | The mail worker's tick. It runs whenever SMTP is configured. |
-| `MAIDAN_EGRESS_WORKER_TICK_SECS` | `5` | The result-delivery worker's tick (Slack, GitHub, Linear). |
 | `MAIDAN_EGRESS_CREDENTIAL_GUARD` | on | `off` stops refusing deliveries whose text looks like it holds a credential ([Result Delivery](Result%20Delivery.md#credential-guard)). Development only: boot refuses `off` with `MAIDAN_ENV=production`. |
 | `MAIDAN_WEBHOOK_MAX_ATTEMPTS` | `16` | Failed attempts before an event webhook delivery is quarantined. |
-| `MAIDAN_WEBHOOK_POLL_INTERVAL_MS` | `50` | The webhook worker's poll. |
 | `MAIDAN_AUTOMATION_MAX_ATTEMPTS` | `16` | Failed attempts before an automation (slash command or FSM hook) delivery is quarantined. |
-| `MAIDAN_AUTOMATION_POLL_INTERVAL_MS` | `50` | The automation worker's poll. |
 | `MAIDAN_CHAIN_VERIFY_SECS` | unset | Verify every workspace's event-log hash chain at this interval, such as `86400`. See [Event-log integrity](Production.md#event-log-integrity). |
-| `MAIDAN_USAGE_METER_FLUSH_SECS` | `60` | How often usage counters are written. |
 | `MAIDAN_FREE_ALLOWANCE` | unset | Per-meter free allowance, such as `requests=100000,mcp_calls=50000,stored_bytes=1073741824`. An unknown or repeated meter or a bad number refuses boot. |
 | `MAIDAN_OVERAGE_PRICES` | unset | What overage past the free allowance costs, per meter, as `meter=micros/units`: `mcp_calls=1000000/100000` charges 1,000,000 USD micros (one dollar) per 100,000 calls. Comma-separated; both numbers whole and at least 1. `stored_bytes` takes no price (it stays a hard cap). Charged only with `MAIDAN_CREDITS_ADDRESS` set. An unknown or repeated meter or a malformed price refuses boot. See [Credits](Credits.md). |
 | `MAIDAN_CREDITS_ADDRESS` | unset | The EVM address that receives USDC top-ups. Unset, credits are off: nothing is charged, no top-up opens and nothing watches the chain. The server only reads the chain; this is an address, never a key. A malformed address refuses boot. |
@@ -320,8 +324,6 @@ explains the permissions and the guards.
 | `MAIDAN_SMTP_STARTTLS` | on | `false` or `0` for a plaintext relay. |
 | `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS` | unset | Skip a notification email when the recipient was seen within this many seconds. Unset, every opted-in recipient is mailed. |
 | `MAIDAN_VAPID_PRIVATE_KEY`, `MAIDAN_VAPID_PUBLIC_KEY`, `MAIDAN_VAPID_SUBJECT` | unset | Web Push. All three turn it on: a base64url P-256 private scalar, the uncompressed public key and a `mailto:` or `https:` contact. Unset, there is no web push and no key is generated. |
-| `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | `60` | A member seen within this many seconds counts as connected and is not pushed. |
-| `MAIDAN_WEBPUSH_WORKER_TICK_SECS` | `5` | How often failed pushes are retried. |
 
 ## Embeddings and search
 
@@ -338,8 +340,6 @@ explains the permissions and the guards.
 | `INDEXER_STALE_SECS` | `0` | Above `0`, readiness degrades when the indexer has an unhandled message event older than this and has made no progress for as long. An idle instance stays ready. Recommended `300` on Postgres with embeddings. |
 | `MAIDAN_INDEXER_QUEUE_CAPACITY` | `1024` | Messages queued for embedding; a full queue applies backpressure. |
 | `MAIDAN_INDEXER_BATCH_SIZE` | `32` | Messages per provider call. |
-| `MAIDAN_INDEXER_RETRIES` | `3` | Retries after a failed call (at most 10). |
-| `MAIDAN_INDEXER_RETRY_BASE_MS` | `250` | First retry delay, doubling up to 10 s. |
 | `MAIDAN_EMBED_REPAIR_INTERVAL_SECS` | `300` | How often the repair sweep embeds messages that were missed. `0` turns it off. |
 | `MAIDAN_EMBED_REPAIR_BATCH` | `256` | Messages per repair pass. |
 | `MAIDAN_HNSW_M`, `MAIDAN_HNSW_EF_CONSTRUCTION`, `MAIDAN_HNSW_EF_SEARCH` | pgvector's | The pgvector HNSW index parameters. See [Query tuning](https://github.com/david-engelmann/maidan/blob/main/docs/Query-Tuning.md). |
@@ -373,8 +373,6 @@ prunes and what it never touches.
 | `MAIDAN_RETENTION_DELIVERIES_DAYS` | off | Finished delivery rows. |
 | `MAIDAN_RETENTION_MESSAGES_DAYS` | off | Messages, erased as a purge erases them. |
 | `MAIDAN_RETENTION_MEDIA_DAYS` | `30` | Unreferenced media. `0` or `off` keeps media until someone erases it. |
-| `MAIDAN_RETENTION_SWEEP_SECS` | `86400` | How often the sweeper runs. |
-| `MAIDAN_RETENTION_BATCH` | `5000` | Rows deleted per batch. |
 
 A value that is not a positive whole number turns that knob off. For
 `MAIDAN_RETENTION_MEDIA_DAYS` that means media is kept.

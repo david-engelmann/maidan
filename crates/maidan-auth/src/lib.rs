@@ -18,10 +18,11 @@ pub mod thread_lookup;
 pub mod token;
 
 pub use access::{
-    authorize_message, authorize_thread, can_access_channel, can_access_thread,
-    ensure_channel_access, ensure_dm_participant, ensure_message_access, ensure_thread_access,
-    private_channel_deny_set, resolve_wasi_handler_target, visible_human_waits,
-    visible_unassigned_reviews, HumanWait, HumanWaits, MessageScope, ThreadScope, WasiTargetError,
+    authorize_message, authorize_thread, can_access_channel, can_access_thread, can_read_artifact,
+    can_read_gate, ensure_channel_access, ensure_dm_participant, ensure_message_access,
+    ensure_thread_access, private_channel_deny_set, resolve_wasi_handler_target, visible_channels,
+    visible_human_waits, visible_unassigned_reviews, HumanWait, HumanWaits, MessageScope,
+    ThreadScope, WasiTargetError,
 };
 pub use authorization::{
     record_delegated_authorization, require_capability as require_observed_capability,
@@ -50,4 +51,6 @@ pub use resolve::{
     resolve_token_id,
 };
 pub use thread_lookup::find_readable_thread;
-pub use token::{hash_secret, ShareTicketSecret, TokenSecret, WorkspaceInviteSecret};
+pub use token::{
+    hash_secret, is_checksummed_token, ShareTicketSecret, TokenSecret, WorkspaceInviteSecret,
+};
