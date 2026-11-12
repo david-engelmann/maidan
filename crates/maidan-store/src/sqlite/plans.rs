@@ -32,9 +32,9 @@ pub async fn submit(
     if let Some(outcome) = existing(pool, parent_id, &plan).await? {
         return Ok(outcome);
     }
-    spawn_budget(pool, parent_id, &parent, plan.children.len() as i64).await?;
 
     let mut tx = super::tx::begin_write(pool).await?;
+    spawn_budget_on(&mut tx, parent_id, &parent, plan.children.len() as i64).await?;
     check_repos_in_tx(&mut tx, parent.workspace_id, &plan.children).await?;
     let now = Utc::now();
     sqlx::query(
@@ -356,15 +356,16 @@ async fn existing(
 
 /// The workspace's spawn budget, counted for the whole plan: a plan that
 /// would take the parent past `max_children`, or nest past `max_depth`,
-/// creates nothing.
-async fn spawn_budget(
-    pool: &SqlitePool,
+/// creates nothing. Counted inside `tx`, which holds SQLite's write lock, so
+/// no concurrent create commits a child between the count and the inserts.
+async fn spawn_budget_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     parent_id: ThreadId,
     parent: &Parent,
     adding: i64,
 ) -> Result<(), StoreError> {
     let workspace_id = WorkspaceId(parent.workspace_id);
-    let Some(budget) = spawn::get_budget(pool, workspace_id).await? else {
+    let Some(budget) = spawn::get_budget(&mut **tx, workspace_id).await? else {
         return Ok(());
     };
     let refuse = |axis, limit, observed| {
@@ -378,13 +379,13 @@ async fn spawn_budget(
         }))
     };
     if let Some(max_children) = budget.max_children {
-        let children = spawn::count_active_children(pool, parent_id).await?;
+        let children = spawn::count_active_children(&mut **tx, parent_id).await?;
         if children + adding > max_children {
             return refuse(SpawnAxis::Children, max_children, children + adding);
         }
     }
     if let Some(max_depth) = budget.max_depth {
-        let depth = spawn::thread_depth(pool, parent_id).await?;
+        let depth = spawn::thread_depth(&mut **tx, parent_id).await?;
         if depth >= max_depth {
             return refuse(SpawnAxis::Depth, max_depth, depth);
         }
@@ -772,11 +773,11 @@ pub async fn amend(
     let parent = parent_row(pool, parent_id).await?;
     hold_check(&parent, member_id, amend.lease_id)?;
     let net_adding = amend.add.len() as i64 - amend.cancel.len() as i64;
-    if net_adding > 0 {
-        spawn_budget(pool, parent_id, &parent, net_adding).await?;
-    }
 
     let mut tx = super::tx::begin_write(pool).await?;
+    if net_adding > 0 {
+        spawn_budget_on(&mut tx, parent_id, &parent, net_adding).await?;
+    }
     let amendments: i64 =
         sqlx::query_scalar("SELECT amendments FROM maidan_thread_plans WHERE parent_thread_id = ?")
             .bind(parent_id.0)

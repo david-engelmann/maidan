@@ -21,6 +21,7 @@ mod credits;
 mod data_audited;
 mod delegation_grants;
 pub mod delivery_cursor;
+mod display_names;
 mod dlq;
 mod dm;
 mod egress_outbox;

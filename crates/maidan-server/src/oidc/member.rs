@@ -79,23 +79,27 @@ pub async fn resolve_member_for_login(
 
     // Linking by email trusts the issuer that asserted the address, so it is
     // scoped to the one issuer named for it. An email verified by any other
-    // issuer falls through to provisioning, or is refused (#1625).
+    // issuer falls through to provisioning, or is refused (#1625). A handle
+    // equal to the email is a pre-provisioning key for a first sign-in only:
+    // a member some other identity already signs in as is never handed to a
+    // new one, so whoever set the handle cannot redirect a later login. The
+    // store checks and binds in one step, so two identities racing for one
+    // member cannot both take it; the loser falls through like any other.
     if link_email_issuer == Some(issuer)
         && email_verified
         && let Some(email) = email
         && let Ok(member) = store.get_member_by_handle(workspace_id, email).await
-    {
-        let bound = claim_identity(
-            store,
-            NewOidcIdentity {
+        && let Some(identity) = store
+            .link_unclaimed_oidc_identity(NewOidcIdentity {
                 workspace_id,
                 issuer: issuer.to_string(),
                 subject: subject.to_string(),
                 member_id: member.id,
                 email: Some(email.to_string()),
-            },
-        )
-        .await?;
+            })
+            .await?
+    {
+        let bound = bound_member(store, workspace_id, member.id, identity.member_id).await?;
         let how = if bound == member.id {
             LoginMember::Linked
         } else {
@@ -208,10 +212,21 @@ async fn claim_identity(store: &dyn Store, new: NewOidcIdentity) -> Result<Membe
     let workspace_id = new.workspace_id;
     let wanted = new.member_id;
     let identity = store.upsert_oidc_identity(new).await?;
-    if identity.member_id == wanted {
+    bound_member(store, workspace_id, wanted, identity.member_id).await
+}
+
+/// The member an identity row names, which a racing login may have bound
+/// before `wanted`: that member signs in, checked live and in this workspace.
+async fn bound_member(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    wanted: MemberId,
+    bound: MemberId,
+) -> Result<MemberId, ApiError> {
+    if bound == wanted {
         return Ok(wanted);
     }
-    match store.get_member(identity.member_id).await {
+    match store.get_member(bound).await {
         Ok(member) if member.workspace_id == workspace_id && member.tombstoned_at.is_none() => {
             Ok(member.id)
         }

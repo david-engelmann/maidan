@@ -60,7 +60,7 @@ one of these is now unknown, and boot refuses it with the rest.
 |---|---|---|
 | `DATABASE_URL` | required | `postgres://…` (recommended) or `sqlite:…`; the prefix picks the backend. A managed Postgres (Neon, RDS, Cloud SQL and the like) needs TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the certificate. The server carries its own root certificates, so this works on the shell-less image. SQLite connections turn on `foreign_keys`, WAL and a busy timeout. |
 | `MAIDAN_BIND` | `0.0.0.0:8080` | The address the HTTP server listens on. |
-| `MAIDAN_ENV` | unset | `production` refuses every development switch: `AUTH_DISABLED`, the development KEK, `MAIDAN_OIDC_MOCK`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. |
+| `MAIDAN_ENV` | unset | `production` refuses every development switch: `AUTH_DISABLED`, the development KEK, `MAIDAN_OIDC_MOCK`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. `development` names a deployment that is not production, which `MAIDAN_OIDC_MOCK` needs. An empty value counts as unset: not production, so the production refusals stay off. Any other value (`prod`, `Production`) refuses boot. The Helm chart's production render and the `k8s/overlays/prod` overlay set `production`. |
 | `MAIDAN_PUBLIC_ORIGIN` | unset | This instance's public origin, such as `https://maidan.example.com` (`https`, or `http` on a loopback host, with no path). OAuth identifiers are built from it; unset, the instance serves no OAuth metadata. A malformed value refuses boot. See [OAuth](OAuth.md). |
 | `MAIDAN_CONSOLE_ORIGIN` | origin of `MAIDAN_OIDC_REDIRECT_URI` | The console's absolute origin, used in the one-time links `approval_decide` gives a person. With neither set, the links are host-relative and no URL elicitation is offered. |
 | `MAIDAN_SHUTDOWN_DRAIN_SECS` | `0` | Seconds the server keeps serving after SIGTERM, with readiness at `503`, before it closes its listener. The Helm chart and `k8s/base` set `10`. See [Rolling restarts](Production.md#rolling-restarts). |
@@ -140,7 +140,7 @@ The design and provider recipes are in [OIDC](OIDC.md).
 | `MAIDAN_OIDC_AUTO_PROVISION` | unset | `1` lets a new identity create a human member. Otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | unset | `1` links a verified email claim to an existing member with that handle. |
 | `MAIDAN_OIDC_EMAILS_VERIFIED` | unset | `1` treats an `email` claim without `email_verified` as verified. Only for a provider whose every login proves the address. An explicit `email_verified: false` stays unverified. |
-| `MAIDAN_OIDC_MOCK` | unset | `1` for a deterministic development and CI provider. Refused in production. |
+| `MAIDAN_OIDC_MOCK` | unset | `1` for a deterministic development and CI provider. Needs `MAIDAN_ENV=development`; refused in production and when `MAIDAN_ENV` is unset. |
 
 ## Sign-up and waitlist
 

@@ -1,0 +1,3 @@
+### One child takes a parent's last spawn slot
+
+- **Fixed:** two child threads created at once under a parent with one `max_children` slot left could both land, because the spawn budget was counted on the pool before the insert's transaction. The count now runs inside that transaction on both backends, for `create_thread`, `create_thread_with_event`, superseding creates, intake accepts, and plan submit and amend. On Postgres a create under a capped parent first locks the parent row `FOR NO KEY UPDATE`, which serializes it against sibling creates and against a plan's `FOR UPDATE`; on SQLite the transaction already holds the write lock. Exactly one racer takes the slot and the other gets `SpawnRejected`.

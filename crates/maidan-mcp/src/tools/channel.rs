@@ -170,20 +170,9 @@ pub(super) async fn list_channels(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListChannelsArgs = crate::tools::parse_args(args)?;
-    let channels = store.list_channels(WorkspaceId(a.workspace_id)).await?;
-    if auth.bypass {
-        return Ok(content_json(&channels));
-    }
     // Hide private channels the caller is not a member of.
-    let mut visible = Vec::with_capacity(channels.len());
-    for ch in channels {
-        if !ch.private
-            || ch.name == DM_CHANNEL_NAME
-            || store.channel_is_member(ch.id, auth.member_id).await?
-        {
-            visible.push(ch);
-        }
-    }
+    let visible =
+        maidan_auth::visible_channels(store.as_ref(), auth, WorkspaceId(a.workspace_id)).await?;
     Ok(content_json(&visible))
 }
 
@@ -410,7 +399,7 @@ struct OpenGroupDmArgs {
     title: Option<String>,
 }
 
-/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `workspace:read`
+/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
 /// and `open_group_dm_conversation`. At least three distinct members, all in
 /// the workspace, as the store requires.
 pub(super) async fn open_group_dm(

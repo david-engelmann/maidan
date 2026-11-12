@@ -24,6 +24,15 @@ images:
 # Production deployments scale wider, expose via a real host, and
 # tighten resource limits.
 patches:
+  # The server's own production refusals (the OIDC mock, AUTH_DISABLED, the
+  # development KEK, fault injection) hold only under MAIDAN_ENV=production.
+  - target:
+      kind: ConfigMap
+      name: maidan-config
+    patch: |-
+      - op: add
+        path: /data/MAIDAN_ENV
+        value: production
   - target:
       kind: Deployment
       name: maidan-server
@@ -31,6 +40,14 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 3
+      # Also in the container's own env, as the Helm chart does: a ConfigMap
+      # change alone does not restart running pods, and an explicit env entry
+      # outranks envFrom, so production mode cannot be overridden or missed.
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MAIDAN_ENV
+          value: production
       - op: replace
         path: /spec/template/spec/containers/0/resources
         value:

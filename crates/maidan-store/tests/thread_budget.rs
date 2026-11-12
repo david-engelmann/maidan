@@ -4,9 +4,9 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberKind, NewChannel,
-    NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace, PriceSnapshot, ThreadId,
-    TokenUsage, UsageDelta, UsageEvidence, UsageRollupQuery,
+    BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberId, MemberKind,
+    NewChannel, NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace,
+    PriceSnapshot, ThreadId, TokenUsage, UsageDelta, UsageEvidence, UsageRollupQuery,
 };
 
 async fn sqlite() -> SqliteStore {
@@ -20,6 +20,32 @@ async fn sqlite() -> SqliteStore {
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
     SqliteStore::for_tests(pool)
+}
+
+/// One claim-fenced usage report from the claim holder, at no price, so only
+/// the tokens and turns count against the budget.
+fn fenced_usage(
+    thread: ThreadId,
+    reporter: MemberId,
+    lease: ClaimLeaseId,
+    tokens: i64,
+    turns: i64,
+) -> NewUsageLedgerEntry {
+    NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread,
+        reporter,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens: TokenUsage {
+            input: tokens,
+            ..Default::default()
+        },
+        usd_micros: 0,
+        price_snapshot: PriceSnapshot::default(),
+        turns,
+        evidence: Default::default(),
+    }
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -276,21 +302,20 @@ async fn run_enforce_suite(store: &dyn Store) {
         .assign_thread(thread.id, member.id)
         .await
         .expect("assign");
+    let lease = store
+        .get_thread(thread.id)
+        .await
+        .expect("assigned")
+        .claim_lease_id
+        .expect("lease");
 
-    // Under budget → not stopped, claim intact, no event.
+    // Under budget → not stopped, claim intact, no ClaimFailed.
     let (r, ev) = store
-        .report_thread_usage(
-            thread.id,
-            UsageDelta {
-                tokens: 50,
-                usd_micros: 0,
-                turns: 0,
-            },
-        )
+        .report_accounted_usage(&fenced_usage(thread.id, member.id, lease, 50, 0))
         .await
         .expect("report under");
     assert!(!r.stopped);
-    assert!(ev.is_none());
+    assert!(ev.iter().all(|e| e.kind != EventKind::ClaimFailed));
     assert_eq!(r.budget.used_tokens, 50);
     assert_eq!(
         store.get_thread(thread.id).await.expect("t1").assignee_id,
@@ -305,21 +330,16 @@ async fn run_enforce_suite(store: &dyn Store) {
 
     // Over budget → stopped: claim released, ClaimFailed event, DLQ entry.
     let (r2, ev2) = store
-        .report_thread_usage(
-            thread.id,
-            UsageDelta {
-                tokens: 60,
-                usd_micros: 0,
-                turns: 0,
-            },
-        )
+        .report_accounted_usage(&fenced_usage(thread.id, member.id, lease, 60, 0))
         .await
         .expect("report over");
     assert!(r2.stopped, "over budget stops the run");
     assert_eq!(r2.reason.as_deref(), Some("tokens"));
     assert_eq!(r2.budget.used_tokens, 110);
-    let stored = ev2.expect("ClaimFailed event");
-    assert_eq!(stored.kind, EventKind::ClaimFailed);
+    assert!(
+        ev2.iter().any(|e| e.kind == EventKind::ClaimFailed),
+        "ClaimFailed event"
+    );
     assert_eq!(
         store.get_thread(thread.id).await.expect("t2").assignee_id,
         None,
@@ -332,21 +352,24 @@ async fn run_enforce_suite(store: &dyn Store) {
     assert_eq!(dlq[0].used_tokens, 110);
     assert_eq!(dlq[0].thread_id, thread.id);
 
-    // A further report on the now-unassigned thread is over budget but has no run
-    // to stop → not stopped, no new event/DLQ.
-    let (r3, ev3) = store
-        .report_thread_usage(
-            thread.id,
-            UsageDelta {
-                tokens: 5,
-                usd_micros: 0,
-                turns: 0,
-            },
-        )
-        .await
-        .expect("report unassigned");
-    assert!(!r3.stopped, "no claim → nothing to stop");
-    assert!(ev3.is_none());
+    // The released lease reports nothing more: no claim holder, no usage, no
+    // new event or DLQ entry.
+    assert!(matches!(
+        store
+            .report_accounted_usage(&fenced_usage(thread.id, member.id, lease, 5, 0))
+            .await,
+        Err(StoreError::Conflict(_))
+    ));
+    assert_eq!(
+        store
+            .get_thread_budget(thread.id)
+            .await
+            .expect("budget")
+            .expect("budget row")
+            .used_tokens,
+        110,
+        "a stale lease's report is not charged"
+    );
     assert_eq!(
         store
             .list_channel_dlq(channel.id, 10)
@@ -642,7 +665,7 @@ async fn run_patch_suite(store: &dyn Store) {
 
     // Accumulated usage is never touched by a limit change.
     store
-        .report_thread_usage(
+        .add_thread_usage(
             thread.id,
             UsageDelta {
                 tokens: 7,
