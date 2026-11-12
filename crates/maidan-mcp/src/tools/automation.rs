@@ -48,9 +48,7 @@ pub(super) async fn register_slash_command(
         }
         SlashHandlerKind::McpTool => {
             required_capability(&a.handler_target)?;
-            if let Some(needed) = super::slash_target_capability(&a.handler_target)
-                && !auth.bypass
-            {
+            if let Some(needed) = super::slash_target_capability(&a.handler_target) {
                 maidan_auth::require_observed_capability(
                     auth,
                     maidan_auth::AuthorizationSurface::Mcp,

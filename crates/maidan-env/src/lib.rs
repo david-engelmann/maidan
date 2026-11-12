@@ -231,6 +231,7 @@ pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_A_PEER_URL",
     "MAIDAN_A_URL",
     "MAIDAN_BIN_DIR",
+    "MAIDAN_B_PEER_URL",
     "MAIDAN_B_URL",
     "MAIDAN_CHANNEL",
     "MAIDAN_CHAOS_DELAY_MS",

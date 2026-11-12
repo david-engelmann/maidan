@@ -5,7 +5,7 @@ set -euo pipefail
 
 MAIDAN_A_URL="${MAIDAN_A_URL:-http://localhost:8080}"
 MAIDAN_B_URL="${MAIDAN_B_URL:-http://localhost:8081}"
-# The dev admin compose.yaml seeds into the database A and B share. It only
+# The dev admin compose.yaml seeds into each instance's own database. It only
 # opens workspaces: each one's own admin token does the work inside it, since a
 # token acts in its own workspace and nowhere else.
 DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"

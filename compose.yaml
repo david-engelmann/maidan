@@ -140,9 +140,8 @@ services:
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      # The first admin of the shared database's `dev` workspace (operator:global
-      # included), so the smoke scripts authenticate like any client. Only this
-      # service of the pair seeds it; maidan-b shares the database and finds it.
+      # The first admin of this instance's `dev` workspace (operator:global
+      # included), so the smoke scripts authenticate like any client.
       MAIDAN_DEV_ADMIN_TOKEN: ${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}
       FEDERATION_DISABLED: 1
       # Peers in this profile are other containers on the compose network —

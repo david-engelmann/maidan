@@ -425,6 +425,69 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
     );
 }
 
+/// Two instances share no database, so the secret one presents to the other
+/// has to be one the other issued. A peer registered with that secret uses it
+/// both ways; a secret too short to be one is refused.
+#[tokio::test]
+async fn a_peer_registered_with_the_remotes_secret_presents_and_accepts_it() {
+    let h = spawn().await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-issued".to_string(),
+        })
+        .await
+        .unwrap();
+    let admin = mint_admin_token(h.store.as_ref(), ws.id).await;
+    let issued = "issued-by-the-remote-0123456789abcdef";
+    let create = |secret: &str| {
+        h.client
+            .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
+            .bearer_auth(&admin)
+            .json(&json!({
+                "name": "upstream",
+                "base_url": "https://remote.example",
+                "secret": secret,
+            }))
+            .send()
+    };
+    let short = create("too-short").await.unwrap();
+    assert_eq!(short.status(), StatusCode::BAD_REQUEST);
+    let created = create(issued).await.unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let body: serde_json::Value = created.json().await.unwrap();
+    assert_eq!(
+        body["secret"], issued,
+        "the registration keeps the issued secret"
+    );
+    let peer = h
+        .store
+        .get_peer(PeerId(
+            uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        peer.token_hash,
+        maidan_auth::hash_secret(issued),
+        "the peer is the issued secret's"
+    );
+    assert!(
+        peer.outbound_secret_ciphertext.is_some(),
+        "and the poll worker has it to present"
+    );
+    let push = h
+        .client
+        .post(format!("{}/a2a/v1/events", h.base()))
+        .bearer_auth(issued)
+        .json(&FederatedEventBatch { events: vec![] })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(push.status(), StatusCode::OK, "the remote pushes with it");
+    h.shutdown().await;
+}
+
 async fn mint_peer(h: &Harness, ws: WorkspaceId, name: &str) -> (PeerId, String) {
     let admin = mint_admin_token(h.store.as_ref(), ws).await;
     let create = h

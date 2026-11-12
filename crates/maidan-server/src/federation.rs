@@ -1158,14 +1158,27 @@ pub async fn create_peer(
     maidan_auth::validate_egress_target(&body.base_url)
         .map_err(|error| ApiError::BadRequest(error.to_string()))?;
 
-    let secret = TokenSecret::generate();
+    // Two instances on two databases share no peer row, so a pull from the
+    // remote authenticates only with a credential the remote itself issued.
+    let secret = match body.secret {
+        Some(secret) => {
+            let length = secret.chars().count();
+            if !(32..=512).contains(&length) || secret.chars().any(char::is_whitespace) {
+                return Err(ApiError::BadRequest(
+                    "secret must be 32 to 512 characters with no whitespace".into(),
+                ));
+            }
+            secret
+        }
+        None => TokenSecret::generate().as_str().to_string(),
+    };
     let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
         ApiError::Internal(
             "FEDERATION_ENCRYPTION_KEY must be set to create federation peers".into(),
         )
     })?;
     let outbound_secret_ciphertext =
-        encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
+        encrypt_peer_secret(&secret, key).map_err(|e| ApiError::Internal(e.to_string()))?;
     let remote_workspace_id = body
         .remote_workspace_id
         .map(WorkspaceId)
@@ -1177,21 +1190,17 @@ pub async fn create_peer(
             remote_workspace_id,
             name: body.name,
             base_url: body.base_url,
-            token_hash: hash_secret(secret.as_str()),
+            token_hash: hash_secret(&secret),
             outbound_secret_ciphertext: Some(outbound_secret_ciphertext),
         })
         .await?;
-    remember_peer_secret(
-        &state.federation.outbound_secrets,
-        peer.id,
-        secret.as_str().to_string(),
-    );
+    remember_peer_secret(&state.federation.outbound_secrets, peer.id, secret.clone());
 
     Ok((
         StatusCode::CREATED,
         Json(MintPeerResponse {
             peer: PeerResponse::from(peer),
-            secret: secret.as_str().to_string(),
+            secret,
         }),
     ))
 }
