@@ -288,7 +288,9 @@ async fn run(lagging: bool) {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let received = Received::default();
     let app = Router::new()
         .route("/webhook", post(count_webhook))

@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
     // Secret files become plain variables here, before the runtime starts a
     // thread that could read the environment while it is written. The probe
     // reads no secret, so a missing secret file cannot fail a health check.
-    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; runs before any runtime or thread
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; no thread yet
     let from_files = if invocation == Invocation::Serve {
         // SAFETY: no runtime or other thread has started yet.
         unsafe { maidan_env::load_secret_files() }.context("read secret files")?

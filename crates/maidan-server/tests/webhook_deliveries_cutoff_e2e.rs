@@ -160,7 +160,9 @@ async fn suite(backend: &Backend) {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let state = state_on(backend);
     let store = backend.store.as_ref();
     let (a, _) = signed_up(store, "ada", true).await;
@@ -330,7 +332,9 @@ async fn a_delivery_enqueued_before_the_cutoff_and_replayed_after_it_still_sends
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let backend = sqlite().await;
     let state = state_on(&backend);
     let store = backend.store.as_ref();

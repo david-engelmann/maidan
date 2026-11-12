@@ -122,7 +122,9 @@ async fn webhook_suite(backend: &Backend) {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let state = state_on(backend);
     let store = backend.store.as_ref();
     let ws = workspace(store, "hooks").await;
@@ -204,7 +206,9 @@ async fn automation_suite(backend: &Backend) {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let state = state_on(backend);
     let store = backend.store.as_ref();
     let ws = workspace(store, "auto").await;

@@ -46,11 +46,15 @@ async fn spawn() -> Server {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_MAX_BODY_BYTES", MAX_BODY_BYTES) };
+    unsafe {
+        std::env::set_var("MAIDAN_MAX_BODY_BYTES", MAX_BODY_BYTES)
+    };
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES) };
+    unsafe {
+        std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES)
+    };
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await

@@ -143,7 +143,9 @@ async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_work
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_HUMAN_TIMEOUT_SECS", TIMEOUT_SECS.to_string()) };
+    unsafe {
+        std::env::set_var("MAIDAN_HUMAN_TIMEOUT_SECS", TIMEOUT_SECS.to_string())
+    };
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")

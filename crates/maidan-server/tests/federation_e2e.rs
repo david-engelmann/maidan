@@ -964,7 +964,9 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
 
     let asked = Arc::new(AtomicUsize::new(0));
     // A stand-in remote peer, not a Maidan route, so the checked-extractor

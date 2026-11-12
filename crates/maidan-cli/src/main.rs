@@ -149,7 +149,7 @@ fn main() -> anyhow::Result<()> {
     // Before the runtime starts a thread that could read the environment while
     // it is written, and before clap reads `DATABASE_URL` from it.
     // SAFETY: no runtime or other thread has started yet.
-    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; runs before any runtime or thread
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; no thread yet
     unsafe { maidan_env::load_secret_files() }.context("read secret files")?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
