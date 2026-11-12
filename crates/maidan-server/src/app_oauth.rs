@@ -29,8 +29,19 @@ const CODE_TTL_SECS: i64 = 600;
 pub struct AuthorizeAppInstall {
     pub redirect_uri: String,
     pub state: String,
+    /// base64url(SHA-256(code_verifier)), unpadded: PKCE S256, required on
+    /// every code. The exchange is public (no client secret), so without it a
+    /// code intercepted on the redirect was as good as a token.
     #[serde(default)]
     pub code_challenge: Option<String>,
+}
+
+/// An S256 challenge is 32 bytes as unpadded base64url: 43 characters.
+fn valid_s256_challenge(challenge: &str) -> bool {
+    challenge.len() == 43
+        && challenge
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +76,15 @@ pub async fn authorize_app_install(
             "redirect_uri and state are required".into(),
         ));
     }
+    let code_challenge = match body.code_challenge.as_deref() {
+        Some(challenge) if valid_s256_challenge(challenge) => challenge.to_string(),
+        _ => {
+            return Err(ApiError::BadRequest(
+                "code_challenge is required: base64url(SHA-256(code_verifier)), 43 characters (PKCE S256)"
+                    .into(),
+            ));
+        }
+    };
 
     let app = state.store.get_app(app_id).await?;
     if app.workspace_id != workspace_id {
@@ -79,7 +99,7 @@ pub async fn authorize_app_install(
             app_id,
             workspace_id,
             redirect_uri: body.redirect_uri.clone(),
-            code_challenge: body.code_challenge.clone(),
+            code_challenge: Some(code_challenge),
             expires_at: Utc::now() + chrono::Duration::seconds(CODE_TTL_SECS),
         })
         .await?;
@@ -111,14 +131,20 @@ pub async fn exchange_app_code(
     if pending.redirect_uri != body.redirect_uri {
         return Err(ApiError::BadRequest("redirect_uri mismatch".into()));
     }
-    if let Some(challenge) = &pending.code_challenge {
-        let verifier = body
-            .code_verifier
-            .as_deref()
-            .ok_or_else(|| ApiError::BadRequest("code_verifier required".into()))?;
-        if s256_challenge(verifier) != *challenge {
-            return Err(ApiError::Unauthorized);
-        }
+    // Every code minted now carries a challenge. One without (minted before
+    // PKCE was required, and live for at most CODE_TTL_SECS) is refused
+    // rather than exchanged on the code alone.
+    let Some(challenge) = &pending.code_challenge else {
+        return Err(ApiError::BadRequest(
+            "this code has no PKCE challenge; authorize again with code_challenge".into(),
+        ));
+    };
+    let verifier = body
+        .code_verifier
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("code_verifier required".into()))?;
+    if s256_challenge(verifier) != *challenge {
+        return Err(ApiError::Unauthorized);
     }
 
     // Atomic single-use consume: only a still-live code flips to used, so

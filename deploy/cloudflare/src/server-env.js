@@ -38,6 +38,24 @@ export function answeredFingerprint(response) {
   return headers.get(ENV_FINGERPRINT_HEADER);
 }
 
+// The answer with the fingerprint header taken off. The header is for this
+// Worker alone: the hash covers every setting the container gets, secrets
+// included, so published it would let anyone confirm a guess at a secret
+// offline (OPS-003). A WebSocket upgrade keeps its socket; any other answer
+// keeps its status, headers and body.
+export function withoutFingerprint(response) {
+  if (!(response instanceof Response) || !response.headers.has(ENV_FINGERPRINT_HEADER)) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.delete(ENV_FINGERPRINT_HEADER);
+  const init = { status: response.status, statusText: response.statusText, headers };
+  if (response.webSocket) {
+    return new Response(null, { ...init, webSocket: response.webSocket });
+  }
+  return new Response(response.body, init);
+}
+
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
 // Alphabetical, no duplicates. `_FILE` mounts stay off this list: a Worker
@@ -211,7 +229,13 @@ export class ContainerEnvSession {
     return true;
   }
 
-  async serve({ fingerprint, container, storage, blockConcurrencyWhile, destroy, forward }) {
+  // Every answer leaves here without the fingerprint header, once it has
+  // been compared.
+  async serve(request) {
+    return withoutFingerprint(await this.#serve(request));
+  }
+
+  async #serve({ fingerprint, container, storage, blockConcurrencyWhile, destroy, forward }) {
     if (this.verifiedFingerprint === fingerprint && container.running === true) {
       const epoch = this.epoch;
       try {

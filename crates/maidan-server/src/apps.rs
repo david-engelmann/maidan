@@ -25,7 +25,10 @@ pub async fn register_app(
     ApiJson(body): ApiJson<RegisterApp>,
 ) -> ApiResult<(StatusCode, Json<AppResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
-    cap(&auth, capability::WORKSPACE_WRITE)?;
+    // token:admin, the capability that installs an app and mints its tokens:
+    // with only workspace:write any worker could register an app named
+    // "github" or "slack" for an admin to install later (SEC-016).
+    cap(&auth, capability::TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
 
     let slug = normalize_slug(&body.slug)?;
