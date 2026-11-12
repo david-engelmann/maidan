@@ -94,7 +94,7 @@ test("an empty Needs you is calm: one quiet card, no buttons", async ({ page }) 
   await openOnChannel(page, fx.board_channel_id, "#/needs");
   const empty = page.locator(".needs-empty");
   await expect(empty).toContainText("All caught up");
-  await expect(page.locator(".needs-count")).toHaveText(/Nothing waiting/);
+  await expect(page.locator(".needs-count")).toHaveCount(0);
   await expect(empty.locator("button")).toHaveCount(0);
 });
 

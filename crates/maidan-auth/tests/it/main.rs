@@ -11,6 +11,9 @@
 #[path = "../capability_matrix.rs"]
 mod capability_matrix;
 
+#[path = "../channel_listing_round_trips.rs"]
+mod channel_listing_round_trips;
+
 #[path = "../delegated_resolution.rs"]
 mod delegated_resolution;
 

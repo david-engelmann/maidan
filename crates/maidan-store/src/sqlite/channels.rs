@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Channel, ChannelId, Event, NewChannel, StoredEvent, WorkspaceId};
+use maidan_types::{Channel, ChannelId, Event, MemberId, NewChannel, StoredEvent, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -86,6 +86,28 @@ pub async fn list(
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_channel).collect())
+}
+
+pub async fn list_with_membership(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<(Channel, bool)>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT c.id, c.workspace_id, c.name, c.topic, c.private, c.created_at, c.updated_at,
+                c.tombstoned_at,
+                EXISTS (SELECT 1 FROM maidan_channel_members m
+                        WHERE m.channel_id = c.id AND m.member_id = ?2) AS is_member
+         FROM maidan_channels c WHERE c.workspace_id = ?1 ORDER BY c.name ASC, c.id ASC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| (row_to_channel(row), row.get::<bool, _>("is_member")))
+        .collect())
 }
 
 fn map_channel_err(err: sqlx::Error) -> StoreError {

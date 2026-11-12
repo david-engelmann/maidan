@@ -16,6 +16,7 @@ autotests = false
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 metrics = "0.24"
+rand = "0.8"
 base64 = "0.22"
 chacha20poly1305 = "0.10"
 chrono.workspace = true
@@ -38,6 +39,8 @@ maidan-search = { path = "../maidan-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 sqlx.workspace = true
 chrono.workspace = true
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

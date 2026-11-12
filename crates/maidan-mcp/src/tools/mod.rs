@@ -282,6 +282,15 @@ pub fn is_read_only(name: &str) -> bool {
     READ_ONLY_TOOLS.binary_search(&name).is_ok()
 }
 
+/// The capability a registrant needs, beyond `workspace:write`, to bind a
+/// slash command to `tool`. A slash command runs its tool as whoever types
+/// it, so a writer who bound `/help` to a destructive tool could wait for an
+/// admin to type it (RED-004). A read-only tool needs nothing more; any other
+/// takes `channel:admin`.
+pub fn slash_target_capability(tool: &str) -> Option<&'static str> {
+    (!is_read_only(tool)).then_some(maidan_auth::capability::CHANNEL_ADMIN)
+}
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"

@@ -86,6 +86,9 @@ mod catch_up_scale;
 #[path = "../channel_closed_results.rs"]
 mod channel_closed_results;
 
+#[path = "../channel_reads_for_member.rs"]
+mod channel_reads_for_member;
+
 #[path = "../child_threads.rs"]
 mod child_threads;
 
@@ -518,6 +521,9 @@ mod slash_command_sqlite;
 #[path = "../spawn_budget.rs"]
 mod spawn_budget;
 
+#[path = "../spawn_budget_race.rs"]
+mod spawn_budget_race;
+
 #[path = "../spawn_enforce.rs"]
 mod spawn_enforce;
 
@@ -595,6 +601,9 @@ mod thread_owner;
 
 #[path = "../thread_page_filters.rs"]
 mod thread_page_filters;
+
+#[path = "../thread_parent_checks.rs"]
+mod thread_parent_checks;
 
 #[path = "../thread_plans.rs"]
 mod thread_plans;

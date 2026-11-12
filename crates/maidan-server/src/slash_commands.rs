@@ -125,6 +125,9 @@ pub async fn create_slash_command(
         }
         SlashHandlerKind::McpTool => {
             validate_mcp_target(&body.handler_target)?;
+            if let Some(needed) = tools::slash_target_capability(&body.handler_target) {
+                cap(&auth, needed)?;
+            }
             body.handler_target.trim().to_string()
         }
         // Not just a syntax check: the sha must name an artifact this workspace

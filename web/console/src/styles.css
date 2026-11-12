@@ -661,6 +661,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .grow { flex: 1 1 auto; min-width: 0; }
 .break { overflow-wrap: anywhere; }
 .row-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 0.5rem 0; }
+/* A growing field in a row form shrinks with its card. Its grid track and its
+   control both default to their content's width, so a select whose longest
+   option is a long task title pushed Files 173px past a 900px window. */
+.row-form .field.grow { flex-basis: 16rem; grid-template-columns: minmax(0, 1fr); }
+.row-form .field.grow select, .row-form .field.grow input { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .stack-form { display: grid; gap: 10px; margin-top: 0.5rem; }
 .field select { min-height: 44px; padding: 0 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-input); }
 .check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: var(--text-md); }
@@ -1470,12 +1475,18 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .work-list a { color: var(--ink); text-underline-offset: 2px; }
 .ghost-line { height: 14px; border-radius: var(--r-xs); background: var(--line); }
 
-/* An empty detail pane: a small steel mark, a title and one line of help,
-   centred in the space the detail will fill. */
-.pane-empty { display: grid; justify-items: center; gap: var(--space-2); max-width: 32ch; padding: var(--space-8) var(--space-4); text-align: center; }
+/* An empty detail pane: the place's own mark, a title, one line of help and
+   at most one next step, centred in the space the detail will fill. */
+.empty-state.pane-empty { display: grid; justify-items: center; gap: var(--space-2); max-width: 32ch; margin-inline: auto; padding: var(--space-8) var(--space-4); text-align: center; border: 0; }
 .pane-empty strong { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .pane-empty p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
-.pane-empty-mark { width: 40px; height: 40px; margin-bottom: var(--space-1); border-radius: var(--r-md); background: linear-gradient(145deg, var(--steel-1), var(--steel-2) 60%, var(--steel-3)); box-shadow: var(--mark-shadow); }
+.empty-mark { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: var(--space-1); border-radius: var(--r-md); color: var(--muted); background: var(--paper-2); border: 1px solid var(--line); }
+.empty-mark .icon { width: 22px; height: 22px; }
+/* The shared data states: skeleton rows while a read is in flight, and one
+   stale line above rows a later read failed to refresh. */
+.state-loading { display: grid; gap: var(--space-1); }
+.state-loading .row-sk { margin-bottom: 0; }
+.state-stale { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--r-md); background: color-mix(in srgb, var(--signal) 12%, transparent); font-size: var(--text-sm); }
 /* ---- Lanes that fit ------------------------------------------------------ */
 /* All four lanes fit the content column from 1024px up instead of pushing
    Done past the edge; below 220px a lane's card foot wraps, never clips. */
@@ -1521,4 +1532,41 @@ h1, h2, h3, strong, b { font-weight: 600; }
 @media (min-width: 900px) {
   .rail-foot { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; min-height: 44px; min-width: 44px; padding: 0 0.8rem; border-radius: var(--r-md); color: var(--muted); text-decoration: none; font-size: var(--text-md); }
   .rail-foot:hover { background: var(--hover); color: var(--ink); }
+}
+
+/* ---- One Board toolbar row ------------------------------------------------ */
+/* Channel, view, search and filters, health, presence, the count and New task
+   share one row, wrapping only when the window cannot hold them, so the first
+   task sits right under the controls. Health and presence are chips in the row,
+   not rows of their own. */
+/* The row is the containing block of what it holds: a visually hidden label
+   is absolutely placed, and with the row as its block a phone's sideways
+   scroll keeps it inside the row instead of widening the page. */
+.board-bar { position: relative; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+/* The filters may wrap inside their own group (the count and Clear join them
+   while a filter is on); a group that could not wrap overflowed onto the
+   presence chips beside it. */
+.board-bar .board-filters { flex: 1 1 360px; flex-wrap: wrap; min-width: 0; margin: 0; }
+.board-bar .filter-q { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
+.board-bar .board-filters .filter-pick select { min-width: 11ch; }
+/* Health and presence chips keep their own wrapping above the phone width, so
+   four long names can never push the row past the window. */
+.board-bar .health, .board-bar .presence-strip { margin: 0; }
+.board-bar .health { gap: var(--space-1); }
+.board-bar .health-chip { padding: 0 var(--space-3); font-size: var(--text-sm); white-space: nowrap; }
+.board-bar .here { white-space: nowrap; }
+.board-bar .presence-strip > a { white-space: nowrap; }
+.board-bar .board-summary { white-space: nowrap; }
+/* Lanes size to their cards instead of stretching to the bottom of the window. */
+.lanes.wide { align-items: start; min-height: 0; }
+/* A phone keeps the row to one line that scrolls sideways inside itself, with
+   New task first, so the page never scrolls sideways and the lanes start high. */
+@media (max-width: 599px) {
+  .board-bar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 2px; }
+  .board-bar::-webkit-scrollbar { display: none; }
+  .board-bar > *, .board-bar .board-filters > * { flex: none; }
+  .board-bar .health, .board-bar .presence-strip, .board-bar .presence-strip ul { flex-wrap: nowrap; }
+  .board-bar .board-filters { flex: none; }
+  .board-bar .filter-q { flex: none; width: 180px; max-width: none; }
+  .board-bar .new-task { order: -1; margin-left: 0; }
 }
