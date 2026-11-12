@@ -107,7 +107,6 @@ async fn spawn() -> Harness {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         maidan_server::FederationRuntime::new(true, webhook_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,

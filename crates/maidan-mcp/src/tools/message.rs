@@ -366,20 +366,18 @@ pub(super) async fn edit_message(
     let editor_id = auth.member_id();
     // Author-only, as on REST: an edit keeps the author's name on the message,
     // so anyone else's edit would put words in their mouth.
-    if !auth.bypass {
-        if editor_id != existing.author_id {
-            return Err(McpError::Forbidden(
-                "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
-                    .into(),
-            ));
-        }
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            MESSAGE_POST,
-        )
-        .map_err(McpError::from)?;
+    if editor_id != existing.author_id {
+        return Err(McpError::Forbidden(
+            "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
+                .into(),
+        ));
     }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        MESSAGE_POST,
+    )
+    .map_err(McpError::from)?;
     let metadata = match a.metadata {
         Some(v) if !v.is_null() => v,
         _ => existing.metadata,
@@ -524,15 +522,14 @@ struct ListMessageEditsArgs {
 }
 
 /// Edit history of a message. Twin of `GET /messages/{id}/edits`. A tombstoned
-/// message returns an empty history unless auth is bypassed, matching REST.
+/// message returns an empty history, matching REST.
 pub(super) async fn list_message_edits(
     store: &Arc<dyn Store>,
-    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListMessageEditsArgs = crate::tools::parse_args(args)?;
     let message_id = MessageId(a.message_id);
-    if !auth.bypass && store.get_message(message_id).await?.tombstoned_at.is_some() {
+    if store.get_message(message_id).await?.tombstoned_at.is_some() {
         return Ok(content_json(&Vec::<MessageEdit>::new()));
     }
     let edits = store

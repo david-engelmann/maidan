@@ -134,7 +134,6 @@ pub async fn create_slash_command(
         // owns, or the command would be registrable and permanently unrunnable.
         SlashHandlerKind::Wasi => maidan_auth::resolve_wasi_handler_target(
             state.store.as_ref(),
-            &auth,
             workspace_id,
             &body.handler_target,
         )
@@ -325,7 +324,6 @@ pub async fn dispatch_slash_command(
             SlashHandlerKind::Wasi => {
                 crate::wasi_handler::dispatch_wasi(
                     state,
-                    auth,
                     &registration.command,
                     parsed,
                     workspace_id,

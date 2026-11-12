@@ -8234,7 +8234,7 @@
       "readOnlyHint": true,
       "title": "List message edits"
     },
-    "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+    "description": "List the edit history of a message. A tombstoned message returns an empty list. Requires workspace:read.",
     "inputSchema": {
       "properties": {
         "limit": {

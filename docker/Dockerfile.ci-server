@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
 # CI-only image for the compose and scale-out smokes: the debug maidan-server
-# the ci.yml build job already compiled (default features, so bootstrap on),
+# the ci.yml build job already compiled (default features, no bootstrap),
 # on the production runtime base. It replaces a release compile per smoke; the
 # shipped image (crates/maidan-server/Dockerfile) is built once, by the
 # release image job, and the OTLP smoke and the kind install run that one.

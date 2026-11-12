@@ -132,8 +132,8 @@ test("every wrangler var is forwarded or is the internal-host map", () => {
 test("insecure and demo switches on the binding never reach the container", () => {
   const env = serverEnv({
     MAIDAN_ALLOW_INSECURE_DEV_KEK: "1",
-    MAIDAN_ALLOW_INSECURE_NO_AUTH: "1",
     MAIDAN_ALLOW_PRIVATE_EGRESS: "1",
+    MAIDAN_DEV_ADMIN_TOKEN: "dev-admin-token-at-least-32-bytes!!",
     MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE: "1",
     MAIDAN_OIDC_MOCK: "1",
     MAIDAN_OPS_FAULT: "1",
@@ -150,8 +150,8 @@ test("insecure and demo switches on the binding never reach the container", () =
   });
   for (const name of [
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-    "MAIDAN_ALLOW_INSECURE_NO_AUTH",
     "MAIDAN_ALLOW_PRIVATE_EGRESS",
+    "MAIDAN_DEV_ADMIN_TOKEN",
     "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
     "MAIDAN_OIDC_MOCK",
     "MAIDAN_OPS_FAULT",

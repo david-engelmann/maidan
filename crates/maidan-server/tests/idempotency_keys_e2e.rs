@@ -60,7 +60,6 @@ async fn spawn() -> (SocketAddr, Arc<dyn Store>) {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED: keys belong to a real caller
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

@@ -1332,19 +1332,14 @@ pub async fn peer_auth_middleware(
         .await
         .ok()
     else {
-        if !state.auth_disabled
-            && let Err(response) =
-                crate::rate_limit::enforce_client_key(&state, &ip_key, false).await
-        {
+        if let Err(response) = crate::rate_limit::enforce_client_key(&state, &ip_key, false).await {
             return *response;
         }
         return ApiError::Unauthorized.into_response();
     };
-    // Auth is on, so the outer limiter did not count this bearer. A peer
-    // credential that resolved keeps its own bucket.
-    if !state.auth_disabled
-        && let Err(response) =
-            crate::rate_limit::enforce_verified_bearer(&state, &secret, false).await
+    // The outer limiter did not count this bearer. A peer credential that
+    // resolved keeps its own bucket.
+    if let Err(response) = crate::rate_limit::enforce_verified_bearer(&state, &secret, false).await
     {
         return *response;
     }

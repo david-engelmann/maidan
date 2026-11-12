@@ -26,7 +26,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_ALLOWED_HOSTS",
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-    "MAIDAN_ALLOW_INSECURE_NO_AUTH",
     "MAIDAN_ALLOW_PRIVATE_EGRESS",
     "MAIDAN_ALLOW_UNKNOWN_ENV",
     "MAIDAN_ARTIFACT_MAX_BODY_BYTES",
@@ -72,6 +71,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_DEPLOY_HOOK_SECRET",
     "MAIDAN_DEPLOY_HOOK_SECRET_FILE",
+    "MAIDAN_DEV_ADMIN_TOKEN",
     "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
     "MAIDAN_DIGEST_TICK_SECS",
     "MAIDAN_EGRESS_CREDENTIAL_GUARD",
@@ -666,8 +666,8 @@ mod tests {
 
         let insecure = [
             "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
             "MAIDAN_ALLOW_PRIVATE_EGRESS",
+            "MAIDAN_DEV_ADMIN_TOKEN",
             "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",
             "MAIDAN_OIDC_MOCK",
             "MAIDAN_OPS_FAULT",
@@ -750,10 +750,6 @@ mod tests {
         ),
         (
             "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-            "dev or insecure switch; never forwarded",
-        ),
-        (
-            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
             "dev or insecure switch; never forwarded",
         ),
         (
@@ -854,6 +850,10 @@ mod tests {
         (
             "MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS",
             "try.maidan.world only",
+        ),
+        (
+            "MAIDAN_DEV_ADMIN_TOKEN",
+            "dev or insecure switch; never forwarded",
         ),
         (
             "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE",

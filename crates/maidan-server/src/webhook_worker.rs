@@ -232,9 +232,6 @@ async fn creator_may_read(
     creator: &maidan_auth::AuthContext,
     log_id: i64,
 ) -> Option<bool> {
-    if creator.bypass {
-        return Some(true);
-    }
     if !creator.has_capability(maidan_auth::capability::WORKSPACE_READ) {
         return Some(false);
     }

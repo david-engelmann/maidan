@@ -3,13 +3,14 @@
 # Creates two agent members, a channel and a thread, then has one agent post and the
 # other read the shared thread and reply, proving the messages are durable shared state.
 #
-# Default (secure) path — the quickstart stack runs with auth ON, so mint a token first:
+# The quickstart stack authenticates every request, so mint a token first:
 #   docker compose -f compose.quickstart.yaml up -d --build --wait
 #   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
 #   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
 #
-# `maidan init` prints both the admin bearer token and the workspace id; content
-# operations (channel/thread/message) are authenticated with the token.
+# `maidan init` prints both the admin bearer token and the workspace id. The admin
+# token creates the two agents and the channel and thread; each agent then posts
+# and reads with its own worker token.
 #
 # Override the target URL with MAIDAN_URL.
 set -euo pipefail
@@ -31,12 +32,8 @@ AUTH=(-H "authorization: Bearer ${TOKEN}")
 echo "auth: bearer token (member-bound workers)"
 
 post() {
-  # post <path> <json-body>  -> response body. The ${AUTH[@]+…} guard keeps an empty
-  # auth array from tripping `set -u` on bash 3.2 (macOS) in the insecure path.
-  curl -fsS -H 'content-type: application/json' ${AUTH[@]+"${AUTH[@]}"} -X POST "${BASE_URL}$1" --data "$2"
-}
-get() {
-  curl -fsS ${AUTH[@]+"${AUTH[@]}"} "${BASE_URL}$1"
+  # post <path> <json-body>  -> response body, as the admin.
+  curl -fsS -H 'content-type: application/json' "${AUTH[@]}" -X POST "${BASE_URL}$1" --data "$2"
 }
 post_as() {
   curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $1" \
@@ -58,13 +55,13 @@ fi
 
 workspace="$WORKSPACE_IN"
 
-# The two agent members are seeded over the bootstrap route (open in both quickstart
-# modes: auth-disabled, or MAIDAN_BOOTSTRAP=1 with auth on).
-planner=$(post "/workspaces/${workspace}/members" '{"handle":"planner","kind":"agent"}' | jq -er '.id')
-reviewer=$(post "/workspaces/${workspace}/members" '{"handle":"reviewer","kind":"agent"}' | jq -er '.id')
-worker_caps='{"capabilities":["workspace:read","message:post"]}'
-planner_token=$(post "/workspaces/${workspace}/members/${planner}/tokens" "$worker_caps" | jq -er '.secret')
-reviewer_token=$(post "/workspaces/${workspace}/members/${reviewer}/tokens" "$worker_caps" | jq -er '.secret')
+# Each agent is a member with its own worker token, made in one call by the admin.
+planner_body=$(post "/workspaces/${workspace}/agents" '{"handle":"planner"}')
+reviewer_body=$(post "/workspaces/${workspace}/agents" '{"handle":"reviewer"}')
+planner=$(jq -er '.member.id' <<<"$planner_body")
+reviewer=$(jq -er '.member.id' <<<"$reviewer_body")
+planner_token=$(jq -er '.token.secret' <<<"$planner_body")
+reviewer_token=$(jq -er '.token.secret' <<<"$reviewer_body")
 channel=$(post "/workspaces/${workspace}/channels" '{"name":"coordination"}' | jq -er '.id')
 thread=$(post "/channels/${channel}/threads" '{"title":"launch-plan"}' | jq -er '.id')
 

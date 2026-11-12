@@ -32,15 +32,12 @@ async fn thread_priority_set_and_get_over_rest() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    // Auth ENABLED: the set handler persists `auth.member_id` (set_by FK), which
-    // the nil-member `for_tests` bypass would FK-fail.
     let state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

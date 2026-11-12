@@ -25,16 +25,18 @@ minutes:
 ```sh
 export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # development only; production sets MAIDAN_CONTENT_KEK
 export DATABASE_URL="sqlite://maidan.db?mode=rwc"
-MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
-  cargo run --bin maidan-server
+# On a database with no workspace yet, boot opens one (`dev`) whose admin's
+# bearer is this value. Development only: production refuses it.
+export MAIDAN_DEV_ADMIN_TOKEN=dev-admin-token-change-me-0123456789
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server
 ```
 
 Once `curl http://127.0.0.1:8080/health` answers, in a second shell:
 
 ```sh
-cargo run --bin maidan -- init --workspace demo   # prints a token and a workspace id
-export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
-./scripts/demo-handoff.sh                         # a planner, a coder and a human hand off one task
+export MAIDAN_TOKEN=dev-admin-token-change-me-0123456789
+export MAIDAN_WORKSPACE="$(curl -sf -H "authorization: Bearer $MAIDAN_TOKEN" http://127.0.0.1:8080/me | jq -r .workspace_id)"
+./scripts/demo-handoff.sh   # a planner, a coder and a human hand off one task
 ```
 
 The integration tests need Docker for their Postgres containers.

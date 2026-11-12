@@ -187,7 +187,6 @@ pub(crate) fn record(
         actor_id = %auth.actor_id(),
         app_installation_id = %optional(auth.app_installation_id().map(|id| id.to_string())),
         delegation_grant_id = %optional(auth.delegation_grant_id().map(|id| id.to_string())),
-        bypass = auth.bypass,
         latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
         outcome = line.outcome,
         error_code = line.error_code,

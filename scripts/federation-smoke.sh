@@ -5,6 +5,10 @@ set -euo pipefail
 
 MAIDAN_A_URL="${MAIDAN_A_URL:-http://localhost:8080}"
 MAIDAN_B_URL="${MAIDAN_B_URL:-http://localhost:8081}"
+# The dev admin compose.yaml seeds into the database A and B share. It only
+# opens workspaces: each one's own admin token does the work inside it, since a
+# token acts in its own workspace and nowhere else.
+DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"
 
 wait_health() {
   local base=$1
@@ -25,25 +29,41 @@ json_post() {
   curl -sf -X POST "$url" -H 'Content-Type: application/json' "$@"
 }
 
+# Open a workspace on the instance at $1 named $2; print its body, whose
+# .workspace.id and .token.secret the caller reads.
+open_workspace() {
+  json_post "$1/operator/workspaces" \
+    -H "Authorization: Bearer ${DEV_ADMIN_TOKEN}" \
+    -d "{\"name\":\"$2\",\"admin_handle\":\"admin\"}"
+}
+
 echo "waiting for ${MAIDAN_A_URL} and ${MAIDAN_B_URL}…"
 wait_health "$MAIDAN_A_URL" "maidan-a"
 wait_health "$MAIDAN_B_URL" "maidan-b"
 
 echo "registering peer on B…"
-ws_b=$(json_post "${MAIDAN_B_URL}/workspaces" -d '{"name":"fed-smoke-b"}' | jq -r '.id')
+opened_b=$(open_workspace "$MAIDAN_B_URL" fed-smoke-b)
+ws_b=$(echo "$opened_b" | jq -r '.workspace.id')
+token_b=$(echo "$opened_b" | jq -r '.token.secret')
 peer_body=$(json_post "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
+  -H "Authorization: Bearer ${token_b}" \
   -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_URL}\"}")
 peer_id=$(echo "$peer_body" | jq -r '.peer.id')
 peer_secret=$(echo "$peer_body" | jq -r '.secret')
 
 echo "creating thread on A…"
-ws_a=$(json_post "${MAIDAN_A_URL}/workspaces" -d '{"name":"fed-smoke-a"}' | jq -r '.id')
+opened_a=$(open_workspace "$MAIDAN_A_URL" fed-smoke-a)
+ws_a=$(echo "$opened_a" | jq -r '.workspace.id')
+token_a=$(echo "$opened_a" | jq -r '.token.secret')
 channel=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/channels" \
+  -H "Authorization: Bearer ${token_a}" \
   -d '{"name":"general"}' | jq -r '.id')
 thread=$(json_post "${MAIDAN_A_URL}/channels/${channel}/threads" \
+  -H "Authorization: Bearer ${token_a}" \
   -d '{"title":"federation"}' | jq -r '.id')
 
 stored=$(curl -sf "${MAIDAN_A_URL}/workspaces/${ws_a}/events?after_id=0&limit=50" \
+  -H "Authorization: Bearer ${token_a}" \
   | jq '[.[] | select(.kind == "thread_created")][0]')
 if [[ -z "$stored" || "$stored" == "null" ]]; then
   echo "::error::no thread_created event on A" >&2

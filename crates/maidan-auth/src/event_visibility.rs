@@ -5,8 +5,8 @@
 //! private channel they are not in, and nothing from a DM they are not part of.
 //! The live streams apply the same rule (`subscribe_grants`); this is the
 //! backfill's half, and the per-event check a one-shot MCP waiter
-//! (`wait_for_event`) applies to what it is handed live. Federation peers and
-//! bypass callers read the whole log.
+//! (`wait_for_event`) applies to what it is handed live. Federation peers read
+//! the whole log.
 //!
 //! Withdrawn words need no filter here: withdrawal shreds the message's
 //! content key, so its posted and edited events read back as sealed
@@ -51,9 +51,6 @@ impl<'a> EventVisibility<'a> {
         thread_id: Option<ThreadId>,
         channel_id: Option<ChannelId>,
     ) -> Result<bool, StoreError> {
-        if self.auth.bypass {
-            return Ok(true);
-        }
         if let Some(thread_id) = thread_id {
             if let Some(&seen) = self.threads.get(&thread_id) {
                 return Ok(seen);

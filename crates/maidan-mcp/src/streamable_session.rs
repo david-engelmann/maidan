@@ -206,7 +206,14 @@ pub fn streamable_session_ttl() -> Duration {
 mod tests {
     use super::*;
 
-    const OWNER: Principal = Principal::Bypass;
+    const OWNER: Principal = Principal::Caller {
+        workspace_id: maidan_types::WorkspaceId(uuid::Uuid::from_u128(1)),
+        member_id: maidan_types::MemberId(uuid::Uuid::from_u128(2)),
+        actor_id: maidan_types::MemberId(uuid::Uuid::from_u128(2)),
+        token_id: None,
+        app_installation_id: None,
+        delegation_grant_id: None,
+    };
 
     #[tokio::test]
     async fn open_push_and_close() {

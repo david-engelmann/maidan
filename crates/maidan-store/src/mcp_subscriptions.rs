@@ -18,7 +18,6 @@ pub struct NewMcpSubscription {
     /// The caller's principal, spelled as a key; a listener looks its
     /// subscriptions up by it.
     pub subscriber: String,
-    /// `None` only for an auth-disabled caller.
     pub workspace_id: Option<WorkspaceId>,
     pub member_id: Option<MemberId>,
     pub uri: String,

@@ -18,7 +18,7 @@
 //! with their refusals. About 140 reads and 120 changes succeed. The others
 //! need what this world does not have: a share-ticket credential (`/share`),
 //! a peer credential (`/a2a/v1/events`), OIDC and a browser session
-//! (`/auth`), the bootstrap routes, the S3 backend (multipart), the outbox
+//! (`/auth`), the S3 backend (multipart), the outbox
 //! relay, an automation delivery, a held claim (renew, acknowledge, release,
 //! usage), a `land_gate` skill, a third member (a group DM), or a query or
 //! body the schema does not require but the handler does. The floors at the

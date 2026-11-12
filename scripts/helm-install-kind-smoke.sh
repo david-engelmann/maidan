@@ -16,6 +16,8 @@ image="${MAIDAN_IMAGE:-maidan-server:dev}"
 postgres_image="${STACK_POSTGRES_IMAGE:-maidan-postgres:dev}"
 local_port="${HELM_SMOKE_LOCAL_PORT:-18080}"
 stack_local_port="${HELM_STACK_SMOKE_LOCAL_PORT:-18081}"
+# The admin both values-ci.yaml files seed (MAIDAN_DEV_ADMIN_TOKEN in config).
+dev_admin_token="maidan-dev-admin-token-local-stacks-only"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -56,6 +58,17 @@ diagnose() {
     echo "--- logs ${pod}"
     kubectl logs -n "$1" "${pod}" --all-containers --tail=60 2>/dev/null || true
   done
+}
+
+# authenticated <local port> <namespace>: the seeded admin's bearer resolves,
+# so the install serves an authenticated caller, not only the public probes.
+authenticated() {
+  if ! curl -sf -H "Authorization: Bearer ${dev_admin_token}" \
+    "http://127.0.0.1:$1/me" >/dev/null; then
+    echo "::error::the dev admin token does not resolve on $2"
+    diagnose "$2"
+    exit 1
+  fi
 }
 
 # forward <namespace> <service> <local port>
@@ -128,6 +141,7 @@ if [[ -z "${healthy}" ]]; then
   diagnose maidan
   exit 1
 fi
+authenticated "${local_port}" maidan
 echo "helm install kind smoke OK (${release})"
 
 # The stack, on the same server image, with the bundled Postgres (the pgvector
@@ -167,6 +181,7 @@ for _ in $(seq 1 60); do
     cat /tmp/maidan-helm-stack-ready.json
     echo
     jq -e '.status == "ok" and .db == "ok" and .storage == "ok"' /tmp/maidan-helm-stack-ready.json
+    authenticated "${stack_local_port}" maidan-stack
     echo "helm install kind smoke OK (${stack_release}: Postgres + MinIO)"
     exit 0
   fi

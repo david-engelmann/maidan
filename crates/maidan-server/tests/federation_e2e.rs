@@ -65,7 +65,6 @@ async fn spawn() -> Harness {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, federation_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -317,85 +316,6 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
 }
 
 #[tokio::test]
-async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
-    let h = spawn().await;
-    let ws = h
-        .store
-        .create_workspace(NewWorkspace {
-            name: "fed-dev".to_string(),
-        })
-        .await
-        .unwrap();
-    let admin = mint_admin_token(h.store.as_ref(), ws.id).await;
-
-    let create = h
-        .client
-        .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
-        .bearer_auth(&admin)
-        .json(&json!({
-            "name": "remote-a",
-            "base_url": "https://remote.example"
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(create.status(), StatusCode::CREATED);
-    let body: serde_json::Value = create.json().await.unwrap();
-    let peer_id = PeerId(uuid::Uuid::parse_str(body["peer"]["id"].as_str().unwrap()).unwrap());
-    let peer_secret = body["secret"].as_str().unwrap().to_string();
-
-    let member = h
-        .store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "bot".to_string(),
-            display_name: None,
-            kind: MemberKind::Agent,
-        })
-        .await
-        .unwrap();
-    let event = Event::MemberJoined {
-        occurred_at: chrono::Utc::now(),
-        workspace_id: ws.id,
-        member: member.clone(),
-    };
-    let payload = serde_json::to_value(&event).unwrap();
-    let link = maidan_types::link_for(1, &payload, None).unwrap();
-    let stored = StoredEvent {
-        id: 1,
-        lsn: 1,
-        kind: EventKind::MemberJoined,
-        workspace_id: Some(ws.id),
-        channel_id: None,
-        thread_id: None,
-        payload,
-        occurred_at: chrono::Utc::now(),
-        prev_hash: link.prev_hash,
-        content_hash: link.content_hash,
-        content_key: None,
-        trace: None,
-    };
-    let batch = FederatedEventBatch {
-        events: vec![FederationEnvelope {
-            origin_peer_id: peer_id,
-            remote_event_id: 1,
-            event: stored,
-        }],
-    };
-
-    let ingest = h
-        .client
-        .post(format!("{}/a2a/v1/events", h.base()))
-        .bearer_auth(&peer_secret)
-        .json(&batch)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(ingest.status(), StatusCode::OK);
-    h.shutdown().await;
-}
-
-#[tokio::test]
 async fn federation_ingest_rejects_wrong_peer_bearer() {
     let h = spawn().await;
     let _ws = h
@@ -447,7 +367,6 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, Some(key.clone())),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -481,7 +400,6 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
         state.bus.clone(),
         state.search.clone(),
         state.embedding_provider.clone(),
-        false,
         false,
         FederationRuntime::new(true, Some(key)),
         Arc::new(AtomicI64::new(0)),
@@ -1010,7 +928,6 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, Some(key.clone())),
         Arc::new(AtomicI64::new(0)),

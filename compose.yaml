@@ -138,8 +138,10 @@ services:
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      AUTH_DISABLED: 1
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
+      # The first admin of the shared database's `dev` workspace (operator:global
+      # included), so the smoke scripts authenticate like any client. Only this
+      # service of the pair seeds it; maidan-b shares the database and finds it.
+      MAIDAN_DEV_ADMIN_TOKEN: ${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}
       FEDERATION_DISABLED: 1
       # Peers in this profile are other containers on the compose network —
       # private addresses the egress guard refuses unless told otherwise.
@@ -205,8 +207,6 @@ services:
       DATABASE_URL: postgres://maidan:maidan@postgres-b:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      AUTH_DISABLED: 1
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
       FEDERATION_DISABLED: "0"
       MAIDAN_ALLOW_PRIVATE_EGRESS: 1
       FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
@@ -297,8 +297,9 @@ services:
       S3_ACCESS_KEY_ID: maidan
       S3_SECRET_ACCESS_KEY: maidanmaidan
       MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
-      AUTH_DISABLED: "1"
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
+      # The shared database's first admin. Only r1 seeds it, so the two
+      # replicas never race to open the first workspace; r2 finds it.
+      MAIDAN_DEV_ADMIN_TOKEN: ${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}
       INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
@@ -341,8 +342,6 @@ services:
       S3_ACCESS_KEY_ID: maidan
       S3_SECRET_ACCESS_KEY: maidanmaidan
       MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
-      AUTH_DISABLED: "1"
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
       INDEXER_STALE_SECS: "300"
       MAIDAN_BIND: 0.0.0.0:8080
       MAIDAN_LOG: info,sqlx=warn
@@ -378,8 +377,8 @@ services:
 
   # --- OTLP end-to-end smoke: server pushes traces + metrics to
   # a real OpenTelemetry Collector. The collector's debug exporter logs received
-  # telemetry to stdout so scripts/otlp-smoke.sh can assert delivery. localfs +
-  # AUTH_DISABLED keep the profile lean (no MinIO); postgres is the shared base.
+  # telemetry to stdout so scripts/otlp-smoke.sh can assert delivery. localfs
+  # keeps the profile lean (no MinIO); postgres is the shared base.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.154.0
     container_name: maidan-otel-collector
@@ -408,8 +407,8 @@ services:
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
-      AUTH_DISABLED: "1"
-      MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
+      # The first admin, so scripts/otlp-smoke.sh drives traffic with a real token.
+      MAIDAN_DEV_ADMIN_TOKEN: ${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}
       INDEXER_STALE_SECS: "300"
       # Export both signals to the collector; short interval so the smoke is fast.
       OTLP_ENDPOINT: http://otel-collector:4317

@@ -25,8 +25,8 @@ const UPSERT_SQL: &str = "INSERT INTO maidan_artifacts
 /// falls back to the shared row for `kind` and `mime_type` — never for
 /// `uploaded_by` or `filename`, which on the shared row may be another
 /// tenant's.
-/// An artifact no workspace holds a ref to was uploaded unscoped (bypass, auth
-/// disabled); there is no tenant to protect, and it reads as the shared row.
+/// An artifact no workspace holds a ref to reads as the shared row. Every upload
+/// path records a ref, so only a row written by `upsert_artifact` alone has none.
 const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
             CASE WHEN r.kind IS NULL THEN a.mime_type ELSE r.mime_type END AS mime_type,
             CASE WHEN r.workspace_id IS NULL THEN a.filename ELSE r.filename END AS filename,
@@ -141,9 +141,9 @@ pub async fn reap_blob(
 }
 
 /// Upsert an artifact, optionally record its per-workspace access ref, and
-/// append its `ArtifactUpserted` event — all in one transaction `ref_workspace`
-/// is `Some` for a non-bypass upload (mirrors the route's `record_artifact_ref`
-/// call); the upsert → ref → event ordering is preserved atomically.
+/// append its `ArtifactUpserted` event — all in one transaction. `ref_workspace`
+/// is the uploading workspace (mirrors the route's `record_artifact_ref` call);
+/// the upsert → ref → event ordering is preserved atomically.
 pub async fn upsert_with_event(
     pool: &SqlitePool,
     new: NewArtifact,
