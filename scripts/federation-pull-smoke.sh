@@ -81,14 +81,20 @@ peer_body=$(json_post "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
   -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_PEER_URL}\",\"remote_workspace_id\":\"${ws_a}\",\"secret\":\"${issued}\"}")
 peer_secret=$(echo "$peer_body" | jq -r '.secret')
 
+peer_id=$(echo "$peer_body" | jq -r '.peer.id')
+
+# The poll worker holds its cursor on an event it could not ingest, so the
+# cursor passing A's thread_created is the proof it was ingested. B stores it in
+# B's workspace, where a member reads only what it could open there, and the
+# peer's secret reads only its remote workspace, so neither shows it.
 echo "waiting up to ${POLL_WAIT_SECS}s for B poll worker to ingest remote event ${remote_id}…"
 deadline=$((SECONDS + POLL_WAIT_SECS))
 found=0
 while (( SECONDS < deadline )); do
-  tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=100" \
-    -H "Authorization: Bearer ${token_b}")
-  count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
-  if [[ "$count" -ge 1 ]]; then
+  synced=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
+    -H "Authorization: Bearer ${token_b}" \
+    | jq --arg id "$peer_id" '[.[] | select(.id == $id)][0].last_synced_event_id // 0')
+  if [[ "$synced" -ge "$remote_id" ]]; then
     found=1
     break
   fi
@@ -96,9 +102,8 @@ while (( SECONDS < deadline )); do
 done
 
 if [[ "$found" != "1" ]]; then
-  echo "::error::B did not ingest thread_created from A within ${POLL_WAIT_SECS}s" >&2
-  echo "peer_secret prefix: ${peer_secret:0:8}…" >&2
+  echo "::error::B did not ingest thread_created (remote event ${remote_id}) from A within ${POLL_WAIT_SECS}s; cursor at ${synced}" >&2
   exit 1
 fi
 
-echo "federation pull compose smoke ok (remote_event_id=${remote_id})"
+echo "federation pull compose smoke ok (remote_event_id=${remote_id}, cursor=${synced})"
