@@ -6,8 +6,6 @@
 //! Tests may use v4 freely. Postgres 16 has no `uuidv7()`, so every id is minted
 //! app-side.
 
-// This scan stops at a file's first test gate instead of blanking test items.
-#[expect(dead_code)]
 mod source_scan;
 
 use std::path::Path;
