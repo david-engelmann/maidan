@@ -67,7 +67,7 @@ async fn auth_from_grpc<T>(state: &AppState, request: &Request<T>) -> Result<Aut
         return Err(Status::resource_exhausted("rate limit exceeded"));
     }
     if !ctx.bypass {
-        crate::usage_meters::admit_request(state, ctx.workspace_id, false)
+        crate::usage_meters::admit_request(state, ctx.workspace_id(), false)
             .map_err(|err| Status::resource_exhausted(err.detail()))?;
     }
     Ok(ctx)

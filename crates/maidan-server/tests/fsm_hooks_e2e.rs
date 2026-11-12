@@ -14,8 +14,9 @@ use std::{
 use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Router};
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
-use maidan_server::{router, AppState, FsmHookRuntime, SlashRuntime, WebhookRuntime};
+use maidan_server::{router, test_support, AppState, FsmHookRuntime, SlashRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -66,7 +67,7 @@ struct Harness {
     fsm_worker: maidan_server::fsm_hook_worker::FsmHookWorker,
     automation_worker: maidan_server::automation_worker::AutomationDeliveryWorker,
     indexer: maidan_search::IndexerHandle,
-    client: reqwest::Client,
+    store: Arc<dyn Store>,
     handler_state: HandlerState,
     _dir: tempfile::TempDir,
 }
@@ -101,13 +102,13 @@ async fn spawn() -> Harness {
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::new());
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
+        false,
         maidan_server::FederationRuntime::new(true, test_key()),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,
@@ -115,7 +116,6 @@ async fn spawn() -> Harness {
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
     state.fsm_hooks = FsmHookRuntime::new(test_key());
-    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let fsm_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
@@ -148,10 +148,7 @@ async fn spawn() -> Harness {
         fsm_worker,
         automation_worker,
         indexer,
-        client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap(),
+        store,
         handler_state,
         _dir: dir,
     }
@@ -172,33 +169,16 @@ async fn wait_for_received(state: &HandlerState, timeout: Duration) -> bool {
 async fn fsm_hook_invokes_http_handler_on_thread_close() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "fsm" }))
-        .send()
+    let tenant = test_support::tenant(h.store.as_ref(), "fsm").await;
+    let wid = tenant.workspace_id.0;
+    let admin = tenant.client();
+    let actor = tenant
+        .member(h.store.as_ref(), "actor", MemberKind::Agent)
         .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-
-    let actor: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{wid}/members", h.base))
-        .json(&json!({ "handle": "actor", "kind": "agent" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let actor_id = actor["id"].as_str().unwrap();
+        .client();
 
     let hook_url = format!("http://{}/fsm", h.handler_addr);
-    let mint: serde_json::Value = h
-        .client
+    let mint: serde_json::Value = admin
         .post(format!("{}/workspaces/{wid}/fsm-hooks", h.base))
         .json(&json!({
             "label": "on-close",
@@ -217,8 +197,7 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
         .unwrap();
     *h.handler_state.secret.lock().await = mint["secret"].as_str().unwrap().to_string();
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = admin
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "c" }))
         .send()
@@ -229,8 +208,7 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
 
-    let th: serde_json::Value = h
-        .client
+    let th: serde_json::Value = admin
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "t" }))
         .send()
@@ -241,10 +219,8 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let _: serde_json::Value = h
-        .client
+    let _: serde_json::Value = actor
         .post(format!("{}/threads/{tid}", h.base))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({ "action": "start_review" }))
         .send()
         .await
@@ -254,10 +230,8 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
         .unwrap();
 
     h.handler_state.received.store(false, Ordering::SeqCst);
-    let _: serde_json::Value = h
-        .client
+    let _: serde_json::Value = actor
         .post(format!("{}/threads/{tid}", h.base))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({ "action": "close" }))
         .send()
         .await
@@ -286,33 +260,16 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
 async fn fsm_hook_does_not_fire_when_states_do_not_match() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "nomatch" }))
-        .send()
+    let tenant = test_support::tenant(h.store.as_ref(), "nomatch").await;
+    let wid = tenant.workspace_id.0;
+    let admin = tenant.client();
+    let actor = tenant
+        .member(h.store.as_ref(), "a", MemberKind::Agent)
         .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-
-    let actor: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{wid}/members", h.base))
-        .json(&json!({ "handle": "a", "kind": "agent" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let actor_id = actor["id"].as_str().unwrap();
+        .client();
 
     let hook_url = format!("http://{}/fsm", h.handler_addr);
-    let _mint: serde_json::Value = h
-        .client
+    let _mint: serde_json::Value = admin
         .post(format!("{}/workspaces/{wid}/fsm-hooks", h.base))
         .json(&json!({
             "from_state": "open",
@@ -327,8 +284,7 @@ async fn fsm_hook_does_not_fire_when_states_do_not_match() {
         .await
         .unwrap();
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = admin
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "c" }))
         .send()
@@ -338,8 +294,7 @@ async fn fsm_hook_does_not_fire_when_states_do_not_match() {
         .await
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
-    let th: serde_json::Value = h
-        .client
+    let th: serde_json::Value = admin
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "t" }))
         .send()
@@ -350,10 +305,8 @@ async fn fsm_hook_does_not_fire_when_states_do_not_match() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let _ = h
-        .client
+    let _ = actor
         .post(format!("{}/threads/{tid}", h.base))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({ "action": "start_review" }))
         .send()
         .await

@@ -22,26 +22,6 @@ use crate::federation::PeerContext;
 use crate::session::{check_request_origin, load_session, SessionContext};
 use crate::state::AppState;
 
-const TEST_MEMBER_HEADER: &str = "maidan-test-member-id";
-
-async fn auth_disabled_context(state: &AppState, headers: &axum::http::HeaderMap) -> AuthContext {
-    if state.test_identity_header
-        && let Some(member_id) = headers
-            .get(TEST_MEMBER_HEADER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<uuid::Uuid>().ok())
-            .map(maidan_types::MemberId)
-        && let Ok(member) = state.store.get_member(member_id).await
-    {
-        return AuthContext::from_session(
-            member_id,
-            member.workspace_id,
-            maidan_auth::capability::all(),
-        );
-    }
-    AuthContext::bypass()
-}
-
 /// Whether bearer auth is actually disabled. Fail-closed: `AUTH_DISABLED` takes
 /// effect only when the operator has explicitly acknowledged it via
 /// `MAIDAN_ALLOW_INSECURE_NO_AUTH` and the deployment is not production. This
@@ -99,11 +79,11 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
             crate::audit::record(
                 state,
                 NewAuditEvent {
-                    scope: AuditScope::Workspace(auth.workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    scope: AuditScope::Workspace(auth.workspace_id()),
+                    actor_id: Some(auth.actor_id()),
                     action: MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),
-                    target_id: Some(auth.workspace_id.0),
+                    target_id: Some(auth.workspace_id().0),
                     metadata: serde_json::json!({
                         "surface": "rest",
                         "operation": operation,
@@ -142,13 +122,13 @@ pub const READ_ONLY_OPERATIONS: &[&str] = &[
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {
-        let auth = auth_disabled_context(&state, req.headers()).await;
+        let auth = AuthContext::bypass();
         // Bypass is authenticated into every workspace, so the path's budget
         // is the one this request spends. The outer limiter already counted
         // the client; it does not know the workspace yet.
         let path = req.uri().path().to_owned();
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, true, &auth.workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, true, &auth.workspace_id()).await
         {
             return *response;
         }
@@ -181,7 +161,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
                 return *response;
             }
             if let Err(response) =
-                crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
+                crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id())
                     .await
             {
                 return *response;
@@ -213,7 +193,8 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             }
         };
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id())
+                .await
         {
             return *response;
         }
@@ -247,7 +228,8 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             return *response;
         }
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id())
+                .await
         {
             return *response;
         }
@@ -313,7 +295,7 @@ async fn run_authorized(
     next: Next,
     ctx: AuthContext,
 ) -> Response {
-    let workspace_id = ctx.workspace_id;
+    let workspace_id = ctx.workspace_id();
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
     // Counted here, once per authenticated request, into the buffer the
@@ -490,7 +472,7 @@ async fn session_or_bearer(
     oidc_capabilities: &[&str],
 ) -> Response {
     if state.auth_disabled {
-        let auth = auth_disabled_context(state, req.headers()).await;
+        let auth = AuthContext::bypass();
         req.extensions_mut().insert(auth);
         return run_as(state, req, next).await;
     }

@@ -208,7 +208,7 @@ async fn lookback_member_event(
     let mut after = since;
     loop {
         let batch = store
-            .list_events_after(auth.workspace_id, after, LOOKBACK_BATCH)
+            .list_events_after(auth.workspace_id(), after, LOOKBACK_BATCH)
             .await?;
         let drained = (batch.len() as i64) < LOOKBACK_BATCH;
         for stored in &batch {
@@ -570,7 +570,7 @@ pub(super) async fn get_manager_digest(
     let a: ManagerDigestArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     super::requested_member(server.store.as_ref(), auth, member_id).await?;
-    if !auth.bypass && auth.token_id.is_none() && auth.member_id != member_id {
+    if !auth.bypass && auth.token_id().is_none() && auth.member_id() != member_id {
         return Err(McpError::Forbidden(
             "a session caller may only read its own manager digest".into(),
         ));
@@ -708,7 +708,7 @@ pub(super) async fn wait_for_notification(
     // the wait early; the poll is what makes it correct without a bus.
     let mut stream = match server.event_bus.as_ref() {
         Some(bus) => Some(
-            bus.subscribe(EventFilter::workspace(auth.workspace_id))
+            bus.subscribe(EventFilter::workspace(auth.workspace_id()))
                 .await
                 .map_err(|e| McpError::Internal(e.to_string()))?,
         ),

@@ -75,7 +75,7 @@ pub(super) async fn set_review_requirement(
             "raising or removing a review-round cap needs the channel:admin capability".into(),
         ));
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
     let change = store
         .set_review_requirement_audited(
@@ -186,7 +186,7 @@ pub(super) async fn submit_review(
         .store
         .submit_review_at_head(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             a.decision,
             note.as_deref(),
             root.as_deref(),
@@ -415,7 +415,7 @@ pub(super) async fn clear_review_requirement(
             thread_id,
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "review_requirement.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),
@@ -462,7 +462,7 @@ pub(super) async fn remove_reviewer(
             MemberId(a.member_id),
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "reviewer.remove".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),

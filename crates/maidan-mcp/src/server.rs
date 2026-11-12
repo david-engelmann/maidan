@@ -1051,11 +1051,11 @@ impl McpServer {
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             let event = maidan_types::NewAuditEvent {
-                scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-                actor_id: Some(auth.actor_id),
+                scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+                actor_id: Some(auth.actor_id()),
                 action: "mutation".into(),
                 target_kind: Some("workspace".into()),
-                target_id: Some(auth.workspace_id.0),
+                target_id: Some(auth.workspace_id().0),
                 metadata: json!({
                     "surface": "mcp",
                     "operation": format!("tools/call:{name}"),
@@ -1105,7 +1105,7 @@ impl McpServer {
         let _parked = if crate::parked_waits::parks(name) && !auth.bypass {
             Some(
                 self.parked_waits
-                    .park(auth.workspace_id)
+                    .park(auth.workspace_id())
                     .ok_or(McpError::RateLimited {
                         retry_after_ms: 1_000,
                     })?,
@@ -1118,14 +1118,14 @@ impl McpServer {
             // The hard allowance cutoff: refused before it runs, not counted.
             // The credit tools stay open past it, so an agent cut off can
             // read its balance and ask for a top-up to pay its own way back.
-            if meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::McpCalls)
+            if meters.is_cut_off(auth.workspace_id(), maidan_types::UsageMeter::McpCalls)
                 && !tools::REACHABLE_PAST_CUTOFF.contains(&name)
             {
                 return Err(McpError::OverAllowance(maidan_types::UsageMeter::McpCalls));
             }
             // Stored bytes are refused by the store's message and artifact
             // writes, whichever tool reaches them.
-            meters.record(auth.workspace_id, maidan_types::UsageMeter::McpCalls, 1);
+            meters.record(auth.workspace_id(), maidan_types::UsageMeter::McpCalls, 1);
         }
         let deadline = tools::deadline(name);
         let call = crate::call_context::CallContext::from_params(params);
@@ -1176,7 +1176,7 @@ impl McpServer {
             let mut parts = rest.splitn(2, '/');
             match (parts.next(), parts.next()) {
                 (Some("workspaces"), Some(id)) => {
-                    if id.parse::<uuid::Uuid>().ok() != Some(auth.workspace_id.0) {
+                    if id.parse::<uuid::Uuid>().ok() != Some(auth.workspace_id().0) {
                         return Err(McpError::NotFound);
                     }
                 }
@@ -1285,8 +1285,8 @@ impl McpServer {
                 .subscribe_mcp_resource(
                     &NewMcpSubscription {
                         subscriber: subscriber.principal.key(),
-                        workspace_id: caller.map(|a| a.workspace_id),
-                        member_id: caller.map(|a| a.member_id),
+                        workspace_id: caller.map(|a| a.workspace_id()),
+                        member_id: caller.map(|a| a.member_id()),
                         uri: uri.to_string(),
                         expires_at: self.stateless_expiry(Utc::now()),
                     },
@@ -1353,7 +1353,7 @@ impl McpServer {
     ) {
         let updates = crate::resource_updates::uris_for_tool_mutation(
             self.store.as_ref(),
-            auth.workspace_id,
+            auth.workspace_id(),
             tool_name,
             args,
             result,
@@ -1394,7 +1394,7 @@ impl McpServer {
     pub(crate) async fn deliver_resource_updates(&self, updates: &[ResourceUpdate]) {
         for update in updates {
             for (subscriber, auth) in self.subscriptions.watchers(&update.uri) {
-                if !auth.bypass && auth.workspace_id != update.workspace_id {
+                if !auth.bypass && auth.workspace_id() != update.workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), &auth, &update.uri).await {
@@ -1442,7 +1442,7 @@ impl McpServer {
                 let Some((subscriber, auth)) = listening.get(&watch.subscriber) else {
                     continue;
                 };
-                if !auth.bypass && auth.workspace_id != workspace_id {
+                if !auth.bypass && auth.workspace_id() != workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), auth, &watch.uri).await
@@ -8251,7 +8251,7 @@ mod tests {
             "{}",
             note.body
         );
-        assert_eq!(note.author_id, owner_auth.member_id);
+        assert_eq!(note.author_id, owner_auth.member_id());
 
         let root = handed_root(&store, thread.id).await;
         store

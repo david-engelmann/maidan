@@ -62,7 +62,7 @@ pub async fn create_secret(
     let key = require_key(&state)?;
     let value_ciphertext =
         encrypt_peer_secret(&body.value, key).map_err(|e| ApiError::Internal(e.to_string()))?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let secret = state
         .store
         .create_secret_audited(
@@ -70,7 +70,7 @@ pub async fn create_secret(
                 workspace_id,
                 name: body.name,
                 value_ciphertext,
-                created_by: auth.member_id,
+                created_by: auth.member_id(),
             },
             Box::new(move |secret| NewAuditEvent {
                 scope: AuditScope::Workspace(secret.workspace_id),
@@ -120,7 +120,7 @@ pub async fn resolve_secret(
         .store
         .append_audit(NewAuditEvent {
             scope: AuditScope::Workspace(workspace_id),
-            actor_id: Some(auth.actor_id),
+            actor_id: Some(auth.actor_id()),
             action: "secret.resolve".into(),
             target_kind: Some("secret".into()),
             target_id: None,
@@ -145,7 +145,7 @@ pub async fn delete_secret(
             &name,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "secret.delete".into(),
                 target_kind: Some("secret".into()),
                 target_id: None,
@@ -181,7 +181,7 @@ pub async fn allow_secret_egress_host(
                 .into(),
         ));
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let entry = state
         .store
         .allow_secret_egress_host_audited(
@@ -238,7 +238,7 @@ pub async fn revoke_secret_egress_host(
             &host,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "secret_egress_host.revoke".into(),
                 target_kind: Some("secret_egress_host".into()),
                 target_id: None,

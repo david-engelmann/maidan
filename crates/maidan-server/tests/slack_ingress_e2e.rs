@@ -15,7 +15,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
+    MemberKind, MessageOrigin, MessageProvenance, NewChannel, NewMember, NewSlackChannelLink,
+    NewThread, NewWorkspace,
 };
 use reqwest::StatusCode;
 
@@ -161,7 +162,7 @@ async fn slack_message_in_a_linked_channel_posts_a_maidan_message() {
         .unwrap();
 
     // A signed message event for that Slack channel is projected into the thread.
-    let body = r#"{"type":"event_callback","event":{"type":"message","channel":"C1","user":"U9","text":"hello from slack"}}"#;
+    let body = r#"{"type":"event_callback","event_id":"Ev01","event":{"type":"message","channel":"C1","user":"U9","text":"hello from slack"}}"#;
     let ts = now_ts();
     let sig = slack_signature(SECRET, &ts, body);
     let resp = client
@@ -176,13 +177,18 @@ async fn slack_message_in_a_linked_channel_posts_a_maidan_message() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let msgs = store.list_messages(thread.id, 50).await.unwrap();
-    assert!(
-        msgs.iter().any(|m| m.body == "U9: hello from slack"),
-        "the Slack message was projected into the Maidan thread"
+    let projected = msgs
+        .iter()
+        .find(|m| m.body == "U9: hello from slack")
+        .expect("the Slack message was projected into the Maidan thread");
+    assert_eq!(
+        projected.provenance,
+        Some(MessageProvenance::delivered(MessageOrigin::Slack, "Ev01")),
+        "the server stamps where it came from"
     );
 
     // A bot message (our own egress echo) in the same channel is ignored — no loop.
-    let bot_body = r#"{"type":"event_callback","event":{"type":"message","channel":"C1","bot_id":"B1","text":"echo"}}"#;
+    let bot_body = r#"{"type":"event_callback","event_id":"Ev02","event":{"type":"message","channel":"C1","bot_id":"B1","text":"echo"}}"#;
     let ts2 = now_ts();
     let sig2 = slack_signature(SECRET, &ts2, bot_body);
     client
@@ -252,8 +258,14 @@ async fn a_slack_connect_guest_from_another_team_is_not_posted_as_the_linking_me
         .await
         .unwrap();
 
-    let deliver = |body: serde_json::Value| {
+    let next_event = std::sync::atomic::AtomicU32::new(1);
+    let deliver = |mut body: serde_json::Value| {
         let client = client.clone();
+        body["event_id"] = format!(
+            "EvT{}",
+            next_event.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        )
+        .into();
         async move {
             let body = body.to_string();
             let ts = now_ts();
@@ -340,5 +352,88 @@ async fn a_slack_connect_guest_from_another_team_is_not_posted_as_the_linking_me
         "a message that names no sender team is still posted"
     );
 
+    server.abort();
+}
+
+/// RED-002: Slack retries an event it got no answer to within 3 s, with the
+/// same `event_id`. However often it arrives, it posts one message; an event
+/// without an `event_id` cannot be told from its retry and is not posted.
+#[tokio::test]
+async fn a_slack_event_retried_posts_one_message() {
+    let (addr, client, store, server) = spawn(true).await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let linker = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "linker".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "retries".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("retries".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C9".into(),
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: linker.id,
+        })
+        .await
+        .unwrap();
+
+    let send = |body: &'static str, retry: Option<&'static str>| {
+        let client = client.clone();
+        async move {
+            let ts = now_ts();
+            let mut request = client
+                .post(format!("http://{addr}/integrations/slack/events"))
+                .header("x-slack-request-timestamp", &ts)
+                .header("x-slack-signature", slack_signature(SECRET, &ts, body))
+                .header("content-type", "application/json");
+            if let Some(retry) = retry {
+                request = request
+                    .header("x-slack-retry-num", retry)
+                    .header("x-slack-retry-reason", "http_timeout");
+            }
+            let resp = request.body(body).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "a retry is answered 200");
+        }
+    };
+    let event = r#"{"type":"event_callback","event_id":"Ev0RETRY","event":{"type":"message","channel":"C9","user":"U1","client_msg_id":"m-1","text":"posted once"}}"#;
+    send(event, None).await;
+    send(event, Some("1")).await;
+    send(event, Some("2")).await;
+    let unkeyed = r#"{"type":"event_callback","event":{"type":"message","channel":"C9","user":"U1","text":"no event id"}}"#;
+    send(unkeyed, None).await;
+
+    let messages = store.list_messages(thread.id, 50).await.unwrap();
+    assert_eq!(
+        messages.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(),
+        vec!["U1: posted once"],
+        "the event and its two retries post one message"
+    );
     server.abort();
 }

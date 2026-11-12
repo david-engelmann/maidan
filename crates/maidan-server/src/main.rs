@@ -632,6 +632,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // A2A Agent Card transport advertisement: public origin for absolute
     // interface URLs + the advertised gRPC address (§5.2 negotiation).
     state.a2a_card = maidan_server::a2a_agent::A2aCardConfig::from_env();
+    state.metrics_access =
+        maidan_server::metrics::MetricsAccess::from_env(maidan_server::config::is_production())
+            .map_err(anyhow::Error::msg)?;
+    tracing::info!(access = ?state.metrics_access, "metrics scrape access");
     state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
         &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
     );
@@ -690,7 +694,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {
         tracing::warn!(
-            workspace_id = %reader.workspace_id,
+            workspace_id = %reader.workspace_id(),
             "{} is set; MCP requests with no credential read this workspace",
             maidan_server::dev_anonymous::ENV
         );

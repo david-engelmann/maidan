@@ -124,9 +124,6 @@ pub struct AppState {
     /// `registration_endpoint` is advertised, `POST /oauth/register` answers
     /// 404, and clients that registered themselves are refused.
     pub oauth_dynamic_registration: Option<crate::oauth::register::DynamicRegistration>,
-    /// Enables the explicit test-identity header used by in-process E2E
-    /// harnesses. Never enabled by the server binary.
-    pub test_identity_header: bool,
     /// When true, unauthenticated bootstrap routes are allowed (see `MAIDAN_BOOTSTRAP`).
     pub bootstrap_enabled: bool,
     pub federation: FederationRuntime,
@@ -279,6 +276,10 @@ pub struct AppState {
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
     /// env.
     pub a2a_card: crate::a2a_agent::A2aCardConfig,
+    /// Who may read `GET /metrics`. Open in [`AppState::new`], for tests and
+    /// embedders; the server binary closes it under `MAIDAN_ENV=production`
+    /// unless `MAIDAN_METRICS_TOKEN` names a bearer for the scraper.
+    pub metrics_access: crate::metrics::MetricsAccess,
     /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server
     /// should stamp a `Maidan-Consistency-Token` on writes and route
     /// replica-eligible reads. Left `false` in [`AppState::new`]; the server
@@ -396,7 +397,6 @@ impl AppState {
             oauth_client_metadata_hosts: Default::default(),
             oauth_document_cache: Arc::default(),
             oauth_dynamic_registration: None,
-            test_identity_header: false,
             bootstrap_enabled,
             federation,
             webhooks: WebhookRuntime::new(None),
@@ -448,6 +448,7 @@ impl AppState {
             merge_queue_labels: maidan_types::MergeQueueLabels::default(),
             ci_verdict_contexts: crate::ci_watch::verdict_contexts(None),
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
+            metrics_access: crate::metrics::MetricsAccess::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
             search_read_routing_metrics: None,
@@ -619,7 +620,8 @@ impl AppState {
         self.subscribe_resume_secret.as_deref()
     }
 
-    /// E2E harness: auth and federation disabled, fresh indexer heartbeat.
+    /// E2E harness: federation disabled, fresh indexer heartbeat. Auth is on,
+    /// as everywhere: a test calls with a token from [`crate::test_support`].
     pub fn for_tests(
         store: Arc<dyn Store>,
         artifacts: Arc<dyn ArtifactStore>,
@@ -632,13 +634,12 @@ impl AppState {
             bus,
             search,
             Arc::new(maidan_search::HashV1Provider),
-            true,
+            false,
             false,
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),
             None,
         );
-        state.test_identity_header = true;
         state.subscribe_resume_secret =
             Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
         state

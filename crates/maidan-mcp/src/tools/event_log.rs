@@ -45,7 +45,7 @@ struct VerifyArgs {
 }
 
 fn workspace(auth: &AuthContext, id: Option<Uuid>) -> Result<WorkspaceId, McpError> {
-    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id.0));
+    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id().0));
     auth.ensure_workspace(workspace_id)?;
     Ok(workspace_id)
 }

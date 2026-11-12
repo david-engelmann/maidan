@@ -87,14 +87,7 @@ impl OidcSettings {
             return Ok(None);
         }
 
-        if std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
-            && env_flag("MAIDAN_OIDC_MOCK")
-        {
-            return Err(ConfigError::Invalid(
-                "MAIDAN_OIDC_MOCK",
-                "cannot be set when MAIDAN_ENV=production".into(),
-            ));
-        }
+        check_oidc_mock(env_flag("MAIDAN_OIDC_MOCK"), crate::config::deploy_env()?)?;
 
         if std::env::var("MAIDAN_SESSION_SECRET").is_err() {
             return Err(ConfigError::Missing("MAIDAN_SESSION_SECRET"));
@@ -123,8 +116,7 @@ impl OidcSettings {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(600);
-        let cookie_secure = env_flag("MAIDAN_COOKIE_SECURE")
-            || std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
+        let cookie_secure = env_flag("MAIDAN_COOKIE_SECURE") || crate::config::is_production();
 
         let post_logout_redirect_uri = std::env::var("MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI").ok();
         let first_admin_mint = !matches!(
@@ -326,6 +318,28 @@ fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), 
     Ok(())
 }
 
+/// The mock provider signs anyone in as any subject and email it is handed,
+/// with auto-provisioning forced on. It runs only where the operator named the
+/// deployment `MAIDAN_ENV=development`: refused in production, and refused
+/// when `MAIDAN_ENV` is unset, so a deployment that forgot to say it is
+/// production cannot turn it on either.
+fn check_oidc_mock(mock: bool, env: crate::config::DeployEnv) -> Result<(), ConfigError> {
+    use crate::config::DeployEnv;
+    match (mock, env) {
+        (false, _) | (true, DeployEnv::Development) => Ok(()),
+        (true, DeployEnv::Production) => Err(ConfigError::Invalid(
+            "MAIDAN_OIDC_MOCK",
+            "cannot be set when MAIDAN_ENV=production".into(),
+        )),
+        (true, DeployEnv::Unset) => Err(ConfigError::Invalid(
+            "MAIDAN_OIDC_MOCK",
+            "needs MAIDAN_ENV=development; the mock signs in anyone as anyone, so it \
+             runs only where the deployment says it is not production"
+                .into(),
+        )),
+    }
+}
+
 /// An open door needs a bot check: with `MAIDAN_ENV=production`, open
 /// sign-up without `MAIDAN_TURNSTILE_SECRET` refuses boot. Outside
 /// production it boots, and `Ok(true)` asks the caller to warn.
@@ -344,6 +358,33 @@ fn check_open_signup_bot_check(
         ));
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod oidc_mock_tests {
+    use super::*;
+    use crate::config::DeployEnv;
+
+    #[test]
+    fn the_oidc_mock_runs_only_in_a_named_development_deployment() {
+        assert!(check_oidc_mock(true, DeployEnv::Development).is_ok());
+        for env in [DeployEnv::Production, DeployEnv::Unset] {
+            assert!(
+                matches!(
+                    check_oidc_mock(true, env),
+                    Err(ConfigError::Invalid("MAIDAN_OIDC_MOCK", _))
+                ),
+                "{env:?}"
+            );
+        }
+        for env in [
+            DeployEnv::Production,
+            DeployEnv::Unset,
+            DeployEnv::Development,
+        ] {
+            assert!(check_oidc_mock(false, env).is_ok(), "{env:?}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -508,6 +549,9 @@ mod emails_verified_env_tests {
         unsafe {
             std::env::set_var("MAIDAN_OIDC_ENABLED", "1");
             std::env::set_var("MAIDAN_OIDC_MOCK", "1");
+            // The mock needs a deployment named development. Every other
+            // reader of MAIDAN_ENV treats `development` as it treats unset.
+            std::env::set_var("MAIDAN_ENV", "development");
             std::env::set_var(
                 "MAIDAN_OIDC_REDIRECT_URI",
                 "http://127.0.0.1/auth/oidc/callback",
@@ -543,6 +587,7 @@ mod emails_verified_env_tests {
                 "MAIDAN_OIDC_REDIRECT_URI",
                 "MAIDAN_SESSION_SECRET",
                 "MAIDAN_OIDC_EMAILS_VERIFIED",
+                "MAIDAN_ENV",
             ] {
                 std::env::remove_var(name);
             }

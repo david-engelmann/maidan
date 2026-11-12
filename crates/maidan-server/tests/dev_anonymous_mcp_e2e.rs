@@ -340,7 +340,7 @@ async fn the_anonymous_reader_is_no_member_and_sees_no_private_channel() {
         .await
         .unwrap();
     assert!(
-        world.store.get_member(reader.member_id).await.is_err(),
+        world.store.get_member(reader.member_id()).await.is_err(),
         "the anonymous reader must be no member"
     );
 }

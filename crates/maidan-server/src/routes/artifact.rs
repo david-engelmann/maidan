@@ -39,7 +39,7 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
 }
 
 fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
-    (!auth.bypass).then_some(auth.workspace_id.0)
+    (!auth.bypass).then_some(auth.workspace_id().0)
 }
 
 pub async fn begin_multipart_artifact(
@@ -120,7 +120,7 @@ pub async fn complete_multipart_artifact(
         super::reap_orphaned_blobs(
             state.store.as_ref(),
             &state.artifacts,
-            auth.workspace_id,
+            auth.workspace_id(),
             &[sha.to_hex()],
         )
         .await;
@@ -138,7 +138,7 @@ pub async fn complete_multipart_artifact(
             mime_type: body.mime_type,
             filename,
             kind: body.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
         },
     )
     .await?;
@@ -198,7 +198,7 @@ pub async fn upload_artifact(
             mime_type: q.mime_type,
             filename,
             kind: q.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
         },
     )
     .await?;
@@ -223,7 +223,7 @@ async fn ensure_media_quota(
     }
     match maidan_store::media_retention::check_media_quota(
         state.store.as_ref(),
-        auth.workspace_id,
+        auth.workspace_id(),
         &state.mcp.instance_retention(),
         kind,
         sha256,
@@ -291,11 +291,11 @@ pub async fn erase_artifact(
 ) -> ApiResult<Json<ArtifactErasure>> {
     cap(&auth, TOKEN_ADMIN)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let erasure = state
         .store
         .erase_artifact_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             &sha.to_hex(),
             Box::new(move |erasure| NewAuditEvent {
                 scope: AuditScope::Workspace(erasure.workspace_id),
@@ -334,7 +334,7 @@ async fn artifact_as_seen_by(
     } else {
         state
             .store
-            .get_artifact_for_workspace(auth.workspace_id, sha_hex)
+            .get_artifact_for_workspace(auth.workspace_id(), sha_hex)
             .await?
     };
     Ok(artifact)
@@ -420,9 +420,9 @@ mod tests {
                     mime_type: None,
                     filename: None,
                     kind: ArtifactKind::Attachment,
-                    uploaded_by: Some(auth.member_id),
+                    uploaded_by: Some(auth.member_id()),
                 },
-                Some(auth.workspace_id),
+                Some(auth.workspace_id()),
             )
             .await
             .unwrap();

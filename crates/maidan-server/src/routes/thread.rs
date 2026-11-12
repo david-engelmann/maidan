@@ -96,7 +96,7 @@ pub async fn create_thread(
         }
         created => created,
     };
-    let actor = (!auth.bypass).then_some(auth.member_id);
+    let actor = (!auth.bypass).then_some(auth.member_id());
     let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
     // The response carries the attributes the thread now reads with. With
     // no engine given, the workspace's default engine may have routed it,
@@ -155,8 +155,8 @@ async fn supersede_for(
     let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
     let thread = state.store.get_thread(old).await?;
     if !maintainer
-        && thread.created_by != Some(auth.member_id)
-        && thread.assignee_id != Some(auth.member_id)
+        && thread.created_by != Some(auth.member_id())
+        && thread.assignee_id != Some(auth.member_id())
     {
         return Err(ApiError::Forbidden(
             "only the superseded thread's producer, its claim holder, or a maintainer can supersede it"
@@ -165,11 +165,11 @@ async fn supersede_for(
     }
     Ok(maidan_store::store::Supersede {
         thread_id: old,
-        actor_id: auth.member_id,
+        actor_id: auth.member_id(),
         maintainer,
         audit: NewAuditEvent {
             scope: AuditScope::Workspace(workspace_id),
-            actor_id: Some(auth.actor_id),
+            actor_id: Some(auth.actor_id()),
             action: "thread.close_abandoned".into(),
             target_kind: Some("thread".into()),
             target_id: Some(old.0),
@@ -362,7 +362,7 @@ pub async fn list_workspace_threads(
                 after: q.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: (!auth.bypass).then_some(auth.member_id),
+                reader_id: (!auth.bypass).then_some(auth.member_id()),
             },
         )
         .await?;
@@ -563,7 +563,7 @@ pub async fn snapshot_thread_context(
     // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
     // normal upload; the ref/uploader are recorded only for a non-bypass
     // caller.
-    let uploaded_by = (!auth.bypass).then_some(auth.member_id);
+    let uploaded_by = (!auth.bypass).then_some(auth.member_id());
     let (artifact, stored) = upsert_uploaded_artifact(
         &state,
         &auth,
@@ -666,13 +666,13 @@ pub async fn transition_thread(
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let (result, stored) = match state
         .store
-        .transition_thread_with_event(thread_id, auth.member_id, action)
+        .transition_thread_with_event(thread_id, auth.member_id(), action)
         .await
     {
         Ok(pair) => pair,
         Err(err) => {
             if action == ThreadAction::Close {
-                record_close_refusal(&state, auth.member_id, thread_id, &err).await;
+                record_close_refusal(&state, auth.member_id(), thread_id, &err).await;
             }
             return Err(err.into());
         }
@@ -743,8 +743,8 @@ pub async fn close_abandoned_thread(
     let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
     let thread = state.store.get_thread(thread_id).await?;
     if !maintainer
-        && thread.created_by != Some(auth.member_id)
-        && thread.assignee_id != Some(auth.member_id)
+        && thread.created_by != Some(auth.member_id())
+        && thread.assignee_id != Some(auth.member_id())
     {
         return Err(ApiError::Forbidden(
             "only the thread's producer, its claim holder, or a maintainer can close it as abandoned"
@@ -757,7 +757,7 @@ pub async fn close_abandoned_thread(
     };
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(ctx.workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "thread.close_abandoned".into(),
         target_kind: Some("thread".into()),
         target_id: Some(thread_id.0),
@@ -765,7 +765,7 @@ pub async fn close_abandoned_thread(
     };
     let (result, stored) = state
         .store
-        .close_abandoned_thread(thread_id, auth.member_id, maintainer, &close, audit)
+        .close_abandoned_thread(thread_id, auth.member_id(), maintainer, &close, audit)
         .await?;
     publish_transition(&state, ctx.workspace_id, thread_id, &result, stored).await;
     Ok(Json(result.thread))
@@ -799,7 +799,7 @@ pub async fn set_thread_result(
         .store
         .set_thread_result(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             maidan_types::ClaimLeaseId(body.claim_lease_id),
             &body.result,
         )
@@ -809,7 +809,7 @@ pub async fn set_thread_result(
     // and a single replica must not race).
     match state
         .store
-        .apply_critical_review_decision(thread_id, auth.member_id, &body.result)
+        .apply_critical_review_decision(thread_id, auth.member_id(), &body.result)
         .await
     {
         Ok(Some(submission)) => {
@@ -842,7 +842,7 @@ pub async fn set_thread_result(
             workspace_id: ctx.workspace_id,
             channel_id: ctx.channel_id,
             thread_id,
-            produced_by: auth.member_id,
+            produced_by: auth.member_id(),
         },
     )
     .await;
@@ -948,12 +948,12 @@ pub async fn replay_thread_delivery(
             if let Some(event) = event {
                 super::publish_stored(&state, *event).await;
             }
-            let actor_id = (!auth.bypass).then_some(auth.member_id);
+            let actor_id = (!auth.bypass).then_some(auth.member_id());
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))
         }
         Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
-            let actor_id = (!auth.bypass).then_some(auth.member_id);
+            let actor_id = (!auth.bypass).then_some(auth.member_id());
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))
         }
@@ -974,7 +974,7 @@ pub async fn set_thread_steer(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let steer = state
         .store
-        .set_thread_steer(thread_id, auth.member_id, &body.steer)
+        .set_thread_steer(thread_id, auth.member_id(), &body.steer)
         .await?;
     Ok(Json(steer))
 }
@@ -1073,7 +1073,7 @@ pub async fn mute_thread(
     cap(&auth, MEMBER_SELF)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    state.store.mute_thread(auth.member_id, thread_id).await?;
+    state.store.mute_thread(auth.member_id(), thread_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1086,7 +1086,11 @@ pub async fn unmute_thread(
     cap(&auth, MEMBER_SELF)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    if state.store.unmute_thread(auth.member_id, thread_id).await? {
+    if state
+        .store
+        .unmute_thread(auth.member_id(), thread_id)
+        .await?
+    {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -1184,7 +1188,7 @@ pub async fn report_thread_usage(
             .assignee_id
             .ok_or_else(|| ApiError::Conflict("thread has no active claim holder".into()))?
     } else {
-        auth.member_id
+        auth.member_id()
     };
     let (report, stored) = state
         .store
@@ -1213,7 +1217,7 @@ pub async fn assign_thread(
         .assign_thread_with_event(
             thread_id,
             MemberId(body.assignee_id),
-            auth.member_id,
+            auth.member_id(),
             body.note,
         )
         .await?;
@@ -1235,7 +1239,7 @@ pub async fn unassign_thread(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let (thread, stored) = state
         .store
-        .unassign_thread_with_event(thread_id, auth.member_id)
+        .unassign_thread_with_event(thread_id, auth.member_id())
         .await?;
     super::publish_stored(&state, stored).await;
     Ok(Json(thread))
@@ -1310,7 +1314,7 @@ pub async fn claim_thread(
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     // An ended thread is refused for that before the park a cancel leaves
     // on it: un-parking would not make it claimable. The store reads the
     // state again in the claim's transaction, so a close that lands after
@@ -1383,7 +1387,7 @@ pub async fn mark_thread_unclaimable(
     Ok(Json(
         state
             .store
-            .mark_thread_unclaimable(thread_id, reason, auth.member_id)
+            .mark_thread_unclaimable(thread_id, reason, auth.member_id())
             .await?,
     ))
 }
@@ -1414,7 +1418,7 @@ pub async fn cancel_thread(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     match state
         .store
-        .cancel_thread(thread_id, auth.member_id, reason, authority)
+        .cancel_thread(thread_id, auth.member_id(), reason, authority)
         .await?
     {
         CancelOutcome::Cancelled { cancelled, events } => {
@@ -1456,7 +1460,7 @@ pub async fn set_thread_block(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let (block, _event) = state
         .store
-        .set_thread_block(thread_id, body.reason, auth.member_id, body.note)
+        .set_thread_block(thread_id, body.reason, auth.member_id(), body.note)
         .await?;
     Ok(Json(block))
 }
@@ -1494,7 +1498,7 @@ pub async fn declare_thread_status(
     let note = maidan_types::status_note(&body.note).map_err(ApiError::BadRequest)?;
     let (declaration, stored) = state
         .store
-        .declare_thread_status(thread_id, body.status, note, auth.member_id)
+        .declare_thread_status(thread_id, body.status, note, auth.member_id())
         .await?;
     publish_stored(&state, stored).await;
     Ok(Json(declaration))
@@ -1556,7 +1560,7 @@ pub async fn get_thread_digest(
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    maidan_store::thread_digest::current(state.store.as_ref(), auth.workspace_id, thread_id)
+    maidan_store::thread_digest::current(state.store.as_ref(), auth.workspace_id(), thread_id)
         .await?
         .map(Json)
         .ok_or(ApiError::NotFound)
@@ -1629,7 +1633,7 @@ pub async fn add_evidence_record(
     let record = body.normalized().map_err(ApiError::BadRequest)?;
     let (record, stored) = state
         .store
-        .add_evidence_record_with_event(thread_id, &record, auth.member_id)
+        .add_evidence_record_with_event(thread_id, &record, auth.member_id())
         .await?;
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(record)))
@@ -1671,7 +1675,7 @@ pub async fn link_thread_artifact(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let (link, _new) = state
         .store
-        .link_thread_artifact(thread_id, &sha256, auth.member_id)
+        .link_thread_artifact(thread_id, &sha256, auth.member_id())
         .await?;
     Ok(Json(link))
 }
@@ -1712,7 +1716,7 @@ pub async fn clear_thread_block(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let (cleared, stored) = state
         .store
-        .clear_thread_block_with_event(thread_id, auth.member_id)
+        .clear_thread_block_with_event(thread_id, auth.member_id())
         .await?;
     if let Some(stored) = stored {
         super::publish_stored(&state, stored).await;
@@ -1768,7 +1772,7 @@ pub async fn set_thread_wait(
                 body.wait_until,
                 body.on_timeout.unwrap_or_default(),
                 reason,
-                auth.member_id,
+                auth.member_id(),
             )
             .await?,
     ))
@@ -1823,7 +1827,7 @@ pub async fn set_thread_priority(
     Ok(Json(
         state
             .store
-            .set_thread_priority(thread_id, body.priority, auth.member_id)
+            .set_thread_priority(thread_id, body.priority, auth.member_id())
             .await?,
     ))
 }
@@ -1908,7 +1912,7 @@ pub async fn claim_next_thread(
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     // WIP limit: a member already at their workspace cap is handed no further
     // work — `claim_next` returns null (nothing dispatched), the same shape as
     // an empty queue. `wait_for_ready` / the occupancy view show whether there
@@ -1953,14 +1957,14 @@ pub async fn claim_next_workspace_thread(
         .map_err(ApiError::BadRequest)?;
     let workspace_id = WorkspaceId(wid);
     ensure_workspace(&auth, workspace_id)?;
-    if super::at_wip_limit(state.store.as_ref(), workspace_id, auth.member_id).await? {
+    if super::at_wip_limit(state.store.as_ref(), workspace_id, auth.member_id()).await? {
         return Ok(Json(None));
     }
     let claimed = state
         .store
         .claim_next_workspace_thread_with_event(
             workspace_id,
-            auth.member_id,
+            auth.member_id(),
             Some(lease_secs),
             repo.as_deref(),
             body.engine,
@@ -2020,7 +2024,7 @@ pub async fn renew_claim(
         .store
         .renew_claim(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             ClaimLeaseId(body.claim_lease_id),
             lease_secs,
         )
@@ -2044,7 +2048,11 @@ pub async fn acknowledge_claim(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let thread = state
         .store
-        .acknowledge_claim(thread_id, auth.member_id, ClaimLeaseId(body.claim_lease_id))
+        .acknowledge_claim(
+            thread_id,
+            auth.member_id(),
+            ClaimLeaseId(body.claim_lease_id),
+        )
         .await?;
     maidan_observability::observe_stage(
         maidan_observability::ThreadStage::Acknowledge,
@@ -2073,7 +2081,7 @@ pub async fn release_claim(
         .store
         .release_claim_with_event(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             ClaimLeaseId(body.claim_lease_id),
             None,
         )
@@ -2101,7 +2109,7 @@ pub async fn release_own_claims(
     let note = release_note(body.note).map_err(ApiError::BadRequest)?;
     let released = state
         .store
-        .release_member_claims_with_events(workspace_id, auth.member_id, Some(note))
+        .release_member_claims_with_events(workspace_id, auth.member_id(), Some(note))
         .await?;
     let mut thread_ids = Vec::with_capacity(released.len());
     for (thread, stored) in released {

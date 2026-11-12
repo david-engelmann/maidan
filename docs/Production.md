@@ -23,7 +23,11 @@ artifact store, so the server holds no state of its own.
 Set `MAIDAN_ENV=production`. It refuses every development switch (running
 without authentication, the public development content key, the mock OIDC
 provider, private-network egress) and marks session cookies `Secure`, so
-reach the console over HTTPS or on `localhost`.
+reach the console over HTTPS or on `localhost`. The Helm chart sets it
+whenever `production: true` (both charts' `values-prod.yaml`), and so does
+`k8s/overlays/prod`. Boot refuses any other value than `production` or
+`development`, so a typo such as `prod` cannot start a server with the
+production refusals off.
 
 **Secrets as files.** Every secret has a `<NAME>_FILE` form naming a file that
 holds it, such as `MAIDAN_CONTENT_KEK_FILE=/run/secrets/content_kek`. Use it
@@ -690,7 +694,16 @@ rebuild from the domain tables, not a repair of the log. See
 
 ### Metrics, dashboards and alerts
 
-`GET /metrics` serves Prometheus text with no per-workspace labels. There is an
+`GET /metrics` serves Prometheus text with no per-workspace labels. Under
+`MAIDAN_ENV=production` it answers `404` unless `MAIDAN_METRICS_TOKEN` is set,
+and then only to that bearer: give Prometheus the same value
+(`authorization: { credentials_file: … }` in its scrape config,
+`bearer_token` in Grafana Alloy, `secrets.MAIDAN_METRICS_TOKEN` in the Helm
+chart). The HTTP metrics (`http_server_request_total`,
+`http_server_request_duration_seconds`) are labelled by the matched route
+template (`route="/threads/{id}"`, `unmatched` for no route), never the path,
+and by a method from a fixed set (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`HEAD`, `OPTIONS`, or `other`), so a client cannot add series. There is an
 example [Grafana dashboard](https://github.com/david-engelmann/maidan/blob/main/docs/dashboards/maidan-operator.json)
 and a set of [alert rules](https://github.com/david-engelmann/maidan/blob/main/docs/alerts/README.md),
 tested with `scripts/check-alert-rules.sh`. Without Prometheus,

@@ -1031,7 +1031,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
     let boot_alice = client
         .get(format!("{base}/channels/{}/boot", ch.id.0))
         .header("Authorization", &alice_auth)
-        .header("maidan-test-member-id", alice.id.0.to_string())
         .send()
         .await
         .unwrap();
@@ -1040,7 +1039,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
     let boot_bob = client
         .get(format!("{base}/channels/{}/boot", ch.id.0))
         .header("Authorization", &bob_auth)
-        .header("maidan-test-member-id", bob.id.0.to_string())
         .send()
         .await
         .unwrap()
@@ -1068,7 +1066,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
     let denied = client
         .get(format!("{base}/channels/{}/boot", ch.id.0))
         .header("Authorization", &eve_auth)
-        .header("maidan-test-member-id", eve.id.0.to_string())
         .send()
         .await
         .unwrap();
@@ -1077,7 +1074,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
     let pack = client
         .get(format!("{base}/threads/{}/context", thread.id.0))
         .header("Authorization", &alice_auth)
-        .header("maidan-test-member-id", alice.id.0.to_string())
         .send()
         .await
         .unwrap()
@@ -1108,7 +1104,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
     let again = client
         .get(format!("{base}/threads/{}/context", thread.id.0))
         .header("Authorization", &alice_auth)
-        .header("maidan-test-member-id", alice.id.0.to_string())
         .send()
         .await
         .unwrap()
@@ -1130,7 +1125,6 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
         .get(format!("{base}/threads/{}/context", thread.id.0))
         .query(&[("split", "true")])
         .header("Authorization", &alice_auth)
-        .header("maidan-test-member-id", alice.id.0.to_string())
         .send()
         .await
         .unwrap()
@@ -1140,12 +1134,14 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
 
     client
         .post(format!("{base}/mcp"))
+        .header("Authorization", &alice_auth)
         .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
         .send()
         .await
         .unwrap();
     let call: serde_json::Value = client
         .post(format!("{base}/mcp"))
+        .header("Authorization", &alice_auth)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
@@ -1175,6 +1171,7 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
 
     let boot_mcp: serde_json::Value = client
         .post(format!("{base}/mcp"))
+        .header("Authorization", &alice_auth)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 3,

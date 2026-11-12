@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::{extract::State, http::StatusCode, routing::post, Router};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{webhook_worker, AppState};
+use maidan_server::{test_support, webhook_worker, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 
@@ -55,11 +55,13 @@ async fn receiver() -> (SocketAddr, Arc<AtomicUsize>) {
     (addr, hits)
 }
 
-/// A subscription whose ciphertext no key can open. `cached` puts a usable
-/// secret in the runtime cache, as hydration or an earlier send would.
+/// A subscription, registered by `creator`, whose ciphertext no key can
+/// open. `cached` puts a usable secret in the runtime cache, as hydration or
+/// an earlier send would.
 async fn subscribed(
     state: &AppState,
     ws: WorkspaceId,
+    creator: ApiTokenId,
     addr: SocketAddr,
     cached: bool,
 ) -> WebhookSubscriptionId {
@@ -71,7 +73,7 @@ async fn subscribed(
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "not-a-ciphertext".into(),
-            created_by_token: None,
+            created_by_token: Some(creator),
         })
         .await
         .unwrap();
@@ -83,6 +85,22 @@ async fn subscribed(
         );
     }
     sub.id
+}
+
+/// The log id of a new event in `ws`, one its admin can read, for a delivery
+/// to carry: a delivery goes out only while its hook's creator can read the
+/// event.
+async fn logged_event(store: &dyn Store, ws: WorkspaceId, name: &str) -> i64 {
+    let (_, stored) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: ws,
+            name: name.into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    stored.id
 }
 
 fn cached(state: &AppState, id: WebhookSubscriptionId) -> bool {
@@ -108,22 +126,23 @@ async fn a_revoked_webhook_gets_no_retries_and_an_unreadable_secret_does_not_sta
     let (revoked_addr, revoked_hits) = receiver().await;
     let (live_addr, live_hits) = receiver().await;
     let (locked_addr, locked_hits) = receiver().await;
-    let revoked = subscribed(state, ws, revoked_addr, true).await;
-    let live = subscribed(state, ws, live_addr, true).await;
-    let locked = subscribed(state, ws, locked_addr, false).await;
+    let creator = test_support::registrar(store, ws).await;
+    let revoked = subscribed(state, ws, creator, revoked_addr, true).await;
+    let live = subscribed(state, ws, creator, live_addr, true).await;
+    let locked = subscribed(state, ws, creator, locked_addr, false).await;
 
     let revoked_delivery = store
-        .enqueue_webhook_delivery(revoked, 1, "{}")
+        .enqueue_webhook_delivery(revoked, logged_event(store, ws, "revoked").await, "{}")
         .await
         .unwrap()
         .unwrap();
     let locked_delivery = store
-        .enqueue_webhook_delivery(locked, 2, "{}")
+        .enqueue_webhook_delivery(locked, logged_event(store, ws, "locked").await, "{}")
         .await
         .unwrap()
         .unwrap();
     let live_delivery = store
-        .enqueue_webhook_delivery(live, 3, "{}")
+        .enqueue_webhook_delivery(live, logged_event(store, ws, "live").await, "{}")
         .await
         .unwrap()
         .unwrap();

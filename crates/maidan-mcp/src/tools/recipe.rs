@@ -40,7 +40,7 @@ pub(super) async fn create_recipe(
     let ctx = resolve_channel_context(store.as_ref(), channel_id)
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if !auth.bypass && ctx.workspace_id != auth.workspace_id {
+    if !auth.bypass && ctx.workspace_id != auth.workspace_id() {
         return Err(McpError::InvalidParams(
             "channel is not in the caller's workspace".into(),
         ));
@@ -51,7 +51,7 @@ pub(super) async fn create_recipe(
             channel_id,
             name: a.name.trim().to_string(),
             spec: a.spec,
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
         })
         .await?;
     Ok(content_json(&recipe))
@@ -65,7 +65,7 @@ pub(super) async fn list_recipes(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let recipes = store.list_recipes(auth.workspace_id).await?;
+    let recipes = store.list_recipes(auth.workspace_id()).await?;
     if auth.bypass {
         return Ok(content_json(&recipes));
     }
@@ -98,14 +98,14 @@ pub(super) async fn instantiate_recipe(
     let a: InstantiateArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = server.store.get_recipe(recipe_id).await?;
-    if !auth.bypass && recipe.workspace_id != auth.workspace_id {
+    if !auth.bypass && recipe.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     maidan_auth::ensure_channel_access(server.store.as_ref(), auth, recipe.channel_id).await?;
 
     let (run, events) = server
         .store
-        .instantiate_recipe(recipe_id, a.params, auth.member_id)
+        .instantiate_recipe(recipe_id, a.params, auth.member_id())
         .await?;
     for stored in &events {
         server.publish_stored(stored).await;
@@ -129,7 +129,7 @@ pub(super) async fn delete_recipe(
     let a: DeleteRecipeArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = store.get_recipe(recipe_id).await?;
-    if !auth.bypass && recipe.workspace_id != auth.workspace_id {
+    if !auth.bypass && recipe.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     maidan_auth::ensure_channel_access(store.as_ref(), auth, recipe.channel_id).await?;

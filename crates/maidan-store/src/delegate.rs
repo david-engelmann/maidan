@@ -4069,6 +4069,26 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn post_bridged_message_with_event(
+                &self,
+                new: NewMessage,
+                provenance: maidan_types::MessageProvenance,
+            ) -> Result<Option<(Message, StoredEvent)>, StoreError> {
+                messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
+                    .await?;
+                messages::create_bridged_with_event(self.pool(), &self.keys, new, &provenance).await
+            }
+
+            async fn record_bridge_receipt(
+                &self,
+                workspace_id: WorkspaceId,
+                origin: maidan_types::MessageOrigin,
+                external_id: &str,
+            ) -> Result<bool, StoreError> {
+                messages::record_bridge_receipt(self.pool(), workspace_id, origin, external_id)
+                    .await
+            }
+
             async fn post_message_to_live_thread(
                 &self,
                 new: NewMessage,

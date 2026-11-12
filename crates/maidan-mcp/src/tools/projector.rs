@@ -59,7 +59,7 @@ pub(super) async fn link_slack_channel(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(a.thread_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
         })
         .await?;
     Ok(content_json(&link))
@@ -72,7 +72,7 @@ pub(super) async fn list_slack_channel_links(
 ) -> Result<Value, McpError> {
     let links = server
         .store
-        .list_slack_channel_links(auth.workspace_id)
+        .list_slack_channel_links(auth.workspace_id())
         .await?;
     Ok(content_json(&links))
 }
@@ -86,7 +86,7 @@ pub(super) async fn unlink_slack_channel(
     // Workspace-scope the unlink: only remove a link that belongs to the caller's ws.
     let scoped = matches!(
         server.store.get_slack_channel_link(&a.slack_channel_id).await?,
-        Some(link) if link.workspace_id == auth.workspace_id
+        Some(link) if link.workspace_id == auth.workspace_id()
     );
     let unlinked = scoped
         && server
@@ -112,7 +112,7 @@ pub(super) async fn link_github_issue(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(a.thread_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
         })
         .await?;
     Ok(content_json(&link))
@@ -125,7 +125,7 @@ pub(super) async fn list_github_issue_links(
 ) -> Result<Value, McpError> {
     let links = server
         .store
-        .list_github_issue_links(auth.workspace_id)
+        .list_github_issue_links(auth.workspace_id())
         .await?;
     Ok(content_json(&links))
 }
@@ -138,7 +138,7 @@ pub(super) async fn unlink_github_issue(
     let a: UnlinkGithubArgs = crate::tools::parse_args(args)?;
     let scoped = matches!(
         server.store.get_github_issue_link(&a.repo, a.issue_number).await?,
-        Some(link) if link.workspace_id == auth.workspace_id
+        Some(link) if link.workspace_id == auth.workspace_id()
     );
     let unlinked = scoped
         && server

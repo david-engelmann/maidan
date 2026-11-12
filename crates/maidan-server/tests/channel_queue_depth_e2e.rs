@@ -1,11 +1,11 @@
 //! `GET /channels/:cid/queue-depth` reports ready / assigned / blocked counts
 //! of a channel's open task threads over HTTP.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 
@@ -27,15 +27,13 @@ async fn queue_depth_partitions_ready_and_blocked_threads() {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
 
+    let tenant = test_support::tenant(store.as_ref(), "qd-ws").await;
     let app = router(AppState::for_tests(store, artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let post = |path: String, body: serde_json::Value| {
         let client = client.clone();
@@ -52,8 +50,7 @@ async fn queue_depth_partitions_ready_and_blocked_threads() {
         }
     };
 
-    let ws = post(format!("{base}/workspaces"), json!({"name": "qd-ws"})).await;
-    let wid = ws["id"].as_str().unwrap();
+    let wid = tenant.workspace_id.0;
     let ch = post(
         format!("{base}/workspaces/{wid}/channels"),
         json!({"name": "queue"}),

@@ -5,9 +5,9 @@ use std::{sync::Arc, time::Duration};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_search::{hash_embedding, model_name, PostgresSearch, Search};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_postgres_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
@@ -42,15 +42,10 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "semantic-ws".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "semantic-ws").await;
     let alice = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -59,7 +54,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -117,7 +112,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
         bus,
         search,
         embedding_provider,
-        true,
+        false,
         false,
         maidan_server::FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -127,14 +122,14 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let hits: Vec<serde_json::Value> = client
-        .get(format!("{base}/workspaces/{}/search", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/search",
+            tenant.workspace_id.0
+        ))
         .query(&[("q", target_body), ("mode", "semantic")])
         .send()
         .await
@@ -182,15 +177,10 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "semantic-facet-ws".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "semantic-facet-ws").await;
     let alice = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -199,7 +189,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .unwrap();
     let bot = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "bot".into(),
             display_name: None,
             kind: MemberKind::Agent,
@@ -208,7 +198,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .unwrap();
     let general = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -217,7 +207,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .unwrap();
     let release = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "release".into(),
             topic: None,
             private: false,
@@ -287,7 +277,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         bus,
         search,
         embedding_provider,
-        true,
+        false,
         false,
         maidan_server::FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -297,15 +287,15 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let general_ch = general.id.0.to_string();
 
     let hits: Vec<serde_json::Value> = client
-        .get(format!("{base}/workspaces/{}/search", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/search",
+            tenant.workspace_id.0
+        ))
         .query(&[
             ("q", general_body),
             ("mode", "semantic"),
@@ -324,7 +314,10 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
     );
 
     let hits: Vec<serde_json::Value> = client
-        .get(format!("{base}/workspaces/{}/search", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/search",
+            tenant.workspace_id.0
+        ))
         .query(&[("q", release_body), ("mode", "semantic"), ("kind", "human")])
         .send()
         .await
@@ -337,7 +330,10 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .any(|h| { h["message_id"].as_str() == Some(release_msg.id.0.to_string().as_str()) }));
 
     let hits: Vec<serde_json::Value> = client
-        .get(format!("{base}/workspaces/{}/search", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/search",
+            tenant.workspace_id.0
+        ))
         .query(&[("q", release_body), ("mode", "semantic"), ("kind", "agent")])
         .send()
         .await
@@ -375,15 +371,10 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "sqlite-semantic-ws".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "sqlite-semantic-ws").await;
     let alice = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -392,7 +383,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -450,7 +441,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
         bus,
         search,
         embedding_provider,
-        true,
+        false,
         false,
         maidan_server::FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -460,14 +451,14 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let hits: Vec<serde_json::Value> = client
-        .get(format!("{base}/workspaces/{}/search", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/search",
+            tenant.workspace_id.0
+        ))
         .query(&[("q", target_body), ("mode", "semantic")])
         .send()
         .await
@@ -507,15 +498,10 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "per-model-ws".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "per-model-ws").await;
     let alice = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -524,7 +510,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -582,7 +568,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
         bus,
         search,
         embedding_provider,
-        true,
+        false,
         false,
         maidan_server::FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -592,12 +578,9 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
-    let search_url = format!("{base}/workspaces/{}/search", ws.id.0);
+    let search_url = format!("{base}/workspaces/{}/search", tenant.workspace_id.0);
 
     let default_hits: Vec<serde_json::Value> = client
         .get(&search_url)

@@ -63,7 +63,7 @@ pub async fn post_message(
         .map(|d| d.id);
     let new_message = NewMessage {
         thread_id: ThreadId(thread_id),
-        author_id: auth.member_id,
+        author_id: auth.member_id(),
         body: post_body,
         metadata: body.metadata.clone(),
         content,
@@ -75,7 +75,7 @@ pub async fn post_message(
     // atomically so the event carries the post-slash message. A post the
     // `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on the way to
     // the 409, on both branches.
-    let author = Some(auth.member_id);
+    let author = Some(auth.member_id());
     let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
         let provisional = state.store.post_message_to_live_thread(new_message).await;
         let m = super::observe_spawn_denial(&state, author, provisional).await?;
@@ -86,7 +86,7 @@ pub async fn post_message(
             ctx.workspace_id,
             ctx.channel_id,
             ThreadId(thread_id),
-            auth.member_id,
+            auth.member_id(),
             m.id,
         )
         .await;
@@ -98,7 +98,7 @@ pub async fn post_message(
             .store
             .edit_message_with_posted_event(
                 m.id,
-                auth.member_id,
+                auth.member_id(),
                 EditMessage {
                     body: m.body.clone(),
                     metadata,
@@ -125,7 +125,7 @@ pub async fn post_message(
     // failure must not fail the already-posted message.
     if let Ok(member) = state
         .store
-        .get_member_in(ctx.workspace_id, auth.member_id)
+        .get_member_in(ctx.workspace_id, auth.member_id())
         .await
         && member.kind == MemberKind::Human
         && let Err(e) = state.store.clear_thread_status(ctx.thread_id).await
@@ -209,7 +209,7 @@ pub async fn seed_from_message(
             .post_message_with_event(
                 NewMessage {
                     thread_id: thread.id,
-                    author_id: auth.member_id,
+                    author_id: auth.member_id(),
                     body: quoted,
                     metadata: serde_json::json!({ "seeded_from": message_id }),
                     content: None,
@@ -237,7 +237,7 @@ pub async fn edit_message(
     if existing.tombstoned_at.is_some() {
         return Err(ApiError::BadRequest("message is tombstoned".into()));
     }
-    let editor_id = auth.member_id;
+    let editor_id = auth.member_id();
     ensure_message_edit(&auth, editor_id, existing.author_id)?;
     let metadata = body.metadata.unwrap_or(existing.metadata);
     // Omitted content keeps the existing blocks; a content edit with an empty
@@ -316,7 +316,7 @@ pub async fn list_message_backlinks(
     let reader_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     Ok(Json(
         state
@@ -367,7 +367,7 @@ pub async fn tombstone_message(
     // room erase what the others said — so it takes channel authority, which a
     // delegation grant cannot lend.
     let message = state.store.get_message(MessageId(id)).await?;
-    if message.author_id != auth.member_id {
+    if message.author_id != auth.member_id() {
         cap(&auth, CHANNEL_ADMIN)?;
     }
     let dm_conversation_id =
@@ -405,7 +405,7 @@ pub async fn purge_message(
             MessageId(id),
             NewAuditEvent {
                 scope: AuditScope::Workspace(chain.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "message.purge".into(),
                 target_kind: Some("message".into()),
                 target_id: Some(id),

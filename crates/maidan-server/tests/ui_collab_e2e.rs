@@ -1,17 +1,20 @@
 //! UI v3 collaboration: ui/api reads for threads, messages, faceted search.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, test_support::Tenant, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use reqwest::StatusCode;
 use serde_json::json;
 
 async fn spawn() -> (
     std::net::SocketAddr,
     reqwest::Client,
+    Arc<dyn Store>,
+    Tenant,
     tokio::task::JoinHandle<()>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
@@ -28,20 +31,17 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let tenant = test_support::tenant(store.as_ref(), "ui-collab").await;
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, tenant.client(), store, tenant, server)
 }
 
 #[tokio::test]
 async fn ui_v3_collab_shell_and_session_api_reads() {
-    let (addr, client, server) = spawn().await;
+    let (addr, client, store, tenant, server) = spawn().await;
     let base = format!("http://{addr}");
 
     let html = client
@@ -57,27 +57,10 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
     assert!(html.contains(r#"id="root""#), "{html}");
     assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "ui-collab"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let alice: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
 
     let channel: serde_json::Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -101,9 +84,9 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
         .unwrap();
     let thread_id = thread["id"].as_str().unwrap();
 
-    let msg: serde_json::Value = client
+    let msg: serde_json::Value = alice
+        .client()
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", alice_id)
         .json(&json!({"body": "faceted search needle collab-v44"}))
         .send()
         .await

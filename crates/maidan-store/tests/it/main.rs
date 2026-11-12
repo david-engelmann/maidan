@@ -71,6 +71,9 @@ mod automation_deliveries;
 #[path = "../backend_parity.rs"]
 mod backend_parity;
 
+#[path = "../bridge_provenance.rs"]
+mod bridge_provenance;
+
 #[path = "../browser_sessions.rs"]
 mod browser_sessions;
 

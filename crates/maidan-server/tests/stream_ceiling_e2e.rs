@@ -46,8 +46,6 @@ async fn spawn() -> Harness {
         Arc::new(InMemoryBus::with_capacity(256)),
         search,
     );
-    state.auth_disabled = false;
-    state.test_identity_header = false;
     state.stream_limit = StreamLimit::new(CEILING);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

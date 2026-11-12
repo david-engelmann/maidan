@@ -73,7 +73,7 @@ pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
         return Vec::new();
     }
     vec![json!({
-        "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id.0),
+        "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id().0),
         "name": "workspace",
         "description": "Your workspace's metadata.",
         "mimeType": "application/json",
@@ -87,7 +87,7 @@ pub async fn read(
     uri: &str,
     auth: &maidan_auth::AuthContext,
 ) -> Result<Value, McpError> {
-    let viewer = (!auth.bypass).then_some(auth.workspace_id);
+    let viewer = (!auth.bypass).then_some(auth.workspace_id());
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {

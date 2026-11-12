@@ -64,10 +64,10 @@ impl StreamCredential {
         if auth.bypass {
             return Self::Open;
         }
-        match auth.token_id {
+        match auth.token_id() {
             Some(token_id) => Self::Token(token_id),
             None => Self::Members {
-                workspace_id: auth.workspace_id,
+                workspace_id: auth.workspace_id(),
                 members: members_of(auth),
             },
         }
@@ -117,9 +117,9 @@ impl StreamCredential {
 /// The member actions are attributed to, and the delegate presenting them if
 /// that is someone else. Either one being deactivated ends the stream.
 fn members_of(auth: &AuthContext) -> Vec<MemberId> {
-    let mut members = vec![auth.member_id];
-    if auth.actor_id != auth.member_id {
-        members.push(auth.actor_id);
+    let mut members = vec![auth.member_id()];
+    if auth.actor_id() != auth.member_id() {
+        members.push(auth.actor_id());
     }
     members
 }

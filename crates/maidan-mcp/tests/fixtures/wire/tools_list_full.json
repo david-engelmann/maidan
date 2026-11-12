@@ -7699,7 +7699,7 @@
         "readOnlyHint": false,
         "title": "Open group DM"
       },
-      "description": "Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires message:post. This writes a conversation.",
+      "description": "Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. The opener is added if the member list leaves them out. Requires message:post. This writes a conversation.",
       "inputSchema": {
         "properties": {
           "member_ids": {

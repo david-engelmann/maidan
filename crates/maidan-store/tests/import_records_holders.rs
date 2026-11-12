@@ -208,6 +208,7 @@ async fn crafted(store: &dyn Store) {
         posted_at: Utc::now(),
         edited_at: None,
         tombstoned_at: None,
+        provenance: None,
     });
     assert!(store
         .import_workspace(&torn, WorkspaceOrigin::Operator)

@@ -158,4 +158,11 @@ name=$(python3 -c 'import json;print(json.load(open("listings/registry/server.js
 grep -q "io.modelcontextprotocol.server.name=\"$name\"" crates/maidan-server/Dockerfile \
   || { echo "crates/maidan-server/Dockerfile must label io.modelcontextprotocol.server.name=\"$name\"" >&2; exit 1; }
 
+# The prod overlay runs the server in production mode: without MAIDAN_ENV the
+# server's own refusals (the OIDC mock, AUTH_DISABLED, fault injection) are off.
+# The Helm chart's half of this is in helm-template-smoke.sh.
+grep -A2 -x '        path: /data/MAIDAN_ENV' k8s/overlays/prod/kustomization.yaml \
+  | grep -qx '        value: production' \
+  || { echo "k8s/overlays/prod must set MAIDAN_ENV=production in maidan-config" >&2; exit 1; }
+
 echo "deployment contract OK"
