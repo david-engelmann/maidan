@@ -12,9 +12,36 @@ use std::sync::Arc;
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    AuditScope, BudgetLimits, BudgetPatch, ChannelId, EventKind, MemberId, MemberKind,
-    NewAuditEvent, NewMember, NewThread, NewWorkspace, ThreadId, UsageDelta, WorkspaceId,
+    AuditScope, BudgetLimits, BudgetPatch, ChannelId, ClaimLeaseId, EventKind, MemberId,
+    MemberKind, NewAuditEvent, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace,
+    PriceSnapshot, ThreadId, TokenUsage, UsageDelta, WorkspaceId,
 };
+
+/// One claim-fenced usage report from the claim holder, at no price, so only
+/// the tokens and turns count against the budget.
+fn fenced_usage(
+    thread: ThreadId,
+    reporter: MemberId,
+    lease: ClaimLeaseId,
+    tokens: i64,
+    turns: i64,
+) -> NewUsageLedgerEntry {
+    NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread,
+        reporter,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens: TokenUsage {
+            input: tokens,
+            ..Default::default()
+        },
+        usd_micros: 0,
+        price_snapshot: PriceSnapshot::default(),
+        turns,
+        evidence: Default::default(),
+    }
+}
 
 struct Room {
     channel: ChannelId,
@@ -158,7 +185,7 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
     assert_eq!(freeze_thread, freeze_id);
     let (close_thread, _) = work(store, r.channel, r.holder).await;
     assert_eq!(close_thread, close_id);
-    let (stop_thread, _) = work(store, r.channel, r.holder).await;
+    let (stop_thread, stop_lease) = work(store, r.channel, r.holder).await;
     assert_eq!(stop_thread, stop_id);
     let (scim_thread, _) = work(store, r.channel, scim_member.id).await;
     assert_eq!(scim_thread, scim_id);
@@ -214,18 +241,12 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
         .await
         .unwrap();
     let (report, stored) = store
-        .report_thread_usage(
-            stop_id,
-            UsageDelta {
-                tokens: 5,
-                ..UsageDelta::default()
-            },
-        )
+        .report_accounted_usage(&fenced_usage(stop_id, r.holder, stop_lease, 5, 0))
         .await
         .unwrap();
     assert!(report.stopped, "the token cap stops the run");
     assert_eq!(report.reason.as_deref(), Some("tokens"));
-    assert_eq!(stored.map(|e| e.kind), Some(EventKind::ClaimFailed));
+    assert!(stored.iter().any(|e| e.kind == EventKind::ClaimFailed));
     assert!(
         report.budget.used_wall_secs >= 1,
         "the stop keeps the wall time it measured: {}",
@@ -337,9 +358,9 @@ async fn claim_next_refuses_a_thread_already_over_budget(store: &dyn Store) {
         )
         .await
         .unwrap();
-    // No claim, so the report records the spend and does not stop a run.
-    let (report, stored) = store
-        .report_thread_usage(
+    // No claim: the spend is recorded and there is no run to stop.
+    store
+        .add_thread_usage(
             id,
             UsageDelta {
                 tokens: 5,
@@ -349,8 +370,6 @@ async fn claim_next_refuses_a_thread_already_over_budget(store: &dyn Store) {
         )
         .await
         .unwrap();
-    assert!(!report.stopped);
-    assert!(stored.is_none());
     assert!(
         store
             .claim_next_thread(r.channel, r.holder, Some(60), None)

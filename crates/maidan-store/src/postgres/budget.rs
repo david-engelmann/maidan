@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     BudgetLimits, BudgetPatch, BudgetReason, ChannelId, Event, MemberId, NewDlqEntry,
     NewUsageLedgerEntry, PayerStamp, StoredEvent, Thread, ThreadBudget, ThreadId, UsageDelta,
-    UsageLedgerEntry, UsageReport, WorkspaceId,
+    UsageLedgerEntry, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -123,34 +123,6 @@ async fn add_accounted_usage_in_tx(
     Ok(row_to_budget(&row))
 }
 
-/// Accumulate usage on a caller-supplied tx — the in-tx core of [`add_usage`],
-/// used by [`report_usage`] so accumulate + enforce are atomic.
-async fn add_usage_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    thread_id: ThreadId,
-    delta: UsageDelta,
-) -> Result<ThreadBudget, StoreError> {
-    let row = sqlx::query(
-        "INSERT INTO maidan_thread_budgets
-             (thread_id, used_tokens, used_usd_micros, used_turns)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (thread_id) DO UPDATE SET
-             used_tokens = maidan_thread_budgets.used_tokens + excluded.used_tokens,
-             used_usd_micros = maidan_thread_budgets.used_usd_micros + excluded.used_usd_micros,
-             used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
-             updated_at = now()
-         RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens",
-    )
-    .bind(thread_id.0)
-    .bind(delta.tokens)
-    .bind(delta.usd_micros)
-    .bind(delta.turns)
-    .fetch_one(&mut **tx)
-    .await?;
-    Ok(row_to_budget(&row))
-}
-
 /// A budget stop used to drop the claim without recording the wall time that
 /// stop was measured against. Persist that time before the claim is cleared,
 /// so the next reader sees it in `used_wall_secs`. A stop with no working
@@ -167,84 +139,6 @@ async fn keep_stopped_wall(
     Ok(charge_wall_in_tx(tx, thread_id, Some(secs))
         .await?
         .unwrap_or(budget))
-}
-
-/// Report usage and enforce the budget — the "stop the run" path. Accumulates
-/// `delta`, and if the thread is now over budget AND has an active claim,
-/// atomically: releases the claim, appends a `ClaimFailed` event, and records a
-/// DLQ entry — all in one tx with the usage write. Returns the new totals +
-/// whether the run was stopped, plus the `ClaimFailed` event to publish (the
-/// route calls `publish_stored`). `NotFound` if the thread is gone.
-pub async fn report_usage(
-    pool: &PgPool,
-    thread_id: ThreadId,
-    delta: UsageDelta,
-) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
-    let mut tx = pool.begin().await?;
-    let budget = add_usage_in_tx(&mut tx, thread_id, delta).await?;
-
-    let ctx = sqlx::query(
-        "SELECT t.assignee_id, t.work_started_at, t.channel_id, c.workspace_id
-         FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
-         WHERE t.id = $1 AND t.tombstoned_at IS NULL",
-    )
-    .bind(thread_id.0)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-
-    let assignee = ctx.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
-    let work_started_at = ctx.get::<Option<DateTime<Utc>>, _>("work_started_at");
-    let channel_id = ChannelId(ctx.get::<Uuid, _>("channel_id"));
-    let workspace_id = WorkspaceId(ctx.get::<Uuid, _>("workspace_id"));
-    // The working clock and this instant are both the app clock, as are the
-    // claim deadlines, so worked time never mixes two clocks (#1728).
-    let ended = crate::clock::db_now();
-    let wall = work_started_at.map(|started| (ended - started).num_seconds());
-
-    let stop = match (budget.exceeded(wall), assignee) {
-        (Some(reason), Some(member)) => Some((reason, member)),
-        _ => None,
-    };
-    let budget = if stop.is_some() {
-        keep_stopped_wall(&mut tx, thread_id, budget, wall).await?
-    } else {
-        budget
-    };
-    let (stopped, reason, stored) = if let Some((reason, member)) = stop {
-        let row = sqlx::query(
-            "UPDATE maidan_threads
-                 SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
-                 WHERE id = $1
-                 RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-        )
-        .bind(thread_id.0)
-        .fetch_one(&mut *tx)
-        .await?;
-        let thread = threads::row_to_thread(&row)?;
-        let stored = fail_claim_in_tx(
-            &mut tx,
-            workspace_id,
-            channel_id,
-            thread,
-            member,
-            reason,
-            &budget,
-        )
-        .await?;
-        (true, Some(reason.as_str().to_owned()), Some(stored))
-    } else {
-        (false, None, None)
-    };
-    tx.commit().await?;
-    Ok((
-        UsageReport {
-            budget,
-            stopped,
-            reason,
-        },
-        stored,
-    ))
 }
 
 /// Claim-fenced, idempotent usage accounting. The reservation row owns the
