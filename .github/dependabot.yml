@@ -67,6 +67,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Ubuntu's minor is its release: 24.04 to 24.10 left an LTS for a
+      # nine-month release past its end of life. The next LTS is a decision.
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-minor"]
     groups:
       docker:
         patterns: ["*"]
