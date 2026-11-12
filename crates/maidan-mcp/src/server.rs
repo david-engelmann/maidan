@@ -1024,7 +1024,7 @@ impl McpServer {
         auth: &AuthContext,
         profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
-        let attribution = auth.attribution();
+        let attribution = Some(auth.attribution());
         let (result, recorded) = maidan_store::attribution::with_attribution_tracked(
             attribution,
             self.tools_call_unscoped(params, auth, profile),
@@ -1041,7 +1041,7 @@ impl McpServer {
         let succeeded = result
             .as_ref()
             .is_ok_and(|out| out.get("isError") != Some(&Value::Bool(true)));
-        if attribution.is_some() && succeeded && !recorded && !tools::is_read_only(name) {
+        if succeeded && !recorded && !tools::is_read_only(name) {
             let ids: serde_json::Map<String, Value> = params
                 .get("arguments")
                 .and_then(Value::as_object)
@@ -1089,20 +1089,14 @@ impl McpServer {
                 profile.name()
             )));
         }
-        if !auth.bypass {
-            let cap = tools::required_capability(name)?;
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                cap,
-            )
+        let cap = tools::required_capability(name)?;
+        maidan_auth::require_observed_capability(auth, maidan_auth::AuthorizationSurface::Mcp, cap)
             .map_err(McpError::from)?;
-        }
+
         // Held until the call returns. A long-poll gives back the server's
         // in-flight permit while it parks, so this is what keeps one tenant
-        // from parking without bound (RED-008). Auth-disabled callers share
-        // no tenant to protect.
-        let _parked = if crate::parked_waits::parks(name) && !auth.bypass {
+        // from parking without bound (RED-008).
+        let _parked = if crate::parked_waits::parks(name) {
             Some(
                 self.parked_waits
                     .park(auth.workspace_id())
@@ -1114,7 +1108,7 @@ impl McpServer {
             None
         };
         // Counted once the call is authorized to run, whatever it answers.
-        if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
+        if let Some(meters) = &self.usage_meters {
             // The hard allowance cutoff: refused before it runs, not counted.
             // The credit tools stay open past it, so an agent cut off can
             // read its balance and ask for a top-up to pay its own way back.
@@ -1147,14 +1141,13 @@ impl McpServer {
     }
 
     async fn prompts_get(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
@@ -1168,10 +1161,6 @@ impl McpServer {
     /// A workspace URI must be the caller's own: `resources/read` of another
     /// workspace's URI returned its record.
     async fn authorize_resource(&self, uri: &str, auth: &AuthContext) -> Result<(), McpError> {
-        if auth.bypass {
-            return Ok(());
-        }
-
         if let Some(rest) = uri.strip_prefix("maidan://") {
             let mut parts = rest.splitn(2, '/');
             match (parts.next(), parts.next()) {
@@ -1220,14 +1209,13 @@ impl McpServer {
     }
 
     async fn resources_read(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let uri = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1255,14 +1243,13 @@ impl McpServer {
         auth: &AuthContext,
         session: &McpSession,
     ) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1279,14 +1266,13 @@ impl McpServer {
         };
         let subscriber = Subscriber::new(auth, session.clone());
         if subscriber.session == McpSession::Stateless {
-            let caller = (!auth.bypass).then_some(auth);
             let subscribed = self
                 .store
                 .subscribe_mcp_resource(
                     &NewMcpSubscription {
                         subscriber: subscriber.principal.key(),
-                        workspace_id: caller.map(|a| a.workspace_id()),
-                        member_id: caller.map(|a| a.member_id()),
+                        workspace_id: Some(auth.workspace_id()),
+                        member_id: Some(auth.member_id()),
                         uri: uri.to_string(),
                         expires_at: self.stateless_expiry(Utc::now()),
                     },
@@ -1314,14 +1300,13 @@ impl McpServer {
         auth: &AuthContext,
         session: &McpSession,
     ) -> Result<Value, McpError> {
-        if !auth.bypass {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                maidan_auth::capability::WORKSPACE_READ,
-            )
-            .map_err(McpError::from)?;
-        }
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
+
         let raw = params
             .get("uri")
             .and_then(|v| v.as_str())
@@ -1394,7 +1379,7 @@ impl McpServer {
     pub(crate) async fn deliver_resource_updates(&self, updates: &[ResourceUpdate]) {
         for update in updates {
             for (subscriber, auth) in self.subscriptions.watchers(&update.uri) {
-                if !auth.bypass && auth.workspace_id() != update.workspace_id {
+                if auth.workspace_id() != update.workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), &auth, &update.uri).await {
@@ -1442,7 +1427,7 @@ impl McpServer {
                 let Some((subscriber, auth)) = listening.get(&watch.subscriber) else {
                     continue;
                 };
-                if !auth.bypass && auth.workspace_id() != workspace_id {
+                if auth.workspace_id() != workspace_id {
                     continue;
                 }
                 if !self.address(subscriber.clone(), auth, &watch.uri).await
@@ -1719,7 +1704,7 @@ mod tests {
     /// `tools/member.rs` too.
     #[tokio::test]
     async fn a_member_tool_cannot_mutate_another_members_personal_state() {
-        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
+        use maidan_auth::capability::{MEMBER_SELF, MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
         let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -1778,6 +1763,7 @@ mod tests {
             vec![
                 WORKSPACE_READ.to_string(),
                 WORKSPACE_WRITE.to_string(),
+                MEMBER_SELF.to_string(),
                 MESSAGE_POST.to_string(),
             ],
         );
@@ -1856,7 +1842,7 @@ mod tests {
     /// own either, because a delegated token is its subject, not both parties.
     #[tokio::test]
     async fn a_delegated_token_acts_as_its_subject_and_no_one_else() {
-        use maidan_auth::capability::WORKSPACE_READ;
+        use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
         let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -1910,7 +1896,7 @@ mod tests {
             worker.id,
             ws_a.id,
             maidan_types::DelegationGrantId(uuid::Uuid::new_v4()),
-            vec![WORKSPACE_READ.to_string()],
+            vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
         );
 
         server
@@ -3716,8 +3702,6 @@ mod tests {
             Arc::new(HashV1Provider),
         )
         .with_event_bus(Arc::new(InMemoryBus::new()));
-        // A real session member so `produced_by` (a NOT-NULL FK) resolves — the
-        // bypass nil member would FK-fail set_thread_result.
         let auth = AuthContext::from_session(
             agent.id,
             ws.id,
@@ -4388,13 +4372,22 @@ mod tests {
         let t2 = store.create_thread(mk("t2")).await.unwrap();
         store.add_thread_dependency(t2.id, t1.id).await.unwrap();
 
+        let reader = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "reader".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
         let server = McpServer::new(
             store,
             Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(reader.id, ws.id);
         let out = server
             .call_tool(
                 &auth,
@@ -5297,7 +5290,7 @@ mod tests {
     /// and self leaf mute/unmute.
     #[tokio::test]
     async fn threading_tools_children_recent_and_mute() {
-        use maidan_auth::capability::WORKSPACE_READ;
+        use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
         let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -5373,7 +5366,11 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+        );
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -5441,7 +5438,7 @@ mod tests {
     /// The per-channel mute MCP tools (self-scoped).
     #[tokio::test]
     async fn channel_mute_tools_mute_and_unmute() {
-        use maidan_auth::capability::WORKSPACE_READ;
+        use maidan_auth::capability::{MEMBER_SELF, WORKSPACE_READ};
         let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -5481,7 +5478,11 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::from_session(member.id, ws.id, vec![WORKSPACE_READ.to_string()]);
+        let auth = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+        );
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -5799,7 +5800,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(agent.id, ws.id);
         let inbox: Value = serde_json::from_str(
             server
                 .call_tool(
@@ -5899,7 +5900,7 @@ mod tests {
             Arc::new(HashV1Provider),
         )
         .with_event_bus(Arc::new(InMemoryBus::new()));
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -6064,7 +6065,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -6141,7 +6142,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -6236,9 +6237,6 @@ mod tests {
             Arc::new(HashV1Provider),
         )
         .with_event_bus(bus);
-        // `request_approval` persists `requested_by = auth.member_id` (a real-member
-        // FK), so this runs with a from_session auth — the nil-member bypass would
-        // FK-fail.
         let auth = AuthContext::from_session(
             agent.id,
             ws.id,
@@ -6390,7 +6388,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -6517,7 +6515,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -7377,8 +7375,6 @@ mod tests {
             .create_workspace(NewWorkspace { name: "mb".into() })
             .await
             .unwrap();
-        // A real member: create_memory_block stamps owner_id (a NOT-NULL FK), so
-        // the nil-member bypass would FK-fail — use a from_session auth.
         let owner = store
             .create_member(NewMember {
                 workspace_id: ws.id,
@@ -10232,7 +10228,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = admin_auth(member.id, ws.id);
         let content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -10283,7 +10279,8 @@ mod tests {
     #[tokio::test]
     async fn inbox_tools_surface_a_members_mentions() {
         let (server, thread, member) = mk_server().await;
-        let auth = AuthContext::bypass();
+        let ws = server.store.get_member(member).await.unwrap().workspace_id;
+        let auth = admin_auth(member, ws);
 
         // Post a message and record a mention of the member.
         let msg = server
@@ -10331,8 +10328,9 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_echoes_negotiated_version_and_the_initialized_notification_is_accepted() {
-        let (server, _thread, _member) = mk_server().await;
-        let auth = AuthContext::bypass();
+        let (server, _thread, member) = mk_server().await;
+        let ws = server.store.get_member(member).await.unwrap().workspace_id;
+        let auth = admin_auth(member, ws);
         let init = server
             .handle(
                 request(1, "initialize", json!({ "protocolVersion": "2024-11-05" })),
@@ -10351,9 +10349,10 @@ mod tests {
     async fn initialize_reports_the_configured_server_version() {
         // The embedder's release version, threaded through with_server_version:
         // without it, initialize reports this crate's version (0.0.0).
-        let (server, _thread, _member) = mk_server().await;
+        let (server, _thread, member) = mk_server().await;
         let server = server.with_server_version("413.0.0-test");
-        let auth = AuthContext::bypass();
+        let ws = server.store.get_member(member).await.unwrap().workspace_id;
+        let auth = admin_auth(member, ws);
         let init = server
             .handle(
                 request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),
@@ -10369,8 +10368,9 @@ mod tests {
     async fn initialize_negotiates_the_2026_revision_when_requested() {
         // A current (2026-07-28) client's initialize is echoed that revision (J3.1);
         // 2026 clients need not call initialize, but when they do it must negotiate.
-        let (server, _thread, _member) = mk_server().await;
-        let auth = AuthContext::bypass();
+        let (server, _thread, member) = mk_server().await;
+        let ws = server.store.get_member(member).await.unwrap().workspace_id;
+        let auth = admin_auth(member, ws);
         let init = server
             .handle(
                 request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),
@@ -10378,6 +10378,11 @@ mod tests {
             )
             .await;
         assert_eq!(init.result.unwrap()["protocolVersion"], "2026-07-28");
+    }
+
+    /// A member of `workspace_id` holding every capability.
+    fn admin_auth(member_id: MemberId, workspace_id: WorkspaceId) -> AuthContext {
+        AuthContext::from_session(member_id, workspace_id, maidan_auth::capability::all())
     }
 
     fn member_auth(member_id: MemberId, workspace_id: WorkspaceId) -> AuthContext {
@@ -10487,7 +10492,7 @@ mod tests {
 
     /// A tenant cannot subscribe to another tenant's resources or read its
     /// workspace record, and its listener receives nothing of theirs — not
-    /// even when an in-process (bypass) caller watches the same URI.
+    /// even while a second member of the other workspace watches the same URI.
     #[tokio::test]
     async fn resource_notifications_stay_in_the_subscribers_workspace() {
         let (server, thread_a, member_a) = mk_server().await;
@@ -10524,10 +10529,10 @@ mod tests {
             .error
             .is_none());
 
-        let bypass = AuthContext::bypass();
+        let auth_carol = member_auth(add_member(&server, ws_a, "carol").await, ws_a);
         let mut listen_a = server.listen(&auth_a, McpSession::Stateless).await;
         let mut listen_b = server.listen(&auth_b, McpSession::Stateless).await;
-        let mut listen_bypass = server.listen(&bypass, McpSession::Stateless).await;
+        let mut listen_carol = server.listen(&auth_carol, McpSession::Stateless).await;
         assert!(
             subscribe_in(&server, &auth_a, &McpSession::Stateless, &uri_a)
                 .await
@@ -10535,7 +10540,7 @@ mod tests {
                 .is_none()
         );
         assert!(
-            subscribe_in(&server, &bypass, &McpSession::Stateless, &uri_a)
+            subscribe_in(&server, &auth_carol, &McpSession::Stateless, &uri_a)
                 .await
                 .error
                 .is_none()
@@ -10543,7 +10548,7 @@ mod tests {
         post(&server, &auth_a, thread_a).await;
 
         assert!(uris(&listen_a.drain()).contains(&uri_a));
-        assert!(uris(&listen_bypass.drain()).contains(&uri_a));
+        assert!(uris(&listen_carol.drain()).contains(&uri_a));
         assert!(
             listen_b.drain().is_empty(),
             "B's listener received A's update"
@@ -10783,20 +10788,23 @@ mod tests {
     async fn resource_notifier_delivers_to_local_subscribers_via_listener() {
         use maidan_bus::InMemoryResourceNotifier;
 
-        let (server, thread_id, _member_id) = mk_server().await;
+        let (server, thread_id, member_id) = mk_server().await;
         let notifier = Arc::new(InMemoryResourceNotifier::new());
         let server = Arc::new(server.with_resource_notifier(notifier));
         server.spawn_resource_notify_listener();
 
-        let auth = AuthContext::bypass();
+        let ws = server
+            .store
+            .get_member(member_id)
+            .await
+            .unwrap()
+            .workspace_id;
+        let auth = admin_auth(member_id, ws);
         let uri = format!("maidan://threads/{}", thread_id.0);
         let mut listener = server.listen(&auth, McpSession::Stateless).await;
         subscribe_in(&server, &auth, &McpSession::Stateless, &uri).await;
         server
-            .publish_resource_uris(vec![ResourceUpdate::new(
-                WorkspaceId(uuid::Uuid::new_v4()),
-                uri.clone(),
-            )])
+            .publish_resource_uris(vec![ResourceUpdate::new(ws, uri.clone())])
             .await;
 
         // Delivery routes through the notifier and the listener loop.

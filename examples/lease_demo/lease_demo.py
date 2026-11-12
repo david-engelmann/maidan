@@ -10,7 +10,8 @@ Run it with the orchestrator: `scripts/lease-demo.sh` (boots a server, runs this
 Or against any running Maidan:
 
     export MAIDAN_URL=http://127.0.0.1:8080
-    export MAIDAN_TOKEN=maid_...        # omit only against an auth-disabled dev server
+    export MAIDAN_TOKEN=maid_...        # a workspace admin token, from `maidan init`
+    export MAIDAN_WORKSPACE=<workspace id>
     PYTHONPATH=sdk/python/src python3 examples/lease_demo/lease_demo.py
 
 Requires Node on PATH for the TypeScript worker (`examples/lease_demo/claim.mjs`).
@@ -72,11 +73,12 @@ def main() -> int:
 
     # --- setup: two member-bound workers, one channel, two open tasks ---
     assert WORKSPACE, "MAIDAN_WORKSPACE is required"
-    planner = admin.members.create(WORKSPACE, "planner").id
-    reviewer = admin.members.create(WORKSPACE, "reviewer").id
-    worker_caps = ["workspace:read", "thread:transition"]
-    planner_token = admin.tokens.mint(WORKSPACE, planner, worker_caps).secret
-    reviewer_token = admin.tokens.mint(WORKSPACE, reviewer, worker_caps).secret
+    # Each agent and its worker token come from one admin call, the way a real
+    # deployment connects an agent.
+    planner = post(f"/workspaces/{WORKSPACE}/agents", {"handle": "planner"}, TOKEN)
+    reviewer = post(f"/workspaces/{WORKSPACE}/agents", {"handle": "reviewer"}, TOKEN)
+    planner_token = planner["token"]["secret"]
+    reviewer_token = reviewer["token"]["secret"]
     planner_client = Client(BASE, planner_token)
     channel = admin.channels.create(WORKSPACE, "coordination").id
     admin.threads.create(channel, "task-1: audit the login flow")

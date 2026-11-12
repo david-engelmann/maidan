@@ -63,7 +63,6 @@ async fn spawn() -> (SocketAddr, Arc<dyn Store>, SqlitePool, tempfile::TempDir) 
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

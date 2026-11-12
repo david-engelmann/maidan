@@ -105,8 +105,7 @@ async fn spawn(kek: u8) -> Ctx {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
-        true,
+        false,
         FederationRuntime::new(true, Some(Arc::new([0x42; 32]))),
         Arc::new(AtomicI64::new(0)),
         None,

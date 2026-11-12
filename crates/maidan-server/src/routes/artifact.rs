@@ -39,7 +39,7 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
 }
 
 fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
-    (!auth.bypass).then_some(auth.workspace_id().0)
+    Some(auth.workspace_id().0)
 }
 
 pub async fn begin_multipart_artifact(
@@ -127,8 +127,8 @@ pub async fn complete_multipart_artifact(
         return Err(refused);
     }
     // Upsert + the per-workspace ref + the ArtifactUpserted event commit
-    // atomically (ref only for a non-bypass caller). A cutoff that lands
-    // after the pre-check is refused here and the bytes are reaped.
+    // atomically. A cutoff that lands after the pre-check is refused here and
+    // the bytes are reaped.
     let (artifact, stored) = super::upsert_uploaded_artifact(
         &state,
         &auth,
@@ -138,7 +138,7 @@ pub async fn complete_multipart_artifact(
             mime_type: body.mime_type,
             filename,
             kind: body.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
+            uploaded_by: Some(auth.member_id()),
         },
     )
     .await?;
@@ -187,8 +187,8 @@ pub async fn upload_artifact(
     .await?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Upsert + the per-workspace ref + the ArtifactUpserted event commit
-    // atomically (ref only for a non-bypass caller). A cutoff that lands
-    // after the pre-check is refused here and the bytes are reaped.
+    // atomically. A cutoff that lands after the pre-check is refused here and
+    // the bytes are reaped.
     let (artifact, stored) = super::upsert_uploaded_artifact(
         &state,
         &auth,
@@ -198,7 +198,7 @@ pub async fn upload_artifact(
             mime_type: q.mime_type,
             filename,
             kind: q.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
+            uploaded_by: Some(auth.member_id()),
         },
     )
     .await?;
@@ -209,8 +209,7 @@ pub async fn upload_artifact(
 }
 
 /// 409 `media-quota-exceeded` when this media upload would take the caller's
-/// workspace past its media quota. An unscoped (bypass) upload records no
-/// workspace ref, so no workspace's quota applies to it.
+/// workspace past its media quota.
 async fn ensure_media_quota(
     state: &AppState,
     auth: &AuthContext,
@@ -218,9 +217,6 @@ async fn ensure_media_quota(
     sha256: &str,
     upload_bytes: i64,
 ) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
     match maidan_store::media_retention::check_media_quota(
         state.store.as_ref(),
         auth.workspace_id(),
@@ -329,9 +325,7 @@ async fn artifact_as_seen_by(
     auth: &AuthContext,
     sha_hex: &str,
 ) -> ApiResult<Artifact> {
-    let artifact = if auth.bypass {
-        state.store.get_artifact_by_sha(sha_hex).await?
-    } else {
+    let artifact = {
         state
             .store
             .get_artifact_for_workspace(auth.workspace_id(), sha_hex)

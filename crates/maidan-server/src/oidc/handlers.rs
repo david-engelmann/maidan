@@ -146,7 +146,7 @@ pub(super) fn authorize_redirect(
     nonce: String,
     pkce_verifier: &PkceCodeVerifier,
 ) -> Result<Response, ApiError> {
-    if oidc.settings.mock {
+    if oidc.settings.is_mock() {
         let mut url = format!(
             "/auth/oidc/callback?state={}",
             urlencoding::encode(&state_token)
@@ -664,7 +664,7 @@ pub async fn callback(
 
     let pending = state.store.take_oidc_pending(&q.state).await?;
 
-    let (issuer, subject, email, email_verified) = if oidc.settings.mock {
+    let (issuer, subject, email, email_verified) = if oidc.settings.is_mock() {
         let sub = q.mock_sub.as_deref().unwrap_or("mock-user").to_string();
         let email = q.mock_email.clone();
         (oidc.settings.issuer.clone(), sub, email, true)

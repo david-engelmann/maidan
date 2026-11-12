@@ -165,7 +165,6 @@ async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_work
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

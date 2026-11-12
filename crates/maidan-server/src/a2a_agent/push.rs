@@ -146,7 +146,7 @@ pub(super) async fn attach(
         state,
         maidan_types::NewAuditEvent {
             scope: maidan_types::AuditScope::Workspace(workspace_id),
-            actor_id: (!prepared.registered_by.bypass).then_some(prepared.registered_by.actor_id()),
+            actor_id: Some(prepared.registered_by.actor_id()),
             action: "a2a_push_config.create".into(),
             target_kind: Some("a2a_push_config".into()),
             target_id: None,

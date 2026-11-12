@@ -229,13 +229,17 @@ test("subscribe delivers a posted message (WS)", { skip: typeof WebSocket === "u
   assert.equal(event.kind, "message_posted");
 });
 
-test("provisioning seeds a member and mints a scoped token", async () => {
-  // The first thing an integrator does after `maidan init`. Both calls were
-  // reachable only through the private transport before.
+test("agents.create adds an agent with its worker token, and tokens.mint scopes another", async () => {
   const handle = `provisioned-${crypto.randomUUID()}`;
-  const member = await client.members.create(WORKSPACE, handle);
+  const { member, token } = await client.agents.create(WORKSPACE, handle, "Provisioned");
   assert.equal(member.handle, handle);
   assert.equal(member.kind, "agent");
+  assert.equal(member.display_name, "Provisioned");
+  assert.equal(token.member_id, member.id);
+  assert.equal(token.workspace_id, WORKSPACE);
+  assert.ok(token.secret, "the worker secret is returned once, in the create response");
+  const me = await new Client(BASE, token.secret).workspaces.get(WORKSPACE);
+  assert.equal(me.id, WORKSPACE, "the worker token works on its own");
   const members = await client.members.list(WORKSPACE);
   assert.ok(members.some((m) => m.id === member.id));
 
@@ -305,7 +309,10 @@ test("every documented operation returns its declared model", async () => {
   assert.ok(events.length > 0);
   for await (const e of client.workspaces.eventsAll(WORKSPACE, { limit: 25 })) assertShape(e, "StoredEvent");
 
-  const member = assertShape(await client.members.create(WORKSPACE, `typed-${crypto.randomUUID()}`), "Member");
+  const created = assertShape(await client.agents.create(WORKSPACE, `typed-${crypto.randomUUID()}`), "CreatedAgent");
+  const member = assertShape(created.member, "Member");
+  assert.equal(member.kind, "agent");
+  assertShape(created.token, "MintedToken");
   const minted = assertShape(await client.tokens.mint(WORKSPACE, member.id, ["workspace:read"]), "MintedToken");
   minted.quotas.forEach((q) => assertShape(q, "TokenQuota"));
   eachShape(await client.tokens.list(WORKSPACE, member.id), "TokenSummary");
@@ -335,8 +342,7 @@ test("the server's problem types arrive as their error classes", async () => {
   await expectError(() => client.threads.get("00000000-0000-0000-0000-000000000000"), NotFoundError, 404, "not-found");
   await expectError(() => new Client(BASE, "maid_not_a_token").workspaces.get(WORKSPACE), UnauthorizedError, 401, "unauthorized");
   await expectError(() => client.threads.transition(thread.id, { action: "fly" }), BadRequestError, 400, "bad-request");
-  // Bootstrap creates only the first workspace; `maidan init` already made it.
-  await expectError(() => client.workspaces.create("second"), ForbiddenError, 403, "forbidden");
+  await expectError(() => client.workspaces.get(OTHER_WORKSPACE), ForbiddenError, 403, "forbidden");
   const exported = await (
     await fetch(`${BASE}/workspaces/${WORKSPACE}/export`, { headers: { authorization: `Bearer ${TOKEN}` } })
   ).json();

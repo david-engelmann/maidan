@@ -7,7 +7,14 @@ MAIDAN_A_URL="${MAIDAN_A_URL:-http://localhost:8080}"
 MAIDAN_B_URL="${MAIDAN_B_URL:-http://localhost:8081}"
 # URL stored on the peer for the poll worker (container network); defaults to MAIDAN_A_URL for local curl-only runs.
 MAIDAN_A_PEER_URL="${MAIDAN_A_PEER_URL:-${MAIDAN_A_URL}}"
+# B's URL as A's peer record names it; A never calls it in this smoke.
+MAIDAN_B_PEER_URL="${MAIDAN_B_PEER_URL:-${MAIDAN_B_URL}}"
 POLL_WAIT_SECS="${FEDERATION_PULL_WAIT_SECS:-45}"
+# The dev admin compose.yaml seeds into each instance's own database. It only
+# opens workspaces: each one's own admin token does the work inside it, since a
+# token acts in its own workspace and nowhere else. A and B share no database,
+# so A issues B a peer secret and B's poll worker presents it to A.
+DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"
 
 wait_health() {
   local base=$1
@@ -28,18 +35,31 @@ json_post() {
   curl -sf -X POST "$url" -H 'Content-Type: application/json' "$@"
 }
 
+# Open a workspace on the instance at $1 named $2; print its body, whose
+# .workspace.id and .token.secret the caller reads.
+open_workspace() {
+  json_post "$1/operator/workspaces" \
+    -H "Authorization: Bearer ${DEV_ADMIN_TOKEN}" \
+    -d "{\"name\":\"$2\",\"admin_handle\":\"admin\"}"
+}
+
 echo "waiting for ${MAIDAN_A_URL} and ${MAIDAN_B_URL}…"
 wait_health "$MAIDAN_A_URL" "maidan-a"
 wait_health "$MAIDAN_B_URL" "maidan-b"
 
 echo "creating thread on A…"
-ws_a=$(json_post "${MAIDAN_A_URL}/workspaces" -d '{"name":"fed-pull-a"}' | jq -r '.id')
+opened_a=$(open_workspace "$MAIDAN_A_URL" fed-pull-a)
+ws_a=$(echo "$opened_a" | jq -r '.workspace.id')
+token_a=$(echo "$opened_a" | jq -r '.token.secret')
 channel=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/channels" \
+  -H "Authorization: Bearer ${token_a}" \
   -d '{"name":"general"}' | jq -r '.id')
 thread=$(json_post "${MAIDAN_A_URL}/channels/${channel}/threads" \
+  -H "Authorization: Bearer ${token_a}" \
   -d '{"title":"federation-pull"}' | jq -r '.id')
 
 stored=$(curl -sf "${MAIDAN_A_URL}/workspaces/${ws_a}/events?after_id=0&limit=50" \
+  -H "Authorization: Bearer ${token_a}" \
   | jq '[.[] | select(.kind == "thread_created")][0]')
 if [[ -z "$stored" || "$stored" == "null" ]]; then
   echo "::error::no thread_created event on A" >&2
@@ -47,19 +67,34 @@ if [[ -z "$stored" || "$stored" == "null" ]]; then
 fi
 remote_id=$(echo "$stored" | jq '.id')
 
-echo "registering peer on B (local workspace + remote A workspace)…"
-ws_b=$(json_post "${MAIDAN_B_URL}/workspaces" -d '{"name":"fed-pull-b"}' | jq -r '.id')
+echo "A issues B a peer secret for its workspace…"
+issued=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/peers" \
+  -H "Authorization: Bearer ${token_a}" \
+  -d "{\"name\":\"downstream-b\",\"base_url\":\"${MAIDAN_B_PEER_URL}\"}" | jq -r '.secret')
+
+echo "registering peer on B (local workspace + remote A workspace, A's secret)…"
+opened_b=$(open_workspace "$MAIDAN_B_URL" fed-pull-b)
+ws_b=$(echo "$opened_b" | jq -r '.workspace.id')
+token_b=$(echo "$opened_b" | jq -r '.token.secret')
 peer_body=$(json_post "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
-  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_PEER_URL}\",\"remote_workspace_id\":\"${ws_a}\"}")
+  -H "Authorization: Bearer ${token_b}" \
+  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_PEER_URL}\",\"remote_workspace_id\":\"${ws_a}\",\"secret\":\"${issued}\"}")
 peer_secret=$(echo "$peer_body" | jq -r '.secret')
 
+peer_id=$(echo "$peer_body" | jq -r '.peer.id')
+
+# The poll worker holds its cursor on an event it could not ingest, so the
+# cursor passing A's thread_created is the proof it was ingested. B stores it in
+# B's workspace, where a member reads only what it could open there, and the
+# peer's secret reads only its remote workspace, so neither shows it.
 echo "waiting up to ${POLL_WAIT_SECS}s for B poll worker to ingest remote event ${remote_id}…"
 deadline=$((SECONDS + POLL_WAIT_SECS))
 found=0
 while (( SECONDS < deadline )); do
-  tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=100")
-  count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
-  if [[ "$count" -ge 1 ]]; then
+  synced=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
+    -H "Authorization: Bearer ${token_b}" \
+    | jq --arg id "$peer_id" '[.[] | select(.id == $id)][0].last_synced_event_id // 0')
+  if [[ "$synced" -ge "$remote_id" ]]; then
     found=1
     break
   fi
@@ -67,9 +102,8 @@ while (( SECONDS < deadline )); do
 done
 
 if [[ "$found" != "1" ]]; then
-  echo "::error::B did not ingest thread_created from A within ${POLL_WAIT_SECS}s" >&2
-  echo "peer_secret prefix: ${peer_secret:0:8}…" >&2
+  echo "::error::B did not ingest thread_created (remote event ${remote_id}) from A within ${POLL_WAIT_SECS}s; cursor at ${synced}" >&2
   exit 1
 fi
 
-echo "federation pull compose smoke ok (remote_event_id=${remote_id})"
+echo "federation pull compose smoke ok (remote_event_id=${remote_id}, cursor=${synced})"

@@ -826,7 +826,7 @@
       "readOnlyHint": false,
       "title": "Mute thread"
     },
-    "description": "Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.",
+    "description": "Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent. Requires member:self.",
     "inputSchema": {
       "properties": {
         "thread_id": {
@@ -849,7 +849,7 @@
       "readOnlyHint": false,
       "title": "Unmute thread"
     },
-    "description": "Unmute a thread you previously muted. Returns unmuted=false if it was not muted.",
+    "description": "Unmute a thread you previously muted. Returns unmuted=false if it was not muted. Requires member:self.",
     "inputSchema": {
       "properties": {
         "thread_id": {
@@ -872,7 +872,7 @@
       "readOnlyHint": false,
       "title": "Mute channel"
     },
-    "description": "Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.",
+    "description": "Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent. Requires member:self.",
     "inputSchema": {
       "properties": {
         "channel_id": {
@@ -895,7 +895,7 @@
       "readOnlyHint": false,
       "title": "Unmute channel"
     },
-    "description": "Unmute a channel you previously muted. Returns unmuted=false if it was not muted.",
+    "description": "Unmute a channel you previously muted. Returns unmuted=false if it was not muted. Requires member:self.",
     "inputSchema": {
       "properties": {
         "channel_id": {
@@ -5472,7 +5472,7 @@
       "readOnlyHint": false,
       "title": "Mark inbox read"
     },
-    "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.",
+    "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox. Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -5713,7 +5713,7 @@
       "readOnlyHint": false,
       "title": "Mark notification read"
     },
-    "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).",
+    "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's). Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -5741,7 +5741,7 @@
       "readOnlyHint": false,
       "title": "Snooze notification"
     },
-    "description": "Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).",
+    "description": "Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's). Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -5808,7 +5808,7 @@
       "readOnlyHint": false,
       "title": "Set notification pref"
     },
-    "description": "Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.",
+    "description": "Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member. Requires member:self.",
     "inputSchema": {
       "properties": {
         "kind": {
@@ -5863,7 +5863,7 @@
       "readOnlyHint": false,
       "title": "Set delivery mode"
     },
-    "description": "Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.",
+    "description": "Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive. Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -5917,7 +5917,7 @@
       "readOnlyHint": false,
       "title": "Set member email"
     },
-    "description": "Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.",
+    "description": "Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send. Requires member:self.",
     "inputSchema": {
       "properties": {
         "email": {
@@ -5967,7 +5967,7 @@
       "readOnlyHint": false,
       "title": "Delete member email"
     },
-    "description": "Clear a member's delivery email address (opt out of email). Returns {deleted}.",
+    "description": "Clear a member's delivery email address (opt out of email). Returns {deleted}. Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -5990,7 +5990,7 @@
       "readOnlyHint": false,
       "title": "Follow channel"
     },
-    "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
+    "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel. Requires member:self.",
     "inputSchema": {
       "properties": {
         "channel_id": {
@@ -6018,7 +6018,7 @@
       "readOnlyHint": false,
       "title": "Unfollow channel"
     },
-    "description": "Stop following a channel (removed=false if not following).",
+    "description": "Stop following a channel (removed=false if not following). Requires member:self.",
     "inputSchema": {
       "properties": {
         "channel_id": {
@@ -6069,7 +6069,7 @@
       "readOnlyHint": false,
       "title": "Follow thread"
     },
-    "description": "Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.",
+    "description": "Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread. Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -6097,7 +6097,7 @@
       "readOnlyHint": false,
       "title": "Unfollow thread"
     },
-    "description": "Stop following a thread (removed=false if not following).",
+    "description": "Stop following a thread (removed=false if not following). Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {
@@ -6148,7 +6148,7 @@
       "readOnlyHint": false,
       "title": "Follow member"
     },
-    "description": "Follow another same-workspace member's work occupancy. Self-follow is rejected.",
+    "description": "Follow another same-workspace member's work occupancy. Self-follow is rejected. Requires member:self.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -6202,7 +6202,7 @@
       "readOnlyHint": false,
       "title": "Unfollow member"
     },
-    "description": "Stop following another member's work occupancy (removed=false if not following).",
+    "description": "Stop following another member's work occupancy (removed=false if not following). Requires member:self.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -8234,7 +8234,7 @@
       "readOnlyHint": true,
       "title": "List message edits"
     },
-    "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+    "description": "List the edit history of a message. A tombstoned message returns an empty list. Requires workspace:read.",
     "inputSchema": {
       "properties": {
         "limit": {
@@ -8263,7 +8263,7 @@
       "readOnlyHint": false,
       "title": "Mark all notifications read"
     },
-    "description": "Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.",
+    "description": "Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires member:self.",
     "inputSchema": {
       "properties": {
         "member_id": {

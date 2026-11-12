@@ -97,6 +97,7 @@ fn bundle(name: &str) -> WorkspaceImport {
             posted_at: now,
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }],
         message_edits: vec![MessageEdit {
             id: 0,

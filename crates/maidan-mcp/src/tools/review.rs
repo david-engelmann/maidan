@@ -49,13 +49,12 @@ pub(super) async fn set_review_requirement(
     // The dispatch capability is static per tool, so the direction has to be
     // checked here. The store makes the decision inside the write, where a
     // concurrent change cannot turn a raise into a lowering.
-    let allow_lower = auth.bypass
-        || maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            maidan_auth::capability::CHANNEL_ADMIN,
-        )
-        .is_ok();
+    let allow_lower = maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        maidan_auth::capability::CHANNEL_ADMIN,
+    )
+    .is_ok();
     let current = store.get_review_requirement(thread_id).await?;
     let current_count = current.as_ref().map(|r| r.required_count).unwrap_or(0);
     let current_rounds = current
@@ -140,13 +139,7 @@ pub(super) async fn add_reviewer(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AddReviewerArgs = crate::tools::parse_args(args)?;
-    if !auth.bypass {
-        let thread = store.get_thread(ThreadId(a.thread_id)).await?;
-        let channel = store.get_channel(thread.channel_id).await?;
-        store
-            .get_member_in(channel.workspace_id, MemberId(a.member_id))
-            .await?;
-    }
+    super::requested_member(store.as_ref(), auth, MemberId(a.member_id)).await?;
     let added = store
         .add_reviewer(ThreadId(a.thread_id), MemberId(a.member_id))
         .await?;

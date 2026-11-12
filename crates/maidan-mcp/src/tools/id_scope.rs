@@ -701,9 +701,6 @@ pub(super) async fn enforce(
     args: &Value,
 ) -> Result<(), McpError> {
     refuse_unclassified(name)?;
-    if auth.bypass {
-        return Ok(());
-    }
     let store = server.store.as_ref();
     let field = |key: &str| -> Option<uuid::Uuid> {
         args.get(key)
@@ -1051,8 +1048,8 @@ mod dispatch_tests {
     /// The defect MCP-005 named: a tool that takes a `thread_id`, registered
     /// and reachable but in no list. With the old `_ => {}` default it passed
     /// the guard and reached dispatch (here, `MethodNotFound`, since the
-    /// planted tool has no handler); now the guard refuses it first, for a
-    /// token and for an auth-disabled caller alike.
+    /// planted tool has no handler); now the guard refuses it first, for the
+    /// thread's own workspace as much as for another.
     #[tokio::test]
     async fn an_unclassified_tool_with_a_thread_id_is_refused_before_it_runs() {
         let (server, victim, attacker) = two_tenants().await;
@@ -1066,7 +1063,7 @@ mod dispatch_tests {
         );
         let args = json!({ "thread_id": victim.thread.0 });
         let call = CallContext::from_params(&json!({}));
-        for auth in [token(&attacker), token(&victim), AuthContext::bypass()] {
+        for auth in [token(&attacker), token(&victim)] {
             let err = crate::tools::dispatch(&server, &auth, tool, &args, &call)
                 .await
                 .expect_err("an unclassified tool must not run");

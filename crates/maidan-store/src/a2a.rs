@@ -43,8 +43,7 @@ pub struct A2aTaskQuery<'a> {
     pub before: Option<(DateTime<Utc>, &'a str)>,
     pub limit: i64,
     /// Keep only the tasks this member may read: those on a thread it can
-    /// read, and those on no thread. `None` keeps every task, for a caller
-    /// that bypasses auth.
+    /// read, and those on no thread. `None` keeps every task.
     pub readable_by: Option<MemberId>,
 }
 

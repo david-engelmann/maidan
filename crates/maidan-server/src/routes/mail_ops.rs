@@ -38,7 +38,7 @@ pub struct ListDeadMailQuery {
 /// with a `NULL` workspace, which predate this cluster or have no tenant
 /// context and so cannot be attributed to anybody.
 fn dlq_scope(auth: &AuthContext) -> Option<maidan_types::WorkspaceId> {
-    (!auth.bypass && !auth.has_capability(OPERATOR_GLOBAL)).then_some(auth.workspace_id())
+    (!auth.has_capability(OPERATOR_GLOBAL)).then_some(auth.workspace_id())
 }
 
 /// `GET /operator/mail/dead` — dead-lettered outbox entries for the caller's

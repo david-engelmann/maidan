@@ -1064,8 +1064,8 @@ async fn main() {
         .await
         .expect("review token");
 
-    // An admin, so Connect an agent can create a member (bootstrap is on)
-    // and mint the worker preset. The operator token above stays narrow.
+    // An admin, so Connect an agent can create an agent member and mint the
+    // worker preset. The operator token above stays narrow.
     let admin_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -1211,8 +1211,7 @@ async fn main() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED — the specs drive the real bearer path
-        true,  // bootstrap: the same member-create route the product calls
+        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

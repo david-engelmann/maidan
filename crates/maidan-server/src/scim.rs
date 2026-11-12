@@ -100,10 +100,10 @@ where
     }
 }
 
-/// Require `token:admin` (bypass callers pass). Returns `Some(<403 error>)` when
+/// Require `token:admin`. Returns `Some(<403 error>)` when
 /// the caller is not authorized, `None` when it may proceed.
 pub(crate) fn require_admin(auth: &AuthContext) -> Option<Response> {
-    if auth.bypass || auth.has_capability(TOKEN_ADMIN) {
+    if auth.has_capability(TOKEN_ADMIN) {
         None
     } else {
         Some(scim_error(

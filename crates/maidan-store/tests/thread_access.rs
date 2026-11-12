@@ -248,7 +248,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(listed(bob).await, 3, "open, dm, none");
     assert_eq!(listed(carol).await, 3, "open, group, none");
 
-    // No reader (auth bypass) keeps every row of the workspace, and only it.
+    // No reader (a background worker) keeps every row of the workspace, and only it.
     let all = store.list_a2a_tasks(ws, query(None)).await.expect("all");
     assert_eq!(all.len(), threads.len());
     assert!(all.iter().all(|row| row.workspace_id == ws));
