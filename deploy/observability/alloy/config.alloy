@@ -4,6 +4,7 @@
 //
 // Environment:
 //   MAIDAN_METRICS_TARGET  host:port of maidan-server (default maidan:8080)
+//   MAIDAN_METRICS_TOKEN   the server's scrape bearer (unset: send none)
 //   TRACES_OTLP_ENDPOINT   where traces go, e.g. tempo:4317 (default tempo:4317)
 //   PROM_REMOTE_WRITE_URL  Prometheus remote-write URL
 //                          (default http://prometheus:9090/api/v1/write)
@@ -80,11 +81,15 @@ otelcol.exporter.prometheus "default" {
 
 // The usage counters (maidan_usage_tokens_total, maidan_usage_usd_micros_total)
 // and the rest of /metrics, scraped directly so they arrive without OTLP too.
+// A server with MAIDAN_ENV=production answers /metrics only to the bearer in
+// its MAIDAN_METRICS_TOKEN; give Alloy the same value. Unset sends none, which
+// a development server accepts.
 prometheus.scrape "maidan" {
 	targets = [{
 		__address__ = coalesce(sys.env("MAIDAN_METRICS_TARGET"), "maidan:8080"),
 		job         = "maidan-server",
 	}]
+	bearer_token    = sys.env("MAIDAN_METRICS_TOKEN")
 	scrape_interval = "15s"
 	forward_to      = [prometheus.remote_write.default.receiver]
 }

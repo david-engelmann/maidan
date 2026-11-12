@@ -2366,3 +2366,22 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** If an `https` redirect host beyond VS Code's is wanted (ChatGPT's `chatgpt.com/connector_platform_oauth_redirect` uses its metadata document instead), or if registrations flood the cap in practice, which a per-registration challenge or a shorter unauthorized window answers first.
 
 **Record.** `crates/maidan-server/src/oauth/register.rs`, `registry::redirect_uri_matches`, migrations 0220 (Postgres) and 0219 (SQLite), [OAuth](OAuth.md#dynamic-client-registration).
+
+### Personal-state writes get `member:self` now; splitting `workspace:write` waits until after launch (2026-11-11)
+
+**Decision.** The maintainer chose on 2026-11-11, for audit item MCP-002 (resource-scoped capabilities), to do the small half now and the large half after launch. Now: the 18 MCP writes to a member's own personal state (follow and unfollow a channel, thread or member; mute and unmute a thread or channel; mark a notification read, mark all read, snooze; notification preferences; delivery mode; set and delete the member email; `mark_inbox_read`) and their 18 REST twins need a new capability, `member:self`, instead of `workspace:read`. Every member preset carries it, so a bare `workspace:read` token can no longer change anyone's personal state. After launch: split `workspace:write` into four capabilities, with `workspace:write` kept as a mint-time preset that expands to all four:
+
+- `thread:create`: threads, plans, cancel, recipes, schedules.
+- `message:annotate`: reactions, pins, votes, mentions, references, evidence.
+- `workspace:configure`: WIP and spawn limits, the workspace handle, the glossary, memory blocks, member skills.
+- `integration:admin`: Slack and GitHub links, slash commands, thread pulls, delivery replay. R08 (registration owners) has merged, so nothing blocks this one.
+
+**Alternative.** Both halves before launch, which changes every preset and every `workspace:write` REST twin in four more PRs during the launch push. Or neither, recording the coarse capabilities as the launch state; MCP-003 had already moved the two writes that reach other people (group DMs, approval gates) to `message:post`.
+
+**Why.** `member:self` is one capability, one PR and no preset loses anything, and it makes `workspace:read` mean reading. The `workspace:write` split narrows what a writer token can do, which matters more once outside agents hold writer tokens, and it is a larger change to presets, the console and the SDKs than the launch needs.
+
+**Live tokens.** Capabilities are stored expanded, as a JSON array, when a token, delegation grant, app installation or OAuth grant is made, and a request reads them back as stored. So a token that held `workspace:read` would have lost these writes the moment the check shipped, and running agents call `mark_notification_read`, `mark_inbox_read` and the follow tools. Migration 0237 is a one-time data fix that grants `member:self` to every stored list holding `workspace:read` (tokens, delegation grants, app installations, OAuth clients, grants, codes and pending requests). It is not a compatibility path: nothing at request time treats `workspace:read` as `member:self`.
+
+**To revisit.** After launch, when the `workspace:write` split above is taken up. The REST-only push-subscription writes (`POST` and `DELETE /members/:id/push-subscriptions`) are personal state too and still take `workspace:read`; they have no MCP twin and were not part of the approved slice.
+
+**Record.** `maidan_auth::capability::MEMBER_SELF`, `maidan_mcp::tools::MEMBER_SELF_TOOLS`, migration 0237 (both backends), [Capability Map](Capability%20Map.md), issue #1495.

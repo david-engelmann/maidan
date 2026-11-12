@@ -2532,6 +2532,96 @@ pub struct Message {
     pub posted_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub tombstoned_at: Option<DateTime<Utc>>,
+    /// The bridge the message came in through, when it came in through one.
+    /// Only the server writes it, on bridge ingress: no post or edit can set,
+    /// change or clear it, and `metadata` keys that look like it count for
+    /// nothing. Omitted for a message a member posted, so a log written before
+    /// the field hashes the same.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(feature = "openapi", schema(read_only))]
+    pub provenance: Option<MessageProvenance>,
+}
+
+/// A bridge that carries text into Maidan from outside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum MessageOrigin {
+    /// A GitHub issue or pull request comment, or a sentence the server wrote
+    /// about a linked pull request.
+    Github,
+    /// A message in a linked Slack channel.
+    Slack,
+}
+
+impl MessageOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Github => "github",
+            Self::Slack => "slack",
+        }
+    }
+
+    /// The origin a stored column names; `None` for anything else.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "github" => Some(Self::Github),
+            "slack" => Some(Self::Slack),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for MessageOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Where a bridged message came from, set by the server (RED-007).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MessageProvenance {
+    pub origin: MessageOrigin,
+    /// The bridge's own id for what it delivered: a GitHub comment id, a
+    /// Slack `event_id`. Ingress is keyed on it per workspace, so a
+    /// redelivery posts nothing. `None` for a sentence the server wrote about
+    /// a bridge's state, such as a pull request closing.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub external_id: Option<String>,
+}
+
+impl MessageProvenance {
+    /// Text the bridge delivered, keyed on the bridge's id for it.
+    pub fn delivered(origin: MessageOrigin, external_id: impl Into<String>) -> Self {
+        Self {
+            origin,
+            external_id: Some(external_id.into()),
+        }
+    }
+
+    /// A sentence the server wrote about what a bridge reported.
+    pub fn reported(origin: MessageOrigin) -> Self {
+        Self {
+            origin,
+            external_id: None,
+        }
+    }
+
+    /// Whether this message came in through `origin`, so egress to it would
+    /// echo the message back where it came from.
+    pub fn is_from(provenance: Option<&Self>, origin: MessageOrigin) -> bool {
+        provenance.is_some_and(|p| p.origin == origin)
+    }
+
+    /// Read back from the `origin` and `origin_ref` columns. An origin the
+    /// column's check would refuse reads as none.
+    pub fn from_columns(origin: Option<&str>, origin_ref: Option<String>) -> Option<Self> {
+        origin.and_then(MessageOrigin::parse).map(|origin| Self {
+            origin,
+            external_id: origin_ref,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -4213,6 +4303,7 @@ mod message_serde_tests {
             posted_at: chrono::Utc::now(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }
     }
 
@@ -4253,6 +4344,7 @@ mod tool_transcript_tests {
             posted_at: DateTime::from_timestamp(ts, 0).unwrap(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         }
     }
     fn use_block(id: &str, name: &str) -> ContentBlock {

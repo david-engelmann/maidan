@@ -386,6 +386,7 @@ A value that is not a positive whole number turns that knob off. For
 | `OTLP_METRICS` | unset | `1` also pushes metrics over OTLP, beside the `/metrics` scrape. |
 | `OTLP_METRICS_ENDPOINT` | `OTLP_ENDPOINT` | A separate collector for metrics. |
 | `OTLP_METRICS_INTERVAL_SECS` | `15` | Metrics push interval. |
+| `MAIDAN_METRICS_TOKEN` | unset | The bearer a scraper sends to `GET /metrics`, 32 bytes or more (`openssl rand -hex 32`); set, the scrape answers `401` to any other request. Unset, `/metrics` is open to whoever reaches the port, except under `MAIDAN_ENV=production`, where it answers `404`. Has a `_FILE` form. |
 
 OTLP export is the `otel` Cargo feature, on by default. A build without it
 (`--no-default-features`) drops the OpenTelemetry stack; logs and `/metrics`

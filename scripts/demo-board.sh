@@ -118,7 +118,7 @@ token()  { # token <member> <capabilities json>
   rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "$body" | jq -r .secret
 }
 agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
-human_caps='["workspace:read","message:post","thread:transition","event:subscribe"]'
+human_caps='["workspace:read","member:self","message:post","thread:transition","event:subscribe"]'
 
 planner=$(member planner Planner agent)
 coder_a=$(member coder-a "Coder A" agent)

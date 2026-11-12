@@ -208,8 +208,8 @@ async fn a_caller_with_no_credential_reads_the_synthetic_workspace_and_nothing_e
     assert!(refused(&write), "{write}");
     let read_cap_write = world
         .call(
-            "mark_all_notifications_read",
-            json!({ "member_id": world.synthetic }),
+            "top_up_credits",
+            json!({ "workspace_id": world.synthetic, "amount_cents": 500 }),
         )
         .await;
     assert!(

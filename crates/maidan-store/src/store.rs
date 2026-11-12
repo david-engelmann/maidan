@@ -3685,6 +3685,29 @@ pub trait MessageStore: Send + Sync {
         new: NewMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError>;
+    /// Post a message that came in through a bridge (GitHub or Slack
+    /// ingress), or a sentence the server wrote about what a bridge reported,
+    /// stamped with `provenance`, and append its `MessagePosted` event, all in
+    /// one transaction. The only writer of a message's provenance: no member's
+    /// post or edit reaches it. With an external id, the post is keyed on
+    /// (workspace, origin, external id): when the key is already taken (a
+    /// redelivery, a replay, or a comment GitHub egress posted itself),
+    /// nothing is written and the answer is `None`.
+    async fn post_bridged_message_with_event(
+        &self,
+        new: NewMessage,
+        provenance: maidan_types::MessageProvenance,
+    ) -> Result<Option<(Message, StoredEvent)>, StoreError>;
+    /// Take the ingress key for `external_id` from `origin` in `workspace_id`
+    /// without posting: GitHub egress records each comment it posts, so the
+    /// webhook that delivers our own comment back posts nothing. `false` when
+    /// the key was already taken.
+    async fn record_bridge_receipt(
+        &self,
+        workspace_id: WorkspaceId,
+        origin: maidan_types::MessageOrigin,
+        external_id: &str,
+    ) -> Result<bool, StoreError>;
     /// [`Self::post_message`] for a writer held to the thread's liveness (a
     /// person or agent posting): refused with [`StoreError::Gone`] when the
     /// thread is tombstoned and [`StoreError::Ended`] when it is archived,

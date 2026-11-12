@@ -25,6 +25,7 @@ ROLES = {
         "channel": "coding",
         "capabilities": [
             "workspace:read",
+            "member:self",
             "message:post",
             "thread:transition",
             "artifact:upload",
@@ -34,7 +35,7 @@ ROLES = {
     },
     "deployer": {
         "channel": "deploys",
-        "capabilities": ["workspace:read", "message:post", "thread:transition"],
+        "capabilities": ["workspace:read", "member:self", "message:post", "thread:transition"],
         "title": "Deploy v9 to production",
         "task": "Roll out v9 to production.",
     },

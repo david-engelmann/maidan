@@ -8,8 +8,8 @@ use axum::{
 };
 use maidan_auth::{
     capability::{
-        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION,
-        WORKSPACE_READ, WORKSPACE_WRITE,
+        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY,
+        THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE,
     },
     record_delegated_authorization, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,
     AuthContext, AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
@@ -422,8 +422,11 @@ pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .and_then(parse_bearer)
 }
 
-/// What an OIDC session may do on the `/ui/api` read routes.
-pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, SEARCH_QUERY];
+/// What an OIDC session may do on the `/ui/api` read routes. `member:self`
+/// is here so a viewer, narrowed to this set, can still mark its own
+/// notifications read and change its own follows (MCP-002).
+pub const OIDC_READ_CAPABILITIES: &[&str] =
+    &[WORKSPACE_READ, MEMBER_SELF, EVENT_SUBSCRIBE, SEARCH_QUERY];
 
 /// What an OIDC session may do on the `/ui/api` write routes. A viewer is
 /// narrowed to [`OIDC_READ_CAPABILITIES`] by
@@ -433,6 +436,7 @@ pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, S
 pub const OIDC_WRITE_CAPABILITIES: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
+    MEMBER_SELF,
     MESSAGE_POST,
     THREAD_TRANSITION,
     ARTIFACT_UPLOAD,
