@@ -399,7 +399,7 @@ struct OpenGroupDmArgs {
     title: Option<String>,
 }
 
-/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `workspace:read`
+/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
 /// and `open_group_dm_conversation`. The caller is added when the list leaves
 /// them out; then at least three distinct members, all in the workspace, as
 /// the store requires.

@@ -218,6 +218,112 @@ async fn authorized_gap_tools_succeed_and_a_weak_caller_is_refused() {
     }
 }
 
+/// MCP-003: opening a group DM and opening an approval gate both reach
+/// people, so a read-only token does neither, and nothing is written when it
+/// tries. A `message:post` token from another workspace cannot reach this
+/// one's members or threads either.
+#[tokio::test]
+async fn a_read_only_token_cannot_open_a_group_dm_or_an_approval_gate() {
+    let (server, workspace, ada, bea, cy, thread_a, _, _) = server().await;
+    let other = server
+        .store
+        .create_workspace(NewWorkspace {
+            name: "elsewhere".into(),
+        })
+        .await
+        .unwrap();
+    let mut outsiders = Vec::new();
+    for handle in ["eve", "fay"] {
+        outsiders.push(
+            server
+                .store
+                .create_member(NewMember {
+                    workspace_id: other.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let group = json!({ "workspace_id": workspace.0, "member_ids": [ada.0, bea.0, cy.0] });
+    let gate = json!({ "prompt": "ship it?", "thread_id": thread_a.0 });
+
+    let read_only = bearer(ada, workspace, vec![WORKSPACE_READ.to_string()]);
+    for (name, args) in [("open_group_dm", &group), ("request_approval", &gate)] {
+        let err = server
+            .call_tool(&read_only, name, args)
+            .await
+            .expect_err(name);
+        assert_forbidden(err);
+    }
+    let pending = |ws: WorkspaceId| {
+        let store = server.store.clone();
+        async move {
+            store
+                .list_pending_approval_gates(ws, None, 50)
+                .await
+                .unwrap()
+        }
+    };
+    assert!(
+        pending(workspace).await.is_empty(),
+        "a refused gate was written"
+    );
+    assert!(
+        server
+            .store
+            .list_group_dm_conversations_for_member(workspace, ada)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a refused group DM was written"
+    );
+
+    // The other workspace's poster names this workspace, its members, or its
+    // thread: refused, and still nothing written on either side.
+    let outsider = bearer(
+        outsiders[0],
+        other.id,
+        vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+    );
+    let mixed = json!({
+        "workspace_id": other.id.0,
+        "member_ids": [outsiders[0].0, outsiders[1].0, ada.0],
+    });
+    for (name, args) in [
+        ("open_group_dm", &group),
+        ("open_group_dm", &mixed),
+        ("request_approval", &gate),
+    ] {
+        assert!(
+            server.call_tool(&outsider, name, args).await.is_err(),
+            "{name} crossed workspaces with {args}"
+        );
+    }
+    assert!(pending(workspace).await.is_empty());
+    assert!(pending(other.id).await.is_empty());
+    assert!(server
+        .store
+        .list_group_dm_conversations_for_member(other.id, outsiders[0])
+        .await
+        .unwrap()
+        .is_empty());
+
+    // `message:post` in the right workspace is enough for both.
+    let poster = bearer(
+        ada,
+        workspace,
+        vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+    );
+    for (name, args) in [("open_group_dm", &group), ("request_approval", &gate)] {
+        server.call_tool(&poster, name, args).await.expect(name);
+    }
+    assert_eq!(pending(workspace).await.len(), 1);
+}
+
 #[tokio::test]
 async fn open_group_dm_makes_the_opener_a_member() {
     // A token that can post could open a group DM of others it could then not

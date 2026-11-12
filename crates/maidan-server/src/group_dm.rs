@@ -31,7 +31,9 @@ pub async fn open_group_dm(
     ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<OpenGroupDmBody>,
 ) -> ApiResult<(StatusCode, Json<GroupDmConversation>)> {
-    cap(&auth, WORKSPACE_READ)?;
+    // Opening a conversation puts people in it, so it is a write that reaches
+    // them, the same as a two-person DM (MCP-003).
+    cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let mut member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();

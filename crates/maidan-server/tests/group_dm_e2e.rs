@@ -57,6 +57,25 @@ async fn mint_token(
     workspace_id: WorkspaceId,
     member_id: maidan_types::MemberId,
 ) -> String {
+    mint_token_with(
+        store,
+        workspace_id,
+        member_id,
+        &[
+            capability::WORKSPACE_READ,
+            capability::WORKSPACE_WRITE,
+            capability::MESSAGE_POST,
+        ],
+    )
+    .await
+}
+
+async fn mint_token_with(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    member_id: maidan_types::MemberId,
+    caps: &[&str],
+) -> String {
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -65,11 +84,7 @@ async fn mint_token(
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![
-                capability::WORKSPACE_READ.into(),
-                capability::WORKSPACE_WRITE.into(),
-                capability::MESSAGE_POST.into(),
-            ],
+            capabilities: caps.iter().map(|c| c.to_string()).collect(),
             expires_at: None,
         })
         .await
@@ -153,6 +168,96 @@ async fn group_dm_open_post_and_list() {
     let rows: Vec<serde_json::Value> = list.json().await.unwrap();
     assert_eq!(rows.len(), 1);
 
+    server.abort();
+}
+
+/// MCP-003: opening a group DM puts people in a conversation, so it needs
+/// `message:post`. A read-only token is refused and writes nothing, and a
+/// poster from another workspace cannot open one here.
+#[tokio::test]
+async fn a_read_only_token_cannot_open_a_group_dm() {
+    let (addr, client, server, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let mut members = Vec::new();
+    let mut workspaces = Vec::new();
+    for name in ["here", "elsewhere"] {
+        let ws = store
+            .create_workspace(NewWorkspace { name: name.into() })
+            .await
+            .unwrap();
+        for handle in ["a", "b", "c"] {
+            members.push(
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: maidan_types::MemberKind::Human,
+                    })
+                    .await
+                    .unwrap()
+                    .id,
+            );
+        }
+        workspaces.push(ws.id);
+    }
+    let (here, elsewhere) = (workspaces[0], workspaces[1]);
+    let trio = json!({ "member_ids": [members[0].0, members[1].0, members[2].0] });
+    let open = |token: String, ws: WorkspaceId| {
+        let client = client.clone();
+        let base = base.clone();
+        let trio = trio.clone();
+        async move {
+            client
+                .post(format!("{base}/workspaces/{}/group-dms", ws.0))
+                .bearer_auth(token)
+                .json(&trio)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+
+    let read_only = mint_token_with(
+        store.as_ref(),
+        here,
+        members[0],
+        &[capability::WORKSPACE_READ],
+    )
+    .await;
+    let writer = mint_token_with(
+        store.as_ref(),
+        here,
+        members[0],
+        &[capability::WORKSPACE_READ, capability::WORKSPACE_WRITE],
+    )
+    .await;
+    assert_eq!(open(read_only, here).await, StatusCode::FORBIDDEN);
+    assert_eq!(
+        open(writer, here).await,
+        StatusCode::FORBIDDEN,
+        "workspace:write is not message:post"
+    );
+    let outsider = mint_token(store.as_ref(), elsewhere, members[3]).await;
+    let crossed = open(outsider, here).await;
+    assert!(
+        matches!(crossed, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "another workspace's poster opened a group DM here: {crossed}"
+    );
+    for (ws, member) in [(here, members[0]), (elsewhere, members[3])] {
+        assert!(
+            store
+                .list_group_dm_conversations_for_member(ws, member)
+                .await
+                .unwrap()
+                .is_empty(),
+            "a refused open wrote a group DM"
+        );
+    }
+
+    let poster = mint_token(store.as_ref(), here, members[0]).await;
+    assert_eq!(open(poster, here).await, StatusCode::CREATED);
     server.abort();
 }
 

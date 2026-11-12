@@ -32,6 +32,7 @@ use serde_json::{json, Value};
 const WORK: &[&str] = &[
     capability::WORKSPACE_READ,
     capability::WORKSPACE_WRITE,
+    capability::MESSAGE_POST,
     capability::THREAD_TRANSITION,
 ];
 

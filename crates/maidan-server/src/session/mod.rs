@@ -83,7 +83,7 @@ impl SessionSettings {
         let cookie_secure = matches!(
             std::env::var("MAIDAN_COOKIE_SECURE").as_deref(),
             Ok("1") | Ok("true") | Ok("TRUE")
-        ) || std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
+        ) || crate::config::is_production();
         Ok(Some(Self {
             secret: session_secret_from_env()?,
             ttl_secs,
