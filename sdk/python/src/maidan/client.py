@@ -409,16 +409,45 @@ class _Reviews:
 
 
 class _ApprovalGates:
-    """Approval gates: the human side. ``list`` returns the workspace's
-    pending gates, each with the ``request_state`` an answer must echo.
+    """Approval gates. ``request`` opens one and ``get`` reads it back;
+    :meth:`Client.wait_for_approval_decision` waits for its answer. ``list``
+    returns the workspace's pending gates, each with the ``request_state`` an
+    answer must echo.
 
     Accepting needs a person's signed-in session or a token holding
     ``approval:grant``, and nobody accepts a gate they asked for; declining or
-    cancelling needs ``workspace:write``. A gate is opened over MCP
-    (``request_approval``)."""
+    cancelling needs ``workspace:write``."""
 
     def __init__(self, c: "Client"):
         self._c = c
+
+    def request(
+        self,
+        workspace_id: str,
+        prompt: str,
+        *,
+        schema: Any = None,
+        thread_id: Optional[str] = None,
+        risk: Optional[str] = None,
+    ) -> ApprovalGate:
+        """POST /workspaces/{wid}/approval-gates — open a gate for a person to
+        answer (the twin of MCP ``request_approval``; ``message:post``). The
+        gate is the caller's and starts ``pending``. ``thread_id`` holds that
+        thread from ``claim_next`` while the gate is pending; ``risk`` is
+        ``low``, ``medium`` or ``high`` (the server's default)."""
+        body: dict = {"prompt": prompt}
+        if schema is not None:
+            body["schema"] = schema
+        if thread_id is not None:
+            body["thread_id"] = thread_id
+        if risk is not None:
+            body["risk"] = risk
+        return self._c._model(ApprovalGate, "POST", f"/workspaces/{workspace_id}/approval-gates", body)
+
+    def get(self, gate_id: str) -> ApprovalGate:
+        """GET /approval-gates/{id} — one gate, pending or answered. A gate the
+        caller cannot read is a 404, the same as no gate."""
+        return self._c._model(ApprovalGate, "GET", f"/approval-gates/{gate_id}")
 
     def list(self, workspace_id: str) -> List[ApprovalGateView]:
         return from_list(ApprovalGateView, self._c._req("GET", f"/workspaces/{workspace_id}/approval-gates"))
@@ -852,11 +881,15 @@ class Client:
             consumer_id=consumer_id,
         )
 
-    def _wait_for_kind(self, filter: dict, kind: str, timeout: float = 30.0) -> Optional[dict]:
+    def _wait_for_kind(
+        self, filter: dict, kind: str, timeout: float = 30.0, match: Optional[Callable[[dict], bool]] = None
+    ) -> Optional[dict]:
         got: dict = {}
         done = threading.Event()
 
         def _on(event: dict) -> None:
+            if done.is_set() or (match is not None and not match(event)):
+                return
             got["event"] = event
             done.set()
 
@@ -883,6 +916,19 @@ class Client:
         """The next ``approval_requested`` event in the workspace, or ``None``
         after ``timeout``. Answer it with :meth:`_ApprovalGates.answer`."""
         return self._wait_for_kind({"workspace_id": workspace_id}, "approval_requested", timeout)
+
+    def wait_for_approval_decision(self, gate_id: str, workspace_id: str, timeout: float = 30.0) -> Optional[dict]:
+        """The ``approval_resolved`` event for ``gate_id`` (its ``state`` is
+        ``accepted``, ``declined`` or ``cancelled``), or ``None`` after
+        ``timeout``. Only an answer given after the wait starts is heard, so
+        read a gate that may already be answered with
+        :meth:`_ApprovalGates.get`."""
+        return self._wait_for_kind(
+            {"workspace_id": workspace_id},
+            "approval_resolved",
+            timeout,
+            match=lambda e: e.get("gate_id") == gate_id,
+        )
 
 
 def _normalize_stored(row: StoredEvent) -> dict:
