@@ -3,10 +3,12 @@
 //! same audited erase as `DELETE /artifacts/{sha}`. A thread link or a live
 //! message naming the sha keeps it, evidence kinds are never expired, a held
 //! workspace keeps everything, and another workspace's ref to the same bytes
-//! is its own. The media quota's usage counts each media sha once.
+//! is its own. The media quota's usage counts each media sha once, and the
+//! quota an instance gets with `MAIDAN_MEDIA_QUOTA_BYTES` unset is a real cap.
 
 use chrono::Utc;
-use maidan_store::media_retention::expire_media_artifacts;
+use maidan_store::media_retention::{check_media_quota, expire_media_artifacts};
+use maidan_store::retention_policy::{parse_media_quota_bytes, DEFAULT_MEDIA_QUOTA_BYTES};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ArtifactKind, AuditScope, Member, MemberKind, NewArtifact, NewAuditEvent, NewChannel,
@@ -388,6 +390,130 @@ async fn run_usage_suite(store: &dyn Store) {
     );
 }
 
+/// The instance quota with `MAIDAN_MEDIA_QUOTA_BYTES` unset (OPS-004): a
+/// workspace that set no quota of its own is still held to the default, so a
+/// media upload past it is refused, and another workspace's usage does not
+/// count against it. Only an explicit `0` or `off` lifts the cap.
+async fn run_default_quota_suite(store: &dyn Store) {
+    let unset = RetentionDays {
+        media_quota_bytes: parse_media_quota_bytes(None),
+        ..RetentionDays::default()
+    };
+    assert_eq!(
+        unset.media_quota_bytes,
+        Some(DEFAULT_MEDIA_QUOTA_BYTES),
+        "unset must not mean unlimited"
+    );
+    assert_eq!(DEFAULT_MEDIA_QUOTA_BYTES, 20 * 1024 * 1024 * 1024);
+
+    let full = room(store, "default-quota-full").await;
+    let other = room(store, "default-quota-other").await;
+    // The recorded size is what the quota counts; no bytes are written here.
+    upload(
+        store,
+        &full,
+        &sha(10),
+        ArtifactKind::Recording,
+        DEFAULT_MEDIA_QUOTA_BYTES - 10,
+    )
+    .await;
+
+    let refused = check_media_quota(
+        store,
+        full.workspace,
+        &unset,
+        ArtifactKind::Attachment,
+        &sha(11),
+        11,
+    )
+    .await
+    .expect("check")
+    .expect("an upload past the default quota is refused");
+    assert_eq!(refused.used_bytes, DEFAULT_MEDIA_QUOTA_BYTES - 10);
+    assert_eq!(refused.quota_bytes, DEFAULT_MEDIA_QUOTA_BYTES);
+    assert_eq!(refused.upload_bytes, 11);
+
+    assert!(
+        check_media_quota(
+            store,
+            full.workspace,
+            &unset,
+            ArtifactKind::Attachment,
+            &sha(12),
+            10
+        )
+        .await
+        .expect("check")
+        .is_none(),
+        "an upload that fits exactly is taken"
+    );
+    assert!(
+        check_media_quota(
+            store,
+            other.workspace,
+            &unset,
+            ArtifactKind::Attachment,
+            &sha(11),
+            11
+        )
+        .await
+        .expect("check")
+        .is_none(),
+        "another workspace's usage is not this one's"
+    );
+    assert!(
+        check_media_quota(
+            store,
+            full.workspace,
+            &unset,
+            ArtifactKind::Transcript,
+            &sha(13),
+            11
+        )
+        .await
+        .expect("check")
+        .is_none(),
+        "evidence is never counted"
+    );
+
+    for explicit_off in ["0", "off"] {
+        let off = RetentionDays {
+            media_quota_bytes: parse_media_quota_bytes(Some(explicit_off)),
+            ..RetentionDays::default()
+        };
+        assert!(
+            check_media_quota(
+                store,
+                full.workspace,
+                &off,
+                ArtifactKind::Attachment,
+                &sha(11),
+                11
+            )
+            .await
+            .expect("check")
+            .is_none(),
+            "an operator's explicit {explicit_off} lifts the cap"
+        );
+    }
+    let lower = RetentionDays {
+        media_quota_bytes: parse_media_quota_bytes(Some("1000")),
+        ..RetentionDays::default()
+    };
+    let refused = check_media_quota(
+        store,
+        other.workspace,
+        &lower,
+        ArtifactKind::Attachment,
+        &sha(14),
+        1_001,
+    )
+    .await
+    .expect("check")
+    .expect("an operator's own quota replaces the default");
+    assert_eq!(refused.quota_bytes, 1_000);
+}
+
 async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
@@ -462,4 +588,18 @@ async fn media_usage_counts_each_media_sha_once_per_workspace_postgres() {
         return;
     };
     run_usage_suite(&store).await;
+}
+
+#[tokio::test]
+async fn the_unset_media_quota_is_the_default_and_refuses_past_it_sqlite() {
+    let (store, _pool) = sqlite().await;
+    run_default_quota_suite(&store).await;
+}
+
+#[tokio::test]
+async fn the_unset_media_quota_is_the_default_and_refuses_past_it_postgres() {
+    let Some((_container, store, _pool)) = postgres().await else {
+        return;
+    };
+    run_default_quota_suite(&store).await;
 }
