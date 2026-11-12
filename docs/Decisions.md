@@ -1275,7 +1275,8 @@ or if the quarantine list grows past a handful.
 
 **Decision.** `.config/coverage-floors.toml` sets a line-coverage floor for
 the workspace and for every crate, each just under the crate's measured
-coverage (one point off the measurement, rounded down to the half point).
+coverage (one point off the lowest of three `main` runs, rounded down to
+the half point; one run alone missed `maidan-cli`'s 1.7-point jitter).
 `scripts/coverage-floors.py` fails the `coverage (llvm-cov)` job when any of
 them is missed, when a crate has no floor, or when a floor names a crate that
 is gone. The job stays out of the required checks. It replaces the single
