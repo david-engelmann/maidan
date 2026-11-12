@@ -2,9 +2,6 @@
 //! the room records a `ThreadSpawnDenied` naming the axis, the cap, what the
 //! claim already held, and **who** tried — the fact the store's gate can't know
 //! on the thread-create path.
-//!
-//! Auth is ENABLED with a real minted token: under bypass auth `auth.member_id`
-//! is the nil member, so attribution is exactly what a bypass run cannot prove.
 
 use std::{
     net::SocketAddr,
@@ -74,7 +71,6 @@ async fn a_refused_spawn_publishes_thread_spawn_denied() {
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED — the event must carry the real caller
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

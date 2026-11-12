@@ -16,11 +16,11 @@
 #
 # With MAIDAN_TOKEN and MAIDAN_WORKSPACE unset, the script runs `maidan init`
 # against DATABASE_URL (the same database the server is using) and reads the
-# workspace id and admin token from that output. It then creates the human,
-# every agent, and tokens that can claim, post, transition, and review.
-# Nothing here asks you to create a member or pick capabilities. With auth on,
-# the server creates members only while bootstrap is on, so start it with
-# MAIDAN_BOOTSTRAP=1 (and MAIDAN_RATE_LIMIT_MAX=0 for a fast run).
+# workspace id and admin token from that output. The admin is the human of the
+# story: it creates every agent with its worker token (POST
+# /workspaces/{wid}/agents) and mints itself a narrower token to review with.
+# Nothing here asks you to create a member or pick capabilities. Start the
+# server with MAIDAN_RATE_LIMIT_MAX=0 for a fast run.
 #
 #   MAIDAN_TOKEN=… MAIDAN_WORKSPACE=… ./scripts/demo-board.sh
 #
@@ -66,7 +66,7 @@ else
   case "${DATABASE_URL:-}" in
     ""|sqlite::memory:*) echo "set DATABASE_URL to the server's database (or pass MAIDAN_TOKEN and MAIDAN_WORKSPACE)" >&2; exit 1 ;;
   esac
-  init_out=$(maidan init --workspace "${MAIDAN_WORKSPACE_NAME:-demo}" --admin-handle admin)
+  init_out=$(maidan init --workspace "${MAIDAN_WORKSPACE_NAME:-demo}" --admin-handle david)
   WS=$(sed -n 's/^  workspace: .* (\(.*\))$/\1/p' <<<"$init_out")
   ADMIN=$(awk '/Admin bearer token/{show=1; next} show && $0 ~ /^[[:space:]]*$/ {next} show {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit}' <<<"$init_out")
   if [[ -z "$ADMIN" || -z "$WS" ]]; then
@@ -102,32 +102,32 @@ mcp_refused() { # mcp_refused <token> <tool> <json-args> <expected> -> refusal t
   case "$why" in *"$4"*) printf '%s\n' "${why#invalid params: }" ;; *) echo "MCP $2 refused for another reason: $why" >&2; exit 1 ;; esac
 }
 
-member() { rest "$ADMIN" POST "/workspaces/$WS/members" \
-  "$(jq -nc --arg h "$1" --arg d "$2" --arg k "$3" '{handle:$h,display_name:$d,kind:$k}')" | jq -r .id; }
 # DEMO_TOKEN_TTL_SECS, when set, gives every token the script mints an
 # expires_at that many seconds out, so a public demo's tokens die on their own
 # even if a reset is missed.
-token()  { # token <member> <capabilities json>
-  local body
+ttl() { # ttl <json object> -> the object, with expires_at when a TTL is set
   if [ -n "${DEMO_TOKEN_TTL_SECS:-}" ]; then
-    body=$(jq -nc --argjson c "$2" --argjson ttl "$DEMO_TOKEN_TTL_SECS" \
-      '{capabilities:$c, expires_at:(now + $ttl | floor | todate)}')
+    jq -c --argjson ttl "$DEMO_TOKEN_TTL_SECS" '. + {expires_at:(now + $ttl | floor | todate)}' <<<"$1"
   else
-    body="{\"capabilities\":$2}"
+    printf '%s\n' "$1"
   fi
-  rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "$body" | jq -r .secret
 }
-agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
+agent() { # agent <handle> <display name> -> "<member id> <worker token>"
+  rest "$ADMIN" POST "/workspaces/$WS/agents" \
+    "$(ttl "$(jq -nc --arg h "$1" --arg d "$2" '{handle:$h,display_name:$d}')")" \
+    | jq -r '"\(.member.id) \(.token.secret)"'
+}
 human_caps='["workspace:read","member:self","message:post","thread:transition","event:subscribe"]'
 
-planner=$(member planner Planner agent)
-coder_a=$(member coder-a "Coder A" agent)
-coder_b=$(member coder-b "Coder B" agent)
-tester=$(member tester Tester agent)
-david=$(member david David human)
-PT=$(token "$planner" "$agent_caps"); AT=$(token "$coder_a" "$agent_caps")
-BT=$(token "$coder_b" "$agent_caps"); TT=$(token "$tester" "$agent_caps")
-HT=$(token "$david" "$human_caps")
+read -r planner PT < <(agent planner Planner)
+read -r coder_a AT < <(agent coder-a "Coder A")
+read -r coder_b BT < <(agent coder-b "Coder B")
+read -r tester TT < <(agent tester Tester)
+# The human reviews with a token that can read, post, move tasks and follow
+# the board, not with the admin token that made the cast.
+david=$(rest "$ADMIN" GET /me | jq -r .member_id)
+HT=$(rest "$ADMIN" POST "/workspaces/$WS/members/$david/tokens" \
+  "$(ttl "{\"capabilities\":$human_caps}")" | jq -r .secret)
 [ -n "${DEMO_VIEWER_TOKEN_FILE:-}" ] && printf '%s\n' "$HT" > "$DEMO_VIEWER_TOKEN_FILE"
 channel=$(rest "$ADMIN" POST "/workspaces/$WS/channels" '{"name":"build","topic":"demo data"}' | jq -r .id)
 [ -n "${DEMO_CHANNEL_FILE:-}" ] && printf '%s\n' "$channel" > "$DEMO_CHANNEL_FILE"

@@ -984,9 +984,7 @@ pub async fn get_member_occupancy(
         .await?;
     let mut visible = Vec::with_capacity(assigned.len());
     for thread in assigned {
-        if auth.bypass
-            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
-        {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
             visible.push(thread);
         }
     }
@@ -1116,9 +1114,7 @@ pub async fn get_member_waiting(
         .list_review_requests(member.workspace_id, MemberId(id))
         .await?
     {
-        if auth.bypass
-            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
-        {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
             reviews.push(thread);
         }
     }

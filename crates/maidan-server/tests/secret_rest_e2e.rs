@@ -56,7 +56,6 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, Some(Arc::new([7u8; 32]))), // an at-rest key
         Arc::new(AtomicI64::new(0)),

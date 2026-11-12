@@ -68,10 +68,8 @@ async fn streamable_request(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
-    if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
-    }
+    auth.require_capability(WORKSPACE_READ)
+        .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
     let request = match maidan_mcp::protocol::parse_request(&body) {
         Ok(r) => r,
@@ -255,10 +253,8 @@ pub async fn close_session(
     Extension(auth): Extension<AuthContext>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
-    }
+    auth.require_capability(WORKSPACE_READ)
+        .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     let Some(session_id) = headers
         .get("mcp-session-id")
         .and_then(|v| v.to_str().ok())
@@ -280,10 +276,8 @@ pub async fn stream_get(
     Extension(auth): Extension<AuthContext>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
-    }
+    auth.require_capability(WORKSPACE_READ)
+        .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     crate::mcp::validate_protocol_version(&headers)?;
     // Taken before listening, so a refused stream costs nothing.
     let slot = state.stream_limit.open(&auth)?;

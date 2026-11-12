@@ -1029,7 +1029,7 @@
       "name": "list_votes"
     },
     {
-      "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+      "description": "List the edit history of a message. A tombstoned message returns an empty list. Requires workspace:read.",
       "name": "list_message_edits"
     },
     {

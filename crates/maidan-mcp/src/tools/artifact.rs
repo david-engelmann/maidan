@@ -42,7 +42,7 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
 }
 
 fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
-    (!auth.bypass).then_some(auth.workspace_id().0)
+    Some(auth.workspace_id().0)
 }
 
 fn map_artifact(err: maidan_artifacts::ArtifactError) -> McpError {
@@ -173,7 +173,7 @@ pub(super) async fn complete_artifact_multipart(
             mime_type: a.mime_type,
             filename: None,
             kind: a.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
+            uploaded_by: Some(auth.member_id()),
         },
     )
     .await?;
@@ -241,7 +241,7 @@ pub(super) async fn upload_artifact(
             mime_type: a.mime_type,
             filename: None,
             kind: a.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
+            uploaded_by: Some(auth.member_id()),
         },
     )
     .await?;
@@ -282,9 +282,7 @@ pub(super) async fn get_artifact_metadata(
     if !maidan_auth::can_read_artifact(store.as_ref(), auth, &a.sha256).await? {
         return Err(McpError::NotFound);
     }
-    let artifact = if auth.bypass {
-        store.get_artifact_by_sha(&a.sha256).await?
-    } else {
+    let artifact = {
         store
             .get_artifact_for_workspace(auth.workspace_id(), &a.sha256)
             .await?
@@ -306,9 +304,7 @@ pub(super) async fn get_artifact(
     if !maidan_auth::can_read_artifact(server.store.as_ref(), auth, &a.sha256).await? {
         return Err(McpError::NotFound);
     }
-    let artifact = if auth.bypass {
-        server.store.get_artifact_by_sha(&a.sha256).await?
-    } else {
+    let artifact = {
         server
             .store
             .get_artifact_for_workspace(auth.workspace_id(), &a.sha256)
@@ -327,8 +323,7 @@ pub(super) async fn get_artifact(
 
 /// The media quota, as the REST upload routes apply it: a media upload that
 /// would take the caller's workspace past its quota is refused, naming the
-/// workspace's usage, its quota and the upload's size. An unscoped (bypass)
-/// upload records no workspace ref, so no quota applies.
+/// workspace's usage, its quota and the upload's size.
 async fn ensure_media_quota(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -336,9 +331,6 @@ async fn ensure_media_quota(
     sha256: &str,
     upload_bytes: usize,
 ) -> Result<(), McpError> {
-    if auth.bypass {
-        return Ok(());
-    }
     let upload_bytes = i64::try_from(upload_bytes).unwrap_or(i64::MAX);
     match maidan_store::media_retention::check_media_quota(
         server.store.as_ref(),
@@ -357,14 +349,11 @@ async fn ensure_media_quota(
 
 /// `OverAllowance` when the caller's workspace is cut off on `stored_bytes`.
 /// Upload tools call this before any bytes are written, so a refused upload
-/// stores nothing. An unscoped (bypass) upload is not metered.
+/// stores nothing.
 pub(super) fn refuse_stored_bytes(
     server: &crate::server::McpServer,
     auth: &AuthContext,
 ) -> Result<(), McpError> {
-    if auth.bypass {
-        return Ok(());
-    }
     server
         .store
         .usage_meters()
@@ -381,7 +370,7 @@ pub(super) async fn upsert_uploaded_artifact(
     auth: &AuthContext,
     new: NewArtifact,
 ) -> Result<(Artifact, StoredEvent), McpError> {
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id());
+    let ref_workspace = Some(auth.workspace_id());
     let sha = maidan_artifacts::Sha256::from_hex(&new.sha256).ok();
     match server
         .store

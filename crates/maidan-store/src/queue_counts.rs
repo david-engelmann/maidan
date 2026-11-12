@@ -6,10 +6,9 @@
 //! a workspace's counts are the sum of its channels' for the same reader. Both
 //! count only the threads the reader may read, by `claim_next`'s read rule
 //! ([`claim_next::readable_by`]): a private channel's threads for its members,
-//! a DM's for its participants. Without a reader (a caller that bypasses auth)
-//! every thread in scope counts. The shared `__dm__` channel passes the route's
-//! channel check for every member, so before the read rule applied here its
-//! counts were everyone's DMs.
+//! a DM's for its participants. Without a reader every thread in scope counts.
+//! The shared `__dm__` channel passes the route's channel check for every
+//! member, so before the read rule applied here its counts were everyone's DMs.
 
 use maidan_types::{ChannelId, WorkspaceId};
 

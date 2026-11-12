@@ -177,7 +177,7 @@ pub async fn seed_from_message(
             parent_thread_id: None,
             title: Some(body.title.trim().to_string()),
             description: None,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         })
         .await?;
     super::publish_stored(&state, t_stored).await;
@@ -313,11 +313,7 @@ pub async fn list_message_backlinks(
 ) -> ApiResult<Json<MessageBacklinks>> {
     cap(&auth, WORKSPACE_READ)?;
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id())
-    };
+    let reader_id = Some(auth.member_id());
     Ok(Json(
         state
             .store
@@ -338,13 +334,12 @@ pub async fn list_message_edits(
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
     // A withdrawn message's history is withdrawn with it. Under a legal hold it
     // is kept, and read only through the hold's audited preserved read.
-    if !auth.bypass
-        && state
-            .store
-            .get_message(message_id)
-            .await?
-            .tombstoned_at
-            .is_some()
+    if state
+        .store
+        .get_message(message_id)
+        .await?
+        .tombstoned_at
+        .is_some()
     {
         return Ok(Json(Vec::new()));
     }

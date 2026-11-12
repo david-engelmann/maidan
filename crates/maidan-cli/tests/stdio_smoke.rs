@@ -1,17 +1,53 @@
 //! Stdio transport smoke test via subprocess.
 
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
+
+/// The bearer `maidan init` prints: the first non-empty line after its
+/// "Admin bearer token" heading.
+fn printed_bearer(stdout: &str) -> Option<String> {
+    stdout
+        .lines()
+        .skip_while(|line| !line.contains("Admin bearer token"))
+        .skip(1)
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+/// Runs `maidan init` on `database_url` and returns the admin bearer it
+/// printed, the token `mcp-stdio` then serves as.
+fn init_token(database_url: &str) -> String {
+    let output = Command::new(maidan_bin())
+        .args(["init", "--database-url", database_url])
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
+        .env_remove("DATABASE_URL")
+        .output()
+        .expect("spawn maidan init");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "init failed: {stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    printed_bearer(&stdout).unwrap_or_else(|| panic!("init printed no bearer: {stdout}"))
+}
+
+/// A file database in `dir` that `maidan init` has opened, and its admin bearer.
+fn initialized_sqlite(dir: &Path) -> (String, String) {
+    let database_url = format!("sqlite://{}?mode=rwc", dir.join("maidan.db").display());
+    let token = init_token(&database_url);
+    (database_url, token)
+}
 
 #[test]
 fn mcp_stdio_initialize_roundtrip() {
-    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
-    let mut child = Command::new(bin)
-        .arg("mcp-stdio")
-        // No token here, so the unrestricted context has to be asked for.
-        .arg("--allow-insecure-no-auth")
-        .env("DATABASE_URL", "sqlite::memory:")
+    let dir = tempfile::tempdir().unwrap();
+    let (database_url, token) = initialized_sqlite(dir.path());
+    let mut child = Command::new(maidan_bin())
+        .args(["mcp-stdio", "--database-url", &database_url])
+        .env("MAIDAN_MCP_TOKEN", &token)
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -47,12 +83,11 @@ fn mcp_stdio_initialize_roundtrip() {
 /// writes a request-log line, so a log that reaches stdout fails this.
 #[test]
 fn every_line_on_stdout_is_a_json_rpc_message() {
-    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
-    let mut child = Command::new(bin)
-        .arg("mcp-stdio")
-        .arg("--allow-insecure-no-auth")
-        .env("DATABASE_URL", "sqlite::memory:")
+    let dir = tempfile::tempdir().unwrap();
+    let (database_url, token) = initialized_sqlite(dir.path());
+    let mut child = Command::new(maidan_bin())
+        .args(["mcp-stdio", "--database-url", &database_url])
+        .env("MAIDAN_MCP_TOKEN", &token)
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "info")
         .stdin(Stdio::piped())
@@ -86,19 +121,15 @@ fn every_line_on_stdout_is_a_json_rpc_message() {
     );
 }
 
-/// The interesting half of the flag: without it, and with no token, the process
-/// refuses rather than serving every tool with unrestricted authority. The other
-/// tests pass `--allow-insecure-no-auth`, so none of them would notice if the
-/// requirement went away.
+/// With no token the process refuses rather than serving anyone, and says how
+/// to get one. The other tests all send a token, so none of them would notice
+/// if the requirement went away.
 #[test]
-fn mcp_stdio_refuses_to_serve_unauthenticated_unless_asked() {
-    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
-    let output = Command::new(bin)
+fn mcp_stdio_refuses_to_serve_without_a_token() {
+    let output = Command::new(maidan_bin())
         .arg("mcp-stdio")
         .env("DATABASE_URL", "sqlite::memory:")
         .env_remove("MAIDAN_MCP_TOKEN")
-        .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::null())
         .output()
@@ -107,8 +138,8 @@ fn mcp_stdio_refuses_to_serve_unauthenticated_unless_asked() {
     assert!(!output.status.success(), "expected a non-zero exit");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("MAIDAN_MCP_TOKEN") && stderr.contains("--allow-insecure-no-auth"),
-        "the refusal should name both ways forward, got: {stderr}"
+        stderr.contains("MAIDAN_MCP_TOKEN") && stderr.contains("maidan init"),
+        "the refusal should name the variable and how to mint a token, got: {stderr}"
     );
 }
 
@@ -258,7 +289,6 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
         .env("MAIDAN_MCP_TOKEN", secret.as_str())
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
-        .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
         .env_remove("MAIDAN_EMBEDDING_PROVIDER")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -307,7 +337,6 @@ async fn mcp_stdio_embeds_a_sqlite_message_before_stdin_closes() {
         .env("MAIDAN_MCP_TOKEN", secret.as_str())
         .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .env("MAIDAN_LOG", "error")
-        .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
         .env_remove("MAIDAN_EMBEDDING_PROVIDER")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -341,12 +370,7 @@ fn mcp_stdio_rejects_an_unknown_embedding_provider_before_serving() {
     use std::process::{Command, Stdio};
 
     let output = Command::new(maidan_bin())
-        .args([
-            "mcp-stdio",
-            "--embedding-provider",
-            "bogus-provider",
-            "--allow-insecure-no-auth",
-        ])
+        .args(["mcp-stdio", "--embedding-provider", "bogus-provider"])
         .env("DATABASE_URL", "sqlite::memory:")
         .env_remove("MAIDAN_EMBEDDING_PROVIDER")
         .stdin(Stdio::null())

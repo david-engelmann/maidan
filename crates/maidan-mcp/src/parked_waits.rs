@@ -39,8 +39,7 @@ pub async fn with_permit_release<F: Future>(
 }
 
 /// Give back the current request's in-flight permit, if its transport holds
-/// one. Outside [`with_permit_release`] (stdio, an auth-disabled test harness,
-/// a hook firing) there is nothing to give back.
+/// one. Outside [`with_permit_release`] (stdio, a hook firing) there is nothing to give back.
 pub(crate) fn release_permit() {
     let _ = RELEASE_PERMIT.try_with(|release| release());
 }

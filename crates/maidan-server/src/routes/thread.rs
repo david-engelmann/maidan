@@ -59,7 +59,7 @@ pub async fn create_thread(
         parent_thread_id: body.parent_thread_id.map(ThreadId),
         title: body.title,
         description: body.description,
-        created_by: auth.attribution().map(|a| a.subject_id),
+        created_by: Some(auth.member_id()),
     };
     let (created, superseded) = match body.supersedes.map(ThreadId) {
         None => (
@@ -96,7 +96,7 @@ pub async fn create_thread(
         }
         created => created,
     };
-    let actor = (!auth.bypass).then_some(auth.member_id());
+    let actor = Some(auth.member_id());
     let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
     // The response carries the attributes the thread now reads with. With
     // no engine given, the workspace's default engine may have routed it,
@@ -152,7 +152,7 @@ async fn supersede_for(
             "supersedes is not a thread in this workspace".into(),
         ));
     }
-    let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
+    let maintainer = auth.has_capability(TOKEN_ADMIN);
     let thread = state.store.get_thread(old).await?;
     if !maintainer
         && thread.created_by != Some(auth.member_id())
@@ -362,7 +362,7 @@ pub async fn list_workspace_threads(
                 after: q.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: (!auth.bypass).then_some(auth.member_id()),
+                reader_id: Some(auth.member_id()),
             },
         )
         .await?;
@@ -561,9 +561,7 @@ pub async fn snapshot_thread_context(
     refuse_stored_bytes(&state, &auth)?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
-    // normal upload; the ref/uploader are recorded only for a non-bypass
-    // caller.
-    let uploaded_by = (!auth.bypass).then_some(auth.member_id());
+    // normal upload.
     let (artifact, stored) = upsert_uploaded_artifact(
         &state,
         &auth,
@@ -573,7 +571,7 @@ pub async fn snapshot_thread_context(
             mime_type: Some("application/json".to_string()),
             filename: None,
             kind: ArtifactKind::ContextSnapshot,
-            uploaded_by,
+            uploaded_by: Some(auth.member_id()),
         },
     )
     .await?;
@@ -740,7 +738,7 @@ pub async fn close_abandoned_thread(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
+    let maintainer = auth.has_capability(TOKEN_ADMIN);
     let thread = state.store.get_thread(thread_id).await?;
     if !maintainer
         && thread.created_by != Some(auth.member_id())
@@ -948,12 +946,12 @@ pub async fn replay_thread_delivery(
             if let Some(event) = event {
                 super::publish_stored(&state, *event).await;
             }
-            let actor_id = (!auth.bypass).then_some(auth.member_id());
+            let actor_id = Some(auth.member_id());
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))
         }
         Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
-            let actor_id = (!auth.bypass).then_some(auth.member_id());
+            let actor_id = Some(auth.member_id());
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))
         }
@@ -1167,9 +1165,8 @@ pub async fn get_thread_budget(
     }
 }
 
-/// Record one retry-safe, claim-fenced usage heartbeat. Reporter identity comes
-/// from auth (or the active assignee in auth-disabled local mode); the payer
-/// comes from the thread's workspace. A binding cap atomically releases the
+/// Record one retry-safe, claim-fenced usage heartbeat. The reporter is the
+/// caller; the payer is the thread's workspace. A binding cap atomically releases the
 /// claim, emits `ClaimFailed`, and records the DLQ entry.
 pub async fn report_thread_usage(
     State(state): State<AppState>,
@@ -1180,16 +1177,7 @@ pub async fn report_thread_usage(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let reporter = if auth.bypass {
-        state
-            .store
-            .get_thread(thread_id)
-            .await?
-            .assignee_id
-            .ok_or_else(|| ApiError::Conflict("thread has no active claim holder".into()))?
-    } else {
-        auth.member_id()
-    };
+    let reporter = auth.member_id();
     let (report, stored) = state
         .store
         .report_accounted_usage(&body.into_new(thread_id, reporter))
@@ -1862,9 +1850,6 @@ pub async fn list_assigned_threads(
         .store
         .list_assigned_threads(member.workspace_id, member_id)
         .await?;
-    if auth.bypass {
-        return Ok(Json(threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for t in threads {
         if maidan_auth::can_access_thread(state.store.as_ref(), &auth, t.id).await? {

@@ -69,11 +69,7 @@ pub(super) async fn search_messages(
     // authoritative, DM-aware check, applied in SQL.
     let deny_channels =
         maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id())
-    };
+    let reader_id = Some(auth.member_id());
     let filters = maidan_search::SearchFilters {
         author_id: a.author_id.map(maidan_types::MemberId),
         channel_id: a.channel_id.map(maidan_types::ChannelId),
@@ -90,7 +86,7 @@ pub(super) async fn search_messages(
                 .await?
         }
         SearchMessagesMode::Semantic => {
-            if let (Some(meters), false) = (meters, auth.bypass)
+            if let Some(meters) = meters
                 && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
             {
                 return Err(crate::error::McpError::OverAllowance(
@@ -100,7 +96,7 @@ pub(super) async fn search_messages(
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
-            if let (Some(meters), false) = (meters, auth.bypass) {
+            if let Some(meters) = meters {
                 meters.record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
             }
             let model = a
@@ -112,7 +108,7 @@ pub(super) async fn search_messages(
                 .await?
         }
         SearchMessagesMode::Hybrid => {
-            if let (Some(meters), false) = (meters, auth.bypass)
+            if let Some(meters) = meters
                 && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
             {
                 return Err(crate::error::McpError::OverAllowance(
@@ -122,7 +118,7 @@ pub(super) async fn search_messages(
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
-            if let (Some(meters), false) = (meters, auth.bypass) {
+            if let Some(meters) = meters {
                 meters.record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
             }
             let model = a
@@ -146,7 +142,7 @@ pub(super) async fn search_messages(
         }
     };
     // The SQL filters by readable_thread in-query (via SearchFilters.reader_id),
-    // so no post-filter is needed. Bypass mode skips the filter entirely.
+    // so no post-filter is needed.
     let hits = if a.snippet_only {
         hits.into_iter()
             .map(maidan_search::SearchHit::into_snippet_only)

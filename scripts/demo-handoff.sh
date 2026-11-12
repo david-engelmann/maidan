@@ -13,10 +13,10 @@
 #   ./scripts/demo-handoff.sh
 #
 # With MAIDAN_TOKEN and MAIDAN_WORKSPACE unset, the script runs `maidan init`
-# against DATABASE_URL and then creates the planner, the coder, and the human,
-# with tokens that can claim, post, transition, and review. With auth on, the
-# server creates members only while bootstrap is on, so start it with
-# MAIDAN_BOOTSTRAP=1 (and MAIDAN_RATE_LIMIT_MAX=0 for a fast run).
+# against DATABASE_URL. The admin is the human of the story: it creates the
+# planner and the coder with their worker tokens (POST /workspaces/{wid}/agents)
+# and mints itself a narrower token to review with. Start the server with
+# MAIDAN_RATE_LIMIT_MAX=0 for a fast run.
 #
 #   MAIDAN_TOKEN=<admin token> MAIDAN_WORKSPACE=<workspace id> ./scripts/demo-handoff.sh
 #
@@ -55,7 +55,7 @@ else
   case "${DATABASE_URL:-}" in
     ""|sqlite::memory:*) echo "set DATABASE_URL to the server's database (or pass MAIDAN_TOKEN and MAIDAN_WORKSPACE)" >&2; exit 1 ;;
   esac
-  init_out=$(maidan init --workspace "${MAIDAN_WORKSPACE_NAME:-demo}" --admin-handle admin)
+  init_out=$(maidan init --workspace "${MAIDAN_WORKSPACE_NAME:-demo}" --admin-handle david)
   WS=$(sed -n 's/^  workspace: .* (\(.*\))$/\1/p' <<<"$init_out")
   ADMIN=$(awk '/Admin bearer token/{show=1; next} show && $0 ~ /^[[:space:]]*$/ {next} show {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit}' <<<"$init_out")
   if [[ -z "$ADMIN" || -z "$WS" ]]; then
@@ -97,13 +97,17 @@ mcp_refused() { # mcp_refused <token> <tool> <json-args> <expected>  -> the refu
 step() { sleep "$PAUSE"; printf '\n%s%s%s %s▸%s %s\n' "$1" "$2" "$R" "$D" "$R" "$3"; }
 say()  { printf '  %s\n' "$*"; }
 
-# Setup (not shown in the story): three members with scoped tokens, one channel.
-member() { rest "$ADMIN" POST "/workspaces/$WS/members" "{\"handle\":\"$1$SUFFIX\",\"kind\":\"$2\"}" | jq -r .id; }
-token()  { rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "{\"capabilities\":$2}" | jq -r .secret; }
-agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
+# Setup (not shown in the story): two agents with worker tokens, the admin as
+# the human with a narrower token of its own, one channel.
+agent() { # agent <handle> -> "<member id> <worker token>"
+  rest "$ADMIN" POST "/workspaces/$WS/agents" "{\"handle\":\"$1$SUFFIX\"}" \
+    | jq -r '"\(.member.id) \(.token.secret)"'
+}
 human_caps='["workspace:read","member:self","workspace:write","message:post","thread:transition","event:subscribe"]'
-planner=$(member planner agent); coder=$(member coder agent); david=$(member david human)
-PT=$(token "$planner" "$agent_caps"); CT=$(token "$coder" "$agent_caps"); HT=$(token "$david" "$human_caps")
+read -r planner PT < <(agent planner)
+read -r coder CT < <(agent coder)
+david=$(rest "$ADMIN" GET /me | jq -r .member_id)
+HT=$(rest "$ADMIN" POST "/workspaces/$WS/members/$david/tokens" "{\"capabilities\":$human_caps}" | jq -r .secret)
 channel=$(rest "$ADMIN" POST "/workspaces/$WS/channels" "{\"name\":\"build$SUFFIX\"}" | jq -r .id)
 name() { case "$1" in "$planner") echo planner;; "$coder") echo coder;; "$david") echo david;; *) echo "$1";; esac; }
 

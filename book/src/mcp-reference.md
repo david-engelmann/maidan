@@ -9,9 +9,9 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/templates/list`, and `
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
 - **Streamable HTTP:** `POST /mcp/streamable` — every revision from `2025-03-26` on is stateless: one JSON-RPC response per POST, no `Mcp-Session-Id`, a notification answered `202`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers. Only a `2024-11-05` client (by `initialize` or `MCP-Protocol-Version`) gets the SSE-session model (the first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Server→client messages ride `GET /mcp/streamable` or `GET /mcp/stream`
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
-- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses unless `--allow-insecure-no-auth` is passed
+- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses to start
 
-Bearer token required unless `AUTH_DISABLED=1`.
+Bearer token required.
 
 ## JSON-RPC methods
 
@@ -8251,7 +8251,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_message_edits`
 
-**List message edits.** List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.
+**List message edits.** List the edit history of a message. A tombstoned message returns an empty list. Requires workspace:read.
 
 **Capability:** `workspace:read`
 

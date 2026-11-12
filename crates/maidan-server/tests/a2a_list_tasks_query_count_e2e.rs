@@ -129,7 +129,6 @@ async fn list_tasks_query_count_is_independent_of_hidden_tasks() {
         Arc::new(InMemoryBus::with_capacity(64)),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

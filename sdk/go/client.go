@@ -73,6 +73,7 @@ type Client struct {
 	Sleep func(time.Duration)
 
 	Workspaces *WorkspacesService
+	Agents     *AgentsService
 	Members    *MembersService
 	Tokens     *TokensService
 	Channels   *ChannelsService
@@ -104,6 +105,7 @@ func New(baseURL, token string) *Client {
 		Sleep:      time.Sleep,
 	}
 	c.Workspaces = &WorkspacesService{c}
+	c.Agents = &AgentsService{c}
 	c.Members = &MembersService{c}
 	c.Tokens = &TokensService{c}
 	c.Channels = &ChannelsService{c}
@@ -331,23 +333,21 @@ func callList[T any](c *Client, path string) ([]T, error) {
 
 // --- Workspaces ---
 
-// MembersService provisions members. Create is the unauthenticated seed route,
-// present only on a server built with the "bootstrap" feature; production turns
-// it off and provisions through `maidan init` plus TokensService.
-type MembersService struct{ c *Client }
+// AgentsService adds agents. Needs token:admin.
+type AgentsService struct{ c *Client }
 
-// Create adds a member. kind is MemberAgent (the default when empty) or
-// MemberHuman; displayName may be empty.
-func (s *MembersService) Create(workspaceID, handle string, kind MemberKind, displayName string) (*Member, error) {
-	if kind == "" {
-		kind = MemberAgent
-	}
-	body := M{"handle": handle, "kind": kind}
+// Create adds an agent member and mints its maidan.agent.worker token
+// together; the token's Secret is returned here once and never again.
+// displayName may be empty.
+func (s *AgentsService) Create(workspaceID, handle, displayName string) (*CreatedAgent, error) {
+	body := M{"handle": handle}
 	if displayName != "" {
 		body["display_name"] = displayName
 	}
-	return call[Member](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/members", body)
+	return call[CreatedAgent](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/agents", body)
 }
+
+type MembersService struct{ c *Client }
 
 func (s *MembersService) List(workspaceID string) ([]Member, error) {
 	return callList[Member](s.c, "/workspaces/"+workspaceID+"/members")
@@ -393,9 +393,6 @@ func (s *TokensService) List(workspaceID, memberID string) ([]TokenSummary, erro
 
 type WorkspacesService struct{ c *Client }
 
-func (s *WorkspacesService) Create(name string) (*Workspace, error) {
-	return call[Workspace](s.c, http.MethodPost, "/workspaces", M{"name": name})
-}
 func (s *WorkspacesService) Get(id string) (*Workspace, error) {
 	return call[Workspace](s.c, http.MethodGet, "/workspaces/"+id, nil)
 }

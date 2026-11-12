@@ -74,6 +74,7 @@ test("rate limits and meters are on, sign-up and bootstrap are off", () => {
   assert.match(DEMO_SERVER_ENV.MAIDAN_FREE_ALLOWANCE, /mcp_calls=\d+/);
   assert.equal(DEMO_SERVER_ENV.MAIDAN_SIGNUP, undefined);
   assert.equal(DEMO_SERVER_ENV.MAIDAN_BOOTSTRAP, undefined);
+  assert.equal(DEMO_SERVER_ENV.MAIDAN_DEV_ADMIN_TOKEN, undefined);
 });
 
 test("nothing is seeded and bootstrap is never on: the image is the stock server", () => {

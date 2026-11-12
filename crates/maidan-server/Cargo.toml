@@ -93,7 +93,7 @@ aes-gcm = "0.10"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 [features]
-default = ["bootstrap", "otel"]
+default = ["otel"]
 bootstrap = []
 # OpenTelemetry OTLP export. Default-on; `--no-default-features`
 # builds a leaner server without the OTLP/tonic stack (plain tracing + Prometheus

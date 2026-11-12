@@ -474,13 +474,6 @@ fn forwarded_client_ip(header: &str, peer: IpAddr, trusted_hops: usize) -> Optio
         .and_then(|index| chain.get(index).copied())
 }
 
-fn raw_bearer(req: &Request<Body>) -> Option<&str> {
-    let header_value = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
-    header_value
-        .strip_prefix("Bearer ")
-        .or_else(|| header_value.strip_prefix("bearer "))
-}
-
 /// `Bearer` as [`crate::auth::parse_bearer`] accepts it. The outer limiter
 /// defers only a bearer that middleware will actually resolve; a lowercase
 /// scheme is not one of those.
@@ -510,13 +503,6 @@ fn ip_client_key(req: &Request<Body>) -> String {
         return format!("ip:{ip}");
     }
     "anonymous".into()
-}
-
-fn client_key(req: &Request<Body>) -> String {
-    if let Some(token) = raw_bearer(req) {
-        return bearer_client_key(token);
-    }
-    ip_client_key(req)
 }
 
 fn at_or_under(path: &str, root: &str) -> bool {
@@ -578,25 +564,21 @@ fn bearer_resolved_later(method: &Method, path: &str) -> bool {
         || path.starts_with("/auth/session/")
 }
 
-fn defer_global_bearer(state: &crate::state::AppState, req: &Request<Body>) -> bool {
-    !state.auth_disabled
-        && presented_bearer(req).is_some()
-        && bearer_resolved_later(req.method(), req.uri().path())
+fn defer_global_bearer(req: &Request<Body>) -> bool {
+    presented_bearer(req).is_some() && bearer_resolved_later(req.method(), req.uri().path())
 }
 
-/// A caller authenticated into the workspace named by the path. A bypass
-/// caller is authenticated into every workspace, matching `ensure_workspace`.
-/// Anyone else must present that workspace's own credential: knowing the id
-/// is not enough, and neither is a token for a different workspace.
+/// A caller authenticated into the workspace named by the path: it presented
+/// that workspace's own credential. Knowing the id is not enough, and neither
+/// is a token for a different workspace.
 pub(crate) fn authenticated_into_path(
-    bypass: bool,
     workspace_id: &maidan_types::WorkspaceId,
     path: &str,
 ) -> bool {
     let Some(wid) = workspace_id_from_path(path) else {
         return false;
     };
-    bypass || workspace_id.to_string() == wid
+    workspace_id.to_string() == wid
 }
 
 async fn enforce_global(
@@ -647,10 +629,9 @@ pub(crate) async fn enforce_client_key(
 pub(crate) async fn enforce_workspace(
     state: &crate::state::AppState,
     path: &str,
-    bypass: bool,
     workspace_id: &maidan_types::WorkspaceId,
 ) -> Result<(), Box<Response>> {
-    if !authenticated_into_path(bypass, workspace_id, path) {
+    if !authenticated_into_path(workspace_id, path) {
         return Ok(());
     }
     let Some(cfg) = resolve_workspace(state.rate_limit_default_on) else {
@@ -715,13 +696,8 @@ pub async fn middleware(
         // verified secret keeps its own bucket, and a secret that does not
         // resolve shares the client IP. Counting the raw secret here gave
         // every invented bearer a fresh bucket.
-        if !defer_global_bearer(&state, &req) {
-            let client = if state.auth_disabled {
-                client_key(&req)
-            } else {
-                ip_client_key(&req)
-            };
-            let key = format!("global:{client}");
+        if !defer_global_bearer(&req) {
+            let key = format!("global:{}", ip_client_key(&req));
             if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
                 return too_many(cfg.window, cfg.max, is_mcp);
             }
@@ -1090,11 +1066,10 @@ mod tests {
         let own = maidan_types::WorkspaceId::new();
         let other = maidan_types::WorkspaceId::new();
         let path = format!("/workspaces/{own}/search");
-        assert!(authenticated_into_path(false, &own, &path));
-        assert!(!authenticated_into_path(false, &other, &path));
-        assert!(authenticated_into_path(true, &other, &path));
-        assert!(!authenticated_into_path(false, &own, "/workspaces"));
-        assert!(!authenticated_into_path(true, &own, "/channels/x"));
+        assert!(authenticated_into_path(&own, &path));
+        assert!(!authenticated_into_path(&other, &path));
+        assert!(!authenticated_into_path(&own, "/workspaces"));
+        assert!(!authenticated_into_path(&own, "/channels/x"));
     }
 
     #[test]

@@ -64,7 +64,6 @@ async fn operator_status_reports_phase_backfill_and_queues() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

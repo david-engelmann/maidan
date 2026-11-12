@@ -1,7 +1,6 @@
 //! Shared-glossary REST: set/get/list/delete a workspace's canonical term ->
-//! definition. Auth ENABLED (real token) because `created_by` is a NOT-NULL FK
-//! to members — the nil-member bypass would FK-fail on set (the 228/232
-//! pattern).
+//! definition. `created_by` is a NOT-NULL FK to members, so a set records
+//! the token's member.
 
 use std::{
     net::SocketAddr,
@@ -58,7 +57,6 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

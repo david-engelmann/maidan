@@ -25,23 +25,11 @@ use crate::state::AppState;
 /// anyone in it, so the question is "does this workspace own these bytes?".
 /// Without the check, a registration could name any sha on the instance and turn
 /// a slash command into a cross-tenant artifact reader.
-async fn load_module(
-    state: &AppState,
-    auth: &maidan_auth::AuthContext,
-    command: &SlashCommand,
-) -> Result<Vec<u8>, WasiResult> {
+async fn load_module(state: &AppState, command: &SlashCommand) -> Result<Vec<u8>, WasiResult> {
     let hex = normalize_wasi_handler_target(&command.handler_target)
         .map_err(|e| WasiResult::fail(WasiFailureKind::InvalidModule, e.to_string()))?;
     let sha = Sha256::from_hex(&hex)
         .map_err(|e| WasiResult::fail(WasiFailureKind::InvalidModule, e.to_string()))?;
-
-    // `bypass` is `AUTH_DISABLED`, where the upload path deliberately records no
-    // access link at all (`upload_artifact` only refs for a non-bypass caller),
-    // so a ref check would reject every module in that mode. Same carve-out as
-    // `maidan_auth::can_read_artifact`.
-    if auth.bypass {
-        return fetch_bytes(state, &sha).await;
-    }
 
     match state
         .store
@@ -87,7 +75,6 @@ async fn fetch_bytes(state: &AppState, sha: &Sha256) -> Result<Vec<u8>, WasiResu
 #[allow(clippy::too_many_arguments)]
 pub async fn dispatch_wasi(
     state: &AppState,
-    auth: &maidan_auth::AuthContext,
     command: &SlashCommand,
     parsed: &ParsedSlashCommand,
     workspace_id: WorkspaceId,
@@ -104,7 +91,7 @@ pub async fn dispatch_wasi(
     {
         return over_allowance_envelope();
     }
-    let module = match load_module(state, auth, command).await {
+    let module = match load_module(state, command).await {
         Ok(bytes) => bytes,
         Err(failure) => return envelope(failure),
     };
