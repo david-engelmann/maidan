@@ -60,6 +60,15 @@ from .errors import (
     problem_error,
 )
 from .models import (
+    ApprovalGate,
+    ApprovalGateView,
+    DelegatedToken,
+    DelegationGrant,
+    Footprint,
+    FootprintItem,
+    ModelRequest,
+    ReviewPacket,
+    ReviewStatus,
     AcceptedDecision,
     Artifact,
     Channel,
@@ -91,6 +100,15 @@ from .models import (
 from .usage import USAGE_PROVIDERS, UsageError, normalize_usage, usd_micros
 
 __all__ = [
+    "ApprovalGate",
+    "ApprovalGateView",
+    "DelegatedToken",
+    "DelegationGrant",
+    "Footprint",
+    "FootprintItem",
+    "ModelRequest",
+    "ReviewPacket",
+    "ReviewStatus",
     "AcceptedDecision",
     "Artifact",
     "BadGatewayError",

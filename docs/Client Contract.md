@@ -42,10 +42,21 @@ with reasons, in `scripts/a2a-tck/exclusions.txt`.
 
 ---
 
-## 1. Methods (all three languages, identical names)
+## 1. Methods (all four languages, identical names)
 
 Capability column is the server check from
 `contracts/http-capability-map.json`.
+
+**The method map.** [`sdk/methods.json`](../sdk/methods.json) lists every
+method below with the name each SDK gives it (`threads.set_result` is
+`threads.setResult` in TypeScript, `Threads.SetResult` in Go and
+`threads().set_result` in Rust). `scripts/check-sdk-parity.py` (CI `lint`)
+fails when an SDK omits a mapped method or this page does not document one.
+An entry with an `example` is also called offline, in all four SDKs, and must
+send the request the map names and decode its reply: Python and TypeScript in
+the same script, Go in `sdk/go/parity_test.go`, Rust in
+`sdk/rust/tests/parity.rs`. Add a method to the map first, then to the four
+clients.
 
 ### Workspaces
 
@@ -97,6 +108,42 @@ Create body: `{ "name", "private": false }`.
 | `artifacts.upload` | `POST /artifacts` | `artifact:upload` | Simple upload. Multipart is encore, not 0.1 |
 | `artifacts.get` | `GET /artifacts/{sha}` | `workspace:read` | |
 | `artifacts.meta` | `GET /artifacts/{sha}/meta` | `workspace:read` | |
+
+### Provisioning
+
+| SDK | HTTP | Capability | Notes |
+|-----|------|------------|-------|
+| `members.create` | `POST /workspaces/{wid}/members` | (bootstrap) | The unauthenticated seed route, only on a server built with `bootstrap` |
+| `members.list` | `GET /workspaces/{wid}/members` | `workspace:read` | |
+| `tokens.mint` | `POST /workspaces/{wid}/members/{mid}/tokens` | `token:admin` | The secret comes back once |
+| `tokens.list` | `GET /workspaces/{wid}/members/{mid}/tokens` | `token:admin` | Metadata only |
+
+### Reviews, approval gates, footprint and delegation
+
+Added after 0.3.0 (SDK-001), in the tree, not yet tagged. These carry the
+differentiators: nobody is their own reviewer, a person holds the gate, and
+no two agents take overlapping work.
+
+| SDK | HTTP | Capability | Notes |
+|-----|------|------------|-------|
+| `reviews.packet` | `GET /threads/{id}/review-packet` | `workspace:read` | The evidence a reviewer is shown; an approval names its `evidence_root` |
+| `reviews.request` | `POST /threads/{id}/reviewers` | `thread:transition` | Body `{ "member_id" }`, a member of the thread's workspace. 204 |
+| `reviews.submit` | `POST /threads/{id}/reviews` | `thread:transition` | Body `{ "decision": "approve" \| "request_changes", "note"?, "evidence_root"?, "head_sha"? }`. `approve` needs `evidence_root`, `request_changes` needs `note`. An owner or assignee may submit; the verdict does not count |
+| `reviews.list` | `GET /threads/{id}/reviews` | `workspace:read` | Each reviewer's current review |
+| `reviews.status` | `GET /threads/{id}/review-status` | `workspace:read` | `required_count`, `approvals`, `approvals_met`, `send_backs`, `max_rounds` |
+| `approval_gates.list` | `GET /workspaces/{wid}/approval-gates` | `workspace:read` | The pending gates the caller can read, each with the `request_state` an answer echoes |
+| `approval_gates.answer` | `POST /approval-gates/{id}/answer` | `workspace:write` | Body `{ "request_state", "action": "accept" \| "decline" \| "cancel", "content"? }`. Accepting also needs a person's signed-in session or `approval:grant`; nobody accepts a gate they asked for. A second answer is 409 |
+| `wait_for_approval_request` | WS, kind `approval_requested` | `workspace:read` + `event:subscribe` | A wait helper (below), not an HTTP method |
+| `threads.set_footprint` | `PUT /threads/{id}/footprint` | `thread:transition` | Body `{ "repo", "mode": "exclusive" \| "shared", "items": [{ "kind", "value" }] }`. Only an open thread nobody holds; ended is 409 `thread-ended`, deleted 410 `gone` |
+| `threads.get_footprint` | `GET /threads/{id}/footprint` | `workspace:read` | |
+| `delegation_grants.create` | `POST /workspaces/{wid}/delegation-grants` | `token:admin` | Body `{ "subject_id", "delegate_id", "capabilities", "purpose", "expires_at" }` |
+| `delegation_grants.revoke` | `DELETE /workspaces/{wid}/delegation-grants/{gid}` | `token:admin` | Tokens already exchanged for the grant stop working |
+| `tokens.delegate` | `POST /tokens/delegate` | `workspace:read` | With the delegate's own token. Body `{ "grant_id", "capabilities": [], "expires_at"?, "label"? }`; at most the grant's and the caller's capabilities. A delegated token cannot delegate again |
+| `tokens.attenuate` | `POST /tokens/attenuate` | `workspace:read` | A weaker token from the caller's: `{ "capabilities", "expires_at"?, "label"? }` |
+
+A gate is opened (`request_approval`) and read by id (`get_approval_gate`)
+over MCP only: REST has no route for either, and no event marks a gate
+resolved, so the SDKs do not offer them. Do not fake either with REST polling.
 
 ### Subscribe (WebSocket)
 
@@ -156,6 +203,7 @@ Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 | `wait_for_result` | `thread_result_set` |
 | `wait_for_mention` | `mention_recorded` |
 | `wait_for_ready` | `thread_ready` |
+| `wait_for_approval_request` | `approval_requested` |
 | (also listen) | `message_posted` |
 
 Canonical kinds: `contracts/event-kinds.json`. Ignore unknown kinds.
@@ -279,6 +327,16 @@ server already fails; patch this table to match.
 | `wait_for_mention` | `wait_for_mention` | `workspace:read` |
 | `wait_for_ready` | `wait_for_ready` | `workspace:read` |
 | `wait_for_notification` | `wait_for_notification` | `workspace:read` |
+| `reviews.packet` | `get_review_packet` | `workspace:read` |
+| `reviews.request` | `add_reviewer` | `thread:transition` |
+| `reviews.submit` | `submit_review` | `thread:transition` |
+| `reviews.list` | `list_reviews` | `workspace:read` |
+| `reviews.status` | `get_review_status` | `workspace:read` |
+| `threads.set_footprint` | `set_thread_footprint` | `thread:transition` |
+| `delegation_grants.create` | `create_delegation_grant` | `token:admin` |
+| `delegation_grants.revoke` | `revoke_delegation_grant` | `token:admin` |
+| `tokens.delegate` | `delegate_token` | `workspace:read` |
+| `tokens.attenuate` | `attenuate_token` | `workspace:read` |
 
 Over MCP a target that moved on is a JSON-RPC error with its own code:
 `-32012` for a lost claim, `-32013` for an ended thread and `-32014` for a

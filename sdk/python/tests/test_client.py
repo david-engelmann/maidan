@@ -13,6 +13,8 @@ import dataclasses
 
 from maidan import (
     Artifact,
+    Footprint,
+    ReviewStatus,
     BadRequestError,
     Channel,
     ClaimedThread,
@@ -364,3 +366,35 @@ def test_every_request_names_the_sdk_as_its_user_agent():
     c._req("GET", "/me")
     c._req("POST", "/x", {"a": 1})
     assert [r.get_header("User-agent") for r in seen] == [f"maidan-python/{__version__}"] * 2
+
+
+def test_footprint_and_reviews_stay_in_their_workspace():
+    """A footprint and a thread's reviews, set and read in one workspace, are
+    refused to a second workspace's token, as are the first's gates and grants."""
+    assert OTHER_TOKEN and OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace"
+    c, _ws, _member, _channel, thread = _seed()
+    fp = {"repo": "acme/widgets", "mode": "exclusive", "items": [{"kind": "path", "value": "sdk/python"}]}
+    stored = c.threads.set_footprint(thread.id, fp)
+    assert isinstance(stored, Footprint)
+    assert (stored.repo, stored.mode, stored.items[0].value) == ("acme/widgets", "exclusive", "sdk/python")
+    assert c.threads.get_footprint(thread.id) == stored
+    assert c.reviews.list(thread.id) == []
+    status = c.reviews.status(thread.id)
+    assert isinstance(status, ReviewStatus)
+    assert status.approvals == 0
+
+    other = Client(BASE, OTHER_TOKEN)
+    refused_calls = {
+        "threads.get_footprint": lambda: other.threads.get_footprint(thread.id),
+        "threads.set_footprint": lambda: other.threads.set_footprint(thread.id, fp),
+        "reviews.list": lambda: other.reviews.list(thread.id),
+        "reviews.status": lambda: other.reviews.status(thread.id),
+        "approval_gates.list": lambda: other.approval_gates.list(WORKSPACE),
+        "tokens.delegate": lambda: other.tokens.delegate(str(uuid.uuid4())),
+    }
+    for name, call in refused_calls.items():
+        with pytest.raises(MaidanError) as refused:
+            call()
+        assert refused.value.status in (403, 404), f"{name}: {refused.value.status}"
+        assert WORKSPACE not in json.dumps(refused.value.problem), f"{name} names the first workspace"
+    assert c.threads.get_footprint(thread.id) == stored, "a refused write changed the footprint"

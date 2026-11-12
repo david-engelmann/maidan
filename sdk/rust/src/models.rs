@@ -530,6 +530,8 @@ model! {
         decision: ReviewDecision,
         note: Option<String>,
         dismissed_at: Option<String>,
+        /// Root of the review packet an approval was given against.
+        evidence_root: Option<String>,
         head_sha: Option<String>,
         created_at: String,
         updated_at: String,
@@ -673,5 +675,167 @@ model! {
         reason: String,
         /// The original task, when the caller may read it.
         thread: Option<String>,
+    }
+}
+
+model! {
+    /// The evidence a reviewer is shown. An approval names its `evidence_root`.
+    ReviewPacket {
+        id: String,
+        thread_id: String,
+        requested_by: String,
+        thread_version: i64,
+        /// The evidence manifest (result hash, artifacts, attestation tiers), as sent.
+        manifest: Value,
+        evidence_root: String,
+        /// True when nothing in the packet was checked by the server.
+        self_reported_only: bool,
+        created_at: String,
+    }
+}
+
+model! {
+    /// Whether a thread has the approvals it needs.
+    ReviewStatus {
+        required_count: i64,
+        approvals: i64,
+        approvals_met: bool,
+        send_backs: i64,
+        max_rounds: i64,
+    }
+}
+
+open_enum! {
+    /// Where an approval gate stands.
+    ApprovalGateState {
+        Pending => "pending",
+        Accepted => "accepted",
+        Declined => "declined",
+        Cancelled => "cancelled",
+    }
+}
+
+model! {
+    /// A held gate a person answers.
+    ApprovalGate {
+        id: String,
+        workspace_id: String,
+        thread_id: Option<String>,
+        requested_by: String,
+        prompt: String,
+        schema: Option<Value>,
+        state: ApprovalGateState,
+        content: Option<Value>,
+        resolved_by: Option<String>,
+        requested_actor_id: Option<String>,
+        resolved_actor_id: Option<String>,
+        created_at: String,
+        resolved_at: Option<String>,
+        /// `low`, `medium` or `high`.
+        risk: Option<String>,
+        decided_via: Option<Value>,
+        /// `request` or `review_round_cap`.
+        kind: Option<String>,
+    }
+}
+
+model! {
+    /// A model's accept waiting on a person's confirmation.
+    ModelRequest {
+        member_id: String,
+        client_name: Option<String>,
+        client_version: Option<String>,
+        client_id: Option<String>,
+        client_source: Option<String>,
+        expires_at: String,
+    }
+}
+
+model! {
+    /// A pending gate with the `request_state` its answer must echo.
+    ApprovalGateView {
+        gate: ApprovalGate,
+        request_state: String,
+        model_request: Option<ModelRequest>,
+    }
+}
+
+open_enum! {
+    /// Whether a footprint excludes overlapping work.
+    FootprintMode { Exclusive => "exclusive", Shared => "shared" }
+}
+
+open_enum! {
+    /// What a footprint item names.
+    FootprintKind {
+        Path => "path",
+        Glob => "glob",
+        Crate => "crate",
+        Lane => "lane",
+        Branch => "branch",
+        Slot => "slot",
+    }
+}
+
+model! {
+    FootprintItem {
+        kind: FootprintKind,
+        value: String,
+    }
+}
+
+impl FootprintItem {
+    pub fn new(kind: FootprintKind, value: impl Into<String>) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+            extra: Map::new(),
+        }
+    }
+}
+
+model! {
+    /// What a thread will touch; `claim_next` reads it before handing the
+    /// thread out.
+    Footprint {
+        repo: String,
+        mode: FootprintMode,
+        items: Vec<FootprintItem>,
+    }
+}
+
+impl Footprint {
+    pub fn new(repo: impl Into<String>, mode: FootprintMode, items: Vec<FootprintItem>) -> Self {
+        Self {
+            repo: repo.into(),
+            mode,
+            items,
+            extra: Map::new(),
+        }
+    }
+}
+
+model! {
+    /// Lets a delegate act for a subject within `capabilities` until `expires_at`.
+    DelegationGrant {
+        id: String,
+        workspace_id: String,
+        subject_id: String,
+        delegate_id: String,
+        capabilities: Vec<String>,
+        purpose: String,
+        authorized_by: String,
+        expires_at: String,
+        revoked_at: Option<String>,
+        created_at: String,
+    }
+}
+
+model! {
+    /// A grant exchanged for a token. `token.secret` is returned here once.
+    DelegatedToken {
+        grant_id: String,
+        delegate_id: String,
+        token: MintedToken,
     }
 }

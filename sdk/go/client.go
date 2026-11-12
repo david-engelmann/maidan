@@ -79,6 +79,10 @@ type Client struct {
 	Threads    *ThreadsService
 	Messages   *MessagesService
 	Artifacts  *ArtifactsService
+
+	Reviews          *ReviewsService
+	ApprovalGates    *ApprovalGatesService
+	DelegationGrants *DelegationGrantsService
 }
 
 // New builds a client. Empty baseURL/token fall back to MAIDAN_URL / MAIDAN_TOKEN
@@ -110,6 +114,9 @@ func New(baseURL, token string) *Client {
 	c.Threads = &ThreadsService{c}
 	c.Messages = &MessagesService{c}
 	c.Artifacts = &ArtifactsService{c}
+	c.Reviews = &ReviewsService{c}
+	c.ApprovalGates = &ApprovalGatesService{c}
+	c.DelegationGrants = &DelegationGrantsService{c}
 	return c
 }
 
@@ -391,6 +398,145 @@ func (s *TokensService) List(workspaceID, memberID string) ([]TokenSummary, erro
 	return callList[TokenSummary](s.c, "/workspaces/"+workspaceID+"/members/"+memberID+"/tokens")
 }
 
+// DelegateOptions are the optional fields of a delegated or attenuated token.
+// An empty ExpiresAt takes the longest expiry allowed.
+type DelegateOptions struct {
+	ExpiresAt string
+	Label     string
+}
+
+func (o *DelegateOptions) apply(body M) M {
+	if o != nil {
+		if o.ExpiresAt != "" {
+			body["expires_at"] = o.ExpiresAt
+		}
+		if o.Label != "" {
+			body["label"] = o.Label
+		}
+	}
+	return body
+}
+
+// Delegate exchanges a delegation grant for a token, called with the
+// delegate's own token. The new token acts for the grant's subject with at
+// most the grant's capabilities and the caller's, and lives no longer than
+// either; empty capabilities asks for every capability both hold. A delegated
+// token cannot delegate again. Needs workspace:read, not token:admin.
+func (s *TokensService) Delegate(grantID string, capabilities []string, opts *DelegateOptions) (*DelegatedToken, error) {
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	body := opts.apply(M{"grant_id": grantID, "capabilities": capabilities})
+	return call[DelegatedToken](s.c, http.MethodPost, "/tokens/delegate", body)
+}
+
+// Attenuate derives a weaker token from the caller's: a subset of its
+// capabilities, expiring no later than it does.
+func (s *TokensService) Attenuate(capabilities []string, opts *DelegateOptions) (*MintedToken, error) {
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	body := opts.apply(M{"capabilities": capabilities})
+	return call[MintedToken](s.c, http.MethodPost, "/tokens/attenuate", body)
+}
+
+// DelegationGrantsService manages delegation grants: a subject lets a delegate
+// act for it, within a capability set, until an expiry. Needs token:admin. The
+// delegate exchanges a grant for a token with TokensService.Delegate.
+type DelegationGrantsService struct{ c *Client }
+
+// Create grants delegateID the right to act for subjectID. expiresAt is RFC 3339.
+func (s *DelegationGrantsService) Create(workspaceID, subjectID, delegateID string, capabilities []string, purpose, expiresAt string) (*DelegationGrant, error) {
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	body := M{
+		"subject_id":   subjectID,
+		"delegate_id":  delegateID,
+		"capabilities": capabilities,
+		"purpose":      purpose,
+		"expires_at":   expiresAt,
+	}
+	return call[DelegationGrant](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/delegation-grants", body)
+}
+
+// Revoke ends the grant. Tokens already exchanged for it stop working.
+func (s *DelegationGrantsService) Revoke(workspaceID, grantID string) (*DelegationGrant, error) {
+	return call[DelegationGrant](s.c, http.MethodDelete, "/workspaces/"+workspaceID+"/delegation-grants/"+grantID, nil)
+}
+
+// ReviewsService covers who reviews a thread, their verdicts, and whether
+// enough approvals are in. Nobody counts as their own reviewer: an owner or
+// assignee may submit, but the verdict does not count.
+type ReviewsService struct{ c *Client }
+
+// Packet returns the evidence an approval names by its EvidenceRoot.
+func (s *ReviewsService) Packet(threadID string) (*ReviewPacket, error) {
+	return call[ReviewPacket](s.c, http.MethodGet, "/threads/"+threadID+"/review-packet", nil)
+}
+
+// Request designates a member of the thread's workspace as a reviewer.
+func (s *ReviewsService) Request(threadID, memberID string) error {
+	_, err := s.c.do(http.MethodPost, "/threads/"+threadID+"/reviewers", M{"member_id": memberID})
+	return err
+}
+
+// ReviewOptions are the optional fields of a verdict. An approval needs
+// EvidenceRoot (from Packet); a change request needs Note.
+type ReviewOptions struct {
+	Note         string
+	EvidenceRoot string
+	HeadSHA      string
+}
+
+// Submit records the caller's verdict. A re-submission replaces the caller's
+// current review.
+func (s *ReviewsService) Submit(threadID string, decision ReviewDecision, opts *ReviewOptions) (*ThreadReview, error) {
+	body := M{"decision": decision}
+	if opts != nil {
+		if opts.Note != "" {
+			body["note"] = opts.Note
+		}
+		if opts.EvidenceRoot != "" {
+			body["evidence_root"] = opts.EvidenceRoot
+		}
+		if opts.HeadSHA != "" {
+			body["head_sha"] = opts.HeadSHA
+		}
+	}
+	return call[ThreadReview](s.c, http.MethodPost, "/threads/"+threadID+"/reviews", body)
+}
+
+func (s *ReviewsService) List(threadID string) ([]ThreadReview, error) {
+	return callList[ThreadReview](s.c, "/threads/"+threadID+"/reviews")
+}
+
+func (s *ReviewsService) Status(threadID string) (*ReviewStatus, error) {
+	return call[ReviewStatus](s.c, http.MethodGet, "/threads/"+threadID+"/review-status", nil)
+}
+
+// ApprovalGatesService is the human side of approval gates. List returns the
+// workspace's pending gates, each with the RequestState an answer must echo.
+// Accepting needs a person's signed-in session or a token holding
+// approval:grant, and nobody accepts a gate they asked for; declining or
+// cancelling needs workspace:write. A gate is opened over MCP
+// (request_approval).
+type ApprovalGatesService struct{ c *Client }
+
+func (s *ApprovalGatesService) List(workspaceID string) ([]ApprovalGateView, error) {
+	return callList[ApprovalGateView](s.c, "/workspaces/"+workspaceID+"/approval-gates")
+}
+
+// Answer accepts, declines or cancels a pending gate (action "accept",
+// "decline" or "cancel"); content may be nil. A gate already answered is a 409.
+func (s *ApprovalGatesService) Answer(gateID, requestState, action string, content any) (*ApprovalGate, error) {
+	body := M{"request_state": requestState, "action": action}
+	if content != nil {
+		body["content"] = content
+	}
+	return call[ApprovalGate](s.c, http.MethodPost, "/approval-gates/"+gateID+"/answer", body)
+}
+
 type WorkspacesService struct{ c *Client }
 
 func (s *WorkspacesService) Create(name string) (*Workspace, error) {
@@ -525,6 +671,20 @@ func (s *ThreadsService) SetResult(id string, result any, claimLeaseID string) (
 }
 func (s *ThreadsService) GetResult(id string) (*ThreadResult, error) {
 	return call[ThreadResult](s.c, http.MethodGet, "/threads/"+id+"/result", nil)
+}
+
+// SetFootprint declares what the thread will touch. claim_next will not hand
+// out two threads whose exclusive footprints overlap. Only an open thread
+// nobody holds takes one: an ended thread is 409 thread-ended, a deleted one
+// 410 gone. The answer is nil when the server stored no footprint.
+func (s *ThreadsService) SetFootprint(id string, footprint Footprint) (*Footprint, error) {
+	if footprint.Items == nil {
+		footprint.Items = []FootprintItem{}
+	}
+	return call[Footprint](s.c, http.MethodPut, "/threads/"+id+"/footprint", footprint)
+}
+func (s *ThreadsService) GetFootprint(id string) (*Footprint, error) {
+	return call[Footprint](s.c, http.MethodGet, "/threads/"+id+"/footprint", nil)
 }
 
 // ClaimOptions are the optional fields of a claim. LeaseSecs 0 takes the

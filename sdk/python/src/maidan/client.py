@@ -30,18 +30,26 @@ from typing import Any, Callable, Iterator, List, Optional
 from .cache import BootPrefix, boot_prefix
 from .errors import PROBLEM_BASE, MaidanError, UnreadableResponseError, problem_error
 from .models import (
+    ApprovalGate,
+    ApprovalGateView,
     Artifact,
     Channel,
     ClaimedThread,
+    DelegatedToken,
+    DelegationGrant,
+    Footprint,
     ImportResult,
     Member,
     Message,
     MintedToken,
     ReleasedClaims,
+    ReviewPacket,
+    ReviewStatus,
     StoredEvent,
     Thread,
     ThreadContext,
     ThreadResult,
+    ThreadReview,
     TokenSummary,
     Workspace,
     from_list,
@@ -282,6 +290,147 @@ class _Tokens:
     def list(self, workspace_id: str, member_id: str) -> List[TokenSummary]:
         return from_list(TokenSummary, self._c._req("GET", f"/workspaces/{workspace_id}/members/{member_id}/tokens"))
 
+    def delegate(
+        self,
+        grant_id: str,
+        capabilities: Optional[list] = None,
+        *,
+        expires_at: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> DelegatedToken:
+        """POST /tokens/delegate — exchange a delegation grant for a token.
+
+        Called with the delegate's own token. The new token acts for the
+        grant's subject with at most the grant's capabilities and the caller's,
+        and lives no longer than either. An empty ``capabilities`` asks for
+        every capability both hold. A delegated token cannot delegate again.
+        Needs ``workspace:read``, not ``token:admin``.
+        """
+        body: dict = {"grant_id": grant_id, "capabilities": capabilities or []}
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        if label is not None:
+            body["label"] = label
+        return self._c._model(DelegatedToken, "POST", "/tokens/delegate", body)
+
+    def attenuate(
+        self,
+        capabilities: list,
+        *,
+        expires_at: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> MintedToken:
+        """POST /tokens/attenuate — a weaker token derived from the caller's:
+        a subset of its capabilities, expiring no later than it does."""
+        body: dict = {"capabilities": list(capabilities)}
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        if label is not None:
+            body["label"] = label
+        return self._c._model(MintedToken, "POST", "/tokens/attenuate", body)
+
+
+class _DelegationGrants:
+    """Delegation grants: a subject lets a delegate act for it, within a
+    capability set, until an expiry. Requires ``token:admin``. The delegate
+    exchanges a grant for a token with :meth:`_Tokens.delegate`."""
+
+    def __init__(self, c: "Client"):
+        self._c = c
+
+    def create(
+        self,
+        workspace_id: str,
+        subject_id: str,
+        delegate_id: str,
+        capabilities: list,
+        purpose: str,
+        expires_at: str,
+    ) -> DelegationGrant:
+        body = {
+            "subject_id": subject_id,
+            "delegate_id": delegate_id,
+            "capabilities": list(capabilities),
+            "purpose": purpose,
+            "expires_at": expires_at,
+        }
+        return self._c._model(DelegationGrant, "POST", f"/workspaces/{workspace_id}/delegation-grants", body)
+
+    def revoke(self, workspace_id: str, grant_id: str) -> DelegationGrant:
+        """DELETE the grant. Tokens already exchanged for it stop working."""
+        return self._c._model(DelegationGrant, "DELETE", f"/workspaces/{workspace_id}/delegation-grants/{grant_id}")
+
+
+class _Reviews:
+    """Reviews: who reviews a thread, their verdicts, and whether enough
+    approvals are in. Nobody counts as their own reviewer: an owner or
+    assignee may submit, but the verdict does not count."""
+
+    def __init__(self, c: "Client"):
+        self._c = c
+
+    def packet(self, thread_id: str) -> ReviewPacket:
+        """GET /threads/{id}/review-packet — the evidence an approval names by its ``evidence_root``."""
+        return self._c._model(ReviewPacket, "GET", f"/threads/{thread_id}/review-packet")
+
+    def request(self, thread_id: str, member_id: str) -> None:
+        """POST /threads/{id}/reviewers — designate a member of the thread's workspace as a reviewer."""
+        self._c._req("POST", f"/threads/{thread_id}/reviewers", {"member_id": member_id})
+
+    def submit(
+        self,
+        thread_id: str,
+        decision: str,
+        *,
+        note: Optional[str] = None,
+        evidence_root: Optional[str] = None,
+        head_sha: Optional[str] = None,
+    ) -> ThreadReview:
+        """POST /threads/{id}/reviews — the caller's verdict, ``approve`` or ``request_changes``.
+
+        ``approve`` needs the ``evidence_root`` of the packet it approves
+        (:meth:`packet`); ``request_changes`` needs a ``note`` saying what to
+        change. A re-submission replaces the caller's current review.
+        """
+        body: dict = {"decision": decision}
+        if note is not None:
+            body["note"] = note
+        if evidence_root is not None:
+            body["evidence_root"] = evidence_root
+        if head_sha is not None:
+            body["head_sha"] = head_sha
+        return self._c._model(ThreadReview, "POST", f"/threads/{thread_id}/reviews", body)
+
+    def list(self, thread_id: str) -> List[ThreadReview]:
+        return from_list(ThreadReview, self._c._req("GET", f"/threads/{thread_id}/reviews"))
+
+    def status(self, thread_id: str) -> ReviewStatus:
+        return self._c._model(ReviewStatus, "GET", f"/threads/{thread_id}/review-status")
+
+
+class _ApprovalGates:
+    """Approval gates: the human side. ``list`` returns the workspace's
+    pending gates, each with the ``request_state`` an answer must echo.
+
+    Accepting needs a person's signed-in session or a token holding
+    ``approval:grant``, and nobody accepts a gate they asked for; declining or
+    cancelling needs ``workspace:write``. A gate is opened over MCP
+    (``request_approval``)."""
+
+    def __init__(self, c: "Client"):
+        self._c = c
+
+    def list(self, workspace_id: str) -> List[ApprovalGateView]:
+        return from_list(ApprovalGateView, self._c._req("GET", f"/workspaces/{workspace_id}/approval-gates"))
+
+    def answer(self, gate_id: str, request_state: str, action: str, *, content: Any = None) -> ApprovalGate:
+        """POST /approval-gates/{id}/answer — ``action`` is ``accept``,
+        ``decline`` or ``cancel``. A gate already answered is a 409 conflict."""
+        body: dict = {"request_state": request_state, "action": action}
+        if content is not None:
+            body["content"] = content
+        return self._c._model(ApprovalGate, "POST", f"/approval-gates/{gate_id}/answer", body)
+
 
 class _Threads:
     def __init__(self, c: "Client"):
@@ -326,6 +475,32 @@ class _Threads:
 
     def get_result(self, thread_id: str) -> ThreadResult:
         return ThreadResult.from_dict(self._c._req("GET", f"/threads/{thread_id}/result"))
+
+    def set_footprint(self, thread_id: str, footprint: Any) -> Optional[Footprint]:
+        """PUT /threads/{id}/footprint — what the thread will touch
+        (``{"repo", "mode": "exclusive"|"shared", "items": [{"kind", "value"}]}``
+        or a :class:`Footprint`). ``claim_next`` will not hand out two threads
+        whose exclusive footprints overlap. Only an open thread nobody holds
+        takes one: an ended thread is 409 ``thread-ended``, a deleted one 410 ``gone``.
+        """
+        if isinstance(footprint, Footprint):
+            footprint = {
+                "repo": footprint.repo,
+                "mode": footprint.mode,
+                "items": [{"kind": i.kind, "value": i.value} for i in footprint.items],
+            }
+        status, raw = self._c._req_status("PUT", f"/threads/{thread_id}/footprint", footprint)
+        if raw is None:
+            return None
+        try:
+            return Footprint.from_dict(raw)
+        except ValueError as e:
+            raise UnreadableResponseError(
+                status, None, f"PUT /threads/{thread_id}/footprint: HTTP {status} answer this client cannot read: {e}"
+            ) from None
+
+    def get_footprint(self, thread_id: str) -> Footprint:
+        return self._c._model(Footprint, "GET", f"/threads/{thread_id}/footprint")
 
 
 class _Messages:
@@ -389,6 +564,9 @@ class Client:
         self.threads = _Threads(self)
         self.messages = _Messages(self)
         self.artifacts = _Artifacts(self)
+        self.reviews = _Reviews(self)
+        self.approval_gates = _ApprovalGates(self)
+        self.delegation_grants = _DelegationGrants(self)
 
     # --- hero methods ---
     def claim_next_thread(self, channel_id: str, body: Optional[dict] = None) -> Optional[ClaimedThread]:
@@ -699,6 +877,11 @@ class Client:
         if channel_id:
             f["channel_id"] = channel_id
         return self._wait_for_kind(f, "thread_ready", timeout)
+
+    def wait_for_approval_request(self, workspace_id: str, timeout: float = 30.0) -> Optional[dict]:
+        """The next ``approval_requested`` event in the workspace, or ``None``
+        after ``timeout``. Answer it with :meth:`_ApprovalGates.answer`."""
+        return self._wait_for_kind({"workspace_id": workspace_id}, "approval_requested", timeout)
 
 
 def _normalize_stored(row: StoredEvent) -> dict:

@@ -342,3 +342,34 @@ test("the server's problem types arrive as their error classes", async () => {
   ).json();
   await expectError(() => client.workspaces.import(exported, "restore"), ConflictError, 409, "conflict");
 });
+
+test("a footprint and a thread's reviews stay in their workspace", async () => {
+  assert.ok(OTHER_TOKEN && OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace");
+  const { thread } = await seed();
+  const fp = { repo: "acme/widgets", mode: "exclusive", items: [{ kind: "path", value: "sdk/typescript" }] };
+  const stored = assertShape(await client.threads.setFootprint(thread.id, fp), "Footprint");
+  assert.deepEqual(stored, fp);
+  assert.deepEqual(await client.threads.getFootprint(thread.id), stored);
+  assert.deepEqual(await client.reviews.list(thread.id), []);
+  const status = assertShape(await client.reviews.status(thread.id), "ReviewStatus");
+  assert.equal(status.approvals, 0);
+
+  const other = new Client(BASE, OTHER_TOKEN);
+  const refused = {
+    "threads.getFootprint": () => other.threads.getFootprint(thread.id),
+    "threads.setFootprint": () => other.threads.setFootprint(thread.id, fp),
+    "reviews.list": () => other.reviews.list(thread.id),
+    "reviews.status": () => other.reviews.status(thread.id),
+    "approvalGates.list": () => other.approvalGates.list(WORKSPACE),
+    "tokens.delegate": () => other.tokens.delegate(crypto.randomUUID()),
+  };
+  for (const [name, call] of Object.entries(refused)) {
+    await assert.rejects(call(), (err) => {
+      assert.ok(err instanceof MaidanError, `${name}: expected a MaidanError, got ${err && err.name}`);
+      assert.ok([403, 404].includes(err.status), `${name}: status ${err.status}`);
+      assert.ok(!JSON.stringify(err.problem).includes(WORKSPACE), `${name} names the first workspace`);
+      return true;
+    });
+  }
+  assert.deepEqual(await client.threads.getFootprint(thread.id), stored, "a refused write changed the footprint");
+});

@@ -289,6 +289,18 @@ impl Client {
     pub fn artifacts(&self) -> Artifacts<'_> {
         Artifacts { c: self }
     }
+    /// Reviews. Nobody counts as their own reviewer.
+    pub fn reviews(&self) -> Reviews<'_> {
+        Reviews { c: self }
+    }
+    /// Approval gates, the human side.
+    pub fn approval_gates(&self) -> ApprovalGates<'_> {
+        ApprovalGates { c: self }
+    }
+    /// Delegation grants. Needs `token:admin`.
+    pub fn delegation_grants(&self) -> DelegationGrants<'_> {
+        DelegationGrants { c: self }
+    }
 
     /// The hero: readiness/skill/lease-aware claim of the next thread in a
     /// channel, with an optional lease length in seconds. `Ok(None)` when
@@ -700,6 +712,205 @@ impl Tokens<'_> {
             None,
         )
     }
+
+    /// Exchange a delegation grant for a token, with the delegate's own token
+    /// (`workspace:read`, not `token:admin`). The new token acts for the
+    /// grant's subject with at most the grant's capabilities and the caller's,
+    /// and lives no longer than either; empty `capabilities` asks for every
+    /// capability both hold. A delegated token cannot delegate again.
+    pub fn delegate(
+        &self,
+        grant_id: &str,
+        capabilities: &[&str],
+        opts: &DelegateOptions<'_>,
+    ) -> Result<DelegatedToken> {
+        let body = opts.apply(json!({ "grant_id": grant_id, "capabilities": capabilities }));
+        self.c.send_as("POST", "/tokens/delegate", Some(&body))
+    }
+
+    /// A weaker token derived from the caller's: a subset of its capabilities,
+    /// expiring no later than it does.
+    pub fn attenuate(
+        &self,
+        capabilities: &[&str],
+        opts: &DelegateOptions<'_>,
+    ) -> Result<MintedToken> {
+        let body = opts.apply(json!({ "capabilities": capabilities }));
+        self.c.send_as("POST", "/tokens/attenuate", Some(&body))
+    }
+}
+
+/// The optional fields of a delegated or attenuated token. No `expires_at`
+/// takes the longest expiry allowed.
+#[derive(Debug, Default, Clone)]
+pub struct DelegateOptions<'a> {
+    pub expires_at: Option<&'a str>,
+    pub label: Option<&'a str>,
+}
+
+impl DelegateOptions<'_> {
+    fn apply(&self, mut body: Value) -> Value {
+        if let Some(expires) = self.expires_at {
+            body["expires_at"] = json!(expires);
+        }
+        if let Some(label) = self.label {
+            body["label"] = json!(label);
+        }
+        body
+    }
+}
+
+// --- Delegation grants ---
+
+/// A subject lets a delegate act for it, within a capability set, until an
+/// expiry. The delegate exchanges a grant with [`Tokens::delegate`].
+pub struct DelegationGrants<'a> {
+    c: &'a Client,
+}
+
+impl DelegationGrants<'_> {
+    /// Grant `delegate_id` the right to act for `subject_id`. `expires_at` is RFC 3339.
+    pub fn create(
+        &self,
+        workspace_id: &str,
+        subject_id: &str,
+        delegate_id: &str,
+        capabilities: &[&str],
+        purpose: &str,
+        expires_at: &str,
+    ) -> Result<DelegationGrant> {
+        self.c.send_as(
+            "POST",
+            &format!("/workspaces/{workspace_id}/delegation-grants"),
+            Some(&json!({
+                "subject_id": subject_id,
+                "delegate_id": delegate_id,
+                "capabilities": capabilities,
+                "purpose": purpose,
+                "expires_at": expires_at
+            })),
+        )
+    }
+
+    /// End the grant. Tokens already exchanged for it stop working.
+    pub fn revoke(&self, workspace_id: &str, grant_id: &str) -> Result<DelegationGrant> {
+        self.c.send_as(
+            "DELETE",
+            &format!("/workspaces/{workspace_id}/delegation-grants/{grant_id}"),
+            None,
+        )
+    }
+}
+
+// --- Reviews ---
+
+/// The optional fields of a verdict. An approval needs `evidence_root` (from
+/// [`Reviews::packet`]); a change request needs `note`.
+#[derive(Debug, Default, Clone)]
+pub struct ReviewOptions<'a> {
+    pub note: Option<&'a str>,
+    pub evidence_root: Option<&'a str>,
+    pub head_sha: Option<&'a str>,
+}
+
+/// Who reviews a thread, their verdicts, and whether enough approvals are in.
+/// An owner or assignee may submit, but the verdict does not count.
+pub struct Reviews<'a> {
+    c: &'a Client,
+}
+
+impl Reviews<'_> {
+    /// The evidence an approval names by its `evidence_root`.
+    pub fn packet(&self, thread_id: &str) -> Result<ReviewPacket> {
+        self.c
+            .send_as("GET", &format!("/threads/{thread_id}/review-packet"), None)
+    }
+
+    /// Designate a member of the thread's workspace as a reviewer.
+    pub fn request(&self, thread_id: &str, member_id: &str) -> Result<()> {
+        let _: Option<Value> = self.c.send_as(
+            "POST",
+            &format!("/threads/{thread_id}/reviewers"),
+            Some(&json!({ "member_id": member_id })),
+        )?;
+        Ok(())
+    }
+
+    /// The caller's verdict. A re-submission replaces its current review.
+    pub fn submit(
+        &self,
+        thread_id: &str,
+        decision: ReviewDecision,
+        opts: &ReviewOptions<'_>,
+    ) -> Result<ThreadReview> {
+        let mut body = json!({ "decision": decision.as_str() });
+        if let Some(note) = opts.note {
+            body["note"] = json!(note);
+        }
+        if let Some(root) = opts.evidence_root {
+            body["evidence_root"] = json!(root);
+        }
+        if let Some(head) = opts.head_sha {
+            body["head_sha"] = json!(head);
+        }
+        self.c.send_as(
+            "POST",
+            &format!("/threads/{thread_id}/reviews"),
+            Some(&body),
+        )
+    }
+
+    pub fn list(&self, thread_id: &str) -> Result<Vec<ThreadReview>> {
+        self.c
+            .send_as("GET", &format!("/threads/{thread_id}/reviews"), None)
+    }
+
+    pub fn status(&self, thread_id: &str) -> Result<ReviewStatus> {
+        self.c
+            .send_as("GET", &format!("/threads/{thread_id}/review-status"), None)
+    }
+}
+
+// --- Approval gates ---
+
+/// The human side of approval gates. Accepting needs a person's signed-in
+/// session or a token holding `approval:grant`, and nobody accepts a gate they
+/// asked for; declining or cancelling needs `workspace:write`. A gate is opened
+/// over MCP (`request_approval`).
+pub struct ApprovalGates<'a> {
+    c: &'a Client,
+}
+
+impl ApprovalGates<'_> {
+    /// The workspace's pending gates, each with the `request_state` an answer
+    /// must echo.
+    pub fn list(&self, workspace_id: &str) -> Result<Vec<ApprovalGateView>> {
+        self.c.send_as(
+            "GET",
+            &format!("/workspaces/{workspace_id}/approval-gates"),
+            None,
+        )
+    }
+
+    /// `action` is `accept`, `decline` or `cancel`. A gate already answered is
+    /// a 409 conflict.
+    pub fn answer(
+        &self,
+        gate_id: &str,
+        request_state: &str,
+        action: &str,
+        content: Option<&Value>,
+    ) -> Result<ApprovalGate> {
+        let mut body = json!({ "request_state": request_state, "action": action });
+        if let Some(content) = content {
+            body["content"] = content.clone();
+        }
+        self.c.send_as(
+            "POST",
+            &format!("/approval-gates/{gate_id}/answer"),
+            Some(&body),
+        )
+    }
 }
 
 // --- Channels ---
@@ -802,6 +1013,28 @@ impl Threads<'_> {
     pub fn get_result(&self, id: &str) -> Result<ThreadResult> {
         self.c
             .send_as("GET", &format!("/threads/{id}/result"), None)
+    }
+    /// Declare what the thread will touch. `claim_next` will not hand out two
+    /// threads whose exclusive footprints overlap. Only an open thread nobody
+    /// holds takes one: an ended thread is 409 `thread-ended`, a deleted one
+    /// 410 `gone`. `Ok(None)` when the server stored no footprint.
+    pub fn set_footprint(&self, id: &str, footprint: &Footprint) -> Result<Option<Footprint>> {
+        let items: Vec<Value> = footprint
+            .items
+            .iter()
+            .map(|i| json!({ "kind": i.kind.as_str(), "value": i.value }))
+            .collect();
+        let body = json!({
+            "repo": footprint.repo,
+            "mode": footprint.mode.as_str(),
+            "items": items
+        });
+        self.c
+            .send_as("PUT", &format!("/threads/{id}/footprint"), Some(&body))
+    }
+    pub fn get_footprint(&self, id: &str) -> Result<Footprint> {
+        self.c
+            .send_as("GET", &format!("/threads/{id}/footprint"), None)
     }
 }
 
