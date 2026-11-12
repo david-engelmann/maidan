@@ -627,7 +627,10 @@ required check.
   that code no longer needs them and lower the floor there.
 - A new crate needs a floor in the same PR. Take its measured coverage from
   the job, subtract one point and round down to the half point.
-- Raise a floor when a crate's coverage rises, the same way, citing the run.
+- Raise a floor when a crate's coverage rises: take the lowest of the last
+  three `main` coverage runs, subtract one point, round down to the half point,
+  and cite the runs. One run is not enough; `maidan-cli` moved 1.7 points
+  between three consecutive runs on 2026-11-11.
 
 ### Codecov (optional)
 

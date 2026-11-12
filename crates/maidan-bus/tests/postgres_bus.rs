@@ -54,8 +54,6 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
 
     let workspace = Workspace {
@@ -113,7 +111,6 @@ async fn pointer_notify_for_missing_log_id_increments_not_found_hydrate_stat() {
     let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     let before = bus.hydrate_stats().snapshot();
     let payload = r#"{"notify":"log_id_v1","log_id":999999999}"#;
@@ -123,9 +120,15 @@ async fn pointer_notify_for_missing_log_id_increments_not_found_hydrate_stat() {
         .execute(&pool)
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let after = bus.hydrate_stats().snapshot();
+    // The listener task records the miss when it hydrates the pointer; wait for
+    // that, not for a fixed interval.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut after = bus.hydrate_stats().snapshot();
+    while after.not_found <= before.not_found && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        after = bus.hydrate_stats().snapshot();
+    }
     assert!(after.not_found > before.not_found);
 }
 
@@ -179,8 +182,6 @@ async fn pointer_delivery_for_large_persisted_event() {
     let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
         .await
         .unwrap();
-
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
 
@@ -328,7 +329,6 @@ async fn events_already_in_the_log_at_connect_are_not_replayed_by_the_first_noti
     let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
 
     let event = workspace_created("new");
@@ -398,7 +398,6 @@ async fn a_quiet_listener_recovers_its_health_after_its_connection_drops() {
         .await
         .expect("bus");
     let health = bus.listener_health();
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     sqlx::query("ALTER ROLE bus_probe NOLOGIN")
         .execute(&admin)

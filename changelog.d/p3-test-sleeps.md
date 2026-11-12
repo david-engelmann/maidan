@@ -1,0 +1,3 @@
+### Fewer fixed sleeps in the test suites
+
+- **Changed:** sixteen wall-clock sleeps in `crates/*/tests` are gone or now wait on a condition. `PostgresBus::connect`, `PostgresPresenceNotifier::connect` and `PostgresResourceNotifier::connect` return only after `LISTEN` is registered, so the 200–300 ms "let LISTEN attach" sleeps after them waited for nothing; a server spawned on an already bound `TcpListener` accepts at once, so the 50 ms sleep after `axum::serve` went too. The hydrate-miss test waits for the `not_found` counter to move, and the NOTIFY chaos soak waits for every published id instead of a fixed 4 s. Tests only; no production change.
