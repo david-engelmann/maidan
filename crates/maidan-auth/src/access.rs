@@ -9,7 +9,7 @@
 
 use maidan_store::Store;
 use maidan_types::{
-    ApprovalGate, ChannelId, MemberId, MessageId, Thread, ThreadBlock, ThreadId,
+    ApprovalGate, Channel, ChannelId, MemberId, MessageId, Thread, ThreadBlock, ThreadId,
     ThreadStatusDeclaration, WorkspaceId, DM_CHANNEL_NAME,
 };
 
@@ -55,13 +55,39 @@ pub async fn can_access_channel(
     }
 }
 
+/// Whether a member sees `channel` in a listing: public channels and the DM
+/// system channel always, a private channel only with a membership row. The
+/// one definition behind [`visible_channels`] and [`private_channel_deny_set`].
+fn listed_for_member(channel: &Channel, is_member: bool) -> bool {
+    !channel.private || channel.name == DM_CHANNEL_NAME || is_member
+}
+
+/// The channels in `workspace_id` the caller may see listed, in one store
+/// query (REST and MCP `list_channels`). `bypass` callers get every channel.
+pub async fn visible_channels(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<Channel>, AuthError> {
+    if auth.bypass {
+        return Ok(store.list_channels(workspace_id).await?);
+    }
+    Ok(store
+        .list_channels_with_membership(workspace_id, auth.member_id)
+        .await?
+        .into_iter()
+        .filter(|(channel, is_member)| listed_for_member(channel, *is_member))
+        .map(|(channel, _)| channel)
+        .collect())
+}
+
 /// The private (non-DM) channels in `workspace_id` the caller is **not** a
 /// member of — the set to exclude at the query level so inaccessible hits don't
 /// crowd out a search's requested `limit`. `bypass` callers get an empty set
 /// (they see everything). DM threads are intentionally excluded: DM access is
 /// participant-based, not channel-membership, so it stays with the
 /// authoritative thread-level post-filter. This is a *pre-filter*, never the
-/// sole check.
+/// sole check. One store query, however many private channels there are.
 pub async fn private_channel_deny_set(
     store: &dyn Store,
     auth: &AuthContext,
@@ -70,17 +96,13 @@ pub async fn private_channel_deny_set(
     if auth.bypass {
         return Ok(Vec::new());
     }
-    let channels = store.list_channels(workspace_id).await?;
-    let mut deny = Vec::new();
-    for channel in channels {
-        if channel.private
-            && channel.name != DM_CHANNEL_NAME
-            && !store.channel_is_member(channel.id, auth.member_id).await?
-        {
-            deny.push(channel.id);
-        }
-    }
-    Ok(deny)
+    Ok(store
+        .list_channels_with_membership(workspace_id, auth.member_id)
+        .await?
+        .into_iter()
+        .filter(|(channel, is_member)| !listed_for_member(channel, *is_member))
+        .map(|(channel, _)| channel.id)
+        .collect())
 }
 
 /// Ensure the caller participates in the DM / group-DM conversation backing

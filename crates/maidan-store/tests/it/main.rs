@@ -86,6 +86,9 @@ mod catch_up_scale;
 #[path = "../channel_closed_results.rs"]
 mod channel_closed_results;
 
+#[path = "../channel_reads_for_member.rs"]
+mod channel_reads_for_member;
+
 #[path = "../child_threads.rs"]
 mod child_threads;
 
