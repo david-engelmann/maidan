@@ -40,7 +40,7 @@ pub async fn open_group_dm(
     // The opener is one of the group's members, as a 1:1 DM's opener is. A
     // bypass caller is no member, so its list stands as sent.
     if !auth.bypass {
-        member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id);
+        member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id());
     }
     let group = state
         .store

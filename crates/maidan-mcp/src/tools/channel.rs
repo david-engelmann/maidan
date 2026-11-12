@@ -415,7 +415,7 @@ pub(super) async fn open_group_dm(
     let mut member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
     // The opener is one of the group's members, as a 1:1 DM's opener is.
     if !auth.bypass {
-        member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id);
+        member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id());
     }
     let group = store
         .open_group_dm_conversation(workspace_id, &member_ids, a.title)
