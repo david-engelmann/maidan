@@ -34,7 +34,7 @@ pub struct A2aTaskWrite<'a> {
 /// A page of a workspace's tasks, newest status first, ties broken by id
 /// descending. `before` is the keyset cursor: the `(updated_at, id)` of the
 /// last row of the previous page.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct A2aTaskQuery<'a> {
     pub context_id: Option<&'a str>,
     pub state: Option<&'a str>,
@@ -43,15 +43,29 @@ pub struct A2aTaskQuery<'a> {
     pub before: Option<(DateTime<Utc>, &'a str)>,
     pub limit: i64,
     /// Keep only the tasks this member may read: those on a thread it can
-    /// read, and those on no thread. `None` keeps every task.
-    pub readable_by: Option<MemberId>,
+    /// read, and those on no thread. Required: there is no unfiltered read.
+    pub readable_by: MemberId,
+}
+
+impl A2aTaskQuery<'_> {
+    /// The first page of every task `readable_by` may read, no other filter.
+    pub fn for_reader(readable_by: MemberId) -> Self {
+        Self {
+            context_id: None,
+            state: None,
+            updated_since: None,
+            before: None,
+            limit: 0,
+            readable_by,
+        }
+    }
 }
 
 /// A page of a workspace's pending approval gates in `ListTasks` order:
 /// newest first, ties broken by id descending. Gate timestamps are stored at
 /// millisecond precision, the precision task positions and page tokens carry,
 /// so the store's order is the listing's order.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PendingGateQuery {
     /// Keep only the gates attached to this thread.
     pub thread_id: Option<ThreadId>,
@@ -63,7 +77,21 @@ pub struct PendingGateQuery {
     pub limit: i64,
     /// Keep only the gates this member may read, as
     /// [`A2aTaskQuery::readable_by`] does for tasks.
-    pub readable_by: Option<MemberId>,
+    pub readable_by: MemberId,
+}
+
+impl PendingGateQuery {
+    /// The first page of every pending gate `readable_by` may read, no other
+    /// filter.
+    pub fn for_reader(readable_by: MemberId) -> Self {
+        Self {
+            thread_id: None,
+            created_since: None,
+            before: None,
+            limit: 0,
+            readable_by,
+        }
+    }
 }
 
 /// A stored push notification config. Secrets are ciphertext sealed by the

@@ -36,7 +36,8 @@ impl QueueScope {
 pub(crate) struct QueueSql<'a> {
     /// Placeholder bound to [`QueueScope::id`].
     pub scope: &'a str,
-    /// Placeholder bound to the reader's member id, or NULL for no reader.
+    /// Placeholder bound to the reader's member id. Required: there is no
+    /// reader-less count.
     pub reader: &'a str,
     /// Placeholder bound to [`maidan_types::DM_CHANNEL_NAME`].
     pub dm_channel: &'a str,
@@ -186,7 +187,7 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
         "FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
          WHERE {in_scope} AND cand.state = 'open' AND cand.tombstoned_at IS NULL
-           AND ({reader} IS NULL OR ({readable}))
+           AND ({readable})
            AND {served}"
     )
 }

@@ -284,15 +284,29 @@ impl ThreadAttributeFilter {
 /// [`ThreadStore::find_threads_for_workspace`]: the `(created_at, id)`
 /// keyset order of the other workspace pages, `after` an exclusive cursor
 /// in that order, `reader_id` filtering in the query to the threads the
-/// reader may read (`None` is the unrestricted view), and `filter`
+/// reader may read (required: there is no unrestricted view), and `filter`
 /// applied before the limit so a page is a full page of matches.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct WorkspaceThreadSearch {
     pub filter: ThreadAttributeFilter,
     pub after: Option<ThreadId>,
     pub limit: i64,
     pub newest_first: bool,
-    pub reader_id: Option<MemberId>,
+    pub reader_id: MemberId,
+}
+
+impl WorkspaceThreadSearch {
+    /// The first oldest-first page of every thread `reader_id` may read, no
+    /// attribute filter.
+    pub fn for_reader(reader_id: MemberId) -> Self {
+        Self {
+            filter: ThreadAttributeFilter::default(),
+            after: None,
+            limit: 0,
+            newest_first: false,
+            reader_id,
+        }
+    }
 }
 
 #[async_trait]
@@ -967,11 +981,11 @@ pub trait ApprovalGateStore: Send + Sync {
     ) -> Result<Option<ApprovalGate>, StoreError>;
     /// The pending gates in a workspace, oldest first, that `readable_by`
     /// may read: those on a thread it can read, and those on no thread.
-    /// `None` keeps every gate.
+    /// The reader is required: there is no unfiltered list.
     async fn list_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
     /// A keyset page of the pending gates, newest first (see
@@ -2094,14 +2108,14 @@ pub trait ThreadStore: Send + Sync {
     /// filters tombstoned threads and applies `LIMIT` in SQL, so workspace
     /// context assembly does not load every thread into memory. With
     /// `reader_id`, threads the reader cannot read are filtered in the query
-    /// too, so hidden threads never crowd out the page; `None` is the
-    /// unrestricted view.
+    /// too, so hidden threads never crowd out the page. The reader is
+    /// required: there is no unrestricted view.
     async fn page_threads_for_workspace(
         &self,
         workspace_id: WorkspaceId,
         after: Option<ThreadId>,
         limit: i64,
-        reader_id: Option<MemberId>,
+        reader_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// One keyset page of a workspace's **live** threads whose task
@@ -2189,11 +2203,11 @@ pub trait ThreadStore: Send + Sync {
     /// claimability predicate as `claim_next`. One aggregate query.
     /// `readable_by` counts only the threads that member may read, by
     /// `claim_next`'s read rule (on the `__dm__` channel, only its own DMs);
-    /// `None` counts every thread.
+    /// the reader is required, so there is no count of every thread.
     async fn channel_queue_depth(
         &self,
         channel_id: ChannelId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
     ) -> Result<QueueDepth, StoreError>;
 
     /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
@@ -2205,7 +2219,7 @@ pub trait ThreadStore: Send + Sync {
     async fn workspace_queue_depth(
         &self,
         workspace_id: WorkspaceId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
         kind: Option<maidan_types::TaskKind>,
@@ -2219,7 +2233,7 @@ pub trait ThreadStore: Send + Sync {
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
     ) -> Result<ChannelOccupancy, StoreError>;
 
     /// [`channel_occupancy`](Self::channel_occupancy) across every channel of
@@ -2228,7 +2242,7 @@ pub trait ThreadStore: Send + Sync {
     async fn workspace_occupancy(
         &self,
         workspace_id: WorkspaceId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
     ) -> Result<ChannelOccupancy, StoreError>;
 
     /// The thread's version: the number of writes to its messages, result,
@@ -2809,12 +2823,12 @@ pub trait AssignmentStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<maidan_types::Footprint>, StoreError>;
     /// The live claims in a workspace with their footprints, in one repository
-    /// when given, and only threads `readable_by` may read when given.
+    /// when given, and only threads `readable_by` may read.
     async fn list_active_claims(
         &self,
         workspace_id: WorkspaceId,
         repo: Option<String>,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
     ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError>;
     /// Pause `repo` (lowercase `owner/name`) in a workspace: the claim queue
     /// defers every thread whose footprint names it until it is resumed.
@@ -2842,11 +2856,11 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
     /// The open threads the claim queue is holding back for their footprint,
     /// oldest first, each with why (an overlap, a paused repository, a full
-    /// slot); only threads `readable_by` may read when given. At most 200.
+    /// slot); only threads `readable_by` may read. At most 200.
     async fn list_deferred_threads(
         &self,
         workspace_id: WorkspaceId,
-        readable_by: Option<MemberId>,
+        readable_by: MemberId,
     ) -> Result<Vec<maidan_types::DeferredThread>, StoreError>;
     /// Record a round the change flow delivered to an agent pull request, and
     /// the pull request the first time. A retried delivery of the same commit
@@ -3973,7 +3987,7 @@ pub trait IntegrityStore: Send + Sync {
         thread_id: Option<ThreadId>,
         include_purged: bool,
         limit: i64,
-        reader_id: Option<MemberId>,
+        reader_id: MemberId,
     ) -> Result<Vec<TombstoneRecord>, StoreError>;
 
     /// Incoming pointers at `message_id` (`RelationKind` reverse edges + pins
@@ -3983,7 +3997,7 @@ pub trait IntegrityStore: Send + Sync {
     async fn list_message_backlinks(
         &self,
         message_id: MessageId,
-        reader_id: Option<MemberId>,
+        reader_id: MemberId,
     ) -> Result<MessageBacklinks, StoreError>;
 
     /// `EventKind` counts for `workspace_id`, optionally narrowed to a channel
@@ -3997,7 +4011,7 @@ pub trait IntegrityStore: Send + Sync {
         channel_id: Option<ChannelId>,
         thread_id: Option<ThreadId>,
         deny_channels: &[ChannelId],
-        reader_id: Option<MemberId>,
+        reader_id: MemberId,
     ) -> Result<KindCensus, StoreError>;
 }
 

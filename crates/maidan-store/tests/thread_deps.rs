@@ -434,7 +434,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
 
     // Empty channel: all zero.
     let d0 = store
-        .channel_queue_depth(channel.id, None)
+        .channel_queue_depth(channel.id, actor.id)
         .await
         .expect("d0");
     assert_eq!(
@@ -471,7 +471,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
     let _ = ready1;
 
     let d = store
-        .channel_queue_depth(channel.id, None)
+        .channel_queue_depth(channel.id, actor.id)
         .await
         .expect("depth");
     assert_eq!(
@@ -489,7 +489,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
     // Closing `dep` unblocks blocked1: blocked -> ready.
     close_thread(store, dep.id, actor.id).await;
     let d2 = store
-        .channel_queue_depth(channel.id, None)
+        .channel_queue_depth(channel.id, actor.id)
         .await
         .expect("depth2");
     assert_eq!(
@@ -539,7 +539,10 @@ async fn run_occupancy_suite(store: &dyn Store) {
     };
 
     // Empty channel: all zero.
-    let o0 = store.channel_occupancy(channel.id, None).await.expect("o0");
+    let o0 = store
+        .channel_occupancy(channel.id, actor.id)
+        .await
+        .expect("o0");
     assert_eq!(
         o0,
         maidan_types::ChannelOccupancy {
@@ -581,7 +584,7 @@ async fn run_occupancy_suite(store: &dyn Store) {
         .expect("blocked->dep");
 
     let o = store
-        .channel_occupancy(channel.id, None)
+        .channel_occupancy(channel.id, actor.id)
         .await
         .expect("occupancy");
     assert_eq!(

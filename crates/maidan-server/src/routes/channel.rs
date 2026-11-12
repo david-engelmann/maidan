@@ -120,7 +120,7 @@ pub async fn get_channel_queue_depth(
     // without the reader that channel's counts were every member's DMs.
     let depth = state
         .store
-        .channel_queue_depth(channel.id, Some(auth.member_id()))
+        .channel_queue_depth(channel.id, auth.member_id())
         .await?;
     Ok(Json(depth))
 }
@@ -149,7 +149,7 @@ pub async fn get_workspace_queue_depth(
         .store
         .workspace_queue_depth(
             workspace_id,
-            Some(auth.member_id()),
+            auth.member_id(),
             repo.as_deref(),
             q.engine,
             q.kind,
@@ -204,7 +204,7 @@ pub async fn get_channel_occupancy(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let occupancy = state
         .store
-        .channel_occupancy(channel.id, Some(auth.member_id()))
+        .channel_occupancy(channel.id, auth.member_id())
         .await?;
     Ok(Json(occupancy))
 }
@@ -223,7 +223,7 @@ pub async fn get_workspace_occupancy(
     state.store.get_workspace(workspace_id).await?;
     let occupancy = state
         .store
-        .workspace_occupancy(workspace_id, Some(auth.member_id()))
+        .workspace_occupancy(workspace_id, auth.member_id())
         .await?;
     Ok(Json(occupancy))
 }

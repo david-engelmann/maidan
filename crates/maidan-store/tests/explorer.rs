@@ -125,7 +125,7 @@ async fn run_explorer_suite(store: &dyn Store) {
         .expect("other tombstone");
 
     let listed = store
-        .list_tombstones(ws.id, None, None, false, 50, None)
+        .list_tombstones(ws.id, None, None, false, 50, alice.id)
         .await
         .expect("list");
     assert_eq!(listed.len(), 1, "only this workspace's tombstone");
@@ -138,12 +138,12 @@ async fn run_explorer_suite(store: &dyn Store) {
     assert!(listed.iter().all(|t| t.id != live.id.0));
 
     let by_thread = store
-        .list_tombstones(ws.id, None, Some(thread.id), false, 50, None)
+        .list_tombstones(ws.id, None, Some(thread.id), false, 50, alice.id)
         .await
         .expect("thread filter");
     assert_eq!(by_thread.len(), 1);
     let empty_ch = store
-        .list_tombstones(ws.id, Some(och.id), None, false, 50, None)
+        .list_tombstones(ws.id, Some(och.id), None, false, 50, alice.id)
         .await
         .expect("wrong channel");
     assert!(empty_ch.is_empty());
@@ -151,12 +151,12 @@ async fn run_explorer_suite(store: &dyn Store) {
     // Hard purge: default list drops it; include_purged reconstructs from the event.
     store.purge_message(dead.id).await.expect("purge");
     let after_purge = store
-        .list_tombstones(ws.id, None, None, false, 50, None)
+        .list_tombstones(ws.id, None, None, false, 50, alice.id)
         .await
         .expect("after purge");
     assert!(after_purge.is_empty(), "purged row is no longer retained");
     let with_purged = store
-        .list_tombstones(ws.id, None, None, true, 50, None)
+        .list_tombstones(ws.id, None, None, true, 50, alice.id)
         .await
         .expect("include_purged");
     assert_eq!(with_purged.len(), 1);
@@ -221,7 +221,7 @@ async fn run_explorer_suite(store: &dyn Store) {
         .expect("vote");
 
     let back = store
-        .list_message_backlinks(target.id, None)
+        .list_message_backlinks(target.id, alice.id)
         .await
         .expect("backlinks");
     assert_eq!(back.message_id, target.id);
@@ -233,13 +233,13 @@ async fn run_explorer_suite(store: &dyn Store) {
     assert_eq!(back.votes.len(), 1);
 
     let missing = store
-        .list_message_backlinks(maidan_types::MessageId(uuid::Uuid::new_v4()), None)
+        .list_message_backlinks(maidan_types::MessageId(uuid::Uuid::new_v4()), alice.id)
         .await;
     assert!(matches!(missing, Err(StoreError::NotFound)));
 
     // Census: this workspace's events, scoped, deny-channels drops a channel.
     let census = store
-        .event_kind_census(ws.id, None, None, &[], None)
+        .event_kind_census(ws.id, None, None, &[], alice.id)
         .await
         .expect("census");
     assert_eq!(census.workspace_id, ws.id);
@@ -257,7 +257,7 @@ async fn run_explorer_suite(store: &dyn Store) {
         .expect("tombstoned");
     assert_eq!(tombstoned.count, 1);
     let other_census = store
-        .event_kind_census(other.id, None, None, &[], None)
+        .event_kind_census(other.id, None, None, &[], bob.id)
         .await
         .expect("other census");
     assert!(
@@ -272,7 +272,7 @@ async fn run_explorer_suite(store: &dyn Store) {
     assert_ne!(census.total, other_census.total);
 
     let thread_census = store
-        .event_kind_census(ws.id, None, Some(thread.id), &[], None)
+        .event_kind_census(ws.id, None, Some(thread.id), &[], alice.id)
         .await
         .expect("thread census");
     assert_eq!(thread_census.thread_id, Some(thread.id));
@@ -280,7 +280,7 @@ async fn run_explorer_suite(store: &dyn Store) {
     assert!(thread_census.total < census.total);
 
     let denied = store
-        .event_kind_census(ws.id, None, None, &[channel.id], None)
+        .event_kind_census(ws.id, None, None, &[channel.id], alice.id)
         .await
         .expect("deny");
     assert!(
@@ -358,7 +358,7 @@ async fn run_purged_bound_suite(store: &dyn Store) {
     }
 
     let bounded = store
-        .list_tombstones(ws.id, None, None, true, 3, None)
+        .list_tombstones(ws.id, None, None, true, 3, alice.id)
         .await
         .expect("bounded include_purged");
     assert_eq!(bounded.len(), 3, "the limit must bind the purged half");
@@ -375,7 +375,7 @@ async fn run_purged_bound_suite(store: &dyn Store) {
     // An unbounded-enough read still sees all six, so the bound narrows the
     // result rather than losing rows.
     let all = store
-        .list_tombstones(ws.id, None, None, true, 50, None)
+        .list_tombstones(ws.id, None, None, true, 50, alice.id)
         .await
         .expect("all");
     assert_eq!(all.len(), 6);

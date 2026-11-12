@@ -108,11 +108,10 @@ impl Seeder<'_> {
     }
 }
 
-fn query(readable_by: Option<MemberId>) -> A2aTaskQuery<'static> {
+fn query(readable_by: MemberId) -> A2aTaskQuery<'static> {
     A2aTaskQuery {
         limit: 1000,
-        readable_by,
-        ..Default::default()
+        ..A2aTaskQuery::for_reader(readable_by)
     }
 }
 
@@ -204,7 +203,7 @@ async fn run_suite(store: &dyn Store) {
             }
         }
         let tasks: BTreeSet<_> = store
-            .list_a2a_tasks(ws, query(Some(member_id)))
+            .list_a2a_tasks(ws, query(member_id))
             .await
             .expect("list")
             .iter()
@@ -212,15 +211,14 @@ async fn run_suite(store: &dyn Store) {
             .collect();
         assert_eq!(tasks, expected, "{who}'s tasks follow the thread rule");
         let count = store
-            .count_a2a_tasks(ws, query(Some(member_id)))
+            .count_a2a_tasks(ws, query(member_id))
             .await
             .expect("count");
         assert_eq!(count, expected.len() as i64, "{who}'s task count");
 
         let gate_query = PendingGateQuery {
             limit: 1000,
-            readable_by: Some(member_id),
-            ..Default::default()
+            ..PendingGateQuery::for_reader(member_id)
         };
         let gates: BTreeSet<_> = store
             .page_pending_approval_gates(ws, gate_query.clone())
@@ -239,7 +237,7 @@ async fn run_suite(store: &dyn Store) {
     // Sanity on the fixture: each member sees something the others do not.
     let listed = |member_id| async move {
         store
-            .list_a2a_tasks(ws, query(Some(member_id)))
+            .list_a2a_tasks(ws, query(member_id))
             .await
             .expect("list")
             .len()
@@ -248,12 +246,8 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(listed(bob).await, 3, "open, dm, none");
     assert_eq!(listed(carol).await, 3, "open, group, none");
 
-    // No reader (a background worker) keeps every row of the workspace, and only it.
-    let all = store.list_a2a_tasks(ws, query(None)).await.expect("all");
-    assert_eq!(all.len(), threads.len());
-    assert!(all.iter().all(|row| row.workspace_id == ws));
     let tenant = store
-        .list_a2a_tasks(other, query(Some(dave)))
+        .list_a2a_tasks(other, query(dave))
         .await
         .expect("other tenant");
     assert_eq!(
@@ -266,7 +260,7 @@ async fn run_suite(store: &dyn Store) {
     // rule holds without a route pinning the workspace first. A thread-less
     // row is the workspace's own and is the caller's scope check, not this one.
     let cross: BTreeSet<_> = store
-        .list_a2a_tasks(ws, query(Some(dave)))
+        .list_a2a_tasks(ws, query(dave))
         .await
         .expect("cross-tenant tasks")
         .iter()
@@ -282,8 +276,7 @@ async fn run_suite(store: &dyn Store) {
             ws,
             PendingGateQuery {
                 limit: 1000,
-                readable_by: Some(dave),
-                ..Default::default()
+                ..PendingGateQuery::for_reader(dave)
             },
         )
         .await
@@ -318,7 +311,7 @@ async fn run_suite(store: &dyn Store) {
         }
     }
     let mut expected: Vec<String> = store
-        .list_a2a_tasks(ws, query(Some(bob)))
+        .list_a2a_tasks(ws, query(bob))
         .await
         .expect("bob")
         .into_iter()
@@ -335,8 +328,7 @@ async fn run_suite(store: &dyn Store) {
                 A2aTaskQuery {
                     before: cursor.as_ref().map(|(at, id)| (*at, id.as_str())),
                     limit: 2,
-                    readable_by: Some(bob),
-                    ..Default::default()
+                    ..A2aTaskQuery::for_reader(bob)
                 },
             )
             .await

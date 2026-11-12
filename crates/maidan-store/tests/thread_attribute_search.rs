@@ -77,14 +77,6 @@ async fn task(
     }
 }
 
-fn search(filter: ThreadAttributeFilter) -> WorkspaceThreadSearch {
-    WorkspaceThreadSearch {
-        filter,
-        limit: 100,
-        ..WorkspaceThreadSearch::default()
-    }
-}
-
 async fn ids(store: &dyn Store, ws: WorkspaceId, search: WorkspaceThreadSearch) -> Vec<ThreadId> {
     store
         .find_threads_for_workspace(ws, search)
@@ -99,10 +91,22 @@ async fn assert_attribute_search(store: &dyn Store) {
     let ws_a = workspace(store, "search-a").await;
     let ws_b = workspace(store, "search-b").await;
     let alice = member(store, ws_a, "alice").await;
-    let _bob = member(store, ws_b, "bob").await;
+    let bob = member(store, ws_b, "bob").await;
     let open_a = channel(store, ws_a, "open-a", false).await;
     let private_a = channel(store, ws_a, "private-a", true).await;
     let open_b = channel(store, ws_b, "open-b", false).await;
+    // `insider` reads every channel of workspace A, the private one too, so
+    // a search as `insider` is the whole of A. There is no reader-less view.
+    let insider = member(store, ws_a, "insider").await;
+    store
+        .add_channel_member(private_a, insider, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let search = |filter: ThreadAttributeFilter| WorkspaceThreadSearch {
+        filter,
+        limit: 100,
+        ..WorkspaceThreadSearch::for_reader(insider)
+    };
 
     let pi_issue = TaskAttributes {
         kind: TaskKind::Change,
@@ -185,11 +189,19 @@ async fn assert_attribute_search(store: &dyn Store) {
         linear_issue: Some("ENG-100".into()),
         ..Default::default()
     };
-    // Unrestricted: every ENG-100 thread in workspace A, never B's.
+    // Every ENG-100 thread in workspace A, never B's.
     let found = ids(store, ws_a, search(by_issue.clone())).await;
     assert_eq!(found, vec![t_pi, t_review, t_private], "issue filter, ws A");
-    // The same filter in workspace B finds only B's thread.
-    let found_b = ids(store, ws_b, search(by_issue)).await;
+    // The same filter in workspace B, as B's member, finds only B's thread.
+    let found_b = ids(
+        store,
+        ws_b,
+        WorkspaceThreadSearch {
+            reader_id: bob,
+            ..search(by_issue)
+        },
+    )
+    .await;
     assert_eq!(found_b, vec![t_other_ws], "issue filter, ws B");
 
     // A reader who is not in the private channel never sees its threads.
@@ -197,7 +209,7 @@ async fn assert_attribute_search(store: &dyn Store) {
         engine: Some(TaskEngine::Unattended),
         ..Default::default()
     });
-    as_alice.reader_id = Some(alice);
+    as_alice.reader_id = alice;
     let found = ids(store, ws_a, as_alice).await;
     assert_eq!(found, vec![t_pi, t_review], "engine filter as a reader");
 
@@ -330,7 +342,7 @@ async fn assert_attribute_search(store: &dyn Store) {
                 WorkspaceThreadSearch {
                     after: Some(cursor),
                     limit: 2,
-                    ..WorkspaceThreadSearch::default()
+                    ..WorkspaceThreadSearch::for_reader(insider)
                 },
             )
             .await;
@@ -351,7 +363,7 @@ async fn assert_attribute_search(store: &dyn Store) {
                 },
                 limit: 2,
                 newest_first: true,
-                ..WorkspaceThreadSearch::default()
+                ..WorkspaceThreadSearch::for_reader(insider)
             },
         )
         .await
@@ -371,7 +383,7 @@ async fn assert_attribute_search(store: &dyn Store) {
                 after: page1.last().map(|t| t.id),
                 limit: 2,
                 newest_first: true,
-                ..WorkspaceThreadSearch::default()
+                ..WorkspaceThreadSearch::for_reader(insider)
             },
         )
         .await
@@ -383,13 +395,15 @@ async fn assert_attribute_search(store: &dyn Store) {
     let carol = member(store, ws_a, "carol").await;
     let dave = member(store, ws_a, "dave").await;
     let dm = store.open_dm_conversation(ws_a, carol, dave).await.unwrap();
-    let everything = ids(store, ws_a, search(ThreadAttributeFilter::default())).await;
+    let mut as_carol = search(ThreadAttributeFilter::default());
+    as_carol.reader_id = carol;
+    let everything = ids(store, ws_a, as_carol).await;
     assert!(
         everything.contains(&dm.thread_id),
-        "the unrestricted view has the DM"
+        "a party to the DM finds it"
     );
     let mut as_alice = search(ThreadAttributeFilter::default());
-    as_alice.reader_id = Some(alice);
+    as_alice.reader_id = alice;
     let found = ids(store, ws_a, as_alice).await;
     assert!(
         !found.contains(&dm.thread_id),
@@ -406,8 +420,7 @@ async fn assert_attribute_search(store: &dyn Store) {
                 WorkspaceThreadSearch {
                     after: Some(cursor),
                     limit: 2,
-                    reader_id: Some(alice),
-                    ..WorkspaceThreadSearch::default()
+                    ..WorkspaceThreadSearch::for_reader(alice)
                 },
             )
             .await;

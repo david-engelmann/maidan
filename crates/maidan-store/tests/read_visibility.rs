@@ -352,7 +352,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(
         prompts(
             store
-                .list_pending_approval_gates(ws, Some(carol), 50)
+                .list_pending_approval_gates(ws, carol, 50)
                 .await
                 .expect("gates")
         ),
@@ -361,7 +361,7 @@ async fn run_suite(store: &dyn Store) {
     );
     assert_eq!(
         store
-            .list_pending_approval_gates(ws, Some(alice), 50)
+            .list_pending_approval_gates(ws, alice, 50)
             .await
             .expect("gates")
             .len(),
@@ -370,7 +370,7 @@ async fn run_suite(store: &dyn Store) {
     );
     assert!(
         store
-            .list_pending_approval_gates(other_ws, Some(eve), 50)
+            .list_pending_approval_gates(other_ws, eve, 50)
             .await
             .expect("gates")
             .is_empty(),

@@ -1072,7 +1072,7 @@ async fn dispatch_rest(
             // query, so the pack needs no per-thread access check after it
             // is built. Filter before serialize so the bytes stay the
             // canonical struct order REST uses.
-            let reader_id = Some(auth.member_id());
+            let reader_id = auth.member_id();
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
             Ok(content_json(&packed))

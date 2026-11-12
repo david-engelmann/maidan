@@ -1394,7 +1394,7 @@ async fn depth(
     kind: Option<TaskKind>,
 ) -> QueueDepth {
     store
-        .workspace_queue_depth(room.ws, Some(room.third), repo, None, kind)
+        .workspace_queue_depth(room.ws, room.third, repo, None, kind)
         .await
         .expect("depth")
 }

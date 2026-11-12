@@ -104,6 +104,7 @@ struct World {
     away: WorkspaceId,
     alice: MemberId,
     bob: MemberId,
+    eve: MemberId,
     open_thread: ThreadId,
     private_thread: ThreadId,
     private_channel: maidan_types::ChannelId,
@@ -197,6 +198,7 @@ async fn world() -> World {
         away,
         alice,
         bob,
+        eve,
         open_thread,
         private_thread,
         private_channel,
@@ -259,9 +261,16 @@ impl World {
             .unwrap()
     }
 
+    /// The pending gates in `ws` as a member who reads every thread there
+    /// sees them: `alice` at home (in the private channel too), `eve` away.
     async fn pending(&self, ws: WorkspaceId) -> usize {
+        let reader = if ws == self.home {
+            self.alice
+        } else {
+            self.eve
+        };
         self.store
-            .list_pending_approval_gates(ws, None, 50)
+            .list_pending_approval_gates(ws, reader, 50)
             .await
             .unwrap()
             .len()

@@ -76,7 +76,7 @@ pub async fn list_active_claims(
         .repo
         .map(|repo| maidan_types::normalize_repo(&repo).map_err(ApiError::BadRequest))
         .transpose()?;
-    let readable_by = Some(auth.member_id());
+    let readable_by = auth.member_id();
     Ok(Json(
         state
             .store
@@ -277,7 +277,7 @@ pub async fn list_deferred_threads(
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(id);
     ensure_workspace(&auth, workspace_id)?;
-    let readable_by = Some(auth.member_id());
+    let readable_by = auth.member_id();
     Ok(Json(
         state
             .store

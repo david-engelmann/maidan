@@ -83,7 +83,7 @@ async fn run_suite(store: &dyn Store) {
 
     // No gates outstanding at the start.
     assert!(store
-        .list_pending_approval_gates(ws.id, None, 50)
+        .list_pending_approval_gates(ws.id, human.id, 50)
         .await
         .expect("list empty")
         .is_empty());
@@ -128,7 +128,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("some");
     assert_eq!(got.prompt, "Deploy to prod?");
     let pending = store
-        .list_pending_approval_gates(ws.id, None, 50)
+        .list_pending_approval_gates(ws.id, human.id, 50)
         .await
         .expect("list pending");
     assert_eq!(pending.len(), 1);
@@ -188,7 +188,7 @@ async fn run_suite(store: &dyn Store) {
 
     // A resolved gate leaves the pending queue.
     assert!(store
-        .list_pending_approval_gates(ws.id, None, 50)
+        .list_pending_approval_gates(ws.id, human.id, 50)
         .await
         .expect("list after resolve")
         .is_empty());
@@ -273,7 +273,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Both resolved → the pending queue is empty again.
     assert!(store
-        .list_pending_approval_gates(ws.id, None, 50)
+        .list_pending_approval_gates(ws.id, human.id, 50)
         .await
         .expect("list final")
         .is_empty());
@@ -369,7 +369,7 @@ async fn run_paging_suite(store: &dyn Store) {
         let batch = page(PendingGateQuery {
             before,
             limit: 2,
-            ..Default::default()
+            ..PendingGateQuery::for_reader(requester.id)
         })
         .await
         .expect("page");
@@ -388,7 +388,7 @@ async fn run_paging_suite(store: &dyn Store) {
     let older = page(PendingGateQuery {
         before: Some((pivot.created_at, None)),
         limit: 50,
-        ..Default::default()
+        ..PendingGateQuery::for_reader(requester.id)
     })
     .await
     .expect("before");
@@ -402,7 +402,7 @@ async fn run_paging_suite(store: &dyn Store) {
     let first_thread = page(PendingGateQuery {
         thread_id: Some(threads[0]),
         limit: 50,
-        ..Default::default()
+        ..PendingGateQuery::for_reader(requester.id)
     })
     .await
     .expect("thread");
@@ -417,7 +417,7 @@ async fn run_paging_suite(store: &dyn Store) {
     let recent = page(PendingGateQuery {
         created_since: Some(since),
         limit: 50,
-        ..Default::default()
+        ..PendingGateQuery::for_reader(requester.id)
     })
     .await
     .expect("since");
@@ -429,7 +429,7 @@ async fn run_paging_suite(store: &dyn Store) {
     assert_eq!(ids(&recent), ids(&expected));
 
     let counted = store
-        .count_pending_approval_gates(ws.id, PendingGateQuery::default())
+        .count_pending_approval_gates(ws.id, PendingGateQuery::for_reader(requester.id))
         .await
         .expect("count");
     assert_eq!(counted, 6);
@@ -439,7 +439,7 @@ async fn run_paging_suite(store: &dyn Store) {
             PendingGateQuery {
                 thread_id: Some(threads[1]),
                 created_since: Some(since),
-                ..Default::default()
+                ..PendingGateQuery::for_reader(requester.id)
             },
         )
         .await

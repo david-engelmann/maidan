@@ -134,7 +134,7 @@ async fn run_suite(store: &dyn Store) {
     // A full page of N for alice despite N private threads and a DM thread
     // sitting in the same workspace.
     let page = store
-        .page_threads_for_workspace(ws_a.id, None, N, Some(alice.id))
+        .page_threads_for_workspace(ws_a.id, None, N, alice.id)
         .await
         .unwrap();
     assert_eq!(page.len() as i64, N, "alice's page stays full-length");
@@ -145,7 +145,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Bob reads everything in A: public, private and the DM thread.
     let page = store
-        .page_threads_for_workspace(ws_a.id, None, 2 * N + 1, Some(bob.id))
+        .page_threads_for_workspace(ws_a.id, None, 2 * N + 1, bob.id)
         .await
         .unwrap();
     assert_eq!(page.len() as i64, 2 * N + 1, "bob sees all of A");
@@ -154,17 +154,10 @@ async fn run_suite(store: &dyn Store) {
         .iter()
         .all(|id| page.iter().any(|t| &t.id == id)));
 
-    // No reader: the unrestricted view matches bob's here.
-    let page = store
-        .page_threads_for_workspace(ws_a.id, None, 2 * N + 1, None)
-        .await
-        .unwrap();
-    assert_eq!(page.len() as i64, 2 * N + 1, "no reader sees all of A");
-
     // Two tenants: carol's page of B holds only B threads she may read, and
     // alice paging A never surfaces a B thread.
     let page_b = store
-        .page_threads_for_workspace(ws_b.id, None, 50, Some(carol.id))
+        .page_threads_for_workspace(ws_b.id, None, 50, carol.id)
         .await
         .unwrap();
     assert_eq!(page_b.len(), 3, "carol sees B's public threads and her DM");
@@ -172,7 +165,7 @@ async fn run_suite(store: &dyn Store) {
         .iter()
         .all(|t| b_threads.contains(&t.id) || t.id == dm_b.thread_id));
     let page = store
-        .page_threads_for_workspace(ws_a.id, None, 50, Some(alice.id))
+        .page_threads_for_workspace(ws_a.id, None, 50, alice.id)
         .await
         .unwrap();
     assert!(
@@ -194,19 +187,14 @@ async fn run_suite(store: &dyn Store) {
     let b_secret_msg = post(store, b_secret_thread, eve.id, "b secret").await;
 
     // ---- event_kind_census ----------------------------------------------
-    let census_none = store
-        .event_kind_census(ws_a.id, None, None, &[], None)
-        .await
-        .unwrap();
     let census_alice = store
-        .event_kind_census(ws_a.id, None, None, &[], Some(alice.id))
+        .event_kind_census(ws_a.id, None, None, &[], alice.id)
         .await
         .unwrap();
     let census_bob = store
-        .event_kind_census(ws_a.id, None, None, &[], Some(bob.id))
+        .event_kind_census(ws_a.id, None, None, &[], bob.id)
         .await
         .unwrap();
-    assert_eq!(posted_count(&census_none), 5, "all A posts counted");
     assert_eq!(
         posted_count(&census_alice),
         2,
@@ -217,7 +205,7 @@ async fn run_suite(store: &dyn Store) {
     // public ones: the store's rule requires the reader to belong to the
     // thread's workspace, whatever workspace the query names.
     let census_carol = store
-        .event_kind_census(ws_a.id, None, None, &[], Some(carol.id))
+        .event_kind_census(ws_a.id, None, None, &[], carol.id)
         .await
         .unwrap();
     assert_eq!(
@@ -226,7 +214,7 @@ async fn run_suite(store: &dyn Store) {
         "carol counts none of another tenant's posts"
     );
     let census_b = store
-        .event_kind_census(ws_b.id, None, None, &[], Some(carol.id))
+        .event_kind_census(ws_b.id, None, None, &[], carol.id)
         .await
         .unwrap();
     assert_eq!(
@@ -272,7 +260,7 @@ async fn run_suite(store: &dyn Store) {
         .unwrap();
 
     let back = store
-        .list_message_backlinks(target.id, Some(alice.id))
+        .list_message_backlinks(target.id, alice.id)
         .await
         .unwrap();
     assert_eq!(
@@ -284,16 +272,14 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(back.pins.len(), 1, "pins ride on the readable target");
 
     let back = store
-        .list_message_backlinks(target.id, Some(bob.id))
+        .list_message_backlinks(target.id, bob.id)
         .await
         .unwrap();
     assert_eq!(back.references.len(), 3, "bob sees every source");
-    let back = store.list_message_backlinks(target.id, None).await.unwrap();
-    assert_eq!(back.references.len(), 3, "no reader sees every source");
 
     // An unreadable target answers empty, not a leak.
     let back = store
-        .list_message_backlinks(target_secret.id, Some(alice.id))
+        .list_message_backlinks(target_secret.id, alice.id)
         .await
         .unwrap();
     assert!(
@@ -302,7 +288,7 @@ async fn run_suite(store: &dyn Store) {
     );
     assert!(back.pins.is_empty(), "unreadable target: no pins");
     let back = store
-        .list_message_backlinks(target_secret.id, Some(bob.id))
+        .list_message_backlinks(target_secret.id, bob.id)
         .await
         .unwrap();
     assert_eq!(
@@ -319,18 +305,18 @@ async fn run_suite(store: &dyn Store) {
             .unwrap();
     }
     let tombs = store
-        .list_tombstones(ws_a.id, None, None, false, 50, Some(alice.id))
+        .list_tombstones(ws_a.id, None, None, false, 50, alice.id)
         .await
         .unwrap();
     assert_eq!(tombs.len(), 1, "alice sees only the public tombstone");
     assert_eq!(tombs[0].id, target.id.0);
     let tombs = store
-        .list_tombstones(ws_a.id, None, None, false, 50, Some(bob.id))
+        .list_tombstones(ws_a.id, None, None, false, 50, bob.id)
         .await
         .unwrap();
     assert_eq!(tombs.len(), 3, "bob sees public, private and DM tombstones");
     let tombs = store
-        .list_tombstones(ws_b.id, None, None, false, 50, Some(carol.id))
+        .list_tombstones(ws_b.id, None, None, false, 50, carol.id)
         .await
         .unwrap();
     assert_eq!(tombs.len(), 1, "carol sees only B's public tombstone");
@@ -340,12 +326,12 @@ async fn run_suite(store: &dyn Store) {
     store.purge_message(src_secret.id).await.unwrap();
     store.purge_message(src_dm.id).await.unwrap();
     let tombs = store
-        .list_tombstones(ws_a.id, None, None, true, 50, Some(alice.id))
+        .list_tombstones(ws_a.id, None, None, true, 50, alice.id)
         .await
         .unwrap();
     assert_eq!(tombs.len(), 1, "purged private and DM rows stay hidden");
     let tombs = store
-        .list_tombstones(ws_a.id, None, None, true, 50, Some(bob.id))
+        .list_tombstones(ws_a.id, None, None, true, 50, bob.id)
         .await
         .unwrap();
     assert_eq!(tombs.len(), 3, "bob still sees the purged rows");
@@ -385,7 +371,7 @@ async fn run_suite(store: &dyn Store) {
             .unwrap();
     }
     let tombs = store
-        .list_tombstones(ws_c.id, None, None, false, N, Some(ann.id))
+        .list_tombstones(ws_c.id, None, None, false, N, ann.id)
         .await
         .unwrap();
     assert_eq!(tombs.len() as i64, N, "a page of N stays full-length");

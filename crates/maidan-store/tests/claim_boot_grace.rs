@@ -163,7 +163,7 @@ async fn a_lapsed_lease_is_held_through_the_grace_and_reaped_after_it(store: &dy
         assert_eq!(current.claim_lease_id, thread.claim_lease_id);
     }
     nothing_for_the_next_claimer(store, &q).await;
-    let depth = store.channel_queue_depth(q.channel, None).await.unwrap();
+    let depth = store.channel_queue_depth(q.channel, q.next).await.unwrap();
     assert_eq!(
         (depth.ready, depth.assigned),
         (0, 2),

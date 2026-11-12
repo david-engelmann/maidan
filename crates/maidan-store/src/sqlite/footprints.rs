@@ -129,7 +129,7 @@ pub async fn list_active(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
     repo: Option<String>,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<Vec<ActiveClaim>, StoreError> {
     let repo = repo
         .map(|repo| maidan_types::normalize_repo(&repo).map_err(StoreError::InvalidInput))
@@ -147,14 +147,14 @@ pub async fn list_active(
          WHERE f.workspace_id = ?1
            AND (?2 IS NULL OR f.repo = ?2)
            AND {}
-           AND (?3 IS NULL OR {readable})
+           AND ({readable})
          ORDER BY held.assignment_expires_at IS NULL, held.assignment_expires_at,
                   f.thread_id, f.kind, f.value",
         live_claim("held", "?5")
     ))
     .bind(workspace_id.0)
     .bind(repo)
-    .bind(readable_by.map(|m| m.0))
+    .bind(readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .bind(Utc::now().to_rfc3339())
     .fetch_all(pool)
@@ -375,15 +375,15 @@ pub(crate) async fn insert_items_on(
 }
 
 /// The threads the claim queue defers in `workspace_id`, with why; only those
-/// `readable_by` may read when given.
+/// `readable_by` may read.
 pub async fn list_deferred(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
     let rows = sqlx::query(&crate::footprints::deferred_select("?1", "?2", "?3", "?4"))
         .bind(workspace_id.0)
-        .bind(readable_by.map(|m| m.0))
+        .bind(readable_by.0)
         .bind(DM_CHANNEL_NAME)
         .bind(Utc::now().to_rfc3339())
         .fetch_all(pool)

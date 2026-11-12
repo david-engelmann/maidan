@@ -237,7 +237,7 @@ pub(super) async fn find_threads(
                 after: a.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: Some(auth.member_id()),
+                reader_id: auth.member_id(),
             },
         )
         .await?;
@@ -1983,7 +1983,7 @@ pub(super) async fn list_active_claims(
         .map(|repo| normalize_repo(&repo).map_err(McpError::InvalidParams))
         .transpose()?;
     let claims = store
-        .list_active_claims(workspace_id, repo, Some(auth.member_id()))
+        .list_active_claims(workspace_id, repo, auth.member_id())
         .await?;
     Ok(content_json(&claims))
 }
@@ -2063,7 +2063,7 @@ pub(super) async fn get_queue_depth(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let depth = store
-        .channel_queue_depth(ChannelId(a.channel_id), Some(auth.member_id()))
+        .channel_queue_depth(ChannelId(a.channel_id), auth.member_id())
         .await?;
     Ok(content_json(&depth))
 }
@@ -2079,7 +2079,7 @@ pub(super) async fn get_channel_occupancy(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let occupancy = store
-        .channel_occupancy(ChannelId(a.channel_id), Some(auth.member_id()))
+        .channel_occupancy(ChannelId(a.channel_id), auth.member_id())
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2128,7 +2128,7 @@ pub(super) async fn get_workspace_queue_depth(
     let depth = store
         .workspace_queue_depth(
             workspace_id,
-            Some(auth.member_id()),
+            auth.member_id(),
             repo.as_deref(),
             a.engine,
             a.kind,
@@ -2147,7 +2147,7 @@ pub(super) async fn get_workspace_occupancy(
 ) -> Result<Value, McpError> {
     let workspace_id = queue_workspace(auth, args)?;
     let occupancy = store
-        .workspace_occupancy(workspace_id, Some(auth.member_id()))
+        .workspace_occupancy(workspace_id, auth.member_id())
         .await?;
     Ok(content_json(&occupancy))
 }

@@ -1144,14 +1144,14 @@ pub async fn queue_depth(
     pool: &SqlitePool,
     grace: &ClaimGrace,
     scope: QueueScope,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     kind: Option<maidan_types::TaskKind>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
-        .bind(readable_by.map(|m| m.0))
+        .bind(readable_by.0)
         .bind(DM_CHANNEL_NAME)
         .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(repo)
@@ -1175,11 +1175,11 @@ pub async fn occupancy(
     pool: &SqlitePool,
     grace: &ClaimGrace,
     scope: QueueScope,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<ChannelOccupancy, StoreError> {
     let row = sqlx::query(&queue_counts::occupancy_select(scope, &QUEUE_SQL))
         .bind(scope.id())
-        .bind(readable_by.map(|m| m.0))
+        .bind(readable_by.0)
         .bind(DM_CHANNEL_NAME)
         .bind(grace.lease_clock(Utc::now()).to_rfc3339())
         .bind(None::<&str>)
@@ -1774,12 +1774,12 @@ pub async fn page_for_workspace(
     workspace_id: WorkspaceId,
     after: Option<ThreadId>,
     limit: i64,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<Vec<Thread>, StoreError> {
     let cursor = after.map(|t| t.0);
     // Numbered placeholders throughout: `readable_row`'s member placeholder
-    // appears three times in the generated SQL but binds once, and a NULL
-    // reader bind keeps every row (no reader: the unrestricted view).
+    // may appear more than once in the generated SQL but binds once. The
+    // reader is required: there is no unrestricted view.
     let readable = readable_row("t.id", "?1", "?3", "?4");
     let sql = format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
@@ -1798,7 +1798,7 @@ pub async fn page_for_workspace(
     let rows = sqlx::query(&sql)
         .bind(workspace_id.0)
         .bind(cursor)
-        .bind(reader_id.map(|id| id.0))
+        .bind(reader_id.0)
         .bind(DM_CHANNEL_NAME)
         .bind(limit.max(0))
         .fetch_all(pool)
@@ -1833,7 +1833,7 @@ pub async fn find_for_workspace(
         let known = sqlx::query(&sql)
             .bind(workspace_id.0)
             .bind(after.0)
-            .bind(search.reader_id.map(|id| id.0))
+            .bind(search.reader_id.0)
             .bind(DM_CHANNEL_NAME)
             .fetch_optional(pool)
             .await?;
@@ -1891,7 +1891,7 @@ pub async fn find_for_workspace(
     let rows = sqlx::query(&sql)
         .bind(workspace_id.0)
         .bind(cursor)
-        .bind(search.reader_id.map(|id| id.0))
+        .bind(search.reader_id.0)
         .bind(DM_CHANNEL_NAME)
         .bind(filter.kind.map(|kind| kind.as_str()))
         .bind(filter.engine.map(|engine| engine.as_str()))

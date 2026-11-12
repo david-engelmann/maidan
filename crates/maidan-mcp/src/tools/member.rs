@@ -512,7 +512,7 @@ pub(super) async fn get_waiting_inbox(
     )
     .await?;
     let gates = store
-        .list_pending_approval_gates(member.workspace_id, Some(member_id), 200)
+        .list_pending_approval_gates(member.workspace_id, member_id, 200)
         .await?;
     let all_mentions = store.list_mentions_for_member(member_id, 100).await?;
     let last_read = store.get_inbox_last_read_at(member_id).await?;

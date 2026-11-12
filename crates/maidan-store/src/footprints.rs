@@ -162,7 +162,7 @@ pub(crate) fn deferred(thread: &str, now: &str) -> String {
 
 /// `SELECT` of the open, unheld threads in workspace `ws` that the claim
 /// queue defers for their footprint, oldest first, with one flag per reason;
-/// only threads `reader` may read when it is not NULL. At most 200.
+/// only threads `reader` may read. At most 200.
 pub(crate) fn deferred_select(ws: &str, reader: &str, dm_channel: &str, now: &str) -> String {
     let readable = crate::thread_access::readable_thread("cand.id", ws, reader, dm_channel);
     format!(
@@ -175,7 +175,7 @@ pub(crate) fn deferred_select(ws: &str, reader: &str, dm_channel: &str, now: &st
            AND (cand.assignee_id IS NULL
                 OR (cand.assignment_expires_at IS NOT NULL AND cand.assignment_expires_at < {now}))
            AND {}
-           AND ({reader} IS NULL OR {readable})
+           AND {readable}
          ORDER BY cand.created_at, cand.id
          LIMIT 200",
         conflicts_with_live_claims("cand.id", now),

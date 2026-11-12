@@ -114,14 +114,17 @@ async fn work_in_a_held_lane_waits_until_the_claim_ends(store: Arc<dyn Store>) {
         claim(store.as_ref(), &room, 1).await.is_none(),
         "the lane is held, so nothing is handed out"
     );
-    let depth = store.channel_queue_depth(room.channel, None).await.unwrap();
+    let depth = store
+        .channel_queue_depth(room.channel, room.agents[0])
+        .await
+        .unwrap();
     assert_eq!((depth.ready, depth.blocked, depth.assigned), (0, 1, 1));
 
     let active = store
         .list_active_claims(
             room.ws,
             Some("https://github.com/Example/App.git".into()),
-            None,
+            room.agents[0],
         )
         .await
         .unwrap();
@@ -160,7 +163,7 @@ async fn a_lapsed_lease_frees_its_footprint(store: Arc<dyn Store>) {
     assert!(claim(store.as_ref(), &room, 1).await.is_none());
     tokio::time::sleep(Duration::from_millis(2_100)).await;
     assert!(store
-        .list_active_claims(room.ws, None, None)
+        .list_active_claims(room.ws, None, room.agents[0])
         .await
         .unwrap()
         .is_empty());
@@ -308,12 +311,15 @@ async fn workspaces_never_block_each_other(store: Arc<dyn Store>) {
     declare(store.as_ref(), in_b, lane).await;
     assert_eq!(claim(store.as_ref(), &a, 0).await.unwrap().id, in_a);
     assert_eq!(claim(store.as_ref(), &b, 0).await.unwrap().id, in_b);
-    let seen_by_b = store.list_active_claims(b.ws, None, None).await.unwrap();
+    let seen_by_b = store
+        .list_active_claims(b.ws, None, b.agents[0])
+        .await
+        .unwrap();
     assert_eq!(seen_by_b.len(), 1);
     assert_eq!(seen_by_b[0].thread_id, in_b);
     // B's member reading A's workspace sees nothing of it.
     assert!(store
-        .list_active_claims(a.ws, None, Some(b.agents[0]))
+        .list_active_claims(a.ws, None, b.agents[0])
         .await
         .unwrap()
         .is_empty());
@@ -349,11 +355,11 @@ async fn the_claims_list_keeps_to_the_read_rule(store: Arc<dyn Store>) {
         .unwrap()
         .unwrap();
     let member = store
-        .list_active_claims(room.ws, None, Some(room.agents[0]))
+        .list_active_claims(room.ws, None, room.agents[0])
         .await
         .unwrap();
     let outsider = store
-        .list_active_claims(room.ws, None, Some(room.agents[1]))
+        .list_active_claims(room.ws, None, room.agents[1])
         .await
         .unwrap();
     assert_eq!(member.len(), 1);
@@ -436,7 +442,10 @@ async fn a_paused_repository_hands_out_none_of_its_work(store: Arc<dyn Store>) {
         .unwrap()
         .is_empty());
 
-    let depth = store.channel_queue_depth(room.channel, None).await.unwrap();
+    let depth = store
+        .channel_queue_depth(room.channel, room.agents[0])
+        .await
+        .unwrap();
     assert_eq!(
         (depth.assigned, depth.ready, depth.blocked),
         (1, 2, 1),
@@ -455,7 +464,7 @@ async fn a_paused_repository_hands_out_none_of_its_work(store: Arc<dyn Store>) {
         "nothing in the paused repository is handed out"
     );
     let active = store
-        .list_active_claims(room.ws, Some(REPO.into()), None)
+        .list_active_claims(room.ws, Some(REPO.into()), room.agents[0])
         .await
         .unwrap();
     assert_eq!(active.len(), 1, "the claim held before the pause stands");
@@ -627,7 +636,10 @@ async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
         free,
         "the slot is full across repositories, so the third build waits"
     );
-    let depth = store.channel_queue_depth(room.channel, None).await.unwrap();
+    let depth = store
+        .channel_queue_depth(room.channel, room.agents[0])
+        .await
+        .unwrap();
     assert_eq!((depth.assigned, depth.ready, depth.blocked), (3, 0, 1));
     assert_eq!(
         store.list_slots(room.ws).await.unwrap(),
@@ -780,7 +792,10 @@ async fn the_deferred_list_names_why_each_thread_waits(store: Arc<dyn Store>) {
         .await
         .unwrap();
 
-    let deferred = store.list_deferred_threads(room.ws, None).await.unwrap();
+    let deferred = store
+        .list_deferred_threads(room.ws, room.agents[0])
+        .await
+        .unwrap();
     let reasons: Vec<_> = deferred
         .iter()
         .map(|d| (d.thread_id, d.reasons.clone()))
@@ -802,7 +817,7 @@ async fn the_deferred_list_names_why_each_thread_waits(store: Arc<dyn Store>) {
     // A member of another workspace sees none of it.
     let other = room_with_one(store.as_ref()).await;
     assert!(store
-        .list_deferred_threads(room.ws, Some(other))
+        .list_deferred_threads(room.ws, other)
         .await
         .unwrap()
         .is_empty());
@@ -862,7 +877,10 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
                     continue;
                 };
                 claimed += 1;
-                let live = store.list_active_claims(room.ws, None, None).await.unwrap();
+                let live = store
+                    .list_active_claims(room.ws, None, room.agents[0])
+                    .await
+                    .unwrap();
                 let mut lanes = std::collections::HashSet::new();
                 let mut in_slot = 0;
                 for claim in &live {
@@ -901,7 +919,7 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
     }
     assert!(total >= ROUNDS, "the swarm made progress: {total} claims");
     assert!(store
-        .list_active_claims(room.ws, None, None)
+        .list_active_claims(room.ws, None, room.agents[0])
         .await
         .unwrap()
         .is_empty());

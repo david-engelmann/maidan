@@ -19,7 +19,7 @@ pub async fn list_tombstones(
     thread_id: Option<ThreadId>,
     include_purged: bool,
     limit: i64,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let limit = limit.max(1);
     let mut retained =
@@ -45,10 +45,10 @@ async fn list_retained(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     limit: i64,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     // Numbered placeholders throughout: `readable_row`'s member placeholder
-    // appears three times in the generated SQL but binds once.
+    // may appear more than once in the generated SQL but binds once.
     let mut sql = String::from(
         "SELECT m.id, m.thread_id, m.author_id, m.tombstoned_at,
                 t.channel_id, c.workspace_id
@@ -67,7 +67,7 @@ async fn list_retained(
         sql.push_str(&format!(" AND m.thread_id = ?{n}"));
     }
     // Filtered in the query so a tombstone on a thread the reader cannot
-    // read never crowds out the limit; a NULL reader bind keeps every row.
+    // read never crowds out the limit. The reader is required.
     let readable = readable_row(
         "m.thread_id",
         "c.workspace_id",
@@ -87,7 +87,7 @@ async fn list_retained(
     if let Some(tid) = thread_id {
         q = q.bind(tid.0);
     }
-    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(reader_id.0);
     q = q.bind(DM_CHANNEL_NAME);
     q = q.bind(limit);
     let rows = q.fetch_all(pool).await?;
@@ -127,7 +127,7 @@ async fn list_purged(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     limit: i64,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let mut sql = String::from(
         "SELECT id, payload, occurred_at, channel_id, thread_id
@@ -144,7 +144,7 @@ async fn list_purged(
         sql.push_str(&format!(" AND thread_id = ?{n}"));
     }
     // Same in-query read filter as the retained half: the event's thread
-    // decides, and a NULL reader bind keeps every row.
+    // decides. The reader is required.
     let readable = readable_row(
         "thread_id",
         "?1",
@@ -163,7 +163,7 @@ async fn list_purged(
     if let Some(tid) = thread_id {
         q = q.bind(tid.0);
     }
-    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(reader_id.0);
     q = q.bind(DM_CHANNEL_NAME);
     let rows = q.bind(limit).fetch_all(pool).await?;
     let mut out = Vec::new();
@@ -200,27 +200,27 @@ async fn list_purged(
 pub async fn list_message_backlinks(
     pool: &SqlitePool,
     message_id: MessageId,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<MessageBacklinks, StoreError> {
     messages::get(pool, message_id).await?;
-    let references = match reader_id {
-        None => refs::list_to(pool, RefSide::Message, message_id.0).await?,
-        Some(reader) => {
-            // An unreadable target answers empty rather than leaking that
-            // the message exists and is pointed at; a readable target
-            // narrows its references to sources the reader may read.
-            let Some((workspace_id, readable)) =
-                target_read_access(pool, message_id, reader).await?
-            else {
-                return Ok(empty_backlinks(message_id));
-            };
-            if !readable {
-                return Ok(empty_backlinks(message_id));
-            }
-            refs::list_to_for_reader(pool, RefSide::Message, message_id.0, workspace_id, reader)
-                .await?
-        }
+    // An unreadable target answers empty rather than leaking that the
+    // message exists and is pointed at; a readable target narrows its
+    // references to sources the reader may read.
+    let Some((workspace_id, readable)) = target_read_access(pool, message_id, reader_id).await?
+    else {
+        return Ok(empty_backlinks(message_id));
     };
+    if !readable {
+        return Ok(empty_backlinks(message_id));
+    }
+    let references = refs::list_to_for_reader(
+        pool,
+        RefSide::Message,
+        message_id.0,
+        workspace_id,
+        reader_id,
+    )
+    .await?;
     let pins = list_pins_for_message(pool, message_id).await?;
     let reactions = reactions::list(pool, message_id).await?;
     let votes = votes::list(pool, message_id).await?;
@@ -301,7 +301,7 @@ pub async fn event_kind_census(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     deny_channels: &[ChannelId],
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<KindCensus, StoreError> {
     let mut sql = String::from(
         "SELECT kind, COUNT(*) AS count
@@ -329,7 +329,7 @@ pub async fn event_kind_census(
         ));
     }
     // Counts cover only events on threads the reader may read (thread-less
-    // events are the workspace's own); a NULL reader bind counts everything.
+    // events are the workspace's own). The reader is required.
     let readable = readable_row(
         "thread_id",
         "?1",
@@ -349,7 +349,7 @@ pub async fn event_kind_census(
     for cid in deny_channels {
         q = q.bind(cid.0);
     }
-    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(reader_id.0);
     q = q.bind(DM_CHANNEL_NAME);
     let rows = q.fetch_all(pool).await?;
     let mut counts = Vec::new();

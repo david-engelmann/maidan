@@ -161,6 +161,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
 
     let other = workspace(store, "counts-elsewhere").await;
     let foreign = channel(store, other, "open", false).await;
+    let local = member(store, other, "local").await;
     for _ in 0..3 {
         thread(store, foreign).await;
     }
@@ -169,10 +170,9 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     // working: one held. secret: two ready. __dm__: one ready.
     let public = depth(5, 1, 2, 1, 1);
     let cases = [
-        (Some(agent), public.clone()),
-        (Some(insider), add(public.clone(), depth(2, 2, 0, 0, 0))),
-        (Some(alice), add(public.clone(), depth(1, 1, 0, 0, 0))),
-        (None, add(public.clone(), depth(3, 3, 0, 0, 0))),
+        (agent, public.clone()),
+        (insider, add(public.clone(), depth(2, 2, 0, 0, 0))),
+        (alice, add(public.clone(), depth(1, 1, 0, 0, 0))),
     ];
     for (reader, expected) in cases {
         let got = store
@@ -193,7 +193,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
 
     assert_eq!(
         store
-            .channel_queue_depth(dm_channel, Some(agent))
+            .channel_queue_depth(dm_channel, agent)
             .await
             .expect("dm depth"),
         depth(0, 0, 0, 0, 0),
@@ -201,7 +201,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
     assert_eq!(
         store
-            .channel_queue_depth(dm_channel, Some(bob))
+            .channel_queue_depth(dm_channel, bob)
             .await
             .expect("dm depth")
             .open,
@@ -211,7 +211,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
 
     assert_eq!(
         store
-            .workspace_queue_depth(other, Some(agent), None, None, None)
+            .workspace_queue_depth(other, agent, None, None, None)
             .await
             .expect("foreign depth"),
         depth(0, 0, 0, 0, 0),
@@ -219,7 +219,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
     assert_eq!(
         store
-            .channel_queue_depth(foreign, Some(agent))
+            .channel_queue_depth(foreign, agent)
             .await
             .expect("foreign channel depth"),
         depth(0, 0, 0, 0, 0),
@@ -227,7 +227,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
     assert_eq!(
         store
-            .workspace_queue_depth(other, None, None, None, None)
+            .workspace_queue_depth(other, local, None, None, None)
             .await
             .expect("foreign depth")
             .open,
@@ -236,7 +236,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
 
     let occupancy = store
-        .workspace_occupancy(ws, Some(agent))
+        .workspace_occupancy(ws, agent)
         .await
         .expect("occupancy");
     assert_eq!(
@@ -251,14 +251,14 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
         "queued is ready: the parked thread is not handed out, so it is not queued"
     );
     let insider_occupancy = store
-        .workspace_occupancy(ws, Some(insider))
+        .workspace_occupancy(ws, insider)
         .await
         .expect("occupancy");
     assert_eq!(insider_occupancy.open, 7);
     assert_eq!(insider_occupancy.queued, 3);
     assert_eq!(
         store
-            .workspace_occupancy(other, Some(agent))
+            .workspace_occupancy(other, agent)
             .await
             .expect("foreign occupancy")
             .open,
@@ -267,14 +267,14 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     let mut summed_open = 0;
     for ch in [open, working_channel, secret, dm_channel] {
         summed_open += store
-            .channel_occupancy(ch, Some(alice))
+            .channel_occupancy(ch, alice)
             .await
             .expect("channel occupancy")
             .open;
     }
     assert_eq!(
         store
-            .workspace_occupancy(ws, Some(alice))
+            .workspace_occupancy(ws, alice)
             .await
             .expect("occupancy")
             .open,
@@ -374,19 +374,13 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
                 store.add_thread_dependency(t, dep).await.expect("dep");
             }
         }
-        let got = store
-            .channel_queue_depth(ch, Some(agent))
-            .await
-            .expect("depth");
+        let got = store.channel_queue_depth(ch, agent).await.expect("depth");
         assert_eq!(
             got,
             depth(1, ready, 0, blocked, unclaimable),
             "{kind:?} depth"
         );
-        let occupancy = store
-            .channel_occupancy(ch, Some(agent))
-            .await
-            .expect("occupancy");
+        let occupancy = store.channel_occupancy(ch, agent).await.expect("occupancy");
         assert_eq!(occupancy.queued, ready, "{kind:?} queued");
         assert_eq!(occupancy.blocked, 1 - ready, "{kind:?} blocked");
         let by_run = store.run_occupancy(ws, &run).await.expect("run occupancy");
@@ -423,7 +417,7 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
         );
     }
     let foreign_depth = store
-        .channel_queue_depth(foreign, Some(outsider))
+        .channel_queue_depth(foreign, outsider)
         .await
         .expect("foreign depth");
     assert_eq!(foreign_depth.ready, 1, "the other workspace keeps its own");
