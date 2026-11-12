@@ -10,8 +10,8 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 
 use maidan::{
-    Client, DelegateOptions, Footprint, FootprintItem, FootprintKind, FootprintMode, MaidanError,
-    ReviewDecision, ReviewOptions,
+    ApprovalRequestOptions, Client, DelegateOptions, Footprint, FootprintItem, FootprintKind,
+    FootprintMode, MaidanError, ReviewDecision, ReviewOptions,
 };
 use serde_json::{json, Value};
 
@@ -109,6 +109,19 @@ fn call(c: &Client, op: &str) -> Result<Vec<String>, MaidanError> {
             .iter()
             .flat_map(|g| g.unknown_members())
             .collect(),
+        "approval_gates.request" => c
+            .approval_gates()
+            .request(
+                "w1",
+                "Ship the release?",
+                &ApprovalRequestOptions {
+                    thread_id: Some("t1"),
+                    risk: Some("high"),
+                    ..Default::default()
+                },
+            )?
+            .unknown_members(),
+        "approval_gates.get" => c.approval_gates().get("g1")?.unknown_members(),
         "approval_gates.answer" => c
             .approval_gates()
             .answer("g1", "ab12", "decline", None)?

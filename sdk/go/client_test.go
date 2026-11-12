@@ -583,3 +583,58 @@ func TestFootprintAndReviewsStayInTheirWorkspace(t *testing.T) {
 		t.Fatalf("a refused write changed the footprint: %+v", got)
 	}
 }
+
+func TestAGateOpenedOverRESTReadsBackAndItsAnswerIsHeard(t *testing.T) {
+	c := testClient(t)
+	strictDecoding(t)
+	otherToken := os.Getenv("MAIDAN_OTHER_TOKEN")
+	if otherToken == "" {
+		t.Fatal("scripts/sdk-test.sh provisions a second workspace")
+	}
+	wid, memberID, _, thread := seed(t, c)
+	gate := must(c.ApprovalGates.Request(wid, "Ship the go release?", &ApprovalRequestOptions{ThreadID: thread.ID, Risk: "low"}))
+	if gate.State != "pending" || gate.RequestedBy != memberID || gate.ThreadID == nil || *gate.ThreadID != thread.ID {
+		t.Fatalf("opened gate %+v", gate)
+	}
+	if got := must(c.ApprovalGates.Get(gate.ID)); got.ID != gate.ID || got.State != "pending" {
+		t.Fatalf("read back %+v", got)
+	}
+
+	var ae *APIError
+	if _, err := New(os.Getenv("MAIDAN_URL"), otherToken).ApprovalGates.Get(gate.ID); !errors.As(err, &ae) || ae.Status != 404 {
+		t.Fatalf("a second workspace reading the gate: expected a 404, got %v", err)
+	}
+
+	var requestState string
+	for _, v := range must(c.ApprovalGates.List(wid)) {
+		if v.Gate.ID == gate.ID {
+			requestState = v.RequestState
+		}
+	}
+	if requestState == "" {
+		t.Fatal("the pending gate is not listed")
+	}
+	if _, err := c.ApprovalGates.Answer(gate.ID, requestState, "accept", nil); !errors.As(err, &ae) || ae.Status != 403 {
+		t.Fatalf("the requester accepting their own gate: expected a 403, got %v", err)
+	}
+
+	answered := make(chan error, 1)
+	go func() {
+		time.Sleep(time.Second)
+		_, err := c.ApprovalGates.Answer(gate.ID, requestState, "cancel", nil)
+		answered <- err
+	}()
+	event, err := c.WaitForApprovalDecision(gate.ID, wid, 20*time.Second)
+	if err := <-answered; err != nil {
+		t.Fatal(err)
+	}
+	if err != nil || event == nil {
+		t.Fatalf("no approval_resolved within the timeout: %v", err)
+	}
+	if event["gate_id"] != gate.ID || event["state"] != "cancelled" || event["resolved_by"] != memberID {
+		t.Fatalf("event %v", event)
+	}
+	if got := must(c.ApprovalGates.Get(gate.ID)); got.State != "cancelled" {
+		t.Fatalf("after the answer %+v", got)
+	}
+}

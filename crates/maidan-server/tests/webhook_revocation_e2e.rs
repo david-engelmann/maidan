@@ -111,7 +111,10 @@ fn cached(state: &AppState, id: WebhookSubscriptionId) -> bool {
 async fn a_revoked_webhook_gets_no_retries_and_an_unreadable_secret_does_not_stall_the_queue() {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let h = harness().await;
     let state = &h.state;
     let store = state.store.as_ref();

@@ -379,3 +379,35 @@ test("a footprint and a thread's reviews stay in their workspace", async () => {
   }
   assert.deepEqual(await client.threads.getFootprint(thread.id), stored, "a refused write changed the footprint");
 });
+
+test("a gate opened over REST reads back and its answer is heard", async () => {
+  assert.ok(OTHER_TOKEN && OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace");
+  const { member, thread } = await seed();
+  const gate = assertShape(
+    await client.approvalGates.request(WORKSPACE, "Ship the ts release?", { threadId: thread.id, risk: "low" }),
+    "ApprovalGate",
+  );
+  assert.deepEqual([gate.state, gate.requested_by, gate.thread_id, gate.risk], ["pending", member.id, thread.id, "low"]);
+  assert.deepEqual(await client.approvalGates.get(gate.id), gate);
+
+  await assert.rejects(new Client(BASE, OTHER_TOKEN).approvalGates.get(gate.id), (err) => {
+    assert.ok(err instanceof MaidanError);
+    assert.equal(err.status, 404);
+    return true;
+  });
+
+  const view = (await client.approvalGates.list(WORKSPACE)).find((v) => v.gate.id === gate.id);
+  assert.ok(view, "the pending gate is listed");
+  await assert.rejects(client.approvalGates.answer(gate.id, view.request_state, "accept"), (err) => {
+    assert.equal(err.status, 403, "nobody accepts a gate they asked for");
+    return true;
+  });
+
+  const waiting = client.waitForApprovalDecision(gate.id, WORKSPACE, 20000);
+  await new Promise((r) => setTimeout(r, 1000));
+  await client.approvalGates.answer(gate.id, view.request_state, "cancel");
+  const event = await waiting;
+  assert.ok(event, "no approval_resolved within the timeout");
+  assert.deepEqual([event.gate_id, event.state, event.resolved_by], [gate.id, "cancelled", member.id]);
+  assert.equal((await client.approvalGates.get(gate.id)).state, "cancelled");
+});

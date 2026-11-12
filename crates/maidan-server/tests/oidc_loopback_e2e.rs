@@ -284,9 +284,11 @@ impl EnvGuard {
             match value {
                 // SAFETY: test setup. Maidan reads this variable only through std,
                 // whose environment lock serializes the read with this write.
+                #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
                 Some(value) => unsafe { std::env::set_var(name, value) },
                 // SAFETY: test setup. Maidan reads this variable only through std,
                 // whose environment lock serializes the read with this write.
+                #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
                 None => unsafe { std::env::remove_var(name) },
             }
         }
@@ -300,9 +302,11 @@ impl Drop for EnvGuard {
             match value {
                 // SAFETY: test setup. Maidan reads this variable only through std,
                 // whose environment lock serializes the read with this write.
+                #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
                 Some(value) => unsafe { std::env::set_var(name, value) },
                 // SAFETY: test setup. Maidan reads this variable only through std,
                 // whose environment lock serializes the read with this write.
+                #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
                 None => unsafe { std::env::remove_var(name) },
             }
         }

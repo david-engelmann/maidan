@@ -32,3 +32,6 @@ uuid.workspace = true
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"

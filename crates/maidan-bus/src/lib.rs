@@ -9,6 +9,8 @@
 //!   payloads larger than the Postgres NOTIFY limit (~7.9 KB) are
 //!   rejected with [`BusError::PayloadTooLarge`].
 
+#![forbid(unsafe_code)]
+
 pub mod error;
 pub mod hydrate_stats;
 pub mod inmem;

@@ -63,3 +63,6 @@ harness = false
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"

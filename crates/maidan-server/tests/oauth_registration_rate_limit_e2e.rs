@@ -17,6 +17,7 @@ static ENV: Once = Once::new();
 /// The limiter's buckets are process-global; each test keys its traffic by
 /// its own forwarded addresses.
 fn env() {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     ENV.call_once(|| unsafe {
         std::env::set_var("MAIDAN_OAUTH_REGISTER_RATE_LIMIT_MAX", "3");
         std::env::set_var("MAIDAN_OAUTH_REGISTER_RATE_LIMIT_WINDOW_SECS", "3600");

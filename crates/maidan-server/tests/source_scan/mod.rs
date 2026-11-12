@@ -266,6 +266,42 @@ fn end_of_item(src: &[u8], mut i: usize) -> usize {
     src.len()
 }
 
+/// Files a `#[cfg(test)] mod name;` declares, which only a test build compiles,
+/// so a scan of shipped code leaves them out (the `McpServer` tests under
+/// `maidan-mcp/src/server/tests/`, `agent_gap_tests.rs`).
+pub fn test_only_modules(files: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for file in files {
+        let source = std::fs::read_to_string(file).unwrap();
+        let mut lines = source.lines().map(str::trim);
+        while let Some(line) = lines.next() {
+            if line != "#[cfg(test)]" {
+                continue;
+            }
+            let Some(next) = lines.next() else { break };
+            let Some(name) = next
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ")
+                .strip_prefix("mod ")
+                .and_then(|rest| rest.strip_suffix(';'))
+            else {
+                continue;
+            };
+            let dir = file.parent().unwrap();
+            let stem = file.file_stem().unwrap();
+            let base = if stem == "mod" || stem == "lib" || stem == "main" {
+                dir.to_path_buf()
+            } else {
+                dir.join(stem)
+            };
+            out.push(base.join(format!("{name}.rs")));
+            out.push(dir.join(format!("{name}.rs")));
+            out.push(base.join(name).join("mod.rs"));
+        }
+    }
+    out
+}
+
 /// `source` with every `#[cfg(test)]` item blanked out, line breaks kept so
 /// line numbers still match. A marker inside a comment or a literal is left
 /// alone, and the code after it is not blanked.

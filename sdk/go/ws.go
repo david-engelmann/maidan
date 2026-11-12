@@ -75,6 +75,12 @@ func (c *Client) SubscribeFrom(filter M, afterID int64, consumerID string, onEve
 }
 
 func (c *Client) waitForKind(filter M, kind string, timeout time.Duration) (Event, error) {
+	return c.waitForKindMatching(filter, kind, timeout, nil)
+}
+
+// waitForKindMatching is waitForKind for the first event match accepts (any,
+// when match is nil).
+func (c *Client) waitForKindMatching(filter M, kind string, timeout time.Duration, match func(Event) bool) (Event, error) {
 	f := M{}
 	for k, v := range filter {
 		f[k] = v
@@ -82,6 +88,9 @@ func (c *Client) waitForKind(filter M, kind string, timeout time.Duration) (Even
 	f["kinds"] = []string{kind}
 	ch := make(chan Event, 1)
 	sub, err := c.Subscribe(f, func(e Event) {
+		if match != nil && !match(e) {
+			return
+		}
 		select {
 		case ch <- e:
 		default:
@@ -123,6 +132,17 @@ func (c *Client) WaitForReady(workspaceID, channelID string, timeout time.Durati
 // timeout (nil, nil). Answer it with ApprovalGatesService.Answer.
 func (c *Client) WaitForApprovalRequest(workspaceID string, timeout time.Duration) (Event, error) {
 	return c.waitForKind(M{"workspace_id": workspaceID}, "approval_requested", timeout)
+}
+
+// WaitForApprovalDecision blocks until the gate is answered (its
+// approval_resolved event, with state accepted, declined or cancelled), or
+// timeout (nil, nil). Only an answer given after the wait starts is heard;
+// read a gate that may already be answered with ApprovalGatesService.Get.
+func (c *Client) WaitForApprovalDecision(gateID, workspaceID string, timeout time.Duration) (Event, error) {
+	return c.waitForKindMatching(M{"workspace_id": workspaceID}, "approval_resolved", timeout, func(e Event) bool {
+		id, _ := e["gate_id"].(string)
+		return id == gateID
+	})
 }
 
 // Follow is the projector shape for HTTP backfill then WS cutover.

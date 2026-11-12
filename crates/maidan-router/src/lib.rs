@@ -3,6 +3,8 @@
 //! HTTP handlers and MCP fan-out call into this crate instead of duplicating
 //! `get_thread` → `get_channel` chains against [`maidan_store::Store`].
 
+#![forbid(unsafe_code)]
+
 pub mod error;
 pub mod mentions;
 pub mod resolve;

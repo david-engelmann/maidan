@@ -879,15 +879,59 @@ impl Reviews<'_> {
 
 // --- Approval gates ---
 
-/// The human side of approval gates. Accepting needs a person's signed-in
-/// session or a token holding `approval:grant`, and nobody accepts a gate they
-/// asked for; declining or cancelling needs `workspace:write`. A gate is opened
-/// over MCP (`request_approval`).
+/// The optional fields of a new gate. `thread_id` holds that thread from
+/// claim-next while the gate is pending; `risk` is `low`, `medium` or `high`
+/// (the server's default when `None`).
+#[derive(Debug, Default, Clone)]
+pub struct ApprovalRequestOptions<'a> {
+    pub schema: Option<&'a Value>,
+    pub thread_id: Option<&'a str>,
+    pub risk: Option<&'a str>,
+}
+
+/// Opening and reading approval gates, and their human side.
+/// [`ApprovalGates::request`] opens one and [`ApprovalGates::get`] reads it
+/// back; [`Client::wait_for_approval_decision`] waits for its answer.
+/// Accepting needs a person's signed-in session or a token holding
+/// `approval:grant`, and nobody accepts a gate they asked for; declining or
+/// cancelling needs `workspace:write`.
 pub struct ApprovalGates<'a> {
     c: &'a Client,
 }
 
 impl ApprovalGates<'_> {
+    /// Open a gate for a person to answer (`message:post`), the twin of MCP
+    /// `request_approval`. The gate is the caller's and starts `pending`.
+    pub fn request(
+        &self,
+        workspace_id: &str,
+        prompt: &str,
+        opts: &ApprovalRequestOptions<'_>,
+    ) -> Result<ApprovalGate> {
+        let mut body = json!({ "prompt": prompt });
+        if let Some(schema) = opts.schema {
+            body["schema"] = schema.clone();
+        }
+        if let Some(thread_id) = opts.thread_id {
+            body["thread_id"] = json!(thread_id);
+        }
+        if let Some(risk) = opts.risk {
+            body["risk"] = json!(risk);
+        }
+        self.c.send_as(
+            "POST",
+            &format!("/workspaces/{workspace_id}/approval-gates"),
+            Some(&body),
+        )
+    }
+
+    /// One gate, pending or answered. A gate the caller cannot read is a 404,
+    /// the same as no gate.
+    pub fn get(&self, gate_id: &str) -> Result<ApprovalGate> {
+        self.c
+            .send_as("GET", &format!("/approval-gates/{gate_id}"), None)
+    }
+
     /// The workspace's pending gates, each with the `request_state` an answer
     /// must echo.
     pub fn list(&self, workspace_id: &str) -> Result<Vec<ApprovalGateView>> {

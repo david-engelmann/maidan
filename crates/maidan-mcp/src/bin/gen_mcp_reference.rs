@@ -1,5 +1,7 @@
 //! Write MCP reference markdown for mdBook (`book/src/mcp-reference.md`).
 
+#![forbid(unsafe_code)]
+
 use std::{env, fs, path::PathBuf};
 
 fn main() -> std::io::Result<()> {

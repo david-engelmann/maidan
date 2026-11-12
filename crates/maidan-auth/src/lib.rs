@@ -1,6 +1,8 @@
 //! AuthN/AuthZ for Maidan: API token hashing, capability vocabulary, and
 //! bearer resolution against the store.
 
+#![deny(unsafe_code)]
+
 pub mod access;
 pub mod approval_confirmation;
 pub mod authorization;

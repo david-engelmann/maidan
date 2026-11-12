@@ -601,7 +601,10 @@ mod tests {
     async fn a2a_push_retries_then_succeeds_with_credentials() {
         // SAFETY: test setup. Maidan reads this variable only through std,
         // whose environment lock serializes the read with this write.
-        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+        };
         let (url, hits, seen) = push_server(2).await;
         let headers = PushHeaders {
             authorization: Some("Bearer s3cret".into()),
@@ -622,7 +625,10 @@ mod tests {
     async fn a2a_push_gives_up_after_max_attempts() {
         // SAFETY: test setup. Maidan reads this variable only through std,
         // whose environment lock serializes the read with this write.
-        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+        };
         let (url, hits, seen) = push_server(u32::MAX).await;
         deliver_a2a_push(
             &url,

@@ -27,6 +27,8 @@
 //! memory through stdout. Wall-clock is the caller's job — `dispatch_slash_command`
 //! already applies its own timeout.
 
+#![forbid(unsafe_code)]
+
 use std::sync::{Arc, Mutex};
 
 use maidan_types::wasi::{

@@ -14,6 +14,7 @@ static AUTO_EXT: Once = Once::new();
 
 #[cfg(feature = "sqlite-vec")]
 #[link(name = "sqlite_vec0")]
+#[allow(unsafe_code)] // sqlite-vec FFI, statically linked, `sqlite-vec` feature only
 unsafe extern "C" {
     fn sqlite3_vec_init(
         db: *mut sqlite3,
@@ -27,6 +28,7 @@ unsafe extern "C" {
 /// Call before opening pools when not using [`pool_options`].
 pub fn ensure_auto_extension() {
     #[cfg(feature = "sqlite-vec")]
+    #[allow(unsafe_code)] // sqlite-vec FFI, statically linked, `sqlite-vec` feature only
     AUTO_EXT.call_once(|| unsafe {
         libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute::<
             *const (),
@@ -81,6 +83,7 @@ pub async fn load_on_connection(conn: &mut SqliteConnection) -> Result<(), sqlx:
     {
         let mut handle = conn.lock_handle().await?;
         let db = handle.as_raw_handle();
+        #[allow(unsafe_code)] // sqlite-vec FFI, statically linked, `sqlite-vec` feature only
         let rc = unsafe { sqlite3_vec_init(db.as_ptr(), std::ptr::null_mut(), std::ptr::null()) };
         if rc != SQLITE_OK {
             return Err(sqlx::Error::Configuration(

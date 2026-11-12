@@ -21,6 +21,7 @@ async fn spawn() -> (
     Tenant,
     Tenant,
 ) {
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
     unsafe {
         // The per-client limit (1200 a minute) would stop this one client long
         // before the workspace default; turn it off to see the workspace's.
