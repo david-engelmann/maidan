@@ -244,7 +244,7 @@ async fn run_suite(store: &dyn Store) {
     // the classification of the thread they share: the channel view has always
     // counted this block row as `blocked`, and now the run view does too.
     let channel_view = store
-        .channel_occupancy(parent.channel_id, None)
+        .channel_occupancy(parent.channel_id, member)
         .await
         .expect("channel occupancy");
     assert_eq!(

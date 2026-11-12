@@ -416,6 +416,9 @@ mod read_visibility;
 #[path = "../reader_pool.rs"]
 mod reader_pool;
 
+#[path = "../reader_required.rs"]
+mod reader_required;
+
 #[path = "../recipes.rs"]
 mod recipes;
 

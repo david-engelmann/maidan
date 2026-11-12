@@ -232,7 +232,7 @@ pub async fn list_approval_gates(
         .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
     let gates = state
         .store
-        .list_pending_approval_gates(workspace_id, Some(auth.member_id()), 200)
+        .list_pending_approval_gates(workspace_id, auth.member_id(), 200)
         .await?;
     let mut requests = state
         .store

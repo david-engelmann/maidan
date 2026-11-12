@@ -362,7 +362,7 @@ pub async fn list_workspace_threads(
                 after: q.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: Some(auth.member_id()),
+                reader_id: auth.member_id(),
             },
         )
         .await?;

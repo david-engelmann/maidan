@@ -562,7 +562,7 @@ pub async fn list_workspace_tombstones(
     let limit = maidan_types::clamp_tombstone_limit(q.limit);
     // Read access is filtered in the query now, so no per-row access check
     // runs after the page is cut.
-    let reader_id = Some(auth.member_id());
+    let reader_id = auth.member_id();
     let rows = state
         .store
         .list_tombstones(
@@ -598,7 +598,7 @@ pub async fn get_workspace_kind_census(
     }
     let deny =
         maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
-    let reader_id = Some(auth.member_id());
+    let reader_id = auth.member_id();
     Ok(Json(
         state
             .store
@@ -997,7 +997,7 @@ pub async fn get_workspace_context(
     };
     // The thread page is filtered by the caller's access in the query, so
     // the pack needs no per-thread access check after it is built.
-    let reader_id = Some(auth.member_id());
+    let reader_id = auth.member_id();
     let packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
         workspace_id,

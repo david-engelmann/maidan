@@ -259,11 +259,14 @@ async fn a_read_only_token_cannot_open_a_group_dm_or_an_approval_gate() {
             .expect_err(name);
         assert_forbidden(err);
     }
+    // Each workspace's gates as one of its own members reads them; the gate
+    // would sit on `thread_a`, which `ada` reads.
     let pending = |ws: WorkspaceId| {
         let store = server.store.clone();
+        let reader = if ws == workspace { ada } else { outsiders[0] };
         async move {
             store
-                .list_pending_approval_gates(ws, None, 50)
+                .list_pending_approval_gates(ws, reader, 50)
                 .await
                 .unwrap()
         }

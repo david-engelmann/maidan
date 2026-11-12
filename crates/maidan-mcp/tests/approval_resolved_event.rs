@@ -111,7 +111,7 @@ async fn approval_decide_announces_approval_resolved_to_the_gates_workspace_only
     let server = McpServer::new(
         store.clone(),
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
-        Arc::new(maidan_search::SqliteSearch::new(pool)),
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone())),
         Arc::new(HashV1Provider),
     )
     .with_event_bus(bus);
@@ -136,11 +136,14 @@ async fn approval_decide_announces_approval_resolved_to_the_gates_workspace_only
         matches!(refused, Err(McpError::Forbidden(_))),
         "a thread the caller cannot read must be refused, got {refused:?}"
     );
-    assert!(store
-        .list_pending_approval_gates(home, None, 50)
-        .await
-        .unwrap()
-        .is_empty());
+    // Counted in the table: no member reads a gate on a channel nobody is in.
+    let gates: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM maidan_approval_gates WHERE workspace_id = ?")
+            .bind(home.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(gates, 0);
     assert!(next_event(&mut home_events).await.is_none());
 
     let opened = body(
