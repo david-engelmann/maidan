@@ -32,7 +32,7 @@ mod source_scan;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use source_scan::{rust_files, without_tests};
+use source_scan::{rust_files, test_only_modules, without_tests};
 
 /// Store calls that change authority. Each has an `_audited` twin.
 const UNAUDITED: &[&str] = &[
@@ -153,6 +153,8 @@ fn production_rust(root: &Path) -> Vec<PathBuf> {
     if examples.exists() {
         rust_files(&examples, &mut files);
     }
+    let test_only = test_only_modules(&files);
+    files.retain(|f| !test_only.contains(f));
     files.sort();
     files
 }
