@@ -1141,6 +1141,18 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/approval-gates",
+    "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/approval-gates/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/approval-gates/{id}/answer",
     "capability": "workspace:write",
     "surface": "http"

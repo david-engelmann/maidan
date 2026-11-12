@@ -1,7 +1,13 @@
-//! Approval-gate REST surface: the human side of the held gate.
+//! Approval-gate REST surface: opening a gate, reading one, and the human
+//! side of the held gate.
 //!
-//! A workspace member lists the pending gates (each carrying a server-issued
-//! `request_state`) and answers one accept/decline/cancel. The `request_state`
+//! A caller opens a gate (`POST /workspaces/:wid/approval-gates`, the twin of
+//! MCP `request_approval`) and reads it back by id (`GET
+//! /approval-gates/:id`, the twin of `get_approval_gate`). A workspace member
+//! lists the pending gates (each carrying a server-issued `request_state`)
+//! and answers one accept/decline/cancel; every answer appends an
+//! `approval_resolved` event, so a requester waits on the stream rather than
+//! polling. The `request_state`
 //! is an HMAC over the gate id — the `/ui` is an untrusted client, so the
 //! answer must echo a token the server actually issued, verified before the
 //! resolve. The resolve is a compare-and-set on `pending`, so a second answer —
@@ -11,16 +17,22 @@
 //! token whose member is a human is exactly the token a person hands an agent,
 //! so it proves nothing about who decided. See [`acceptance_credential`].
 
-use axum::{extract::State, http::HeaderMap, Extension, Json};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    Extension, Json,
+};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{APPROVAL_GRANT, CHANNEL_ADMIN, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{
+        APPROVAL_GRANT, CHANNEL_ADMIN, MESSAGE_POST, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    },
     AuthContext,
 };
 use maidan_store::approval_policy::CONFIRM_LINK_TTL_SECONDS_RANGE;
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateKind, ApprovalGateState, ApprovalPolicy, AuditScope,
-    ConfirmOutcome, MemberKind, NewAuditEvent, WorkspaceId,
+    ConfirmOutcome, MemberKind, NewApprovalGate, NewAuditEvent, WorkspaceId,
 };
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -136,6 +148,69 @@ fn round_cap_refusal(result: ApiResult<()>) -> ApiResult<()> {
         Err(ApiError::Forbidden(_)) => Err(ApiError::Forbidden(ROUND_CAP_REFUSAL.into())),
         other => other,
     }
+}
+
+/// `POST /workspaces/:wid/approval-gates`: open a durable approval gate, the
+/// REST twin of MCP `request_approval`. `message:post`, as there: a gate asks
+/// a person to decide and notifies them, so a read-only token cannot open one.
+///
+/// The gate is `pending` and attributed to the caller (and to the person a
+/// delegated token acts for), never to anyone the body names, so the rule
+/// that nobody accepts their own request holds for a gate opened here. A
+/// `thread_id` must be a thread the caller can read; any other answers 404,
+/// so a thread id is no oracle across tenants or into a private channel. The
+/// gate and its `approval_requested` event are written in one transaction.
+/// Answers `201` with the gate; poll `GET /approval-gates/:id` or wait for
+/// `approval_resolved` on the stream.
+pub async fn request_approval_gate(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<RequestApprovalGate>,
+) -> ApiResult<(StatusCode, Json<ApprovalGate>)> {
+    cap(&auth, MESSAGE_POST)?;
+    let workspace_id = WorkspaceId(wid);
+    ensure_workspace(&auth, workspace_id)?;
+    if let Some(thread_id) = body.thread_id
+        && !maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id).await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    let (gate, event) = state
+        .store
+        .create_approval_gate_with_event(&NewApprovalGate {
+            workspace_id,
+            thread_id: body.thread_id,
+            requested_by: auth.member_id(),
+            prompt: body.prompt,
+            schema: body.schema,
+            risk: body.risk,
+        })
+        .await?;
+    super::publish_stored(&state, event).await;
+    Ok((StatusCode::CREATED, Json(gate)))
+}
+
+/// `GET /approval-gates/:id`: one gate by id, the REST twin of MCP
+/// `get_approval_gate`. `workspace:read`. Its `state` is `pending` until
+/// someone answers, then `accepted`, `declined` or `cancelled` with any
+/// `content` they gave. A gate in another workspace, or on a thread the
+/// caller cannot read, is 404, the same as no gate at all (`can_read_gate`).
+pub async fn get_approval_gate(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ApprovalGate>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let gate = state
+        .store
+        .get_approval_gate(ApprovalGateId(id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if !maidan_auth::can_read_gate(state.store.as_ref(), &auth, &gate).await? {
+        return Err(ApiError::NotFound);
+    }
+    Ok(Json(gate))
 }
 
 /// List a workspace's pending approval gates, each with its `request_state`.
@@ -267,7 +342,10 @@ pub async fn answer_approval_gate(
         .resolve_approval_gate(gate_id, auth.member_id(), target, body.content.as_ref())
         .await?
     {
-        Some(resolved) => Ok(Json(resolved)),
+        Some((resolved, event)) => {
+            super::publish_stored(&state, event).await;
+            Ok(Json(resolved))
+        }
         // The CAS found no pending row — already resolved. Silence and
         // double-answers cannot flip an outcome.
         None => Err(ApiError::Conflict("gate is already resolved".into())),
@@ -444,7 +522,11 @@ pub async fn confirm_approval_gate(
         )
         .await?;
     match outcome {
-        ConfirmOutcome::Accepted(gate) => Ok(Json(*gate)),
+        ConfirmOutcome::Accepted(accepted) => {
+            let (gate, event) = *accepted;
+            super::publish_stored(&state, event).await;
+            Ok(Json(gate))
+        }
         ConfirmOutcome::NotFound => Err(ApiError::NotFound),
         ConfirmOutcome::GateResolved => Err(ApiError::Conflict("gate is already resolved".into())),
     }

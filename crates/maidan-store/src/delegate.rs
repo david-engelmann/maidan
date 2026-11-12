@@ -913,7 +913,7 @@ macro_rules! store_delegations {
                 resolved_by: MemberId,
                 state: ApprovalGateState,
                 content: Option<&serde_json::Value>,
-            ) -> Result<Option<ApprovalGate>, StoreError> {
+            ) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError> {
                 approval_gates::resolve(self.pool(), id, resolved_by, state, content).await
             }
 
@@ -925,7 +925,7 @@ macro_rules! store_delegations {
                 content: Option<&serde_json::Value>,
                 via: &GateDecisionVia,
                 audit: crate::AuditFor<ApprovalGate>,
-            ) -> Result<Option<ApprovalGate>, StoreError> {
+            ) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError> {
                 approval_gates::resolve_audited(
                     self.pool(),
                     id,

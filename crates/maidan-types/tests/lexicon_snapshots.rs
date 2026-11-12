@@ -226,6 +226,16 @@ fn sample_event(kind: EventKind) -> Event {
             gate_id: maidan_types::ApprovalGateId(id(10)),
             requested_by: member_id,
         },
+        EventKind::ApprovalResolved => Event::ApprovalResolved {
+            occurred_at,
+            workspace_id,
+            channel_id: Some(channel_id),
+            thread_id: Some(thread_id),
+            gate_id: maidan_types::ApprovalGateId(id(10)),
+            state: maidan_types::ApprovalGateState::Accepted,
+            requested_by: member_id,
+            resolved_by: maidan_types::MemberId(id(13)),
+        },
         EventKind::ThreadBlocked => Event::ThreadBlocked {
             occurred_at,
             workspace_id,
@@ -656,6 +666,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadCancelled
             | EventKind::ThreadAttributesSet
             | EventKind::ApprovalRequested
+            | EventKind::ApprovalResolved
             | EventKind::ThreadBlocked
             | EventKind::BlockedResolved
             | EventKind::StatusDeclared

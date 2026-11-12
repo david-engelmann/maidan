@@ -1622,10 +1622,25 @@ way to send work back.
 `request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns
 `{status: "input_required", gate_id}` immediately. It does not block, and the
 server never calls back into your client — poll `get_approval_gate {gate_id}` for
-the answer. A human resolves the gate as accepted, declined, or cancelled in the
-`/ui` console or with `POST /approval-gates/:id/answer`; silence is never
-consent, so an unanswered gate stays `pending` indefinitely. Over REST, open a
-gate with `POST /workspaces/{wid}/approval-gates`.
+the answer, or wait for the `approval_resolved` event. A human resolves the gate
+as accepted, declined, or cancelled in the `/ui` console or with
+`POST /approval-gates/:id/answer`; silence is never consent, so an unanswered
+gate stays `pending` indefinitely.
+
+Over REST, open a gate with `POST /workspaces/{wid}/approval-gates` (the same
+body, `message:post`; it answers `201` with the pending gate) and read it with
+`GET /approval-gates/{id}` (`workspace:read`). A `thread_id` you cannot read is
+`404` on both surfaces, and so is a gate in another workspace or on a thread you
+cannot read. The gate is always the caller's: the body names no requester, so
+the rule that nobody accepts their own request holds however it was opened.
+
+Every answer appends `approval_resolved` (`gate_id`, `state`, `requested_by`,
+`resolved_by`, and the gate's `thread_id` and `channel_id` when it has one) in
+the same transaction, whichever surface answered: REST, the console, MCP
+`approval_decide`, or a confirmation link. A refused second answer appends
+nothing. It reaches the WebSocket, `GET /mcp/stream` and `wait_for_event`
+under the same visibility rule as the gate, so a member who cannot read the
+thread does not hear it.
 
 Pass `thread_id` to make it a claim gate: while that gate is pending,
 `claim_next_thread` hands the thread to nobody. That protects the task but not

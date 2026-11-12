@@ -168,6 +168,7 @@ pub enum EventKind {
     ThreadCancelled,
     ThreadAttributesSet,
     ApprovalRequested,
+    ApprovalResolved,
     ThreadBlocked,
     BlockedResolved,
     StatusDeclared,
@@ -224,6 +225,7 @@ impl EventKind {
             Self::ThreadCancelled => "thread_cancelled",
             Self::ThreadAttributesSet => "thread_attributes_set",
             Self::ApprovalRequested => "approval_requested",
+            Self::ApprovalResolved => "approval_resolved",
             Self::ThreadBlocked => "thread_blocked",
             Self::BlockedResolved => "blocked_resolved",
             Self::StatusDeclared => "status_declared",
@@ -280,6 +282,7 @@ impl EventKind {
             "thread_cancelled" => Some(Self::ThreadCancelled),
             "thread_attributes_set" => Some(Self::ThreadAttributesSet),
             "approval_requested" => Some(Self::ApprovalRequested),
+            "approval_resolved" => Some(Self::ApprovalResolved),
             "thread_blocked" => Some(Self::ThreadBlocked),
             "blocked_resolved" => Some(Self::BlockedResolved),
             "status_declared" => Some(Self::StatusDeclared),
@@ -361,6 +364,7 @@ impl EventKind {
         Self::ThreadCancelled,
         Self::ThreadAttributesSet,
         Self::ApprovalRequested,
+        Self::ApprovalResolved,
         Self::ThreadBlocked,
         Self::BlockedResolved,
         Self::StatusDeclared,
@@ -447,6 +451,7 @@ impl EventKind {
             Self::ThreadAttributesSet => false,
             // Approval gates are local human-control state.
             Self::ApprovalRequested => false,
+            Self::ApprovalResolved => false,
             // A block is *this* deployment's dispatch decision; a peer must
             // not inject one.
             Self::ThreadBlocked => false,
@@ -660,6 +665,29 @@ pub enum Event {
         thread_id: Option<ThreadId>,
         gate_id: ApprovalGateId,
         requested_by: MemberId,
+    },
+    /// A durable approval gate was answered: accepted, declined or
+    /// cancelled. Appended in the same transaction as the compare-and-set
+    /// that resolved it, on every path that answers a gate (REST, the
+    /// console, MCP `approval_decide`, a confirmation link), so a waiter
+    /// learns the decision without polling. Names the gate's thread and
+    /// channel when it has one, so the one visibility rule hides it from a
+    /// member who cannot read that thread. Locally derived: a federated peer
+    /// cannot answer human-control gates on this deployment.
+    ApprovalResolved {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        channel_id: Option<ChannelId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thread_id: Option<ThreadId>,
+        gate_id: ApprovalGateId,
+        /// `accepted`, `declined` or `cancelled`; never `pending`.
+        state: ApprovalGateState,
+        /// Who asked, so a requester can match the answer to its request.
+        requested_by: MemberId,
+        /// Who answered.
+        resolved_by: MemberId,
     },
     /// An explicit dispatch block was set. Carries the reason and the
     /// blocker's note. Locally derived: not federatable.
@@ -1250,6 +1278,7 @@ impl Event {
             Self::ThreadCancelled { .. } => EventKind::ThreadCancelled,
             Self::ThreadAttributesSet { .. } => EventKind::ThreadAttributesSet,
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
+            Self::ApprovalResolved { .. } => EventKind::ApprovalResolved,
             Self::ThreadBlocked { .. } => EventKind::ThreadBlocked,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::StatusDeclared { .. } => EventKind::StatusDeclared,
@@ -1306,6 +1335,7 @@ impl Event {
             | Self::ThreadCancelled { occurred_at, .. }
             | Self::ThreadAttributesSet { occurred_at, .. }
             | Self::ApprovalRequested { occurred_at, .. }
+            | Self::ApprovalResolved { occurred_at, .. }
             | Self::ThreadBlocked { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
             | Self::StatusDeclared { occurred_at, .. }
@@ -1362,6 +1392,7 @@ impl Event {
             | Self::ThreadCancelled { workspace_id, .. }
             | Self::ThreadAttributesSet { workspace_id, .. }
             | Self::ApprovalRequested { workspace_id, .. }
+            | Self::ApprovalResolved { workspace_id, .. }
             | Self::ThreadBlocked { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
             | Self::StatusDeclared { workspace_id, .. }
@@ -1441,6 +1472,7 @@ impl Event {
             // Already optional: resolved best-effort from the thread.
             Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
             Self::ApprovalRequested { channel_id, .. } => *channel_id,
+            Self::ApprovalResolved { channel_id, .. } => *channel_id,
             // Named, not `_`: a new variant must say where it happened, or it
             // is read as workspace-wide (`EventVisibility`) and every reader sees it.
             Self::WorkspaceCreated { .. }
@@ -1474,6 +1506,7 @@ impl Event {
             Self::ThreadCancelled { thread_id, .. } => Some(*thread_id),
             Self::ThreadAttributesSet { thread_id, .. } => Some(*thread_id),
             Self::ApprovalRequested { thread_id, .. } => *thread_id,
+            Self::ApprovalResolved { thread_id, .. } => *thread_id,
             Self::ThreadBlocked { thread_id, .. } => Some(*thread_id),
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
@@ -1548,6 +1581,7 @@ impl Event {
             Self::ThreadCancelled { cancelled_by, .. } => Some(*cancelled_by),
             Self::ThreadAttributesSet { actor_id, .. } => Some(*actor_id),
             Self::ApprovalRequested { requested_by, .. } => Some(*requested_by),
+            Self::ApprovalResolved { resolved_by, .. } => Some(*resolved_by),
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimUnacknowledged { member_id, .. } => Some(*member_id),
@@ -1946,6 +1980,7 @@ mod kind_tests {
                 | EventKind::ThreadCancelled
                 | EventKind::ThreadAttributesSet
                 | EventKind::ApprovalRequested
+                | EventKind::ApprovalResolved
                 | EventKind::ThreadBlocked
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
@@ -2045,6 +2080,7 @@ mod kind_tests {
             EventKind::ThreadCancelled,
             EventKind::ThreadAttributesSet,
             EventKind::ApprovalRequested,
+            EventKind::ApprovalResolved,
             EventKind::ThreadBlocked,
             EventKind::BlockedResolved,
             EventKind::ClaimExpired,

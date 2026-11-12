@@ -485,6 +485,25 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             gate_id,
             requested_by,
         },
+        ApprovalResolved {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            gate_id,
+            state,
+            requested_by,
+            resolved_by,
+        } => ApprovalResolved {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            gate_id,
+            state,
+            requested_by,
+            resolved_by,
+        },
         // Non-federatable (a locally-derived unblock).
         BlockedResolved {
             occurred_at,
