@@ -7,11 +7,13 @@ MAIDAN_A_URL="${MAIDAN_A_URL:-http://localhost:8080}"
 MAIDAN_B_URL="${MAIDAN_B_URL:-http://localhost:8081}"
 # URL stored on the peer for the poll worker (container network); defaults to MAIDAN_A_URL for local curl-only runs.
 MAIDAN_A_PEER_URL="${MAIDAN_A_PEER_URL:-${MAIDAN_A_URL}}"
+# B's URL as A's peer record names it; A never calls it in this smoke.
+MAIDAN_B_PEER_URL="${MAIDAN_B_PEER_URL:-${MAIDAN_B_URL}}"
 POLL_WAIT_SECS="${FEDERATION_PULL_WAIT_SECS:-45}"
-# The dev admin compose.yaml seeds into the database A and B share. It only
+# The dev admin compose.yaml seeds into each instance's own database. It only
 # opens workspaces: each one's own admin token does the work inside it, since a
-# token acts in its own workspace and nowhere else. B's poll worker reads A
-# with the peer secret, which A resolves from the same shared database.
+# token acts in its own workspace and nowhere else. A and B share no database,
+# so A issues B a peer secret and B's poll worker presents it to A.
 DEV_ADMIN_TOKEN="${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}"
 
 wait_health() {
@@ -65,13 +67,18 @@ if [[ -z "$stored" || "$stored" == "null" ]]; then
 fi
 remote_id=$(echo "$stored" | jq '.id')
 
-echo "registering peer on B (local workspace + remote A workspace)…"
+echo "A issues B a peer secret for its workspace…"
+issued=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/peers" \
+  -H "Authorization: Bearer ${token_a}" \
+  -d "{\"name\":\"downstream-b\",\"base_url\":\"${MAIDAN_B_PEER_URL}\"}" | jq -r '.secret')
+
+echo "registering peer on B (local workspace + remote A workspace, A's secret)…"
 opened_b=$(open_workspace "$MAIDAN_B_URL" fed-pull-b)
 ws_b=$(echo "$opened_b" | jq -r '.workspace.id')
 token_b=$(echo "$opened_b" | jq -r '.token.secret')
 peer_body=$(json_post "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
   -H "Authorization: Bearer ${token_b}" \
-  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_PEER_URL}\",\"remote_workspace_id\":\"${ws_a}\"}")
+  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_PEER_URL}\",\"remote_workspace_id\":\"${ws_a}\",\"secret\":\"${issued}\"}")
 peer_secret=$(echo "$peer_body" | jq -r '.secret')
 
 echo "waiting up to ${POLL_WAIT_SECS}s for B poll worker to ingest remote event ${remote_id}…"

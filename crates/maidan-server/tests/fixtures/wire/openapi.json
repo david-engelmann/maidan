@@ -2410,6 +2410,13 @@
               "string",
               "null"
             ]
+          },
+          "secret": {
+            "description": "The bearer this instance presents when it polls the remote, and accepts\nwhen the remote pushes here: one the remote issued for this instance (its\nown peer secret for us, or an API token reading `remote_workspace_id`).\n32 to 512 characters, no whitespace. Omitted, one is generated and\nreturned, and the remote has to be given it.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
