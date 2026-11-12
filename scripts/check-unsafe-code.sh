@@ -5,7 +5,8 @@
 # unsafe block: in a `forbid` crate outright, in a `deny` crate unless the site
 # carries `#[allow(unsafe_code)] // <why>`. This script fails if a crate drops
 # the setting, a crate not listed here relaxes forbid to deny, an allow comes
-# without its reason, or a crate-wide `#![allow(unsafe_code)]` appears.
+# without its reason, a crate-wide `#![allow(unsafe_code)]` appears, or the
+# lint is named in any other form (combined, multiline, expect, cfg_attr).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Crates that write the process environment (edition 2024 makes
@@ -29,13 +30,20 @@ for dir in crates/*/; do
     fi
   done
 done
-if hits=$(rg -n '#!\[allow\(unsafe_code\)\]' crates); then
+# Only two spellings may name the lint: the crate-root `#![forbid|deny(...)]`
+# line and the one-line site allow with its reason. Anything else that
+# mentions `unsafe_code` (a combined `allow(dead_code, unsafe_code)`, an
+# attribute split over lines, `expect`/`warn`, `cfg_attr`, a crate-wide
+# `#![allow(...)]`) is rejected rather than parsed, so it cannot slip past the
+# scope and reason checks.
+if hits=$(rg -n '#!\[[^]]*allow[^]]*unsafe_code' crates); then
   echo "crate-wide allow(unsafe_code); allow each site instead:" >&2
   echo "$hits" >&2
   bad=1
 fi
-if hits=$(rg -n '#\[allow\(unsafe_code\)\]' crates | rg -v '#\[allow\(unsafe_code\)\] // \S'); then
-  echo "#[allow(unsafe_code)] without a trailing // reason:" >&2
+if hits=$(rg -n --no-heading 'unsafe_code' crates -g '*.rs' |
+  rg -v '^[^:]+:[0-9]+:(#!\[(forbid|deny)\(unsafe_code\)\]|[[:space:]]*#\[allow\(unsafe_code\)\] // \S.*)$'); then
+  echo "unsafe_code must appear only as #![forbid|deny(unsafe_code)] or a one-line #[allow(unsafe_code)] // <reason>:" >&2
   echo "$hits" >&2
   bad=1
 fi
