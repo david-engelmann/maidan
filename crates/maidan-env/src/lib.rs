@@ -26,6 +26,9 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_ALLOWED_HOSTS",
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+    // Removed with the unauthenticated mode; listed so boot refuses it by name
+    // (`maidan_server::config::REMOVED_AUTH_SWITCHES`) instead of as unknown.
+    "MAIDAN_ALLOW_INSECURE_NO_AUTH",
     "MAIDAN_ALLOW_PRIVATE_EGRESS",
     "MAIDAN_ALLOW_UNKNOWN_ENV",
     "MAIDAN_ARTIFACT_MAX_BODY_BYTES",
@@ -469,6 +472,10 @@ mod tests {
     /// why. Every other one must be able to come from a mounted file.
     const NOT_SECRETS: &[(&str, &str)] = &[
         ("MAIDAN_ALLOW_INSECURE_DEV_KEK", "a switch, not a key"),
+        (
+            "MAIDAN_DEV_ADMIN_TOKEN",
+            "a development stack's known bearer, refused in production and never forwarded to a hosted container, so it has no mounted-file form",
+        ),
         ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
         (
             "MAIDAN_CREDITS_RPC_URL",
@@ -750,6 +757,10 @@ mod tests {
         ),
         (
             "MAIDAN_ALLOW_INSECURE_DEV_KEK",
+            "dev or insecure switch; never forwarded",
+        ),
+        (
+            "MAIDAN_ALLOW_INSECURE_NO_AUTH",
             "dev or insecure switch; never forwarded",
         ),
         (

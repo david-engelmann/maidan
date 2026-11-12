@@ -131,11 +131,17 @@ const BYPASS_TRACES: &[&str] = &[
     "maidan-test-member-id",
 ];
 
-/// The one place a trace may stay, with why.
-const ALLOWED: &[(&str, &str)] = &[(
-    "maidan-server/src/config.rs",
-    "the boot refusal names the removed variables, so setting one stops the server",
-)];
+/// The places a trace may stay, with why.
+const ALLOWED: &[(&str, &str)] = &[
+    (
+        "maidan-server/src/config.rs",
+        "the boot refusal names the removed variables, so setting one stops the server",
+    ),
+    (
+        "maidan-env/src/lib.rs",
+        "the registry lists the removed variable so boot reaches the refusal that names it, rather than calling it unknown",
+    ),
+];
 
 #[test]
 fn no_library_code_has_a_caller_that_skips_the_checks() {

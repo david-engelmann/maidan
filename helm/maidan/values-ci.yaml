@@ -30,3 +30,5 @@ config:
 
 secrets:
   DATABASE_URL: "sqlite:///data/maidan.db?mode=rwc"
+  # The server always authenticates, so it signs resume tokens with this.
+  MAIDAN_SESSION_SECRET: "ci-kind-session-secret-0123456789abcdef"

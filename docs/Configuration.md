@@ -116,6 +116,7 @@ Unset, keys carry no instance tag and nothing is swept. Metrics:
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | `MAIDAN_SESSION_SECRET` | A separate key for subscribe resume tokens only. |
 | `MAIDAN_COOKIE_SECURE` | unset | `1` marks session cookies `Secure`. Production does this already. |
 | `MAIDAN_DEV_ADMIN_TOKEN` | unset | Development only. On an instance with no workspace yet, boot opens workspace `dev` with an admin holding every capability whose bearer is this value: a real token, hashed, audited and revocable. Later boots and other replicas find it present; with workspaces already there it does nothing. At least 32 characters. Refused in production. For a compose or Helm stack whose database `maidan init` cannot reach. |
+| `MAIDAN_ALLOW_INSECURE_NO_AUTH` | unset | Removed with the unauthenticated mode. Boot refuses it, and `AUTH_DISABLED`, by name whatever the value. |
 | `MAIDAN_BOOTSTRAP` | unset | Test builds only: `1` opens unauthenticated `POST /workspaces` (first workspace only) and `POST /workspaces/:wid/members`. No build that ships has the routes, and such a build refuses the variable at boot. |
 
 Every caller is authenticated; there is no unauthenticated mode. Boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH`, the variables of the mode the server had before, by name and whatever their value. Mint the first token with `maidan init` or `MAIDAN_DEV_ADMIN_TOKEN`.
