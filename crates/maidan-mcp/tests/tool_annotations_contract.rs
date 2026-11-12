@@ -16,6 +16,7 @@ use maidan_auth::AuthContext;
 use maidan_mcp::{JsonRpcRequest, McpServer, Profile};
 use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
+use maidan_types::{MemberKind, NewMember, NewWorkspace};
 use serde_json::{json, Value};
 
 const HINTS: [&str; 4] = [
@@ -305,7 +306,8 @@ fn the_mixed_tools_are_documented_writes() {
     assert!(found.is_empty(), "{}", found.join("\n"));
 }
 
-async fn mk_server() -> McpServer {
+/// A server and a caller holding every capability in a workspace on it.
+async fn mk_server() -> (McpServer, AuthContext) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -317,12 +319,29 @@ async fn mk_server() -> McpServer {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    McpServer::new(
+    let workspace = store
+        .create_workspace(NewWorkspace {
+            name: "annotations".into(),
+        })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: workspace.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let auth = AuthContext::from_session(member.id, workspace.id, maidan_auth::capability::all());
+    let server = McpServer::new(
         store,
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
         Arc::new(maidan_search::SqliteSearch::new(pool)),
         Arc::new(HashV1Provider),
-    )
+    );
+    (server, auth)
 }
 
 fn tools_list() -> JsonRpcRequest {
@@ -338,8 +357,7 @@ fn tools_list() -> JsonRpcRequest {
 /// both fixed profiles serve each tool with the annotations the table reviewed.
 #[tokio::test]
 async fn tools_list_serves_the_reviewed_annotations_on_every_endpoint() {
-    let server = mk_server().await;
-    let auth = AuthContext::bypass();
+    let (server, auth) = mk_server().await;
     let table = reviewed();
 
     let full = server.handle(tools_list(), &auth).await.result.unwrap();
@@ -353,7 +371,7 @@ async fn tools_list_serves_the_reviewed_annotations_on_every_endpoint() {
     assert_eq!(
         served,
         catalog().into_keys().collect::<BTreeSet<_>>(),
-        "a bypass caller sees the whole catalog"
+        "a caller holding every capability sees the whole catalog"
     );
 
     for profile in Profile::ALL {

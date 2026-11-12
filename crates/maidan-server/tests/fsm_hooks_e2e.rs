@@ -108,7 +108,6 @@ async fn spawn() -> Harness {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         maidan_server::FederationRuntime::new(true, test_key()),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,

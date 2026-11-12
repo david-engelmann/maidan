@@ -41,7 +41,6 @@ async fn spawn() -> Option<Harness> {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

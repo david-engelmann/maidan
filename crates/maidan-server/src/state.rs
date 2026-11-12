@@ -101,8 +101,6 @@ pub struct AppState {
     /// [`AppState::set_credit_terms`]. The default takes no payment and
     /// charges nothing, which is the instance as it was before credits.
     pub credit_terms: Arc<maidan_types::CreditTerms>,
-    /// When true, all routes accept requests without a bearer token.
-    pub auth_disabled: bool,
     /// The caller an MCP `POST` with no credential reads as, on a dev instance
     /// that set `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` ([`crate::dev_anonymous`]).
     pub dev_anonymous_reader: Option<maidan_auth::AuthContext>,
@@ -276,6 +274,10 @@ pub struct AppState {
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
     /// env.
     pub a2a_card: crate::a2a_agent::A2aCardConfig,
+    /// Who may read `GET /metrics`. Open in [`AppState::new`], for tests and
+    /// embedders; the server binary closes it under `MAIDAN_ENV=production`
+    /// unless `MAIDAN_METRICS_TOKEN` names a bearer for the scraper.
+    pub metrics_access: crate::metrics::MetricsAccess,
     /// A read replica is configured (`MAIDAN_DB_REPLICA_URL`), so the server
     /// should stamp a `Maidan-Consistency-Token` on writes and route
     /// replica-eligible reads. Left `false` in [`AppState::new`]; the server
@@ -346,7 +348,6 @@ impl AppState {
         bus: Arc<dyn EventBus>,
         search: Arc<dyn Search>,
         embedding_provider: Arc<dyn EmbeddingProvider>,
-        auth_disabled: bool,
         bootstrap_enabled: bool,
         federation: FederationRuntime,
         indexer_last_event_unix_ms: Arc<AtomicI64>,
@@ -386,7 +387,6 @@ impl AppState {
             search,
             embedding_provider,
             mcp,
-            auth_disabled,
             dev_anonymous_reader: None,
             allowed_hosts: Vec::new(),
             public_origin: None,
@@ -444,6 +444,7 @@ impl AppState {
             merge_queue_labels: maidan_types::MergeQueueLabels::default(),
             ci_verdict_contexts: crate::ci_watch::verdict_contexts(None),
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
+            metrics_access: crate::metrics::MetricsAccess::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,
             search_read_routing_metrics: None,
@@ -615,6 +616,7 @@ impl AppState {
         self.subscribe_resume_secret.as_deref()
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     /// E2E harness: federation disabled, fresh indexer heartbeat. Auth is on,
     /// as everywhere: a test calls with a token from [`crate::test_support`].
     pub fn for_tests(
@@ -629,7 +631,6 @@ impl AppState {
             bus,
             search,
             Arc::new(maidan_search::HashV1Provider),
-            false,
             false,
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),

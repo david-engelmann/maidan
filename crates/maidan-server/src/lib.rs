@@ -34,6 +34,7 @@ pub mod credits;
 pub mod delivery;
 pub mod delivery_ops;
 pub mod deploy_ingest;
+pub mod dev_admin;
 pub mod dev_anonymous;
 pub mod digest;
 pub mod dm;

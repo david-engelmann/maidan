@@ -39,7 +39,7 @@ fn invalid(msg: impl Into<String>) -> ArtifactError {
 impl MultipartUpload {
     /// Accept only a temporary multipart key and a usable upload id.
     ///
-    /// `object_key` is `multipart/<uuid>` (library / bypass) or
+    /// `object_key` is `multipart/<uuid>` (begun with no workspace) or
     /// `multipart/<workspace-uuid>/<uuid>`. Anything else — a content-addressed
     /// blob key, a path with `..`, an extra segment — is refused before S3
     /// sees it.
@@ -73,8 +73,8 @@ impl MultipartUpload {
     ///
     /// `Some(ws)` accepts only `multipart/{ws}/<uuid>`. An un-namespaced key
     /// and another workspace's key are both refused, so a caller cannot probe,
-    /// complete, or abort someone else's upload. `None` is the bypass / library
-    /// caller and accepts either shape.
+    /// complete, or abort someone else's upload. `None` is a library caller with
+    /// no workspace and accepts either shape.
     pub fn validate_for_workspace(&self, workspace_id: Option<Uuid>) -> Result<(), ArtifactError> {
         self.validate()?;
         let Some(ws) = workspace_id else {

@@ -1069,9 +1069,8 @@ async fn create_workspace_and_member_with_event_append_atomically() {
 
 /// References + artifacts migrated to the transactional-outbox pattern.
 /// `add_reference_with_event` appends `ReferenceAdded`;
-/// `upsert_artifact_with_event` appends `ArtifactUpserted` and — for a
-/// non-bypass caller (`ref_workspace = Some`) — records the access ref in the
-/// same tx.
+/// `upsert_artifact_with_event` appends `ArtifactUpserted` and, given a
+/// workspace (`ref_workspace = Some`), records its access ref in the same tx.
 #[tokio::test]
 async fn reference_and_artifact_with_event_append_atomically() {
     use maidan_types::{
@@ -1146,7 +1145,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
     assert_eq!(ref_ev.kind, EventKind::ReferenceAdded);
     assert_eq!(reference.src_id, msg.id.0);
 
-    // Artifact with a ref (non-bypass) → ArtifactUpserted + a recorded ref.
+    // Artifact with a ref → ArtifactUpserted + a recorded ref.
     let sha_a = "a".repeat(64);
     let (_artifact, art_ev) = store
         .upsert_artifact_with_event(
@@ -1168,7 +1167,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
         .await
         .expect("ref exists"));
 
-    // Artifact without a ref (bypass) → event only, no ref for this workspace.
+    // Artifact without a workspace → event only, no ref for this workspace.
     let sha_b = "b".repeat(64);
     let (_artifact2, art_ev2) = store
         .upsert_artifact_with_event(

@@ -17,7 +17,7 @@ pub fn bootstrap_enabled_from_env() -> bool {
 }
 
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    if state.auth_disabled || state.bootstrap_enabled {
+    if state.bootstrap_enabled {
         return next.run(req).await;
     }
     ApiError::Forbidden("bootstrap routes require MAIDAN_BOOTSTRAP=1".into()).into_response()

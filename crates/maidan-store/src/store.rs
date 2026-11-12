@@ -967,8 +967,7 @@ pub trait ApprovalGateStore: Send + Sync {
     ) -> Result<Option<ApprovalGate>, StoreError>;
     /// The pending gates in a workspace, oldest first, that `readable_by`
     /// may read: those on a thread it can read, and those on no thread.
-    /// `None` keeps every gate and is only for a caller that bypasses auth;
-    /// every other caller names itself.
+    /// `None` keeps every gate.
     async fn list_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
@@ -2190,7 +2189,7 @@ pub trait ThreadStore: Send + Sync {
     /// claimability predicate as `claim_next`. One aggregate query.
     /// `readable_by` counts only the threads that member may read, by
     /// `claim_next`'s read rule (on the `__dm__` channel, only its own DMs);
-    /// `None` counts every thread, for a caller that bypasses auth.
+    /// `None` counts every thread.
     async fn channel_queue_depth(
         &self,
         channel_id: ChannelId,
@@ -4007,7 +4006,7 @@ pub trait ArtifactMetaStore: Send + Sync {
     async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError>;
     /// Upsert an artifact, optionally record its per-workspace access ref, and
     /// append its `ArtifactUpserted` event — all atomically. `ref_workspace` is
-    /// `Some` when the caller would record a ref (non-bypass).
+    /// the uploading workspace, whose ref the upload records.
     async fn upsert_artifact_with_event(
         &self,
         new: NewArtifact,
@@ -4441,8 +4440,8 @@ pub trait McpSubscriptionStore: Send + Sync {
     ) -> Result<bool, StoreError>;
 
     /// The live subscriptions, among `subscribers`, to any of `uris` that an
-    /// update in `workspace_id` may reach: those taken in that workspace, and
-    /// an auth-disabled caller's, which belong to none.
+    /// update in `workspace_id` may reach: those taken in that workspace. A row
+    /// with no workspace matches every workspace.
     async fn mcp_resource_watchers(
         &self,
         workspace_id: WorkspaceId,

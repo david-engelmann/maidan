@@ -221,7 +221,6 @@ async fn a2a_grpc_serves_the_whole_service() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

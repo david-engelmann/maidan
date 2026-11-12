@@ -123,9 +123,6 @@ async fn decide_round_cap(
     headers: &HeaderMap,
     target: ApprovalGateState,
 ) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
     let person = acceptance_credential(state, auth, session, headers).await;
     match target {
         ApprovalGateState::Accepted => round_cap_refusal(person),
@@ -235,11 +232,7 @@ pub async fn list_approval_gates(
         .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
     let gates = state
         .store
-        .list_pending_approval_gates(
-            workspace_id,
-            (!auth.bypass).then_some(auth.member_id()),
-            200,
-        )
+        .list_pending_approval_gates(workspace_id, Some(auth.member_id()), 200)
         .await?;
     let mut requests = state
         .store
@@ -323,7 +316,7 @@ pub async fn answer_approval_gate(
     // A worker token may not.
     if gate.kind == ApprovalGateKind::ReviewRoundCap {
         decide_round_cap(&state, &auth, session.as_deref(), &headers, target).await?;
-    } else if target == ApprovalGateState::Accepted && !auth.bypass {
+    } else if target == ApprovalGateState::Accepted {
         // Nobody accepts a gate they asked for, whichever identity they asked or
         // answer under, and whatever credential they hold. Declining or
         // cancelling your own request is not approving it, and stays open.

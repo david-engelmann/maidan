@@ -33,15 +33,12 @@ async fn unclaimable_parks_a_thread_from_dispatch() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    // Auth ENABLED: the park handler persists `auth.member_id` (the `marked_by` FK),
-    // which the for_tests bypass (nil member) would FK-fail — so mint a real token.
     let state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

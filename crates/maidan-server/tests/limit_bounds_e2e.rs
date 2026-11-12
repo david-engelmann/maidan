@@ -106,7 +106,6 @@ async fn an_absurd_limit_is_clamped_not_honoured() {
         Arc::new(InMemoryBus::with_capacity(16)),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

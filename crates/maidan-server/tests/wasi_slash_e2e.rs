@@ -117,7 +117,6 @@ async fn spawn() -> Ctx {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, test_key()),
         Arc::new(AtomicI64::new(0)),
         None,

@@ -81,8 +81,6 @@ async fn spawn_postgres_replica(
             .await
             .expect("connect the bus"),
     );
-    // Let the LISTEN task subscribe before events flow.
-    tokio::time::sleep(Duration::from_millis(200)).await;
     let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.subscribe_resume_secret = Some(Arc::from(b"test-secret".as_slice()));
     let app = router(state);

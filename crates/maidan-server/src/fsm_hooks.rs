@@ -97,9 +97,7 @@ fn validate_http_target(url: &str) -> ApiResult<()> {
 fn validate_mcp_target(auth: &AuthContext, tool: &str) -> ApiResult<()> {
     let required = tools::required_capability(tool)
         .map_err(|_| ApiError::BadRequest(format!("unknown mcp tool for fsm hook: {tool}")))?;
-    if !auth.bypass {
-        cap(auth, required)?;
-    }
+    cap(auth, required)?;
     Ok(())
 }
 
@@ -332,14 +330,10 @@ async fn creator_authority(
     state: &AppState,
     registration: &FsmHookWithSecret,
 ) -> Result<AuthContext, &'static str> {
+    // A hook registered on a browser session has no token to act as, and
+    // nothing may act for nobody, so it never runs.
     let Some(token_id) = registration.created_by_token else {
-        // Only a server with auth disabled registers a hook without a token,
-        // and only there does it run, with that server's authority.
-        return if state.auth_disabled {
-            Ok(AuthContext::bypass())
-        } else {
-            Err("registered without a token")
-        };
+        return Err("registered without a token");
     };
     let auth = match maidan_auth::resolve_token_id(state.store.as_ref(), token_id).await {
         Ok(auth) => auth,

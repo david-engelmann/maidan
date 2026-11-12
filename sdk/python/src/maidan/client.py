@@ -33,6 +33,7 @@ from .models import (
     Artifact,
     Channel,
     ClaimedThread,
+    CreatedAgent,
     ImportResult,
     Member,
     Message,
@@ -187,9 +188,6 @@ class _Workspaces:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def create(self, name: str) -> Workspace:
-        return Workspace.from_dict(self._c._req("POST", "/workspaces", {"name": name}))
-
     def get(self, workspace_id: str) -> Workspace:
         return Workspace.from_dict(self._c._req("GET", f"/workspaces/{workspace_id}"))
 
@@ -218,23 +216,25 @@ class _Channels:
         return boot_prefix(self._c._req_raw("GET", f"/channels/{channel_id}/boot"))
 
 
-class _Members:
-    """Member provisioning.
-
-    ``create`` is the unauthenticated seed route, present only on a server built
-    with the ``bootstrap`` feature — how a fresh workspace gets its first agents.
-    A production deployment turns it off and provisions through ``maidan init``
-    plus :class:`_Tokens`.
-    """
-
+class _Agents:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def create(self, workspace_id: str, handle: str, kind: str = "agent", display_name: Optional[str] = None) -> Member:
-        body: dict = {"handle": handle, "kind": kind}
+    def create(self, workspace_id: str, handle: str, display_name: Optional[str] = None) -> CreatedAgent:
+        """POST /workspaces/{wid}/agents. Requires ``token:admin``.
+
+        The agent member and its ``maidan.agent.worker`` token come back
+        together; ``token.secret`` is never retrievable again.
+        """
+        body: dict = {"handle": handle}
         if display_name is not None:
             body["display_name"] = display_name
-        return Member.from_dict(self._c._req("POST", f"/workspaces/{workspace_id}/members", body))
+        return CreatedAgent.from_dict(self._c._req("POST", f"/workspaces/{workspace_id}/agents", body))
+
+
+class _Members:
+    def __init__(self, c: "Client"):
+        self._c = c
 
     def list(self, workspace_id: str) -> List[Member]:
         return from_list(Member, self._c._req("GET", f"/workspaces/{workspace_id}/members"))
@@ -383,6 +383,7 @@ class Client:
         self.last_room_lsn: Optional[int] = None
 
         self.workspaces = _Workspaces(self)
+        self.agents = _Agents(self)
         self.members = _Members(self)
         self.tokens = _Tokens(self)
         self.channels = _Channels(self)

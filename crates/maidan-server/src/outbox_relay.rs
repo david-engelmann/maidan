@@ -142,7 +142,7 @@ impl OutboxRelay {
         // Claim, don't list. This relay is spawned in every replica and cannot
         // be disabled in production, so an unlocked read had every replica
         // relaying every row — N POSTs per tenant webhook and N `fsm_hook`
-        // firings with `AuthContext::bypass()`. The claim is leased, not
+        // tool calls. The claim is leased, not
         // permanent, so a relay that dies mid-tick strands nothing.
         let pending = self.backend.claim_pending(BATCH, CLAIM_LEASE_SECS).await?;
         let fetched = pending.len();

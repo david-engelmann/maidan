@@ -106,6 +106,13 @@ type MintedToken struct {
 	Quotas       []TokenQuota `json:"quotas"`
 }
 
+// CreatedAgent is an agent member and its maidan.agent.worker token.
+// Token.Secret is returned here once and never again.
+type CreatedAgent struct {
+	Member Member      `json:"member"`
+	Token  MintedToken `json:"token"`
+}
+
 // TokenSummary is token metadata; it never carries the secret.
 type TokenSummary struct {
 	ID           string     `json:"id"`

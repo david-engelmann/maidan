@@ -128,6 +128,15 @@ class MintedToken(Model):
 
 
 @dataclass(kw_only=True)
+class CreatedAgent(Model):
+    """An agent member and its ``maidan.agent.worker`` token. ``token.secret``
+    is returned here once and never again."""
+
+    member: Member
+    token: MintedToken
+
+
+@dataclass(kw_only=True)
 class TokenSummary(Model):
     """Token metadata; never carries the secret."""
 
@@ -517,6 +526,7 @@ __all__ = [
     "Artifact",
     "Channel",
     "ClaimedThread",
+    "CreatedAgent",
     "GlossaryTerm",
     "ImportResult",
     "Member",

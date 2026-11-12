@@ -1915,6 +1915,13 @@ pub struct CreatePeer {
     pub base_url: String,
     /// Workspace on the remote peer to poll; defaults to the path workspace when omitted.
     pub remote_workspace_id: Option<uuid::Uuid>,
+    /// The bearer this instance presents when it polls the remote, and accepts
+    /// when the remote pushes here: one the remote issued for this instance (its
+    /// own peer secret for us, or an API token reading `remote_workspace_id`).
+    /// 32 to 512 characters, no whitespace. Omitted, one is generated and
+    /// returned, and the remote has to be given it.
+    #[serde(default)]
+    pub secret: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

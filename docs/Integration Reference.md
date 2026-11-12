@@ -462,7 +462,7 @@ the page then keeps a pasted token in the tab only, never in storage.
 OIDC deployments use the provider's discovery document and the authorization-code
 flow with S256 PKCE; Maidan validates issuer, audience, nonce, and the ID-token
 signature from the provider's JWKS before issuing a session. `MAIDAN_OIDC_MOCK=1`
-is deterministic test/development infrastructure and is rejected in production.
+is a deterministic provider that exists only in the server's test builds.
 See [OIDC](OIDC.md) for configuration and the trust model.
 
 People can also be provisioned from the IdP over SCIM 2.0 at `/scim/v2/`
@@ -610,7 +610,7 @@ writes and a subscription are refused with an error asking for a bearer token. A
 catalog gets the usual unknown-tool error, and a method outside discovery and reading is -32601,
 method not found. It never gets an `Mcp-Session-Id`. Listeners, REST and every request that sends
 a token behave as before. The server will not start with the variable under
-`MAIDAN_ENV=production`, beside `AUTH_DISABLED`, or naming a workspace that does not exist or is
+`MAIDAN_ENV=production`, or naming a workspace that does not exist or is
 not called `synthetic-…`.
 
 Connecting a particular client, with its configuration, is in [Clients](Clients.md).
@@ -656,11 +656,7 @@ This binary *hosts* the server — it opens the database and answers tool calls 
 the pipe — so the token is the whole of the authorization: every tool runs with
 exactly its capabilities. Mint one with `maidan init` or the token API.
 
-Without a token there is no context to serve but an unrestricted one, so it will
-not start unless you say so: `--allow-insecure-no-auth` (or
-`MAIDAN_ALLOW_INSECURE_NO_AUTH=1`) serves every tool with full authority over that
-database, and logs a warning saying it did. Use it for a scratch database, not a
-real one.
+Without a token it does not start: there is no unrestricted mode.
 
 ## Events
 

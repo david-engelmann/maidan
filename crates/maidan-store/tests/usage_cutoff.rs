@@ -228,7 +228,7 @@ async fn run_write_suite(store: &dyn Store) {
 
     // Import while cut off is refused, for the caller and for a restore
     // target; an uncut open caller gets an open workspace.
-    let refused = maidan_store::usage_meters::import_origin(store, false, cut, None)
+    let refused = maidan_store::usage_meters::import_origin(store, cut, None)
         .await
         .unwrap_err();
     assert!(
@@ -236,7 +236,7 @@ async fn run_write_suite(store: &dyn Store) {
         "{refused:?}"
     );
     let other_ws = store.get_member(other_member).await.unwrap().workspace_id;
-    let refused = maidan_store::usage_meters::import_origin(store, true, other_ws, Some(cut))
+    let refused = maidan_store::usage_meters::import_origin(store, other_ws, Some(cut))
         .await
         .unwrap_err();
     assert!(
@@ -244,17 +244,11 @@ async fn run_write_suite(store: &dyn Store) {
         "{refused:?}"
     );
     assert_eq!(
-        maidan_store::usage_meters::import_origin(store, false, other_ws, None)
+        maidan_store::usage_meters::import_origin(store, other_ws, None)
             .await
             .unwrap(),
         WorkspaceOrigin::Open,
         "mode=new from an open workspace makes an open workspace"
-    );
-    assert_eq!(
-        maidan_store::usage_meters::import_origin(store, true, other_ws, None)
-            .await
-            .unwrap(),
-        WorkspaceOrigin::Operator
     );
 
     // A forced restore over an open workspace keeps it open, and keeps its

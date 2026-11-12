@@ -302,6 +302,9 @@ mod member_last_seen;
 #[path = "../member_references.rs"]
 mod member_references;
 
+#[path = "../member_self_migration.rs"]
+mod member_self_migration;
+
 #[path = "../member_skills.rs"]
 mod member_skills;
 

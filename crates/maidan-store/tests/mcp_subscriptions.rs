@@ -116,25 +116,20 @@ async fn run_suite(store: &dyn Store) {
 
     // Two tenants watching the same content-addressed URI: an update in one
     // workspace finds only that workspace's subscriber, even asked about both.
-    // An auth-disabled caller's subscription belongs to no workspace.
-    for (who, t) in [
-        ("alice", Some(alpha)),
-        ("bravo", Some(bravo)),
-        ("bypass", None),
-    ] {
+    for (who, t) in [("alice", alpha), ("bravo", bravo)] {
         assert!(store
-            .subscribe_mcp_resource(&sub(who, t, ARTIFACT, hour), 8)
+            .subscribe_mcp_resource(&sub(who, Some(t), ARTIFACT, hour), 8)
             .await
             .expect("subscribe"));
     }
-    let everyone = ["alice", "bravo", "bypass"];
+    let everyone = ["alice", "bravo"];
     assert_eq!(
         sorted_watchers(store, alpha.0, &[ARTIFACT], &everyone).await,
-        vec![watch("alice", ARTIFACT), watch("bypass", ARTIFACT)]
+        vec![watch("alice", ARTIFACT)]
     );
     assert_eq!(
         sorted_watchers(store, bravo.0, &[ARTIFACT], &everyone).await,
-        vec![watch("bravo", ARTIFACT), watch("bypass", ARTIFACT)]
+        vec![watch("bravo", ARTIFACT)]
     );
     // Only the subscribers asked about: those with a listener on this replica.
     assert_eq!(

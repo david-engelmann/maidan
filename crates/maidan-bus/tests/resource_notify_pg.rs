@@ -54,8 +54,8 @@ async fn resource_updates_fan_out_across_replicas_with_their_workspace() {
     let replica_b = PostgresResourceNotifier::connect(pool.clone())
         .await
         .unwrap();
-    // Let both LISTEN tasks attach before publishing.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // No wait here: connect() returns only after LISTEN is registered, so a
+    // publish from now on reaches both replicas.
 
     let mut sub_b = replica_b.subscribe();
 

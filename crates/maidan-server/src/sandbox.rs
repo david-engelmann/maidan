@@ -4,8 +4,8 @@
 //!
 //! On only with `MAIDAN_DEMO_SANDBOX=1`, and only on an instance that is a
 //! throwaway as a whole: production mode needs `MAIDAN_DEMO_INSTANCE=1`
-//! beside it, sign-up and `AUTH_DISABLED` refuse it, and a public origin must
-//! be set for the MCP URL the answer gives. Off, the route answers 404.
+//! beside it, sign-up refuses it, and a public origin must be set for the MCP
+//! URL the answer gives. Off, the route answers 404.
 //!
 //! Each call makes a workspace (origin `open`, so the free allowance cuts it
 //! off), a `#general` channel, the sign-up's "Say hello" starter task with its
@@ -76,7 +76,6 @@ fn truthy(raw: Option<&str>) -> bool {
 pub(crate) fn validate(
     production: bool,
     demo_instance: bool,
-    auth_disabled: bool,
     signup: bool,
     public_origin: Option<&str>,
 ) -> Result<(), ConfigError> {
@@ -87,12 +86,6 @@ pub(crate) fn validate(
                 "hands workspaces to anyone who asks; under MAIDAN_ENV=production it needs \
                  {DEMO_INSTANCE_ENV}=1 to say the whole instance is a throwaway demo"
             ),
-        ));
-    }
-    if auth_disabled {
-        return Err(ConfigError::Invalid(
-            ENV,
-            "cannot be set with AUTH_DISABLED, under which no sandbox is isolated".into(),
         ));
     }
     if signup {
@@ -126,10 +119,7 @@ fn parse_max(raw: Option<&str>) -> Result<i64, ConfigError> {
 impl SandboxSettings {
     /// Off (`None`) unless `MAIDAN_DEMO_SANDBOX` is set. `public_origin` is
     /// the normalized `MAIDAN_PUBLIC_ORIGIN`.
-    pub fn from_env(
-        public_origin: Option<&str>,
-        auth_disabled: bool,
-    ) -> Result<Option<Self>, ConfigError> {
+    pub fn from_env(public_origin: Option<&str>) -> Result<Option<Self>, ConfigError> {
         let var = |name| std::env::var(name).ok();
         if !truthy(var(ENV).as_deref()) {
             return Ok(None);
@@ -137,7 +127,6 @@ impl SandboxSettings {
         validate(
             crate::config::is_production(),
             truthy(var(DEMO_INSTANCE_ENV).as_deref()),
-            auth_disabled,
             truthy(var("MAIDAN_SIGNUP").as_deref()),
             public_origin,
         )?;
@@ -396,17 +385,16 @@ mod tests {
     #[test]
     fn production_needs_the_demo_marker() {
         let origin = Some("https://try.example");
-        assert!(validate(true, false, false, false, origin).is_err());
-        assert!(validate(true, true, false, false, origin).is_ok());
-        assert!(validate(false, false, false, false, origin).is_ok());
+        assert!(validate(true, false, false, origin).is_err());
+        assert!(validate(true, true, false, origin).is_ok());
+        assert!(validate(false, false, false, origin).is_ok());
     }
 
     #[test]
-    fn the_mint_is_refused_beside_auth_disabled_signup_or_no_origin() {
+    fn the_mint_is_refused_beside_signup_or_with_no_origin() {
         let origin = Some("https://try.example");
-        assert!(validate(false, false, true, false, origin).is_err());
-        assert!(validate(false, false, false, true, origin).is_err());
-        assert!(validate(false, false, false, false, None).is_err());
+        assert!(validate(false, false, true, origin).is_err());
+        assert!(validate(false, false, false, None).is_err());
     }
 
     #[test]
