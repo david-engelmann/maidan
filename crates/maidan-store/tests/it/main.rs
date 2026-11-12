@@ -599,6 +599,9 @@ mod thread_owner;
 #[path = "../thread_page_filters.rs"]
 mod thread_page_filters;
 
+#[path = "../thread_parent_checks.rs"]
+mod thread_parent_checks;
+
 #[path = "../thread_plans.rs"]
 mod thread_plans;
 
@@ -640,6 +643,9 @@ mod tombstoned_member_tokens;
 
 #[path = "../trace_context.rs"]
 mod trace_context;
+
+#[path = "../typed_reference_rules.rs"]
+mod typed_reference_rules;
 
 #[path = "../unique_thread_attributes.rs"]
 mod unique_thread_attributes;

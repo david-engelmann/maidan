@@ -51,4 +51,6 @@ pub use resolve::{
     resolve_token_id,
 };
 pub use thread_lookup::find_readable_thread;
-pub use token::{hash_secret, ShareTicketSecret, TokenSecret, WorkspaceInviteSecret};
+pub use token::{
+    hash_secret, is_checksummed_token, ShareTicketSecret, TokenSecret, WorkspaceInviteSecret,
+};

@@ -787,16 +787,6 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError>;
-    /// Report usage and enforce the budget — the "stop the run" path.
-    /// Accumulates `delta`; if the thread is now over budget AND has an active
-    /// claim, atomically releases the claim, appends a `ClaimFailed` event, and
-    /// records a DLQ entry. Returns the new totals + whether the run stopped,
-    /// plus the `ClaimFailed` event to publish (`None` when not stopped).
-    async fn report_thread_usage(
-        &self,
-        thread_id: ThreadId,
-        delta: UsageDelta,
-    ) -> Result<(UsageReport, Option<StoredEvent>), StoreError>;
     /// Record a dead-lettered agent run — a run stopped for exceeding its
     /// budget. `id`/`failed_at` are assigned by the store.
     async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError>;
@@ -1783,6 +1773,14 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// Bind the identity to its member only while no other identity signs
+    /// in as that member, checked and written atomically. `None` when another
+    /// identity already holds the member: linking a verified email by handle
+    /// is only for a member no login has claimed yet.
+    async fn link_unclaimed_oidc_identity(
+        &self,
+        new: NewOidcIdentity,
+    ) -> Result<Option<OidcIdentity>, StoreError>;
     /// The workspaces a signed-in identity can switch to (the workspace
     /// switcher): every workspace where the same issuer and subject have an
     /// identity row, newest sign-in first, at most `limit`. Its own workspace

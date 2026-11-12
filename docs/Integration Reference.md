@@ -198,7 +198,7 @@ the Tokens tab rotates any token by id.
 
 ### Installed apps (OAuth-style)
 
-Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.
+Register app (`token:admin`) → install → `POST .../oauth/authorize` with a PKCE S256 `code_challenge` (required) → `POST /oauth/app/token` with the matching `code_verifier` for an app-scoped bearer. See OpenAPI `apps` and `oauth` tags.
 
 A code exchange for an app with no active installation installs it with the default capabilities, reusing the bot member of a revoked installation the same way, and writes the same audit row.
 

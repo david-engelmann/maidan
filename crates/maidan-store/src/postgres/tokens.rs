@@ -92,8 +92,10 @@ pub async fn create_delegated(
     delegate_id: MemberId,
     parent_token_id: Option<ApiTokenId>,
 ) -> Result<ApiToken, StoreError> {
-    let mut conn = pool.acquire().await?;
-    create_delegated_on(&mut conn, new, grant_id, delegate_id, parent_token_id).await
+    let mut tx = pool.begin().await?;
+    let token = create_delegated_on(&mut tx, new, grant_id, delegate_id, parent_token_id).await?;
+    tx.commit().await?;
+    Ok(token)
 }
 
 pub(crate) async fn create_delegated_on(
@@ -103,9 +105,18 @@ pub(crate) async fn create_delegated_on(
     delegate_id: MemberId,
     parent_token_id: Option<ApiTokenId>,
 ) -> Result<ApiToken, StoreError> {
+    // FOR SHARE holds the grant row until this mint commits. A revoke's
+    // UPDATE then waits for the mint, and its cascade reaches the new token;
+    // a revoke already in flight makes this read wait, see `revoked_at` set,
+    // and refuse. Without the lock, under READ COMMITTED a mint interleaved
+    // with a revoke left a live token row on a revoked grant (SEC-006). Auth
+    // refused that token anyway (`get_active_by_hash` checks the grant), so
+    // this is row hygiene, not the auth boundary.
     let grant_capabilities_json: String = sqlx::query_scalar(
         "SELECT capabilities FROM maidan_delegation_grants
-         WHERE id=$1 AND workspace_id=$2 AND subject_id=$3 AND delegate_id=$4",
+         WHERE id=$1 AND workspace_id=$2 AND subject_id=$3 AND delegate_id=$4
+           AND revoked_at IS NULL
+         FOR SHARE",
     )
     .bind(grant_id.0)
     .bind(new.workspace_id.0)

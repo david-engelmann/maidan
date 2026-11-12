@@ -26,7 +26,7 @@ import { ThreadsApi } from "../core/threads.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { EmptyState } from "../shell/EmptyState";
-import { LoadError } from "../shell/LoadError.tsx";
+import { DataState, couldNotLoad, phaseOf } from "../shell/DataState.tsx";
 import "./activity.css";
 
 const NONE: ActivityRow[] = [];
@@ -69,6 +69,8 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   const [rows, setRows] = useState<ActivityRow[]>(NONE);
   const [dir, setDir] = useState<ActivityDirectory>(EMPTY_DIRECTORY);
   const [error, setError] = useState<string | null>(null);
+  // Until the first read answers, an empty list means "not yet", not "nothing".
+  const [settled, setSettled] = useState(false);
   const [filter, setFilter] = useState<ActivityGroup>("all");
   const [query, setQuery] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -105,9 +107,12 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
           if (cancelled) return;
           setRows((cur) => mergeActivity(cur, raw.map(toActivity).filter((r): r is ActivityRow => r !== null)));
           setError(null);
+          setSettled(true);
         },
-        () => {
-          if (!cancelled) setError("Could not load recent events.");
+        (e: unknown) => {
+          if (cancelled) return;
+          setError(e instanceof Error && e.message ? e.message : couldNotLoad("recent events"));
+          setSettled(true);
         },
       );
     // Paused, the list holds still: no REST merge until Resume re-runs this.
@@ -239,14 +244,15 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
           <button type="button" className="button ghost" onClick={() => setPaused(true)}>Pause</button>
         )}
       </header>
-      {error && rows.length === 0 ? (
-        <LoadError message={error} onRetry={() => { reload(); setTries((n) => n + 1); }} />
-      ) : error ? (
-        <p className="muted" role="alert">{error}</p>
-      ) : null}
-      {error && rows.length === 0 ? null : rows.length === 0 ? (
-        <EmptyState title="Nothing has happened yet" body="Tasks, messages and reviews show here as they happen." />
-      ) : shown.length === 0 ? (
+      <DataState
+        phase={phaseOf({ settled, error, count: rows.length })}
+        label="recent events"
+        error={error}
+        onRetry={() => { reload(); setTries((n) => n + 1); }}
+        empty={{ icon: "activity", title: "Nothing has happened yet", body: "Tasks, messages and reviews show here as they happen." }}
+        stale={error}
+      >
+      {shown.length === 0 ? (
         <EmptyState
           title="No matching events"
           body="Nothing in this view matches the category, channel, or search."
@@ -270,6 +276,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
           })}
         </ol>
       )}
+      </DataState>
     </div>
   );
 }
