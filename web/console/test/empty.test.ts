@@ -22,3 +22,15 @@ test("no screen falls back to a bare muted line for its empty list", () => {
   assert.doesNotMatch(src("activity/Activity.tsx"), /"No events yet\."/);
   assert.doesNotMatch(src("threads/Threads.tsx"), /className="muted conv-empty"/);
 });
+
+test("an empty Needs you says so once, in the caught-up card, not also in the count", () => {
+  assert.doesNotMatch(src("needs/NeedsYou.tsx"), /Nothing waiting/);
+  assert.match(src("needs/NeedsYou.tsx"), /All caught up/);
+});
+
+test("a place slides in without a fade, so its skeletons show from the first frame", () => {
+  const shell = src("shell/Shell.tsx");
+  const place = shell.slice(shell.indexOf("<motion.section"), shell.indexOf("</motion.section>"));
+  assert.ok(place.length > 0);
+  assert.doesNotMatch(place, /opacity:\s*0/);
+});

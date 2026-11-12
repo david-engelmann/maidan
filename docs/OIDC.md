@@ -166,8 +166,13 @@ Migration 0012 creates these tables in Postgres and SQLite:
 1. First login with `(iss, sub)` in workspace → attach to a pre-provisioned
    member if `MAIDAN_OIDC_LINK_EMAIL` is on and the member's handle equals the
    whole verified `email` and the login's issuer is the configured
-   `MAIDAN_OIDC_ISSUER` (an email from any other issuer never links);
-   otherwise, when auto-provisioning is enabled, create
+   `MAIDAN_OIDC_ISSUER` (an email from any other issuer never links), and
+   no other identity has signed in as that member yet. The handle is a
+   pre-provisioning key for the first sign-in only: once a member has an
+   identity, another identity asserting the same verified email is not linked
+   to it, so whoever set the handle cannot redirect a later login. A
+   SCIM-provisioned member links like any other, since SCIM and OIDC come from
+   the same IdP; otherwise, when auto-provisioning is enabled, create
    a new `Member { kind: human }`; otherwise reject an unprovisioned identity.
    Auto-provisioning never attaches a login to an existing member. Its handle
    comes from the email's local part, and when that handle is taken the new
@@ -179,9 +184,11 @@ Migration 0012 creates these tables in Postgres and SQLite:
    first.
 
 Email linking is scoped to whichever issuer is configured now. If you change
-`MAIDAN_OIDC_ISSUER`, the new issuer can email-link members whose identities
-were bound to the old one, so review `MAIDAN_OIDC_LINK_EMAIL` before
-switching issuers.
+`MAIDAN_OIDC_ISSUER`, a member already bound to an identity from the old
+issuer is not email-linked to the new issuer's identity: the old identity
+counts as another sign-in. With auto-provisioning off, that person's sign-in
+is refused; with it on, they get a new member without the original member's
+access. Plan how people move to the new issuer before switching.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
    A person who is a member of several workspaces has one identity row and one
    member in each. An OIDC session records the identity row it signed in with
@@ -246,7 +253,7 @@ settings are:
 | `MAIDAN_OIDC_SCOPES` | no | Space-separated scopes; default `openid profile email`. |
 | `MAIDAN_OIDC_MOCK` | no | Deterministic dev/CI provider; rejected with `MAIDAN_ENV=production`. |
 | `MAIDAN_OIDC_AUTO_PROVISION` | no | `1` permits a new OIDC identity to create a human member; otherwise the identity must already be provisioned or linked. |
-| `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member handle. |
+| `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member whose handle is that email, on its first sign-in only: a member another identity already signs in as never links. |
 | `MAIDAN_OIDC_EMAILS_VERIFIED` | no | `1` treats an `email` claim that arrives without `email_verified` as verified. Set it only for a provider whose every login proves the address, such as Cloudflare Access with the emailed one-time code as its only login method. An explicit `email_verified: false` stays unverified. |
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on; permits the first-admin session mint. Set `0` to disable. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` adds the UI `auto_mint=1` hint when the workspace has no active `token:admin`; requires first-admin mint. |
@@ -333,7 +340,8 @@ curl -sS -X POST "$MAIDAN_URL/scim/v2/Users" \
 
 With `MAIDAN_OIDC_LINK_EMAIL=1`, the person's first sign-in links their
 Keycloak identity to that member, and only when Keycloak says the email is
-verified. Only an email asserted by the configured issuer links. With
+verified. Only the first identity links: once one has signed in as the
+member, a second Keycloak user with the same address is refused. Only an email asserted by the configured issuer links. With
 `MAIDAN_OIDC_EMAILS_VERIFIED=1` as well, the link trusts every login method at
 that issuer to prove the address. A user with no member is refused ("OIDC user is not provisioned in
 this workspace"). Leave `MAIDAN_OIDC_AUTO_PROVISION` off. With it on, every

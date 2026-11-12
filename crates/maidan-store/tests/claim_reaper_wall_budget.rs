@@ -21,9 +21,36 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetPatch, ChannelId, Event, EventKind, MemberId, MemberKind, NewChannel,
-    NewMember, NewThread, NewWorkspace, StoredEvent, Thread, ThreadId, UsageDelta,
+    BudgetLimits, BudgetPatch, ChannelId, ClaimLeaseId, Event, EventKind, MemberId, MemberKind,
+    NewChannel, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace, PriceSnapshot,
+    StoredEvent, Thread, ThreadId, TokenUsage,
 };
+
+/// One claim-fenced usage report from the claim holder, at no price, so only
+/// the tokens and turns count against the budget.
+fn fenced_usage(
+    thread: ThreadId,
+    reporter: MemberId,
+    lease: ClaimLeaseId,
+    tokens: i64,
+    turns: i64,
+) -> NewUsageLedgerEntry {
+    NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread,
+        reporter,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens: TokenUsage {
+            input: tokens,
+            ..Default::default()
+        },
+        usd_micros: 0,
+        price_snapshot: PriceSnapshot::default(),
+        turns,
+        evidence: Default::default(),
+    }
+}
 
 struct Queue {
     channel: ChannelId,
@@ -230,7 +257,13 @@ async fn a_hung_claim_under_its_wall_budget_is_charged_and_requeued(store: &dyn 
         .await
         .unwrap();
     let (report, stored) = store
-        .report_thread_usage(q.thread, UsageDelta::default())
+        .report_accounted_usage(&fenced_usage(
+            q.thread,
+            q.next,
+            retry.claim_lease_id.expect("lease"),
+            0,
+            0,
+        ))
         .await
         .unwrap();
     assert!(
@@ -238,7 +271,7 @@ async fn a_hung_claim_under_its_wall_budget_is_charged_and_requeued(store: &dyn 
         "the charged time alone reaches the lowered cap"
     );
     assert_eq!(report.reason.as_deref(), Some("wall"));
-    assert_eq!(stored.map(|e| e.kind), Some(EventKind::ClaimFailed));
+    assert!(stored.iter().any(|e| e.kind == EventKind::ClaimFailed));
 }
 
 async fn an_unacknowledged_claim_is_charged_nothing(store: &dyn Store) {

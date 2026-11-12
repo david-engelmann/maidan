@@ -639,14 +639,6 @@ macro_rules! store_delegations {
                 budget::add_usage(self.pool(), thread_id, delta).await
             }
 
-            async fn report_thread_usage(
-                &self,
-                thread_id: ThreadId,
-                delta: UsageDelta,
-            ) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
-                budget::report_usage(self.pool(), thread_id, delta).await
-            }
-
             async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
                 dlq::record(self.pool(), new).await
             }
@@ -1868,6 +1860,13 @@ macro_rules! store_delegations {
                 subject: &str,
             ) -> Result<OidcIdentity, StoreError> {
                 oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
+            }
+
+            async fn link_unclaimed_oidc_identity(
+                &self,
+                new: NewOidcIdentity,
+            ) -> Result<Option<OidcIdentity>, StoreError> {
+                oidc::link_unclaimed_identity(self.pool(), new).await
             }
 
             async fn list_identity_workspaces(

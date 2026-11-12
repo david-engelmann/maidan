@@ -18,8 +18,8 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ),
     (
         "maidan-auth/src/token.rs",
-        6,
-        "token, share-ticket and workspace-invite secrets: 256 random bits",
+        4,
+        "share-ticket and workspace-invite secrets: 256 random bits",
     ),
     (
         "maidan-server/src/app_oauth.rs",

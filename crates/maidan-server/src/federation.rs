@@ -115,7 +115,9 @@ pub async fn ingest_events(
         match ingest_envelope(&state, &peer, envelope).await? {
             IngestOutcome::Ingested => ingested += 1,
             IngestOutcome::SkippedDuplicate => skipped += 1,
-            IngestOutcome::SkippedNotFederatable => refused += 1,
+            IngestOutcome::SkippedNotFederatable | IngestOutcome::SkippedLocalLocation => {
+                refused += 1
+            }
         }
     }
     Ok(Json(IngestSummary {
@@ -147,6 +149,32 @@ pub(crate) enum IngestOutcome {
     /// are produced by any active workspace — so refusing the whole batch made
     /// a mixed batch unreplicable, and the event is skipped either way.
     SkippedNotFederatable,
+    /// Verified, but it names a channel or thread that exists on this server
+    /// (RED-006). Ingest rewrites only the workspace id, and creates no
+    /// channel or thread rows, so a federated location is always the peer's
+    /// own; one that resolves here would place the peer's event inside a
+    /// local, possibly private, channel for its readers and every webhook.
+    SkippedLocalLocation,
+}
+
+/// Whether `event`'s channel or thread id names a channel or thread on this
+/// server, in any workspace.
+async fn names_a_local_location(state: &AppState, event: &Event) -> ApiResult<bool> {
+    if let Some(channel_id) = event.channel_id() {
+        match state.store.get_channel(channel_id).await {
+            Ok(_) => return Ok(true),
+            Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+    if let Some(thread_id) = event.thread_id() {
+        match state.store.get_thread(thread_id).await {
+            Ok(_) => return Ok(true),
+            Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Ok(false)
 }
 
 // Exempt from the hard allowance cutoff, deliberately: ingest appends an
@@ -205,6 +233,14 @@ pub(crate) async fn ingest_envelope(
     // federated).
     if !event.kind().federatable() {
         return Ok(IngestOutcome::SkippedNotFederatable);
+    }
+    if names_a_local_location(state, &event).await? {
+        tracing::warn!(
+            peer = %peer.id,
+            remote_event_id = envelope.remote_event_id,
+            "federated event names a local channel or thread; refused"
+        );
+        return Ok(IngestOutcome::SkippedLocalLocation);
     }
     event = remap_event_workspace(event, peer.workspace_id)?;
     let Some(log_id) = publish_federated(state, event, peer.id).await else {
