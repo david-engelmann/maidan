@@ -406,14 +406,54 @@ fn expirable_sql() -> String {
              JOIN maidan_channels c ON c.id = t.channel_id
              WHERE c.workspace_id = r.workspace_id
                AND m.tombstoned_at IS NULL
-               AND (m.metadata -> 'artifact_sha256' = to_jsonb(r.sha256)
-                    OR m.metadata -> 'sha256' = to_jsonb(r.sha256)
-                    OR (jsonb_typeof(m.metadata -> 'artifacts') = 'array'
-                        AND (m.metadata -> 'artifacts' @> jsonb_build_array(r.sha256)
-                             OR m.metadata -> 'artifacts'
-                                @> jsonb_build_array(jsonb_build_object('sha256', r.sha256))))))",
+               AND {names})",
         kinds = crate::media_retention::MEDIA_KINDS_SQL,
+        names = metadata_names_sha("m", "r.sha256"),
     )
+}
+
+/// Whether the message `message` names the artifact `sha` in its metadata,
+/// in any shape `artifact_shas_from_metadata` reads: a string
+/// `artifact_sha256` or `sha256`, or an `artifacts` array holding the sha as
+/// a string or as an object's string `sha256`. Comparing jsonb to jsonb
+/// matches strings only, as that function does.
+fn metadata_names_sha(message: &str, sha: &str) -> String {
+    format!(
+        "({message}.metadata -> 'artifact_sha256' = to_jsonb({sha})
+          OR {message}.metadata -> 'sha256' = to_jsonb({sha})
+          OR (jsonb_typeof({message}.metadata -> 'artifacts') = 'array'
+              AND ({message}.metadata -> 'artifacts' @> jsonb_build_array({sha})
+                   OR {message}.metadata -> 'artifacts'
+                      @> jsonb_build_array(jsonb_build_object('sha256', {sha})))))"
+    )
+}
+
+/// Whether `member` may read the artifact `sha256` in `workspace_id`: the
+/// workspace holds a ref, and [`crate::thread_access::artifact_visible_to`]
+/// lets the member through it.
+pub async fn visible_to(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    sha256: &str,
+) -> Result<bool, StoreError> {
+    let visible = crate::thread_access::artifact_visible_to(
+        "r",
+        "$2::uuid",
+        "$4",
+        &metadata_names_sha("vis_m", "r.sha256"),
+    );
+    let exists: bool = sqlx::query_scalar(&format!(
+        "SELECT EXISTS(SELECT 1 FROM maidan_artifact_refs r
+                       WHERE r.workspace_id = $1 AND r.sha256 = $3 AND {visible})"
+    ))
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(sha256)
+    .bind(maidan_types::DM_CHANNEL_NAME)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
 }
 
 pub async fn media_bytes(pool: &PgPool, workspace_id: WorkspaceId) -> Result<i64, StoreError> {

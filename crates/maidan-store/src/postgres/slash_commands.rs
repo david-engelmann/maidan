@@ -1,21 +1,21 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewSlashCommand, SlashCommand, SlashCommandId, SlashCommandWithSecret, SlashHandlerKind,
-    WorkspaceId,
+    ApiTokenId, NewSlashCommand, SlashCommand, SlashCommandId, SlashCommandWithSecret,
+    SlashHandlerKind, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
+const COLS: &str = "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 pub async fn create(pool: &PgPool, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {
     let id = Uuid::now_v7();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_slash_commands
-            (id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, created_by_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING {COLS}"
     ))
     .bind(id)
@@ -25,6 +25,7 @@ pub async fn create(pool: &PgPool, new: NewSlashCommand) -> Result<SlashCommand,
     .bind(new.handler_kind.as_str())
     .bind(&new.handler_target)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(pool)
     .await?;
     row_to_command(&row)
@@ -42,6 +43,9 @@ pub async fn get(pool: &PgPool, id: SlashCommandId) -> Result<SlashCommandWithSe
     Ok(SlashCommandWithSecret {
         command,
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: row
+            .get::<Option<Uuid>, _>("created_by_token")
+            .map(ApiTokenId),
     })
 }
 
@@ -64,6 +68,9 @@ pub async fn get_by_name(
     Ok(SlashCommandWithSecret {
         command,
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: row
+            .get::<Option<Uuid>, _>("created_by_token")
+            .map(ApiTokenId),
     })
 }
 

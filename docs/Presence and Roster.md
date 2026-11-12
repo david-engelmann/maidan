@@ -37,8 +37,8 @@ members on other replicas, refreshed by a heartbeat.
 
 - A disconnect propagates an `offline` frame promptly; a crashed replica's
   members expire from others' rosters within the TTL.
-- Tunables: `MAIDAN_PRESENCE_HEARTBEAT_SECS` (default 10), `MAIDAN_PRESENCE_TTL_SECS`
-  (default 30) — see [Production](Production.md).
+- A replica re-announces its members every 10 s and a remote member with no
+  heartbeat for 30 s leaves the roster. Both are constants, not settings.
 - Each change is decided, sent to local sockets and queued for other replicas
   under one lock, and one task publishes the queue in order, so a reconnect's
   `online` is never overtaken by the old connection's `offline`. A member
