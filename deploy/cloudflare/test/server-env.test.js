@@ -9,6 +9,7 @@ import {
   containerEnvPlan,
   envFingerprint,
   serverEnv,
+  withoutFingerprint,
 } from "../src/server-env.js";
 import { demoEnv } from "../src/demo-env.js";
 
@@ -629,4 +630,44 @@ test("an answer without the header is taken as before, so an older image is not 
   await world.serve(async () => new Response("ok"));
   assert.equal(world.destroys(), 0);
   assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint);
+});
+
+test("no answer leaves the Worker with the fingerprint header, matching or stale", async () => {
+  // OPS-003: the fingerprint is an unsalted hash over every setting, secrets
+  // included; a client that sees it can test a guessed secret offline.
+  const fingerprint = await envFingerprint(serverEnv({ MAIDAN_SIGNUP_OPEN: "1" }));
+  const world = rig({ fingerprint });
+  const first = await world.serve(async () => {
+    world.container.running = true;
+    return answer(fingerprint);
+  });
+  assert.equal(first.headers.get(ENV_FINGERPRINT_HEADER), null);
+  assert.equal(await first.text(), "ok");
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), fingerprint, "still compared first");
+
+  const warm = await world.serve(async () => answer(fingerprint));
+  assert.equal(warm.headers.get(ENV_FINGERPRINT_HEADER), null);
+
+  const stale = await world.serve(async () => answer("c".repeat(64)));
+  assert.equal(stale.headers.get(ENV_FINGERPRINT_HEADER), null);
+  assert.equal(world.storage.snapshot(ENV_FINGERPRINT_KEY), `stale:${"c".repeat(64)}`);
+});
+
+test("taking the fingerprint off keeps the status, the other headers and the body", async () => {
+  const original = new Response("created", {
+    status: 201,
+    statusText: "Created",
+    headers: { [ENV_FINGERPRINT_HEADER]: "a".repeat(64), "x-request-id": "r1", "content-type": "text/plain" },
+  });
+  const sent = withoutFingerprint(original);
+  assert.equal(sent.status, 201);
+  assert.equal(sent.statusText, "Created");
+  assert.equal(sent.headers.get("x-request-id"), "r1");
+  assert.equal(sent.headers.get("content-type"), "text/plain");
+  assert.equal(sent.headers.has(ENV_FINGERPRINT_HEADER), false);
+  assert.equal(await sent.text(), "created");
+
+  const plain = new Response("ok");
+  assert.equal(withoutFingerprint(plain), plain, "an answer without it is passed through as is");
+  assert.equal(withoutFingerprint("not a response"), "not a response");
 });

@@ -47,6 +47,7 @@ bash scripts/check-agent-contract.sh     # golden JSON under contracts/ (CI: --n
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the quickstart agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the release the tree records
 bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
+bash scripts/check-action-pins.sh        # every `uses:` names a commit SHA with a `# vX.Y.Z` comment (resolve with gh api repos/<o>/<r>/commits/<tag>)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 python3 scripts/test-mcp-fault-injection.py   # the Python claimants behind scripts/mcp-fault-proxy.py (in `lint`)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
@@ -369,8 +370,11 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `auth::READ_ONLY_OPERATIONS`, or the request layer records it as a change.
 - **A new `MAIDAN_*` variable** goes in `SERVER_ENV` (the server reads it) or
   `TOLERATED_ENV` (a script, SDK, test or build arg does) in
-  `crates/maidan-env/src/lib.rs`, or boot refuses it as unknown.
-  `env_registry_contract` checks every name the repo mentions.
+  `crates/maidan-env/src/lib.rs`, or boot refuses it as unknown, and a
+  server variable also needs a row in `docs/Configuration.md`.
+  `env_registry_contract` checks every name the repo mentions, the rows, and
+  that the server reads no unprefixed name off its closed list. A poll or tick
+  interval is a constant, not a new variable.
 - **Spawn with `maidan_store::attribution::spawn`**, not `tokio::spawn`, in
   any server or MCP module that is not a background worker: a plain spawn
   leaves the request's attribution scope and its writes read as nobody's.

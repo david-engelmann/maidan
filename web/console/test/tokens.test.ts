@@ -55,12 +55,14 @@ test("the board's new-task form and the thread composer do not share a class", (
   assert.ok(!/className="composer"/.test(board));
 });
 
-test("the empty Threads and People detail panes share one titled empty state", () => {
-  for (const f of ["threads/Threads.tsx", "people/People.tsx"]) {
+test("the empty Threads, People and Catalog detail panes share one titled empty state with the place's mark", () => {
+  for (const [f, icon] of [["threads/Threads.tsx", "threads"], ["people/People.tsx", "people"], ["catalog/Catalog.tsx", "catalog"]]) {
     const src = readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
-    assert.match(src, /className="pane-empty">\s*<span className="pane-empty-mark" \/>\s*<strong>/, f);
+    assert.match(src, new RegExp(`<EmptyState\\s+icon="${icon}"\\s+title=`), f);
+    assert.doesNotMatch(src, /pane-empty-mark/, f);
   }
-  assert.match(css, /\.pane-empty \{/);
+  assert.match(css, /\.empty-state\.pane-empty \{/);
+  assert.doesNotMatch(css, /\.pane-empty-mark/);
   assert.ok(!/member-detail[^{]*\{[^}]*dashed/.test(css));
 });
 

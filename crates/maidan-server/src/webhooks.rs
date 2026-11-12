@@ -149,8 +149,18 @@ pub async fn create_webhook(
             label: body.label,
             event_kinds,
             secret_ciphertext,
+            // The subscription delivers as this token, and stops when it does.
+            created_by_token: auth.token_id,
         })
         .await?;
+    crate::registration_owner::record_registration(
+        &state,
+        &auth,
+        workspace_id,
+        "webhook",
+        subscription.id.0,
+    )
+    .await;
 
     remember_webhook_secret(
         &state.webhooks.secrets,
@@ -227,6 +237,24 @@ pub async fn set_mention_webhook(
         .store
         .set_workspace_mention_webhook_id(workspace_id, webhook_id)
         .await?;
+    // The route delivers as its subscription's creator; this row says who
+    // chose it.
+    crate::audit::record(
+        &state,
+        maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(workspace_id),
+            actor_id: (!auth.bypass).then_some(auth.actor_id),
+            action: "mention_webhook.set".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({
+                "workspace_id": workspace_id.0,
+                "webhook_id": webhook_id.map(|id| id.0),
+                "token_id": auth.token_id.map(|token| token.0),
+            }),
+        },
+    )
+    .await;
     Ok(Json(MentionWebhookConfig { webhook_id }))
 }
 
@@ -339,12 +367,9 @@ pub fn max_attempts_from_env() -> u32 {
         .unwrap_or(16)
 }
 
-pub fn poll_interval_ms_from_env() -> u64 {
-    std::env::var("MAIDAN_WEBHOOK_POLL_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50)
-}
+/// How often the webhook worker looks for due deliveries; a constant, not a
+/// knob (OPS-006).
+pub const POLL_INTERVAL_MS: u64 = 50;
 
 #[cfg(test)]
 mod payload_tests {

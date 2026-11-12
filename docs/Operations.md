@@ -84,8 +84,6 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 | `MAIDAN_CHANGE_CI_BACKSTOP_SECS` | With `MAIDAN_GITHUB_WEBHOOK_SECRET` set, CI notices are event-driven: a sweep reads a pull request's CI through the Actions API (a fine-grained token's fallback) only after a `workflow_run`, `check_suite`, `check_run` or `status` event, a push, or once its last read is this many seconds old (default 1800; `0` reads every sweep). Without the secret every sweep reads it, as before. |
 | `MAIDAN_STALE_BASE_COMMITS` | Commits behind its branch at which a delivered round's base is stale (default 50; an unparsable or non-positive value keeps it). Such a delivery gets one `stale_base` notice on its thread. |
 | Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests). |
-| Mail worker: `MAIDAN_MAIL_WORKER_TICK_SECS` | Runs whenever SMTP is configured; the tick defaults to 5 s. |
-| Retention: `MAIDAN_RETENTION_SWEEP_SECS` | The sweeper starts when any `MAIDAN_RETENTION_*_DAYS` is set; the sweep interval defaults to 86400 s. |
 | `MAIDAN_RETENTION_*_DAYS` (messages/events/audit/deliveries/notifications) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event. Deliveries covers every finished delivery row but never a pending one, an egress/mail dead letter, or a held workspace's rows. Notifications, off unless `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` is set, deletes read notifications older than that and leaves unread and snoozed ones. Messages, off unless `MAIDAN_RETENTION_MESSAGES_DAYS` is set, are erased past that age in every workspace that is not held; a workspace may set a shorter policy and not a longer one. The usage ledger is not pruned. See [Production — Retention](Production.md#retention). |
 
 Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
@@ -133,7 +131,7 @@ queries), `deliveries` (egress, email and web push sent) and `wasi_ms` (WASI han
 run time). `stored_bytes` is a gauge, not a count: once a UTC day the loop
 measures the bytes of each workspace's artifacts and live message bodies,
 up to 25 workspaces a tick, and that day's row is the measurement. The `usage_meters` loop flushes them every
-`MAIDAN_USAGE_METER_FLUSH_SECS` (default 60) and once more when the server
+minute and once more when the server
 shuts down. A failed flush keeps its counts for the next one, but a crash
 between flushes loses at most one interval's counts: the meters inform the
 free allowance, they do not bill. Health probes and `/metrics` are not
@@ -199,7 +197,7 @@ counted. The crossing's `usage_over_allowance` notice to each admin is the
 admin notice; it is sent when the cutoff starts.
 
 Every replica reloads the cutoff from the store each tick
-(`MAIDAN_USAGE_METER_FLUSH_SECS`) and at boot. Counts are flushed once an
+(once a minute) and at boot. Counts are flushed once an
 interval, so an open workspace can overshoot its allowance by up to one
 interval's traffic per replica before it is refused.
 At the boundary expect an overshoot of 1–2 flush intervals: one for the

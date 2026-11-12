@@ -134,6 +134,7 @@ async fn subscription(store: &dyn Store, ws: WorkspaceId) -> WebhookSubscription
             label: None,
             event_kinds: vec!["message.posted".into()],
             secret_ciphertext: "cipher".into(),
+            created_by_token: None,
         })
         .await
         .unwrap()

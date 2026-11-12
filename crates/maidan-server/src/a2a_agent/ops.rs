@@ -417,7 +417,7 @@ pub(crate) async fn send_message(
     )
     .await?;
     if let Some(config) = push {
-        push::attach(state, &task.id, config).await?;
+        push::attach(state, scope.workspace_id, &task.id, config).await?;
     }
     push::notify(state, scope.workspace_id, &task);
     let mut rendered = task;

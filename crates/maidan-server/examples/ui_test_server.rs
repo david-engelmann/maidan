@@ -1090,6 +1090,7 @@ async fn main() {
             label: Some("ui-test".into()),
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "ui-test-ciphertext".into(),
+            created_by_token: None,
         })
         .await
         .expect("webhook");

@@ -17,6 +17,11 @@
 .grow { flex: 1 1 auto; min-width: 0; }
 .break { overflow-wrap: anywhere; }
 .row-form { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); margin: 0.5rem 0; }
+/* A growing field in a row form shrinks with its card. Its grid track and its
+   control both default to their content's width, so a select whose longest
+   option is a long task title pushed Files 173px past a 900px window. */
+.row-form .field.grow { flex-basis: 16rem; grid-template-columns: minmax(0, 1fr); }
+.row-form .field.grow select, .row-form .field.grow input { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .stack-form { display: grid; gap: var(--space-2-5); margin-top: 0.5rem; }
 .field select { min-height: 44px; padding: 0 var(--space-2-5); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-input); }
 .check { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; font-size: var(--text-md); }

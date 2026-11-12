@@ -254,7 +254,7 @@ async fn forward_agui(
 /// `can_access_thread`, a channel-only one by `can_access_channel`, and a
 /// workspace-level one (already workspace-scoped) is visible. A store error is
 /// treated as not-visible (fail-closed) rather than leaking.
-async fn event_visible(store: &dyn Store, auth: &AuthContext, event: &Event) -> bool {
+pub(crate) async fn event_visible(store: &dyn Store, auth: &AuthContext, event: &Event) -> bool {
     if let Some(thread_id) = event.thread_id() {
         return matches!(
             maidan_auth::can_access_thread(store, auth, thread_id).await,
