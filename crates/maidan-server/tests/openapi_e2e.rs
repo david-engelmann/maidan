@@ -52,7 +52,7 @@ async fn openapi_json_serves_document() {
     assert_eq!(doc["info"]["title"].as_str(), Some("Maidan API"));
     let paths = doc["paths"].as_object().expect("paths object");
     assert!(paths.contains_key("/health/live"));
-    assert!(paths.contains_key("/workspaces"));
+    assert!(paths.contains_key("/operator/workspaces"));
     assert!(paths.contains_key("/auth/oidc/login"));
     assert!(paths.contains_key("/auth/session"));
     assert!(paths.contains_key("/ui/api/workspaces/{wid}/events"));

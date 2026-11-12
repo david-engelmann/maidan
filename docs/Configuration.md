@@ -60,7 +60,7 @@ one of these is now unknown, and boot refuses it with the rest.
 |---|---|---|
 | `DATABASE_URL` | required | `postgres://…` (recommended) or `sqlite:…`; the prefix picks the backend. A managed Postgres (Neon, RDS, Cloud SQL and the like) needs TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the certificate. The server carries its own root certificates, so this works on the shell-less image. SQLite connections turn on `foreign_keys`, WAL and a busy timeout. |
 | `MAIDAN_BIND` | `0.0.0.0:8080` | The address the HTTP server listens on. |
-| `MAIDAN_ENV` | unset | `production` refuses every development switch: `AUTH_DISABLED`, the development KEK, `MAIDAN_OIDC_MOCK`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. |
+| `MAIDAN_ENV` | unset | `production` refuses every development switch: the development KEK, `MAIDAN_DEV_ADMIN_TOKEN`, `MAIDAN_ALLOW_PRIVATE_EGRESS`, `MAIDAN_OUTBOX_RELAY=0`, `MAIDAN_OPS_FAULT` and the anonymous MCP reader. `development` names a deployment that is not production, which a test build's `MAIDAN_OIDC_MOCK` needs. An empty value counts as unset: not production, so the production refusals stay off. Any other value (`prod`, `Production`) refuses boot. The Helm chart's production render and the `k8s/overlays/prod` overlay set `production`. |
 | `MAIDAN_PUBLIC_ORIGIN` | unset | This instance's public origin, such as `https://maidan.example.com` (`https`, or `http` on a loopback host, with no path). OAuth identifiers are built from it; unset, the instance serves no OAuth metadata. A malformed value refuses boot. See [OAuth](OAuth.md). |
 | `MAIDAN_CONSOLE_ORIGIN` | origin of `MAIDAN_OIDC_REDIRECT_URI` | The console's absolute origin, used in the one-time links `approval_decide` gives a person. With neither set, the links are host-relative and no URL elicitation is offered. |
 | `MAIDAN_SHUTDOWN_DRAIN_SECS` | `0` | Seconds the server keeps serving after SIGTERM, with readiness at `503`, before it closes its listener. The Helm chart and `k8s/base` set `10`. See [Rolling restarts](Production.md#rolling-restarts). |
@@ -115,11 +115,13 @@ Unset, keys carry no instance tag and nothing is swept. Metrics:
 | `MAIDAN_SESSION_TTL_SECS` | `28800` | Browser session lifetime (8 hours), OIDC or token. A token's session also ends with the token. |
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | `MAIDAN_SESSION_SECRET` | A separate key for subscribe resume tokens only. |
 | `MAIDAN_COOKIE_SECURE` | unset | `1` marks session cookies `Secure`. Production does this already. |
-| `AUTH_DISABLED` | unset | Serve every request unauthenticated. Takes effect only with `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` as well, and never with `MAIDAN_ENV=production`; either violation refuses boot. Development, tests and CI only. |
-| `MAIDAN_ALLOW_INSECURE_NO_AUTH` | unset | The acknowledgement `AUTH_DISABLED` needs. Never set it in production. |
-| `MAIDAN_BOOTSTRAP` | unset | `1` opens unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members`, only on a build with the `bootstrap` feature. The published server image has no such routes, so it does nothing there. See [HTTP bootstrap](Production.md#http-bootstrap-development-only). |
-| `MAIDAN_ALLOWED_HOSTS` | unset | Comma-separated host names (no ports) that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. See [DNS rebinding](Production.md#dns-rebinding). |
-| `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | unset | Development only. A workspace id whose name begins `synthetic-`, which an MCP `POST` with no credential may read with read-only tools. Refused in production and beside `AUTH_DISABLED`. |
+| `MAIDAN_DEV_ADMIN_TOKEN` | unset | Development only. On an instance with no workspace yet, boot opens workspace `dev` with an admin holding every capability whose bearer is this value: a real token, hashed, audited and revocable. Later boots and other replicas find it present; with workspaces already there it does nothing. At least 32 characters. Refused in production. For a compose or Helm stack whose database `maidan init` cannot reach. |
+| `MAIDAN_ALLOW_INSECURE_NO_AUTH` | unset | Removed with the unauthenticated mode. Boot refuses it, and `AUTH_DISABLED`, by name whatever the value. |
+| `MAIDAN_BOOTSTRAP` | unset | Test builds only: `1` opens unauthenticated `POST /workspaces` (first workspace only) and `POST /workspaces/:wid/members`. No build that ships has the routes, and such a build refuses the variable at boot. |
+
+Every caller is authenticated; there is no unauthenticated mode. Boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH`, the variables of the mode the server had before, by name and whatever their value. Mint the first token with `maidan init` or `MAIDAN_DEV_ADMIN_TOKEN`.
+| `MAIDAN_ALLOWED_HOSTS` | unset | Comma-separated host names (no ports) that a request with no credential may name under the anonymous MCP reader, besides loopback names and IP addresses. See [DNS rebinding](Production.md#dns-rebinding). |
+| `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | unset | Development only. A workspace id whose name begins `synthetic-`, which an MCP `POST` with no credential may read with read-only tools. Refused in production. |
 
 ## OIDC sign-in
 
@@ -140,7 +142,7 @@ The design and provider recipes are in [OIDC](OIDC.md).
 | `MAIDAN_OIDC_AUTO_PROVISION` | unset | `1` lets a new identity create a human member. Otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | unset | `1` links a verified email claim to an existing member with that handle. |
 | `MAIDAN_OIDC_EMAILS_VERIFIED` | unset | `1` treats an `email` claim without `email_verified` as verified. Only for a provider whose every login proves the address. An explicit `email_verified: false` stays unverified. |
-| `MAIDAN_OIDC_MOCK` | unset | `1` for a deterministic development and CI provider. Refused in production. |
+| `MAIDAN_OIDC_MOCK` | unset | Test builds only: `1` signs in as whoever the callback names, with no provider, and only beside `MAIDAN_ENV=development`. A build that ships has no mock and refuses the variable at boot. |
 
 ## Sign-up and waitlist
 
@@ -167,7 +169,7 @@ For a throwaway demo instance such as try.maidan.world only
 
 | Variable | Default | Notes |
 |---|---|---|
-| `MAIDAN_DEMO_SANDBOX` | unset | `1` turns on the public `POST /sandbox`, which gives anyone who asks a fresh workspace with a `#general` channel, a "Say hello" task, an admin token and an agent token, both expiring in 24 hours. Off, the route answers 404. Needs `MAIDAN_PUBLIC_ORIGIN`; refused beside `AUTH_DISABLED` and `MAIDAN_SIGNUP`. With `MAIDAN_TURNSTILE_SECRET` set, the call needs a Turnstile token for the `sandbox` action. |
+| `MAIDAN_DEMO_SANDBOX` | unset | `1` turns on the public `POST /sandbox`, which gives anyone who asks a fresh workspace with a `#general` channel, a "Say hello" task, an admin token and an agent token, both expiring in 24 hours. Off, the route answers 404. Needs `MAIDAN_PUBLIC_ORIGIN`; refused beside `MAIDAN_SIGNUP`. With `MAIDAN_TURNSTILE_SECRET` set, the call needs a Turnstile token for the `sandbox` action. |
 | `MAIDAN_DEMO_INSTANCE` | unset | `1` says the whole instance is a disposable demo. Under `MAIDAN_ENV=production`, boot refuses `MAIDAN_DEMO_SANDBOX` without it. |
 | `MAIDAN_DEMO_SANDBOX_MAX` | `200` | The most workspaces the instance holds. Past it, the mint answers 503 until the next reset. |
 | `MAIDAN_DEMO_SANDBOX_RATE_LIMIT_MAX`, `MAIDAN_DEMO_SANDBOX_RATE_LIMIT_WINDOW_SECS` | `3` per `3600` s | Per-address limit on `POST /sandbox`, on whenever the mint is. `0` turns it off. |
@@ -386,6 +388,7 @@ A value that is not a positive whole number turns that knob off. For
 | `OTLP_METRICS` | unset | `1` also pushes metrics over OTLP, beside the `/metrics` scrape. |
 | `OTLP_METRICS_ENDPOINT` | `OTLP_ENDPOINT` | A separate collector for metrics. |
 | `OTLP_METRICS_INTERVAL_SECS` | `15` | Metrics push interval. |
+| `MAIDAN_METRICS_TOKEN` | unset | The bearer a scraper sends to `GET /metrics`, 32 bytes or more (`openssl rand -hex 32`); set, the scrape answers `401` to any other request. Unset, `/metrics` is open to whoever reaches the port, except under `MAIDAN_ENV=production`, where it answers `404`. Has a `_FILE` form. |
 
 OTLP export is the `otel` Cargo feature, on by default. A build without it
 (`--no-default-features`) drops the OpenTelemetry stack; logs and `/metrics`
@@ -426,7 +429,8 @@ These are chosen when the image is built, not at run time.
 
 | Option | Effect |
 |---|---|
-| `bootstrap` Cargo feature | The unauthenticated seed routes `MAIDAN_BOOTSTRAP` opens. On for `cargo run`; off in every published image. `MAIDAN_ENABLE_BOOTSTRAP=1` is the image build argument that turns it on. |
+| `bootstrap` Cargo feature | The unauthenticated seed routes `MAIDAN_BOOTSTRAP` opens. Test-only: off by default and in every build that ships; `scripts/check-deploy-contract.sh` fails if one turns it on. |
+| `test-support` Cargo feature | Test callers (`maidan_server::test_support`, `AppState::for_tests`) and the OIDC mock. Only dev-dependencies enable it. |
 | `otel` Cargo feature | OTLP export. On by default. |
 | `sqlite-vec` Cargo feature | SQL `vec_distance_cosine` for semantic search on SQLite. Off by default; SQLite ranks in process without it. |
 | `mcp-frame-capture` Cargo feature | Logs full MCP frames with `MAIDAN_LOG=info,maidan_mcp::frame=debug`, with secrets redacted. A release build that enables it fails to compile. |

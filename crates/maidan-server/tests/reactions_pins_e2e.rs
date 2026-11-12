@@ -3,15 +3,15 @@
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
-    time::Duration,
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::{json, Value};
 
-async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
+async fn spawn() -> (SocketAddr, Arc<dyn Store>, tokio::task::JoinHandle<()>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -32,51 +32,31 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
-    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, store, server)
 }
 
 #[tokio::test]
 async fn reaction_and_pin_http_flow() {
-    let (addr, client, server) = spawn().await;
+    let (addr, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "rx-pin"}))
-        .send()
+    let tenant = test_support::tenant(store.as_ref(), "rx-pin").await;
+    let client = tenant.client();
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
         .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let member: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let member_id = member["id"].as_str().unwrap();
+        .client();
 
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -100,9 +80,8 @@ async fn reaction_and_pin_http_flow() {
         .unwrap();
     let thread_id = th["id"].as_str().unwrap();
 
-    let msg: Value = client
+    let msg: Value = alice
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", member_id)
         .json(&json!({
             "body": "pin me"
         }))
@@ -114,9 +93,8 @@ async fn reaction_and_pin_http_flow() {
         .unwrap();
     let message_id = msg["id"].as_str().unwrap();
 
-    client
+    alice
         .post(format!("{base}/messages/{message_id}/reactions"))
-        .header("maidan-test-member-id", member_id)
         .json(&json!({"emoji": "🎉"}))
         .send()
         .await
@@ -134,9 +112,8 @@ async fn reaction_and_pin_http_flow() {
         .unwrap();
     assert_eq!(reactions.as_array().unwrap().len(), 1);
 
-    client
+    alice
         .post(format!("{base}/threads/{thread_id}/pins"))
-        .header("maidan-test-member-id", member_id)
         .json(&json!({"message_id": message_id}))
         .send()
         .await
@@ -155,9 +132,8 @@ async fn reaction_and_pin_http_flow() {
     assert_eq!(pins.as_array().unwrap().len(), 1);
     assert_eq!(pins[0]["message_id"].as_str().unwrap(), message_id);
 
-    client
+    alice
         .delete(format!("{base}/messages/{message_id}/reactions"))
-        .header("maidan-test-member-id", member_id)
         .json(&json!({"emoji": "🎉"}))
         .send()
         .await
@@ -175,9 +151,8 @@ async fn reaction_and_pin_http_flow() {
         .unwrap();
     assert!(reactions2.as_array().unwrap().is_empty());
 
-    client
+    alice
         .delete(format!("{base}/threads/{thread_id}/pins"))
-        .header("maidan-test-member-id", member_id)
         .json(&json!({"message_id": message_id}))
         .send()
         .await

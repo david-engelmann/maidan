@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewAuditEvent, NewMember, NewWorkspace};
 use reqwest::StatusCode;
@@ -40,7 +40,6 @@ async fn spawn() -> (
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
         false,
         FederationRuntime::new(true, federation_test_key()),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -100,6 +99,8 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         })
         .await
         .unwrap();
+    let client =
+        test_support::bearer_client(&test_support::admin_token(store.as_ref(), alice.id).await);
 
     let audit: Vec<serde_json::Value> = client
         .get(format!(

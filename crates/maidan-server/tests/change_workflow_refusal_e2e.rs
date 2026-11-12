@@ -109,7 +109,6 @@ async fn a_change_editing_a_workflow_file_is_refused_with_422_only_while_the_swi
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,

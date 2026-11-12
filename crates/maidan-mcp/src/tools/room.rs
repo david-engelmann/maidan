@@ -17,11 +17,7 @@ use super::content_json;
 use crate::error::McpError;
 
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        capability::all()
-    } else {
-        auth.capabilities().to_vec()
-    }
+    auth.capabilities().to_vec()
 }
 
 /// Catalog of named sets and the atomics they expand to.
@@ -122,13 +118,13 @@ pub(super) async fn rotate_token(
     args: &Value,
 ) -> Result<Value, McpError> {
     let _: RotateArgs = crate::tools::parse_args(args)?;
-    let Some(token_id) = auth.token_id else {
+    let Some(token_id) = auth.token_id() else {
         return Err(McpError::InvalidParams(
             "rotate_token rotates the bearer token of this call; there is none".into(),
         ));
     };
     let secret = TokenSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let rotated = store
         .rotate_api_token_audited(
             token_id,
@@ -170,21 +166,21 @@ pub(super) async fn attenuate_token(
     let a: AttenuateArgs = crate::tools::parse_args(args)?;
     let capabilities = maidan_auth::attenuate(&holder_grant(auth), &a.capabilities)
         .map_err(McpError::InvalidParams)?;
-    let parent = match auth.token_id {
+    let parent = match auth.token_id() {
         Some(id) => store.get_api_token(id).await?.expires_at,
         None => None,
     };
     let expires_at = maidan_auth::attenuate_expiry(parent, a.expires_at, Utc::now())
         .map_err(McpError::InvalidParams)?;
-    let inherited_quotas = match auth.token_id {
+    let inherited_quotas = match auth.token_id() {
         Some(parent_id) => store.list_token_quotas(parent_id).await?,
         None => Vec::new(),
     };
     let secret = TokenSecret::generate();
     let derived = NewApiToken {
-        workspace_id: auth.workspace_id,
-        member_id: auth.member_id,
-        app_installation_id: auth.app_installation_id,
+        workspace_id: auth.workspace_id(),
+        member_id: auth.member_id(),
+        app_installation_id: auth.app_installation_id(),
         token_hash: hash_secret(secret.as_str()),
         label: a.label,
         capabilities: capabilities.clone(),
@@ -193,7 +189,7 @@ pub(super) async fn attenuate_token(
     // The audit row commits with the mint (D-A). If it cannot be written the
     // mint rolls back too, so no token exists whose secret was never shown.
     let (actor, parent_token_id, quota_count) =
-        (auth.actor_id, auth.token_id, inherited_quotas.len());
+        (auth.actor_id(), auth.token_id(), inherited_quotas.len());
     let audit: maidan_store::AuditFor<maidan_types::ApiToken> =
         Box::new(move |record| NewAuditEvent {
             scope: AuditScope::Workspace(record.workspace_id),
@@ -214,7 +210,7 @@ pub(super) async fn attenuate_token(
             }),
         });
     // Record the parent so revoking it reaches this token.
-    let record = match auth.token_id {
+    let record = match auth.token_id() {
         Some(parent) => {
             store
                 .create_attenuated_api_token_audited(derived, parent, audit)
@@ -257,7 +253,7 @@ pub(super) async fn delegate_token(
     let a: DelegateTokenArgs = crate::tools::parse_args(args)?;
     // One hop — see the REST twin. A borrowed token exchanging would use its
     // subject's grants and erase the real actor from the chain.
-    if auth.delegation_grant_id.is_some() {
+    if auth.delegation_grant_id().is_some() {
         return Err(McpError::Forbidden(
             "a delegated token cannot exchange a grant; delegation is one hop".into(),
         ));
@@ -266,10 +262,10 @@ pub(super) async fn delegate_token(
         .get_delegation_grant(maidan_types::DelegationGrantId(a.grant_id))
         .await?;
     // As on REST: another workspace's grant reads as absent.
-    if !auth.bypass && grant.workspace_id != auth.workspace_id {
+    if grant.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
-    if grant.delegate_id != auth.actor_id {
+    if grant.delegate_id != auth.actor_id() {
         return Err(McpError::Forbidden(
             "delegation grant belongs to a different delegate".into(),
         ));
@@ -292,7 +288,7 @@ pub(super) async fn delegate_token(
     let capabilities = maidan_auth::attenuate(&grant.capabilities, &requested)
         .and_then(|caps| maidan_auth::attenuate(&held, &caps))
         .map_err(McpError::InvalidParams)?;
-    let parent_expiry = match auth.token_id {
+    let parent_expiry = match auth.token_id() {
         Some(id) => store.get_api_token(id).await?.expires_at,
         None => None,
     };
@@ -301,7 +297,7 @@ pub(super) async fn delegate_token(
             .map_err(McpError::InvalidParams)?;
     let secret = TokenSecret::generate();
     let (actor, delegate, parent_token_id, grant_id) =
-        (auth.actor_id, auth.member_id, auth.token_id, grant.id);
+        (auth.actor_id(), auth.member_id(), auth.token_id(), grant.id);
     let record = store
         .create_delegated_api_token_audited(
             NewApiToken {
@@ -314,8 +310,8 @@ pub(super) async fn delegate_token(
                 expires_at: Some(expires_at),
             },
             grant.id,
-            auth.member_id,
-            auth.token_id,
+            auth.member_id(),
+            auth.token_id(),
             Box::new(move |record| NewAuditEvent {
                 scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
@@ -337,7 +333,7 @@ pub(super) async fn delegate_token(
         .await?;
     Ok(content_json(&json!({
         "grant_id": grant.id.0,
-        "delegate_id": auth.member_id.0,
+        "delegate_id": auth.member_id().0,
         "id": record.id.0,
         "secret": secret.as_str(),
         "workspace_id": record.workspace_id.0,
@@ -390,7 +386,7 @@ pub(super) async fn create_delegation_grant(
     for member_id in [subject_id, delegate_id] {
         store.get_member_in(workspace_id, member_id).await?;
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let grant = store
         .create_delegation_grant_audited(
             NewDelegationGrant {
@@ -399,7 +395,7 @@ pub(super) async fn create_delegation_grant(
                 delegate_id,
                 capabilities: a.capabilities,
                 purpose: a.purpose,
-                authorized_by: auth.actor_id,
+                authorized_by: auth.actor_id(),
                 expires_at: a.expires_at,
             },
             Box::new(move |grant| NewAuditEvent {
@@ -468,7 +464,7 @@ pub(super) async fn revoke_delegation_grant(
             grant_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "delegation_grant.revoke".into(),
                 target_kind: Some("delegation_grant".into()),
                 target_id: Some(grant_id.0),
@@ -713,9 +709,12 @@ mod tests {
         let resolved = maidan_auth::resolve_bearer(store.as_ref(), delegated_secret)
             .await
             .unwrap();
-        assert_eq!(resolved.member_id, subject.id);
-        assert_eq!(resolved.actor_id, member);
-        assert_eq!(resolved.delegation_grant_id.map(|id| id.0), Some(grant_id));
+        assert_eq!(resolved.member_id(), subject.id);
+        assert_eq!(resolved.actor_id(), member);
+        assert_eq!(
+            resolved.delegation_grant_id().map(|id| id.0),
+            Some(grant_id)
+        );
         server
             .call_tool(&resolved, "whoami", &json!({}))
             .await
@@ -782,7 +781,7 @@ pub(super) async fn set_delegation_policy(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetDelegationPolicyArgs = crate::tools::parse_args(args)?;
-    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), auth.workspace_id());
     let policy = store
         .set_delegation_policy_audited(
             workspace_id,
@@ -810,7 +809,7 @@ pub(super) async fn get_delegation_policy(
     _args: &Value,
 ) -> Result<Value, McpError> {
     Ok(content_json(
-        &store.get_delegation_policy(auth.workspace_id).await?,
+        &store.get_delegation_policy(auth.workspace_id()).await?,
     ))
 }
 
@@ -822,7 +821,7 @@ pub(super) async fn set_retention_policy(
     args: &Value,
 ) -> Result<Value, McpError> {
     let days: maidan_types::RetentionDays = crate::tools::parse_args(args)?;
-    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), auth.workspace_id());
     let instance = server.instance_retention();
     let days = server
         .store
@@ -859,9 +858,12 @@ pub(super) async fn get_retention_policy(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let days = server.store.get_retention_policy(auth.workspace_id).await?;
+    let days = server
+        .store
+        .get_retention_policy(auth.workspace_id())
+        .await?;
     Ok(content_json(&maidan_types::RetentionPolicy::new(
-        auth.workspace_id,
+        auth.workspace_id(),
         days,
         server.instance_retention(),
     )))

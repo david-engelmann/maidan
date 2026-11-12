@@ -86,6 +86,9 @@ mod attribution_scope_contract;
 #[path = "../audit_coverage_e2e.rs"]
 mod audit_coverage_e2e;
 
+#[path = "../auth_context_seal_contract.rs"]
+mod auth_context_seal_contract;
+
 #[path = "../auth_e2e.rs"]
 mod auth_e2e;
 
@@ -106,6 +109,9 @@ mod body_limit_e2e;
 
 #[path = "../bootstrap_e2e.rs"]
 mod bootstrap_e2e;
+
+#[path = "../bridged_provenance_e2e.rs"]
+mod bridged_provenance_e2e;
 
 #[path = "../budget_enforce_e2e.rs"]
 mod budget_enforce_e2e;
@@ -454,6 +460,9 @@ mod member_display_name_rest_e2e;
 
 #[path = "../member_reference_e2e.rs"]
 mod member_reference_e2e;
+
+#[path = "../member_self_capability_e2e.rs"]
+mod member_self_capability_e2e;
 
 #[path = "../memory_block_rest_e2e.rs"]
 mod memory_block_rest_e2e;

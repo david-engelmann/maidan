@@ -1,13 +1,18 @@
 //! Rate limit middleware returns 429 when MAIDAN_RATE_LIMIT_MAX is set.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, test_support::Tenant, AppState};
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 
-async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+async fn spawn() -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    tempfile::TempDir,
+    Tenant,
+) {
     unsafe {
         std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "3");
         std::env::set_var("MAIDAN_RATE_LIMIT_WINDOW_SECS", "60");
@@ -19,7 +24,8 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         .expect("connect");
     configure_sqlite_pool(&pool).await.expect("pragmas");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "rl-ws").await;
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -33,13 +39,12 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    (addr, handle, dir)
+    (addr, handle, dir, tenant)
 }
 
 #[tokio::test]
 async fn health_endpoints_are_exempt_from_rate_limit() {
-    let (addr, handle, _dir) = spawn().await;
+    let (addr, handle, _dir, _tenant) = spawn().await;
     let base = format!("http://{addr}");
     let client = reqwest::Client::new();
     for _ in 0..5 {
@@ -55,34 +60,28 @@ async fn health_endpoints_are_exempt_from_rate_limit() {
 
 #[tokio::test]
 async fn burst_over_limit_returns_429_problem_json() {
-    let (addr, handle, _dir) = spawn().await;
+    let (addr, handle, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
     let client = reqwest::Client::builder()
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
             // The in-memory limiter is process-global, so parallel tests need
-            // distinct client keys even though each starts its own server.
+            // distinct client keys even though each starts its own server; a
+            // freshly minted secret is one.
             h.insert(
                 reqwest::header::AUTHORIZATION,
-                "Bearer rate-limit-burst".parse().unwrap(),
+                test_support::bearer(&tenant.token).parse().unwrap(),
             );
             h.insert("x-forwarded-for", "10.0.0.2".parse().unwrap());
             h
         })
         .build()
         .expect("client");
-    let ws = client
-        .post(format!("{base}/workspaces"))
-        .json(&serde_json::json!({"name": "rl-ws"}))
-        .send()
-        .await
-        .expect("create ws")
-        .json::<serde_json::Value>()
-        .await
-        .expect("json");
-    let wid = ws["id"].as_str().unwrap();
+    let wid = tenant.workspace_id.0;
 
-    for _ in 0..2 {
+    // The workspace is seeded through the store, so all three allowed
+    // requests are these reads.
+    for _ in 0..3 {
         let resp = client
             .get(format!("{base}/workspaces/{wid}"))
             .send()
@@ -108,16 +107,17 @@ async fn mcp_rate_limit_returns_jsonrpc_backpressure_envelope() {
     // A rate-limited POST /mcp must return a JSON-RPC error envelope (code
     // -32029 + data.retry_after_ms), not the plain problem+json, so an agent's
     // JSON-RPC layer gets a typed backpressure signal.
-    let (addr, handle, _dir) = spawn().await;
+    let (addr, handle, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
     let client = reqwest::Client::builder()
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
-            // Distinct bearer key so this test's process-global bucket is
-            // isolated even when the integration tests run in parallel.
+            // A freshly minted secret is a distinct key, so this test's
+            // process-global bucket is isolated even when the integration
+            // tests run in parallel.
             h.insert(
                 reqwest::header::AUTHORIZATION,
-                "Bearer rate-limit-mcp".parse().unwrap(),
+                test_support::bearer(&tenant.token).parse().unwrap(),
             );
             h.insert("x-forwarded-for", "10.0.0.42".parse().unwrap());
             h.insert("MCP-Protocol-Version", "2024-11-05".parse().unwrap());

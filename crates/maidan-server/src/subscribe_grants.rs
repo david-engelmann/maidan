@@ -15,17 +15,14 @@ use crate::state::AppState;
 /// subscriber that simply left the field out received every tenant's live
 /// events, private channels and DMs included. A token belongs to one
 /// workspace: an omitted workspace means that one, and a named workspace must
-/// be it. Bypass (auth disabled, trusted in-process callers) is unchanged.
+/// be it.
 pub fn bind_to_caller_workspace(
     filter: &mut EventFilter,
     auth: &AuthContext,
 ) -> Result<(), &'static str> {
-    if auth.bypass {
-        return Ok(());
-    }
     match filter.workspace_id {
         None => {
-            filter.workspace_id = Some(auth.workspace_id);
+            filter.workspace_id = Some(auth.workspace_id());
             Ok(())
         }
         Some(ws) => auth
@@ -56,28 +53,26 @@ pub async fn apply_subscribe_grants(
     // client no longer merely *claims* access. Public and the DM system channel
     // pass; a private-channel grant the caller isn't a member of is dropped, so
     // the checks below deny that channel/thread and it lands in
-    // `private_channel_deny`. Bypass callers keep all asserted grants.
-    if !auth.bypass {
-        let mut verified: HashSet<ChannelId> = HashSet::new();
-        for cid in grants.iter().copied() {
-            match channels.iter().find(|c| c.id == cid) {
-                Some(c) if !c.private || c.name == DM_CHANNEL_NAME => {
-                    verified.insert(cid);
-                }
-                Some(_)
-                    if state
-                        .store
-                        .channel_is_member(cid, auth.member_id)
-                        .await
-                        .map_err(|e| format!("channel_is_member: {e}"))? =>
-                {
-                    verified.insert(cid);
-                }
-                _ => {}
+    // `private_channel_deny`.
+    let mut verified: HashSet<ChannelId> = HashSet::new();
+    for cid in grants.iter().copied() {
+        match channels.iter().find(|c| c.id == cid) {
+            Some(c) if !c.private || c.name == DM_CHANNEL_NAME => {
+                verified.insert(cid);
             }
+            Some(_)
+                if state
+                    .store
+                    .channel_is_member(cid, auth.member_id())
+                    .await
+                    .map_err(|e| format!("channel_is_member: {e}"))? =>
+            {
+                verified.insert(cid);
+            }
+            _ => {}
         }
-        grants = verified;
     }
+    grants = verified;
     if filter.dm_conversation_id.is_some()
         && let Some(th) = filter.thread_id
     {
@@ -178,7 +173,6 @@ mod tests {
             Arc::new(maidan_bus::InMemoryBus::new()),
             search,
             Arc::new(maidan_search::HashV1Provider),
-            false, // auth ENABLED — verification runs
             false,
             FederationRuntime::new(true, None),
             Arc::new(AtomicI64::new(0)),

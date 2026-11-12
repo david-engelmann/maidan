@@ -7,17 +7,89 @@ use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{github::GithubConfig, router, webhooks::sign_payload, AppState};
+use maidan_server::{
+    github::{GithubConfig, GithubError, GithubSender},
+    router,
+    webhooks::sign_payload,
+    AppState,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewGithubIssueLink, NewMember, NewThread, NewWorkspace,
+    ExternalRef, MemberKind, MessageOrigin, MessageProvenance, NewChannel, NewGithubIssueLink,
+    NewMember, NewThread, NewWorkspace,
 };
 use reqwest::StatusCode;
 
 const SECRET: &str = "gh-webhook-secret";
 
+/// Egress as a GitHub App with id 77. Ingress asks it only who it is.
+struct AppSender;
+
+#[async_trait::async_trait]
+impl GithubSender for AppSender {
+    async fn post_comment(
+        &self,
+        _repo: &str,
+        _issue_number: i64,
+        _text: &str,
+    ) -> Result<Option<ExternalRef>, GithubError> {
+        unreachable!("ingress never comments")
+    }
+
+    async fn update_comment(
+        &self,
+        _repo: &str,
+        _comment_id: i64,
+        _text: &str,
+    ) -> Result<(), GithubError> {
+        unreachable!("ingress never comments")
+    }
+
+    async fn list_issue_comments(
+        &self,
+        _repo: &str,
+        _issue_number: i64,
+    ) -> Result<Vec<maidan_server::github::GithubIssueComment>, GithubError> {
+        unreachable!("ingress never lists comments")
+    }
+
+    async fn create_check_run(
+        &self,
+        _repo: &str,
+        _check: &maidan_types::GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        unreachable!("ingress never creates a check run")
+    }
+
+    async fn create_review(
+        &self,
+        _repo: &str,
+        _pull_number: i64,
+        _commit_id: &str,
+        _comments: &[maidan_types::GithubReviewComment],
+    ) -> Result<(), GithubError> {
+        unreachable!("ingress never creates a review")
+    }
+
+    fn app_id(&self) -> Option<&str> {
+        Some("77")
+    }
+}
+
 async fn spawn(
     with_github: bool,
+) -> (
+    SocketAddr,
+    reqwest::Client,
+    Arc<dyn Store>,
+    tokio::task::JoinHandle<()>,
+) {
+    spawn_with(with_github, None).await
+}
+
+async fn spawn_with(
+    with_github: bool,
+    sender: Option<Arc<dyn GithubSender>>,
 ) -> (
     SocketAddr,
     reqwest::Client,
@@ -42,6 +114,9 @@ async fn spawn(
             api_token: None,
             write_repos: Vec::new(),
         }));
+    }
+    if let Some(sender) = sender {
+        state.attach_github_sender(sender);
     }
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -146,7 +221,7 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
         .unwrap();
 
     // A signed issue_comment.created for o/r#42 is projected into the thread.
-    let body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"body":"needs review","author_association":"MEMBER","user":{"login":"octocat","type":"User"}}}"#;
+    let body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"id":501,"body":"needs review","author_association":"MEMBER","user":{"login":"octocat","type":"User"}}}"#;
     let sig = sign_payload(SECRET, body);
     let resp = client
         .post(format!("http://{addr}/integrations/github/events"))
@@ -159,29 +234,175 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let msgs = store.list_messages(thread.id, 50).await.unwrap();
-    assert!(
-        msgs.iter().any(|m| m.body == "octocat: needs review"),
-        "the GitHub comment was projected into the Maidan thread"
+    let projected = msgs
+        .iter()
+        .find(|m| m.body == "octocat: needs review")
+        .expect("the GitHub comment was projected into the Maidan thread");
+    assert_eq!(
+        projected.provenance,
+        Some(MessageProvenance::delivered(MessageOrigin::Github, "501")),
+        "the server stamps where it came from"
     );
 
-    // A Bot comment (our own egress echo) is not re-ingested — no loop.
-    let bot_body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"body":"echo","author_association":"MEMBER","user":{"login":"maidan[bot]","type":"Bot"}}}"#;
-    let sig2 = sign_payload(SECRET, bot_body);
+    // An echo of our own egress comment is not re-ingested — no loop. Egress
+    // took the key for each comment it posted (RED-003).
+    store
+        .record_bridge_receipt(ws.id, MessageOrigin::Github, "502")
+        .await
+        .unwrap();
+    let echo = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"id":502,"body":"echo","author_association":"OWNER","user":{"login":"maidan-ops","type":"User"}}}"#;
+    let sig2 = sign_payload(SECRET, echo);
     client
         .post(format!("http://{addr}/integrations/github/events"))
         .header("x-github-event", "issue_comment")
         .header("x-hub-signature-256", &sig2)
         .header("content-type", "application/json")
-        .body(bot_body.to_string())
+        .body(echo.to_string())
         .send()
         .await
         .unwrap();
     assert_eq!(
         store.list_messages(thread.id, 50).await.unwrap().len(),
         1,
-        "a Bot comment is not re-projected"
+        "our own comment is not re-projected"
     );
 
+    // Another app's bot with a role on the repository speaks like anyone
+    // with one: only our own app is skipped (RED-003).
+    let review_bot = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":42},"comment":{"id":503,"body":"lint passed","author_association":"MEMBER","user":{"login":"review-app[bot]","type":"Bot"},"performed_via_github_app":{"id":4040,"client_id":"Iv1.other"}}}"#;
+    let sig3 = sign_payload(SECRET, review_bot);
+    client
+        .post(format!("http://{addr}/integrations/github/events"))
+        .header("x-github-event", "issue_comment")
+        .header("x-hub-signature-256", &sig3)
+        .header("content-type", "application/json")
+        .body(review_bot.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        store
+            .list_messages(thread.id, 50)
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.body == "review-app[bot]: lint passed"),
+        "a third-party bot is no longer dropped for being a bot"
+    );
+
+    server.abort();
+}
+
+/// Links o/r#`issue` to a new thread, as a new member. Returns the
+/// workspace and the thread.
+async fn linked(
+    store: &dyn Store,
+    issue: i64,
+) -> (maidan_types::WorkspaceId, maidan_types::ThreadId) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let linker = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "linker".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some(format!("issue-{issue}")),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .link_github_issue(NewGithubIssueLink {
+            repo: "o/r".into(),
+            issue_number: issue,
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            thread_id: thread.id,
+            member_id: linker.id,
+        })
+        .await
+        .unwrap();
+    (ws.id, thread.id)
+}
+
+/// RED-002: GitHub signatures carry no timestamp, so a redelivered or
+/// replayed comment verifies. It is keyed on its comment id and posts once.
+#[tokio::test]
+async fn a_comment_github_delivers_twice_posts_one_message() {
+    let (addr, client, store, server) = spawn(true).await;
+    let (_, thread) = linked(store.as_ref(), 11).await;
+    let body = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":11},"comment":{"id":9001,"body":"ship it","author_association":"OWNER","user":{"login":"octocat","type":"User"}}}"#;
+    for _ in 0..3 {
+        let resp = client
+            .post(format!("http://{addr}/integrations/github/events"))
+            .header("x-github-event", "issue_comment")
+            .header("x-github-delivery", "d6f1c2a0-0000-0000-0000-000000000001")
+            .header("x-hub-signature-256", sign_payload(SECRET, body))
+            .header("content-type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "a redelivery is answered 200"
+        );
+    }
+    let messages = store.list_messages(thread, 50).await.unwrap();
+    assert_eq!(
+        messages.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(),
+        vec!["octocat: ship it"],
+        "the comment and its two redeliveries post one message"
+    );
+    server.abort();
+}
+
+/// RED-003: a comment our own GitHub App made is skipped by app id, before
+/// egress has had the chance to record its comment id.
+#[tokio::test]
+async fn a_comment_our_github_app_made_is_not_projected_back() {
+    let (addr, client, store, server) = spawn_with(true, Some(Arc::new(AppSender))).await;
+    let (_, thread) = linked(store.as_ref(), 12).await;
+    let ours = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":12},"comment":{"id":9101,"body":"from maidan","author_association":"MEMBER","user":{"login":"maidan[bot]","type":"Bot"},"performed_via_github_app":{"id":77,"client_id":"Iv1.ours"}}}"#;
+    let collaborator = r#"{"action":"created","repository":{"full_name":"o/r"},"issue":{"number":12},"comment":{"id":9102,"body":"thanks","author_association":"COLLABORATOR","user":{"login":"octocat","type":"User"}}}"#;
+    for body in [ours, collaborator] {
+        client
+            .post(format!("http://{addr}/integrations/github/events"))
+            .header("x-github-event", "issue_comment")
+            .header("x-hub-signature-256", sign_payload(SECRET, body))
+            .header("content-type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap();
+    }
+    let messages = store.list_messages(thread, 50).await.unwrap();
+    assert_eq!(
+        messages.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(),
+        vec!["octocat: thanks"],
+        "our app's comment is skipped and the collaborator's posts"
+    );
     server.abort();
 }
 
@@ -237,8 +458,10 @@ async fn a_comment_from_someone_without_a_role_on_the_repository_is_not_posted_a
         .await
         .unwrap();
 
+    let next_id = std::sync::atomic::AtomicI64::new(700);
     let comment = |association: Option<&str>, text: &str| {
         let mut comment = serde_json::json!({
+            "id": next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
             "body": text,
             "user": {"login": "someone", "type": "User"},
         });
@@ -377,13 +600,20 @@ async fn github_pull_request_merged_emits_thread_landed() {
         }
     };
 
-    // A closed-but-unmerged PR is not a land. The linked thread hears it.
-    let unmerged = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":7,"merged":false,"title":"wip"}}"#;
+    // A closed-but-unmerged PR is not a land. The linked thread hears it,
+    // once however often GitHub delivers that close.
+    let unmerged = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":7,"merged":false,"title":"wip","closed_at":"2026-11-10T12:00:00Z"}}"#;
+    assert_eq!(post("pull_request", unmerged.into()).await, StatusCode::OK);
     assert_eq!(post("pull_request", unmerged.into()).await, StatusCode::OK);
     let messages = store.list_messages(thread.id, 20).await.unwrap();
     assert_eq!(messages.len(), 1, "one signal for the unmerged close");
     assert_eq!(messages[0].body, "GitHub closed o/r#7 without merging: wip");
     assert_eq!(messages[0].author_id, bot.id);
+    assert_eq!(
+        messages[0].provenance.as_ref().map(|p| p.origin),
+        Some(MessageOrigin::Github),
+        "the close signal is GitHub's, so egress does not post it back"
+    );
     assert_eq!(messages[0].metadata["github"]["closed_unmerged"], true);
     assert_eq!(messages[0].metadata["github"]["repo"], "o/r");
     assert_eq!(messages[0].metadata["github"]["issue"], 7);

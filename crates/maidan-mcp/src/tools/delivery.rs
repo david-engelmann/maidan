@@ -55,7 +55,7 @@ pub(super) async fn replay_result_delivery_tool(
     let thread = store.get_thread(thread_id).await?;
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
-    if !auth.bypass && workspace_id != auth.workspace_id {
+    if workspace_id != auth.workspace_id() {
         return Err(McpError::InvalidParams(
             "thread is not in the caller's workspace".into(),
         ));
@@ -89,7 +89,7 @@ pub(super) async fn replay_result_delivery_tool(
     if let Err(err) = store
         .append_audit(NewAuditEvent {
             scope: AuditScope::Workspace(workspace_id),
-            actor_id: (!auth.bypass).then_some(auth.member_id),
+            actor_id: Some(auth.member_id()),
             action: "result_delivery.replay".into(),
             target_kind: Some("result_delivery".into()),
             target_id: Some(row.id.0),

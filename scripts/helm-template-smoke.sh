@@ -85,10 +85,36 @@ ss="smoke-session-secret-0123456789abcdef"
 prod=(maidan "${chart}" -f "${chart}/values-prod.yaml")
 helm template "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 helm template "${prod[@]}" --set existingSecret=maidan-secrets >/dev/null
+# A production render runs the server in production mode, so its own refusals
+# (the OIDC mock, AUTH_DISABLED, the development KEK, fault injection) hold;
+# `production: true` alone only ever drove the chart's render-time checks.
+prod_env="$(printf '%s\n' "            - name: MAIDAN_ENV" "              value: production")"
+rendered="$(helm template "${prod[@]}" --set existingSecret=maidan-secrets)"
+[[ "${rendered}" == *"${prod_env}"* ]] || {
+  echo "a production render must set MAIDAN_ENV=production on the server container" >&2
+  exit 1
+}
+if helm template maidan "${chart}" --set contentKek="${kek}" | grep -q "name: MAIDAN_ENV"; then
+  echo "a development render must leave MAIDAN_ENV unset" >&2
+  exit 1
+fi
+refuses 'config.MAIDAN_ENV "prod" is not production or development' \
+  maidan "${chart}" --set contentKek="${kek}" --set config.MAIDAN_ENV=prod
+refuses 'config.MAIDAN_ENV is "development" in a production render' \
+  "${prod[@]}" --set existingSecret=maidan-secrets --set config.MAIDAN_ENV=development
+refuses "config.MAIDAN_OIDC_MOCK is a development switch" \
+  "${prod[@]}" --set existingSecret=maidan-secrets --set-string config.MAIDAN_OIDC_MOCK=1
+refuses "config.AUTH_DISABLED is a development switch" \
+  "${prod[@]}" --set existingSecret=maidan-secrets --set-string config.AUTH_DISABLED=1
+helm template maidan "${chart}" --set contentKek="${kek}" --set config.MAIDAN_ENV=development >/dev/null
 # Sign-in needs a session secret, so a production render without one refuses
 # rather than ship a pod that never boots.
 refuses "a production install needs MAIDAN_SESSION_SECRET" \
   "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}"
+# No config key waives it: the server has no unauthenticated mode to fall back on.
+refuses "a production install needs MAIDAN_SESSION_SECRET" \
+  "${prod[@]}" --set secrets.DATABASE_URL="${db}" --set contentKek="${kek}" \
+  --set config.AUTH_DISABLED=1
 helm template "${prod[@]}" -f "${chart}/values-cert-manager.yaml" \
   --set secrets.DATABASE_URL="${db}" --set secrets.MAIDAN_SESSION_SECRET="${ss}" --set contentKek="${kek}" >/dev/null
 # A production render names a release image, never the local development one.
@@ -262,6 +288,7 @@ if password in sts[0]:
       --set postgresql.auth.password=smoke-pg-password
       --set minio.auth.rootPassword=smoke-minio-password)
     rendered="$(helm template "${stack_prod[@]}" --set maidan.contentKek="${kek}")"
+    has "${rendered}" "${prod_env}" "the stack's prod values must run the server with MAIDAN_ENV=production"
     has "${rendered}" 'image: "ghcr.io/david-engelmann/maidan-server:v' \
       "the stack's prod values must render the release image"
     has "${rendered}" 'image: "ghcr.io/david-engelmann/maidan-postgres:v' \

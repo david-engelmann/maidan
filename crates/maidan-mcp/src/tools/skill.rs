@@ -36,28 +36,26 @@ pub(super) async fn add_member_skill(
     // routing tag is the member's own declaration. A governance skill is what a
     // gate reads as authority, so granting one is an operator conferring it on
     // someone else — `channel:admin`, which `maidan.agent.worker` does not carry.
-    if !auth.bypass {
-        let target = MemberId(a.member_id);
-        if is_governance_skill(&a.skill) {
-            maidan_auth::require_observed_capability(
-                auth,
-                maidan_auth::AuthorizationSurface::Mcp,
-                CHANNEL_ADMIN,
-            )
-            .map_err(McpError::from)?;
-            // The gate that no longer covers this tool was also what kept the
-            // grant inside the caller's workspace. Same refusal either way, so
-            // this does not reveal whether the member exists.
-            let member = store
-                .get_member(target)
-                .await
-                .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
-            if member.workspace_id != auth.workspace_id {
-                return Err(McpError::Forbidden("member_id is not yours".to_string()));
-            }
-        } else if target != auth.member_id {
+    let target = MemberId(a.member_id);
+    if is_governance_skill(&a.skill) {
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            CHANNEL_ADMIN,
+        )
+        .map_err(McpError::from)?;
+        // The gate that no longer covers this tool was also what kept the
+        // grant inside the caller's workspace. Same refusal either way, so
+        // this does not reveal whether the member exists.
+        let member = store
+            .get_member(target)
+            .await
+            .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
+        if member.workspace_id != auth.workspace_id() {
             return Err(McpError::Forbidden("member_id is not yours".to_string()));
         }
+    } else if target != auth.member_id() {
+        return Err(McpError::Forbidden("member_id is not yours".to_string()));
     }
     if is_governance_skill(&a.skill) {
         let workspace_id = store.get_member(MemberId(a.member_id)).await?.workspace_id;
@@ -67,7 +65,7 @@ pub(super) async fn add_member_skill(
                 a.skill.trim(),
                 maidan_types::NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    actor_id: Some(auth.actor_id()),
                     action: "member_skill.grant_governance".into(),
                     target_kind: Some("member".into()),
                     target_id: Some(a.member_id),
@@ -151,26 +149,24 @@ pub(super) async fn remove_member_skill(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: MemberSkillArgs = crate::tools::parse_args(args)?;
-    if !auth.bypass {
-        let target = MemberId(a.member_id);
-        let admin = maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            CHANNEL_ADMIN,
-        )
-        .is_ok();
-        if !(is_governance_skill(&a.skill) && admin) {
-            if target != auth.member_id {
-                return Err(McpError::Forbidden("member_id is not yours".into()));
-            }
-        } else {
-            let member = store
-                .get_member(target)
-                .await
-                .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
-            if member.workspace_id != auth.workspace_id {
-                return Err(McpError::Forbidden("member_id is not yours".to_string()));
-            }
+    let target = MemberId(a.member_id);
+    let admin = maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        CHANNEL_ADMIN,
+    )
+    .is_ok();
+    if !(is_governance_skill(&a.skill) && admin) {
+        if target != auth.member_id() {
+            return Err(McpError::Forbidden("member_id is not yours".into()));
+        }
+    } else {
+        let member = store
+            .get_member(target)
+            .await
+            .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
+        if member.workspace_id != auth.workspace_id() {
+            return Err(McpError::Forbidden("member_id is not yours".to_string()));
         }
     }
     let removed = store

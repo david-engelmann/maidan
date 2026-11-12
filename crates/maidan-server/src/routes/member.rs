@@ -3,7 +3,7 @@
 use axum::http::StatusCode;
 use axum::{extract::State, Extension, Json};
 use maidan_auth::{
-    capability::{TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{MEMBER_SELF, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     capability_set::AGENT_WORKER,
     hash_secret, AuthContext, TokenSecret,
 };
@@ -44,13 +44,13 @@ pub async fn get_me(
     };
     let capability_sets = maidan_auth::held_sets(&reported);
     Ok(Json(WhoAmI {
-        actor_id: auth.actor_id.0,
-        member_id: auth.member_id.0,
-        delegation_grant_id: auth.delegation_grant_id.map(|id| id.0),
-        workspace_id: auth.workspace_id.0,
+        actor_id: auth.actor_id().0,
+        member_id: auth.member_id().0,
+        delegation_grant_id: auth.delegation_grant_id().map(|id| id.0),
+        workspace_id: auth.workspace_id().0,
         capabilities: reported,
-        is_bearer: auth.token_id.is_some(),
-        token_id: auth.token_id.map(|id| id.0),
+        is_bearer: auth.token_id().is_some(),
+        token_id: auth.token_id().map(|id| id.0),
         known_capabilities: maidan_auth::capability::all(),
         capability_sets,
     }))
@@ -433,7 +433,7 @@ async fn insert_agent(
     )
     .map_err(ApiError::BadRequest)?;
     let secret = TokenSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let label = body.label.unwrap_or_else(|| handle.clone());
     let created = state
         .store
@@ -538,7 +538,7 @@ pub async fn set_member_display_name(
     let display_name = normalize_display_name(Some(&body.display_name))?;
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(member.workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "member.display_name.set".into(),
         target_kind: Some("member".into()),
         target_id: Some(member.id.0),
@@ -597,7 +597,7 @@ pub async fn mark_member_inbox_read(
     ApiJson(body): ApiJson<MarkInboxRead>,
 ) -> ApiResult<Json<MemberInbox>> {
     requested_member(&state, &auth, MemberId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     // `advance_inbox_last_read_at` writes one member's read marker, so only
     // that member may move it.
     ensure_own_personal_state(&auth, MemberId(id))?;
@@ -719,7 +719,7 @@ pub async fn mark_member_notification_read(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<UnreadCount>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
@@ -742,7 +742,7 @@ pub async fn snooze_member_notification(
     ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<SnoozeNotification>,
 ) -> ApiResult<Json<UnreadCount>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
@@ -762,7 +762,7 @@ pub async fn mark_all_member_notifications_read(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MarkAllRead>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     let cleared = state
@@ -780,7 +780,7 @@ pub async fn set_member_notification_pref(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetNotificationPref>,
 ) -> ApiResult<Json<NotificationPref>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
@@ -813,7 +813,7 @@ pub async fn follow_member_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowChannel>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, body.channel_id).await?;
@@ -830,7 +830,7 @@ pub async fn unfollow_member_channel(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, cid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state
@@ -864,7 +864,7 @@ pub async fn follow_member_thread(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowThread>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, body.thread_id).await?;
@@ -881,7 +881,7 @@ pub async fn unfollow_member_thread(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state
@@ -915,7 +915,7 @@ pub async fn follow_member_occupancy(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowMember>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let follower_id = MemberId(id);
     let follower = requested_member(&state, &auth, follower_id).await?;
     ensure_own_personal_state(&auth, follower_id)?;
@@ -939,7 +939,7 @@ pub async fn unfollow_member_occupancy(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, followed_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let follower_id = MemberId(id);
     requested_member(&state, &auth, follower_id).await?;
     ensure_own_personal_state(&auth, follower_id)?;
@@ -984,9 +984,7 @@ pub async fn get_member_occupancy(
         .await?;
     let mut visible = Vec::with_capacity(assigned.len());
     for thread in assigned {
-        if auth.bypass
-            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
-        {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
             visible.push(thread);
         }
     }
@@ -1011,7 +1009,7 @@ pub async fn set_member_email(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetEmail>,
 ) -> ApiResult<Json<MemberEmail>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     let email = body.email.trim();
@@ -1044,7 +1042,7 @@ pub async fn delete_member_email(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state.store.delete_member_email(MemberId(id)).await? {
@@ -1063,7 +1061,7 @@ pub async fn set_member_delivery_mode(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetDeliveryMode>,
 ) -> ApiResult<Json<DeliveryModeView>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     state
@@ -1116,9 +1114,7 @@ pub async fn get_member_waiting(
         .list_review_requests(member.workspace_id, MemberId(id))
         .await?
     {
-        if auth.bypass
-            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
-        {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
             reviews.push(thread);
         }
     }

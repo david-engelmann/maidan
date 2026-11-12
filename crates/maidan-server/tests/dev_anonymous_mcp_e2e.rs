@@ -104,7 +104,6 @@ async fn spawn() -> World {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -208,8 +207,8 @@ async fn a_caller_with_no_credential_reads_the_synthetic_workspace_and_nothing_e
     assert!(refused(&write), "{write}");
     let read_cap_write = world
         .call(
-            "open_group_dm",
-            json!({ "workspace_id": world.synthetic, "member_ids": [] }),
+            "top_up_credits",
+            json!({ "workspace_id": world.synthetic, "amount_cents": 500 }),
         )
         .await;
     assert!(
@@ -340,7 +339,7 @@ async fn the_anonymous_reader_is_no_member_and_sees_no_private_channel() {
         .await
         .unwrap();
     assert!(
-        world.store.get_member(reader.member_id).await.is_err(),
+        world.store.get_member(reader.member_id()).await.is_err(),
         "the anonymous reader must be no member"
     );
 }

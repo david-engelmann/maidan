@@ -3,16 +3,26 @@
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
-    time::Duration,
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{
+    router, subscribe_resume, test_support, test_support::Tenant, AppState, FederationRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
-async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
+async fn spawn(
+    name: &str,
+) -> (
+    SocketAddr,
+    reqwest::Client,
+    Arc<dyn Store>,
+    Tenant,
+    tokio::task::JoinHandle<()>,
+) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -33,61 +43,33 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
-    state.test_identity_header = true;
+    let tenant = test_support::tenant(store.as_ref(), name).await;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, tenant.client(), store, tenant, server)
 }
 
 #[tokio::test]
 async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
-    let (addr, client, server) = spawn().await;
+    let (addr, client, store, tenant, server) = spawn("inbox-ws").await;
     let base = format!("http://{addr}");
+    let workspace_id = tenant.workspace_id.0;
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "inbox-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bob: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bob", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
-    let bob_id = bob["id"].as_str().unwrap();
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let bob = tenant
+        .member(store.as_ref(), "bob", MemberKind::Agent)
+        .await;
+    let bob_id = bob.member_id.0;
 
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -111,9 +93,9 @@ async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
         .unwrap();
     let thread_id = th["id"].as_str().unwrap();
 
-    let post: Value = client
+    let post: Value = alice
+        .client()
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", alice_id)
         .json(&json!({
             "body": "hey @bob check this"
         }))
@@ -125,7 +107,8 @@ async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
         .unwrap();
     assert_eq!(post["body"], "hey @bob check this");
 
-    let inbox: Value = client
+    let inbox: Value = bob
+        .client()
         .get(format!("{base}/members/{bob_id}/inbox"))
         .send()
         .await
@@ -140,7 +123,8 @@ async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
     assert!(items[0]["unread"].as_bool().unwrap());
 
     let created_at = items[0]["created_at"].as_str().unwrap();
-    let after_read: Value = client
+    let after_read: Value = bob
+        .client()
         .post(format!("{base}/members/{bob_id}/inbox/read"))
         .json(&json!({"read_through": created_at}))
         .send()
@@ -157,44 +141,17 @@ async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
 
 #[tokio::test]
 async fn dm_message_with_at_mention_still_routes_to_inbox() {
-    let (addr, client, server) = spawn().await;
+    let (addr, _client, store, tenant, server) = spawn("dm-inbox").await;
     let base = format!("http://{addr}");
+    let workspace_id = tenant.workspace_id.0;
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "dm-inbox"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
+    let a = tenant.member(store.as_ref(), "a", MemberKind::Human).await;
+    let b = tenant.member(store.as_ref(), "b", MemberKind::Human).await;
+    let b_id = b.member_id.0;
 
-    let a: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "a", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let b: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "b", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let a_id = a["id"].as_str().unwrap();
-    let b_id = b["id"].as_str().unwrap();
-
-    let dm: Value = client
+    let dm: Value = a
+        .client()
         .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .header("maidan-test-member-id", a_id)
         .json(&json!({ "other_member_id": b_id }))
         .send()
         .await
@@ -207,9 +164,8 @@ async fn dm_message_with_at_mention_still_routes_to_inbox() {
         .unwrap();
     let dm_id = dm["id"].as_str().unwrap();
 
-    client
+    a.client()
         .post(format!("{base}/dm/{dm_id}/messages"))
-        .header("maidan-test-member-id", a_id)
         .json(&json!({
             "body": "dm ping @b"
         }))
@@ -219,7 +175,8 @@ async fn dm_message_with_at_mention_still_routes_to_inbox() {
         .error_for_status()
         .unwrap();
 
-    let inbox: Value = client
+    let inbox: Value = b
+        .client()
         .get(format!("{base}/members/{b_id}/inbox"))
         .send()
         .await

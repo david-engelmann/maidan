@@ -149,12 +149,12 @@ pub async fn get_member_usage_rollup(
     let member_id = MemberId(id);
     state
         .store
-        .get_member_in(auth.workspace_id, member_id)
+        .get_member_in(auth.workspace_id(), member_id)
         .await?;
     rollup(
         &state,
         UsageRollupQuery {
-            workspace_id: auth.workspace_id,
+            workspace_id: auth.workspace_id(),
             thread_id: None,
             member_id: Some(member_id),
         },
@@ -173,16 +173,7 @@ pub async fn report_thread_usage_otel(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let reporter = if auth.bypass {
-        state
-            .store
-            .get_thread(thread_id)
-            .await?
-            .assignee_id
-            .ok_or_else(|| ApiError::Conflict("thread has no active claim holder".into()))?
-    } else {
-        auth.member_id
-    };
+    let reporter = auth.member_id();
     let new = body
         .into_new(thread_id, reporter)
         .map_err(ApiError::BadRequest)?;

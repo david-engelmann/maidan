@@ -431,15 +431,12 @@ async fn a_wasi_handler_for_a_cut_off_workspace_does_not_run_while_other_tenants
         name: "echo".into(),
         args: String::new(),
     };
-    let auth = maidan_auth::AuthContext::bypass();
     let run = |(ws, member): (WorkspaceId, MemberId)| {
         let state = state.clone();
-        let auth = auth.clone();
         let parsed = parsed.clone();
         async move {
             maidan_server::wasi_handler::dispatch_wasi(
                 &state,
-                &auth,
                 &wasi_command(ws),
                 &parsed,
                 ws,
@@ -461,8 +458,8 @@ async fn a_wasi_handler_for_a_cut_off_workspace_does_not_run_while_other_tenants
             .contains("free allowance for wasi_ms"),
         "{refused}"
     );
-    // The others get as far as loading their module (absent here), so they
-    // fail for that reason, not the allowance.
+    // The others get as far as loading their module (none of theirs here),
+    // so they fail for that reason, not the allowance.
     for tenant in [t.invited, t.ops] {
         let ran = run(tenant).await;
         assert_ne!(ran["error_kind"], json!("over_allowance"), "{ran}");

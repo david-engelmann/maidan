@@ -981,8 +981,7 @@ pub enum Event {
         /// The parent thread whose fan-out was capped (`children`/`depth`), or the
         /// thread whose tool calls were capped (`tools`).
         thread_id: ThreadId,
-        /// Who tried to spawn — `None` only for an unattributed caller (a
-        /// bypass-auth deployment), like the audit trail's `actor_id`.
+        /// Who tried to spawn, like the audit trail's `actor_id`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         member_id: Option<MemberId>,
         /// Which axis refused it (`SpawnAxis::as_str`): `children` | `depth` | `tools`.

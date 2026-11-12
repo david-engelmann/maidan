@@ -182,8 +182,44 @@ impl std::fmt::Debug for Config {
     }
 }
 
+/// What `MAIDAN_ENV` says this deployment is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployEnv {
+    /// `MAIDAN_ENV` unset or empty: a local or CI run that named nothing.
+    Unset,
+    /// `MAIDAN_ENV=development`: the operator says this is not production,
+    /// which the switches that hand out identity (the OIDC mock) require.
+    Development,
+    /// `MAIDAN_ENV=production`: every development switch is refused.
+    Production,
+}
+
+/// Parse `MAIDAN_ENV`. Anything but the two names is refused rather than read
+/// as "not production": `prod` or `Production` would otherwise boot with every
+/// production refusal off, which is the opposite of what its operator meant.
+pub fn parse_deploy_env(raw: Option<&str>) -> Result<DeployEnv, ConfigError> {
+    match raw {
+        None | Some("") => Ok(DeployEnv::Unset),
+        Some("production") => Ok(DeployEnv::Production),
+        Some("development") => Ok(DeployEnv::Development),
+        Some(other) => Err(ConfigError::Invalid(
+            "MAIDAN_ENV",
+            format!(
+                "`{other}` is not a deployment kind; set `production` or `development`, or leave it unset"
+            ),
+        )),
+    }
+}
+
+/// `MAIDAN_ENV` as this process reads it. [`Config::from_env`] refuses an
+/// unknown value at boot, so after boot this is never an error.
+pub fn deploy_env() -> Result<DeployEnv, ConfigError> {
+    parse_deploy_env(std::env::var("MAIDAN_ENV").ok().as_deref())
+}
+
+/// The one production check every refusal goes through.
 pub fn is_production() -> bool {
-    std::env::var("MAIDAN_ENV").as_deref() == Ok("production")
+    matches!(deploy_env(), Ok(DeployEnv::Production))
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -193,46 +229,29 @@ fn env_truthy(name: &str) -> bool {
     )
 }
 
-/// Whether the operator asked to run with authentication disabled.
-pub fn auth_disabled_requested() -> bool {
-    env_truthy("AUTH_DISABLED")
-}
+/// Variables of the unauthenticated mode the server no longer has (R11).
+/// Every caller is authenticated now, so setting one of these says the
+/// operator expects something this server will never do: boot stops and names
+/// it, whatever its value, rather than serve with auth on to someone who meant
+/// it off. Local work mints a real token instead (`maidan init`, or
+/// `MAIDAN_DEV_ADMIN_TOKEN` on a dev instance).
+pub const REMOVED_AUTH_SWITCHES: &[&str] = &["AUTH_DISABLED", "MAIDAN_ALLOW_INSECURE_NO_AUTH"];
 
-/// Whether the operator has *explicitly acknowledged* running without any
-/// authentication. `AUTH_DISABLED` is fail-closed: it takes effect only when
-/// this is also set (and never in production).
-pub fn insecure_no_auth_acknowledged() -> bool {
-    env_truthy("MAIDAN_ALLOW_INSECURE_NO_AUTH")
-}
-
-/// Fail-closed gate for `AUTH_DISABLED`. Pure over its inputs so it is unit
-/// tested without touching the process environment. Disabling auth is rejected
-/// in production outright, and otherwise requires the explicit
-/// `MAIDAN_ALLOW_INSECURE_NO_AUTH` acknowledgement — so a stray `AUTH_DISABLED=1`
-/// (e.g. copied from a dev compose file) fails startup loudly instead of
-/// silently serving an unauthenticated workspace.
-pub(crate) fn validate_insecure_no_auth(
-    requested: bool,
-    production: bool,
-    acknowledged: bool,
+/// `Err` naming the first of [`REMOVED_AUTH_SWITCHES`] that `is_set` reports.
+/// Pure over its input so it is tested without touching the environment.
+pub(crate) fn refuse_removed_auth_switches(
+    is_set: impl Fn(&str) -> bool,
 ) -> Result<(), ConfigError> {
-    if requested {
-        if production {
-            return Err(ConfigError::Invalid(
-                "AUTH_DISABLED",
-                "cannot be set when MAIDAN_ENV=production".into(),
-            ));
-        }
-        if !acknowledged {
-            return Err(ConfigError::Invalid(
-                "AUTH_DISABLED",
-                "running without authentication requires MAIDAN_ALLOW_INSECURE_NO_AUTH=1 to \
-                 acknowledge the risk (never set this in production)"
-                    .into(),
-            ));
-        }
+    match REMOVED_AUTH_SWITCHES.iter().find(|name| is_set(name)) {
+        Some(&name) => Err(ConfigError::Invalid(
+            name,
+            "is no longer supported: the server always authenticates. Mint a token with \
+             `maidan init`, or set MAIDAN_DEV_ADMIN_TOKEN on a development instance, and unset \
+             this variable"
+                .into(),
+        )),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 fn validate_private_egress(production: bool, allowed: bool) -> Result<(), ConfigError> {
@@ -262,6 +281,7 @@ impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
     pub fn from_env() -> Result<Self, ConfigError> {
+        deploy_env()?;
         validate_private_egress(is_production(), env_truthy("MAIDAN_ALLOW_PRIVATE_EGRESS"))?;
         validate_credential_guard(is_production(), crate::egress_guard::switched_off())?;
         let bind: SocketAddr = std::env::var("MAIDAN_BIND")
@@ -303,11 +323,7 @@ impl Config {
         let log_filter =
             std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".to_string());
 
-        validate_insecure_no_auth(
-            auth_disabled_requested(),
-            is_production(),
-            insecure_no_auth_acknowledged(),
-        )?;
+        refuse_removed_auth_switches(|name| std::env::var_os(name).is_some())?;
 
         let db = DbConfig::from_lookup(|name| std::env::var(name).ok())?;
 
@@ -357,21 +373,49 @@ mod tests {
     }
 
     #[test]
-    fn auth_disabled_is_fail_closed() {
-        // Not requested → always fine regardless of the other flags.
-        assert!(validate_insecure_no_auth(false, false, false).is_ok());
-        assert!(validate_insecure_no_auth(false, true, false).is_ok());
-        // Requested + acknowledged (non-prod) → allowed.
-        assert!(validate_insecure_no_auth(true, false, true).is_ok());
-        // Requested without the explicit acknowledgement → rejected.
+    fn an_unknown_maidan_env_is_refused_rather_than_read_as_development() {
+        for refused in [
+            "prod",
+            "Production",
+            "PRODUCTION",
+            "dev",
+            "staging",
+            " production",
+        ] {
+            assert!(
+                matches!(
+                    parse_deploy_env(Some(refused)),
+                    Err(ConfigError::Invalid("MAIDAN_ENV", _))
+                ),
+                "{refused:?} must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn maidan_env_names_production_development_or_nothing() {
+        assert_eq!(parse_deploy_env(None).unwrap(), DeployEnv::Unset);
+        assert_eq!(parse_deploy_env(Some("")).unwrap(), DeployEnv::Unset);
+        assert_eq!(
+            parse_deploy_env(Some("production")).unwrap(),
+            DeployEnv::Production
+        );
+        assert_eq!(
+            parse_deploy_env(Some("development")).unwrap(),
+            DeployEnv::Development
+        );
+    }
+
+    #[test]
+    fn boot_refuses_auth_disabled_whatever_its_value() {
+        assert!(refuse_removed_auth_switches(|_| false).is_ok());
         assert!(matches!(
-            validate_insecure_no_auth(true, false, false),
+            refuse_removed_auth_switches(|name| name == "AUTH_DISABLED"),
             Err(ConfigError::Invalid("AUTH_DISABLED", _))
         ));
-        // Requested in production → rejected even with the acknowledgement.
         assert!(matches!(
-            validate_insecure_no_auth(true, true, true),
-            Err(ConfigError::Invalid("AUTH_DISABLED", _))
+            refuse_removed_auth_switches(|name| name == "MAIDAN_ALLOW_INSECURE_NO_AUTH"),
+            Err(ConfigError::Invalid("MAIDAN_ALLOW_INSECURE_NO_AUTH", _))
         ));
     }
 

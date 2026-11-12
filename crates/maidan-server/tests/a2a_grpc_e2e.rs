@@ -15,7 +15,7 @@ use maidan_server::a2a_grpc::generated::{
     ListTasksRequest, Message, Part, Role, SendMessageConfiguration, SendMessageRequest,
     SubscribeToTaskRequest, TaskPushNotificationConfig, TaskState,
 };
-use maidan_server::{AppState, FederationRuntime, WebhookRuntime};
+use maidan_server::{test_support, AppState, FederationRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations, A2aTaskWrite};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use std::sync::atomic::AtomicI64;
@@ -49,12 +49,8 @@ async fn a2a_grpc_get_and_list_tasks() {
     let state = AppState::for_tests(store.clone(), artifacts, bus, search);
 
     // Seed a task directly in the store (workspace-mapped so RBAC resolves).
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "grpc".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "grpc").await;
+    let token = tenant.token.as_str();
     let task = serde_json::json!({
         "id": "task-1",
         "contextId": "ctx-1",
@@ -62,7 +58,7 @@ async fn a2a_grpc_get_and_list_tasks() {
     });
     store
         .upsert_a2a_task(A2aTaskWrite {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             task_id: "task-1",
             context_id: Some("ctx-1"),
             thread_id: None,
@@ -91,32 +87,40 @@ async fn a2a_grpc_get_and_list_tasks() {
         .await
         .expect("grpc connect");
 
-    // A call that names no protocol version speaks 0.3: refused.
+    // A call that names no protocol version speaks 0.3: refused, even from a
+    // caller whose token would otherwise be served.
+    let mut unversioned = tonic::Request::new(GetTaskRequest {
+        id: "task-1".into(),
+        ..Default::default()
+    });
+    unversioned.metadata_mut().insert(
+        "authorization",
+        test_support::bearer(token).parse().unwrap(),
+    );
     let unversioned = client
-        .get_task(GetTaskRequest {
-            id: "task-1".into(),
-            ..Default::default()
-        })
+        .get_task(unversioned)
         .await
         .expect_err("no a2a-version");
     assert_eq!(unversioned.code(), tonic::Code::Unimplemented);
 
     let got = client
-        .get_task(v1(GetTaskRequest {
-            id: "task-1".into(),
-            ..Default::default()
-        }))
+        .get_task(authed(
+            GetTaskRequest {
+                id: "task-1".into(),
+                ..Default::default()
+            },
+            token,
+        ))
         .await
         .expect("get_task")
         .into_inner();
     assert_eq!(got.id, "task-1");
     assert_eq!(got.status.unwrap().state(), TaskState::Working);
 
-    // ListTasks routes over gRPC and returns the response shape. (Non-empty
-    // contents under RBAC are proven by the auth-enabled test in channel_access_e2e;
-    // this bypass server has no single workspace to scope the list by.)
+    // ListTasks routes over gRPC and returns the response shape. (Its
+    // contents under RBAC are proven in channel_access_e2e.)
     let listed = client
-        .list_tasks(v1(ListTasksRequest::default()))
+        .list_tasks(authed(ListTasksRequest::default(), token))
         .await
         .expect("list_tasks")
         .into_inner();
@@ -124,10 +128,13 @@ async fn a2a_grpc_get_and_list_tasks() {
 
     // A missing task is NOT_FOUND (§10.6).
     let missing = client
-        .get_task(v1(GetTaskRequest {
-            id: "nope".into(),
-            ..Default::default()
-        }))
+        .get_task(authed(
+            GetTaskRequest {
+                id: "nope".into(),
+                ..Default::default()
+            },
+            token,
+        ))
         .await
         .expect_err("missing task");
     assert_eq!(missing.code(), tonic::Code::NotFound);
@@ -144,19 +151,25 @@ async fn a2a_grpc_get_and_list_tasks() {
 
     // Cancel ends a working task; a second cancel is FAILED_PRECONDITION.
     let canceled = client
-        .cancel_task(v1(CancelTaskRequest {
-            id: "task-1".into(),
-            ..Default::default()
-        }))
+        .cancel_task(authed(
+            CancelTaskRequest {
+                id: "task-1".into(),
+                ..Default::default()
+            },
+            token,
+        ))
         .await
         .expect("cancel_task")
         .into_inner();
     assert_eq!(canceled.status.unwrap().state(), TaskState::Canceled);
     let again = client
-        .cancel_task(v1(CancelTaskRequest {
-            id: "task-1".into(),
-            ..Default::default()
-        }))
+        .cancel_task(authed(
+            CancelTaskRequest {
+                id: "task-1".into(),
+                ..Default::default()
+            },
+            token,
+        ))
         .await
         .expect_err("already canceled");
     assert_eq!(again.code(), tonic::Code::FailedPrecondition);
@@ -208,7 +221,6 @@ async fn a2a_grpc_serves_the_whole_service() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

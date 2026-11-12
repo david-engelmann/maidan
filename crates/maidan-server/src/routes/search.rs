@@ -35,11 +35,7 @@ pub async fn search_messages(
         after: q.after,
         before: q.before,
         deny_channels,
-        reader_id: if auth.bypass {
-            None
-        } else {
-            Some(auth.member_id)
-        },
+        reader_id: Some(auth.member_id()),
     };
     let mut hits = match q.mode {
         SearchMode::Lexical => {
@@ -49,10 +45,9 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Semantic => {
-            if !auth.bypass
-                && state
-                    .usage_meters
-                    .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            if state
+                .usage_meters
+                .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
             {
                 return Err(crate::usage_meters::cut_off_error(
                     maidan_types::UsageMeter::EmbeddingCalls,
@@ -61,13 +56,10 @@ pub async fn search_messages(
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
-            if !auth.bypass {
-                state.usage_meters.record(
-                    workspace_id,
-                    maidan_types::UsageMeter::EmbeddingCalls,
-                    1,
-                );
-            }
+            state
+                .usage_meters
+                .record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
+
             let model = q
                 .embedding_model
                 .as_deref()
@@ -78,10 +70,9 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Hybrid => {
-            if !auth.bypass
-                && state
-                    .usage_meters
-                    .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            if state
+                .usage_meters
+                .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
             {
                 return Err(crate::usage_meters::cut_off_error(
                     maidan_types::UsageMeter::EmbeddingCalls,
@@ -90,13 +81,10 @@ pub async fn search_messages(
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
-            if !auth.bypass {
-                state.usage_meters.record(
-                    workspace_id,
-                    maidan_types::UsageMeter::EmbeddingCalls,
-                    1,
-                );
-            }
+            state
+                .usage_meters
+                .record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
+
             let model = q
                 .embedding_model
                 .as_deref()
@@ -120,27 +108,23 @@ pub async fn search_messages(
     };
     // Drop hits the caller can't access — thread-keyed + DM-participant-aware.
     // Cache per-thread so a result page hits each thread once.
-    if !auth.bypass {
-        let mut decision: std::collections::HashMap<ThreadId, bool> =
-            std::collections::HashMap::new();
-        let mut allowed = Vec::with_capacity(hits.len());
-        for hit in hits {
-            let ok = match decision.get(&hit.thread_id) {
-                Some(v) => *v,
-                None => {
-                    let v =
-                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, hit.thread_id)
-                            .await?;
-                    decision.insert(hit.thread_id, v);
-                    v
-                }
-            };
-            if ok {
-                allowed.push(hit);
+    let mut decision: std::collections::HashMap<ThreadId, bool> = std::collections::HashMap::new();
+    let mut allowed = Vec::with_capacity(hits.len());
+    for hit in hits {
+        let ok = match decision.get(&hit.thread_id) {
+            Some(v) => *v,
+            None => {
+                let v = maidan_auth::can_access_thread(state.store.as_ref(), &auth, hit.thread_id)
+                    .await?;
+                decision.insert(hit.thread_id, v);
+                v
             }
+        };
+        if ok {
+            allowed.push(hit);
         }
-        hits = allowed;
     }
+    hits = allowed;
     let hits = if q.snippet_only {
         hits.into_iter()
             .map(maidan_search::SearchHit::into_snippet_only)

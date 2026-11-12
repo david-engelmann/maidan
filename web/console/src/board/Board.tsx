@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSPro
 import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, shownBadgeTargets, limitForOpen, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
 import { useCardVotes } from "../hooks/useCardVotes.ts";
 import { liveStatus } from "../core/bus.ts";
+import { offlineBanner, reach } from "../core/api.ts";
 import { Icon } from "../shell/icons.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePresence } from "../hooks/usePeople.ts";
@@ -111,7 +112,10 @@ export function Board() {
   const presence = usePresence();
   const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
   const here = useMemo(() => presenceStrip(data.members, presence, data.threads, live), [data.members, presence, data.threads, live]);
-  const stale = staleBanner(live, data.loadedAt, data.failedSince, now);
+  // While the shell's offline line is up it says this for every place, so
+  // the board does not say it twice.
+  const offline = offlineBanner(useSyncExternalStore(reach.subscribe, reach.getSnapshot)) !== null;
+  const stale = offline ? null : staleBanner(live, data.loadedAt, data.failedSince, now);
   const [focus, setFocus] = useState<HealthKey | null>(null);
   const health = useMemo(() => boardHealth(data.threads, now, data.gates), [data.threads, now, data.gates]);
   // A filter whose signal has cleared falls away for good, so it can't come back on its own.

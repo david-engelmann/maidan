@@ -130,14 +130,11 @@ pub(crate) async fn reap_orphaned_blobs(
 
 /// 429 `over_allowance` when the caller's workspace is cut off on
 /// `stored_bytes`. Upload paths call this before any bytes are written, so a
-/// refused upload stores nothing. An unscoped (bypass) upload is not metered.
+/// refused upload stores nothing.
 pub(crate) fn refuse_stored_bytes(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
     state
         .usage_meters
-        .refuse(auth.workspace_id, UsageMeter::StoredBytes)
+        .refuse(auth.workspace_id(), UsageMeter::StoredBytes)
         .map_err(ApiError::from)
 }
 
@@ -151,7 +148,7 @@ pub async fn upsert_uploaded_artifact(
     new: NewArtifact,
 ) -> ApiResult<(Artifact, StoredEvent)> {
     let sha_hex = new.sha256.clone();
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let ref_workspace = Some(auth.workspace_id());
     match state
         .store
         .upsert_artifact_with_event(new, ref_workspace)
@@ -161,7 +158,7 @@ pub async fn upsert_uploaded_artifact(
             reap_orphaned_blobs(
                 state.store.as_ref(),
                 &state.artifacts,
-                auth.workspace_id,
+                auth.workspace_id(),
                 &[sha_hex],
             )
             .await;
@@ -218,10 +215,7 @@ pub(crate) async fn requested_member(
     auth: &AuthContext,
     id: MemberId,
 ) -> ApiResult<Member> {
-    if auth.bypass {
-        return Ok(state.store.get_member(id).await?);
-    }
-    Ok(state.store.get_member_in(auth.workspace_id, id).await?)
+    Ok(state.store.get_member_in(auth.workspace_id(), id).await?)
 }
 
 /// Personal state — inbox, notification preferences, delivery address, follows,
@@ -233,7 +227,7 @@ pub(crate) async fn requested_member(
 /// token for them, whose `member_id` *is* that member — so it passes this check
 /// as itself, and every use is durably recorded with the delegate as actor.
 pub(crate) fn ensure_own_personal_state(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
-    if auth.bypass || claimed == auth.member_id {
+    if claimed == auth.member_id() {
         return Ok(());
     }
     Err(ApiError::Forbidden("member_id is not yours".into()))
@@ -261,9 +255,6 @@ pub(crate) fn ensure_message_edit(
     editor_id: MemberId,
     author_id: MemberId,
 ) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
     // A message is shown under its author's name, and an edit keeps it there.
     // Anyone else's edit would put words in the author's mouth — the record
     // would say they wrote what they did not. Moderating someone else's

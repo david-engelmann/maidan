@@ -5,7 +5,12 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
-use maidan_server::{outbox_relay::OutboxRelay, router, AppState};
+use maidan_server::{
+    outbox_relay::OutboxRelay,
+    router,
+    test_support::{self, Tenant},
+    AppState,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations, sqlite::outbox, OutboxBackend};
 use maidan_types::EventFilter;
 use serde_json::json;
@@ -14,6 +19,7 @@ async fn spawn_sqlite_outbox() -> Option<(
     SocketAddr,
     sqlx::SqlitePool,
     Arc<InMemoryBus>,
+    Tenant,
     tokio::task::JoinHandle<()>,
 )> {
     let pool = maidan_search::sqlite_pool_options()
@@ -35,6 +41,8 @@ async fn spawn_sqlite_outbox() -> Option<(
         tempfile::tempdir().expect("tempdir").path(),
     ));
 
+    let tenant = test_support::tenant(store.as_ref(), "sqlite-outbox-http").await;
+
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
     state.outbox_backend = Some(OutboxBackend::sqlite(
@@ -49,23 +57,32 @@ async fn spawn_sqlite_outbox() -> Option<(
     let addr = listener.local_addr().expect("local addr");
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    Some((addr, pool, bus, server))
+    Some((addr, pool, bus, tenant, server))
 }
 
 #[tokio::test]
 async fn sqlite_http_mutation_defers_bus_until_outbox_relay_runs() {
-    let Some((addr, pool, bus, server)) = spawn_sqlite_outbox().await else {
+    let Some((addr, pool, bus, tenant, server)) = spawn_sqlite_outbox().await else {
         return;
     };
 
+    let relay = OutboxRelay::new(
+        OutboxBackend::sqlite(pool.clone(), maidan_store::test_support::dev_keys()),
+        bus.clone(),
+    );
+    // The seeded tenant's own events sit in the outbox too; drain them so the
+    // only pending row below is the HTTP mutation's.
+    relay.run_once().await.unwrap();
+    assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
+
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
+    let client = tenant.client();
 
     let resp = client
-        .post(format!("http://{addr}/workspaces"))
+        .post(format!(
+            "http://{addr}/workspaces/{}/channels",
+            tenant.workspace_id.0
+        ))
         .json(&json!({"name": "sqlite-outbox-http"}))
         .send()
         .await
@@ -76,10 +93,6 @@ async fn sqlite_http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(
-        OutboxBackend::sqlite(pool.clone(), maidan_store::test_support::dev_keys()),
-        bus.clone(),
-    );
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())

@@ -58,7 +58,6 @@ async fn spawn(public_origin: Option<&str>) -> Harness {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

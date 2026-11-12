@@ -4,17 +4,23 @@
 //! Its own test binary so the rate-limit environment it sets reaches no other
 //! test.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, test_support::Tenant, AppState};
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 
 const DEFAULT_WORKSPACE_MAX: usize = 6000;
 
-async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+async fn spawn() -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    tempfile::TempDir,
+    Tenant,
+    Tenant,
+) {
     unsafe {
         // The per-client limit (1200 a minute) would stop this one client long
         // before the workspace default; turn it off to see the workspace's.
@@ -29,7 +35,9 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         .expect("connect");
     configure_sqlite_pool(&pool).await.expect("pragmas");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let noisy = test_support::tenant(store.as_ref(), "noisy").await;
+    let quiet = test_support::tenant(store.as_ref(), "quiet").await;
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -46,30 +54,16 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    (addr, handle, dir)
-}
-
-async fn create_workspace(client: &reqwest::Client, base: &str, name: &str) -> String {
-    let ws = client
-        .post(format!("{base}/workspaces"))
-        .json(&serde_json::json!({ "name": name }))
-        .send()
-        .await
-        .expect("create ws")
-        .json::<serde_json::Value>()
-        .await
-        .expect("json");
-    ws["id"].as_str().unwrap().to_string()
+    (addr, handle, dir, noisy, quiet)
 }
 
 #[tokio::test]
 async fn an_unconfigured_server_caps_one_workspace_and_not_the_next() {
-    let (addr, handle, _dir) = spawn().await;
+    let (addr, handle, _dir, noisy, quiet) = spawn().await;
     let base = format!("http://{addr}");
-    let client = reqwest::Client::new();
-    let a = create_workspace(&client, &base, "noisy").await;
-    let b = create_workspace(&client, &base, "quiet").await;
+    let client = noisy.client();
+    let a = noisy.workspace_id.0;
+    let b = quiet.workspace_id.0;
 
     // Concurrently, so the whole budget is spent well inside the 60 s window
     // on a slow runner; the in-memory window opens on the first request.
@@ -98,7 +92,8 @@ async fn an_unconfigured_server_caps_one_workspace_and_not_the_next() {
         "the request past 6000 in a minute is refused with nothing configured"
     );
 
-    let other = client
+    let other = quiet
+        .client()
         .get(format!("{base}/workspaces/{b}"))
         .send()
         .await

@@ -64,7 +64,8 @@ pub struct RetentionConfig {
     /// artifact is kept. `None` keeps media unless a workspace sets its own.
     pub media_days: Option<u32>,
     /// From `MAIDAN_MEDIA_QUOTA_BYTES`, the ceiling a workspace's quota is
-    /// held to. `None` is no instance quota.
+    /// held to. Unset is the 20 GiB default; `None` (no instance quota) only
+    /// when an operator sets `0` or `off`.
     pub media_quota_bytes: Option<i64>,
     pub sweep: Duration,
     pub batch: i64,

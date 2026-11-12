@@ -190,7 +190,7 @@ pub(super) async fn find_threads(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: FindThreadsArgs = crate::tools::parse_args(args)?;
-    let workspace_id = a.workspace_id.map_or(auth.workspace_id, WorkspaceId);
+    let workspace_id = a.workspace_id.map_or(auth.workspace_id(), WorkspaceId);
     auth.ensure_workspace(workspace_id)?;
     // The bare shorthands feed the same filter as their `attr` spellings;
     // the `attr` pairs come later, so on a repeat the `attr` value wins.
@@ -237,7 +237,7 @@ pub(super) async fn find_threads(
                 after: a.cursor.map(ThreadId),
                 limit,
                 newest_first,
-                reader_id: (!auth.bypass).then_some(auth.member_id),
+                reader_id: Some(auth.member_id()),
             },
         )
         .await?;
@@ -302,7 +302,7 @@ pub(super) async fn create_thread(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: CreateThreadArgs = crate::tools::parse_args(args)?;
-    let actor = (!auth.bypass).then_some(auth.member_id);
+    let actor = Some(auth.member_id());
     let footprint = a
         .footprint
         .map(|footprint| {
@@ -324,7 +324,7 @@ pub(super) async fn create_thread(
         parent_thread_id: a.parent_thread_id.map(ThreadId),
         title: a.title,
         description: None,
-        created_by: auth.attribution().map(|a| a.subject_id),
+        created_by: Some(auth.member_id()),
     };
     let (created, superseded) = match a.supersedes.map(ThreadId) {
         None => (
@@ -395,7 +395,7 @@ async fn supersede_for(
     workspace_id: WorkspaceId,
     old: ThreadId,
 ) -> Result<maidan_store::store::Supersede, McpError> {
-    if !auth.bypass && !auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
+    if !auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
         return Err(McpError::Forbidden(
             "supersedes closes a thread, which needs thread:transition".into(),
         ));
@@ -406,11 +406,11 @@ async fn supersede_for(
             "supersedes is not a thread in this workspace".into(),
         ));
     }
-    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let maintainer = auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
     let thread = server.store.get_thread(old).await?;
     if !maintainer
-        && thread.created_by != Some(auth.member_id)
-        && thread.assignee_id != Some(auth.member_id)
+        && thread.created_by != Some(auth.member_id())
+        && thread.assignee_id != Some(auth.member_id())
     {
         return Err(McpError::Forbidden(
             "only the superseded thread's producer, its claim holder, or a maintainer can \
@@ -420,11 +420,11 @@ async fn supersede_for(
     }
     Ok(maidan_store::store::Supersede {
         thread_id: old,
-        actor_id: auth.member_id,
+        actor_id: auth.member_id(),
         maintainer,
         audit: NewAuditEvent {
             scope: AuditScope::Workspace(workspace_id),
-            actor_id: Some(auth.actor_id),
+            actor_id: Some(auth.actor_id()),
             action: "thread.close_abandoned".into(),
             target_kind: Some("thread".into()),
             target_id: Some(old.0),
@@ -482,7 +482,7 @@ pub(super) async fn mute_thread(
 ) -> Result<Value, McpError> {
     let a: ThreadIdArg = crate::tools::parse_args(args)?;
     store
-        .mute_thread(auth.member_id, ThreadId(a.thread_id))
+        .mute_thread(auth.member_id(), ThreadId(a.thread_id))
         .await?;
     Ok(content_json(&json!({ "muted": true })))
 }
@@ -496,7 +496,7 @@ pub(super) async fn unmute_thread(
 ) -> Result<Value, McpError> {
     let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let unmuted = store
-        .unmute_thread(auth.member_id, ThreadId(a.thread_id))
+        .unmute_thread(auth.member_id(), ThreadId(a.thread_id))
         .await?;
     Ok(content_json(&json!({ "unmuted": unmuted })))
 }
@@ -559,7 +559,7 @@ pub(super) async fn assign_thread(
     // assignment matches REST's crash-consistency (no dual-write).
     let (thread, stored) = server
         .store
-        .assign_thread_with_event(thread_id, MemberId(a.assignee_id), auth.member_id, a.note)
+        .assign_thread_with_event(thread_id, MemberId(a.assignee_id), auth.member_id(), a.note)
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
@@ -585,7 +585,7 @@ pub(super) async fn claim_thread(
 ) -> Result<Value, McpError> {
     let a: ClaimThreadArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     // An ended thread is refused for that before the park a cancel leaves
     // on it (the REST 409 `thread-ended` analogue, `-32013`). The store reads
     // the state again in the claim's transaction.
@@ -646,7 +646,7 @@ pub(super) async fn unassign_thread(
     // ThreadAssignmentChanged with it.
     let (thread, stored) = server
         .store
-        .unassign_thread_with_event(thread_id, auth.member_id)
+        .unassign_thread_with_event(thread_id, auth.member_id())
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
@@ -723,7 +723,7 @@ pub(super) async fn transition_thread(
     let thread_id = ThreadId(a.thread_id);
     let (result, stored) = match server
         .store
-        .transition_thread_with_event(thread_id, auth.member_id, action)
+        .transition_thread_with_event(thread_id, auth.member_id(), action)
         .await
     {
         Ok(pair) => pair,
@@ -731,7 +731,7 @@ pub(super) async fn transition_thread(
             // The caller already gets the refusal. Record the same sentence on
             // the thread so someone watching the board can see it.
             if action == maidan_fsm::ThreadAction::Close {
-                record_close_refusal(server, auth.member_id, thread_id, &err).await;
+                record_close_refusal(server, auth.member_id(), thread_id, &err).await;
             }
             return Err(err.into());
         }
@@ -795,11 +795,11 @@ pub(super) async fn close_abandoned_thread(
 ) -> Result<Value, McpError> {
     let a: CloseAbandonedArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
-    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let maintainer = auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
     let thread = server.store.get_thread(thread_id).await?;
     if !maintainer
-        && thread.created_by != Some(auth.member_id)
-        && thread.assignee_id != Some(auth.member_id)
+        && thread.created_by != Some(auth.member_id())
+        && thread.assignee_id != Some(auth.member_id())
     {
         return Err(McpError::Forbidden(
             "only the thread's producer, its claim holder, or a maintainer can close it as \
@@ -814,7 +814,7 @@ pub(super) async fn close_abandoned_thread(
     };
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(channel.workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "thread.close_abandoned".into(),
         target_kind: Some("thread".into()),
         target_id: Some(thread_id.0),
@@ -822,7 +822,7 @@ pub(super) async fn close_abandoned_thread(
     };
     let (result, stored) = server
         .store
-        .close_abandoned_thread(thread_id, auth.member_id, maintainer, &close, audit)
+        .close_abandoned_thread(thread_id, auth.member_id(), maintainer, &close, audit)
         .await?;
     publish_close(server, channel.workspace_id, thread_id, &stored).await;
     Ok(content_json(&result.thread))
@@ -891,7 +891,7 @@ pub(super) async fn set_wait(
             a.wait_until,
             a.on_timeout.unwrap_or_default(),
             reason,
-            auth.member_id,
+            auth.member_id(),
         )
         .await?;
     Ok(content_json(&wait))
@@ -930,7 +930,7 @@ pub(super) async fn set_priority(
 ) -> Result<Value, McpError> {
     let a: SetPriorityArgs = crate::tools::parse_args(args)?;
     let priority = store
-        .set_thread_priority(ThreadId(a.thread_id), a.priority, auth.member_id)
+        .set_thread_priority(ThreadId(a.thread_id), a.priority, auth.member_id())
         .await?;
     Ok(content_json(&priority))
 }
@@ -964,7 +964,7 @@ pub(super) async fn mark_unclaimable(
         return Err(McpError::InvalidParams("reason must not be empty".into()));
     }
     let marked = store
-        .mark_thread_unclaimable(ThreadId(a.thread_id), reason, auth.member_id)
+        .mark_thread_unclaimable(ThreadId(a.thread_id), reason, auth.member_id())
         .await?;
     Ok(content_json(&marked))
 }
@@ -995,7 +995,7 @@ pub(super) async fn cancel_thread(
     let thread_id = ThreadId(a.thread_id);
     match server
         .store
-        .cancel_thread(thread_id, auth.member_id, reason, authority)
+        .cancel_thread(thread_id, auth.member_id(), reason, authority)
         .await?
     {
         CancelOutcome::Cancelled { cancelled, events } => {
@@ -1071,7 +1071,7 @@ pub(super) async fn set_thread_block(
 ) -> Result<Value, McpError> {
     let a: SetThreadBlockArgs = crate::tools::parse_args(args)?;
     let (block, _event) = store
-        .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id, a.note)
+        .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id(), a.note)
         .await?;
     Ok(content_json(&block))
 }
@@ -1112,7 +1112,7 @@ pub(super) async fn declare_status(
     let note = maidan_types::status_note(&a.note).map_err(McpError::InvalidParams)?;
     let (declaration, stored) = server
         .store
-        .declare_thread_status(ThreadId(a.thread_id), a.status, note, auth.member_id)
+        .declare_thread_status(ThreadId(a.thread_id), a.status, note, auth.member_id())
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&declaration))
@@ -1171,7 +1171,7 @@ pub(super) async fn link_thread_artifact(
 ) -> Result<Value, McpError> {
     let a: ThreadArtifactArgs = crate::tools::parse_args(args)?;
     let (link, _new) = store
-        .link_thread_artifact(ThreadId(a.thread_id), &a.sha256, auth.member_id)
+        .link_thread_artifact(ThreadId(a.thread_id), &a.sha256, auth.member_id())
         .await?;
     Ok(content_json(&link))
 }
@@ -1226,7 +1226,7 @@ pub(super) async fn add_evidence_record(
     .map_err(McpError::InvalidParams)?;
     let (record, stored) = server
         .store
-        .add_evidence_record_with_event(ThreadId(a.thread_id), &new, auth.member_id)
+        .add_evidence_record_with_event(ThreadId(a.thread_id), &new, auth.member_id())
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&record))
@@ -1265,7 +1265,7 @@ pub(super) async fn clear_thread_block(
     let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let (cleared, stored) = server
         .store
-        .clear_thread_block_with_event(ThreadId(a.thread_id), auth.member_id)
+        .clear_thread_block_with_event(ThreadId(a.thread_id), auth.member_id())
         .await?;
     if let Some(stored) = stored {
         server.publish_stored(&stored).await;
@@ -1305,7 +1305,7 @@ pub(super) async fn set_wip_limit(
     {
         return Err(McpError::InvalidParams("limit must be >= 0".into()));
     }
-    store.set_wip_limit(auth.workspace_id, a.limit).await?;
+    store.set_wip_limit(auth.workspace_id(), a.limit).await?;
     Ok(content_json(&json!({ "limit": a.limit })))
 }
 
@@ -1315,7 +1315,7 @@ pub(super) async fn get_wip_limit(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let limit = store.get_wip_limit(auth.workspace_id).await?;
+    let limit = store.get_wip_limit(auth.workspace_id()).await?;
     Ok(content_json(&json!({ "limit": limit })))
 }
 
@@ -1363,9 +1363,6 @@ pub(super) async fn list_assigned_threads(
     let threads = store
         .list_assigned_threads(member.workspace_id, member_id)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for t in threads {
         if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
@@ -1424,7 +1421,7 @@ pub(super) async fn claim_next_thread(
     let a: ClaimNextThreadArgs = crate::tools::parse_args(args)?;
     let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
     let repo = claim_repo(a.repo.as_deref())?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     // WIP limit: a capped member is dispatched nothing (null), the same shape
     // as an empty queue.
     let channel = server.store.get_channel(ChannelId(a.channel_id)).await?;
@@ -1512,14 +1509,14 @@ pub(super) async fn claim_next_workspace_thread(
     };
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait_ms as u64);
     loop {
-        if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id).await? {
+        if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id()).await? {
             return Ok(content_json(&Value::Null));
         }
         let claimed = server
             .store
             .claim_next_workspace_thread_with_event(
                 workspace_id,
-                auth.member_id,
+                auth.member_id(),
                 Some(lease_secs),
                 repo.as_deref(),
                 a.engine,
@@ -1602,7 +1599,7 @@ pub(super) async fn renew_claim(
         .store
         .renew_claim(
             ThreadId(a.thread_id),
-            auth.member_id,
+            auth.member_id(),
             ClaimLeaseId(a.claim_lease_id),
             lease_secs,
         )
@@ -1632,7 +1629,7 @@ pub(super) async fn acknowledge_claim(
         .store
         .acknowledge_claim(
             ThreadId(a.thread_id),
-            auth.member_id,
+            auth.member_id(),
             ClaimLeaseId(a.claim_lease_id),
         )
         .await?;
@@ -1667,7 +1664,7 @@ pub(super) async fn release_claim(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReleaseClaimArgs = crate::tools::parse_args(args)?;
-    let member = auth.member_id;
+    let member = auth.member_id();
     // Atomic: release + ThreadAssignmentChanged in one tx.
     let (thread, stored) = server
         .store
@@ -1710,7 +1707,7 @@ pub(super) async fn release_own_claims(
     let note = release_note(a.note).map_err(McpError::InvalidParams)?;
     let released = server
         .store
-        .release_member_claims_with_events(workspace_id, auth.member_id, Some(note))
+        .release_member_claims_with_events(workspace_id, auth.member_id(), Some(note))
         .await?;
     let mut thread_ids = Vec::with_capacity(released.len());
     for (thread, stored) in &released {
@@ -1847,7 +1844,7 @@ pub(super) async fn submit_plan(
     let held = plan.needs_hold();
     let outcome = server
         .store
-        .submit_plan(ThreadId(a.thread_id), auth.member_id, plan)
+        .submit_plan(ThreadId(a.thread_id), auth.member_id(), plan)
         .await?;
     match outcome {
         PlanOutcome::Created { children, events } => {
@@ -1901,7 +1898,7 @@ pub(super) async fn amend_plan(
     .map_err(McpError::InvalidParams)?;
     let outcome = server
         .store
-        .amend_plan(ThreadId(a.thread_id), auth.member_id, amend)
+        .amend_plan(ThreadId(a.thread_id), auth.member_id(), amend)
         .await?;
     for stored in &outcome.events {
         server.publish_stored(stored).await;
@@ -1949,11 +1946,11 @@ pub(super) async fn watch_pull(
             pull_number: a.pull_number,
             channel_id: a.channel_id.map(ChannelId),
             title: a.title,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         },
     )
     .await?;
-    if !outcome.watched.created && !auth.bypass {
+    if !outcome.watched.created {
         maidan_auth::ensure_thread_access(store, auth, outcome.watched.thread_id).await?;
     }
     for stored in &outcome.events {
@@ -1986,7 +1983,7 @@ pub(super) async fn list_active_claims(
         .map(|repo| normalize_repo(&repo).map_err(McpError::InvalidParams))
         .transpose()?;
     let claims = store
-        .list_active_claims(workspace_id, repo, queue_reader(auth))
+        .list_active_claims(workspace_id, repo, Some(auth.member_id()))
         .await?;
     Ok(content_json(&claims))
 }
@@ -2022,9 +2019,7 @@ pub(super) async fn add_thread_dependency(
             "dependency thread is in a different workspace".into(),
         ));
     }
-    if !auth.bypass {
-        maidan_auth::ensure_thread_access(store.as_ref(), auth, depends_on).await?;
-    }
+    maidan_auth::ensure_thread_access(store.as_ref(), auth, depends_on).await?;
     store.add_thread_dependency(thread_id, depends_on).await?;
     Ok(content_json(&json!({ "ok": true })))
 }
@@ -2056,12 +2051,6 @@ struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
 
-/// The member whose read rule a queue count applies: the caller, unless it
-/// bypasses auth and so may count everything.
-fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
-    (!auth.bypass).then_some(auth.member_id)
-}
-
 /// A channel's task-queue depth: `{open, ready, assigned, blocked}` counts of
 /// its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`.
 /// Channel access is enforced pre-dispatch (the `channel_id` arg); the counts
@@ -2074,7 +2063,7 @@ pub(super) async fn get_queue_depth(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let depth = store
-        .channel_queue_depth(ChannelId(a.channel_id), queue_reader(auth))
+        .channel_queue_depth(ChannelId(a.channel_id), Some(auth.member_id()))
         .await?;
     Ok(content_json(&depth))
 }
@@ -2090,7 +2079,7 @@ pub(super) async fn get_channel_occupancy(
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let occupancy = store
-        .channel_occupancy(ChannelId(a.channel_id), queue_reader(auth))
+        .channel_occupancy(ChannelId(a.channel_id), Some(auth.member_id()))
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2139,7 +2128,7 @@ pub(super) async fn get_workspace_queue_depth(
     let depth = store
         .workspace_queue_depth(
             workspace_id,
-            queue_reader(auth),
+            Some(auth.member_id()),
             repo.as_deref(),
             a.engine,
             a.kind,
@@ -2158,7 +2147,7 @@ pub(super) async fn get_workspace_occupancy(
 ) -> Result<Value, McpError> {
     let workspace_id = queue_workspace(auth, args)?;
     let occupancy = store
-        .workspace_occupancy(workspace_id, queue_reader(auth))
+        .workspace_occupancy(workspace_id, Some(auth.member_id()))
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2226,11 +2215,8 @@ pub(super) async fn list_run_threads(
     let a: RunLineageArgs = crate::tools::parse_args(args)?;
     let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
     let threads = store
-        .list_threads_for_run(auth.workspace_id, parent_run_id)
+        .list_threads_for_run(auth.workspace_id(), parent_run_id)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for t in threads {
         if maidan_auth::can_access_thread(store.as_ref(), auth, t.id).await? {
@@ -2251,7 +2237,7 @@ pub(super) async fn get_run_occupancy(
     let a: RunLineageArgs = crate::tools::parse_args(args)?;
     let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
     let occupancy = store
-        .run_occupancy(auth.workspace_id, parent_run_id)
+        .run_occupancy(auth.workspace_id(), parent_run_id)
         .await?;
     Ok(content_json(&occupancy))
 }
@@ -2288,7 +2274,7 @@ pub(super) async fn set_thread_result(
         .store
         .set_thread_result(
             thread_id,
-            auth.member_id,
+            auth.member_id(),
             ClaimLeaseId(a.claim_lease_id),
             &a.result,
         )
@@ -2297,7 +2283,7 @@ pub(super) async fn set_thread_result(
     // replay; the tool itself must not race a close.
     match server
         .store
-        .apply_critical_review_decision(thread_id, auth.member_id, &a.result)
+        .apply_critical_review_decision(thread_id, auth.member_id(), &a.result)
         .await
     {
         Ok(Some(submission)) => {
@@ -2333,7 +2319,7 @@ pub(super) async fn set_thread_result(
                 workspace_id: ctx.workspace_id,
                 channel_id: ctx.channel_id,
                 thread_id,
-                produced_by: auth.member_id,
+                produced_by: auth.member_id(),
             })
             .await;
     }
@@ -2380,11 +2366,8 @@ pub(super) async fn list_thread_results(
     let a: ListThreadResultsArgs = crate::tools::parse_args(args)?;
     let limit = a.limit.unwrap_or(50).clamp(1, 500);
     let results = store
-        .list_thread_results(auth.workspace_id, a.result_kind.as_deref(), limit)
+        .list_thread_results(auth.workspace_id(), a.result_kind.as_deref(), limit)
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&results));
-    }
     let mut visible = Vec::with_capacity(results.len());
     for result in results {
         if maidan_auth::can_access_thread(store.as_ref(), auth, result.thread_id).await? {
@@ -2456,7 +2439,7 @@ pub(super) async fn set_thread_steer(
     let a: SetThreadSteerArgs = crate::tools::parse_args(args)?;
     let steer = server
         .store
-        .set_thread_steer(ThreadId(a.thread_id), auth.member_id, &a.steer)
+        .set_thread_steer(ThreadId(a.thread_id), auth.member_id(), &a.steer)
         .await?;
     Ok(content_json(&steer))
 }
@@ -2521,7 +2504,7 @@ pub(super) async fn wait_for_result(
     let thread_id = ThreadId(a.thread_id);
 
     let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
+        workspace_id: Some(auth.workspace_id()),
         thread_id: Some(thread_id),
         kinds: Some(std::collections::HashSet::from([
             EventKind::ThreadResultSet,
@@ -2550,7 +2533,7 @@ pub(super) async fn wait_for_result(
         let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
         if lookback_event(
             store,
-            auth.workspace_id,
+            auth.workspace_id(),
             &kinds,
             None,
             Some(thread_id),
@@ -2580,7 +2563,7 @@ pub(super) async fn wait_for_result(
                 let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
                 if lookback_event(
                     store,
-                    auth.workspace_id,
+                    auth.workspace_id(),
                     &kinds,
                     None,
                     Some(thread_id),
@@ -2624,7 +2607,7 @@ pub(super) async fn get_dependency_results(
     let mut out = Vec::with_capacity(deps.len());
     for dep in deps {
         let dep_id = dep.depends_on_thread_id;
-        if !auth.bypass && !maidan_auth::can_access_thread(store.as_ref(), auth, dep_id).await? {
+        if !maidan_auth::can_access_thread(store.as_ref(), auth, dep_id).await? {
             continue;
         }
         // Project to the raw payload (or null) — the parent wants each
@@ -2780,7 +2763,7 @@ fn single_kind_wait(
 ) -> EventWait {
     EventWait {
         tool,
-        workspace_id: auth.workspace_id,
+        workspace_id: auth.workspace_id(),
         kinds: std::collections::HashSet::from([kind]),
         channel_id,
         thread_id,

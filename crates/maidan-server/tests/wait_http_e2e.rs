@@ -11,13 +11,15 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
 struct Harness {
     addr: SocketAddr,
+    store: Arc<dyn Store>,
     server: tokio::task::JoinHandle<()>,
 }
 
@@ -43,14 +45,20 @@ async fn spawn_sqlite() -> (Harness, Arc<dyn EventBus>) {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus: Arc<dyn EventBus> = Arc::new(InMemoryBus::new());
-    let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
+    let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.subscribe_resume_secret = Some(Arc::from(b"test-secret".as_slice()));
-    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (Harness { addr, server }, bus)
+    (
+        Harness {
+            addr,
+            store,
+            server,
+        },
+        bus,
+    )
 }
 
 /// One replica over Postgres with a NOTIFY bus, sharing the database.
@@ -73,16 +81,20 @@ async fn spawn_postgres_replica(
             .await
             .expect("connect the bus"),
     );
-    // Let the LISTEN task subscribe before events flow.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
+    let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.subscribe_resume_secret = Some(Arc::from(b"test-secret".as_slice()));
-    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (Harness { addr, server }, bus)
+    (
+        Harness {
+            addr,
+            store,
+            server,
+        },
+        bus,
+    )
 }
 
 fn client() -> reqwest::Client {
@@ -92,19 +104,13 @@ fn client() -> reqwest::Client {
         .unwrap()
 }
 
-/// Call an MCP tool over `POST /mcp` as the given member.
-/// Claim `thread_id` for `member_id` over MCP and return the lease a result
-/// write must name.
-async fn claim_lease(
-    client: &reqwest::Client,
-    base: &str,
-    member_id: &str,
-    thread_id: &str,
-) -> Value {
+/// Claim `thread_id` as the holder of `token` over MCP and return the lease a
+/// result write must name.
+async fn claim_lease(client: &reqwest::Client, base: &str, token: &str, thread_id: &str) -> Value {
     let resp = mcp_call(
         client,
         base,
-        member_id,
+        token,
         "claim_thread",
         json!({"thread_id": thread_id}),
     )
@@ -118,10 +124,11 @@ async fn claim_lease(
     lease
 }
 
+/// Call an MCP tool over `POST /mcp` as the member `token` belongs to.
 async fn mcp_call(
     client: &reqwest::Client,
     base: &str,
-    member_id: &str,
+    token: &str,
     name: &str,
     arguments: Value,
 ) -> Value {
@@ -129,7 +136,7 @@ async fn mcp_call(
         .post(format!("{base}/mcp"))
         .header("content-type", "application/json")
         .header("accept", "application/json")
-        .header("maidan-test-member-id", member_id)
+        .bearer_auth(token)
         .json(&json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -151,31 +158,16 @@ fn tool_text(resp: &Value) -> Value {
 }
 
 /// A workspace with one member, one channel and one thread, over REST.
+/// Returns (workspace_id, the member's token, thread_id).
 async fn workspace_with_thread(
-    client: &reqwest::Client,
+    store: &dyn Store,
     base: &str,
     ws_name: &str,
 ) -> (String, String, String) {
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": ws_name}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-    let member: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "waiter", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let member_id = member["id"].as_str().unwrap().to_string();
+    let tenant = test_support::tenant(store, ws_name).await;
+    let client = &tenant.client();
+    let workspace_id = tenant.workspace_id.0.to_string();
+    let waiter = tenant.member(store, "waiter", MemberKind::Agent).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -196,7 +188,7 @@ async fn workspace_with_thread(
         .await
         .unwrap();
     let thread_id = th["id"].as_str().unwrap().to_string();
-    (workspace_id, member_id, thread_id)
+    (workspace_id, waiter.token, thread_id)
 }
 
 #[tokio::test]
@@ -204,18 +196,18 @@ async fn http_wait_for_result_wakes_when_the_result_is_set() {
     let (h, _bus) = spawn_sqlite().await;
     let base = format!("http://{}", h.addr);
     let client = client();
-    let (_ws, member_id, thread_id) = workspace_with_thread(&client, &base, "wait-ws").await;
+    let (_ws, token, thread_id) = workspace_with_thread(h.store.as_ref(), &base, "wait-ws").await;
 
     // The wait parks on the server's event bus; run it in the background.
     let wait_client = client.clone();
     let wait_base = base.clone();
-    let wait_member = member_id.clone();
+    let wait_token = token.clone();
     let wait_thread = thread_id.clone();
     let waiter = tokio::spawn(async move {
         mcp_call(
             &wait_client,
             &wait_base,
-            &wait_member,
+            &wait_token,
             "wait_for_result",
             json!({"thread_id": wait_thread, "timeout_ms": 10000}),
         )
@@ -224,11 +216,11 @@ async fn http_wait_for_result_wakes_when_the_result_is_set() {
     // Let the wait subscribe before the result lands.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let lease = claim_lease(&client, &base, &member_id, &thread_id).await;
+    let lease = claim_lease(&client, &base, &token, &thread_id).await;
     let set_resp = mcp_call(
         &client,
         &base,
-        &member_id,
+        &token,
         "set_thread_result",
         json!({"thread_id": thread_id, "result": {"answer": 42}, "claim_lease_id": lease}),
     )
@@ -254,17 +246,18 @@ async fn http_wait_for_result_wakes_across_two_replicas() {
     let base_a = format!("http://{}", a.addr);
     let base_b = format!("http://{}", b.addr);
     let client = client();
-    let (_ws, member_id, thread_id) = workspace_with_thread(&client, &base_a, "wait-2r-ws").await;
+    let (_ws, token, thread_id) =
+        workspace_with_thread(a.store.as_ref(), &base_a, "wait-2r-ws").await;
 
     // Wait on replica A; the result is set through replica B.
     let wait_client = client.clone();
-    let wait_member = member_id.clone();
+    let wait_token = token.clone();
     let wait_thread = thread_id.clone();
     let waiter = tokio::spawn(async move {
         mcp_call(
             &wait_client,
             &base_a,
-            &wait_member,
+            &wait_token,
             "wait_for_result",
             json!({"thread_id": wait_thread, "timeout_ms": 10000}),
         )
@@ -272,11 +265,11 @@ async fn http_wait_for_result_wakes_across_two_replicas() {
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let lease = claim_lease(&client, &base_b, &member_id, &thread_id).await;
+    let lease = claim_lease(&client, &base_b, &token, &thread_id).await;
     let set_resp = mcp_call(
         &client,
         &base_b,
-        &member_id,
+        &token,
         "set_thread_result",
         json!({"thread_id": thread_id, "result": {"from": "replica-b"}, "claim_lease_id": lease}),
     )
@@ -300,8 +293,10 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
     let (h, _bus) = spawn_sqlite().await;
     let base = format!("http://{}", h.addr);
     let client = client();
-    let (_ws_a, member_a, thread_a) = workspace_with_thread(&client, &base, "wait-tenant-a").await;
-    let (_ws_b, member_b, thread_b) = workspace_with_thread(&client, &base, "wait-tenant-b").await;
+    let (_ws_a, token_a, thread_a) =
+        workspace_with_thread(h.store.as_ref(), &base, "wait-tenant-a").await;
+    let (_ws_b, token_b, thread_b) =
+        workspace_with_thread(h.store.as_ref(), &base, "wait-tenant-b").await;
 
     // Wait on A's thread; the event fires on B's thread.
     let wait_client = client.clone();
@@ -310,7 +305,7 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
         mcp_call(
             &wait_client,
             &wait_base,
-            &member_a,
+            &token_a,
             "wait_for_result",
             json!({"thread_id": thread_a, "timeout_ms": 1000}),
         )
@@ -318,11 +313,11 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let lease = claim_lease(&client, &base, &member_b, &thread_b).await;
+    let lease = claim_lease(&client, &base, &token_b, &thread_b).await;
     let set_resp = mcp_call(
         &client,
         &base,
-        &member_b,
+        &token_b,
         "set_thread_result",
         json!({"thread_id": thread_b, "result": {"other": "workspace"}, "claim_lease_id": lease}),
     )
@@ -339,32 +334,16 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
 }
 
 /// A workspace with one member and a parent+dependency thread pair, over REST.
-/// Returns (member_id, parent_thread_id, dep_thread_id).
+/// Returns (the member's token, parent_thread_id, dep_thread_id).
 async fn workspace_with_dep_pair(
-    client: &reqwest::Client,
+    store: &dyn Store,
     base: &str,
     ws_name: &str,
 ) -> (String, String, String) {
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": ws_name}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-    let member: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "waiter", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let member_id = member["id"].as_str().unwrap().to_string();
+    let tenant = test_support::tenant(store, ws_name).await;
+    let client = &tenant.client();
+    let workspace_id = tenant.workspace_id.0.to_string();
+    let waiter = tenant.member(store, "waiter", MemberKind::Agent).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -397,14 +376,14 @@ async fn workspace_with_dep_pair(
     };
     let parent = mk_thread("parent").await;
     let dep = mk_thread("dep").await;
-    (member_id, parent, dep)
+    (waiter.token, parent, dep)
 }
 
 /// Drive a dependency to terminal over MCP, emitting `ThreadReady` for the parent.
 async fn close_dependency(
     client: &reqwest::Client,
     base: &str,
-    member: &str,
+    token: &str,
     parent: &str,
     dep: &str,
 ) {
@@ -422,7 +401,7 @@ async fn close_dependency(
             json!({"thread_id": dep, "action": "close"}),
         ),
     ] {
-        let resp = mcp_call(client, base, member, tool, args).await;
+        let resp = mcp_call(client, base, token, tool, args).await;
         assert!(resp.get("error").is_none(), "{tool}: {resp}");
     }
 }
@@ -436,25 +415,25 @@ async fn http_workspace_scoped_wait_ignores_other_workspaces_ready() {
     let (h, _bus) = spawn_sqlite().await;
     let base = format!("http://{}", h.addr);
     let client = client();
-    let (member_a, parent_a, dep_a) = workspace_with_dep_pair(&client, &base, "ws-a").await;
-    let (member_b, parent_b, dep_b) = workspace_with_dep_pair(&client, &base, "ws-b").await;
+    let (token_a, parent_a, dep_a) = workspace_with_dep_pair(h.store.as_ref(), &base, "ws-a").await;
+    let (token_b, parent_b, dep_b) = workspace_with_dep_pair(h.store.as_ref(), &base, "ws-b").await;
 
     // Phase 1: A's waiter must not wake when B's dependency closes.
     let wait_client = client.clone();
     let wait_base = base.clone();
-    let member_a_c = member_a.clone();
+    let token_a_c = token_a.clone();
     let waiter = tokio::spawn(async move {
         mcp_call(
             &wait_client,
             &wait_base,
-            &member_a_c,
+            &token_a_c,
             "wait_for_ready",
             json!({"timeout_ms": 1500}),
         )
         .await
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
-    close_dependency(&client, &base, &member_b, &parent_b, &dep_b).await;
+    close_dependency(&client, &base, &token_b, &parent_b, &dep_b).await;
 
     let wait_resp = tokio::time::timeout(Duration::from_secs(15), waiter)
         .await
@@ -471,19 +450,19 @@ async fn http_workspace_scoped_wait_ignores_other_workspaces_ready() {
     // negative phase cannot pass vacuously on a broken wait.
     let wait_client = client.clone();
     let wait_base = base.clone();
-    let member_a_c = member_a.clone();
+    let token_a_c = token_a.clone();
     let waiter = tokio::spawn(async move {
         mcp_call(
             &wait_client,
             &wait_base,
-            &member_a_c,
+            &token_a_c,
             "wait_for_ready",
             json!({"timeout_ms": 5000}),
         )
         .await
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
-    close_dependency(&client, &base, &member_a, &parent_a, &dep_a).await;
+    close_dependency(&client, &base, &token_a, &parent_a, &dep_a).await;
 
     let wait_resp = tokio::time::timeout(Duration::from_secs(15), waiter)
         .await

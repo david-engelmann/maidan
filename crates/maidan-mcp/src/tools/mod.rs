@@ -7,8 +7,8 @@
 //! `dispatch`) and the shared [`content_json`] helper live here.
 
 use maidan_auth::capability::{
-    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, TOKEN_ADMIN,
-    WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    ARTIFACT_UPLOAD, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ,
+    TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -58,19 +58,15 @@ mod agent_gap_tests;
 
 pub use catalog::{catalog, declared_arguments};
 
-/// The tool catalog filtered to the tools the caller may invoke. Bypass callers
-/// (auth disabled) see everything; otherwise a tool whose required capability
-/// the caller lacks is omitted, so a capability-scoped agent gets a smaller,
-/// relevant `tools/list` — fewer tokens and no tools it would only get 403s
-/// from. The unfiltered [`catalog`] is unchanged (contract tests +
+/// The tool catalog filtered to the tools the caller may invoke. A tool whose
+/// required capability the caller lacks is omitted, so a capability-scoped
+/// agent gets a smaller, relevant `tools/list` — fewer tokens and no tools it
+/// would only get 403s from. The unfiltered [`catalog`] is unchanged (contract tests +
 /// full-capability callers rely on it).
 pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
     catalog()
         .into_iter()
         .filter(|tool| {
-            if auth.bypass {
-                return true;
-            }
             tool.get("name")
                 .and_then(|n| n.as_str())
                 .and_then(|name| required_capability(name).ok())
@@ -291,6 +287,29 @@ pub fn slash_target_capability(tool: &str) -> Option<&'static str> {
     (!is_read_only(tool)).then_some(maidan_auth::capability::CHANNEL_ADMIN)
 }
 
+/// The tools that need `member:self`: writes to the caller's own personal
+/// state (MCP-002). Kept beside [`required_capability`], which must agree.
+pub const MEMBER_SELF_TOOLS: &[&str] = &[
+    "mark_inbox_read",
+    "mark_notification_read",
+    "mark_all_notifications_read",
+    "snooze_notification",
+    "set_notification_pref",
+    "set_delivery_mode",
+    "set_member_email",
+    "delete_member_email",
+    "follow_channel",
+    "unfollow_channel",
+    "follow_thread",
+    "unfollow_thread",
+    "follow_member",
+    "unfollow_member",
+    "mute_thread",
+    "unmute_thread",
+    "mute_channel",
+    "unmute_channel",
+];
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"
@@ -299,7 +318,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_dm_conversations"
         | "list_group_dms"
         | "get_group_dm"
-        | "open_group_dm"
         | "list_reactions"
         | "list_pins"
         | "get_artifact_metadata"
@@ -307,11 +325,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_context"
         | "get_tool_transcript"
         | "get_workspace_context"
-        | "request_approval"
         | "get_approval_gate"
         | "list_mentions"
         | "get_inbox"
-        | "mark_inbox_read"
         | "wait_for_mention"
         | "wait_for_ready"
         | "wait_for_claim_expired"
@@ -367,32 +383,15 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_buried_decisions"
         | "get_manager_digest"
         | "get_unread_count"
-        | "mark_notification_read"
-        | "mark_all_notifications_read"
-        | "snooze_notification"
         | "wait_for_notification"
         | "list_notification_prefs"
-        | "set_notification_pref"
-        | "set_delivery_mode"
         | "get_delivery_mode"
-        | "set_member_email"
         | "get_member_email"
-        | "delete_member_email"
-        | "follow_channel"
-        | "unfollow_channel"
         | "list_channel_follows"
-        | "follow_thread"
-        | "unfollow_thread"
         | "list_thread_follows"
-        | "follow_member"
-        | "unfollow_member"
         | "list_member_follows"
         | "list_child_threads"
         | "list_recently_active_threads"
-        | "mute_thread"
-        | "unmute_thread"
-        | "mute_channel"
-        | "unmute_channel"
         | "get_thread_budget"
         | "usage_rollup"
         | "list_dlq"
@@ -427,12 +426,38 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "attenuate_token"
         | "rotate_token" => Ok(WORKSPACE_READ),
         "delegate_token" => Ok(WORKSPACE_READ),
+        // The holder's own personal state (MCP-002). Self-scoped to the
+        // token's member by `enforce_member_self_scope`; `member:self` says
+        // the token may write it at all, so a bare `workspace:read` token
+        // can't. `MEMBER_SELF_TOOLS` is the same list.
+        "mark_inbox_read"
+        | "mark_notification_read"
+        | "mark_all_notifications_read"
+        | "snooze_notification"
+        | "set_notification_pref"
+        | "set_delivery_mode"
+        | "set_member_email"
+        | "delete_member_email"
+        | "follow_channel"
+        | "unfollow_channel"
+        | "follow_thread"
+        | "unfollow_thread"
+        | "follow_member"
+        | "unfollow_member"
+        | "mute_thread"
+        | "unmute_thread"
+        | "mute_channel"
+        | "unmute_channel" => Ok(MEMBER_SELF),
         "create_delegation_grant"
         | "list_delegation_grants"
         | "revoke_delegation_grant"
         | "set_delegation_policy"
         | "set_retention_policy" => Ok(TOKEN_ADMIN),
+        // Both reach people: a conversation they are put in, or a gate that
+        // asks one of them to decide. A read-only token does neither (MCP-003).
         "open_dm_conversation"
+        | "open_group_dm"
+        | "request_approval"
         | "post_dm_message"
         | "post_group_dm_message"
         | "post_message"
@@ -592,7 +617,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
 /// same error. Anything more specific would confirm that a member id exists on
 /// this instance.
 fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Result<(), McpError> {
-    if auth.bypass || !MEMBER_SCOPED_TOOLS.contains(&name) {
+    if !MEMBER_SCOPED_TOOLS.contains(&name) {
         return Ok(());
     }
     let Some(claimed) = args
@@ -606,7 +631,7 @@ fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Re
         return Ok(());
     };
 
-    if claimed == auth.member_id {
+    if claimed == auth.member_id() {
         return Ok(());
     }
     Err(McpError::Forbidden("member_id is not yours".to_string()))
@@ -751,9 +776,8 @@ pub async fn dispatch(
     // Admitted: the capability, the workspace's parking place and the
     // allowance were checked before dispatch, and the arguments and id
     // access just now. Only then does a wait stop holding the request's
-    // in-flight permit. An auth-disabled caller holds no parking place, so it
-    // keeps its permit (RED-008).
-    if crate::parked_waits::parks(name) && !auth.bypass {
+    // in-flight permit (RED-008).
+    if crate::parked_waits::parks(name) {
         crate::parked_waits::release_permit();
     }
     let store = &server.store;
@@ -990,7 +1014,7 @@ async fn dispatch_rest(
         "post_message" => message::post_message(server, auth, args).await,
         "edit_message" => message::edit_message(server, auth, args).await,
         "tombstone_message" => message::tombstone_message(server, auth, args).await,
-        "list_message_edits" => message::list_message_edits(store, auth, args).await,
+        "list_message_edits" => message::list_message_edits(store, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,
         "cast_vote" => social::cast_vote(server, auth, args).await,
@@ -1048,11 +1072,7 @@ async fn dispatch_rest(
             // query, so the pack needs no per-thread access check after it
             // is built. Filter before serialize so the bytes stay the
             // canonical struct order REST uses.
-            let reader_id = if auth.bypass {
-                None
-            } else {
-                Some(auth.member_id)
-            };
+            let reader_id = Some(auth.member_id());
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
             Ok(content_json(&packed))
@@ -1080,8 +1100,7 @@ async fn dispatch_rest(
 }
 
 /// The workspace a thread belongs to, which an audit row about it is stamped
-/// with. The pre-dispatch gate has already held it to the caller's workspace;
-/// under bypass it can be any.
+/// with. The pre-dispatch gate has already held it to the caller's workspace.
 pub(super) async fn thread_workspace(
     store: &dyn maidan_store::Store,
     thread_id: maidan_types::ThreadId,
@@ -1099,10 +1118,7 @@ pub(super) async fn requested_member(
     auth: &AuthContext,
     id: maidan_types::MemberId,
 ) -> Result<maidan_types::Member, McpError> {
-    if auth.bypass {
-        return Ok(store.get_member(id).await?);
-    }
-    Ok(store.get_member_in(auth.workspace_id, id).await?)
+    Ok(store.get_member_in(auth.workspace_id(), id).await?)
 }
 
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec
@@ -1144,12 +1160,6 @@ mod catalog_filter_tests {
     }
 
     #[test]
-    fn bypass_sees_the_whole_catalog() {
-        let auth = AuthContext::bypass();
-        assert_eq!(catalog_for(&auth).len(), catalog().len());
-    }
-
-    #[test]
     fn a_read_only_token_sees_only_read_tools() {
         let auth = AuthContext::from_token(
             ApiTokenId(uuid::Uuid::new_v4()),
@@ -1167,6 +1177,51 @@ mod catalog_filter_tests {
         for name in &names {
             assert_eq!(required_capability(name).unwrap(), WORKSPACE_READ, "{name}");
         }
+    }
+
+    #[test]
+    fn personal_state_writes_need_member_self_not_workspace_read() {
+        assert_eq!(MEMBER_SELF_TOOLS.len(), 18);
+        for name in MEMBER_SELF_TOOLS {
+            assert_eq!(required_capability(name).unwrap(), MEMBER_SELF, "{name}");
+            assert!(!is_read_only(name), "{name} writes");
+        }
+        let member = MemberId(uuid::Uuid::new_v4());
+        let workspace = WorkspaceId(uuid::Uuid::new_v4());
+        let read_only = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            member,
+            workspace,
+            vec![WORKSPACE_READ.to_string()],
+        );
+        let names = tool_names(&catalog_for(&read_only));
+        for name in MEMBER_SELF_TOOLS {
+            assert!(
+                !names.contains(&name.to_string()),
+                "{name} offered to workspace:read"
+            );
+        }
+        let personal = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            member,
+            workspace,
+            vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+        );
+        let names = tool_names(&catalog_for(&personal));
+        for name in MEMBER_SELF_TOOLS {
+            assert!(
+                names.contains(&name.to_string()),
+                "{name} hidden from member:self"
+            );
+        }
+        let worker = maidan_auth::expand_set(maidan_auth::AGENT_WORKER).unwrap();
+        assert!(
+            worker.iter().any(|c| c == MEMBER_SELF),
+            "the worker preset keeps them"
+        );
+        assert!(maidan_auth::capability::default_minted()
+            .iter()
+            .any(|c| c == MEMBER_SELF));
     }
 
     #[test]

@@ -75,10 +75,8 @@ pub async fn expand_event_filter(
     // `ensure_thread_access` is DM-participant-aware, so a non-participant can
     // no longer tail a DM / group-DM by supplying its `dm_conversation_id`
     // (expanded to `thread_id` above) or its `thread_id` directly — the events
-    // analog of the 180 read gap. Bypass is exempt.
-    if let Some(thread_id) = filter.thread_id
-        && !auth.bypass
-    {
+    // analog of the 180 read gap.
+    if let Some(thread_id) = filter.thread_id {
         maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
             .await
             .map_err(ApiError::from)?;
@@ -101,7 +99,7 @@ pub async fn open_dm_conversation(
     cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
-    let member_id = auth.member_id;
+    let member_id = auth.member_id();
     let other = MemberId(body.other_member_id);
     state.store.get_member(member_id).await?;
     state.store.get_member(other).await?;
@@ -147,9 +145,7 @@ pub async fn get_dm_conversation(
     // used to apply to sessions only and let any bearer through; an
     // orchestrator acting for a participant now holds a delegated token that
     // *is* that participant.
-    if !auth.bypass {
-        ensure_dm_participant(&dm, auth.member_id)?;
-    }
+    ensure_dm_participant(&dm, auth.member_id())?;
     Ok(Json(dm))
 }
 
@@ -165,7 +161,7 @@ pub async fn post_dm_message(
         .get_dm_conversation(DmConversationId(id))
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
-    let author_id = auth.member_id;
+    let author_id = auth.member_id();
     ensure_dm_participant(&dm, author_id)?;
     let metadata = body.metadata.unwrap_or_else(|| serde_json::json!({}));
     let (m, stored) = state
@@ -187,7 +183,7 @@ pub async fn post_dm_message(
     // the channel post path. Best-effort: the message is already posted.
     if let Ok(member) = state
         .store
-        .get_member_in(dm.workspace_id, auth.member_id)
+        .get_member_in(dm.workspace_id, auth.member_id())
         .await
         && member.kind == MemberKind::Human
         && let Err(e) = state.store.clear_thread_status(dm.thread_id).await
@@ -217,9 +213,7 @@ pub async fn list_dm_messages(
     // The messages are the DM: only its participants read them, as only they
     // read its metadata (`get_dm_conversation`) or post to it. The workspace
     // check alone let any member with `workspace:read` and the id read it.
-    if !auth.bypass {
-        ensure_dm_participant(&dm, auth.member_id)?;
-    }
+    ensure_dm_participant(&dm, auth.member_id())?;
     Ok(Json(
         state.store.list_messages(dm.thread_id, q.limit).await?,
     ))

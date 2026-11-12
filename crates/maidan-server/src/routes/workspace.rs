@@ -24,14 +24,11 @@ pub async fn create_workspace(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CreateWorkspace>,
 ) -> ApiResult<(StatusCode, Json<Workspace>)> {
-    if !state.auth_disabled && state.bootstrap_enabled {
-        let count = state.store.count_workspaces().await?;
-        if count > 0 {
-            return Err(ApiError::Forbidden(
-                "bootstrap only allows creating the first workspace; use bearer auth thereafter"
-                    .into(),
-            ));
-        }
+    let count = state.store.count_workspaces().await?;
+    if count > 0 {
+        return Err(ApiError::Forbidden(
+            "bootstrap only allows creating the first workspace; use bearer auth thereafter".into(),
+        ));
     }
     let (ws, stored) = state
         .store
@@ -77,7 +74,7 @@ pub async fn provision_workspace(
     let admin_handle = normalize_admin_handle(&body.admin_handle)?;
     let secret = TokenSecret::generate();
     let capabilities = tenant_admin_capabilities();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let provisioned = state
         .store
         .provision_workspace(
@@ -221,7 +218,7 @@ pub async fn set_linear_claim_comments(
             body.enabled,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "linear.claim_comments.set".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),
@@ -266,7 +263,7 @@ pub async fn set_workspace_default_engine(
             body.engine,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "workspace.default_engine.set".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),
@@ -312,7 +309,7 @@ pub async fn set_workspace_review_children(
             body.review_children,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "workspace.review_children.set".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),
@@ -361,7 +358,7 @@ pub async fn set_workspace_unique_thread_attributes(
     let setting = body.validated().map_err(ApiError::BadRequest)?;
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "workspace.unique_thread_attributes.set".into(),
         target_kind: Some("workspace".into()),
         target_id: Some(workspace_id.0),
@@ -396,7 +393,7 @@ pub async fn export_workspace(
         .store
         .append_audit(NewAuditEvent {
             scope: AuditScope::Workspace(workspace_id),
-            actor_id: Some(auth.actor_id),
+            actor_id: Some(auth.actor_id()),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -495,8 +492,7 @@ pub async fn import_workspace(
 
     let origin = maidan_store::usage_meters::import_origin(
         state.store.as_ref(),
-        auth.bypass,
-        auth.workspace_id,
+        auth.workspace_id(),
         matches!(q.mode, ImportMode::Restore).then_some(to_write.workspace.id),
     )
     .await?;
@@ -509,7 +505,7 @@ pub async fn import_workspace(
             origin,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "workspace.import".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),
@@ -566,11 +562,7 @@ pub async fn list_workspace_tombstones(
     let limit = maidan_types::clamp_tombstone_limit(q.limit);
     // Read access is filtered in the query now, so no per-row access check
     // runs after the page is cut.
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     let rows = state
         .store
         .list_tombstones(
@@ -606,11 +598,7 @@ pub async fn get_workspace_kind_census(
     }
     let deny =
         maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     Ok(Json(
         state
             .store
@@ -643,9 +631,6 @@ pub async fn list_workspace_results(
         .store
         .list_thread_results(workspace_id, q.result_kind.as_deref(), limit)
         .await?;
-    if auth.bypass {
-        return Ok(Json(results));
-    }
     let mut visible = Vec::with_capacity(results.len());
     for result in results {
         if maidan_auth::can_access_thread(state.store.as_ref(), &auth, result.thread_id).await? {
@@ -677,9 +662,6 @@ pub async fn list_run_threads(
         .store
         .list_threads_for_run(workspace_id, parent_run_id)
         .await?;
-    if auth.bypass {
-        return Ok(Json(threads));
-    }
     let mut visible = Vec::with_capacity(threads.len());
     for thread in threads {
         if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
@@ -766,7 +748,7 @@ pub async fn set_delegation_policy(
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let policy = state
         .store
         .set_delegation_policy_audited(
@@ -817,7 +799,7 @@ pub async fn set_retention_policy(
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let instance = state.mcp.instance_retention();
     let days = state
         .store
@@ -937,11 +919,7 @@ pub async fn replay_quarantined_outbox(
         ApiError::BadRequest("outbox relay is not enabled for this deployment".into())
     })?;
     backend.replay_quarantined(outbox_id, workspace_id).await?;
-    let actor_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let actor_id = Some(auth.member_id());
     state
         .store
         .append_audit(NewAuditEvent {
@@ -1019,11 +997,7 @@ pub async fn get_workspace_context(
     };
     // The thread page is filtered by the caller's access in the query, so
     // the pack needs no per-thread access check after it is built.
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     let packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
         workspace_id,
@@ -1051,7 +1025,7 @@ pub async fn purge_workspace(
     ensure_workspace(&auth, workspace_id)?;
     // The store refuses a missing (404) or held (409) workspace inside the
     // purge's transaction, and writes this row in it.
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let mut result = state
         .store
         .purge_workspace_messages_audited(
@@ -1117,7 +1091,7 @@ pub async fn erase_workspace(
             "confirm_workspace_id must match path workspace id".into(),
         ));
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let mut result = state
         .store
         .erase_workspace_audited(
@@ -1157,13 +1131,13 @@ pub async fn place_legal_hold(
         return Err(ApiError::BadRequest("reason must not be empty".into()));
     }
     state.store.get_workspace(workspace_id).await?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let hold = state
         .store
         .place_legal_hold_audited(
             workspace_id,
             reason,
-            Some(auth.member_id),
+            Some(auth.member_id()),
             Box::new(move |hold| NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
@@ -1198,7 +1172,7 @@ pub async fn lift_legal_hold(
             LegalHoldId(hold_id),
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "legal_hold.lift".into(),
                 target_kind: Some("legal_hold".into()),
                 target_id: Some(hold_id),
@@ -1248,7 +1222,7 @@ pub async fn get_preserved_messages(
             workspace_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "legal_hold.preserved_read".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),
@@ -1408,14 +1382,11 @@ pub async fn list_events(
         .await
     }
     .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
-    // A whole-log reader (peer, bypass) gets each event sealed as hashed, with
+    // A whole-log reader (a peer) gets each event sealed as hashed, with
     // its live content key, so it can verify the chain and still read the
     // words. A member gets the words opened. Either way shredded words stay
     // ciphertext: there is no key left to send.
-    let whole_log = match &auth {
-        Some(Extension(auth)) => auth.bypass,
-        None => true,
-    };
+    let whole_log = auth.is_none();
     events
         .into_iter()
         .map(|mut event| {
@@ -1441,9 +1412,7 @@ fn ensure_whole_log_read(
     workspace_id: WorkspaceId,
 ) -> ApiResult<()> {
     ensure_event_log_read(auth, peer, workspace_id)?;
-    if let Some(Extension(auth)) = auth
-        && !auth.bypass
-    {
+    if let Some(Extension(auth)) = auth {
         cap(auth, TOKEN_ADMIN)?;
     }
     Ok(())

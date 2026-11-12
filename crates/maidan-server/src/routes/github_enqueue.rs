@@ -322,8 +322,8 @@ async fn audit_enqueue(
     crate::audit::record(
         state,
         NewAuditEvent {
-            scope: AuditScope::Workspace(auth.workspace_id),
-            actor_id: Some(auth.actor_id),
+            scope: AuditScope::Workspace(auth.workspace_id()),
+            actor_id: Some(auth.actor_id()),
             action: "github.enqueue".into(),
             target_kind: Some("github_pull".into()),
             target_id: None,
@@ -332,7 +332,7 @@ async fn audit_enqueue(
                 "pull_number": pull_number,
                 "outcome": outcome,
                 "reason": reason,
-                "app_installation_id": auth.app_installation_id.map(|id| id.0),
+                "app_installation_id": auth.app_installation_id().map(|id| id.0),
             }),
         },
     )
@@ -382,7 +382,7 @@ pub async fn enqueue_pull(
     let git = writer(&state)?;
     match enqueue_pull_guarded(
         state.store.as_ref(),
-        auth.workspace_id,
+        auth.workspace_id(),
         git,
         &state.mark_ready_bases,
         &state.merge_queue_labels,
@@ -492,7 +492,7 @@ pub async fn dequeue_pull(
     let git = writer(&state)?;
     match dequeue_pull_guarded(
         state.store.as_ref(),
-        auth.workspace_id,
+        auth.workspace_id(),
         git,
         &state.mark_ready_bases,
         &state.merge_queue_labels,

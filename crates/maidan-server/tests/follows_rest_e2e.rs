@@ -19,7 +19,16 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
-    mint_with(store, ws, member, vec![capability::WORKSPACE_READ.into()]).await
+    mint_with(
+        store,
+        ws,
+        member,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::MEMBER_SELF.into(),
+        ],
+    )
+    .await
 }
 
 async fn mint_with(
@@ -101,7 +110,6 @@ async fn follow_unfollow_and_list_channel() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -380,7 +388,6 @@ async fn mute_and_unmute_thread() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -477,7 +484,6 @@ async fn mute_and_unmute_channel() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

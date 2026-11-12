@@ -74,7 +74,7 @@ lists them. `every_secret_file_the_chart_mounts_is_one_the_server_reads` in
 crates/maidan-env keeps the two lists equal.
 */}}
 {{- define "maidan.fileSecretNames" -}}
-DATABASE_URL FEDERATION_DECRYPT_KEYS FEDERATION_ENCRYPTION_KEY MAIDAN_CONTENT_KEK MAIDAN_CONTENT_KEK_PREVIOUS MAIDAN_DB_REPLICA_URL MAIDAN_DEPLOY_HOOK_SECRET MAIDAN_EMBEDDING_API_KEY MAIDAN_EXPORT_SIGNING_KEY MAIDAN_GITHUB_APP_PRIVATE_KEY MAIDAN_GITHUB_TOKEN MAIDAN_GITHUB_WEBHOOK_SECRET MAIDAN_LINEAR_API_KEY MAIDAN_OIDC_CLIENT_SECRET MAIDAN_RATE_LIMIT_REDIS_URL MAIDAN_SESSION_SECRET MAIDAN_SLACK_BOT_TOKEN MAIDAN_SLACK_SIGNING_SECRET MAIDAN_SMTP_PASSWORD MAIDAN_SUBSCRIBE_RESUME_SECRET MAIDAN_TURNSTILE_SECRET MAIDAN_VAPID_PRIVATE_KEY S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
+DATABASE_URL FEDERATION_DECRYPT_KEYS FEDERATION_ENCRYPTION_KEY MAIDAN_CONTENT_KEK MAIDAN_CONTENT_KEK_PREVIOUS MAIDAN_DB_REPLICA_URL MAIDAN_DEPLOY_HOOK_SECRET MAIDAN_EMBEDDING_API_KEY MAIDAN_EXPORT_SIGNING_KEY MAIDAN_GITHUB_APP_PRIVATE_KEY MAIDAN_GITHUB_TOKEN MAIDAN_GITHUB_WEBHOOK_SECRET MAIDAN_LINEAR_API_KEY MAIDAN_METRICS_TOKEN MAIDAN_OIDC_CLIENT_SECRET MAIDAN_RATE_LIMIT_REDIS_URL MAIDAN_SESSION_SECRET MAIDAN_SLACK_BOT_TOKEN MAIDAN_SLACK_SIGNING_SECRET MAIDAN_SMTP_PASSWORD MAIDAN_SUBSCRIBE_RESUME_SECRET MAIDAN_TURNSTILE_SECRET MAIDAN_VAPID_PRIVATE_KEY S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
 {{- end -}}
 
 {{/*
@@ -179,7 +179,7 @@ a key two extra sources both hold.
 {{- fail (printf "secrets.%s is empty: set it, or set existingSecret to a Secret that holds %s" $k $k) }}
 {{- end }}
 {{- end }}
-{{- /* With sign-in on, the server refuses to boot without a session secret, so
+{{- /* The server always authenticates and signs sessions with this secret, so
 a production render that supplies none would ship a pod that never starts. */}}
 {{- $sessionFromExtra := false }}
 {{- range .Values.secretFiles.extra }}
@@ -187,7 +187,7 @@ a production render that supplies none would ship a pod that never starts. */}}
 {{- $sessionFromExtra = true }}
 {{- end }}
 {{- end }}
-{{- if not (or .Values.existingSecret .Values.extraEnvFrom $sessionFromExtra (hasKey .Values.secrets "MAIDAN_SESSION_SECRET") (hasKey .Values.config "AUTH_DISABLED")) }}
+{{- if not (or .Values.existingSecret .Values.extraEnvFrom $sessionFromExtra (hasKey .Values.secrets "MAIDAN_SESSION_SECRET")) }}
 {{- fail "a production install needs MAIDAN_SESSION_SECRET (32 bytes or more, `openssl rand -hex 32`): set secrets.MAIDAN_SESSION_SECRET, or put it in existingSecret" }}
 {{- end }}
 {{- end }}
@@ -201,6 +201,27 @@ a production render that supplies none would ship a pod that never starts. */}}
 {{- $tag := required "a production install needs an explicit image: set image.tag to a release (vN.0.0) or image.digest to its sha256" .Values.image.tag }}
 {{- if has $tag (list "dev" "latest") }}
 {{- fail (printf "image.tag %q is not a release: set image.tag to a release (vN.0.0) or image.digest to its sha256" $tag) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* The server refuses any MAIDAN_ENV but these two, and a production render
+sets it from `production` (deployment.yaml), where a config value saying
+otherwise would only read as if it applied. */}}
+{{- if hasKey .Values.config "MAIDAN_ENV" }}
+{{- $env := toString .Values.config.MAIDAN_ENV }}
+{{- if not (has $env (list "" "production" "development")) }}
+{{- fail (printf "config.MAIDAN_ENV %q is not production or development: the server refuses it at boot" $env) }}
+{{- end }}
+{{- if and .Values.production (ne $env "production") }}
+{{- fail (printf "config.MAIDAN_ENV is %q in a production render, which sets MAIDAN_ENV=production: remove it" $env) }}
+{{- end }}
+{{- end }}
+{{- /* Under MAIDAN_ENV=production the server refuses to boot with any of
+these, so a production render that carries one ships a pod that never starts. */}}
+{{- if .Values.production }}
+{{- range (list "AUTH_DISABLED" "MAIDAN_ALLOW_INSECURE_DEV_KEK" "MAIDAN_OIDC_MOCK" "MAIDAN_ALLOW_PRIVATE_EGRESS" "MAIDAN_OPS_FAULT") }}
+{{- if hasKey $.Values.config . }}
+{{- fail (printf "config.%s is a development switch that MAIDAN_ENV=production refuses, and a production render sets MAIDAN_ENV=production: remove it" .) }}
 {{- end }}
 {{- end }}
 {{- end }}

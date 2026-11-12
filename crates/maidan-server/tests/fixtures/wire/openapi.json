@@ -2329,27 +2329,6 @@
         ],
         "type": "object"
       },
-      "CreateMember": {
-        "properties": {
-          "display_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "handle": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/MemberKind"
-          }
-        },
-        "required": [
-          "handle",
-          "kind"
-        ],
-        "type": "object"
-      },
       "CreateMemoryBlock": {
         "description": "Create a memory block. `label` is the block's within-workspace key; `value`\ndefaults to empty, `read_only` to false. Creating an existing label returns\nthe existing block (concurrent-safe).",
         "properties": {
@@ -2427,6 +2406,13 @@
           "remote_workspace_id": {
             "description": "Workspace on the remote peer to poll; defaults to the path workspace when omitted.",
             "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secret": {
+            "description": "The bearer this instance presents when it polls the remote, and accepts\nwhen the remote pushes here: one the remote issued for this instance (its\nown peer secret for us, or an API token reading `remote_workspace_id`).\n32 to 512 characters, no whitespace. Omitted, one is generated and\nreturned, and the remote has to be given it.",
             "type": [
               "string",
               "null"
@@ -2712,17 +2698,6 @@
         "required": [
           "url",
           "event_kinds"
-        ],
-        "type": "object"
-      },
-      "CreateWorkspace": {
-        "properties": {
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
         ],
         "type": "object"
       },
@@ -5903,6 +5878,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageProvenance",
+                "description": "The bridge the message came in through, when it came in through one.\nOnly the server writes it, on bridge ingress: no post or edit can set,\nchange or clear it, and `metadata` keys that look like it count for\nnothing. Omitted for a message a member posted, so a log written before\nthe field hashes the same."
+              }
+            ]
+          },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
           },
@@ -6038,6 +6024,33 @@
       "MessageId": {
         "format": "uuid",
         "type": "string"
+      },
+      "MessageOrigin": {
+        "description": "A bridge that carries text into Maidan from outside it.",
+        "enum": [
+          "github",
+          "slack"
+        ],
+        "type": "string"
+      },
+      "MessageProvenance": {
+        "description": "Where a bridged message came from, set by the server (RED-007).",
+        "properties": {
+          "external_id": {
+            "description": "The bridge's own id for what it delivered: a GitHub comment id, a\nSlack `event_id`. Ingress is keyed on it per workspace, so a\nredelivery posts nothing. `None` for a sentence the server wrote about\na bridge's state, such as a pull request closing.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MessageOrigin"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "type": "object"
       },
       "MessageVotes": {
         "description": "One message's votes inside `GET /threads/{tid}/votes`: a count per kind,\nthen every vote row (who voted, which kind, when, optional confidence).",
@@ -35603,61 +35616,6 @@
         ]
       }
     },
-    "/workspaces": {
-      "post": {
-        "operationId": "create_workspace",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWorkspace"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workspace"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "413": {
-            "$ref": "#/components/responses/PayloadTooLarge"
-          },
-          "415": {
-            "$ref": "#/components/responses/UnsupportedMediaType"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalServerError"
-          },
-          "503": {
-            "$ref": "#/components/responses/Overloaded"
-          }
-        },
-        "security": [
-          {}
-        ],
-        "summary": "Create a workspace",
-        "tags": [
-          "bootstrap"
-        ]
-      }
-    },
     "/workspaces/export/verify": {
       "post": {
         "operationId": "verify_workspace_export",
@@ -40495,7 +40453,7 @@
                 }
               }
             },
-            "description": "The agent member and a one-time `maidan.agent.worker` token, created together. `token:admin`; mounted without `MAIDAN_BOOTSTRAP`"
+            "description": "The agent member and a one-time `maidan.agent.worker` token, created together. `token:admin`"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -44764,71 +44722,6 @@
         "tags": [
           "members"
         ]
-      },
-      "post": {
-        "operationId": "create_member_bootstrap",
-        "parameters": [
-          {
-            "description": "Workspace id",
-            "in": "path",
-            "name": "wid",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMember"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Member"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "413": {
-            "$ref": "#/components/responses/PayloadTooLarge"
-          },
-          "415": {
-            "$ref": "#/components/responses/UnsupportedMediaType"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalServerError"
-          },
-          "503": {
-            "$ref": "#/components/responses/Overloaded"
-          }
-        },
-        "security": [
-          {}
-        ],
-        "summary": "Create a member",
-        "tags": [
-          "bootstrap"
-        ]
       }
     },
     "/workspaces/{wid}/members/{mid}/tokens": {
@@ -48744,10 +48637,6 @@
     {
       "description": "OIDC login and browser session (requires MAIDAN_OIDC_ENABLED)",
       "name": "auth"
-    },
-    {
-      "description": "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)",
-      "name": "bootstrap"
     }
   ]
 }

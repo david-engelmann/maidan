@@ -69,25 +69,22 @@ pub fn templates() -> Vec<Value> {
 /// resource that exists without the caller naming an id. Everything else is
 /// reached through [`templates`].
 pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
-    if auth.bypass {
-        return Vec::new();
-    }
     vec![json!({
-        "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id.0),
+        "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id().0),
         "name": "workspace",
         "description": "Your workspace's metadata.",
         "mimeType": "application/json",
     })]
 }
 
-/// Read a resource for `auth`. The viewer is the caller's workspace (`None` for bypass):
-/// an artifact's metadata is that workspace's own, not the shared row's.
+/// Read a resource for `auth`. An artifact's metadata is the caller's workspace's
+/// own, not the shared row's.
 pub async fn read(
     store: &Arc<dyn Store>,
     uri: &str,
     auth: &maidan_auth::AuthContext,
 ) -> Result<Value, McpError> {
-    let viewer = (!auth.bypass).then_some(auth.workspace_id);
+    let viewer = auth.workspace_id();
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
@@ -101,10 +98,7 @@ pub async fn read(
             // artifact_ref_exists). `size_bytes` is
             // authoritative metadata, so the blob is never loaded just to
             // report its length.
-            let meta = match viewer {
-                Some(ws) => store.get_artifact_for_workspace(ws, &canonical).await?,
-                None => store.get_artifact_by_sha(&canonical).await?,
-            };
+            let meta = store.get_artifact_for_workspace(viewer, &canonical).await?;
             json!({
                 "artifact": meta,
                 "byte_length": meta.size_bytes,
@@ -114,17 +108,9 @@ pub async fn read(
             let id = uuid::Uuid::parse_str(id_str)
                 .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
             let thread_id = ThreadId(id);
-            let workspace_id = match viewer {
-                Some(ws) => ws,
-                None => {
-                    let thread = store.get_thread(thread_id).await?;
-                    store.get_channel(thread.channel_id).await?.workspace_id
-                }
-            };
-            let digest =
-                maidan_store::thread_digest::current(store.as_ref(), workspace_id, thread_id)
-                    .await?
-                    .ok_or(McpError::NotFound)?;
+            let digest = maidan_store::thread_digest::current(store.as_ref(), viewer, thread_id)
+                .await?
+                .ok_or(McpError::NotFound)?;
             serde_json::to_value(&digest)?
         }
         "boots" => {

@@ -2,18 +2,21 @@
 //!
 //! Proves: posting typed `content` derives the searchable `body`; GET returns
 //! the blocks; a plain body-only post has `content: null`; editing content
-//! re-derives body. Runs with auth bypassed (`AppState::for_tests`).
+//! re-derives body.
 
 use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, test_support::Tenant, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 
 struct Ctx {
     addr: SocketAddr,
     _server: tokio::task::JoinHandle<()>,
     client: reqwest::Client,
+    store: Arc<dyn Store>,
+    tenant: Tenant,
     _dir: tempfile::TempDir,
 }
 
@@ -39,42 +42,30 @@ async fn spawn() -> Ctx {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let tenant = test_support::tenant(store.as_ref(), "acme").await;
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Ctx {
         addr,
         _server: server,
-        client: reqwest::Client::new(),
+        client: tenant.client(),
+        store,
+        tenant,
         _dir: dir,
     }
 }
 
-/// Create ws → member → channel → thread, returning (base, thread_id, member_id).
+/// Create member → channel → thread, returning (base, thread_id, the member's token).
 async fn seed(ctx: &Ctx) -> (String, String, String) {
     let base = ctx.base();
     let c = &ctx.client;
-    let ws: serde_json::Value = c
-        .post(format!("{base}/workspaces"))
-        .json(&serde_json::json!({"name": "acme"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap().to_string();
-    let mem: serde_json::Value = c
-        .post(format!("{base}/workspaces/{wid}/members"))
-        .json(&serde_json::json!({"handle": "agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let mid = mem["id"].as_str().unwrap().to_string();
+    let wid = ctx.tenant.workspace_id.0;
+    let agent = ctx
+        .tenant
+        .member(ctx.store.as_ref(), "agent", MemberKind::Agent)
+        .await;
     let ch: serde_json::Value = c
         .post(format!("{base}/workspaces/{wid}/channels"))
         .json(&serde_json::json!({"name": "general"}))
@@ -95,19 +86,19 @@ async fn seed(ctx: &Ctx) -> (String, String, String) {
         .await
         .unwrap();
     let tid = th["id"].as_str().unwrap().to_string();
-    (base, tid, mid)
+    (base, tid, agent.token)
 }
 
 #[tokio::test]
 async fn content_post_derives_body_and_round_trips() {
     let ctx = spawn().await;
-    let (base, tid, mid) = seed(&ctx).await;
+    let (base, tid, agent_token) = seed(&ctx).await;
     let c = &ctx.client;
 
     // Post with typed content, no body → body is derived.
     let posted: serde_json::Value = c
         .post(format!("{base}/threads/{tid}/messages"))
-        .header("maidan-test-member-id", &mid)
+        .bearer_auth(&agent_token)
         .json(&serde_json::json!({
             "content": [
                 {"type": "text", "text": "deploying now"},
@@ -149,11 +140,11 @@ async fn content_post_derives_body_and_round_trips() {
 #[tokio::test]
 async fn plain_body_post_has_null_content() {
     let ctx = spawn().await;
-    let (base, tid, mid) = seed(&ctx).await;
+    let (base, tid, agent_token) = seed(&ctx).await;
     let posted: serde_json::Value = ctx
         .client
         .post(format!("{base}/threads/{tid}/messages"))
-        .header("maidan-test-member-id", &mid)
+        .bearer_auth(&agent_token)
         .json(&serde_json::json!({"body": "just text"}))
         .send()
         .await
@@ -169,11 +160,11 @@ async fn plain_body_post_has_null_content() {
 #[tokio::test]
 async fn editing_content_re_derives_body() {
     let ctx = spawn().await;
-    let (base, tid, mid) = seed(&ctx).await;
+    let (base, tid, agent_token) = seed(&ctx).await;
     let c = &ctx.client;
     let posted: serde_json::Value = c
         .post(format!("{base}/threads/{tid}/messages"))
-        .header("maidan-test-member-id", &mid)
+        .bearer_auth(&agent_token)
         .json(&serde_json::json!({"content": [{"type": "text", "text": "v1"}]}))
         .send()
         .await
@@ -185,7 +176,7 @@ async fn editing_content_re_derives_body() {
 
     let edited: serde_json::Value = c
         .patch(format!("{base}/messages/{msg_id}"))
-        .header("maidan-test-member-id", &mid)
+        .bearer_auth(&agent_token)
         .json(&serde_json::json!({
             "content": [{"type": "text", "text": "v2 updated"}]
         }))

@@ -54,11 +54,10 @@ fn skip_path(path: &str) -> bool {
 }
 
 /// The head for whatever room the caller is in: its workspace's head, or
-/// `None` (no header, or `null` in a frame) when there is no one room, as for a
-/// bypass subscriber watching every workspace. The instance-wide head is never
-/// reported: it is incomparable to any `log_id` a client has seen, and it would
-/// tell a tenant, or a webhook's third-party receiver, the instance's total
-/// event volume.
+/// `None` (no header, or `null` in a frame) when there is no one room. The
+/// instance-wide head is never reported: it is incomparable to any `log_id` a
+/// client has seen, and it would tell a tenant, or a webhook's third-party
+/// receiver, the instance's total event volume.
 pub async fn current_for_scope(
     store: &dyn Store,
     workspace_id: Option<maidan_types::WorkspaceId>,
@@ -66,18 +65,6 @@ pub async fn current_for_scope(
     match workspace_id {
         Some(workspace_id) => current_for_room(store, workspace_id).await,
         None => None,
-    }
-}
-
-/// The instance head, only for an auth-disabled dev server, which has no rooms
-/// to tell apart.
-async fn instance_head(store: &dyn Store) -> Option<i64> {
-    match store.max_event_id().await {
-        Ok(id) => Some(RoomLsn::from_max_id(id).as_i64()),
-        Err(err) => {
-            tracing::warn!(error = %err, "room lsn: max_event_id failed");
-            None
-        }
     }
 }
 
@@ -133,8 +120,8 @@ fn skip_status(status: axum::http::StatusCode) -> bool {
     ) || status.is_server_error()
 }
 
-/// Always-on companion to [`crate::consistency::middleware`]. Queries
-/// `Store::max_event_id` after the handler (the room head at response time).
+/// Always-on companion to [`crate::consistency::middleware`]. Reads the
+/// caller's room head after the handler (the head at response time).
 /// Skips liveness/metrics/static/docs paths so a process-alive probe never
 /// waits on the event log, and skips rejected responses so a refused request
 /// costs no read.
@@ -147,18 +134,10 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     // Scoped to the caller's room. No scope means the response was not produced
     // for an authenticated room, so there is no head to report — which also
     // keeps the header off pre-auth responses.
-    let scope = resp.extensions().get::<RoomScope>().copied();
-    let lsn = match scope {
-        Some(RoomScope(workspace_id)) => current_for_room(state.store.as_ref(), workspace_id).await,
-        // `AUTH_DISABLED` resolves every caller to the cross-workspace bypass
-        // context, which has no room — but it also means the deployment is
-        // single-tenant by configuration, so the instance head *is* the room
-        // head. Outside that, no scope means no authenticated room and the
-        // header is omitted rather than guessed.
-        None if state.auth_disabled => instance_head(state.store.as_ref()).await,
-        None => return resp,
+    let Some(RoomScope(workspace_id)) = resp.extensions().get::<RoomScope>().copied() else {
+        return resp;
     };
-    if let Some(lsn) = lsn {
+    if let Some(lsn) = current_for_room(state.store.as_ref(), workspace_id).await {
         stamp(resp.headers_mut(), lsn);
     }
     resp

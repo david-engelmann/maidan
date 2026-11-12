@@ -2,7 +2,7 @@
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{CHANNEL_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{CHANNEL_ADMIN, MEMBER_SELF, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -34,14 +34,14 @@ pub async fn create_channel(
         })
         .await?;
     // Auto-add the creator as an admin of a new private channel so they don't
-    // lock themselves out. Bypass callers have no real member.
-    if c.private && !auth.bypass {
-        let actor = auth.actor_id;
+    // lock themselves out.
+    if c.private {
+        let actor = auth.actor_id();
         state
             .store
             .add_channel_member_audited(
                 c.id,
-                auth.member_id,
+                auth.member_id(),
                 ChannelMemberRole::Admin,
                 Box::new(move |m| NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
@@ -104,14 +104,6 @@ pub async fn get_channel_boot(
     Ok(Json(boot))
 }
 
-/// The member whose read rule a queue count applies: the caller, unless it
-/// bypasses auth and so may count everything. The channel check passes the
-/// shared `__dm__` channel for every member, so without it that channel's
-/// counts were every member's DMs.
-fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
-    (!auth.bypass).then_some(auth.member_id)
-}
-
 /// Task-queue depth for a channel: ready / assigned / blocked counts of its
 /// open task threads, for an orchestrator deciding whether to scale workers.
 /// `workspace:read` + channel access; only threads the caller may read count.
@@ -124,9 +116,11 @@ pub async fn get_channel_queue_depth(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    // The channel check passes the shared `__dm__` channel for every member, so
+    // without the reader that channel's counts were every member's DMs.
     let depth = state
         .store
-        .channel_queue_depth(channel.id, queue_reader(&auth))
+        .channel_queue_depth(channel.id, Some(auth.member_id()))
         .await?;
     Ok(Json(depth))
 }
@@ -155,7 +149,7 @@ pub async fn get_workspace_queue_depth(
         .store
         .workspace_queue_depth(
             workspace_id,
-            queue_reader(&auth),
+            Some(auth.member_id()),
             repo.as_deref(),
             q.engine,
             q.kind,
@@ -210,7 +204,7 @@ pub async fn get_channel_occupancy(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     let occupancy = state
         .store
-        .channel_occupancy(channel.id, queue_reader(&auth))
+        .channel_occupancy(channel.id, Some(auth.member_id()))
         .await?;
     Ok(Json(occupancy))
 }
@@ -229,7 +223,7 @@ pub async fn get_workspace_occupancy(
     state.store.get_workspace(workspace_id).await?;
     let occupancy = state
         .store
-        .workspace_occupancy(workspace_id, queue_reader(&auth))
+        .workspace_occupancy(workspace_id, Some(auth.member_id()))
         .await?;
     Ok(Json(occupancy))
 }
@@ -244,10 +238,13 @@ pub async fn mute_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    state.store.mute_channel(auth.member_id, channel.id).await?;
+    state
+        .store
+        .mute_channel(auth.member_id(), channel.id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -258,12 +255,12 @@ pub async fn unmute_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     if state
         .store
-        .unmute_channel(auth.member_id, channel.id)
+        .unmute_channel(auth.member_id(), channel.id)
         .await?
     {
         Ok(StatusCode::NO_CONTENT)
@@ -305,7 +302,7 @@ pub async fn add_channel_member(
         .get_member_in(channel.workspace_id, MemberId(body.member_id))
         .await?;
     let role = body.role.unwrap_or(ChannelMemberRole::Member);
-    let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), channel.workspace_id);
     let m = state
         .store
         .add_channel_member_audited(
@@ -361,7 +358,7 @@ pub async fn remove_channel_member(
             MemberId(mid),
             NewAuditEvent {
                 scope: AuditScope::Workspace(channel.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "channel_member.remove".into(),
                 target_kind: Some("channel".into()),
                 target_id: Some(channel.id.0),

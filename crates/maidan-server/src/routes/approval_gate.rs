@@ -80,14 +80,14 @@ async fn acceptance_credential(
     if auth.has_capability(APPROVAL_GRANT) {
         return Ok(());
     }
-    let signed_in = session.is_some_and(|s| s.token.is_none()) && auth.token_id.is_none();
+    let signed_in = session.is_some_and(|s| s.token.is_none()) && auth.token_id().is_none();
     if !signed_in {
         return Err(ApiError::Forbidden(ACCEPT_NEEDS.into()));
     }
     require_same_origin(headers)?;
     // A signed-in session is a person's, but the member it names is checked
     // too: human-control state is answered by a human.
-    let member = state.store.get_member(auth.member_id).await?;
+    let member = state.store.get_member(auth.member_id()).await?;
     if member.kind != MemberKind::Human {
         return Err(ApiError::Forbidden(
             "an approval gate is accepted by a human member, or by a token granted \
@@ -111,9 +111,6 @@ async fn decide_round_cap(
     headers: &HeaderMap,
     target: ApprovalGateState,
 ) -> ApiResult<()> {
-    if auth.bypass {
-        return Ok(());
-    }
     let person = acceptance_credential(state, auth, session, headers).await;
     match target {
         ApprovalGateState::Accepted => round_cap_refusal(person),
@@ -157,7 +154,7 @@ pub async fn list_approval_gates(
         .ok_or_else(|| ApiError::Internal("approval gate signing key not configured".into()))?;
     let gates = state
         .store
-        .list_pending_approval_gates(workspace_id, (!auth.bypass).then_some(auth.member_id), 200)
+        .list_pending_approval_gates(workspace_id, Some(auth.member_id()), 200)
         .await?;
     let mut requests = state
         .store
@@ -241,12 +238,12 @@ pub async fn answer_approval_gate(
     // A worker token may not.
     if gate.kind == ApprovalGateKind::ReviewRoundCap {
         decide_round_cap(&state, &auth, session.as_deref(), &headers, target).await?;
-    } else if target == ApprovalGateState::Accepted && !auth.bypass {
+    } else if target == ApprovalGateState::Accepted {
         // Nobody accepts a gate they asked for, whichever identity they asked or
         // answer under, and whatever credential they hold. Declining or
         // cancelling your own request is not approving it, and stays open.
         let asked = [Some(gate.requested_by), gate.requested_actor_id];
-        let answering = [auth.member_id, auth.actor_id];
+        let answering = [auth.member_id(), auth.actor_id()];
         if answering.iter().any(|m| asked.contains(&Some(*m))) {
             return Err(ApiError::Forbidden(
                 "an approval cannot be granted by whoever requested it".into(),
@@ -260,7 +257,7 @@ pub async fn answer_approval_gate(
     }
     match state
         .store
-        .resolve_approval_gate(gate_id, auth.member_id, target, body.content.as_ref())
+        .resolve_approval_gate(gate_id, auth.member_id(), target, body.content.as_ref())
         .await?
     {
         Some(resolved) => Ok(Json(resolved)),
@@ -300,7 +297,7 @@ pub async fn set_approval_policy(
                 })
         })
         .transpose()?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let policy = state
         .store
         .set_approval_policy_audited(
@@ -384,8 +381,8 @@ pub async fn confirm_approval_gate(
         .await?
         .filter(|c| {
             c.gate_id == body.gate_id
-                && c.workspace_id == auth.workspace_id
-                && c.member_id == auth.member_id
+                && c.workspace_id == auth.workspace_id()
+                && c.member_id == auth.member_id()
         })
         .ok_or(ApiError::NotFound)?;
     let gate = state
@@ -398,7 +395,7 @@ pub async fn confirm_approval_gate(
         return Err(ApiError::NotFound);
     }
     let asked = [Some(gate.requested_by), gate.requested_actor_id];
-    let answering = [auth.member_id, auth.actor_id];
+    let answering = [auth.member_id(), auth.actor_id()];
     // The cap gate's requester is the reviewer the link was sent to. Refusing
     // them here leaves the gate pending forever when they confirm from the
     // console. Every other gate still refuses a self-grant.
@@ -410,13 +407,13 @@ pub async fn confirm_approval_gate(
         ));
     }
     acceptance_credential(&state, &auth, Some(&session), &headers).await?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let outcome = state
         .store
         .confirm_approval_gate(
             &token_hash,
-            auth.workspace_id,
-            auth.member_id,
+            auth.workspace_id(),
+            auth.member_id(),
             chrono::Utc::now(),
             Box::new(move |g: &ApprovalGate| NewAuditEvent {
                 scope: AuditScope::Workspace(g.workspace_id),

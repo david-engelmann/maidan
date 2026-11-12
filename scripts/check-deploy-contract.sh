@@ -49,39 +49,52 @@ for name in minio minio-client; do
   fi
 done
 
-# The release image builds without default features (no bootstrap). It must
-# still name `otel`, or OTLP_ENDPOINT is silently ignored in every deploy.
-for line in $(grep -n -- '--no-default-features' crates/maidan-server/Dockerfile | cut -d: -f1); do
-  if ! sed -n "${line}p" crates/maidan-server/Dockerfile | grep -q -- '--features otel'; then
-    echo "crates/maidan-server/Dockerfile:${line} builds without default features but drops otel" >&2
+# No build that ships turns bootstrap on: its seed routes are a test-only
+# feature. The server image names its features rather than take the crate's
+# defaults, and must still name `otel`, or OTLP_ENDPOINT is silently ignored in
+# every deploy.
+dockerfile=crates/maidan-server/Dockerfile
+builds="$(grep -nE 'cargo (build|chef cook)' "${dockerfile}" || true)"
+[[ -n "${builds}" ]] || { echo "${dockerfile} has no cargo build" >&2; exit 1; }
+while IFS= read -r build; do
+  if ! grep -q -- '--no-default-features --features otel' <<<"${build}"; then
+    echo "${dockerfile}:${build%%:*} must build with --no-default-features --features otel" >&2
     exit 1
   fi
-done
-
-# Bootstrap stays off in every non-demo image. The Dockerfile defaults it off;
-# release.yml passes it explicitly per leg: 0 for every stock leg, 1 only for
-# the -demo leg, whose tag is never latest.
-grep -q '^ARG MAIDAN_ENABLE_BOOTSTRAP=0$' crates/maidan-server/Dockerfile \
-  || { echo "crates/maidan-server/Dockerfile must default MAIDAN_ENABLE_BOOTSTRAP to 0" >&2; exit 1; }
+done <<<"${builds}"
+if grep -niE '^[^#]*bootstrap' "${dockerfile}"; then
+  echo "${dockerfile} must not name bootstrap: no image builds it" >&2
+  exit 1
+fi
+# The crate's defaults are what every other build (CI's debug server, the demo
+# and SDK scripts) gets.
+python3 - <<'PY' || exit 1
+import sys, tomllib
+features = tomllib.load(open("crates/maidan-server/Cargo.toml", "rb"))["features"]
+if "bootstrap" in features.get("default", []):
+    sys.exit("crates/maidan-server/Cargo.toml: bootstrap must not be a default feature")
+PY
+# Only a test turns the feature on (the strip job's bootstrap_e2e); no workflow
+# builds an image or binary with it, or passes the old build argument.
+offenders="$(grep -rnE 'MAIDAN_ENABLE_BOOTSTRAP|features[= ][^#]*bootstrap' .github/workflows \
+  | grep -vE 'cargo test ' || true)"
+if [[ -n "${offenders}" ]]; then
+  echo "a workflow builds with bootstrap; only cargo test may enable it:" >&2
+  echo "${offenders}" >&2
+  exit 1
+fi
 python3 - <<'PY' || exit 1
 import sys, yaml
 wf = yaml.safe_load(open(".github/workflows/release.yml"))
 job = wf["jobs"]["docker-server"]
-legs = job["strategy"]["matrix"]["include"]
 def fail(msg):
     print(f"release.yml docker-server: {msg}", file=sys.stderr); sys.exit(1)
-stock = [l for l in legs if l.get("suffix", "") == ""]
-if not stock or any(str(l.get("bootstrap")) != "0" for l in stock):
-    fail("every stock leg must set bootstrap: \"0\"")
-if any(str(l.get("bootstrap")) != "0" and l.get("suffix") != "-demo" for l in legs):
-    fail("only the -demo leg may build with bootstrap")
+for leg in job["strategy"]["matrix"]["include"]:
+    if set(leg) & {"bootstrap", "suffix"}:
+        fail(f"a leg builds a second image ({leg}); every leg is the one stock image")
 step = next(s for s in job["steps"] if s.get("name") == "build + push maidan-server")
-if "MAIDAN_ENABLE_BOOTSTRAP=${{ matrix.bootstrap }}" not in step["with"]["build-args"]:
-    fail("the build must pass MAIDAN_ENABLE_BOOTSTRAP=${{ matrix.bootstrap }}")
-manifest = "\n".join(s.get("run", "") for s in wf["jobs"]["docker-server-manifest"]["steps"])
-for cmd in manifest.split("docker buildx imagetools create")[1:]:
-    if "-demo" in cmd and ":latest" in cmd:
-        fail("the -demo image must never be tagged latest")
+if "BOOTSTRAP" in step["with"].get("build-args", ""):
+    fail("the build must not pass a bootstrap build argument")
 PY
 
 # A release created with GITHUB_TOKEN does not emit `release: published`.
@@ -157,5 +170,12 @@ PY
 name=$(python3 -c 'import json;print(json.load(open("listings/registry/server.json"))["name"])')
 grep -q "io.modelcontextprotocol.server.name=\"$name\"" crates/maidan-server/Dockerfile \
   || { echo "crates/maidan-server/Dockerfile must label io.modelcontextprotocol.server.name=\"$name\"" >&2; exit 1; }
+
+# The prod overlay runs the server in production mode: without MAIDAN_ENV the
+# server's own refusals (the OIDC mock, AUTH_DISABLED, fault injection) are off.
+# The Helm chart's half of this is in helm-template-smoke.sh.
+grep -A2 -x '        path: /data/MAIDAN_ENV' k8s/overlays/prod/kustomization.yaml \
+  | grep -qx '        value: production' \
+  || { echo "k8s/overlays/prod must set MAIDAN_ENV=production in maidan-config" >&2; exit 1; }
 
 echo "deployment contract OK"

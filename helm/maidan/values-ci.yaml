@@ -1,5 +1,6 @@
-# Kind / CI smoke: local image, SQLite on PVC, auth off for health-only gate.
-# The content KEK is passed at install time (scripts/helm-install-kind-smoke.sh).
+# Kind / CI smoke: local image, SQLite on PVC. The content KEK is passed at
+# install time (scripts/helm-install-kind-smoke.sh), which also checks that the
+# dev admin token below resolves.
 replicaCount: 1
 
 image:
@@ -20,11 +21,14 @@ persistence:
 config:
   MAIDAN_BIND: "0.0.0.0:8080"
   MAIDAN_LOG: "info,sqlx=warn"
-  AUTH_DISABLED: "1"
-  MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"
-  MAIDAN_BOOTSTRAP: "1"
+  # Opens the first workspace with this admin token, so the smoke can make an
+  # authenticated call. In config, not secrets: the server reads it only from
+  # the environment, and it is a published CI value, not a secret.
+  MAIDAN_DEV_ADMIN_TOKEN: "maidan-dev-admin-token-local-stacks-only"
   ARTIFACT_BACKEND: localfs
   ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
 
 secrets:
   DATABASE_URL: "sqlite:///data/maidan.db?mode=rwc"
+  # The server always authenticates, so it signs resume tokens with this.
+  MAIDAN_SESSION_SECRET: "ci-kind-session-secret-0123456789abcdef"

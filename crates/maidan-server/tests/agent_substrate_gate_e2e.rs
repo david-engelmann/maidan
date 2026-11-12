@@ -5,7 +5,7 @@ use std::{
     sync::{atomic::AtomicI64, Arc},
 };
 
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 
@@ -20,6 +20,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "agent-gate").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
@@ -30,7 +31,6 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -42,7 +42,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), server)
+    (addr, tenant.client(), server)
 }
 
 #[tokio::test]

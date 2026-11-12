@@ -7,9 +7,9 @@ use std::{sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, EventFilter, EventKind};
+use maidan_types::{Event, EventFilter, EventKind, MemberKind};
 use serde_json::json;
 
 #[tokio::test]
@@ -34,15 +34,16 @@ async fn closing_last_dependency_publishes_thread_ready() {
         .await
         .unwrap();
 
+    let tenant = test_support::tenant(store.as_ref(), "ready-ws").await;
+    let actor = tenant
+        .member(store.as_ref(), "actor", MemberKind::Human)
+        .await;
     let app = router(AppState::for_tests(store, artifacts, bus.clone(), search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let post_json = |path: String, body: serde_json::Value| {
@@ -60,14 +61,7 @@ async fn closing_last_dependency_publishes_thread_ready() {
         }
     };
 
-    let ws = post_json(format!("{base}/workspaces"), json!({"name": "ready-ws"})).await;
-    let workspace_id = ws["id"].as_str().unwrap();
-    let actor = post_json(
-        format!("{base}/workspaces/{workspace_id}/members"),
-        json!({"handle": "actor", "kind": "human"}),
-    )
-    .await;
-    let actor_id = actor["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
     let ch = post_json(
         format!("{base}/workspaces/{workspace_id}/channels"),
         json!({"name": "q"}),
@@ -99,9 +93,9 @@ async fn closing_last_dependency_publishes_thread_ready() {
 
     // Drive dep to a terminal state: open -> in_review -> closed.
     for action in ["start_review", "close"] {
-        let resp = client
+        let resp = actor
+            .client()
             .post(format!("{base}/threads/{dep_id}"))
-            .header("maidan-test-member-id", actor_id)
             .json(&json!({"action": action}))
             .send()
             .await

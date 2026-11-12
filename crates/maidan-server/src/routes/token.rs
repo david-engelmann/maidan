@@ -24,9 +24,6 @@ use crate::state::AppState;
 /// Every token-minting route must bound its capabilities by this vocabulary.
 /// See `tests/token_minting_vocabulary_contract.rs`.
 pub fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        return capability::all();
-    }
     capability::all()
         .into_iter()
         .filter(|cap| {
@@ -35,19 +32,23 @@ pub fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
         .collect()
 }
 
+/// Whether `cap` is in the minting vocabulary at all: what [`mint_vocabulary`]
+/// returns for a caller that holds every capability. A mint with no caller to
+/// bound it (an OAuth code exchange, an app installation token) is held to
+/// this, after its grant or installation was bounded when it was made.
+pub fn in_mint_vocabulary(cap: &str) -> bool {
+    capability::is_known(cap)
+}
+
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
-    if auth.bypass {
-        capability::all()
-    } else {
-        auth.capabilities().to_vec()
-    }
+    auth.capabilities().to_vec()
 }
 
 async fn parent_expires_at(
     store: &dyn Store,
     auth: &AuthContext,
 ) -> ApiResult<Option<DateTime<Utc>>> {
-    match auth.token_id {
+    match auth.token_id() {
         Some(id) => Ok(store.get_api_token(id).await?.expires_at),
         None => Ok(None),
     }
@@ -90,7 +91,7 @@ pub async fn mint_api_token(
     crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let capability_set = body.capability_set.clone();
     let record = state
         .store
@@ -183,7 +184,7 @@ pub async fn revoke_api_token(
     let token_id = ApiTokenId(id);
     let existing = state.store.get_api_token(token_id).await?;
     ensure_workspace(&auth, existing.workspace_id)?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let revoked = state
         .store
         .revoke_api_token_audited(
@@ -221,7 +222,7 @@ pub async fn rotate_api_token(
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MintApiTokenResponse>> {
     let token_id = ApiTokenId(id);
-    let own = auth.token_id == Some(token_id);
+    let own = auth.token_id() == Some(token_id);
     if !own {
         cap(&auth, TOKEN_ADMIN)?;
     }
@@ -231,7 +232,7 @@ pub async fn rotate_api_token(
     // Reading them first means a failed quota query never hides the secret.
     let quotas = state.store.list_token_quotas(token_id).await?;
     let secret = TokenSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let rotated = state
         .store
         .rotate_api_token_audited(
@@ -324,18 +325,18 @@ pub async fn attenuate_api_token(
     // Quotas are keyed on the token id, so the child needs its own copies of the
     // parent's. Read them before minting: a child that outlives this call with no
     // quota row is the amplification the parent's quota existed to stop.
-    let inherited_quotas = match auth.token_id {
+    let inherited_quotas = match auth.token_id() {
         Some(parent_id) => state.store.list_token_quotas(parent_id).await?,
         None => Vec::new(),
     };
 
     let secret = TokenSecret::generate();
     let derived = NewApiToken {
-        workspace_id: auth.workspace_id,
-        member_id: auth.member_id,
+        workspace_id: auth.workspace_id(),
+        member_id: auth.member_id(),
         // Inherited, not dropped: an app's grant dies with its installation,
         // and a derived token is still that app acting.
-        app_installation_id: auth.app_installation_id,
+        app_installation_id: auth.app_installation_id(),
         token_hash: hash_secret(secret.as_str()),
         label: body.label,
         capabilities: capabilities.clone(),
@@ -344,8 +345,8 @@ pub async fn attenuate_api_token(
     // Record the parent so revoking it reaches this token. A holder without a
     // token id is a session, which has nothing to derive from — that case
     // cannot reach here, but it mints unlinked rather than guessing a parent.
-    let actor = auth.actor_id;
-    let parent_token_id = auth.token_id;
+    let actor = auth.actor_id();
+    let parent_token_id = auth.token_id();
     let quota_count = inherited_quotas.len();
     let audit: maidan_store::AuditFor<ApiToken> = Box::new(move |record| NewAuditEvent {
         scope: AuditScope::Workspace(record.workspace_id),
@@ -364,7 +365,7 @@ pub async fn attenuate_api_token(
             "inherited_quotas": quota_count,
         }),
     });
-    let record = match auth.token_id {
+    let record = match auth.token_id() {
         Some(parent) => {
             state
                 .store
@@ -407,7 +408,7 @@ pub async fn delegate_api_token(
     // would let it use the subject's own grants: A acting as B could become C,
     // and every record of the new token would name B as the delegate — erasing
     // A from the chain. Delegation is exchanged by the real delegate, directly.
-    if auth.delegation_grant_id.is_some() {
+    if auth.delegation_grant_id().is_some() {
         return Err(ApiError::Forbidden(
             "a delegated token cannot exchange a grant; delegation is one hop".into(),
         ));
@@ -416,10 +417,10 @@ pub async fn delegate_api_token(
     let grant = state.store.get_delegation_grant(grant_id).await?;
     // Another workspace's grant reads as absent, as on revoke: a 403 here would
     // confirm that the id exists somewhere.
-    if !auth.bypass && grant.workspace_id != auth.workspace_id {
+    if grant.workspace_id != auth.workspace_id() {
         return Err(ApiError::NotFound);
     }
-    if grant.delegate_id != auth.actor_id {
+    if grant.delegate_id != auth.actor_id() {
         return Err(ApiError::Forbidden(
             "delegation grant belongs to a different delegate".into(),
         ));
@@ -449,7 +450,7 @@ pub async fn delegate_api_token(
 
     let secret = TokenSecret::generate();
     let (actor, delegate, parent_token_id, grant_id) =
-        (auth.actor_id, auth.member_id, auth.token_id, grant.id);
+        (auth.actor_id(), auth.member_id(), auth.token_id(), grant.id);
     let record = state
         .store
         .create_delegated_api_token_audited(
@@ -463,8 +464,8 @@ pub async fn delegate_api_token(
                 expires_at: Some(expires_at),
             },
             grant.id,
-            auth.member_id,
-            auth.token_id,
+            auth.member_id(),
+            auth.token_id(),
             Box::new(move |record| NewAuditEvent {
                 scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
@@ -488,7 +489,7 @@ pub async fn delegate_api_token(
         StatusCode::CREATED,
         Json(DelegateTokenResponse {
             grant_id: grant.id,
-            delegate_id: auth.member_id,
+            delegate_id: auth.member_id(),
             token: MintApiTokenResponse {
                 id: record.id,
                 secret: secret.as_str().to_owned(),
@@ -535,7 +536,7 @@ pub async fn create_delegation_grant(
     for member_id in [subject_id, delegate_id] {
         state.store.get_member_in(workspace_id, member_id).await?;
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let grant = state
         .store
         .create_delegation_grant_audited(
@@ -545,7 +546,7 @@ pub async fn create_delegation_grant(
                 delegate_id,
                 capabilities: body.capabilities,
                 purpose: body.purpose,
-                authorized_by: auth.actor_id,
+                authorized_by: auth.actor_id(),
                 expires_at: body.expires_at,
             },
             Box::new(move |grant| NewAuditEvent {
@@ -601,7 +602,7 @@ pub async fn revoke_delegation_grant(
             grant_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "delegation_grant.revoke".into(),
                 target_kind: Some("delegation_grant".into()),
                 target_id: Some(grant_id.0),

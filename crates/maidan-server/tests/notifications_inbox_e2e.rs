@@ -28,7 +28,10 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![capability::WORKSPACE_READ.into()],
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::MEMBER_SELF.into(),
+            ],
             expires_at: None,
         })
         .await
@@ -112,7 +115,6 @@ async fn inbox_list_count_mark_and_read_all() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

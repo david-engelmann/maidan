@@ -23,7 +23,11 @@ artifact store, so the server holds no state of its own.
 Set `MAIDAN_ENV=production`. It refuses every development switch (running
 without authentication, the public development content key, the mock OIDC
 provider, private-network egress) and marks session cookies `Secure`, so
-reach the console over HTTPS or on `localhost`.
+reach the console over HTTPS or on `localhost`. The Helm chart sets it
+whenever `production: true` (both charts' `values-prod.yaml`), and so does
+`k8s/overlays/prod`. Boot refuses any other value than `production` or
+`development`, so a typo such as `prod` cannot start a server with the
+production refusals off.
 
 **Secrets as files.** Every secret has a `<NAME>_FILE` form naming a file that
 holds it, such as `MAIDAN_CONTENT_KEK_FILE=/run/secrets/content_kek`. Use it
@@ -195,7 +199,7 @@ the CLI image pinned to the server's tag, on a network that reaches the
 database:
 
 ```sh
-MAIDAN_TAG=v449.0.0
+MAIDAN_TAG=v450.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
@@ -235,14 +239,17 @@ than the worker set, and a taken handle is a `409` that leaves nothing behind.
 The console's "Connect an agent" makes the same call. [Integration](Integration.md)
 covers narrower tokens and capabilities.
 
-### HTTP bootstrap (development only)
+### A development stack's first admin
 
-The published image is built without the `bootstrap` feature and has no
-unauthenticated seed routes. A development build (`cargo run`) opens
-`POST /workspaces` (the first workspace only) and
-`POST /workspaces/:wid/members` when `MAIDAN_BOOTSTRAP=1`. They mint no token,
-so seeding over HTTP also needs `AUTH_DISABLED=1` and
-`MAIDAN_ALLOW_INSECURE_NO_AUTH=1`. Unset all three once the admin exists.
+Every caller is authenticated; there is no unauthenticated mode, and boot
+refuses `AUTH_DISABLED` by name. Where `maidan init` cannot reach the database
+(a compose or Helm stack), set `MAIDAN_DEV_ADMIN_TOKEN` to a secret of at
+least 32 characters. On an instance with no workspace yet, boot opens
+workspace `dev` with an admin whose bearer is that value: a real token,
+audited and revocable, that opens more workspaces with
+`POST /operator/workspaces`. It is refused under `MAIDAN_ENV=production`, and
+does nothing once a workspace exists. No build that ships has the old HTTP
+seed routes (`MAIDAN_BOOTSTRAP`); they are a test-only feature.
 
 ## Sign-in
 
@@ -286,8 +293,7 @@ change that cannot be recorded does not happen and the provider retries.
 
 A page on another site can point its own name at your server. It holds no
 token or cookie, so it can do only what a request with no credential may:
-everything under `AUTH_DISABLED`, and reading under
-`MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE`. In those modes, a request with no
+reading under `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE`. In that mode, a request with no
 credential is refused when its `Host` is a dotted name that is not loopback or
 in `MAIDAN_ALLOWED_HOSTS`, or its `Origin` is not its `Host`. IP addresses and
 undotted names (a compose service) pass. A public development instance lists
@@ -690,7 +696,16 @@ rebuild from the domain tables, not a repair of the log. See
 
 ### Metrics, dashboards and alerts
 
-`GET /metrics` serves Prometheus text with no per-workspace labels. There is an
+`GET /metrics` serves Prometheus text with no per-workspace labels. Under
+`MAIDAN_ENV=production` it answers `404` unless `MAIDAN_METRICS_TOKEN` is set,
+and then only to that bearer: give Prometheus the same value
+(`authorization: { credentials_file: … }` in its scrape config,
+`bearer_token` in Grafana Alloy, `secrets.MAIDAN_METRICS_TOKEN` in the Helm
+chart). The HTTP metrics (`http_server_request_total`,
+`http_server_request_duration_seconds`) are labelled by the matched route
+template (`route="/threads/{id}"`, `unmatched` for no route), never the path,
+and by a method from a fixed set (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`HEAD`, `OPTIONS`, or `other`), so a client cannot add series. There is an
 example [Grafana dashboard](https://github.com/david-engelmann/maidan/blob/main/docs/dashboards/maidan-operator.json)
 and a set of [alert rules](https://github.com/david-engelmann/maidan/blob/main/docs/alerts/README.md),
 tested with `scripts/check-alert-rules.sh`. Without Prometheus,
@@ -792,5 +807,5 @@ Card. Erasure is `DELETE /messages/:id/purge` for a withdrawn message and
 
 Until the 1.0 launch, HTTP and MCP shapes can change between releases without
 compatibility shims; the CHANGELOG says when they do. From 1.0 they are
-stable. Release numbers count releases, so `v449.0.0` is a release number, not
+stable. Release numbers count releases, so `v450.0.0` is a release number, not
 a promise of stability.

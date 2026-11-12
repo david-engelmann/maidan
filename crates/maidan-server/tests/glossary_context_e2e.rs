@@ -3,12 +3,12 @@
 //! out with `include_glossary=false`); a `GET /workspaces/:wid/context` carries
 //! it once at the top level, not repeated per nested thread.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewGlossaryTerm, NewMember, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewGlossaryTerm, NewMember, NewThread};
 use serde_json::Value;
 
 #[tokio::test]
@@ -35,19 +35,13 @@ async fn glossary_rides_the_context_pack() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
     let base = format!("http://{addr}");
 
-    let ws = store
-        .create_workspace(NewWorkspace { name: "g".into() })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "g").await;
+    let client = tenant.client();
     let member = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -56,7 +50,7 @@ async fn glossary_rides_the_context_pack() {
         .unwrap();
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -75,7 +69,7 @@ async fn glossary_rides_the_context_pack() {
         .unwrap();
     store
         .set_glossary_term(NewGlossaryTerm {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             term: "TTL".into(),
             definition: "time to live".into(),
             aliases: vec!["expiry".into()],
@@ -117,7 +111,10 @@ async fn glossary_rides_the_context_pack() {
 
     // Workspace context carries the glossary once at the top, not per thread.
     let wctx: Value = client
-        .get(format!("{base}/workspaces/{}/context", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/context",
+            tenant.workspace_id.0
+        ))
         .send()
         .await
         .unwrap()

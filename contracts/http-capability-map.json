@@ -182,13 +182,13 @@
   {
     "method": "POST",
     "path": "/channels/{cid}/mute",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/channels/{cid}/mute",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -260,7 +260,7 @@
   {
     "method": "POST",
     "path": "/members/{id}/inbox/read",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -302,25 +302,25 @@
   {
     "method": "POST",
     "path": "/members/{id}/notifications/read-all",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "POST",
     "path": "/members/{id}/notifications/{nid}/read",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "POST",
     "path": "/members/{id}/notifications/{nid}/snooze",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "PUT",
     "path": "/members/{id}/notification-prefs",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -332,13 +332,13 @@
   {
     "method": "POST",
     "path": "/members/{id}/channel-follows",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/members/{id}/channel-follows/{cid}",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -350,13 +350,13 @@
   {
     "method": "POST",
     "path": "/members/{id}/member-follows",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/members/{id}/member-follows/{followed_id}",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -380,13 +380,13 @@
   {
     "method": "POST",
     "path": "/members/{id}/thread-follows",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/members/{id}/thread-follows/{tid}",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -398,7 +398,7 @@
   {
     "method": "PUT",
     "path": "/members/{id}/email",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -410,13 +410,13 @@
   {
     "method": "DELETE",
     "path": "/members/{id}/email",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "PUT",
     "path": "/members/{id}/delivery-mode",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -1124,13 +1124,13 @@
   {
     "method": "POST",
     "path": "/threads/{id}/mute",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/threads/{id}/mute",
-    "capability": "workspace:read",
+    "capability": "member:self",
     "surface": "http"
   },
   {
@@ -1890,7 +1890,7 @@
   {
     "method": "POST",
     "path": "/workspaces/{wid}/group-dms",
-    "capability": "workspace:read",
+    "capability": "message:post",
     "surface": "http"
   },
   {

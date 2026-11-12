@@ -60,7 +60,7 @@ pub(super) async fn wait_for_event(
             "timeout_ms: 0 only replays, so it needs after_log_id".into(),
         ));
     }
-    let workspace_id = a.workspace_id.map_or(auth.workspace_id, WorkspaceId);
+    let workspace_id = a.workspace_id.map_or(auth.workspace_id(), WorkspaceId);
     auth.ensure_workspace(workspace_id)?;
     let found = next_visible_event(
         server,

@@ -72,10 +72,9 @@ async fn resolve_bearer_returns_context_with_minted_capabilities() {
     let ctx = resolve_bearer(&store, secret.as_str())
         .await
         .expect("resolve");
-    assert_eq!(ctx.member_id, member_id);
-    assert_eq!(ctx.workspace_id, workspace_id);
-    assert!(ctx.token_id.is_some());
-    assert!(!ctx.bypass);
+    assert_eq!(ctx.member_id(), member_id);
+    assert_eq!(ctx.workspace_id(), workspace_id);
+    assert!(ctx.token_id().is_some());
     assert!(ctx.has_capability("workspace:read"));
     assert!(ctx.has_capability("message:post"));
     assert!(!ctx.has_capability("token:admin"));
@@ -233,7 +232,7 @@ async fn an_oauth_token_resolves_only_through_the_resource_resolver() {
     let ctx = maidan_auth::resolve_resource_bearer(&store, secret.as_str())
         .await
         .expect("the resource resolver accepts it");
-    assert_eq!(ctx.member_id, member_id);
+    assert_eq!(ctx.member_id(), member_id);
     assert!(ctx.has_capability("workspace:read"));
 
     // A revoked grant ends it there too.

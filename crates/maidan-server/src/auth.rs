@@ -8,8 +8,8 @@ use axum::{
 };
 use maidan_auth::{
     capability::{
-        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION,
-        WORKSPACE_READ, WORKSPACE_WRITE,
+        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY,
+        THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE,
     },
     record_delegated_authorization, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,
     AuthContext, AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
@@ -22,42 +22,9 @@ use crate::federation::PeerContext;
 use crate::session::{check_request_origin, load_session, SessionContext};
 use crate::state::AppState;
 
-const TEST_MEMBER_HEADER: &str = "maidan-test-member-id";
-
-async fn auth_disabled_context(state: &AppState, headers: &axum::http::HeaderMap) -> AuthContext {
-    if state.test_identity_header
-        && let Some(member_id) = headers
-            .get(TEST_MEMBER_HEADER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<uuid::Uuid>().ok())
-            .map(maidan_types::MemberId)
-        && let Ok(member) = state.store.get_member(member_id).await
-    {
-        return AuthContext::from_session(
-            member_id,
-            member.workspace_id,
-            maidan_auth::capability::all(),
-        );
-    }
-    AuthContext::bypass()
-}
-
-/// Whether bearer auth is actually disabled. Fail-closed: `AUTH_DISABLED` takes
-/// effect only when the operator has explicitly acknowledged it via
-/// `MAIDAN_ALLOW_INSECURE_NO_AUTH` and the deployment is not production. This
-/// mirrors the startup validation in [`crate::config`] as defense-in-depth, so
-/// the code path that flips on `AuthContext::bypass()` can never do so from a
-/// stray `AUTH_DISABLED=1` alone.
-pub fn auth_disabled_from_env() -> bool {
-    crate::config::auth_disabled_requested()
-        && crate::config::insecure_no_auth_acknowledged()
-        && !crate::config::is_production()
-}
-
 /// Run the rest of the request as its authenticated caller, so that everything
 /// it writes records who acted and on whose behalf. Every path out of the auth
-/// middlewares goes through here; a bypassed request carries no principal and
-/// records none.
+/// middlewares goes through here.
 ///
 /// It also guarantees that a successful change leaves a record. Most changes
 /// record themselves — an event, an audit row — but not all of them do, and a
@@ -71,7 +38,7 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
     let Some(auth) = req.extensions().get::<AuthContext>().cloned() else {
         return next.run(req).await;
     };
-    let attribution = auth.attribution();
+    let attribution = Some(auth.attribution());
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
     let operation = req
@@ -88,22 +55,17 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
     ) && READ_ONLY_OPERATIONS
         .binary_search(&operation.as_str())
         .is_err();
-    if attribution.is_some()
-        && mutating
-        && !recorded
-        && response.status().is_success()
-        && !records_per_call(&path)
-    {
+    if mutating && !recorded && response.status().is_success() && !records_per_call(&path) {
         maidan_store::attribution::with_attribution(
             attribution,
             crate::audit::record(
                 state,
                 NewAuditEvent {
-                    scope: AuditScope::Workspace(auth.workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    scope: AuditScope::Workspace(auth.workspace_id()),
+                    actor_id: Some(auth.actor_id()),
                     action: MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),
-                    target_id: Some(auth.workspace_id.0),
+                    target_id: Some(auth.workspace_id().0),
                     metadata: serde_json::json!({
                         "surface": "rest",
                         "operation": operation,
@@ -141,21 +103,6 @@ pub const READ_ONLY_OPERATIONS: &[&str] = &[
 ];
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
-    if state.auth_disabled {
-        let auth = auth_disabled_context(&state, req.headers()).await;
-        // Bypass is authenticated into every workspace, so the path's budget
-        // is the one this request spends. The outer limiter already counted
-        // the client; it does not know the workspace yet.
-        let path = req.uri().path().to_owned();
-        if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, true, &auth.workspace_id).await
-        {
-            return *response;
-        }
-        req.extensions_mut().insert(auth);
-        return run_as(&state, req, next).await;
-    }
-
     let bearer = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -181,8 +128,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
                 return *response;
             }
             if let Err(response) =
-                crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
-                    .await
+                crate::rate_limit::enforce_workspace(&state, &path, &reader.workspace_id()).await
             {
                 return *response;
             }
@@ -213,7 +159,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             }
         };
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, &ctx.workspace_id()).await
         {
             return *response;
         }
@@ -247,7 +193,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             return *response;
         }
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, &ctx.workspace_id()).await
         {
             return *response;
         }
@@ -267,7 +213,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         }
         let workspace_id = peer.workspace_id;
         if let Err(response) =
-            crate::rate_limit::enforce_workspace(&state, &path, false, &workspace_id).await
+            crate::rate_limit::enforce_workspace(&state, &path, &workspace_id).await
         {
             return *response;
         }
@@ -313,12 +259,12 @@ async fn run_authorized(
     next: Next,
     ctx: AuthContext,
 ) -> Response {
-    let workspace_id = ctx.workspace_id;
+    let workspace_id = ctx.workspace_id();
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
     // Counted here, once per authenticated request, into the buffer the
     // usage_meters loop flushes; never a database write of its own.
-    if !ctx.bypass && !crate::usage_meters::unmetered(&path) {
+    if !crate::usage_meters::unmetered(&path) {
         let readable = crate::usage_meters::readable_past_cutoff(
             &method,
             req.extensions()
@@ -440,8 +386,11 @@ pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .and_then(parse_bearer)
 }
 
-/// What an OIDC session may do on the `/ui/api` read routes.
-pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, SEARCH_QUERY];
+/// What an OIDC session may do on the `/ui/api` read routes. `member:self`
+/// is here so a viewer, narrowed to this set, can still mark its own
+/// notifications read and change its own follows (MCP-002).
+pub const OIDC_READ_CAPABILITIES: &[&str] =
+    &[WORKSPACE_READ, MEMBER_SELF, EVENT_SUBSCRIBE, SEARCH_QUERY];
 
 /// What an OIDC session may do on the `/ui/api` write routes. A viewer is
 /// narrowed to [`OIDC_READ_CAPABILITIES`] by
@@ -451,6 +400,7 @@ pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, S
 pub const OIDC_WRITE_CAPABILITIES: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
+    MEMBER_SELF,
     MESSAGE_POST,
     THREAD_TRANSITION,
     ARTIFACT_UPLOAD,
@@ -485,12 +435,6 @@ async fn session_or_bearer(
     next: Next,
     oidc_capabilities: &[&str],
 ) -> Response {
-    if state.auth_disabled {
-        let auth = auth_disabled_context(state, req.headers()).await;
-        req.extensions_mut().insert(auth);
-        return run_as(state, req, next).await;
-    }
-
     if let Some(secret) = bearer_from_headers(req.headers()).map(str::to_owned) {
         let ip_key = crate::rate_limit::client_ip_key(&req);
         let resolved = resolve_bearer(state.store.as_ref(), &secret).await;

@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewVote, NewWorkspace, VoteKind,
@@ -101,8 +101,10 @@ async fn a_console_session_reads_message_and_thread_votes() {
         .await
         .unwrap();
 
+    let token = test_support::admin_token(store.as_ref(), alice.id).await;
     let res = client
         .get(format!("{base}/ui/api/messages/{}/votes", msg.id.0))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
@@ -113,6 +115,7 @@ async fn a_console_session_reads_message_and_thread_votes() {
 
     let res = client
         .get(format!("{base}/ui/api/threads/{}/votes", thread.id.0))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();

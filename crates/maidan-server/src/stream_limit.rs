@@ -81,15 +81,14 @@ impl StreamLimit {
     }
 
     /// Take a slot for one stream opened by `auth`, or refuse with a `429`
-    /// when that credential already holds the ceiling. Auth-disabled callers
-    /// are not counted: there is no credential to hold to it.
+    /// when that credential already holds the ceiling.
     pub fn open(&self, auth: &AuthContext) -> Result<StreamSlot, ApiError> {
-        if self.max == 0 || auth.bypass {
+        if self.max == 0 {
             return Ok(StreamSlot { _held: None });
         }
-        let credential = match auth.token_id {
+        let credential = match auth.token_id() {
             Some(token_id) => Credential::Token(token_id),
-            None => Credential::Member(auth.actor_id),
+            None => Credential::Member(auth.actor_id()),
         };
         // A poisoned lock still holds consistent counts: every writer changes
         // one entry by one.
@@ -199,16 +198,11 @@ mod tests {
     }
 
     #[test]
-    fn a_ceiling_of_zero_and_an_auth_disabled_caller_are_not_counted() {
+    fn a_ceiling_of_zero_is_not_counted() {
         let off = StreamLimit::new(0);
         let a = token(ApiTokenId(uuid::Uuid::now_v7()));
         let _slots: Vec<_> = (0..5).map(|_| off.open(&a).unwrap()).collect();
         assert_eq!(off.open_streams(), 0);
-        let on = StreamLimit::new(1);
-        let _slots: Vec<_> = (0..5)
-            .map(|_| on.open(&AuthContext::bypass()).unwrap())
-            .collect();
-        assert_eq!(on.open_streams(), 0);
     }
 
     #[test]

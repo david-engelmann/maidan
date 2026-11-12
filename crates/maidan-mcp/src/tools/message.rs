@@ -59,7 +59,7 @@ pub(super) async fn post_dm_message(
     let dm = store
         .get_dm_conversation(DmConversationId(a.dm_conversation_id))
         .await?;
-    if dm.member_low_id != auth.member_id && dm.member_high_id != auth.member_id {
+    if dm.member_low_id != auth.member_id() && dm.member_high_id != auth.member_id() {
         return Err(McpError::InvalidParams(
             "authenticated member must be a DM participant".into(),
         ));
@@ -71,7 +71,7 @@ pub(super) async fn post_dm_message(
     let msg = store
         .post_message(NewMessage {
             thread_id: dm.thread_id,
-            author_id: auth.member_id,
+            author_id: auth.member_id(),
             body,
             metadata: if a.metadata.is_null() {
                 json!({})
@@ -102,7 +102,7 @@ pub(super) async fn post_dm_message(
     publish_routed_mentions(server, dm.thread_id, dm.workspace_id, &msg).await;
     // A human DM reply supersedes the agent's self-reported status, mirroring
     // the channel post path. Best-effort: the message is already posted.
-    if let Ok(member) = store.get_member_in(dm.workspace_id, auth.member_id).await
+    if let Ok(member) = store.get_member_in(dm.workspace_id, auth.member_id()).await
         && member.kind == MemberKind::Human
         && let Err(e) = store.clear_thread_status(dm.thread_id).await
     {
@@ -239,7 +239,7 @@ pub(super) async fn post_message(
     maidan_store::thread_liveness::refuse_post(&store.get_thread(thread_id).await?)?;
     let new_message = NewMessage {
         thread_id,
-        author_id: auth.member_id,
+        author_id: auth.member_id(),
         body,
         metadata: if a.metadata.is_null() {
             json!({})
@@ -275,7 +275,7 @@ pub(super) async fn post_message(
 
     // A post the `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on
     // the way to the InvalidParams, on both branches.
-    let author = Some(auth.member_id);
+    let author = Some(auth.member_id());
     let msg = if let Some((parsed, dispatcher)) = slash {
         // Provisional insert → run the (possibly external) dispatch →
         // finalizing edit + `MessagePosted` of the edited message in one tx.
@@ -288,7 +288,7 @@ pub(super) async fn post_message(
                 ctx.workspace_id,
                 ctx.channel_id,
                 thread_id,
-                auth.member_id,
+                auth.member_id(),
                 m.id,
             )
             .await;
@@ -296,7 +296,7 @@ pub(super) async fn post_message(
         let (message, stored) = store
             .edit_message_with_posted_event(
                 m.id,
-                auth.member_id,
+                auth.member_id(),
                 EditMessage {
                     body: m.body.clone(),
                     metadata,
@@ -325,7 +325,9 @@ pub(super) async fn post_message(
     publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
     // A human response supersedes the agent's self-reported status, mirroring
     // the REST post path. Best-effort: the message is already posted.
-    if let Ok(member) = store.get_member_in(ctx.workspace_id, auth.member_id).await
+    if let Ok(member) = store
+        .get_member_in(ctx.workspace_id, auth.member_id())
+        .await
         && member.kind == MemberKind::Human
         && let Err(e) = store.clear_thread_status(thread_id).await
     {
@@ -361,23 +363,21 @@ pub(super) async fn edit_message(
     if existing.tombstoned_at.is_some() {
         return Err(McpError::InvalidParams("message is tombstoned".into()));
     }
-    let editor_id = auth.member_id;
+    let editor_id = auth.member_id();
     // Author-only, as on REST: an edit keeps the author's name on the message,
     // so anyone else's edit would put words in their mouth.
-    if !auth.bypass {
-        if editor_id != existing.author_id {
-            return Err(McpError::Forbidden(
-                "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
-                    .into(),
-            ));
-        }
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            MESSAGE_POST,
-        )
-        .map_err(McpError::from)?;
+    if editor_id != existing.author_id {
+        return Err(McpError::Forbidden(
+            "only a message's author can edit it; another member's message can be tombstoned, not rewritten"
+                .into(),
+        ));
     }
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        MESSAGE_POST,
+    )
+    .map_err(McpError::from)?;
     let metadata = match a.metadata {
         Some(v) if !v.is_null() => v,
         _ => existing.metadata,
@@ -486,7 +486,7 @@ pub(super) async fn tombstone_message(
     let message_id = MessageId(a.message_id);
     let chain = maidan_auth::authorize_message(server.store.as_ref(), auth, message_id).await?;
     let message = server.store.get_message(message_id).await?;
-    if message.author_id != auth.member_id {
+    if message.author_id != auth.member_id() {
         maidan_auth::require_observed_capability(
             auth,
             maidan_auth::AuthorizationSurface::Mcp,
@@ -522,15 +522,14 @@ struct ListMessageEditsArgs {
 }
 
 /// Edit history of a message. Twin of `GET /messages/{id}/edits`. A tombstoned
-/// message returns an empty history unless auth is bypassed, matching REST.
+/// message returns an empty history, matching REST.
 pub(super) async fn list_message_edits(
     store: &Arc<dyn Store>,
-    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListMessageEditsArgs = crate::tools::parse_args(args)?;
     let message_id = MessageId(a.message_id);
-    if !auth.bypass && store.get_message(message_id).await?.tombstoned_at.is_some() {
+    if store.get_message(message_id).await?.tombstoned_at.is_some() {
         return Ok(content_json(&Vec::<MessageEdit>::new()));
     }
     let edits = store
@@ -562,7 +561,7 @@ pub(super) async fn post_group_dm_message(
         .map_err(McpError::from)?;
     if !server
         .store
-        .group_dm_has_member(group_id, auth.member_id)
+        .group_dm_has_member(group_id, auth.member_id())
         .await?
     {
         return Err(McpError::Forbidden(
@@ -579,7 +578,7 @@ pub(super) async fn post_group_dm_message(
         .post_message_with_event(
             NewMessage {
                 thread_id: group.thread_id,
-                author_id: auth.member_id,
+                author_id: auth.member_id(),
                 body: a.body,
                 metadata,
                 content: None,
@@ -593,7 +592,7 @@ pub(super) async fn post_group_dm_message(
     // mirroring the channel post path. Best-effort: the message is already posted.
     if let Ok(member) = server
         .store
-        .get_member_in(group.workspace_id, auth.member_id)
+        .get_member_in(group.workspace_id, auth.member_id())
         .await
         && member.kind == MemberKind::Human
         && let Err(e) = server.store.clear_thread_status(group.thread_id).await

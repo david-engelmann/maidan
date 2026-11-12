@@ -40,7 +40,6 @@ async fn broker_state(ceiling: Option<Vec<String>>) -> (AppState, Arc<dyn Store>
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
         false,
         FederationRuntime::new(true, Some(Arc::new(KEY))),
         Arc::new(AtomicI64::new(0)),

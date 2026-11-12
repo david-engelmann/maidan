@@ -7,17 +7,12 @@ use std::{
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewThread};
 use reqwest::StatusCode;
 
-async fn spawn() -> (
-    SocketAddr,
-    reqwest::Client,
-    Arc<dyn Store>,
-    tokio::task::JoinHandle<()>,
-) {
+async fn spawn() -> (SocketAddr, Arc<dyn Store>, tokio::task::JoinHandle<()>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -32,47 +27,37 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let mut state = AppState::new(
+    let state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true, // auth disabled — focus on behaviour + wiring
-        true,
+        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
-    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), store, server)
+    (addr, store, server)
 }
 
 #[tokio::test]
 async fn claim_next_then_list_mine_then_empty() {
-    let (addr, client, store, server) = spawn().await;
+    let (addr, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws = store
-        .create_workspace(NewWorkspace { name: "q".into() })
-        .await
-        .unwrap();
-    let agent = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "agent".into(),
-            display_name: None,
-            kind: MemberKind::Agent,
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "q").await;
+    let agent = tenant
+        .member(store.as_ref(), "agent", MemberKind::Agent)
+        .await;
+    let client = agent.client();
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "queue".into(),
             topic: None,
             private: false,
@@ -96,7 +81,6 @@ async fn claim_next_then_list_mine_then_empty() {
             "{base}/channels/{}/threads/claim-next",
             channel.id.0
         ))
-        .header("maidan-test-member-id", agent.id.0.to_string())
         .json(&serde_json::json!({}))
         .send()
         .await
@@ -106,7 +90,7 @@ async fn claim_next_then_list_mine_then_empty() {
     assert_eq!(body["title"].as_str().unwrap(), "task");
     assert_eq!(
         body["assignee_id"].as_str().unwrap(),
-        agent.id.0.to_string()
+        agent.member_id.0.to_string()
     );
     let pin = body["pin"].as_object().expect("pin");
     assert!(
@@ -118,7 +102,10 @@ async fn claim_next_then_list_mine_then_empty() {
 
     // list-mine now shows it.
     let mine = client
-        .get(format!("{base}/members/{}/assigned-threads", agent.id.0))
+        .get(format!(
+            "{base}/members/{}/assigned-threads",
+            agent.member_id.0
+        ))
         .send()
         .await
         .unwrap();
@@ -133,7 +120,6 @@ async fn claim_next_then_list_mine_then_empty() {
             "{base}/channels/{}/threads/claim-next",
             channel.id.0
         ))
-        .header("maidan-test-member-id", agent.id.0.to_string())
         .json(&serde_json::json!({}))
         .send()
         .await

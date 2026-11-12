@@ -52,7 +52,7 @@ struct KindCensusArgs {
 }
 
 fn workspace(auth: &AuthContext, id: Option<Uuid>) -> Result<WorkspaceId, McpError> {
-    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id.0));
+    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id().0));
     auth.ensure_workspace(workspace_id)?;
     Ok(workspace_id)
 }
@@ -68,11 +68,7 @@ pub(super) async fn list_tombstones(
     let limit = clamp_tombstone_limit(a.limit);
     // Read access is filtered in the query now, so no per-row access check
     // runs after the page is cut.
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     let rows = store
         .list_tombstones(
             workspace_id,
@@ -92,11 +88,7 @@ pub(super) async fn list_message_backlinks(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListMessageBacklinksArgs = crate::tools::parse_args(args)?;
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     let backlinks = store
         .list_message_backlinks(MessageId(a.message_id), reader_id)
         .await?;
@@ -112,11 +104,7 @@ pub(super) async fn get_kind_census(
     let workspace_id = workspace(auth, a.workspace_id)?;
     store.get_workspace(workspace_id).await?;
     let deny = maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;
-    let reader_id = if auth.bypass {
-        None
-    } else {
-        Some(auth.member_id)
-    };
+    let reader_id = Some(auth.member_id());
     let census = store
         .event_kind_census(
             workspace_id,

@@ -295,12 +295,6 @@ pub(crate) async fn send_message(
     auth: &AuthContext,
     req: SendMessageRequest,
 ) -> Result<Task, A2aError> {
-    if auth.bypass {
-        return Err(A2aError::new(
-            A2aErrorKind::PermissionDenied,
-            "SendMessage needs an authenticated member to author the message",
-        ));
-    }
     require(auth, MESSAGE_POST)?;
     let config = req.configuration.unwrap_or_default();
     let history_length = history_length(config.history_length)?;
@@ -373,7 +367,7 @@ pub(crate) async fn send_message(
         .post_message_with_event(
             NewMessage {
                 thread_id: scope.thread_id,
-                author_id: auth.member_id,
+                author_id: auth.member_id(),
                 body,
                 metadata,
                 content: Some(content),
@@ -572,7 +566,7 @@ async fn client_context(
     if let Some(scope) = existing_context(state, auth, context_id).await? {
         return Ok(scope);
     }
-    let workspace_id = auth.workspace_id;
+    let workspace_id = auth.workspace_id();
     let created = new_thread(state, auth).await?;
     let bound = state
         .store
@@ -592,7 +586,7 @@ async fn existing_context(
     auth: &AuthContext,
     context_id: &str,
 ) -> Result<Option<ThreadScope>, A2aError> {
-    let workspace_id = auth.workspace_id;
+    let workspace_id = auth.workspace_id();
     if let Some(thread_id) = state
         .store
         .get_a2a_context_thread(workspace_id, context_id)
@@ -648,7 +642,7 @@ async fn new_thread(state: &AppState, auth: &AuthContext) -> Result<ThreadScope,
             parent_thread_id: None,
             title: Some("A2A conversation".into()),
             description: None,
-            created_by: auth.attribution().map(|a| a.subject_id),
+            created_by: Some(auth.member_id()),
         })
         .await;
     let (thread, stored) = spawn_checked(state, auth, created).await?;
@@ -658,7 +652,7 @@ async fn new_thread(state: &AppState, auth: &AuthContext) -> Result<ThreadScope,
 
 /// The workspace's `a2a` channel, created on first use.
 async fn a2a_channel(state: &AppState, auth: &AuthContext) -> Result<ChannelId, A2aError> {
-    let workspace_id = auth.workspace_id;
+    let workspace_id = auth.workspace_id();
     let find = || async {
         state
             .store
@@ -707,7 +701,7 @@ async fn spawn_checked<T>(
     match result {
         Ok(value) => Ok(value),
         Err(StoreError::SpawnRejected(denial)) => {
-            crate::routes::publish(state, denial.denied_event(Some(auth.member_id))).await;
+            crate::routes::publish(state, denial.denied_event(Some(auth.member_id()))).await;
             Err(store(StoreError::SpawnRejected(denial)))
         }
         Err(err) => Err(store(err)),
@@ -958,8 +952,8 @@ pub(crate) async fn list_tasks(
         Some(token) => Some(decode_task_cursor(token)?),
     };
     let context_id = req.context_id.as_deref().filter(|c| !c.is_empty());
-    let workspace_id = auth.workspace_id;
-    let readable_by = (!auth.bypass).then_some(auth.member_id);
+    let workspace_id = auth.workspace_id();
+    let readable_by = Some(auth.member_id());
     // One more than a page, to know whether another page follows.
     let want = i64::from(page_size) + 1;
 

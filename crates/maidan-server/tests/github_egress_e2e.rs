@@ -1,6 +1,7 @@
 //! GitHub projector egress. A Maidan message in a linked thread is relayed as a
-//! GitHub issue/PR comment; a GitHub-sourced message (metadata tag) is not
-//! echoed back (loop prevention); an unlinked thread is ignored.
+//! GitHub issue/PR comment; a GitHub-sourced message (its server-set
+//! provenance) is not echoed back (loop prevention), while one that only
+//! claims GitHub in its metadata is relayed; an unlinked thread is ignored.
 //!
 //! The relay is durable: `route_message_to_github` enqueues
 //! and the egress worker posts, so each case sweeps the queue before asserting.
@@ -18,8 +19,9 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, MemberKind, NewChannel, NewEgressOutbox,
-    NewGithubIssueLink, NewMember, NewMessage, NewThread, NewWorkspace,
+    EgressKind, EgressTarget, ExternalRef, MemberKind, MessageOrigin, MessageProvenance,
+    NewChannel, NewEgressOutbox, NewGithubIssueLink, NewMember, NewMessage, NewThread,
+    NewWorkspace,
 };
 use serde_json::json;
 
@@ -196,6 +198,26 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0], ("o/r".to_string(), 42, "shipping it".to_string()));
     }
+    // RED-003: egress took the ingress key for the comment it posted (id 1),
+    // so the `issue_comment` webhook delivering it back posts nothing, even
+    // from a token whose comments look like anyone's.
+    assert!(
+        store
+            .post_bridged_message_with_event(
+                NewMessage {
+                    thread_id: thread.id,
+                    author_id: agent.id,
+                    body: "maidan: shipping it".into(),
+                    metadata: json!({}),
+                    content: None,
+                },
+                MessageProvenance::delivered(MessageOrigin::Github, "1"),
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "our own comment is not projected back into the thread"
+    );
 
     // A second replica routing the same event enqueues nothing new — one comment.
     route_message_to_github(&state, 1, thread.id, &m).await;
@@ -206,21 +228,47 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         "the same event routed twice delivers once"
     );
 
-    // A GitHub-sourced message (metadata tag) is NOT echoed back — no loop.
-    let from_gh = post(
-        store.as_ref(),
-        thread.id,
-        agent.id,
-        "octocat: hi",
-        json!({ "github": { "user": "octocat", "repo": "o/r", "issue": 42 } }),
-    )
-    .await;
+    // A message GitHub ingress posted carries a GitHub provenance and is NOT
+    // echoed back — no loop.
+    let (from_gh, _) = store
+        .post_bridged_message_with_event(
+            NewMessage {
+                thread_id: thread.id,
+                author_id: agent.id,
+                body: "octocat: hi".into(),
+                metadata: json!({ "github": { "user": "octocat", "repo": "o/r", "issue": 42 } }),
+                content: None,
+            },
+            MessageProvenance::delivered(MessageOrigin::Github, "4242"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
     route_message_to_github(&state, 2, thread.id, &from_gh).await;
     sweep_once(&state).await;
     assert_eq!(
         sender.sent.lock().unwrap().len(),
         1,
         "a GitHub-sourced message is not relayed back to GitHub"
+    );
+
+    // RED-007: a member's message that only claims GitHub in its metadata
+    // is relayed; the metadata key counts for nothing.
+    let forged = post(
+        store.as_ref(),
+        thread.id,
+        agent.id,
+        "keep me off github",
+        json!({ "github": { "user": "octocat", "repo": "o/r", "issue": 42 } }),
+    )
+    .await;
+    assert!(forged.provenance.is_none());
+    route_message_to_github(&state, 3, thread.id, &forged).await;
+    sweep_once(&state).await;
+    assert_eq!(
+        sender.sent.lock().unwrap().len(),
+        2,
+        "a forged metadata.github does not trip the loop check"
     );
 
     // A message in an unlinked thread is ignored.
@@ -235,11 +283,11 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
         .await
         .unwrap();
     let m2 = post(store.as_ref(), other.id, agent.id, "unlinked", json!({})).await;
-    route_message_to_github(&state, 3, other.id, &m2).await;
+    route_message_to_github(&state, 4, other.id, &m2).await;
     sweep_once(&state).await;
     assert_eq!(
         sender.sent.lock().unwrap().len(),
-        1,
+        2,
         "an unlinked thread does not relay to GitHub"
     );
 }

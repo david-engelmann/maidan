@@ -93,7 +93,7 @@ aes-gcm = "0.10"
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 [features]
-default = ["bootstrap", "otel"]
+default = ["otel"]
 bootstrap = []
 # OpenTelemetry OTLP export. Default-on; `--no-default-features`
 # builds a leaner server without the OTLP/tonic stack (plain tracing + Prometheus
@@ -106,8 +106,13 @@ mcp-frame-capture = ["maidan-mcp/frame-capture"]
 # Swap the presence hub's lock for loom's so the `loom` model tests can
 # explore its interleavings. Test-only: never enable it in a build that runs.
 loom = ["dep:loom"]
+# Real callers for tests (`test_support`): a workspace, its admin and a token.
+# Only dev-dependencies enable it; a release build never does.
+test-support = ["maidan-store/test-support"]
 
 [dev-dependencies]
+maidan-server = { path = ".", features = ["test-support"] }
+maidan-auth = { path = "../maidan-auth", features = ["test-support"] }
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
 # Hand-written WAT for the WASI slash e2e.
 wat = "1"

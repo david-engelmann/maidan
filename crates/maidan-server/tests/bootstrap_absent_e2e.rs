@@ -4,12 +4,12 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 use serde_json::json;
 
-async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>) {
+async fn spawn() -> (SocketAddr, String, tokio::task::JoinHandle<()>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -20,7 +20,9 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>) {
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
 
-    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    // A real bearer, so the 404 below can only mean the route is absent.
+    let token = test_support::tenant(store.as_ref(), "acme").await.token;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -32,13 +34,13 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>) {
         .expect("bind");
     let addr = listener.local_addr().expect("addr");
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, server)
+    (addr, token, server)
 }
 
 #[tokio::test]
 async fn bootstrap_routes_are_not_registered_without_feature() {
-    let (addr, server) = spawn().await;
-    let client = reqwest::Client::new();
+    let (addr, token, server) = spawn().await;
+    let client = test_support::bearer_client(&token);
 
     let resp = client
         .post(format!("http://{addr}/workspaces"))
@@ -53,7 +55,7 @@ async fn bootstrap_routes_are_not_registered_without_feature() {
 
 #[tokio::test]
 async fn openapi_omits_bootstrap_paths_without_feature() {
-    let (addr, server) = spawn().await;
+    let (addr, _token, server) = spawn().await;
     let body = reqwest::Client::new()
         .get(format!("http://{addr}/openapi.json"))
         .send()

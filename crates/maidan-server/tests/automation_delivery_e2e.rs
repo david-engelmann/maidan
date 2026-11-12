@@ -15,11 +15,11 @@ use axum::{body::Bytes, extract::State, http::StatusCode, routing::post, Router}
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
 use maidan_server::{
-    automation_worker::AutomationDeliveryWorker, fsm_hook_worker::FsmHookWorker, router, AppState,
-    FsmHookRuntime, SlashRuntime, WebhookRuntime,
+    automation_worker::AutomationDeliveryWorker, fsm_hook_worker::FsmHookWorker, router,
+    test_support, AppState, FsmHookRuntime, SlashRuntime, WebhookRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
-use maidan_types::NewWorkspace;
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -86,8 +86,7 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
         maidan_server::FederationRuntime::new(true, test_key()),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
         None,
@@ -95,7 +94,6 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
     state.fsm_hooks = FsmHookRuntime::new(test_key());
-    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let fsm_worker = FsmHookWorker::spawn(state.clone());
@@ -119,32 +117,14 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
     let handler =
         tokio::spawn(async move { axum::serve(handler_listener, handler_app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-
-    let workspace = store_for_assert
-        .create_workspace(NewWorkspace {
-            name: "auto-dlq".into(),
-        })
-        .await
-        .unwrap();
-    let workspace_id = workspace.id;
+    let tenant = test_support::tenant(store_for_assert.as_ref(), "auto-dlq").await;
+    let client = tenant.client();
+    let workspace_id = tenant.workspace_id;
     let wid = workspace_id.0.to_string();
 
-    let actor: serde_json::Value = client
-        .post(format!("{base}/workspaces/{wid}/members"))
-        .json(&json!({ "handle": "op", "kind": "human" }))
-        .send()
-        .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let actor_id = actor["id"].as_str().unwrap();
+    let actor = tenant
+        .member(store_for_assert.as_ref(), "op", MemberKind::Human)
+        .await;
 
     let hook_url = format!("http://{handler_addr}/fsm");
     let mint: serde_json::Value = client
@@ -186,9 +166,9 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let transition = client
+    let transition = actor
+        .client()
         .post(format!("{base}/threads/{tid}"))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({ "action": "start_review" }))
         .send()
         .await

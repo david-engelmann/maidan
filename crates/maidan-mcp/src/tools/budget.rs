@@ -165,16 +165,7 @@ pub(super) async fn report_usage(
 ) -> Result<Value, McpError> {
     let a: ReportUsageArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
-    let reporter = if auth.bypass {
-        server
-            .store
-            .get_thread(thread_id)
-            .await?
-            .assignee_id
-            .ok_or_else(|| McpError::InvalidParams("thread has no active claim holder".into()))?
-    } else {
-        auth.member_id
-    };
+    let reporter = auth.member_id();
     let (report, stored) = server
         .store
         .report_accounted_usage(&a.request().into_new(thread_id, reporter))
@@ -265,7 +256,7 @@ pub(super) async fn usage_rollup(
     if let Some(member_id) = a.member_id {
         server
             .store
-            .get_member_in(auth.workspace_id, MemberId(member_id))
+            .get_member_in(auth.workspace_id(), MemberId(member_id))
             .await?;
     }
     let rollup = server

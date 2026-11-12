@@ -51,7 +51,6 @@ async fn presence_events_fan_out_across_replicas() {
     let replica_b = PostgresPresenceNotifier::connect(pool.clone())
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     let mut sub_b = replica_b.subscribe();
 

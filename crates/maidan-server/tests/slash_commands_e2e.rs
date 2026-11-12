@@ -6,14 +6,14 @@
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
-    time::Duration,
 };
 
 use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Router};
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
-use maidan_server::{router, AppState, SlashRuntime, WebhookRuntime};
+use maidan_server::{router, test_support, AppState, SlashRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -57,7 +57,9 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     handler: tokio::task::JoinHandle<()>,
     indexer: maidan_search::IndexerHandle,
+    wid: String,
     client: reqwest::Client,
+    author: reqwest::Client,
     handler_state: HandlerState,
     _dir: tempfile::TempDir,
 }
@@ -89,21 +91,23 @@ async fn spawn() -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::new());
+    let tenant = test_support::tenant(store.as_ref(), "slash").await;
+    let author = tenant
+        .member(store.as_ref(), "author", MemberKind::Agent)
+        .await;
     let mut state = AppState::new(
         store,
         artifacts,
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
         maidan_server::FederationRuntime::new(true, test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
-    state.test_identity_header = true;
     let indexer = Indexer::new(bus, Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let app = router(state);
@@ -129,42 +133,16 @@ async fn spawn() -> Harness {
         server,
         handler,
         indexer,
-        client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap(),
+        wid: tenant.workspace_id.0.to_string(),
+        client: tenant.client(),
+        author: author.client(),
         handler_state,
         _dir: dir,
     }
 }
 
-async fn bootstrap_member(h: &Harness, wid: &str) -> String {
-    let member: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{wid}/members", h.base))
-        .json(&json!({ "handle": "author", "kind": "agent" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    member["id"].as_str().unwrap().to_string()
-}
-
-async fn setup_thread(h: &Harness) -> (String, String, String) {
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "slash" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap().to_string();
-    let author_id = bootstrap_member(h, &wid).await;
+async fn setup_thread(h: &Harness) -> (String, String) {
+    let wid = h.wid.clone();
     let ch: serde_json::Value = h
         .client
         .post(format!("{}/workspaces/{wid}/channels", h.base))
@@ -187,13 +165,13 @@ async fn setup_thread(h: &Harness) -> (String, String, String) {
         .await
         .unwrap();
     let tid = th["id"].as_str().unwrap().to_string();
-    (wid, author_id, tid)
+    (wid, tid)
 }
 
 #[tokio::test]
 async fn http_slash_command_dispatches_signed_handler_and_stores_response() {
     let h = spawn().await;
-    let (wid, author_id, tid) = setup_thread(&h).await;
+    let (wid, tid) = setup_thread(&h).await;
 
     let handler_url = format!("http://{}/slash", h.handler_addr);
     let mint: serde_json::Value = h
@@ -215,9 +193,8 @@ async fn http_slash_command_dispatches_signed_handler_and_stores_response() {
     *h.handler_state.secret.lock().await = mint["secret"].as_str().unwrap().to_string();
 
     let msg: serde_json::Value = h
-        .client
+        .author
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({ "body": "/ping hello" }))
         .send()
         .await
@@ -243,7 +220,7 @@ async fn http_slash_command_dispatches_signed_handler_and_stores_response() {
 #[tokio::test]
 async fn mcp_tool_slash_command_lists_channels() {
     let h = spawn().await;
-    let (wid, author_id, tid) = setup_thread(&h).await;
+    let (wid, tid) = setup_thread(&h).await;
 
     let _reg: serde_json::Value = h
         .client
@@ -261,9 +238,8 @@ async fn mcp_tool_slash_command_lists_channels() {
         .unwrap();
 
     let msg: serde_json::Value = h
-        .client
+        .author
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({ "body": "/channels" }))
         .send()
         .await
@@ -284,12 +260,11 @@ async fn mcp_tool_slash_command_lists_channels() {
 #[tokio::test]
 async fn unregistered_slash_body_posts_without_slash_metadata() {
     let h = spawn().await;
-    let (_wid, author_id, tid) = setup_thread(&h).await;
+    let (_wid, tid) = setup_thread(&h).await;
 
     let msg: serde_json::Value = h
-        .client
+        .author
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({ "body": "/unknown arg" }))
         .send()
         .await

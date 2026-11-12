@@ -32,6 +32,7 @@ use serde_json::{json, Value};
 const WORK: &[&str] = &[
     capability::WORKSPACE_READ,
     capability::WORKSPACE_WRITE,
+    capability::MESSAGE_POST,
     capability::THREAD_TRANSITION,
 ];
 
@@ -144,7 +145,6 @@ async fn world() -> World {
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

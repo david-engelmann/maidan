@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, ContentBlock, ContentKeyring, DmConversationId, EditMessage, Event, MemberId,
-    Message, MessageId, NewMessage, SpawnAxis, SpawnDenial, StoredEvent, ThreadId, WorkspaceId,
+    Message, MessageId, MessageOrigin, MessageProvenance, NewMessage, SpawnAxis, SpawnDenial,
+    StoredEvent, ThreadId, WorkspaceId,
 };
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
@@ -161,7 +162,7 @@ pub async fn create(
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(id)
     .bind(new.thread_id.0)
@@ -197,6 +198,95 @@ pub async fn create_with_event(
     live_thread: bool,
 ) -> Result<(Message, StoredEvent), StoreError> {
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
+    let mut tx = super::tx::begin_write(pool).await?;
+    if live_thread {
+        refuse_post_in_tx(&mut tx, new.thread_id).await?;
+    }
+    let posted = insert_with_event_in_tx(&mut tx, keys, new, dm_conversation_id, None).await?;
+    tx.commit().await?;
+    Ok(posted)
+}
+
+/// Post a message that came in through a bridge, with its provenance and its
+/// `MessagePosted` event, in one transaction; `None` when the receipt for its
+/// external id was already taken. See the Postgres twin.
+pub async fn create_bridged_with_event(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    new: NewMessage,
+    provenance: &MessageProvenance,
+) -> Result<Option<(Message, StoredEvent)>, StoreError> {
+    enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
+    let mut tx = super::tx::begin_write(pool).await?;
+    if let Some(external_id) = provenance.external_id.as_deref() {
+        let workspace_id: Uuid = sqlx::query_scalar(
+            "SELECT c.workspace_id FROM maidan_threads t
+             JOIN maidan_channels c ON c.id = t.channel_id WHERE t.id = ?",
+        )
+        .bind(new.thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+        let taken = claim_receipt(
+            &mut tx,
+            WorkspaceId(workspace_id),
+            provenance.origin,
+            external_id,
+        )
+        .await?;
+        if !taken {
+            return Ok(None);
+        }
+    }
+    let posted = insert_with_event_in_tx(&mut tx, keys, new, None, Some(provenance)).await?;
+    tx.commit().await?;
+    Ok(Some(posted))
+}
+
+/// Take the receipt for `external_id` from `origin` in `workspace_id`;
+/// `false` when it was already taken.
+async fn claim_receipt(
+    conn: &mut SqliteConnection,
+    workspace_id: WorkspaceId,
+    origin: MessageOrigin,
+    external_id: &str,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "INSERT INTO maidan_bridge_receipts (workspace_id, origin, external_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT (workspace_id, origin, external_id) DO NOTHING",
+    )
+    .bind(workspace_id.0)
+    .bind(origin.as_str())
+    .bind(external_id)
+    .execute(&mut *conn)
+    .await?;
+    Ok(res.rows_affected() == 1)
+}
+
+/// Take a receipt with no message behind it; see the Postgres twin.
+pub async fn record_bridge_receipt(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    origin: MessageOrigin,
+    external_id: &str,
+) -> Result<bool, StoreError> {
+    let mut tx = super::tx::begin_write(pool).await?;
+    let taken = claim_receipt(&mut tx, workspace_id, origin, external_id).await?;
+    tx.commit().await?;
+    Ok(taken)
+}
+
+/// The insert, its `MessagePosted` event and the thread's activity clock, on
+/// a caller's transaction. `provenance` is `None` for every post but bridge
+/// ingress: no member's post reaches the origin columns.
+async fn insert_with_event_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    new: NewMessage,
+    dm_conversation_id: Option<DmConversationId>,
+    provenance: Option<&MessageProvenance>,
+) -> Result<(Message, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
@@ -205,14 +295,10 @@ pub async fn create_with_event(
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
-    let mut tx = super::tx::begin_write(pool).await?;
-    if live_thread {
-        refuse_post_in_tx(&mut tx, new.thread_id).await?;
-    }
     let row = sqlx::query(
-        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+        "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at, origin, origin_ref)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(id)
     .bind(new.thread_id.0)
@@ -221,11 +307,12 @@ pub async fn create_with_event(
     .bind(&metadata_text)
     .bind(&content_text)
     .bind(now)
-    .fetch_one(&mut *tx)
+    .bind(provenance.map(|p| p.origin.as_str()))
+    .bind(provenance.and_then(|p| p.external_id.as_deref()))
+    .fetch_one(&mut **tx)
     .await?;
     let message = row_to_message(&row)?;
-    let (workspace_id, channel_id, thread_id) =
-        events::message_scope_in_tx(&mut tx, message.id).await?;
+    let (workspace_id, channel_id, thread_id) = events::message_scope_in_tx(tx, message.id).await?;
     let event = Event::MessagePosted {
         occurred_at: Utc::now(),
         workspace_id,
@@ -235,22 +322,21 @@ pub async fn create_with_event(
         message: message.clone(),
         sealed: None,
     };
-    let stored = events::append_with_keys_in_tx(&mut tx, Some(keys), &event, None).await?;
+    let stored = events::append_with_keys_in_tx(tx, Some(keys), &event, None).await?;
     // A post bumps its thread's activity clock (`updated_at`) so a
     // recently-active view can float it to the top. In-tx, atomic with the
     // post.
     sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
         .bind(chrono::Utc::now().to_rfc3339())
         .bind(thread_id.0)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
-    tx.commit().await?;
     Ok((message, stored))
 }
 
 pub async fn get(pool: &SqlitePool, id: MessageId) -> Result<Message, StoreError> {
     let row = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref
          FROM maidan_messages WHERE id = ?",
     )
     .bind(id.0)
@@ -266,7 +352,7 @@ pub async fn list(
     limit: i64,
 ) -> Result<Vec<Message>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref
          FROM maidan_messages
          WHERE thread_id = ? AND tombstoned_at IS NULL
          ORDER BY posted_at ASC, id ASC
@@ -288,7 +374,7 @@ pub async fn list_after(
     let rows = match after {
         None => {
             sqlx::query(
-                "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
+                "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref
                  FROM maidan_messages
                  WHERE thread_id = ? AND tombstoned_at IS NULL
                  ORDER BY posted_at ASC, id ASC
@@ -301,7 +387,7 @@ pub async fn list_after(
         }
         Some(after_id) => {
             sqlx::query(
-                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.content, m.posted_at, m.edited_at, m.tombstoned_at
+                "SELECT m.id, m.thread_id, m.author_id, m.body, m.metadata, m.content, m.posted_at, m.edited_at, m.tombstoned_at, m.origin, m.origin_ref
                  FROM maidan_messages m
                  JOIN maidan_messages anchor ON anchor.id = ?
                  WHERE m.thread_id = ? AND m.tombstoned_at IS NULL
@@ -372,7 +458,7 @@ pub async fn edit(
     let row = sqlx::query(
         "UPDATE maidan_messages SET body = ?, metadata = ?, content = ?, edited_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(&edit.body)
     .bind(&metadata_text)
@@ -397,7 +483,7 @@ async fn edit_in_tx(
     edit: &EditMessage,
 ) -> Result<Message, StoreError> {
     let existing_row = sqlx::query(
-        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at
+        "SELECT id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref
          FROM maidan_messages WHERE id = ?",
     )
     .bind(id.0)
@@ -419,7 +505,7 @@ async fn edit_in_tx(
     let row = sqlx::query(
         "UPDATE maidan_messages SET body = ?, metadata = ?, content = ?, edited_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
-         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at",
+         RETURNING id, thread_id, author_id, body, metadata, content, posted_at, edited_at, tombstoned_at, origin, origin_ref",
     )
     .bind(&edit.body)
     .bind(&metadata_text)
@@ -569,5 +655,9 @@ pub(super) fn row_to_message(row: &sqlx::sqlite::SqliteRow) -> Result<Message, S
         posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
         edited_at: row.get::<Option<DateTime<Utc>>, _>("edited_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
+        provenance: MessageProvenance::from_columns(
+            row.get::<Option<&str>, _>("origin"),
+            row.get::<Option<String>, _>("origin_ref"),
+        ),
     })
 }

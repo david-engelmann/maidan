@@ -70,7 +70,7 @@ pub(super) async fn export_workspace(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ExportArgs = crate::tools::parse_args(args)?;
-    let workspace_id = WorkspaceId(a.workspace_id.unwrap_or(auth.workspace_id.0));
+    let workspace_id = WorkspaceId(a.workspace_id.unwrap_or(auth.workspace_id().0));
     auth.ensure_workspace(workspace_id)?;
     let Some(key) = server.export_signing() else {
         return Err(McpError::InvalidParams(
@@ -88,7 +88,7 @@ pub(super) async fn export_workspace(
         .store
         .append_audit(maidan_types::NewAuditEvent {
             scope: maidan_types::AuditScope::Workspace(workspace_id),
-            actor_id: Some(auth.actor_id),
+            actor_id: Some(auth.actor_id()),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -184,8 +184,7 @@ pub(super) async fn import_workspace(
 
     let origin = maidan_store::usage_meters::import_origin(
         server.store.as_ref(),
-        auth.bypass,
-        auth.workspace_id,
+        auth.workspace_id(),
         (mode == "restore").then_some(to_write.workspace.id),
     )
     .await?;
@@ -198,7 +197,7 @@ pub(super) async fn import_workspace(
             origin,
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "workspace.import".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),

@@ -35,7 +35,6 @@ use maidan_auth::{
     capability::EVENT_SUBSCRIBE,
     resolve_bearer,
     subscribe::{resolve_subscribe, SubscribeFrame, SubscribeRefusal},
-    AuthContext,
 };
 use maidan_store::StoreError;
 use maidan_types::{ApiTokenId, EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
@@ -67,8 +66,6 @@ const RECHECK_GAP: Duration = Duration::from_secs(1);
 /// this it outlived both.
 #[derive(Clone)]
 enum StreamCredential {
-    /// Auth is disabled: nothing to check.
-    Open,
     /// A bearer token in the subscribe frame.
     Token {
         token_id: ApiTokenId,
@@ -90,7 +87,6 @@ impl StreamCredential {
     /// and is checked afresh.
     async fn recheck(&self, state: &AppState) -> Result<(), &'static str> {
         let members = match self {
-            Self::Open => return Ok(()),
             Self::Token {
                 member_id,
                 actor_id,
@@ -109,7 +105,6 @@ impl StreamCredential {
             }
         }
         match self {
-            Self::Open => Ok(()),
             Self::Token { token_id, .. } => {
                 maidan_auth::resolve_token_id(state.store.as_ref(), *token_id)
                     .await
@@ -137,8 +132,8 @@ struct SubscribeRequest {
     member_id: Option<MemberId>,
     at_least_once: bool,
     lean: bool,
-    /// Who the socket acts as, from its credential; `None` when auth is off.
-    attribution: Option<maidan_types::Attribution>,
+    /// Who the socket acts as, from its credential.
+    attribution: maidan_types::Attribution,
     /// The credential, checked again while the stream runs.
     credential: StreamCredential,
 }
@@ -267,7 +262,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
     // The socket outlives the upgrade request and is authenticated by its first
     // frame, so no request layer scoped it: what it writes (the last-seen
     // stamp, delivery cursors) is the subscriber's, scoped here.
-    let attribution = request.attribution;
+    let attribution = Some(request.attribution);
     maidan_store::attribution::with_attribution(attribution, serve(socket, state, request)).await
 }
 
@@ -611,17 +606,15 @@ async fn read_subscribe(
     // Resolve the caller's identity *before* expanding the filter / applying
     // channel grants, so the DM-participant check and the grant verification
     // can both check real membership.
-    let (ctx, credential) = if state.auth_disabled {
-        (AuthContext::bypass(), StreamCredential::Open)
-    } else if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
+    let (ctx, credential) = if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
         let ctx = resolve_bearer(state.store.as_ref(), secret)
             .await
             .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
-        let credential = match ctx.token_id {
+        let credential = match ctx.token_id() {
             Some(token_id) => StreamCredential::Token {
                 token_id,
-                member_id: ctx.member_id,
-                actor_id: (ctx.actor_id != ctx.member_id).then_some(ctx.actor_id),
+                member_id: ctx.member_id(),
+                actor_id: (ctx.actor_id() != ctx.member_id()).then_some(ctx.actor_id()),
             },
             None => return Err((1008u16, "invalid or expired token".to_string()).into()),
         };
@@ -656,10 +649,8 @@ async fn read_subscribe(
     crate::dm::expand_event_filter(state, &mut filter, &ctx)
         .await
         .map_err(|e| (1008u16, format!("{e:?}")))?;
-    if !state.auth_disabled {
-        ctx.require_capability(EVENT_SUBSCRIBE)
-            .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
-    }
+    ctx.require_capability(EVENT_SUBSCRIBE)
+        .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
     crate::subscribe_grants::bind_to_caller_workspace(&mut filter, &ctx)
         .map_err(|e| (1008u16, e.to_string()))?;
     crate::subscribe_grants::apply_subscribe_grants(state, &ctx, &mut filter)
@@ -685,7 +676,7 @@ async fn read_subscribe(
     // member could show another as online or typing, and stamp any member's
     // last-seen time, in any workspace, which quiets presence-aware email.
     let member_id = match sub.member_id.map(MemberId) {
-        Some(claimed) if !state.auth_disabled && claimed != ctx.member_id => {
+        Some(claimed) if claimed != ctx.member_id() => {
             return Err((
                 1008u16,
                 "member_id must be the member the token or session belongs to".into(),

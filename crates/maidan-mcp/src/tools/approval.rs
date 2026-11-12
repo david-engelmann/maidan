@@ -62,9 +62,10 @@ struct RequestApprovalArgs {
 /// The gate is created `pending` and attributed to the caller
 /// (`auth.member_id`); a human resolves it later to accept/decline/cancel. The
 /// tool does **not** block — poll `get_approval_gate` with the returned
-/// `gate_id` for the outcome. Requires `workspace:read`: asking a human is part
-/// of an agent's read-only reasoning loop, and only the human's answer
-/// (`POST /approval-gates/:id/answer`) needs `workspace:write`.
+/// `gate_id` for the outcome. Requires `message:post`: a gate asks a person to
+/// decide and notifies them, so a read-only token cannot open one (MCP-003).
+/// The human's answer (`POST /approval-gates/:id/answer`) needs
+/// `workspace:write`.
 pub(super) async fn request_approval(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -74,9 +75,9 @@ pub(super) async fn request_approval(
     let (gate, event) = server
         .store
         .create_approval_gate_with_event(&NewApprovalGate {
-            workspace_id: auth.workspace_id,
+            workspace_id: auth.workspace_id(),
             thread_id: a.thread_id.map(maidan_types::ThreadId),
-            requested_by: auth.member_id,
+            requested_by: auth.member_id(),
             prompt: a.prompt,
             schema: a.schema,
             risk: a.risk,
@@ -284,20 +285,16 @@ pub(super) async fn approval_decide(
         )
         .await;
     }
-    if !auth.bypass {
-        let asked = [Some(gate.requested_by), gate.requested_actor_id];
-        let answering = [auth.member_id, auth.actor_id];
-        if answering.iter().any(|m| asked.contains(&Some(*m))) {
-            return Err(McpError::Forbidden(
-                "an approval cannot be granted by whoever requested it".into(),
-            ));
-        }
+    let asked = [Some(gate.requested_by), gate.requested_actor_id];
+    let answering = [auth.member_id(), auth.actor_id()];
+    if answering.iter().any(|m| asked.contains(&Some(*m))) {
+        return Err(McpError::Forbidden(
+            "an approval cannot be granted by whoever requested it".into(),
+        ));
     }
     let policy = server.store.get_approval_policy(gate.workspace_id).await?;
     let needs_confirmation = policy.needs_confirmation(gate.risk);
-    // Auth disabled has no person to confirm and no credential to judge, as
-    // on REST.
-    if auth.bypass || (auth.has_capability(APPROVAL_GRANT) && !needs_confirmation) {
+    if auth.has_capability(APPROVAL_GRANT) && !needs_confirmation {
         return resolve(
             server,
             auth,
@@ -342,8 +339,8 @@ async fn decide_round_cap(
     via: &GateDecisionVia,
     call: &CallContext,
 ) -> Result<Value, McpError> {
-    let admin = auth.bypass || auth.has_capability(CHANNEL_ADMIN);
-    let grant = auth.bypass || auth.has_capability(APPROVAL_GRANT);
+    let admin = auth.has_capability(CHANNEL_ADMIN);
+    let grant = auth.has_capability(APPROVAL_GRANT);
     if decision == Decision::Decline {
         if admin || grant {
             return resolve(
@@ -361,7 +358,7 @@ async fn decide_round_cap(
         return Err(McpError::Forbidden(ROUND_CAP_REFUSAL.into()));
     }
     let policy = server.store.get_approval_policy(gate.workspace_id).await?;
-    if auth.bypass || (grant && !policy.needs_confirmation(gate.risk)) {
+    if grant && !policy.needs_confirmation(gate.risk) {
         return resolve(
             server,
             auth,
@@ -374,7 +371,7 @@ async fn decide_round_cap(
         )
         .await;
     }
-    let member = server.store.get_member(auth.member_id).await?;
+    let member = server.store.get_member(auth.member_id()).await?;
     if member.kind != MemberKind::Human {
         return Err(McpError::Forbidden(ROUND_CAP_REFUSAL.into()));
     }
@@ -392,13 +389,13 @@ async fn resolve(
     ui: UiSupport,
 ) -> Result<Value, McpError> {
     let content = maidan_store::approval_policy::note_content(note.as_deref());
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let audit_via = via.clone();
     let resolved = server
         .store
         .resolve_approval_gate_audited(
             gate.id,
-            auth.member_id,
+            auth.member_id(),
             target,
             content.as_ref(),
             via,
@@ -447,7 +444,7 @@ async fn confirmation(
     let needs_confirmation = policy.needs_confirmation(gate.risk);
     // A link is for the person whose credential this is. An agent member
     // cannot sign in to the console, so a link for one would be a dead end.
-    let member = server.store.get_member(auth.member_id).await?;
+    let member = server.store.get_member(auth.member_id()).await?;
     if member.kind != MemberKind::Human {
         return Err(McpError::Forbidden(
             "an agent's token accepts an approval gate only with approval:grant, and only \
@@ -468,12 +465,12 @@ async fn confirmation(
     // The workspace's lifetime, read with the threshold this call was judged
     // by. The store's expiry check enforces it on confirm.
     let ttl = chrono::Duration::seconds(i64::from(policy.confirm_link_ttl_seconds));
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let new = NewApprovalConfirmation {
         gate_id: gate.id,
-        member_id: auth.member_id,
+        member_id: auth.member_id(),
         workspace_id: gate.workspace_id,
-        actor_id: (auth.actor_id != auth.member_id).then_some(auth.actor_id),
+        actor_id: (auth.actor_id() != auth.member_id()).then_some(auth.actor_id()),
         nonce,
         token_hash: maidan_auth::approval_confirmation::token_hash(&token),
         client_name: via.client_name.clone(),

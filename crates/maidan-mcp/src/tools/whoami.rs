@@ -11,15 +11,12 @@ use crate::error::McpError;
 
 pub(super) async fn whoami(auth: &AuthContext) -> Result<Value, McpError> {
     Ok(content_json(&json!({
-        "actor_id": auth.actor_id.0,
-        "member_id": auth.member_id.0,
-        "delegation_grant_id": auth.delegation_grant_id.map(|id| id.0),
-        "workspace_id": auth.workspace_id.0,
+        "actor_id": auth.actor_id().0,
+        "member_id": auth.member_id().0,
+        "delegation_grant_id": auth.delegation_grant_id().map(|id| id.0),
+        "workspace_id": auth.workspace_id().0,
         "capabilities": auth.capabilities(),
         "capability_sets": maidan_auth::held_sets(auth.capabilities()),
-        // Bearer and session identities are authentication-bound. `bypass`
-        // exists only for explicitly insecure development mode.
-        "is_bearer": auth.token_id.is_some(),
-        "bypass": auth.bypass,
+        "is_bearer": auth.token_id().is_some(),
     })))
 }

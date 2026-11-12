@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{AutomationSourceKind, NewAutomationDelivery, NewWebhookSubscription};
 
@@ -26,16 +26,12 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
 
-    let ws = store
-        .create_workspace(maidan_types::NewWorkspace {
-            name: "deliveries".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "deliveries").await;
+    let ws_id = tenant.workspace_id;
 
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             url: "http://127.0.0.1:9/hook".into(),
             label: None,
             event_kinds: vec!["message.posted".into()],
@@ -53,7 +49,7 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
 
     let auto_id = store
         .enqueue_automation_delivery(NewAutomationDelivery {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             source_kind: AutomationSourceKind::SlashCommand,
             source_id: uuid::Uuid::new_v4(),
             target_url: "http://127.0.0.1:9/slash".into(),
@@ -73,11 +69,11 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let client = reqwest::Client::new();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let all: serde_json::Value = client
-        .get(format!("{base}/workspaces/{}/deliveries", ws.id.0))
+        .get(format!("{base}/workspaces/{}/deliveries", ws_id.0))
         .query(&[("quarantined", "true")])
         .send()
         .await
@@ -93,7 +89,7 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
     let replay: serde_json::Value = client
         .post(format!(
             "{base}/workspaces/{}/deliveries/{webhook_id}/replay",
-            ws.id.0
+            ws_id.0
         ))
         .query(&[("kind", "webhook")])
         .send()
@@ -106,7 +102,7 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
     assert!(replay["quarantined_at"].is_null());
 
     let pending = store_for_assert
-        .list_webhook_deliveries(ws.id, AutomationDeliveryFilter::Pending, 10)
+        .list_webhook_deliveries(ws_id, AutomationDeliveryFilter::Pending, 10)
         .await
         .unwrap();
     assert!(pending.iter().any(|d| d.id == webhook_id));

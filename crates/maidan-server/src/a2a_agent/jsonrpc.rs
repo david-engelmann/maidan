@@ -175,20 +175,20 @@ pub(crate) async fn recorded<T, E>(
     method: Method,
     call: impl std::future::Future<Output = Result<T, E>>,
 ) -> Result<T, E> {
-    let attribution = auth.attribution();
+    let attribution = Some(auth.attribution());
     let (result, recorded) =
         maidan_store::attribution::with_attribution_tracked(attribution, call).await;
-    if attribution.is_some() && result.is_ok() && !recorded && method.changes() {
+    if result.is_ok() && !recorded && method.changes() {
         maidan_store::attribution::with_attribution(
             attribution,
             crate::audit::record(
                 state,
                 maidan_types::NewAuditEvent {
-                    scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+                    actor_id: Some(auth.actor_id()),
                     action: crate::auth::MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),
-                    target_id: Some(auth.workspace_id.0),
+                    target_id: Some(auth.workspace_id().0),
                     metadata: serde_json::json!({
                         "surface": "a2a",
                         "binding": binding,

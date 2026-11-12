@@ -15,10 +15,11 @@
 //! method from skipping that gate.
 //!
 //! The scan covers every workspace crate and example, not only the two
-//! crates that serve requests. Two carve-outs are named and pinned (Open
+//! crates that serve requests. The carve-outs are named and pinned (Open
 //! Work later-S / thread 14b), so a call elsewhere cannot slip past:
-//! `maidan init` mints through the audited form, and the Playwright
-//! harnesses seed fixtures through the store directly.
+//! `maidan init` mints through the audited form, and the test harnesses (the
+//! Playwright servers and the server's `test_support` callers) seed fixtures
+//! through the store directly.
 //!
 //! Test items are skipped one at a time. This used to stop reading a file at
 //! its first `#[cfg(test)]`, which left 1,693 lines of real code in six files
@@ -73,10 +74,15 @@ const UNAUDITED: &[&str] = &[
     ".delete_session(",
 ];
 
-/// Playwright seed-and-serve harnesses. They are test support, not shipped
-/// binaries, and may call only the unaudited methods listed here. Each listed
-/// call must still appear, so dropping one is a deliberate edit of this pin.
-const PLAYWRIGHT_HARNESS: &[(&str, &[&str])] = &[
+/// Test harnesses: the Playwright seed-and-serve servers and the server's
+/// `test_support` module. They are test support, not shipped code, and may
+/// call only the unaudited methods listed here. Each listed call must still
+/// appear, so dropping one is a deliberate edit of this pin.
+///
+/// `test_support` mints its callers' tokens unaudited so that a test's audit
+/// log holds only what the test did; `test_support_is_compiled_only_for_tests`
+/// keeps that module out of every build that serves requests.
+const TEST_HARNESSES: &[(&str, &[&str])] = &[
     (
         "crates/maidan-server/examples/ui_test_server.rs",
         &[
@@ -88,6 +94,10 @@ const PLAYWRIGHT_HARNESS: &[(&str, &[&str])] = &[
     (
         "crates/maidan-server/examples/capture_server.rs",
         &[".create_api_token(", ".set_review_requirement("],
+    ),
+    (
+        "crates/maidan-server/src/test_support.rs",
+        &[".create_api_token("],
     ),
 ];
 
@@ -175,7 +185,7 @@ fn authority_changes_are_audited_in_their_transaction() {
         "scanned crates must match workspace members"
     );
 
-    let allowed: HashMap<&str, &[&str]> = PLAYWRIGHT_HARNESS.iter().copied().collect();
+    let allowed: HashMap<&str, &[&str]> = TEST_HARNESSES.iter().copied().collect();
     let mut offenders = Vec::new();
     let mut seen: HashMap<&str, BTreeSet<&str>> = HashMap::new();
     for file in &files {
@@ -197,15 +207,57 @@ fn authority_changes_are_audited_in_their_transaction() {
         offenders.is_empty(),
         "an authority change outside its audit transaction: {offenders:?}"
     );
-    for (path, pins) in PLAYWRIGHT_HARNESS {
+    for (path, pins) in TEST_HARNESSES {
         let found = seen.get(path).cloned().unwrap_or_default();
         for call in *pins {
             assert!(
                 found.contains(call),
-                "{path} no longer calls {call}; update the Playwright harness pin"
+                "{path} no longer calls {call}; update the test harness pin"
             );
         }
     }
+}
+
+/// The `test_support` carve-out holds only while the module is unreachable
+/// from a build that serves requests: it is declared under the test gate, and
+/// its feature is enabled by dev-dependencies alone, never by default.
+#[test]
+fn test_support_is_compiled_only_for_tests() {
+    let server = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lib = std::fs::read_to_string(server.join("src/lib.rs")).unwrap();
+    let lines: Vec<&str> = lib.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|l| *l == "pub mod test_support;")
+        .expect("lib.rs declares test_support");
+    assert_eq!(
+        lines[at - 1],
+        "#[cfg(any(test, feature = \"test-support\"))]",
+        "test_support must be compiled only for tests"
+    );
+
+    let manifest = std::fs::read_to_string(server.join("Cargo.toml")).unwrap();
+    let default = manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("default = "))
+        .expect("maidan-server declares default features");
+    assert!(
+        !default.contains("test-support"),
+        "test-support must not be a default feature: {default}"
+    );
+    let dependencies = manifest
+        .split("[dev-dependencies]")
+        .next()
+        .expect("the manifest has a body");
+    let enabling: Vec<&str> = dependencies
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .filter(|l| l.contains("\"test-support\"") && !l.trim_start().starts_with("test-support ="))
+        .collect();
+    assert!(
+        enabling.is_empty(),
+        "only dev-dependencies may enable test-support: {enabling:?}"
+    );
 }
 
 /// `maidan init` is the other named carve-out. It is not a hole: the

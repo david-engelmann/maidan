@@ -136,13 +136,11 @@ impl UsageMeterBuffer {
 /// An import is refused while the caller's workspace, or the workspace a
 /// restore overwrites, is cut off on any meter: importing is how a cut-off
 /// workspace would otherwise start over. The new workspace takes the
-/// caller's origin, so only an operator caller (`bypass`) makes an operator
-/// workspace; a caller whose workspace cannot be found counts as open. A
+/// caller's origin; a caller whose workspace cannot be found counts as open. A
 /// restore over an existing workspace keeps that workspace's origin, which
 /// the store reads in the import transaction.
 pub async fn import_origin<S: crate::Store + ?Sized>(
     store: &S,
-    bypass: bool,
     caller: WorkspaceId,
     restore_target: Option<WorkspaceId>,
 ) -> Result<maidan_types::WorkspaceOrigin, StoreError> {
@@ -151,9 +149,6 @@ pub async fn import_origin<S: crate::Store + ?Sized>(
         if let Some(meter) = meters.cut_off_meter(workspace_id) {
             return Err(StoreError::OverAllowance(meter));
         }
-    }
-    if bypass {
-        return Ok(maidan_types::WorkspaceOrigin::Operator);
     }
     match store.workspace_origin(caller).await {
         Ok(origin) => Ok(origin),

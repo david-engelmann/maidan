@@ -43,7 +43,7 @@ pub async fn create_memory_block(
             char_limit: body.char_limit,
             read_only: body.read_only,
             value: body.value.unwrap_or_default(),
-            owner_id: auth.member_id,
+            owner_id: auth.member_id(),
         })
         .await?;
     Ok((StatusCode::CREATED, Json(block)))
@@ -118,7 +118,7 @@ pub async fn set_memory_block_value(
             workspace_id: updated.workspace_id,
             block_id: updated.id,
             label: updated.label.clone(),
-            updated_by: auth.member_id,
+            updated_by: auth.member_id(),
         },
     )
     .await;

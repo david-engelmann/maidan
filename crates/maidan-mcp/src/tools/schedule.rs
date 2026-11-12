@@ -52,7 +52,7 @@ pub(super) async fn create_task_schedule(
     let ctx = resolve_channel_context(store.as_ref(), channel_id)
         .await
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if !auth.bypass && ctx.workspace_id != auth.workspace_id {
+    if ctx.workspace_id != auth.workspace_id() {
         return Err(McpError::InvalidParams(
             "channel is not in the caller's workspace".into(),
         ));
@@ -76,7 +76,7 @@ pub(super) async fn create_task_schedule(
             title: a.title.trim().to_string(),
             interval_secs: a.interval_secs,
             next_run_at: a.first_run_at.unwrap_or_else(chrono::Utc::now),
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
             recipe_id,
         })
         .await?;
@@ -92,10 +92,7 @@ pub(super) async fn list_task_schedules(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let schedules = store.list_task_schedules(auth.workspace_id).await?;
-    if auth.bypass {
-        return Ok(content_json(&schedules));
-    }
+    let schedules = store.list_task_schedules(auth.workspace_id()).await?;
     let mut visible = Vec::with_capacity(schedules.len());
     for s in schedules {
         if maidan_auth::can_access_channel(store.as_ref(), auth, s.channel_id).await? {
