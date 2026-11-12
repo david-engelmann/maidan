@@ -1,0 +1,5 @@
+### Approval gates open, read by id and announce their answer over REST
+
+- **Added:** `POST /workspaces/{wid}/approval-gates` opens a pending approval gate attributed to the caller, the REST twin of MCP `request_approval` (`message:post`; `prompt`, optional `schema`, `thread_id` and `risk`; unknown fields are a 400). It answers `201` with the gate. A `thread_id` the caller cannot read is `403`, as over MCP, and an unknown one `404`.
+- **Added:** `GET /approval-gates/{id}` reads one gate, the REST twin of `get_approval_gate` (`workspace:read`). A gate in another workspace, or on a thread the caller cannot read, is `404`.
+- **Added:** the `approval_resolved` event (`gate_id`, `state`, `requested_by`, `resolved_by`, and the gate's thread and channel when it has one). It is appended in the same transaction as the answer, on every path that answers a gate: REST, the console, MCP `approval_decide` and a confirmation link. A refused second answer appends nothing. It follows the thread visibility rule and is not federatable. `Store::resolve_approval_gate` and `resolve_approval_gate_audited` now return the event with the gate, and `ConfirmOutcome::Accepted` carries it.

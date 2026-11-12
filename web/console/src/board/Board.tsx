@@ -602,6 +602,7 @@ function Composer({ channelId, onDone }: { channelId: string; onDone: (made: Thr
     }
   };
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape closes the composer from any of its fields.
     <form className="task-composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape" && !busy) { e.preventDefault(); onDone(null); } }} aria-label="New task">
       <label className="composer-field">
         <span className="visually-hidden">Task title</span>

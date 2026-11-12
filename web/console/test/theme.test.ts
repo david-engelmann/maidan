@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 import { runInNewContext } from "node:vm";
 import { THEME_COLOR, THEME_KEY, parseChoice, resolveTheme } from "../src/core/theme.ts";
 
@@ -8,7 +9,7 @@ import { THEME_COLOR, THEME_KEY, parseChoice, resolveTheme } from "../src/core/t
 // change. If they disagreed, a reload would flip a page someone had just set.
 
 const script = readFileSync(new URL("../public/theme.js", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const css = sheet();
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 /** What theme.js puts on <html> for a stored value and a system preference. */

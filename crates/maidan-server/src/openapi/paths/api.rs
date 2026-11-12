@@ -3375,6 +3375,38 @@ pub fn unmute_thread() {}
     ))]
 pub fn list_approval_gates() {}
 
+/// Open an approval gate
+///
+/// The REST twin of MCP `request_approval`: a `pending` gate attributed to
+/// the caller. Needs `message:post`. A `thread_id` the caller cannot read is
+/// 403, and an unknown one 404. Waiters learn the answer from `approval_resolved` on the event stream
+/// or by polling `GET /approval-gates/{id}`.
+#[utoipa::path(post, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = RequestApprovalGate,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = ApprovalGate),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn request_approval_gate() {}
+
+/// Get an approval gate
+///
+/// The REST twin of MCP `get_approval_gate`. Needs `workspace:read`. A gate in
+/// another workspace, or on a thread the caller cannot read, is 404.
+#[utoipa::path(get, path = "/approval-gates/{id}", tag = "approval-gates",
+    params(("id" = Uuid, Path, description = "Approval gate id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ApprovalGate),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_approval_gate() {}
+
 /// Answer a pending approval gate
 #[utoipa::path(post, path = "/approval-gates/{id}/answer", tag = "approval-gates",
     params(("id" = Uuid, Path, description = "Approval gate id")),

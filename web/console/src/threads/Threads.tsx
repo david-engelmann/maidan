@@ -650,6 +650,7 @@ function MessageRow({ m, head, members, mine, reactions, votes, onReact, pinned,
         {editing ? (
           <EditBox m={m} onCancel={() => setEditing(false)} onSave={async (body) => { await onEdit(m, body); setEditing(false); }} />
         ) : (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a tap offers reactions on a phone; the keyboard reaches the message's own buttons.
         <div
           className="msg-body"
           onClick={() => {
@@ -732,6 +733,7 @@ function EditBox({ m, onSave, onCancel }: { m: Message; onSave: (body: string) =
   const [error, setError] = useState<string | null>(null);
   const why = editRefusal(m.body, draft);
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape cancels the edit from the field.
     <form
       className="edit-box"
       onSubmit={(e) => {
@@ -752,6 +754,7 @@ function EditBox({ m, onSave, onCancel }: { m: Message; onSave: (body: string) =
       }}
     >
       <label className="visually-hidden" htmlFor={`edit-${m.id}`}>Edit message</label>
+      {/* eslint-disable-next-line jsx-a11y/no-autofocus -- Edit opens this field, so focus goes where the person asked. */}
       <textarea id={`edit-${m.id}`} value={draft} rows={2} autoFocus onChange={(e) => setDraft(e.target.value)} />
       {error && <p className="conv-error" role="alert">{error}</p>}
       <div className="edit-actions">

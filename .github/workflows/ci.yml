@@ -213,6 +213,12 @@ jobs:
         # runs it, not only a batch: the claim loops are where a lost answer
         # turns into a double claim.
         run: python3 scripts/test-mcp-fault-injection.py
+      - name: SDK method map (all four SDKs, sdk/methods.json)
+        # Standard library and node, a few seconds: every mapped method exists
+        # in all four SDKs and docs/Client Contract.md, and each example sends
+        # the request the map names from Python and TypeScript. The Go and Rust
+        # examples run with their suites (sdk interop).
+        run: python3 scripts/check-sdk-parity.py
       - name: seat runner (fake Maidan, fake capped, fake harnesses)
         # Standard library only, a couple of minutes. It ran only in the
         # compose smoke, which a feature PR skips, so a change to the runner

@@ -199,6 +199,7 @@ export function EndTaskRow({ th, onChanged }: { th: Thread; onChanged: () => voi
       {(["cancel", "abandon"] as const)
         .filter((k) => can[k])
         .map((k) => (
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- Back returns focus to the choice the person left.
           <button key={k} type="button" className="button ghost danger" autoFocus={back === k} onClick={() => setKind(k)}>
             {END_TITLE[k]}…
           </button>

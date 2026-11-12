@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { sheet } from "./sheet.ts";
 
 // Every class and id a console stylesheet names is used by the markup, so a
 // rename or removal in a component takes its CSS with it. Ported from the
@@ -85,7 +86,7 @@ test("the sign-in card's buttons span the card like its token field", () => {
 });
 
 test("reduced motion removes animation, transition and smooth scrolling", () => {
-  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const css = sheet();
   const block = /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{([^}]+)\}/.exec(css)?.[1] ?? "";
   assert.match(block, /animation:\s*none\s*!important/);
   assert.match(block, /transition:\s*none\s*!important/);
@@ -97,7 +98,7 @@ test("reduced motion removes animation, transition and smooth scrolling", () => 
 });
 
 test("the skip link sits off screen until it is focused", () => {
-  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const css = sheet();
   assert.equal(lastValue(".skip-link", "top"), "-100px");
   assert.match(css, /\.skip-link:focus, \.skip-link:focus-visible \{ top: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\); \}/);
   const shell = readFileSync(join(root, "src/shell/Shell.tsx"), "utf8");
@@ -108,10 +109,10 @@ test("the skip link sits off screen until it is focused", () => {
 });
 
 test("a phone header shows Search and does not drop the credential word", () => {
-  const css = readFileSync(join(root, "src/styles.css"), "utf8");
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.icon-btn \.btn-label \{ display: inline;/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.top \.live-label \{ position: static;/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.mode-chip \{ display: inline-flex;/);
+  const css = sheet();
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.top \.icon-btn \.btn-label \{ display: inline;/);
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.top \.live-label \{ position: static;/);
+  assert.match(css, /@media \(max-width: 599px\) \{[\s\S]*\.mode-chip \{ display: inline-flex;/);
   const shell = readFileSync(join(root, "src/shell/Shell.tsx"), "utf8");
   assert.match(shell, /className="btn-label">Search</);
   assert.match(shell, /className="live-label"/);
@@ -126,7 +127,7 @@ test("text hidden for screen readers uses the class the stylesheet defines", () 
 });
 
 test("on a phone the board's fields and the channel picker are 16px, so iOS does not zoom", () => {
-  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const css = sheet();
   const phone = /\/\* Phones: iOS zooms[^*]*\*\/\s*@media \(max-width: 599px\) \{\s*([^{}]+)\{([^}]+)\}/.exec(css);
   assert.ok(phone, "the phone field-size block is missing");
   const sels = phone[1].split(",").map((x) => x.trim());
@@ -138,7 +139,7 @@ test("on a phone the board's fields and the channel picker are 16px, so iOS does
 });
 
 test("at 360px the header title gives way so the header keeps one row", () => {
-  const css = readFileSync(join(root, "src/styles.css"), "utf8");
+  const css = sheet();
   assert.match(css, /@media \(max-width: 380px\) \{[\s\S]{0,400}?\.top h1 \{[^}]*flex-basis: 6rem;/);
   assert.equal(lastValue(".top h1", "flex-basis"), "6rem");
 });

@@ -235,7 +235,7 @@ async fn run_suite(store: &dyn Store) {
     .unwrap();
     assert_eq!(gate.requested_by, worker);
     assert_eq!(gate.requested_actor_id, Some(orchestrator));
-    let resolved = with_attribution(
+    let (resolved, _) = with_attribution(
         acting_as(outsider, reviewer),
         store.resolve_approval_gate(gate.id, reviewer, ApprovalGateState::Accepted, None),
     )

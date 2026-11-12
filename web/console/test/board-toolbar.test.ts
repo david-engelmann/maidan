@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 
 // The Board opens on one toolbar row, then the lanes. Before, five rows of
 // controls (title, channel and view, filters, presence, health) came before
 // the first card, and on a phone the first task started two thirds down.
 const board = readFileSync(new URL("../src/board/Board.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = sheet().replace(/\/\*[\s\S]*?\*\//g, "");
 
 function toolbar(): string {
   const open = board.indexOf('<div className="board-bar"');

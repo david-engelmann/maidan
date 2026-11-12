@@ -1071,6 +1071,7 @@ function Appearance() {
   return (
     <Panel title="Appearance">
       <p className="muted small" id="theme-why">Kept in this browser. System follows your device's light or dark setting.</p>
+      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- a roving tabindex: the checked radio takes focus and the arrows move it. */}
       <div className="seg theme-pick" role="radiogroup" aria-label="Theme" aria-describedby="theme-why" onKeyDown={onKey}>
         {THEME_CHOICES.map((c) => (
           <button key={c.id} type="button" role="radio" data-choice={c.id} aria-checked={choice === c.id} tabIndex={choice === c.id ? 0 : -1} className={choice === c.id ? "on" : undefined} onClick={() => choose(c.id)}>

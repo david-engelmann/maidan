@@ -1,0 +1,85 @@
+/* Launch: lanes that fit, the phone tab bar, People loading, first run,
+   Add an agent and Support. */
+/* ---- Lanes that fit ------------------------------------------------------ */
+/* All four lanes fit the content column from 1024px up instead of pushing
+   Done past the edge; below 220px a lane's card foot wraps, never clips. */
+.lanes.wide { grid-template-columns: repeat(4, minmax(min(220px, calc((100% - 3 * var(--space-3)) / 4)), 1fr)); }
+.lanes.wide .task-meta { flex-wrap: wrap; row-gap: var(--space-1); }
+/* ---- Phone tab bar: five places and More ---------------------------------- */
+.tabbar-row { display: grid; grid-template-columns: 5fr 1fr; align-items: stretch; }
+.tab-more { position: relative; }
+.tab-more > summary { list-style: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-0-5); min-height: 48px; color: var(--muted); font-size: var(--text-2xs); font-weight: 500; border-radius: var(--r-md); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tab-more > summary::-webkit-details-marker { display: none; }
+.tab-more > summary[aria-current="page"], .tab-more[open] > summary { color: var(--ink); }
+.tab-more-list { position: absolute; right: 0; bottom: calc(100% + 8px); min-width: 180px; margin: 0; padding: var(--space-1); list-style: none; background: var(--elev-3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); }
+.tab-more-list a { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--r-md); color: var(--ink); text-decoration: none; font-size: var(--text-md); }
+.tab-more-list a[aria-current="page"] { background: var(--paper-2); font-weight: 600; }
+
+/* People loading: the roster's rows as skeletons, like Board and Threads. */
+.roster-sk { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* ---- First run ----------------------------------------------------------- */
+/* The guide on a new workspace's empty board: three numbered steps, the
+   command in the same snippet box Tools, then Connect uses. */
+.first-run { display: grid; gap: var(--space-3); min-width: 0; }
+.first-run-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.first-run-head h2 { margin: 0; font-size: var(--text-lg); }
+.first-run-steps { display: grid; gap: var(--space-4); margin: 0; padding-left: 1.4rem; min-width: 0; }
+.first-run-steps li { display: grid; gap: var(--space-1); justify-items: start; min-width: 0; }
+.first-run-steps li > .snippet { justify-self: stretch; margin-top: var(--space-1); }
+.first-run-steps p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
+.first-run-steps a:not(.button) { color: var(--ink); text-underline-offset: 2px; }
+.first-run-steps .button { min-height: 44px; min-width: 44px; margin-top: var(--space-1); }
+/* "Add an agent": a name, the client chips (which wrap on a phone), then the
+   token once with that client's setup. */
+.add-agent { display: grid; gap: var(--space-2); justify-self: stretch; min-width: 0; }
+.add-agent p { margin: 0; }
+.add-agent .snippet { margin-top: 0; }
+.add-agent .snippet-head .button { min-height: 44px; min-width: 44px; }
+.client-pick { display: flex; flex-wrap: wrap; }
+.add-agent-card { margin-top: var(--space-3); }
+.sign-in-waitlist { margin: -4px 0 0; color: var(--muted); font-size: var(--text-sm); }
+.sign-in-waitlist a { color: var(--ink); text-underline-offset: 2px; }
+/* Support sits at the foot of the rail, apart from the places. */
+.rail-foot { display: none; }
+@media (min-width: 900px) {
+  .rail-foot { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; min-height: 44px; min-width: 44px; padding: 0 0.8rem; border-radius: var(--r-md); color: var(--muted); text-decoration: none; font-size: var(--text-md); }
+  .rail-foot:hover { background: var(--hover); color: var(--ink); }
+}
+
+/* ---- One Board toolbar row ------------------------------------------------ */
+/* Channel, view, search and filters, health, presence, the count and New task
+   share one row, wrapping only when the window cannot hold them, so the first
+   task sits right under the controls. Health and presence are chips in the row,
+   not rows of their own. */
+/* The row is the containing block of what it holds: a visually hidden label
+   is absolutely placed, and with the row as its block a phone's sideways
+   scroll keeps it inside the row instead of widening the page. */
+.board-bar { position: relative; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+/* The filters may wrap inside their own group (the count and Clear join them
+   while a filter is on); a group that could not wrap overflowed onto the
+   presence chips beside it. */
+.board-bar .board-filters { flex: 1 1 360px; flex-wrap: wrap; min-width: 0; margin: 0; }
+.board-bar .filter-q { flex: 1 1 160px; min-width: 120px; max-width: 320px; }
+.board-bar .board-filters .filter-pick select { min-width: 11ch; }
+/* Health and presence chips keep their own wrapping above the phone width, so
+   four long names can never push the row past the window. */
+.board-bar .health, .board-bar .presence-strip { margin: 0; }
+.board-bar .health { gap: var(--space-1); }
+.board-bar .health-chip { padding: 0 var(--space-3); font-size: var(--text-sm); white-space: nowrap; }
+.board-bar .here { white-space: nowrap; }
+.board-bar .presence-strip > a { white-space: nowrap; }
+.board-bar .board-summary { white-space: nowrap; }
+/* Lanes size to their cards instead of stretching to the bottom of the window. */
+.lanes.wide { align-items: start; min-height: 0; }
+/* A phone keeps the row to one line that scrolls sideways inside itself, with
+   New task first, so the page never scrolls sideways and the lanes start high. */
+@media (max-width: 599px) {
+  .board-bar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: var(--space-0-5); }
+  .board-bar::-webkit-scrollbar { display: none; }
+  .board-bar > *, .board-bar .board-filters > * { flex: none; }
+  .board-bar .health, .board-bar .presence-strip, .board-bar .presence-strip ul { flex-wrap: nowrap; }
+  .board-bar .board-filters { flex: none; }
+  .board-bar .filter-q { flex: none; width: 180px; max-width: none; }
+  .board-bar .new-task { order: -1; margin-left: 0; }
+}

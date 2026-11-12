@@ -62,8 +62,10 @@ struct RequestApprovalArgs {
 /// The gate is created `pending` and attributed to the caller
 /// (`auth.member_id`); a human resolves it later to accept/decline/cancel. The
 /// tool does **not** block — poll `get_approval_gate` with the returned
-/// `gate_id` for the outcome. Requires `message:post`: a gate asks a person to
-/// decide and notifies them, so a read-only token cannot open one (MCP-003).
+/// `gate_id` for the outcome, or wait for `approval_resolved`. The id-scope
+/// guard has already refused a `thread_id` the caller cannot read. Requires
+/// `message:post`: a gate asks a person to decide and notifies them, so a
+/// read-only token cannot open one (MCP-003).
 /// The human's answer (`POST /approval-gates/:id/answer`) needs
 /// `workspace:write`.
 pub(super) async fn request_approval(
@@ -421,7 +423,10 @@ async fn resolve(
         )
         .await?;
     match resolved {
-        Some(g) => Ok(decision_result(json!({ "status": g.state, "gate": g }), ui)),
+        Some((g, event)) => {
+            server.publish_stored(&event).await;
+            Ok(decision_result(json!({ "status": g.state, "gate": g }), ui))
+        }
         // Someone answered between the read and the compare-and-set.
         None => match server.store.get_approval_gate(gate.id).await? {
             Some(g) => Ok(already_resolved(&g, ui)),

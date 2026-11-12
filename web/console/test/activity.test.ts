@@ -41,6 +41,7 @@ test("kinds read as sentences, and an unknown kind is capitalized", () => {
   assert.equal(describeKind("thread_created"), "Task created");
   assert.equal(describeKind("message_posted"), "Message posted");
   assert.equal(describeKind("approval_requested"), "Approval requested");
+  assert.equal(describeKind("approval_resolved"), "Approval answered");
   assert.equal(describeKind("review_submitted"), "Review submitted");
   assert.equal(describeKind("vote_cast"), "Vote cast");
   assert.equal(describeKind("totally_unknown_kind"), "Totally unknown kind");

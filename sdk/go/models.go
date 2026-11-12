@@ -347,15 +347,133 @@ type AcceptedDecision struct {
 }
 
 type ThreadReview struct {
-	ThreadID    string         `json:"thread_id"`
-	ReviewerID  string         `json:"reviewer_id"`
-	ActorID     *string        `json:"actor_id,omitempty"`
-	Decision    ReviewDecision `json:"decision"`
-	Note        *string        `json:"note,omitempty"`
-	DismissedAt *time.Time     `json:"dismissed_at,omitempty"`
-	HeadSHA     *string        `json:"head_sha,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ThreadID     string         `json:"thread_id"`
+	ReviewerID   string         `json:"reviewer_id"`
+	ActorID      *string        `json:"actor_id,omitempty"`
+	Decision     ReviewDecision `json:"decision"`
+	Note         *string        `json:"note,omitempty"`
+	DismissedAt  *time.Time     `json:"dismissed_at,omitempty"`
+	EvidenceRoot *string        `json:"evidence_root,omitempty"`
+	HeadSHA      *string        `json:"head_sha,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+// ReviewPacket is the evidence a reviewer is shown. An approval names its
+// EvidenceRoot. Manifest is the evidence manifest as sent.
+type ReviewPacket struct {
+	ID               string          `json:"id"`
+	ThreadID         string          `json:"thread_id"`
+	RequestedBy      string          `json:"requested_by"`
+	ThreadVersion    int64           `json:"thread_version"`
+	Manifest         json.RawMessage `json:"manifest"`
+	EvidenceRoot     string          `json:"evidence_root"`
+	SelfReportedOnly bool            `json:"self_reported_only"`
+	CreatedAt        time.Time       `json:"created_at"`
+}
+
+// ReviewStatus says whether a thread has the approvals it needs.
+type ReviewStatus struct {
+	RequiredCount int64 `json:"required_count"`
+	Approvals     int64 `json:"approvals"`
+	ApprovalsMet  bool  `json:"approvals_met"`
+	SendBacks     int64 `json:"send_backs"`
+	MaxRounds     int64 `json:"max_rounds"`
+}
+
+// ApprovalGate is a held gate. State is "pending", "accepted", "declined" or
+// "cancelled"; Risk "low", "medium" or "high"; Kind "request" or
+// "review_round_cap".
+type ApprovalGate struct {
+	ID               string     `json:"id"`
+	WorkspaceID      string     `json:"workspace_id"`
+	ThreadID         *string    `json:"thread_id"`
+	RequestedBy      string     `json:"requested_by"`
+	Prompt           string     `json:"prompt"`
+	Schema           any        `json:"schema"`
+	State            string     `json:"state"`
+	Content          any        `json:"content"`
+	ResolvedBy       *string    `json:"resolved_by"`
+	RequestedActorID *string    `json:"requested_actor_id,omitempty"`
+	ResolvedActorID  *string    `json:"resolved_actor_id,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ResolvedAt       *time.Time `json:"resolved_at"`
+	Risk             string     `json:"risk,omitempty"`
+	DecidedVia       any        `json:"decided_via,omitempty"`
+	Kind             string     `json:"kind,omitempty"`
+}
+
+// ModelRequest is a model's accept waiting on a person's confirmation.
+type ModelRequest struct {
+	MemberID      string    `json:"member_id"`
+	ClientName    *string   `json:"client_name,omitempty"`
+	ClientVersion *string   `json:"client_version,omitempty"`
+	ClientID      *string   `json:"client_id,omitempty"`
+	ClientSource  *string   `json:"client_source,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+// ApprovalGateView is a pending gate with the RequestState its answer must echo.
+type ApprovalGateView struct {
+	Gate         ApprovalGate  `json:"gate"`
+	RequestState string        `json:"request_state"`
+	ModelRequest *ModelRequest `json:"model_request,omitempty"`
+}
+
+// FootprintMode is whether a footprint excludes overlapping work.
+type FootprintMode string
+
+const (
+	FootprintExclusive FootprintMode = "exclusive"
+	FootprintShared    FootprintMode = "shared"
+)
+
+// FootprintKind is what a footprint item names.
+type FootprintKind string
+
+const (
+	FootprintPath   FootprintKind = "path"
+	FootprintGlob   FootprintKind = "glob"
+	FootprintCrate  FootprintKind = "crate"
+	FootprintLane   FootprintKind = "lane"
+	FootprintBranch FootprintKind = "branch"
+	FootprintSlot   FootprintKind = "slot"
+)
+
+type FootprintItem struct {
+	Kind  FootprintKind `json:"kind"`
+	Value string        `json:"value"`
+}
+
+// Footprint is what a thread will touch; claim_next reads it before handing
+// the thread out.
+type Footprint struct {
+	Repo  string          `json:"repo"`
+	Mode  FootprintMode   `json:"mode"`
+	Items []FootprintItem `json:"items"`
+}
+
+// DelegationGrant lets a delegate act for a subject within Capabilities until
+// ExpiresAt.
+type DelegationGrant struct {
+	ID           string     `json:"id"`
+	WorkspaceID  string     `json:"workspace_id"`
+	SubjectID    string     `json:"subject_id"`
+	DelegateID   string     `json:"delegate_id"`
+	Capabilities []string   `json:"capabilities"`
+	Purpose      string     `json:"purpose"`
+	AuthorizedBy string     `json:"authorized_by"`
+	ExpiresAt    time.Time  `json:"expires_at"`
+	RevokedAt    *time.Time `json:"revoked_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// DelegatedToken is a grant exchanged for a token. Token.Secret is returned
+// here once.
+type DelegatedToken struct {
+	GrantID    string      `json:"grant_id"`
+	DelegateID string      `json:"delegate_id"`
+	Token      MintedToken `json:"token"`
 }
 
 type GlossaryTerm struct {

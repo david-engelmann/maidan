@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const css = sheet();
 
 test("the board's new-task form and the thread composer do not share a class", () => {
   // They once did, and the board's flex-wrap rule shrank the thread's message field to a pill.

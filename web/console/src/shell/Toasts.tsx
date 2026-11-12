@@ -123,6 +123,7 @@ export function Toasts() {
     unfreeze();
   }, [live.length]);
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- hover or focus pauses the toasts' timers; Escape dismisses.
     <div
       ref={rootRef}
       className="toasts"

@@ -7,8 +7,8 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use maidan::{
-    ArtifactKind, Channel, Client, ImportMode, MaidanError, MemberKind, Thread, ThreadState,
-    PROBLEM_BASE,
+    ArtifactKind, Channel, Client, Footprint, FootprintItem, FootprintKind, FootprintMode,
+    ImportMode, MaidanError, MemberKind, Thread, ThreadState, PROBLEM_BASE,
 };
 use serde_json::{json, Value};
 
@@ -565,4 +565,85 @@ fn the_servers_problem_types_arrive_as_their_variants() {
         "conflict",
     );
     assert!(matches!(e, MaidanError::Conflict(_)));
+}
+
+#[test]
+fn a_footprint_and_a_threads_reviews_stay_in_their_workspace() {
+    let Some(base) = base() else {
+        eprintln!("skip: MAIDAN_URL unset");
+        return;
+    };
+    let other_token = std::env::var("MAIDAN_OTHER_TOKEN").unwrap_or_default();
+    let other_wid = std::env::var("MAIDAN_OTHER_WORKSPACE").unwrap_or_default();
+    assert!(
+        !other_token.is_empty() && !other_wid.is_empty(),
+        "scripts/sdk-test.sh provisions a second workspace"
+    );
+    let c = Client::new(&base, token());
+    let (wid, _member, _channel, thread) = seed(&c, &base);
+    let fp = Footprint::new(
+        "acme/widgets",
+        FootprintMode::Exclusive,
+        vec![FootprintItem::new(FootprintKind::Path, "sdk/rust")],
+    );
+    let stored = c
+        .threads()
+        .set_footprint(&thread.id, &fp)
+        .unwrap()
+        .expect("a footprint with items is stored");
+    assert!(stored.unknown_members().is_empty());
+    assert_eq!(stored, fp);
+    assert_eq!(c.threads().get_footprint(&thread.id).unwrap(), stored);
+    assert!(c.reviews().list(&thread.id).unwrap().is_empty());
+    let status = c.reviews().status(&thread.id).unwrap();
+    assert!(status.unknown_members().is_empty());
+    assert_eq!(status.approvals, 0);
+
+    let other = Client::new(&base, other_token);
+    // No grant has this id; the refusal must not depend on the grant existing.
+    let grant = "00000000-0000-4000-8000-000000000000";
+    let refusals: Vec<(&str, MaidanError)> = vec![
+        (
+            "threads.get_footprint",
+            other.threads().get_footprint(&thread.id).unwrap_err(),
+        ),
+        (
+            "threads.set_footprint",
+            other.threads().set_footprint(&thread.id, &fp).unwrap_err(),
+        ),
+        (
+            "reviews.list",
+            other.reviews().list(&thread.id).unwrap_err(),
+        ),
+        (
+            "reviews.status",
+            other.reviews().status(&thread.id).unwrap_err(),
+        ),
+        (
+            "approval_gates.list",
+            other.approval_gates().list(&wid).unwrap_err(),
+        ),
+        (
+            "tokens.delegate",
+            other
+                .tokens()
+                .delegate(grant, &[], &Default::default())
+                .unwrap_err(),
+        ),
+    ];
+    for (name, err) in refusals {
+        assert!(
+            matches!(err.status(), 403 | 404),
+            "{name} from a second workspace: expected a 403 or 404, got {err:?}"
+        );
+        assert!(
+            !format!("{:?}", err.problem()).contains(&wid),
+            "{name}: the refusal names the first workspace"
+        );
+    }
+    assert_eq!(
+        c.threads().get_footprint(&thread.id).unwrap(),
+        stored,
+        "a refused write changed the footprint"
+    );
 }
