@@ -38,7 +38,7 @@ pub async fn search_messages(
         reader_id: if auth.bypass {
             None
         } else {
-            Some(auth.member_id)
+            Some(auth.member_id())
         },
     };
     let mut hits = match q.mode {

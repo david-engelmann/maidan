@@ -75,7 +75,7 @@ pub(super) async fn record(
     auth.require_capability(THREAD_TRANSITION).map_err(denied)?;
     let (entry, stored) = state
         .store
-        .report_accounted_usage(&report.into_new(scope.thread_id, auth.member_id))
+        .report_accounted_usage(&report.into_new(scope.thread_id, auth.member_id()))
         .await
         .map_err(|err| match err {
             StoreError::ClaimLost(m) | StoreError::Conflict(m) => {

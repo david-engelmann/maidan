@@ -6,9 +6,9 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{consistency::CONSISTENCY_TOKEN_HEADER, router, AppState};
+use maidan_server::{consistency::CONSISTENCY_TOKEN_HEADER, router, test_support, AppState};
 use maidan_store::{prelude::*, run_postgres_migrations};
-use maidan_types::{Lsn, MemberKind, NewMember, NewWorkspace};
+use maidan_types::{Lsn, MemberKind};
 use reqwest::StatusCode;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
@@ -18,6 +18,7 @@ use testcontainers_modules::postgres::Postgres;
 struct Case {
     addr: SocketAddr,
     member_id: uuid::Uuid,
+    client: reqwest::Client,
     _server: tokio::task::JoinHandle<()>,
     _dir: tempfile::TempDir,
     _container: testcontainers::ContainerAsync<Postgres>,
@@ -49,20 +50,9 @@ async fn spawn(replica_enabled: bool) -> Option<Case> {
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
 
-    // Seed a member to target the (bypass-auth) mutation at.
-    let ws = store
-        .create_workspace(NewWorkspace { name: "c".into() })
-        .await
-        .unwrap();
-    let member = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "m".into(),
-            display_name: None,
-            kind: MemberKind::Human,
-        })
-        .await
-        .unwrap();
+    // The member edits its own email, so the mutation needs no admin.
+    let tenant = test_support::tenant(store.as_ref(), "c").await;
+    let member = tenant.member(store.as_ref(), "m", MemberKind::Human).await;
 
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -76,7 +66,8 @@ async fn spawn(replica_enabled: bool) -> Option<Case> {
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Some(Case {
         addr,
-        member_id: member.id.0,
+        member_id: member.member_id.0,
+        client: member.client(),
         _server: server,
         _dir: dir,
         _container: container,
@@ -87,7 +78,7 @@ async fn spawn(replica_enabled: bool) -> Option<Case> {
 async fn mutation_stamps_consistency_token_when_replica_enabled() {
     let Some(c) = spawn(true).await else { return };
     let base = format!("http://{}", c.addr);
-    let client = reqwest::Client::new();
+    let client = c.client.clone();
     let mid = c.member_id;
 
     // A successful mutation carries the token, and it parses as a pg_lsn.
@@ -127,7 +118,7 @@ async fn mutation_stamps_consistency_token_when_replica_enabled() {
 async fn no_token_when_replica_disabled() {
     let Some(c) = spawn(false).await else { return };
     let base = format!("http://{}", c.addr);
-    let client = reqwest::Client::new();
+    let client = c.client.clone();
     let mid = c.member_id;
 
     let put = client

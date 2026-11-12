@@ -519,7 +519,7 @@ pub async fn link_slack_channel(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(body.thread_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
         })
         .await?;
     Ok((StatusCode::CREATED, Json(link)))

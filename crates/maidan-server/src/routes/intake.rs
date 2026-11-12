@@ -39,8 +39,8 @@ pub async fn create_intake_item(
     }
     let source = match body.source {
         Some(source) => source,
-        None if auth.app_installation_id.is_some() => IntakeSource::Integration,
-        None => match state.store.get_member(auth.member_id).await?.kind {
+        None if auth.app_installation_id().is_some() => IntakeSource::Integration,
+        None => match state.store.get_member(auth.member_id()).await?.kind {
             MemberKind::Agent => IntakeSource::Agent,
             _ => IntakeSource::Human,
         },
@@ -52,7 +52,7 @@ pub async fn create_intake_item(
             title: title.to_string(),
             body: body.body.filter(|b| !b.trim().is_empty()),
             source,
-            proposed_by: auth.member_id,
+            proposed_by: auth.member_id(),
         })
         .await?;
     publish_stored(&state, stored).await;
@@ -164,11 +164,11 @@ pub async fn triage_intake_item(
         .triage_intake_item_audited(
             workspace_id,
             id,
-            auth.member_id,
+            auth.member_id(),
             decision,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: action.into(),
                 target_kind: Some("intake_item".into()),
                 target_id: Some(id),
@@ -176,7 +176,7 @@ pub async fn triage_intake_item(
             },
         )
         .await;
-    let actor = (!auth.bypass).then_some(auth.member_id);
+    let actor = (!auth.bypass).then_some(auth.member_id());
     let (item, stored) = observe_spawn_denial(&state, actor, triaged).await?;
     for stored in stored {
         publish_stored(&state, stored).await;

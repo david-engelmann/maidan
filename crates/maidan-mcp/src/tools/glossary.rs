@@ -43,11 +43,11 @@ pub(super) async fn set_glossary_term(
     }
     let saved = store
         .set_glossary_term(NewGlossaryTerm {
-            workspace_id: auth.workspace_id,
+            workspace_id: auth.workspace_id(),
             term: a.term.trim().to_string(),
             definition: a.definition,
             aliases: a.aliases.unwrap_or_default(),
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
         })
         .await?;
     Ok(content_json(&saved))
@@ -68,7 +68,7 @@ pub(super) async fn get_glossary_term(
 ) -> Result<Value, McpError> {
     let a: GetGlossaryArgs = crate::tools::parse_args(args)?;
     let term = store
-        .get_glossary_term(auth.workspace_id, a.term.trim())
+        .get_glossary_term(auth.workspace_id(), a.term.trim())
         .await?;
     Ok(content_json(&term))
 }
@@ -79,7 +79,7 @@ pub(super) async fn list_glossary_terms(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let terms = store.list_glossary_terms(auth.workspace_id).await?;
+    let terms = store.list_glossary_terms(auth.workspace_id()).await?;
     Ok(content_json(&terms))
 }
 
@@ -98,7 +98,7 @@ pub(super) async fn delete_glossary_term(
 ) -> Result<Value, McpError> {
     let a: DeleteGlossaryArgs = crate::tools::parse_args(args)?;
     let deleted = store
-        .delete_glossary_term(auth.workspace_id, a.term.trim())
+        .delete_glossary_term(auth.workspace_id(), a.term.trim())
         .await?;
     if !deleted {
         return Err(McpError::NotFound);

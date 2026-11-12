@@ -184,11 +184,11 @@ pub(crate) async fn recorded<T, E>(
             crate::audit::record(
                 state,
                 maidan_types::NewAuditEvent {
-                    scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+                    actor_id: Some(auth.actor_id()),
                     action: crate::auth::MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),
-                    target_id: Some(auth.workspace_id.0),
+                    target_id: Some(auth.workspace_id().0),
                     metadata: serde_json::json!({
                         "surface": "a2a",
                         "binding": binding,

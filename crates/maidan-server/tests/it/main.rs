@@ -86,6 +86,9 @@ mod attribution_scope_contract;
 #[path = "../audit_coverage_e2e.rs"]
 mod audit_coverage_e2e;
 
+#[path = "../auth_context_seal_contract.rs"]
+mod auth_context_seal_contract;
+
 #[path = "../auth_e2e.rs"]
 mod auth_e2e;
 

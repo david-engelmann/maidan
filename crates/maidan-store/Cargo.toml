@@ -40,7 +40,7 @@ test-support = ["dep:testcontainers"]
 
 [dev-dependencies]
 maidan-store = { path = ".", features = ["test-support"] }
-maidan-auth = { path = "../maidan-auth" }
+maidan-auth = { path = "../maidan-auth", features = ["test-support"] }
 maidan-search = { path = "../maidan-search", default-features = false, features = ["sqlite-vec"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 testcontainers = "0.23"

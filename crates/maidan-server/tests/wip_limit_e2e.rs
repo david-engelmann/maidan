@@ -107,7 +107,6 @@ async fn wip_limit_blocks_claim_and_claim_next_over_the_cap() {
             client
                 .post(format!("{base}/threads/{thread}/assignee/claim"))
                 .header("Authorization", &auth)
-                .header("maidan-test-member-id", agent.id.0.to_string())
                 .json(&serde_json::json!({}))
                 .send()
                 .await
@@ -155,7 +154,6 @@ async fn wip_limit_blocks_claim_and_claim_next_over_the_cap() {
     let next = client
         .post(format!("{base}/channels/{}/threads/claim-next", ch.id.0))
         .header("Authorization", &auth)
-        .header("maidan-test-member-id", agent.id.0.to_string())
         .json(&serde_json::json!({}))
         .send()
         .await

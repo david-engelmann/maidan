@@ -9,10 +9,10 @@ use maidan_server::{
         LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
         LandGateAdvisor, LandGateAdvisorError,
     },
-    router, AppState,
+    router, test_support, AppState,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{LandColor, NewChannel, NewThread, NewWorkspace};
+use maidan_types::{LandColor, NewChannel, NewThread};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -87,23 +87,19 @@ async fn spawn(advisor: Option<Arc<dyn LandGateAdvisor>>) -> (SocketAddr, Arc<dy
     (addr, store)
 }
 
-async fn thread(store: &dyn Store) -> maidan_types::Thread {
-    let workspace = store
-        .create_workspace(NewWorkspace {
-            name: "advisor".into(),
-        })
-        .await
-        .unwrap();
+/// A thread to advise on, and a client for its workspace's admin.
+async fn thread(store: &dyn Store) -> (maidan_types::Thread, reqwest::Client) {
+    let tenant = test_support::tenant(store, "advisor").await;
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: workspace.id,
+            workspace_id: tenant.workspace_id,
             name: "review".into(),
             topic: None,
             private: false,
         })
         .await
         .unwrap();
-    store
+    let thread = store
         .create_thread(NewThread {
             channel_id: channel.id,
             parent_thread_id: None,
@@ -112,14 +108,15 @@ async fn thread(store: &dyn Store) -> maidan_types::Thread {
             created_by: None,
         })
         .await
-        .unwrap()
+        .unwrap();
+    (thread, tenant.client())
 }
 
 #[tokio::test]
 async fn advisor_is_off_by_default() {
     let (addr, store) = spawn(None).await;
-    let thread = thread(store.as_ref()).await;
-    let response = reqwest::Client::new()
+    let (thread, client) = thread(store.as_ref()).await;
+    let response = client
         .post(format!(
             "http://{addr}/threads/{}/land-gate/advice",
             thread.id.0
@@ -134,8 +131,7 @@ async fn advisor_is_off_by_default() {
 #[tokio::test]
 async fn advice_reports_measurement_fields_without_writing_the_gate() {
     let (addr, store) = spawn(Some(Arc::new(MockAdvisor))).await;
-    let thread = thread(store.as_ref()).await;
-    let client = reqwest::Client::new();
+    let (thread, client) = thread(store.as_ref()).await;
     let advice = client
         .post(format!(
             "http://{addr}/threads/{}/land-gate/advice",
@@ -162,8 +158,8 @@ async fn advice_reports_measurement_fields_without_writing_the_gate() {
 #[tokio::test]
 async fn provider_failure_is_scoped_to_advice_and_does_not_arm_the_gate() {
     let (addr, store) = spawn(Some(Arc::new(FailingAdvisor))).await;
-    let thread = thread(store.as_ref()).await;
-    let response = reqwest::Client::new()
+    let (thread, client) = thread(store.as_ref()).await;
+    let response = client
         .post(format!(
             "http://{addr}/threads/{}/land-gate/advice",
             thread.id.0

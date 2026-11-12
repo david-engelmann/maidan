@@ -30,6 +30,8 @@ pub struct SessionContext {
     pub session_id: SessionId,
     pub member_id: MemberId,
     pub workspace_id: WorkspaceId,
+    /// The stored session this was read from, which is what lets it act.
+    principal: maidan_auth::SessionPrincipal,
     /// The authority of the token this session was made from, resolved again
     /// for this request. `None` for an OIDC session.
     pub token: Option<AuthContext>,
@@ -46,9 +48,7 @@ impl SessionContext {
             Some(ctx) => ctx.clone(),
             None => {
                 let viewer = self.invite_role == Some(maidan_types::WorkspaceInviteRole::Viewer);
-                AuthContext::from_session(
-                    self.member_id,
-                    self.workspace_id,
+                self.principal.context(
                     oidc_capabilities
                         .iter()
                         .filter(|c| !viewer || crate::auth::OIDC_READ_CAPABILITIES.contains(*c))

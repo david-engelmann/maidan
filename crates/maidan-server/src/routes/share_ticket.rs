@@ -24,7 +24,7 @@ pub async fn create_share_ticket(
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let secret = ShareTicketSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     // The store rejects any SHA that is not lowercase hex, so the distinct
     // inputs are exactly what a successful create stores.
     let artifact_count = body
@@ -38,8 +38,8 @@ pub async fn create_share_ticket(
             NewShareTicket {
                 workspace_id,
                 channel_id: ChannelId(body.channel_id),
-                owner_id: auth.member_id,
-                created_by: auth.member_id,
+                owner_id: auth.member_id(),
+                created_by: auth.member_id(),
                 token_hash: hash_secret(secret.as_str()),
                 expires_at: body.expires_at,
                 artifact_shas: body.artifact_shas.clone(),
@@ -107,7 +107,7 @@ pub async fn revoke_share_ticket(
             ticket_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "share_ticket.revoke".into(),
                 target_kind: Some("share_ticket".into()),
                 target_id: Some(ticket_id.0),

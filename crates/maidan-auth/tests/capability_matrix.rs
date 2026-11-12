@@ -124,7 +124,7 @@ fn token_context_grants_only_its_listed_capabilities() {
     assert!(matches!(err, maidan_auth::AuthError::Forbidden(_)));
     assert!(err.to_string().contains(WORKSPACE_WRITE));
     assert!(!ctx.bypass);
-    assert!(ctx.app_installation_id.is_none());
+    assert!(ctx.app_installation_id().is_none());
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn app_token_context_carries_installation_id() {
         installation,
         vec![MESSAGE_POST.to_string()],
     );
-    assert_eq!(ctx.app_installation_id, Some(installation));
+    assert_eq!(ctx.app_installation_id(), Some(installation));
     assert!(ctx.has_capability(MESSAGE_POST));
     assert!(!ctx.has_capability(TOKEN_ADMIN));
 }
@@ -145,7 +145,7 @@ fn app_token_context_carries_installation_id() {
 #[test]
 fn session_context_has_no_token_id() {
     let ctx = AuthContext::from_session(member(), workspace(), vec![WORKSPACE_READ.to_string()]);
-    assert!(ctx.token_id.is_none());
+    assert!(ctx.token_id().is_none());
     assert!(ctx.has_capability(WORKSPACE_READ));
     assert!(!ctx.has_capability(MESSAGE_POST));
 }

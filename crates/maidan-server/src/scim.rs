@@ -335,7 +335,7 @@ pub async fn create_user(
     // SCIM uniqueness (RFC 7644 §3.3): a duplicate userName is a 409.
     if state
         .store
-        .get_member_by_handle(auth.workspace_id, &user_name)
+        .get_member_by_handle(auth.workspace_id(), &user_name)
         .await
         .is_ok()
     {
@@ -344,12 +344,12 @@ pub async fn create_user(
     // The member and its SCIM link are created together, with their record: a
     // failure leaves neither, so the provider's retry does not meet a member
     // with no link under the same userName.
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let (member, scim) = match state
         .store
         .scim_provision_audited(
             NewMember {
-                workspace_id: auth.workspace_id,
+                workspace_id: auth.workspace_id(),
                 handle: user_name,
                 display_name: input.resolved_display_name(),
                 kind: MemberKind::Human,
@@ -395,7 +395,7 @@ pub async fn get_user(
     if let Some(resp) = require_admin(&auth) {
         return resp;
     }
-    match load_resource(&state, auth.workspace_id, maidan_types::MemberId(id)).await {
+    match load_resource(&state, auth.workspace_id(), maidan_types::MemberId(id)).await {
         Some(resource) => scim_response(StatusCode::OK, resource),
         None => scim_error(StatusCode::NOT_FOUND, "no such user"),
     }
@@ -420,7 +420,7 @@ pub async fn list_users(
     };
     // An error must not read as "no such user": the IdP would provision a
     // duplicate.
-    let links = match state.store.list_scim_users(auth.workspace_id).await {
+    let links = match state.store.list_scim_users(auth.workspace_id()).await {
         Ok(links) => links,
         Err(err) => {
             return scim_error(
@@ -436,7 +436,7 @@ pub async fn list_users(
         Some((attr, value)) if attr == "username" => {
             match state
                 .store
-                .get_member_by_handle(auth.workspace_id, value)
+                .get_member_by_handle(auth.workspace_id(), value)
                 .await
             {
                 Ok(member) if links.iter().any(|link| link.member_id == member.id) => {
@@ -464,7 +464,7 @@ pub async fn list_users(
     };
     let mut resources = Vec::new();
     for member_id in matching {
-        if let Some(resource) = load_resource(&state, auth.workspace_id, member_id).await {
+        if let Some(resource) = load_resource(&state, auth.workspace_id(), member_id).await {
             resources.push(resource);
         }
     }
@@ -553,7 +553,7 @@ pub async fn replace_user(
         return resp;
     }
     let member_id = maidan_types::MemberId(id);
-    let Some(current) = load_resource(&state, auth.workspace_id, member_id).await else {
+    let Some(current) = load_resource(&state, auth.workspace_id(), member_id).await else {
         return scim_error(StatusCode::NOT_FOUND, "no such user");
     };
     let input: ScimUserInput = match serde_json::from_str(&body) {
@@ -610,7 +610,7 @@ pub async fn patch_user(
         return resp;
     }
     let member_id = maidan_types::MemberId(id);
-    let Some(current) = load_resource(&state, auth.workspace_id, member_id).await else {
+    let Some(current) = load_resource(&state, auth.workspace_id(), member_id).await else {
         return scim_error(StatusCode::NOT_FOUND, "no such user");
     };
     let patch: ScimPatchOp = match serde_json::from_str(&body) {
@@ -687,8 +687,8 @@ async fn apply_update(
     // their record. If any of it fails the provider sees an error and
     // retries, instead of a 200 with tokens still live.
     let event = maidan_types::NewAuditEvent {
-        scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-        actor_id: Some(auth.actor_id),
+        scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+        actor_id: Some(auth.actor_id()),
         action: if update.active {
             "scim.user.update"
         } else {
@@ -702,7 +702,7 @@ async fn apply_update(
     match state
         .store
         .scim_update_user_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             member_id,
             rename.as_deref(),
             update.external_id.as_deref(),
@@ -721,7 +721,7 @@ async fn apply_update(
             );
         }
     }
-    match load_resource(state, auth.workspace_id, member_id).await {
+    match load_resource(state, auth.workspace_id(), member_id).await {
         Some(resource) => scim_response(StatusCode::OK, resource),
         None => scim_error(StatusCode::NOT_FOUND, "no such user"),
     }
@@ -740,7 +740,7 @@ pub async fn delete_user(
     let member_id = maidan_types::MemberId(id);
     // Scope check + existence: the member must be a SCIM user in this workspace.
     match state.store.get_scim_user(member_id).await {
-        Ok(Some(scim)) if scim.workspace_id == auth.workspace_id => {}
+        Ok(Some(scim)) if scim.workspace_id == auth.workspace_id() => {}
         Ok(_) => return scim_error(StatusCode::NOT_FOUND, "no such user"),
         Err(err) => {
             return scim_error(
@@ -750,8 +750,8 @@ pub async fn delete_user(
         }
     }
     let event = maidan_types::NewAuditEvent {
-        scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
-        actor_id: Some(auth.actor_id),
+        scope: maidan_types::AuditScope::Workspace(auth.workspace_id()),
+        actor_id: Some(auth.actor_id()),
         action: "scim.user.delete".into(),
         target_kind: Some("member".into()),
         target_id: Some(member_id.0),
@@ -759,7 +759,7 @@ pub async fn delete_user(
     };
     match state
         .store
-        .scim_deprovision_audited(auth.workspace_id, member_id, event)
+        .scim_deprovision_audited(auth.workspace_id(), member_id, event)
         .await
     {
         Ok(_) => (StatusCode::NO_CONTENT, ()).into_response(),

@@ -2,12 +2,12 @@
 //! `confidence` in 0..=1 (out of range -> 400); `GET` returns it, and a vote
 //! cast without one omits the field. Re-casting updates the confidence.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewMessage, NewThread};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -35,28 +35,16 @@ async fn vote_confidence_round_trips_and_validates() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
     let base = format!("http://{addr}");
 
-    let ws = store
-        .create_workspace(NewWorkspace { name: "v".into() })
-        .await
-        .unwrap();
-    let member = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "alice".into(),
-            display_name: None,
-            kind: MemberKind::Human,
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "v").await;
+    let member = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let client = member.client();
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -76,7 +64,7 @@ async fn vote_confidence_round_trips_and_validates() {
     let msg = store
         .post_message(NewMessage {
             thread_id: thread.id,
-            author_id: member.id,
+            author_id: member.member_id,
             body: "decision".into(),
             metadata: json!({}),
             content: None,
@@ -88,7 +76,6 @@ async fn vote_confidence_round_trips_and_validates() {
     // Cast with confidence.
     let cast = client
         .post(&votes_url)
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({ "kind": "approve", "confidence": 0.7 }))
         .send()
         .await
@@ -109,7 +96,6 @@ async fn vote_confidence_round_trips_and_validates() {
     // Re-cast the same kind updates the confidence (count stays 1).
     let recast = client
         .post(&votes_url)
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({ "kind": "approve", "confidence": 0.3 }))
         .send()
         .await
@@ -129,7 +115,6 @@ async fn vote_confidence_round_trips_and_validates() {
     // A different kind without confidence omits the field.
     let plain = client
         .post(&votes_url)
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({ "kind": "ack" }))
         .send()
         .await
@@ -157,7 +142,6 @@ async fn vote_confidence_round_trips_and_validates() {
     // The third closed kind.
     let changes = client
         .post(&votes_url)
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({ "kind": "request_changes" }))
         .send()
         .await
@@ -167,7 +151,6 @@ async fn vote_confidence_round_trips_and_validates() {
     // Out of range -> 400.
     let bad = client
         .post(&votes_url)
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({ "kind": "approve", "confidence": 1.5 }))
         .send()
         .await
@@ -188,7 +171,6 @@ async fn vote_confidence_round_trips_and_validates() {
     for kind in ["up", "upvote", "request-changes", "ship", "👍"] {
         let refused = client
             .post(&votes_url)
-            .header("maidan-test-member-id", member.id.0.to_string())
             .json(&json!({ "kind": kind }))
             .send()
             .await

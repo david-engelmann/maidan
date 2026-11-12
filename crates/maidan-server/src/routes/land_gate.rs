@@ -66,7 +66,7 @@ pub async fn set_land_gate(
         .filter(|s| !s.is_empty());
     let standing = state
         .store
-        .set_land_gate_pointer(thread_id, auth.member_id, body.status, sha, body.land)
+        .set_land_gate_pointer(thread_id, auth.member_id(), body.status, sha, body.land)
         .await?;
     Ok(Json(standing))
 }
@@ -112,7 +112,7 @@ pub async fn clear_land_gate(
             thread_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(scope.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "land_gate.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),

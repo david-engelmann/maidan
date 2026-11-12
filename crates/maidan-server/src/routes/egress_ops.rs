@@ -40,7 +40,7 @@ pub async fn list_dead_egress(
     Ok(Json(
         state
             .store
-            .list_dead_egress(auth.workspace_id, limit)
+            .list_dead_egress(auth.workspace_id(), limit)
             .await?,
     ))
 }
@@ -61,7 +61,7 @@ pub async fn requeue_dead_egress(
     // their channel.
     if state
         .store
-        .requeue_dead_egress(auth.workspace_id, EgressOutboxId(id))
+        .requeue_dead_egress(auth.workspace_id(), EgressOutboxId(id))
         .await?
     {
         Ok(StatusCode::NO_CONTENT)

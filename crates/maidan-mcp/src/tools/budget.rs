@@ -173,7 +173,7 @@ pub(super) async fn report_usage(
             .assignee_id
             .ok_or_else(|| McpError::InvalidParams("thread has no active claim holder".into()))?
     } else {
-        auth.member_id
+        auth.member_id()
     };
     let (report, stored) = server
         .store
@@ -265,7 +265,7 @@ pub(super) async fn usage_rollup(
     if let Some(member_id) = a.member_id {
         server
             .store
-            .get_member_in(auth.workspace_id, MemberId(member_id))
+            .get_member_in(auth.workspace_id(), MemberId(member_id))
             .await?;
     }
     let rollup = server

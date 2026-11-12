@@ -44,7 +44,12 @@ pub(super) async fn set_spawn_budget(
         }
     }
     store
-        .set_spawn_budget(auth.workspace_id, a.max_children, a.max_depth, a.max_tools)
+        .set_spawn_budget(
+            auth.workspace_id(),
+            a.max_children,
+            a.max_depth,
+            a.max_tools,
+        )
         .await?;
     Ok(content_json(&json!({
         "max_children": a.max_children,
@@ -60,7 +65,7 @@ pub(super) async fn get_spawn_budget(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let budget = store.get_spawn_budget(auth.workspace_id).await?;
+    let budget = store.get_spawn_budget(auth.workspace_id()).await?;
     Ok(content_json(&json!({
         "max_children": budget.as_ref().and_then(|b| b.max_children),
         "max_depth": budget.as_ref().and_then(|b| b.max_depth),

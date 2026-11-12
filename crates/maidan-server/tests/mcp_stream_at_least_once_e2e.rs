@@ -16,8 +16,9 @@ use std::{
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::{json, Value};
 
 async fn spawn() -> (
@@ -26,6 +27,7 @@ async fn spawn() -> (
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
+    test_support::Tenant,
 ) {
     spawn_with_bus(Arc::new(maidan_bus::InMemoryBus::with_capacity(256))).await
 }
@@ -38,6 +40,7 @@ async fn spawn_with_bus(
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
+    test_support::Tenant,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
@@ -53,13 +56,14 @@ async fn spawn_with_bus(
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let tenant = test_support::tenant(store.as_ref(), "mcp-alo").await;
     let mut state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -74,8 +78,16 @@ async fn spawn_with_bus(
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     // No client-level timeout: the SSE response stays open.
-    let client = reqwest::Client::new();
-    (addr, client, store, server, dir)
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        test_support::bearer(&tenant.token).parse().unwrap(),
+    );
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
+    (addr, client, store, server, dir, tenant)
 }
 
 /// Pull SSE `data:` payloads from a streaming response until `want` non-control
@@ -117,34 +129,15 @@ async fn collect_events(resp: reqwest::Response, want: usize) -> (Vec<String>, O
 
 #[tokio::test]
 async fn mcp_stream_at_least_once_delivers_backlog_in_order_and_advances_cursor() {
-    let (addr, client, store, server, _dir) = spawn().await;
+    let (addr, client, store, server, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
 
-    // Backlog: workspace_created + two member_joined.
-    let ws_resp: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "mcp-alo"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
-    for body in [
-        json!({"handle": "alice", "kind": "human"}),
-        json!({"handle": "_chan", "kind": "human"}),
-    ] {
-        let _: Value = client
-            .post(format!("{base}/workspaces/{workspace_id}/members"))
-            .json(&body)
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-    }
+    // Backlog: workspace_created, then member_joined for the admin and for
+    // alice.
+    let workspace_id = tenant.workspace_id.0.to_string();
+    tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
 
     let url = format!(
         "{base}/mcp/stream?workspace_id={workspace_id}&consumer_id=mcp-alo&at_least_once=true"
@@ -159,7 +152,7 @@ async fn mcp_stream_at_least_once_delivers_backlog_in_order_and_advances_cursor(
     );
 
     // The reconcile loop advances the durable cursor past the delivered backlog.
-    let ws_id = maidan_types::WorkspaceId(uuid::Uuid::parse_str(&workspace_id).unwrap());
+    let ws_id = tenant.workspace_id;
     let wait_cursor = async {
         loop {
             if store.get_delivery_cursor("mcp-alo", ws_id).await.unwrap() >= 3 {
@@ -177,19 +170,10 @@ async fn mcp_stream_at_least_once_delivers_backlog_in_order_and_advances_cursor(
 
 #[tokio::test]
 async fn mcp_stream_filters_by_event_kind() {
-    let (addr, client, _store, server, _dir) = spawn().await;
+    let (addr, client, _store, server, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "filt"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     // Live subscription narrowed to channel_created only.
     let resp = client
@@ -205,8 +189,8 @@ async fn mcp_stream_filters_by_event_kind() {
     // a member_joined (excluded) and then a channel_created (included) both
     // reach it.
     let _: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bob", "kind": "human"}))
+        .post(format!("{base}/workspaces/{workspace_id}/agents"))
+        .json(&json!({"handle": "bob"}))
         .send()
         .await
         .unwrap()
@@ -235,18 +219,9 @@ async fn mcp_stream_filters_by_event_kind() {
 
 #[tokio::test]
 async fn mcp_stream_rejects_unknown_kind() {
-    let (addr, client, _store, server, _dir) = spawn().await;
+    let (addr, client, _store, server, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "bad"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0.to_string();
     let resp = client
         .get(format!(
             "{base}/mcp/stream?workspace_id={workspace_id}&kinds=not_a_real_kind"
@@ -294,18 +269,9 @@ async fn first_event_frame(resp: reqwest::Response) -> Value {
 /// read stay put.
 #[tokio::test]
 async fn mcp_stream_lean_frames_omit_the_event_payload() {
-    let (addr, client, _store, server, _dir) = spawn().await;
+    let (addr, client, _store, server, _dir, tenant) = spawn().await;
     let base = format!("http://{addr}");
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "lean-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     // Backlog has workspace_created. Subscribe lean + at_least_once (deterministic
     // backlog delivery) and inspect the first event frame.
@@ -368,18 +334,9 @@ async fn mcp_stream_resume_keeps_events_published_while_it_subscribes() {
         entered: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
     });
-    let (addr, client, store, server, _dir) = spawn_with_bus(bus.clone()).await;
+    let (addr, client, store, server, _dir, tenant) = spawn_with_bus(bus.clone()).await;
     let base = format!("http://{addr}");
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "resume"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0.to_string();
     let after_id = store.max_event_id().await.unwrap();
     assert!(after_id > 0, "a resume needs a position to resume from");
 
@@ -399,8 +356,8 @@ async fn mcp_stream_resume_keeps_events_published_while_it_subscribes() {
     // When the stream replayed first and subscribed after, the replay had
     // already run and the bus had nobody to deliver to, so this was lost.
     let joined = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "during", "kind": "agent"}))
+        .post(format!("{base}/workspaces/{workspace_id}/agents"))
+        .json(&json!({"handle": "during"}))
         .send()
         .await
         .unwrap();

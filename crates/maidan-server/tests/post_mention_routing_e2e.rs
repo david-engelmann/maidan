@@ -9,9 +9,9 @@ use std::{sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, EventFilter, EventKind};
+use maidan_types::{Event, EventFilter, EventKind, MemberKind};
 use serde_json::json;
 
 /// Drain every event available within a short window and return them in order.
@@ -50,46 +50,23 @@ async fn post_message_routes_at_handles_and_skips_plain_posts() {
     let bus = Arc::new(InMemoryBus::with_capacity(256));
     let mut subscriber = bus.subscribe(EventFilter::all()).await.unwrap();
 
+    let tenant = test_support::tenant(store.as_ref(), "mentions").await;
+    let author = tenant
+        .member(store.as_ref(), "author", MemberKind::Agent)
+        .await;
+    let target = tenant
+        .member(store.as_ref(), "mentioned", MemberKind::Agent)
+        .await;
+    let target_id = target.member_id.0.to_string();
+
     let app = router(AppState::for_tests(store, artifacts, bus.clone(), search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
+    let author_client = author.client();
     let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "mentions"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap().to_string();
-    let author: serde_json::Value = client
-        .post(format!("{base}/workspaces/{wid}/members"))
-        .json(&json!({"handle": "author", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = author["id"].as_str().unwrap().to_string();
-    let target: serde_json::Value = client
-        .post(format!("{base}/workspaces/{wid}/members"))
-        .json(&json!({"handle": "mentioned", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let target_id = target["id"].as_str().unwrap().to_string();
+    let wid = tenant.workspace_id.0;
     let ch: serde_json::Value = client
         .post(format!("{base}/workspaces/{wid}/channels"))
         .json(&json!({"name": "general"}))
@@ -111,14 +88,13 @@ async fn post_message_routes_at_handles_and_skips_plain_posts() {
         .unwrap();
     let tid = th["id"].as_str().unwrap().to_string();
 
-    // Drain the setup events (workspace/member/member/channel/thread).
+    // Drain the setup events (workspace, members, channel, thread).
     let _ = drain(&mut subscriber, Duration::from_millis(300)).await;
 
     // A post that mentions @mentioned → MessagePosted + exactly one MentionRecorded
     // for the target member.
-    client
+    author_client
         .post(format!("{base}/threads/{tid}/messages"))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({"body": "hey @mentioned please look"}))
         .send()
         .await
@@ -142,9 +118,8 @@ async fn post_message_routes_at_handles_and_skips_plain_posts() {
     }
 
     // A plain post → MessagePosted, and no MentionRecorded (the short-circuit).
-    client
+    author_client
         .post(format!("{base}/threads/{tid}/messages"))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({"body": "just a plain note, no handles"}))
         .send()
         .await

@@ -8,8 +8,11 @@ use std::{
 
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{
+    router, subscribe_resume, test_support, test_support::Tenant, AppState, FederationRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -18,15 +21,19 @@ use serde_json::{json, Value};
 const SESSION_REVISION: &str = "2024-11-05";
 
 async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
-    let (addr, client, server, _mcp) = spawn_with_mcp().await;
+    let (addr, client, server, _store, _tenant) = spawn_tenant("streamable-ws").await;
     (addr, client, server)
 }
 
-async fn spawn_with_mcp() -> (
+/// A server, its admin's client, and the store and tenant behind them.
+async fn spawn_tenant(
+    name: &str,
+) -> (
     SocketAddr,
     reqwest::Client,
     tokio::task::JoinHandle<()>,
-    Arc<maidan_mcp::McpServer>,
+    Arc<dyn Store>,
+    Tenant,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
@@ -48,51 +55,29 @@ async fn spawn_with_mcp() -> (
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
-    state.test_identity_header = true;
-    let mcp = state.mcp.clone();
+    let tenant = test_support::tenant(store.as_ref(), name).await;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server, mcp)
+    (addr, tenant.client(), server, store, tenant)
 }
 
 #[tokio::test]
 async fn streamable_post_returns_sse_response_and_resource_notification() {
-    let (addr, client, server) = spawn().await;
+    let (addr, client, server, store, tenant) = spawn_tenant("streamable-ws").await;
     let base = format!("http://{addr}");
-
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "streamable-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -121,7 +106,7 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
     let init = client
         .post(format!("{base}/mcp/streamable"))
         .header("mcp-protocol-version", SESSION_REVISION)
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice.token)
         .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
         .send()
         .await
@@ -136,7 +121,7 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
         .to_string();
     let stateless = client
         .get(format!("{base}/mcp/notifications"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice.token)
         .send()
         .await
         .unwrap();
@@ -145,7 +130,7 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
     let subscribe = client
         .post(format!("{base}/mcp/streamable"))
         .header("mcp-protocol-version", SESSION_REVISION)
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice.token)
         .header("mcp-session-id", &session)
         .json(&json!({
             "jsonrpc": "2.0",
@@ -160,7 +145,7 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
 
     let post = client
         .post(format!("{base}/mcp"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice.token)
         .json(&json!({
             "jsonrpc": "2.0",
             "id": 3,
@@ -446,29 +431,12 @@ async fn streamable_delete_closes_session() {
 
 #[tokio::test]
 async fn streamable_get_delivers_server_notification() {
-    let (addr, client, server) = spawn().await;
+    let (addr, client, server, store, tenant) = spawn_tenant("get-sse-ws").await;
     let base = format!("http://{addr}");
-
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "get-sse-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -511,7 +479,7 @@ async fn streamable_get_delivers_server_notification() {
     // Trigger an update; it must arrive on the already-open GET stream.
     let _ = client
         .post(format!("{base}/mcp"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice.token)
         .json(&json!({
             "jsonrpc":"2.0","id":2,"method":"tools/call",
             "params":{"name":"post_message","arguments":{

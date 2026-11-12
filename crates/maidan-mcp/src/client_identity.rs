@@ -71,7 +71,7 @@ async fn credential_client(
     if let Some(client) = oauth_client(auth) {
         return Ok(Some(client));
     }
-    let Some(installation_id) = auth.app_installation_id else {
+    let Some(installation_id) = auth.app_installation_id() else {
         return Ok(None);
     };
     let installation = match server.store.get_app_installation(installation_id).await {
@@ -81,7 +81,7 @@ async fn credential_client(
     };
     // Only an installation in the caller's own workspace names it; anything
     // else is a stale or foreign id and names nobody.
-    if installation.workspace_id != auth.workspace_id {
+    if installation.workspace_id != auth.workspace_id() {
         return Ok(None);
     }
     let app = match server.store.get_app(installation.app_id).await {

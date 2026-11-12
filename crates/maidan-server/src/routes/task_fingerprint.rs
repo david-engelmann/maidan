@@ -71,7 +71,7 @@ pub async fn clear_task_duplicate(
     }
     let audit = NewAuditEvent {
         scope: AuditScope::Workspace(scope.workspace_id),
-        actor_id: Some(auth.actor_id),
+        actor_id: Some(auth.actor_id()),
         action: "thread.duplicate_cleared".into(),
         target_kind: Some("thread".into()),
         target_id: Some(thread_id.0),

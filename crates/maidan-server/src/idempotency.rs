@@ -134,8 +134,8 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     let print = fingerprint(&parts.method, &path, &body);
     let now = Utc::now();
     let new = NewIdempotencyKey {
-        workspace_id: auth.workspace_id,
-        actor_id: auth.actor_id,
+        workspace_id: auth.workspace_id(),
+        actor_id: auth.actor_id(),
         key: key.clone(),
         fingerprint: print.clone(),
         locked_until: now + LOCK,
@@ -168,7 +168,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     let release = || async {
         if let Err(err) = state
             .store
-            .release_idempotency_key(auth.workspace_id, auth.actor_id, &key, &lease)
+            .release_idempotency_key(auth.workspace_id(), auth.actor_id(), &key, &lease)
             .await
         {
             tracing::warn!(%err, "idempotency key release failed; it lapses at its lock");
@@ -204,7 +204,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
         };
         if let Err(err) = state
             .store
-            .complete_idempotency_key(auth.workspace_id, auth.actor_id, &key, &lease, &stored)
+            .complete_idempotency_key(auth.workspace_id(), auth.actor_id(), &key, &lease, &stored)
             .await
         {
             // The write happened; a retry now waits out the lock, then runs
