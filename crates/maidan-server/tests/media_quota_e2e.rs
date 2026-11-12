@@ -18,7 +18,9 @@ use maidan_artifacts::{ArtifactStore, LocalFsStore, Sha256};
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{retention, router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{
+    ArtifactKind, MemberKind, NewApiToken, NewArtifact, NewMember, NewWorkspace, WorkspaceId,
+};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -162,6 +164,41 @@ async fn refused(response: reqwest::Response) -> (i64, i64, i64) {
         problem["quota_bytes"].as_i64().unwrap(),
         problem["upload_bytes"].as_i64().unwrap(),
     )
+}
+
+/// With `MAIDAN_MEDIA_QUOTA_BYTES` unset and no workspace quota, an instance
+/// is still capped at the documented default (OPS-004): unset must not mean
+/// unlimited. The workspace's usage is recorded through the store so the test
+/// does not write 20 GiB; the upload past it goes through REST and is refused,
+/// while a second tenant with no usage uploads the same bytes.
+#[tokio::test]
+async fn with_the_quota_unset_an_upload_past_the_default_is_refused() {
+    // SAFETY: only removes the variable; no test in this binary sets it.
+    unsafe { std::env::remove_var("MAIDAN_MEDIA_QUOTA_BYTES") };
+    let ctx = spawn().await;
+    let (full, tok_full) = workspace_with_token(&ctx, "acme").await;
+    let (_other, tok_other) = workspace_with_token(&ctx, "other").await;
+    let default = maidan_store::retention_policy::DEFAULT_MEDIA_QUOTA_BYTES;
+    assert_eq!(default, 21_474_836_480, "the documented 20 GiB");
+    ctx.store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: format!("{:064x}", 7),
+                size_bytes: default - 4,
+                mime_type: None,
+                filename: None,
+                kind: ArtifactKind::Recording,
+                uploaded_by: None,
+            },
+            Some(full),
+        )
+        .await
+        .unwrap();
+
+    let response = upload(&ctx, &tok_full, "attachment", b"hello").await;
+    assert_eq!(refused(response).await, (default - 4, default, 5));
+    uploaded(&ctx, &tok_full, "attachment", b"four").await;
+    uploaded(&ctx, &tok_other, "attachment", b"hello").await;
 }
 
 #[tokio::test]
