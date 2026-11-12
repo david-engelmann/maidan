@@ -60,14 +60,12 @@ async fn spawn() -> Harness {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
-    let mut state = AppState::for_tests(
+    let state = AppState::for_tests(
         store.clone(),
         Arc::new(LocalFsStore::new(dir.path())),
         Arc::new(InMemoryBus::with_capacity(256)),
         search,
     );
-    state.auth_disabled = false;
-    state.test_identity_header = false;
     let worker = FsmHookWorker::spawn(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

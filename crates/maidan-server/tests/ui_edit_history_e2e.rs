@@ -1,19 +1,20 @@
 //! UI v5 edit history: message edits API and shell markers.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
+    EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, WorkspaceId,
 };
 
 async fn spawn() -> (
     std::net::SocketAddr,
     reqwest::Client,
     Arc<dyn Store>,
+    WorkspaceId,
     tokio::task::JoinHandle<()>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
@@ -26,6 +27,7 @@ async fn spawn() -> (
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "edit-ui").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -34,16 +36,12 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, store, server)
+    (addr, tenant.client(), store, tenant.workspace_id, server)
 }
 
 #[tokio::test]
 async fn ui_v5_edit_history_shell_and_session_edits_api() {
-    let (addr, client, store, server) = spawn().await;
+    let (addr, client, store, workspace_id, server) = spawn().await;
     let base = format!("http://{addr}");
 
     let html = client
@@ -59,15 +57,9 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
     assert!(html.contains(r#"id="root""#), "{html}");
     assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "edit-ui".into(),
-        })
-        .await
-        .unwrap();
     let alice = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id,
             handle: "alice".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -76,7 +68,7 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id,
             name: "general".into(),
             topic: None,
             private: false,

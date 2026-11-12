@@ -5,9 +5,9 @@ use std::{sync::Arc, time::Duration};
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, EventFilter, EventKind};
+use maidan_types::{Event, EventFilter, EventKind, MemberKind};
 use serde_json::json;
 
 #[tokio::test]
@@ -32,38 +32,20 @@ async fn transition_thread_publishes_thread_state_changed() {
         .await
         .unwrap();
 
+    let tenant = test_support::tenant(store.as_ref(), "tr-ws").await;
+    let actor = tenant
+        .member(store.as_ref(), "actor", MemberKind::Human)
+        .await;
+    let actor_client = actor.client();
+
     let app = router(AppState::for_tests(store, artifacts, bus.clone(), search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "tr-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let actor: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "actor", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let actor_id = actor["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
 
     let ch: serde_json::Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -88,9 +70,8 @@ async fn transition_thread_publishes_thread_state_changed() {
     let thread_id = thread["id"].as_str().unwrap();
     assert_eq!(thread["state"], "open");
 
-    let updated: serde_json::Value = client
+    let updated: serde_json::Value = actor_client
         .post(format!("{base}/threads/{thread_id}"))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({"action": "start_review"}))
         .send()
         .await
@@ -119,9 +100,8 @@ async fn transition_thread_publishes_thread_state_changed() {
         other => panic!("unexpected event: {other:?}"),
     }
 
-    let conflict = client
+    let conflict = actor_client
         .post(format!("{base}/threads/{thread_id}"))
-        .header("maidan-test-member-id", actor_id)
         .json(&json!({"action": "archive"}))
         .send()
         .await
@@ -147,27 +127,15 @@ async fn rename_thread_via_rest_updates_title() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
+    let tenant = test_support::tenant(store.as_ref(), "rn-ws").await;
 
     let app = router(AppState::for_tests(store, artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "rn-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
     let ch: serde_json::Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "ch"}))

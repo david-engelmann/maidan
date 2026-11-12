@@ -172,7 +172,7 @@ pub async fn create_slash_command(
             handler_target,
             secret_ciphertext,
             // The command runs only while this token could register it again.
-            created_by_token: auth.token_id,
+            created_by_token: auth.token_id(),
         })
         .await?;
     crate::registration_owner::record_registration(

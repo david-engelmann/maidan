@@ -49,8 +49,6 @@ async fn spawn() -> Harness {
         Arc::new(InMemoryBus::with_capacity(64)),
         search,
     );
-    state.auth_disabled = false;
-    state.test_identity_header = false;
     state.webhooks = WebhookRuntime::new(Some(Arc::new([0x55; 32])));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

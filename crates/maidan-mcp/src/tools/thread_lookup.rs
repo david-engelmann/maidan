@@ -33,7 +33,7 @@ pub(super) async fn find_thread(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: FindThreadArgs = super::parse_args(args)?;
-    let workspace_id = a.workspace_id.map_or(auth.workspace_id, WorkspaceId);
+    let workspace_id = a.workspace_id.map_or(auth.workspace_id(), WorkspaceId);
     auth.ensure_workspace(workspace_id)?;
     let lookup = ThreadLookup {
         slack_channel: a.slack_channel,

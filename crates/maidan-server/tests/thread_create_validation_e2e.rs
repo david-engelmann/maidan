@@ -2,20 +2,18 @@
 //! rejected, and `description` is accepted and persisted.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
 struct Ctx {
     base: String,
     client: reqwest::Client,
-    member_id: String,
     channel_id: String,
 }
 
@@ -40,24 +38,11 @@ async fn setup() -> Ctx {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "desc-ws".into(),
-        })
-        .await
-        .unwrap();
-    let member = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "op".into(),
-            display_name: None,
-            kind: MemberKind::Human,
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "desc-ws").await;
+    let member = tenant.member(store.as_ref(), "op", MemberKind::Human).await;
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "ch".into(),
             topic: None,
             private: false,
@@ -66,11 +51,7 @@ async fn setup() -> Ctx {
         .unwrap();
     Ctx {
         base: format!("http://{addr}"),
-        client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap(),
-        member_id: member.id.0.to_string(),
+        client: member.client(),
         channel_id: ch.id.0.to_string(),
     }
 }
@@ -78,7 +59,6 @@ async fn setup() -> Ctx {
 fn post(ctx: &Ctx, body: Value) -> reqwest::RequestBuilder {
     ctx.client
         .post(format!("{}/channels/{}/threads", ctx.base, ctx.channel_id))
-        .header("maidan-test-member-id", &ctx.member_id)
         .json(&body)
 }
 
@@ -134,7 +114,6 @@ async fn description_is_accepted_and_persisted() {
     let got: Value = ctx
         .client
         .get(format!("{}/threads/{id}", ctx.base))
-        .header("maidan-test-member-id", &ctx.member_id)
         .send()
         .await
         .unwrap()

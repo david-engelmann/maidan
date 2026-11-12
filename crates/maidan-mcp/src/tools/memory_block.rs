@@ -50,13 +50,13 @@ pub(super) async fn create_memory_block(
     }
     let block = store
         .create_memory_block(NewMemoryBlock {
-            workspace_id: auth.workspace_id,
+            workspace_id: auth.workspace_id(),
             label,
             description: a.description,
             char_limit: a.char_limit,
             read_only: a.read_only,
             value: a.value.unwrap_or_default(),
-            owner_id: auth.member_id,
+            owner_id: auth.member_id(),
         })
         .await?;
     Ok(content_json(&block))
@@ -78,7 +78,7 @@ pub(super) async fn get_memory_block(
 ) -> Result<Value, McpError> {
     let a: LabelArgs = crate::tools::parse_args(args)?;
     let block = store
-        .get_memory_block_by_label(auth.workspace_id, a.label.trim())
+        .get_memory_block_by_label(auth.workspace_id(), a.label.trim())
         .await?;
     Ok(content_json(&block))
 }
@@ -89,7 +89,7 @@ pub(super) async fn list_memory_blocks(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let blocks = store.list_memory_blocks(auth.workspace_id).await?;
+    let blocks = store.list_memory_blocks(auth.workspace_id()).await?;
     Ok(content_json(&blocks))
 }
 
@@ -111,7 +111,7 @@ pub(super) async fn set_memory_block_value(
     let a: SetArgs = crate::tools::parse_args(args)?;
     let block = server
         .store
-        .get_memory_block_by_label(auth.workspace_id, a.label.trim())
+        .get_memory_block_by_label(auth.workspace_id(), a.label.trim())
         .await?
         .ok_or_else(|| McpError::InvalidParams("no such memory block".into()))?;
     let updated = server
@@ -126,7 +126,7 @@ pub(super) async fn set_memory_block_value(
                 workspace_id: updated.workspace_id,
                 block_id: updated.id,
                 label: updated.label.clone(),
-                updated_by: auth.member_id,
+                updated_by: auth.member_id(),
             })
             .await;
     }
@@ -149,7 +149,7 @@ pub(super) async fn attach_memory_block(
 ) -> Result<Value, McpError> {
     let a: AttachArgs = crate::tools::parse_args(args)?;
     let block = store
-        .get_memory_block_by_label(auth.workspace_id, a.label.trim())
+        .get_memory_block_by_label(auth.workspace_id(), a.label.trim())
         .await?
         .ok_or_else(|| McpError::InvalidParams("no such memory block".into()))?;
     let attached = store
@@ -235,7 +235,7 @@ pub(super) async fn wait_for_memory_block(
     // Blocks aren't channel/thread-scoped, so the filter pins workspace + kind;
     // the specific block is matched by label as events arrive.
     let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
+        workspace_id: Some(auth.workspace_id()),
         kinds: Some(std::collections::HashSet::from([
             EventKind::MemoryBlockUpdated,
         ])),
@@ -268,7 +268,7 @@ pub(super) async fn wait_for_memory_block(
                 let mut found = None;
                 while let Some((log_id, event)) = super::thread::lookback_event(
                     server.store.as_ref(),
-                    auth.workspace_id,
+                    auth.workspace_id(),
                     &kinds,
                     None,
                     None,
@@ -294,7 +294,7 @@ pub(super) async fn wait_for_memory_block(
         {
             let block = server
                 .store
-                .get_memory_block_by_label(auth.workspace_id, &label)
+                .get_memory_block_by_label(auth.workspace_id(), &label)
                 .await?;
             return Ok(content_json(&block));
         }
@@ -319,7 +319,7 @@ pub(super) async fn delete_memory_block(
     let block = store
         .get_memory_block(block_id)
         .await?
-        .filter(|b| auth.bypass || b.workspace_id == auth.workspace_id)
+        .filter(|b| auth.bypass || b.workspace_id == auth.workspace_id())
         .ok_or(McpError::NotFound)?;
     if !store.delete_memory_block(block.id).await? {
         return Err(McpError::NotFound);

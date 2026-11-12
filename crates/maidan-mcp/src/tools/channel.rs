@@ -50,7 +50,7 @@ async fn own_channel(
     channel_id: ChannelId,
 ) -> Result<Channel, McpError> {
     let channel = store.get_channel(channel_id).await?;
-    if !auth.bypass && channel.workspace_id != auth.workspace_id {
+    if !auth.bypass && channel.workspace_id != auth.workspace_id() {
         return Err(McpError::NotFound);
     }
     Ok(channel)
@@ -67,7 +67,7 @@ pub(super) async fn add_channel_member(
         .get_member_in(channel.workspace_id, MemberId(a.member_id))
         .await?;
     let role = a.role.unwrap_or(ChannelMemberRole::Member);
-    let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), channel.workspace_id);
     let m = store
         .add_channel_member_audited(
             channel.id,
@@ -120,7 +120,7 @@ pub(super) async fn remove_channel_member(
             MemberId(a.member_id),
             NewAuditEvent {
                 scope: AuditScope::Workspace(channel.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "channel_member.remove".into(),
                 target_kind: Some("channel".into()),
                 target_id: Some(channel.id.0),
@@ -145,7 +145,7 @@ pub(super) async fn mute_channel(
 ) -> Result<Value, McpError> {
     let a: ChannelRefArgs = crate::tools::parse_args(args)?;
     store
-        .mute_channel(auth.member_id, ChannelId(a.channel_id))
+        .mute_channel(auth.member_id(), ChannelId(a.channel_id))
         .await?;
     Ok(content_json(&serde_json::json!({ "muted": true })))
 }
@@ -159,7 +159,7 @@ pub(super) async fn unmute_channel(
 ) -> Result<Value, McpError> {
     let a: ChannelRefArgs = crate::tools::parse_args(args)?;
     let unmuted = store
-        .unmute_channel(auth.member_id, ChannelId(a.channel_id))
+        .unmute_channel(auth.member_id(), ChannelId(a.channel_id))
         .await?;
     Ok(content_json(&serde_json::json!({ "unmuted": unmuted })))
 }
@@ -208,12 +208,12 @@ pub(super) async fn create_channel(
         })
         .await?;
     if channel.private && !auth.bypass {
-        let actor = auth.actor_id;
+        let actor = auth.actor_id();
         server
             .store
             .add_channel_member_audited(
                 channel.id,
-                auth.member_id,
+                auth.member_id(),
                 ChannelMemberRole::Admin,
                 Box::new(move |m| NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
@@ -252,7 +252,7 @@ pub(super) async fn open_dm_conversation(
     let dm = store
         .open_dm_conversation(
             WorkspaceId(a.workspace_id),
-            auth.member_id,
+            auth.member_id(),
             MemberId(a.other_member_id),
         )
         .await?;
@@ -399,7 +399,7 @@ struct OpenGroupDmArgs {
     title: Option<String>,
 }
 
-/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `workspace:read`
+/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
 /// and `open_group_dm_conversation`. At least three distinct members, all in
 /// the workspace, as the store requires.
 pub(super) async fn open_group_dm(
@@ -461,7 +461,7 @@ pub(super) async fn get_group_dm(
         .await?;
     auth.ensure_workspace(group.workspace_id)
         .map_err(McpError::from)?;
-    if !auth.bypass && !group.member_ids.contains(&auth.member_id) {
+    if !auth.bypass && !group.member_ids.contains(&auth.member_id()) {
         return Err(McpError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));

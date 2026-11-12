@@ -1,10 +1,10 @@
 //! Context export pagination.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use reqwest::StatusCode;
@@ -30,10 +30,6 @@ async fn thread_context_pages_messages_by_cursor() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
     let base = format!("http://{addr}");
 
     let ws = store
@@ -51,6 +47,8 @@ async fn thread_context_pages_messages_by_cursor() {
         })
         .await
         .unwrap();
+    let client =
+        test_support::bearer_client(&test_support::admin_token(store.as_ref(), member.id).await);
     let ch = store
         .create_channel(NewChannel {
             workspace_id: ws.id,
@@ -134,7 +132,6 @@ async fn mcp_get_thread_context_honors_message_cursor() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
     let base = format!("http://{addr}");
 
     let ws = store
@@ -152,6 +149,8 @@ async fn mcp_get_thread_context_honors_message_cursor() {
         })
         .await
         .unwrap();
+    let client =
+        test_support::bearer_client(&test_support::admin_token(store.as_ref(), member.id).await);
     let ch = store
         .create_channel(NewChannel {
             workspace_id: ws.id,

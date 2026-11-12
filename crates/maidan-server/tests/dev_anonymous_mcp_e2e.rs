@@ -208,8 +208,8 @@ async fn a_caller_with_no_credential_reads_the_synthetic_workspace_and_nothing_e
     assert!(refused(&write), "{write}");
     let read_cap_write = world
         .call(
-            "open_group_dm",
-            json!({ "workspace_id": world.synthetic, "member_ids": [] }),
+            "mark_all_notifications_read",
+            json!({ "member_id": world.synthetic }),
         )
         .await;
     assert!(
@@ -340,7 +340,7 @@ async fn the_anonymous_reader_is_no_member_and_sees_no_private_channel() {
         .await
         .unwrap();
     assert!(
-        world.store.get_member(reader.member_id).await.is_err(),
+        world.store.get_member(reader.member_id()).await.is_err(),
         "the anonymous reader must be no member"
     );
 }

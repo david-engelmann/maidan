@@ -6,11 +6,17 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, test_support::Tenant, AppState};
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 
-async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+async fn spawn() -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    tempfile::TempDir,
+    Tenant,
+    Tenant,
+) {
     unsafe {
         // Per-workspace fairness on; global per-client limit left off so this
         // test isolates the workspace dimension.
@@ -25,7 +31,10 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         .expect("connect");
     configure_sqlite_pool(&pool).await.expect("pragmas");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    // Seeded through the store, so neither workspace spends its budget on setup.
+    let noisy = test_support::tenant(store.as_ref(), "noisy").await;
+    let quiet = test_support::tenant(store.as_ref(), "quiet").await;
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -40,42 +49,28 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         axum::serve(listener, app).await.expect("serve");
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
-    (addr, handle, dir)
-}
-
-async fn create_workspace(client: &reqwest::Client, base: &str, name: &str) -> String {
-    let ws = client
-        .post(format!("{base}/workspaces"))
-        .json(&serde_json::json!({ "name": name }))
-        .send()
-        .await
-        .expect("create ws")
-        .json::<serde_json::Value>()
-        .await
-        .expect("json");
-    ws["id"].as_str().unwrap().to_string()
+    (addr, handle, dir, noisy, quiet)
 }
 
 #[tokio::test]
 async fn workspace_at_cap_does_not_starve_other_workspace() {
-    let (addr, handle, _dir) = spawn().await;
+    let (addr, handle, _dir, noisy, quiet) = spawn().await;
     let base = format!("http://{addr}");
-    let client = reqwest::Client::new();
-
-    // Workspace creation is not workspace-scoped, so it isn't rate-limited.
-    let a = create_workspace(&client, &base, "noisy").await;
-    let b = create_workspace(&client, &base, "quiet").await;
+    let a = noisy.workspace_id.0;
+    let b = quiet.workspace_id.0;
+    let client_a = noisy.client();
+    let client_b = quiet.client();
 
     // Noisy workspace A: 3 reads allowed, the 4th hits the per-workspace cap.
     for _ in 0..3 {
-        let resp = client
+        let resp = client_a
             .get(format!("{base}/workspaces/{a}"))
             .send()
             .await
             .expect("get A");
         assert_eq!(resp.status(), StatusCode::OK);
     }
-    let limited = client
+    let limited = client_a
         .get(format!("{base}/workspaces/{a}"))
         .send()
         .await
@@ -88,7 +83,7 @@ async fn workspace_at_cap_does_not_starve_other_workspace() {
 
     // Quiet workspace B is unaffected — its bucket is independent.
     for _ in 0..3 {
-        let resp = client
+        let resp = client_b
             .get(format!("{base}/workspaces/{b}"))
             .send()
             .await

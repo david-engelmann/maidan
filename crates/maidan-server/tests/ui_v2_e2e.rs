@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use tokio_tungstenite::{
@@ -15,7 +15,7 @@ use tokio_tungstenite::{
 
 async fn spawn() -> (
     std::net::SocketAddr,
-    reqwest::Client,
+    test_support::Tenant,
     tokio::task::JoinHandle<()>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
@@ -32,20 +32,18 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let tenant = test_support::tenant(store.as_ref(), "ui-v2").await;
     let app = router(AppState::for_tests(store, artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, tenant, server)
 }
 
 #[tokio::test]
 async fn ui_v2_shell_lists_channels_via_session_api() {
-    let (addr, client, server) = spawn().await;
+    let (addr, tenant, server) = spawn().await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let html = client
@@ -61,16 +59,7 @@ async fn ui_v2_shell_lists_channels_via_session_api() {
     assert!(html.contains(r#"id="root""#), "{html}");
     assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "ui-v2"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0;
 
     client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -97,26 +86,19 @@ async fn ui_v2_shell_lists_channels_via_session_api() {
 
 #[tokio::test]
 async fn ui_v2_ws_live_tail_receives_workspace_events() {
-    let (addr, client, server) = spawn().await;
+    let (addr, tenant, server) = spawn().await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
+    let workspace_id = tenant.workspace_id.0;
     let ws_url = format!("ws://{addr}/ws/subscribe");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "live-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let _workspace_id = ws["id"].as_str().unwrap();
 
     let (mut socket, _) = connect_async(ws_url.into_client_request().unwrap())
         .await
         .unwrap();
     socket
-        .send(Message::Text(json!({"filter": {}}).to_string()))
+        .send(Message::Text(
+            json!({"token": tenant.token, "filter": {}}).to_string(),
+        ))
         .await
         .unwrap();
 
@@ -135,9 +117,11 @@ async fn ui_v2_ws_live_tail_receives_workspace_events() {
         .await
         .expect("subscribe_ack timeout");
 
+    // A subscriber sees only its own workspace's events, so the event it
+    // waits for is a change inside the caller's workspace.
     client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "second-ws"}))
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "live", "private": false}))
         .send()
         .await
         .unwrap()
@@ -149,7 +133,7 @@ async fn ui_v2_ws_live_tail_receives_workspace_events() {
             let msg = socket.next().await.expect("frame").expect("ok");
             if let Message::Text(t) = msg {
                 let v: serde_json::Value = serde_json::from_str(&t).unwrap();
-                if v.get("kind").and_then(|k| k.as_str()) == Some("workspace_created") {
+                if v.get("kind").and_then(|k| k.as_str()) == Some("channel_created") {
                     return;
                 }
             }

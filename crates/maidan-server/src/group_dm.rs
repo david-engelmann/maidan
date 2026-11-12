@@ -31,7 +31,9 @@ pub async fn open_group_dm(
     ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<OpenGroupDmBody>,
 ) -> ApiResult<(StatusCode, Json<GroupDmConversation>)> {
-    cap(&auth, WORKSPACE_READ)?;
+    // Opening a conversation puts people in it, so it is a write that reaches
+    // them, the same as a two-person DM (MCP-003).
+    cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();
@@ -73,7 +75,7 @@ pub async fn get_group_dm(
         .await?;
     ensure_workspace(&auth, group.workspace_id)?;
     // Only a participant may read a group DM's roster — see `get_dm`.
-    if !auth.bypass && !group.member_ids.contains(&auth.member_id) {
+    if !auth.bypass && !group.member_ids.contains(&auth.member_id()) {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));
@@ -91,7 +93,7 @@ pub async fn post_group_dm_message(
     let group_id = GroupDmConversationId(id);
     let group = state.store.get_group_dm_conversation(group_id).await?;
     ensure_workspace(&auth, group.workspace_id)?;
-    let author_id = auth.member_id;
+    let author_id = auth.member_id();
     if !state.store.group_dm_has_member(group_id, author_id).await? {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),
@@ -117,7 +119,7 @@ pub async fn post_group_dm_message(
     // mirroring the channel post path. Best-effort: the message is already posted.
     if let Ok(member) = state
         .store
-        .get_member_in(group.workspace_id, auth.member_id)
+        .get_member_in(group.workspace_id, auth.member_id())
         .await
         && member.kind == MemberKind::Human
         && let Err(e) = state.store.clear_thread_status(group.thread_id).await

@@ -190,7 +190,7 @@ pub(super) async fn require_mark_ready_app(state: &AppState, auth: &AuthContext)
     let refused = || {
         ApiError::Forbidden("only the operator-designated app may mark pull requests ready".into())
     };
-    let installation_id = auth.app_installation_id.ok_or_else(refused)?;
+    let installation_id = auth.app_installation_id().ok_or_else(refused)?;
     let installation = state
         .store
         .get_app_installation(installation_id)
@@ -198,7 +198,7 @@ pub(super) async fn require_mark_ready_app(state: &AppState, auth: &AuthContext)
         .map_err(|_| refused())?;
     // The installation belongs to the caller's workspace by construction, but
     // a cross-workspace installation id must not pass on a token's say-so.
-    if installation.workspace_id != auth.workspace_id {
+    if installation.workspace_id != auth.workspace_id() {
         return Err(refused());
     }
     let app = state
@@ -238,8 +238,8 @@ async fn audit_mark_ready(
     crate::audit::record(
         state,
         NewAuditEvent {
-            scope: AuditScope::Workspace(auth.workspace_id),
-            actor_id: Some(auth.actor_id),
+            scope: AuditScope::Workspace(auth.workspace_id()),
+            actor_id: Some(auth.actor_id()),
             action: "github.mark_ready".into(),
             target_kind: Some("github_pull".into()),
             target_id: None,
@@ -250,7 +250,7 @@ async fn audit_mark_ready(
                 "base": base,
                 "outcome": outcome,
                 "reason": reason,
-                "app_installation_id": auth.app_installation_id.map(|id| id.0),
+                "app_installation_id": auth.app_installation_id().map(|id| id.0),
             }),
         },
     )
@@ -368,7 +368,7 @@ pub async fn mark_pull_ready(
 
     let outcome = match flip_pull_ready_guarded(
         state.store.as_ref(),
-        auth.workspace_id,
+        auth.workspace_id(),
         git,
         &state.mark_ready_bases,
         &repo,

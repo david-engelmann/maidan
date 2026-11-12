@@ -158,10 +158,10 @@ async fn app_token_posts_message_with_subset_of_granted_capabilities() {
         .await
         .expect("app bearer resolves");
     assert_eq!(
-        ctx.app_installation_id.map(|i| i.0.to_string()),
+        ctx.app_installation_id().map(|i| i.0.to_string()),
         Some(iid.to_string())
     );
-    assert_eq!(ctx.member_id.0.to_string(), bot_id);
+    assert_eq!(ctx.member_id().0.to_string(), bot_id);
 
     let bad_mint = client
         .post(format!(

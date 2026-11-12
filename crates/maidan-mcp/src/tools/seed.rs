@@ -89,7 +89,7 @@ pub(super) async fn seed_from_message(
             .post_message_with_event(
                 NewMessage {
                     thread_id: thread.id,
-                    author_id: auth.member_id,
+                    author_id: auth.member_id(),
                     body: quoted,
                     metadata: serde_json::json!({ "seeded_from": a.message_id }),
                     content: None,

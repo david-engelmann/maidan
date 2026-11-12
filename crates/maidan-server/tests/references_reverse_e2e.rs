@@ -4,16 +4,15 @@
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
-    time::Duration,
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
-async fn spawn() -> (SocketAddr, reqwest::Client) {
+async fn spawn() -> (SocketAddr, reqwest::Client, String) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -24,6 +23,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client) {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "refs").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -35,7 +35,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -46,16 +46,12 @@ async fn spawn() -> (SocketAddr, reqwest::Client) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client)
+    (addr, tenant.client(), tenant.workspace_id.0.to_string())
 }
 
 #[tokio::test]
 async fn references_query_by_source_target_and_relation() {
-    let (addr, client) = spawn().await;
+    let (addr, client, wid) = spawn().await;
     let base = format!("http://{addr}");
 
     let post = |path: String, body: Value| {
@@ -71,12 +67,6 @@ async fn references_query_by_source_target_and_relation() {
         }
     };
 
-    let ws: Value = post("/workspaces".into(), json!({"name": "refs"}))
-        .await
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
     let ch: Value = post(
         format!("/workspaces/{wid}/channels"),
         json!({"name": "c", "private": false}),

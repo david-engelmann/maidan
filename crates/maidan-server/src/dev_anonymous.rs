@@ -12,14 +12,14 @@
 
 use maidan_auth::AuthContext;
 use maidan_store::Store;
-use maidan_types::{MemberId, WorkspaceId};
+use maidan_types::WorkspaceId;
 
 use crate::config::ConfigError;
 
 pub const ENV: &str = "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE";
 
 /// The prefix a workspace's name must carry to be read without a credential.
-pub const SYNTHETIC_PREFIX: &str = "synthetic-";
+pub const SYNTHETIC_PREFIX: &str = maidan_auth::SYNTHETIC_WORKSPACE_PREFIX;
 
 /// Whether the flag may be set at all. Pure over its inputs so it is tested
 /// without touching the process environment.
@@ -67,26 +67,12 @@ pub async fn reader_for(
     store: &dyn Store,
     workspace_id: WorkspaceId,
 ) -> Result<AuthContext, ConfigError> {
-    let workspace = store
-        .get_workspace(workspace_id)
+    maidan_auth::resolve_anonymous_reader(store, workspace_id)
         .await
-        .map_err(|err| ConfigError::Invalid(ENV, format!("workspace {workspace_id}: {err}")))?;
-    if !workspace.name.starts_with(SYNTHETIC_PREFIX) {
-        return Err(ConfigError::Invalid(
-            ENV,
-            format!(
-                "workspace `{}` is not named {SYNTHETIC_PREFIX}…, and only a synthetic \
-                 workspace is read without a credential",
-                workspace.name
-            ),
-        ));
-    }
-    // No member at all: an id that belongs to nobody, fresh each boot, so no
-    // channel membership, DM, grant or role can ever reach it. The foreign
-    // keys refuse to attach anything to a member that does not exist, and this
-    // caller only reads, so nothing is ever written under the id.
-    let nobody = MemberId::new();
-    Ok(AuthContext::anonymous_reader(nobody, workspace_id))
+        .map_err(|err| match err {
+            maidan_auth::AuthError::Forbidden(reason) => ConfigError::Invalid(ENV, reason),
+            other => ConfigError::Invalid(ENV, format!("workspace {workspace_id}: {other}")),
+        })
 }
 
 #[cfg(test)]

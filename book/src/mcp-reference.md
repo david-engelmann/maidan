@@ -7452,7 +7452,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 **Request approval.** Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.
 
-**Capability:** `workspace:read`
+**Capability:** `message:post`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
@@ -7714,9 +7714,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `open_group_dm`
 
-**Open group DM.** Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.
+**Open group DM.** Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires message:post. This writes a conversation.
 
-**Capability:** `workspace:read`
+**Capability:** `message:post`
 
 **Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 

@@ -81,7 +81,7 @@ async fn inviter_ceiling(state: &AppState, auth: &AuthContext) -> ApiResult<Work
     };
     let by_membership = state
         .store
-        .member_invite_role(auth.member_id)
+        .member_invite_role(auth.member_id())
         .await?
         .unwrap_or(WorkspaceInviteRole::Member);
     Ok(by_caps.min(by_membership))
@@ -145,7 +145,7 @@ async fn mint_invite(
         .expires_at
         .unwrap_or_else(|| Utc::now() + Duration::seconds(WORKSPACE_INVITE_DEFAULT_TTL_SECS));
     let secret = WorkspaceInviteSecret::generate();
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let invite = state
         .store
         .create_workspace_invite_audited(
@@ -153,7 +153,7 @@ async fn mint_invite(
                 workspace_id,
                 email,
                 role: body.role,
-                created_by: auth.member_id,
+                created_by: auth.member_id(),
                 token_hash: hash_secret(secret.as_str()),
                 expires_at,
             },
@@ -256,7 +256,7 @@ async fn revoke_invite(
             invite_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "workspace_invite.revoke".into(),
                 target_kind: Some("workspace_invite".into()),
                 target_id: Some(invite_id.0),

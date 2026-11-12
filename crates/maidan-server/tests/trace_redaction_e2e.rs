@@ -13,7 +13,7 @@ use std::{
 use axum::{body::Body, http::Request};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use tower::ServiceExt;
@@ -63,6 +63,7 @@ async fn trace_spans_show_credential_headers_as_sensitive_and_leave_out_the_quer
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "acme").await;
     let app = router(AppState::for_tests(
         store,
         Arc::new(LocalFsStore::new(dir.path())),
@@ -86,6 +87,7 @@ async fn trace_spans_show_credential_headers_as_sensitive_and_leave_out_the_quer
     let init = app
         .oneshot(
             Request::post("/mcp/streamable")
+                .header("authorization", test_support::bearer(&tenant.token))
                 .header("content-type", "application/json")
                 .header("mcp-protocol-version", "2024-11-05")
                 .body(Body::from(
@@ -110,6 +112,7 @@ async fn trace_spans_show_credential_headers_as_sensitive_and_leave_out_the_quer
         "mdn_bearer_secret_value",
         "session_cookie_secret",
         "one-time-oauth-code",
+        tenant.token.as_str(),
         session.as_str(),
     ] {
         assert!(

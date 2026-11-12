@@ -20,8 +20,14 @@ use axum::{
     Router,
 };
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, webhook_worker::WebhookWorker, AppState, WebhookRuntime};
+use maidan_server::{
+    router,
+    test_support::{self, Tenant},
+    webhook_worker::WebhookWorker,
+    AppState, WebhookRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -62,7 +68,7 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     receiver: tokio::task::JoinHandle<()>,
     webhook_worker: WebhookWorker,
-    client: reqwest::Client,
+    store: Arc<dyn Store>,
     receiver_state: ReceiverState,
     _dir: tempfile::TempDir,
 }
@@ -95,19 +101,18 @@ async fn spawn() -> Harness {
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::new());
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
+        false,
         maidan_server::FederationRuntime::new(true, webhook_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.webhooks = WebhookRuntime::new(webhook_test_key());
-    state.test_identity_header = true;
     let webhook_worker = WebhookWorker::spawn(state.clone());
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -126,35 +131,16 @@ async fn spawn() -> Harness {
     let receiver_addr = recv_listener.local_addr().unwrap();
     let receiver = tokio::spawn(async move { axum::serve(recv_listener, recv_app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-
     Harness {
         base: format!("http://{addr}"),
         receiver_addr,
         server,
         receiver,
         webhook_worker,
-        client,
+        store,
         receiver_state,
         _dir: dir,
     }
-}
-
-async fn bootstrap_member(h: &Harness, wid: &str, handle: &str) -> String {
-    let member: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{wid}/members", h.base))
-        .json(&json!({ "handle": handle, "kind": "agent" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    member["id"].as_str().unwrap().to_string()
 }
 
 async fn wait_for_event_kind(state: &ReceiverState, kind: &str, timeout: Duration) -> bool {
@@ -175,23 +161,19 @@ async fn wait_for_event_kind(state: &ReceiverState, kind: &str, timeout: Duratio
 async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "mention-hook" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let author_id = bootstrap_member(&h, wid, "author").await;
-    let mentioned_id = bootstrap_member(&h, wid, "mentioned").await;
+    let tenant = test_support::tenant(h.store.as_ref(), "mention-hook").await;
+    let wid = tenant.workspace_id.0;
+    let author = tenant
+        .member(h.store.as_ref(), "author", MemberKind::Agent)
+        .await;
+    let mentioned = tenant
+        .member(h.store.as_ref(), "mentioned", MemberKind::Agent)
+        .await;
+    let mentioned_id = mentioned.member_id.0;
+    let client = tenant.client();
 
     let hook_url = format!("http://{}/hook", h.receiver_addr);
-    let mint: serde_json::Value = h
-        .client
+    let mint: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/webhooks", h.base))
         .json(&json!({
             "url": hook_url,
@@ -207,8 +189,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
     let webhook_id = mint["webhook"]["id"].as_str().unwrap();
     *h.receiver_state.secret.lock().await = mint["secret"].as_str().unwrap().to_string();
 
-    let empty: serde_json::Value = h
-        .client
+    let empty: serde_json::Value = client
         .get(format!("{}/workspaces/{wid}/mention-webhook", h.base))
         .send()
         .await
@@ -218,8 +199,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .unwrap();
     assert!(empty["webhook_id"].is_null());
 
-    let set: serde_json::Value = h
-        .client
+    let set: serde_json::Value = client
         .put(format!("{}/workspaces/{wid}/mention-webhook", h.base))
         .json(&json!({ "webhook_id": webhook_id }))
         .send()
@@ -230,8 +210,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .unwrap();
     assert_eq!(set["webhook_id"].as_str().unwrap(), webhook_id);
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "general" }))
         .send()
@@ -242,8 +221,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
 
-    let th: serde_json::Value = h
-        .client
+    let th: serde_json::Value = client
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "t" }))
         .send()
@@ -254,10 +232,9 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let msg: serde_json::Value = h
-        .client
+    let msg: serde_json::Value = author
+        .client()
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", author_id)
         .json(&json!({ "body": "hi @mentioned" }))
         .send()
         .await
@@ -267,8 +244,7 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
         .unwrap();
     let mid = msg["id"].as_str().unwrap();
 
-    let mention = h
-        .client
+    let mention = client
         .post(format!("{}/messages/{mid}/mentions", h.base))
         .json(&json!({ "member_id": mentioned_id }))
         .send()
@@ -292,23 +268,18 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
     h.shutdown().await;
 }
 
-async fn create_workspace(h: &Harness, name: &str) -> String {
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": name }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    ws["id"].as_str().unwrap().to_string()
+async fn create_workspace(h: &Harness, name: &str) -> Tenant {
+    test_support::tenant(h.store.as_ref(), name).await
 }
 
-async fn put_mention_webhook(h: &Harness, wid: &str, webhook_id: &str) -> (StatusCode, String) {
-    let res = h
-        .client
+async fn put_mention_webhook(
+    h: &Harness,
+    tenant: &Tenant,
+    webhook_id: &str,
+) -> (StatusCode, String) {
+    let wid = tenant.workspace_id.0;
+    let res = tenant
+        .client()
         .put(format!("{}/workspaces/{wid}/mention-webhook", h.base))
         .json(&json!({ "webhook_id": webhook_id }))
         .send()
@@ -323,9 +294,12 @@ async fn another_workspaces_subscription_id_gets_the_same_answer_as_a_missing_on
     let h = spawn().await;
     let ada = create_workspace(&h, "ada").await;
     let bob = create_workspace(&h, "bob").await;
-    let mint: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{bob}/webhooks", h.base))
+    let mint: serde_json::Value = bob
+        .client()
+        .post(format!(
+            "{}/workspaces/{}/webhooks",
+            h.base, bob.workspace_id.0
+        ))
         .json(&json!({
             "url": format!("http://{}/hook", h.receiver_addr),
             "label": "bob-hook",
@@ -350,9 +324,12 @@ async fn another_workspaces_subscription_id_gets_the_same_answer_as_a_missing_on
     // Bob's own workspace can still use it; Ada's setting stayed unset.
     let own = put_mention_webhook(&h, &bob, &bobs_id).await;
     assert_eq!(own.0, StatusCode::OK);
-    let ada_cfg: serde_json::Value = h
-        .client
-        .get(format!("{}/workspaces/{ada}/mention-webhook", h.base))
+    let ada_cfg: serde_json::Value = ada
+        .client()
+        .get(format!(
+            "{}/workspaces/{}/mention-webhook",
+            h.base, ada.workspace_id.0
+        ))
         .send()
         .await
         .unwrap()

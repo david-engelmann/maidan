@@ -2,13 +2,13 @@
 //! run goes over budget it is stopped (claim released + `ClaimFailed`) and
 //! dead-lettered, observable via `GET /channels/:cid/dlq`.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewThread};
 use serde_json::{json, Value};
 
 #[tokio::test]
@@ -29,22 +29,13 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
 
-    let ws = store
-        .create_workspace(NewWorkspace { name: "b".into() })
-        .await
-        .unwrap();
-    let agent = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "agent".into(),
-            display_name: None,
-            kind: MemberKind::Agent,
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "b").await;
+    let agent = tenant
+        .member(store.as_ref(), "agent", MemberKind::Agent)
+        .await;
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "work".into(),
             topic: None,
             private: false,
@@ -62,17 +53,20 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
         .await
         .unwrap();
     // A claimed run to stop.
-    let claimed = store.assign_thread(thread.id, agent.id).await.unwrap();
+    let claimed = store
+        .assign_thread(thread.id, agent.member_id)
+        .await
+        .unwrap();
     let claim_lease_id = claimed.claim_lease_id.expect("claim lease");
 
     let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
+    // Usage is reported by the claim holder: the server takes the reporter
+    // from the caller's credential.
+    let agent_client = agent.client();
     let base = format!("http://{addr}");
     let tid = thread.id.0;
     let cid = channel.id.0;
@@ -141,7 +135,7 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     // Caller-chosen identity is no longer part of the schema.
     let mut forged = usage(1);
     forged["reporter"] = json!(uuid::Uuid::new_v4());
-    let rejected = client
+    let rejected = agent_client
         .post(format!("{base}/threads/{tid}/usage"))
         .json(&forged)
         .send()
@@ -151,7 +145,7 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
 
     // Report under budget → not stopped. The server derives both identities.
     let first = usage(50);
-    let under: Value = client
+    let under: Value = agent_client
         .post(format!("{base}/threads/{tid}/usage"))
         .json(&first)
         .send()
@@ -162,12 +156,12 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
         .unwrap();
     assert_eq!(under["stopped"], json!(false));
     assert_eq!(under["budget"]["used_tokens"], 50);
-    assert_eq!(under["stamp"]["payer"], json!(ws.id.0));
-    assert_eq!(under["stamp"]["reporter"], json!(agent.id.0));
+    assert_eq!(under["stamp"]["payer"], json!(tenant.workspace_id.0));
+    assert_eq!(under["stamp"]["reporter"], json!(agent.member_id.0));
 
     // An exact transport retry returns the same ledger outcome and cannot
     // increment the budget twice.
-    let retry: Value = client
+    let retry: Value = agent_client
         .post(format!("{base}/threads/{tid}/usage"))
         .json(&first)
         .send()
@@ -179,7 +173,7 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     assert_eq!(retry, under);
 
     // Report over budget → stopped, reason tokens.
-    let over: Value = client
+    let over: Value = agent_client
         .post(format!("{base}/threads/{tid}/usage"))
         .json(&usage(60))
         .send()
@@ -211,7 +205,7 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     let dlq = dlq.as_array().unwrap();
     assert_eq!(dlq.len(), 1);
     assert_eq!(dlq[0]["reason"], json!("tokens"));
-    assert_eq!(dlq[0]["member_id"], json!(agent.id.0));
+    assert_eq!(dlq[0]["member_id"], json!(agent.member_id.0));
     assert_eq!(dlq[0]["used_tokens"], 110);
 
     // GET the budget back.

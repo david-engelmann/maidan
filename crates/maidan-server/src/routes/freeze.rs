@@ -39,12 +39,12 @@ pub async fn freeze_member(
         .as_deref()
         .map(str::trim)
         .filter(|r| !r.is_empty());
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let (freeze, released, stored) = state
         .store
         .freeze_member_audited(
             member_id,
-            auth.member_id,
+            auth.member_id(),
             reason,
             Box::new(move |(freeze, released)| NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
@@ -72,10 +72,10 @@ pub async fn unfreeze_member(
         .store
         .unfreeze_member_audited(
             member_id,
-            auth.member_id,
+            auth.member_id(),
             NewAuditEvent {
                 scope: AuditScope::Workspace(member.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "member.unfreeze".into(),
                 target_kind: Some("member".into()),
                 target_id: Some(member_id.0),

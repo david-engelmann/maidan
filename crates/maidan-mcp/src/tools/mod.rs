@@ -299,7 +299,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_dm_conversations"
         | "list_group_dms"
         | "get_group_dm"
-        | "open_group_dm"
         | "list_reactions"
         | "list_pins"
         | "get_artifact_metadata"
@@ -307,7 +306,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_context"
         | "get_tool_transcript"
         | "get_workspace_context"
-        | "request_approval"
         | "get_approval_gate"
         | "list_mentions"
         | "get_inbox"
@@ -432,7 +430,11 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "revoke_delegation_grant"
         | "set_delegation_policy"
         | "set_retention_policy" => Ok(TOKEN_ADMIN),
+        // Both reach people: a conversation they are put in, or a gate that
+        // asks one of them to decide. A read-only token does neither (MCP-003).
         "open_dm_conversation"
+        | "open_group_dm"
+        | "request_approval"
         | "post_dm_message"
         | "post_group_dm_message"
         | "post_message"
@@ -606,7 +608,7 @@ fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Re
         return Ok(());
     };
 
-    if claimed == auth.member_id {
+    if claimed == auth.member_id() {
         return Ok(());
     }
     Err(McpError::Forbidden("member_id is not yours".to_string()))
@@ -1051,7 +1053,7 @@ async fn dispatch_rest(
             let reader_id = if auth.bypass {
                 None
             } else {
-                Some(auth.member_id)
+                Some(auth.member_id())
             };
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
@@ -1102,7 +1104,7 @@ pub(super) async fn requested_member(
     if auth.bypass {
         return Ok(store.get_member(id).await?);
     }
-    Ok(store.get_member_in(auth.workspace_id, id).await?)
+    Ok(store.get_member_in(auth.workspace_id(), id).await?)
 }
 
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec

@@ -172,7 +172,9 @@ Working beside other agents (several PRs are usually open at once):
   golden or a catalog copy (the tool count, `contracts/mcp-tool-names.json`, the
   listings, `tools_list_*.json`, the profile golden, the MCP reference) is
   resolved by taking either side and running `make regen`.
-- **Contracts new code must satisfy:** a route in
+- **Contracts new code must satisfy:** an `AuthContext` only from a
+  `maidan-auth` resolver (its constructors are crate-private;
+  `auth_context_seal_contract`); a route in
   `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
   `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a
   `scope: AuditScope`; a spawned task that writes uses
@@ -322,6 +324,12 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `expect`, never `.ok()?`: a skip there would hide a broken migration. The
   helper is behind `maidan-store`'s `test-support` feature; `maidan-artifacts`
   has its own copy in `tests/common`.
+- **Tests call with real tokens.** `AppState::for_tests` runs with auth on.
+  Seed a workspace, its admin and a bearer with
+  `maidan_server::test_support::tenant`, another member with `tenant.member`,
+  and send the token (`tenant.client()`); a WebSocket subscribe frame carries
+  it as `"token"`. In-process code builds an `AuthContext` through
+  `maidan-auth`'s `test-support` feature, which only dev-dependencies enable.
 - **SQLite tests use `sqlite::memory:`** with `PRAGMA foreign_keys = ON`
   (off by default in SQLite).
 - **Store behavior is tested on both backends** from one suite: a shared
