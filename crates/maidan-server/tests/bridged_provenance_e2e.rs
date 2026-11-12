@@ -1,7 +1,7 @@
 //! A message's provenance is the server's to set (RED-007). Over REST a member
 //! can neither forge one on a post nor change or strip one on an edit, and the
-//! message reads show it read-only. Runs with auth bypassed
-//! (`AppState::for_tests`), acting as a member by header.
+//! message reads show it read-only. Runs authenticated, as the member's own
+//! bearer token.
 
 use std::sync::Arc;
 
@@ -73,12 +73,18 @@ async fn a_member_cannot_forge_or_strip_provenance_over_rest() {
         })
         .await
         .unwrap();
-    let as_member = member.id.0.to_string();
+    let as_member = maidan_server::test_support::token(
+        store.as_ref(),
+        ws.id,
+        member.id,
+        maidan_auth::capability::all(),
+    )
+    .await;
 
     // Bridge keys in metadata make a member's post no bridged message.
     let resp = client
         .post(format!("{base}/threads/{}/messages", thread.id.0))
-        .header("maidan-test-member-id", &as_member)
+        .bearer_auth(&as_member)
         .json(&json!({
             "body": "U9: from slack",
             "metadata": { "slack": { "user": "U9", "channel": "C1" }, "github": { "user": "octocat" } },
@@ -95,7 +101,7 @@ async fn a_member_cannot_forge_or_strip_provenance_over_rest() {
     // Provenance itself is no field a post takes.
     let resp = client
         .post(format!("{base}/threads/{}/messages", thread.id.0))
-        .header("maidan-test-member-id", &as_member)
+        .bearer_auth(&as_member)
         .json(&json!({
             "body": "forged",
             "provenance": { "origin": "github", "external_id": "1" },
@@ -124,7 +130,7 @@ async fn a_member_cannot_forge_or_strip_provenance_over_rest() {
         .unwrap();
     let resp = client
         .patch(format!("{base}/messages/{}", bridged.id.0))
-        .header("maidan-test-member-id", &as_member)
+        .bearer_auth(&as_member)
         .json(&json!({ "body": "U9: hello!", "metadata": {} }))
         .send()
         .await
@@ -137,7 +143,7 @@ async fn a_member_cannot_forge_or_strip_provenance_over_rest() {
     );
     let resp = client
         .patch(format!("{base}/messages/{}", bridged.id.0))
-        .header("maidan-test-member-id", &as_member)
+        .bearer_auth(&as_member)
         .json(&json!({ "body": "mine now", "provenance": null }))
         .send()
         .await
@@ -150,7 +156,7 @@ async fn a_member_cannot_forge_or_strip_provenance_over_rest() {
     // Reads show it.
     let listed: serde_json::Value = client
         .get(format!("{base}/threads/{}/messages", thread.id.0))
-        .header("maidan-test-member-id", &as_member)
+        .bearer_auth(&as_member)
         .send()
         .await
         .unwrap()
