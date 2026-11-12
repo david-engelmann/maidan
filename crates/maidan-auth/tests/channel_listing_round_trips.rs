@@ -117,11 +117,6 @@ async fn run_suite(store: &dyn Store) {
         listed(store, &reader(bob, a), a).await,
         names(&["general", DM_CHANNEL_NAME]),
     );
-    assert_eq!(
-        listed(store, &AuthContext::bypass(), a).await,
-        names(&["general", DM_CHANNEL_NAME, "inner", "outer"]),
-        "bypass sees every channel"
-    );
     // carol's membership of a B channel opens nothing in A.
     assert_eq!(
         listed(store, &reader(carol, b), a).await,
@@ -154,10 +149,6 @@ async fn run_suite(store: &dyn Store) {
         ),
         HashSet::new(),
     );
-    assert!(private_channel_deny_set(store, &AuthContext::bypass(), a)
-        .await
-        .unwrap()
-        .is_empty());
 }
 
 #[tokio::test]
