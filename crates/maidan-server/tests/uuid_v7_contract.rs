@@ -6,7 +6,11 @@
 //! Tests may use v4 freely. Postgres 16 has no `uuidv7()`, so every id is minted
 //! app-side.
 
-use std::path::{Path, PathBuf};
+mod source_scan;
+
+use std::path::Path;
+
+use source_scan::{rust_files, test_only_modules};
 
 /// Where v4 is required, and why. The count is exact, so adding a v4 call to
 /// one of these files still needs a reason here.
@@ -43,17 +47,6 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ),
 ];
 
-fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(path).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
 /// A `cfg` that compiles only under test (`test`, or `all(test, …)`): the
 /// scan stops at the first one, as test modules sit at the end of a file.
 fn is_test_gate(line: &str) -> bool {
@@ -72,6 +65,8 @@ fn entity_ids_are_v7() {
         }
         let mut files = Vec::new();
         rust_files(&src, &mut files);
+        let test_only = test_only_modules(&files);
+        files.retain(|f| !test_only.contains(f));
         for file in files {
             let source = std::fs::read_to_string(&file).unwrap();
             let count = source

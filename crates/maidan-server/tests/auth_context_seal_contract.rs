@@ -18,7 +18,7 @@ mod source_scan;
 
 use std::path::{Path, PathBuf};
 
-use source_scan::{rust_files, without_tests};
+use source_scan::{rust_files, test_only_modules, without_tests};
 
 const CONSTRUCTORS: &[&str] = &[
     "AuthContext::from_token",
@@ -27,40 +27,6 @@ const CONSTRUCTORS: &[&str] = &[
     "AuthContext::from_delegated_token",
     "AuthContext::anonymous_reader",
 ];
-
-/// Files a `#[cfg(test)] mod name;` declares, which only a test build compiles.
-fn test_only_modules(files: &[PathBuf]) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    for file in files {
-        let source = std::fs::read_to_string(file).unwrap();
-        let mut lines = source.lines().map(str::trim);
-        while let Some(line) = lines.next() {
-            if line != "#[cfg(test)]" {
-                continue;
-            }
-            let Some(next) = lines.next() else { break };
-            let Some(name) = next
-                .trim_start_matches("pub(crate) ")
-                .trim_start_matches("pub ")
-                .strip_prefix("mod ")
-                .and_then(|rest| rest.strip_suffix(';'))
-            else {
-                continue;
-            };
-            let dir = file.parent().unwrap();
-            let stem = file.file_stem().unwrap();
-            let base = if stem == "mod" || stem == "lib" || stem == "main" {
-                dir.to_path_buf()
-            } else {
-                dir.join(stem)
-            };
-            out.push(base.join(format!("{name}.rs")));
-            out.push(dir.join(format!("{name}.rs")));
-            out.push(base.join(name).join("mod.rs"));
-        }
-    }
-    out
-}
 
 fn library_files(include_auth: bool) -> Vec<PathBuf> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
@@ -113,6 +79,12 @@ fn a_test_only_module_is_left_out_of_the_scan() {
             .iter()
             .any(|f| f.ends_with("maidan-mcp/src/tools/agent_gap_tests.rs")),
         "agent_gap_tests.rs is declared under #[cfg(test)] and should not be scanned"
+    );
+    assert!(
+        !files
+            .iter()
+            .any(|f| f.to_string_lossy().contains("maidan-mcp/src/server/tests/")),
+        "the McpServer tests are declared under #[cfg(test)] and should not be scanned"
     );
 }
 
