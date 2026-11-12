@@ -114,7 +114,6 @@ async fn notify_floor_survives_periodic_listener_kills_under_load() {
     let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Collect every delivered log_id in the background for the whole run.
     let received: Arc<Mutex<HashSet<i64>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -154,9 +153,14 @@ async fn notify_floor_survives_periodic_listener_kills_under_load() {
         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
     }
 
-    // Settle: give the reconnect drain (1 s retry) + any gap back-fill time to
-    // heal the tail before asserting.
-    tokio::time::sleep(Duration::from_secs(4)).await;
+    // Settle: wait until the reconnect drain (1 s retry) and any gap back-fill
+    // have delivered every published id, bounded so a floor that never heals
+    // still fails below.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while tokio::time::Instant::now() < deadline && !published.is_subset(&received.lock().unwrap())
+    {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     let got = received.lock().unwrap();
     let missing: Vec<i64> = published
