@@ -14,6 +14,14 @@ pub async fn upsert_identity(
     pool: &PgPool,
     new: NewOidcIdentity,
 ) -> Result<OidcIdentity, StoreError> {
+    let mut conn = pool.acquire().await?;
+    upsert_identity_on(&mut conn, new).await
+}
+
+async fn upsert_identity_on(
+    conn: &mut sqlx::PgConnection,
+    new: NewOidcIdentity,
+) -> Result<OidcIdentity, StoreError> {
     let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_oidc_identities
@@ -33,7 +41,7 @@ pub async fn upsert_identity(
     .bind(&new.subject)
     .bind(new.member_id.0)
     .bind(new.email.as_deref())
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     row_to_identity(&row)
 }
@@ -56,6 +64,46 @@ pub async fn get_identity(
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_identity(&row)
+}
+
+/// Bind `new` to its member only while no other identity signs in as that
+/// member. The check and the write share one transaction under a lock on the member row,
+/// so two identities racing to link one member cannot both bind it. `None`
+/// when another identity already holds the member, or the member is gone. A
+/// row for `new`'s own `(issuer, subject)` comes back as the upsert leaves it.
+pub async fn link_unclaimed_identity(
+    pool: &PgPool,
+    new: NewOidcIdentity,
+) -> Result<Option<OidcIdentity>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let member = sqlx::query(
+        "SELECT 1 FROM maidan_members WHERE id = $1 AND workspace_id = $2 FOR NO KEY UPDATE",
+    )
+    .bind(new.member_id.0)
+    .bind(new.workspace_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if member.is_none() {
+        return Ok(None);
+    }
+    let claimed: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM maidan_oidc_identities
+             WHERE workspace_id = $1 AND member_id = $2
+               AND NOT (issuer = $3 AND subject = $4))",
+    )
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(&new.issuer)
+    .bind(&new.subject)
+    .fetch_one(&mut *tx)
+    .await?;
+    if claimed {
+        return Ok(None);
+    }
+    let identity = upsert_identity_on(&mut tx, new).await?;
+    tx.commit().await?;
+    Ok(Some(identity))
 }
 
 /// The workspaces the identity `identity_id` can switch to: every workspace

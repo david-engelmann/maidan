@@ -1783,6 +1783,14 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// Bind the identity to its member only while no other identity signs
+    /// in as that member, checked and written atomically. `None` when another
+    /// identity already holds the member: linking a verified email by handle
+    /// is only for a member no login has claimed yet.
+    async fn link_unclaimed_oidc_identity(
+        &self,
+        new: NewOidcIdentity,
+    ) -> Result<Option<OidcIdentity>, StoreError>;
     /// The workspaces a signed-in identity can switch to (the workspace
     /// switcher): every workspace where the same issuer and subject have an
     /// identity row, newest sign-in first, at most `limit`. Its own workspace
