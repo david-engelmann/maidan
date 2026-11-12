@@ -617,11 +617,11 @@ async fn read_subscribe(
         let ctx = resolve_bearer(state.store.as_ref(), secret)
             .await
             .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
-        let credential = match ctx.token_id {
+        let credential = match ctx.token_id() {
             Some(token_id) => StreamCredential::Token {
                 token_id,
-                member_id: ctx.member_id,
-                actor_id: (ctx.actor_id != ctx.member_id).then_some(ctx.actor_id),
+                member_id: ctx.member_id(),
+                actor_id: (ctx.actor_id() != ctx.member_id()).then_some(ctx.actor_id()),
             },
             None => return Err((1008u16, "invalid or expired token".to_string()).into()),
         };
@@ -685,7 +685,7 @@ async fn read_subscribe(
     // member could show another as online or typing, and stamp any member's
     // last-seen time, in any workspace, which quiets presence-aware email.
     let member_id = match sub.member_id.map(MemberId) {
-        Some(claimed) if !state.auth_disabled && claimed != ctx.member_id => {
+        Some(claimed) if !state.auth_disabled && claimed != ctx.member_id() => {
             return Err((
                 1008u16,
                 "member_id must be the member the token or session belongs to".into(),

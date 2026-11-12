@@ -38,7 +38,13 @@ pub(super) async fn set_land_gate(
         .map(str::trim)
         .filter(|s| !s.is_empty());
     let standing = store
-        .set_land_gate_pointer(ThreadId(a.thread_id), auth.member_id, a.status, sha, a.land)
+        .set_land_gate_pointer(
+            ThreadId(a.thread_id),
+            auth.member_id(),
+            a.status,
+            sha,
+            a.land,
+        )
         .await?;
     Ok(content_json(&standing))
 }
@@ -88,7 +94,7 @@ pub(super) async fn clear_land_gate(
             ThreadId(a.thread_id),
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "land_gate.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(a.thread_id),

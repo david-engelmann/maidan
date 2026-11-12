@@ -8,8 +8,9 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
+use maidan_types::{MemberId, MemberKind, NewMember};
 use reqwest::StatusCode;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
@@ -19,7 +20,7 @@ use testcontainers_modules::postgres::Postgres;
 struct Harness {
     addr: SocketAddr,
     server: tokio::task::JoinHandle<()>,
-    client: reqwest::Client,
+    store: Arc<dyn Store>,
     _store_dir: tempfile::TempDir,
     _container: Option<testcontainers::ContainerAsync<Postgres>>,
 }
@@ -86,18 +87,14 @@ async fn launch(
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
     Harness {
         addr,
         server,
-        client,
+        store,
         _store_dir: dir,
         _container: container,
     }
@@ -106,32 +103,25 @@ async fn launch(
 async fn run_suite(h: &Harness) {
     let base = h.base();
 
-    // create workspace
-    let resp = h
-        .client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "acme"}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
-    let ws: serde_json::Value = resp.json().await.unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    // `POST /workspaces` is a bootstrap route, closed here; the workspace and
+    // its admin are seeded through the store.
+    let tenant = test_support::tenant(h.store.as_ref(), "acme").await;
+    let admin = tenant.client();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     // get workspace
-    let resp = h
-        .client
+    let resp = admin
         .get(format!("{base}/workspaces/{workspace_id}"))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // get non-existent → 404 with problem+json
+    // get non-existent → 404 with problem+json. Another workspace's id is a
+    // 403 for this token, so the missing resource is one the token could see.
     let bogus = uuid::Uuid::new_v4();
-    let resp = h
-        .client
-        .get(format!("{base}/workspaces/{bogus}"))
+    let resp = admin
+        .get(format!("{base}/members/{bogus}"))
         .send()
         .await
         .unwrap();
@@ -144,35 +134,43 @@ async fn run_suite(h: &Harness) {
     assert_eq!(problem["status"], 404);
     assert!(problem["type"].as_str().unwrap().contains("not-found"));
 
-    // create members
-    let alice: serde_json::Value = h
-        .client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "display_name": "Alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bot: serde_json::Value = h
-        .client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bot", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
+    // create members: a person through the store (`POST
+    // /workspaces/{wid}/members` is a bootstrap route), an agent over HTTP
+    let (alice_member, _) = h
+        .store
+        .create_member_with_event(NewMember {
+            workspace_id: tenant.workspace_id,
+            handle: "alice".into(),
+            display_name: Some("Alice".into()),
+            kind: MemberKind::Human,
+        })
         .await
         .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
-    let bot_id = bot["id"].as_str().unwrap().to_string();
+    let resp = admin
+        .post(format!("{base}/workspaces/{workspace_id}/agents"))
+        .json(&json!({"handle": "bot"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bot: serde_json::Value = resp.json().await.unwrap();
+    let alice_id = alice_member.id.0.to_string();
+    let bot_id = bot["member"]["id"].as_str().unwrap().to_string();
+    let alice = test_support::bearer_client(
+        &test_support::admin_token(h.store.as_ref(), alice_member.id).await,
+    );
+    let bot = test_support::bearer_client(
+        &test_support::admin_token(
+            h.store.as_ref(),
+            MemberId(uuid::Uuid::parse_str(&bot_id).unwrap()),
+        )
+        .await,
+    );
 
     // duplicate handle → 409 with problem+json
-    let resp = h
-        .client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
+    let resp = admin
+        .post(format!("{base}/workspaces/{workspace_id}/agents"))
+        .json(&json!({"handle": "alice"}))
         .send()
         .await
         .unwrap();
@@ -181,8 +179,7 @@ async fn run_suite(h: &Harness) {
     assert_eq!(problem["status"], 409);
 
     // list members
-    let members: Vec<serde_json::Value> = h
-        .client
+    let members: Vec<serde_json::Value> = admin
         .get(format!("{base}/workspaces/{workspace_id}/members"))
         .send()
         .await
@@ -190,11 +187,11 @@ async fn run_suite(h: &Harness) {
         .json()
         .await
         .unwrap();
-    assert_eq!(members.len(), 2);
+    // The admin the workspace was seeded with, alice and bot.
+    assert_eq!(members.len(), 3);
 
     // get single member
-    let _: serde_json::Value = h
-        .client
+    let _: serde_json::Value = admin
         .get(format!("{base}/members/{alice_id}"))
         .send()
         .await
@@ -204,8 +201,7 @@ async fn run_suite(h: &Harness) {
         .unwrap();
 
     // create channel
-    let channel: serde_json::Value = h
-        .client
+    let channel: serde_json::Value = admin
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general", "topic": "everything"}))
         .send()
@@ -217,8 +213,7 @@ async fn run_suite(h: &Harness) {
     let channel_id = channel["id"].as_str().unwrap().to_string();
 
     // duplicate channel name → 409
-    let resp = h
-        .client
+    let resp = admin
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
         .send()
@@ -227,8 +222,7 @@ async fn run_suite(h: &Harness) {
     assert_eq!(resp.status(), StatusCode::CONFLICT);
 
     // list channels
-    let channels: Vec<serde_json::Value> = h
-        .client
+    let channels: Vec<serde_json::Value> = admin
         .get(format!("{base}/workspaces/{workspace_id}/channels"))
         .send()
         .await
@@ -239,8 +233,7 @@ async fn run_suite(h: &Harness) {
     assert_eq!(channels.len(), 1);
 
     // create thread
-    let thread: serde_json::Value = h
-        .client
+    let thread: serde_json::Value = admin
         .post(format!("{base}/channels/{channel_id}/threads"))
         .json(&json!({"title": "kickoff"}))
         .send()
@@ -252,8 +245,7 @@ async fn run_suite(h: &Harness) {
     let thread_id = thread["id"].as_str().unwrap().to_string();
 
     // list threads
-    let threads: Vec<serde_json::Value> = h
-        .client
+    let threads: Vec<serde_json::Value> = admin
         .get(format!("{base}/channels/{channel_id}/threads"))
         .send()
         .await
@@ -264,10 +256,8 @@ async fn run_suite(h: &Harness) {
     assert_eq!(threads.len(), 1);
 
     // post messages
-    let msg1: serde_json::Value = h
-        .client
+    let msg1: serde_json::Value = alice
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", &alice_id)
         .json(&json!({"body": "hello", "metadata": {"client": "test"}}))
         .send()
         .await
@@ -276,10 +266,8 @@ async fn run_suite(h: &Harness) {
         .await
         .unwrap();
     let msg1_id = msg1["id"].as_str().unwrap().to_string();
-    let msg2: serde_json::Value = h
-        .client
+    let msg2: serde_json::Value = bot
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", &bot_id)
         .json(&json!({"body": "world"}))
         .send()
         .await
@@ -290,8 +278,7 @@ async fn run_suite(h: &Harness) {
     let msg2_id = msg2["id"].as_str().unwrap().to_string();
 
     // list messages with limit
-    let listed: Vec<serde_json::Value> = h
-        .client
+    let listed: Vec<serde_json::Value> = admin
         .get(format!("{base}/threads/{thread_id}/messages?limit=10"))
         .send()
         .await
@@ -304,10 +291,8 @@ async fn run_suite(h: &Harness) {
     assert_eq!(listed[0]["metadata"]["client"], "test");
 
     // edit message (author)
-    let edited: serde_json::Value = h
-        .client
+    let edited: serde_json::Value = alice
         .patch(format!("{base}/messages/{msg1_id}"))
-        .header("maidan-test-member-id", &alice_id)
         .json(&json!({"body": "hello edited"}))
         .send()
         .await
@@ -319,8 +304,7 @@ async fn run_suite(h: &Harness) {
     assert!(edited["edited_at"].as_str().is_some());
     assert_eq!(edited["metadata"]["client"], "test");
 
-    let history: Vec<serde_json::Value> = h
-        .client
+    let history: Vec<serde_json::Value> = admin
         .get(format!("{base}/messages/{msg1_id}/edits"))
         .send()
         .await
@@ -333,8 +317,7 @@ async fn run_suite(h: &Harness) {
     assert_eq!(history[0]["body_after"], "hello edited");
 
     // mention
-    let resp = h
-        .client
+    let resp = alice
         .post(format!("{base}/messages/{msg1_id}/mentions"))
         .json(&json!({"member_id": bot_id}))
         .send()
@@ -342,8 +325,8 @@ async fn run_suite(h: &Harness) {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    let mentions: Vec<serde_json::Value> = h
-        .client
+    // A member's mentions are their own: only the bot reads the bot's.
+    let mentions: Vec<serde_json::Value> = bot
         .get(format!("{base}/members/{bot_id}/mentions"))
         .send()
         .await
@@ -354,18 +337,15 @@ async fn run_suite(h: &Harness) {
     assert_eq!(mentions.len(), 1);
 
     // vote
-    let resp = h
-        .client
+    let resp = bot
         .post(format!("{base}/messages/{msg1_id}/votes"))
-        .header("maidan-test-member-id", &bot_id)
         .json(&json!({"kind": "approve"}))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    let votes: Vec<serde_json::Value> = h
-        .client
+    let votes: Vec<serde_json::Value> = admin
         .get(format!("{base}/messages/{msg1_id}/votes"))
         .send()
         .await
@@ -377,8 +357,7 @@ async fn run_suite(h: &Harness) {
     assert_eq!(votes[0]["kind"], "approve");
 
     // reference
-    let reference: serde_json::Value = h
-        .client
+    let reference: serde_json::Value = admin
         .post(format!("{base}/references"))
         .json(&json!({
             "src_kind": "message",
@@ -395,8 +374,7 @@ async fn run_suite(h: &Harness) {
         .unwrap();
     assert!(reference["id"].as_str().is_some());
 
-    let refs: Vec<serde_json::Value> = h
-        .client
+    let refs: Vec<serde_json::Value> = admin
         .get(format!(
             "{base}/references?src_kind=message&src_id={msg2_id}"
         ))
@@ -409,16 +387,14 @@ async fn run_suite(h: &Harness) {
     assert_eq!(refs.len(), 1);
 
     // tombstone msg2
-    let resp = h
-        .client
+    let resp = bot
         .delete(format!("{base}/messages/{msg2_id}"))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    let remaining: Vec<serde_json::Value> = h
-        .client
+    let remaining: Vec<serde_json::Value> = admin
         .get(format!("{base}/threads/{thread_id}/messages"))
         .send()
         .await
@@ -430,9 +406,8 @@ async fn run_suite(h: &Harness) {
     assert_eq!(remaining[0]["id"], msg1_id);
 
     // malformed JSON → 400 problem+json
-    let resp = h
-        .client
-        .post(format!("{base}/workspaces"))
+    let resp = admin
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .header("content-type", "application/json")
         .body("not json")
         .send()

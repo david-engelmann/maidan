@@ -36,12 +36,12 @@ pub async fn create_channel(
     // Auto-add the creator as an admin of a new private channel so they don't
     // lock themselves out. Bypass callers have no real member.
     if c.private && !auth.bypass {
-        let actor = auth.actor_id;
+        let actor = auth.actor_id();
         state
             .store
             .add_channel_member_audited(
                 c.id,
-                auth.member_id,
+                auth.member_id(),
                 ChannelMemberRole::Admin,
                 Box::new(move |m| NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
@@ -109,7 +109,7 @@ pub async fn get_channel_boot(
 /// shared `__dm__` channel for every member, so without it that channel's
 /// counts were every member's DMs.
 fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
-    (!auth.bypass).then_some(auth.member_id)
+    (!auth.bypass).then_some(auth.member_id())
 }
 
 /// Task-queue depth for a channel: ready / assigned / blocked counts of its
@@ -247,7 +247,10 @@ pub async fn mute_channel(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    state.store.mute_channel(auth.member_id, channel.id).await?;
+    state
+        .store
+        .mute_channel(auth.member_id(), channel.id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -263,7 +266,7 @@ pub async fn unmute_channel(
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     if state
         .store
-        .unmute_channel(auth.member_id, channel.id)
+        .unmute_channel(auth.member_id(), channel.id)
         .await?
     {
         Ok(StatusCode::NO_CONTENT)
@@ -305,7 +308,7 @@ pub async fn add_channel_member(
         .get_member_in(channel.workspace_id, MemberId(body.member_id))
         .await?;
     let role = body.role.unwrap_or(ChannelMemberRole::Member);
-    let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), channel.workspace_id);
     let m = state
         .store
         .add_channel_member_audited(
@@ -361,7 +364,7 @@ pub async fn remove_channel_member(
             MemberId(mid),
             NewAuditEvent {
                 scope: AuditScope::Workspace(channel.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "channel_member.remove".into(),
                 target_kind: Some("channel".into()),
                 target_id: Some(channel.id.0),

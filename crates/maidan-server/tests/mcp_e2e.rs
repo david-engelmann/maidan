@@ -7,16 +7,38 @@ use base64::Engine;
 use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{
+    router,
+    test_support::{self, Tenant},
+    AppState,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+
+/// The workspace a test seeds into, and the store to seed it through.
+struct Seed {
+    tenant: Tenant,
+    store: Arc<dyn Store>,
+}
+
+impl Seed {
+    /// A new member of the tenant's workspace and its bearer secret.
+    async fn member(&self, handle: &str, kind: MemberKind) -> String {
+        self.tenant
+            .member(self.store.as_ref(), handle, kind)
+            .await
+            .token
+    }
+}
 
 async fn spawn() -> (
     std::net::SocketAddr,
     reqwest::Client,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
+    Seed,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
@@ -33,20 +55,18 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
+    let tenant = test_support::tenant(store.as_ref(), "mcp-ws").await;
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    (addr, client, server, dir)
+    let client = tenant.client();
+    (addr, client, server, dir, Seed { tenant, store })
 }
 
 async fn rpc(client: &reqwest::Client, base: &str, id: u64, method: &str, params: Value) -> Value {
-    rpc_with_member(client, base, id, method, params, None).await
+    rpc_with_token(client, base, id, method, params, None).await
 }
 
 async fn rpc_as(
@@ -55,18 +75,18 @@ async fn rpc_as(
     id: u64,
     method: &str,
     params: Value,
-    member_id: &str,
+    token: &str,
 ) -> Value {
-    rpc_with_member(client, base, id, method, params, Some(member_id)).await
+    rpc_with_token(client, base, id, method, params, Some(token)).await
 }
 
-async fn rpc_with_member(
+async fn rpc_with_token(
     client: &reqwest::Client,
     base: &str,
     id: u64,
     method: &str,
     params: Value,
-    member_id: Option<&str>,
+    token: Option<&str>,
 ) -> Value {
     let body = json!({
         "jsonrpc": "2.0",
@@ -75,8 +95,8 @@ async fn rpc_with_member(
         "params": params,
     });
     let mut request = client.post(format!("{base}/mcp")).json(&body);
-    if let Some(member_id) = member_id {
-        request = request.header("maidan-test-member-id", member_id);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
     }
     request.send().await.unwrap().json().await.unwrap()
 }
@@ -88,7 +108,7 @@ fn unwrap_tool_text(result: &Value) -> Value {
 
 #[tokio::test]
 async fn full_mcp_flow() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, seed) = spawn().await;
     let base = format!("http://{addr}");
 
     // initialize — a version-less client negotiates the current default (2026-07-28).
@@ -112,26 +132,8 @@ async fn full_mcp_flow() {
     assert!(names.contains(&"add_reference"));
 
     // need a workspace/member/channel/thread to exercise tools
-    let ws_resp: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "mcp-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap().to_string();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
+    let workspace_id = seed.tenant.workspace_id.0.to_string();
+    let alice_token = seed.member("alice", MemberKind::Human).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -163,7 +165,7 @@ async fn full_mcp_flow() {
             "name": "list_channels",
             "arguments": {"workspace_id": workspace_id}
         }),
-        &alice_id,
+        &alice_token,
     )
     .await;
     let channels = unwrap_tool_text(&resp["result"]);
@@ -182,7 +184,7 @@ async fn full_mcp_flow() {
                 "body": "hi from mcp"
             }
         }),
-        &alice_id,
+        &alice_token,
     )
     .await;
     let posted = unwrap_tool_text(&resp["result"]);
@@ -202,7 +204,7 @@ async fn full_mcp_flow() {
                 "body": "edited via mcp"
             }
         }),
-        &alice_id,
+        &alice_token,
     )
     .await;
     let edited = unwrap_tool_text(&resp["result"]);
@@ -218,7 +220,7 @@ async fn full_mcp_flow() {
             "name": "list_messages",
             "arguments": {"thread_id": thread_id, "limit": 10}
         }),
-        &alice_id,
+        &alice_token,
     )
     .await;
     let messages = unwrap_tool_text(&resp["result"]);
@@ -300,7 +302,7 @@ async fn full_mcp_flow() {
                 "content_base64": artifact_b64
             }
         }),
-        &alice_id,
+        &alice_token,
     )
     .await;
     let artifact = unwrap_tool_text(&resp["result"]);
@@ -341,29 +343,11 @@ async fn full_mcp_flow() {
 
 #[tokio::test]
 async fn http_resource_subscribe_delivers_sse_notification() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, seed) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws_resp: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "mcp-notify-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = seed.tenant.workspace_id.0.to_string();
+    let alice_token = seed.member("alice", MemberKind::Human).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -429,7 +413,7 @@ async fn http_resource_subscribe_delivers_sse_notification() {
                 "body": "notify me"
             }
         }),
-        alice_id,
+        &alice_token,
     )
     .await;
 
@@ -446,29 +430,11 @@ async fn http_resource_subscribe_delivers_sse_notification() {
 
 #[tokio::test]
 async fn http_tombstone_emits_resource_updated_sse_notification() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, seed) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws_resp: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "tombstone-notify"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = seed.tenant.workspace_id.0.to_string();
+    let alice_token = seed.member("alice", MemberKind::Human).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -491,7 +457,7 @@ async fn http_tombstone_emits_resource_updated_sse_notification() {
     let thread_id = th["id"].as_str().unwrap();
     let msg: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice_token)
         .json(&json!({"body": "delete me"}))
         .send()
         .await
@@ -535,7 +501,7 @@ async fn http_tombstone_emits_resource_updated_sse_notification() {
 
     let resp = client
         .delete(format!("{base}/messages/{msg_id}"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice_token)
         .send()
         .await
         .unwrap();
@@ -554,29 +520,11 @@ async fn http_tombstone_emits_resource_updated_sse_notification() {
 
 #[tokio::test]
 async fn http_edit_message_emits_resource_updated_sse_notification() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, seed) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws_resp: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "edit-notify"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
+    let workspace_id = seed.tenant.workspace_id.0.to_string();
+    let alice_token = seed.member("alice", MemberKind::Human).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -599,7 +547,7 @@ async fn http_edit_message_emits_resource_updated_sse_notification() {
     let thread_id = th["id"].as_str().unwrap();
     let msg: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice_token)
         .json(&json!({"body": "original"}))
         .send()
         .await
@@ -643,7 +591,7 @@ async fn http_edit_message_emits_resource_updated_sse_notification() {
 
     let resp = client
         .patch(format!("{base}/messages/{msg_id}"))
-        .header("maidan-test-member-id", alice_id)
+        .bearer_auth(&alice_token)
         .json(&json!({"body": "edited"}))
         .send()
         .await
@@ -663,7 +611,7 @@ async fn http_edit_message_emits_resource_updated_sse_notification() {
 
 #[tokio::test]
 async fn parse_error_for_garbage_body() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let resp = client
         .post(format!("http://{addr}/mcp"))
         .header("content-type", "application/json")
@@ -678,7 +626,7 @@ async fn parse_error_for_garbage_body() {
 
 #[tokio::test]
 async fn json_that_is_not_a_request_is_an_invalid_request_not_a_parse_error() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let post = |path: &'static str, body: &'static str| {
         client
             .post(format!("http://{addr}{path}"))
@@ -718,7 +666,7 @@ async fn json_that_is_not_a_request_is_an_invalid_request_not_a_parse_error() {
 
 #[tokio::test]
 async fn mcp_initialize_negotiates_protocol_version() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let base = format!("http://{addr}");
     // A supported requested version is echoed back verbatim.
     let ok = rpc(
@@ -745,7 +693,7 @@ async fn mcp_initialize_negotiates_protocol_version() {
 
 #[tokio::test]
 async fn mcp_batch_returns_array_of_responses() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let batch = json!([
         { "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} },
         { "jsonrpc": "2.0", "method": "notifications/initialized" },
@@ -769,7 +717,7 @@ async fn mcp_batch_returns_array_of_responses() {
 
 #[tokio::test]
 async fn mcp_notification_gets_202_and_no_body() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let resp = client
         .post(format!("http://{addr}/mcp"))
         .json(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
@@ -783,7 +731,7 @@ async fn mcp_notification_gets_202_and_no_body() {
 
 #[tokio::test]
 async fn mcp_unsupported_protocol_version_header_is_rejected() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let resp = client
         .post(format!("http://{addr}/mcp"))
         .header("mcp-protocol-version", "1999-01-01")
@@ -810,7 +758,7 @@ async fn mcp_unsupported_protocol_version_header_is_rejected() {
 /// need; a wider one invites a call the server refuses.
 #[tokio::test]
 async fn published_enums_are_the_values_the_server_accepts() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, seed) = spawn().await;
     let base = format!("http://{addr}");
 
     let tools = rpc(&client, &base, 1, "tools/list", json!({})).await;
@@ -838,26 +786,8 @@ async fn published_enums_are_the_values_the_server_accepts() {
             ["type"]["enum"],
     );
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "enums"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
+    let workspace_id = seed.tenant.workspace_id.0.to_string();
+    let alice_token = seed.member("alice", MemberKind::Agent).await;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "work"}))
@@ -879,7 +809,7 @@ async fn published_enums_are_the_values_the_server_accepts() {
         .unwrap();
     let thread_id = th["id"].as_str().unwrap().to_string();
     let call = |id: u64, name: &'static str, arguments: Value| {
-        let (client, base, alice_id) = (client.clone(), base.clone(), alice_id.clone());
+        let (client, base, alice_token) = (client.clone(), base.clone(), alice_token.clone());
         async move {
             rpc_as(
                 &client,
@@ -887,7 +817,7 @@ async fn published_enums_are_the_values_the_server_accepts() {
                 id,
                 "tools/call",
                 json!({"name": name, "arguments": arguments}),
-                &alice_id,
+                &alice_token,
             )
             .await
         }
@@ -982,7 +912,7 @@ async fn published_enums_are_the_values_the_server_accepts() {
 
 #[tokio::test]
 async fn profile_endpoints_serve_a_fixed_tool_list() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let base = format!("http://{addr}");
 
     async fn listed(client: &reqwest::Client, base: &str, path: &str) -> Value {
@@ -1066,7 +996,7 @@ async fn profile_endpoints_serve_a_fixed_tool_list() {
 /// batch on an earlier revision is still served.
 #[tokio::test]
 async fn a_batch_on_2026_07_28_is_refused_whole() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, _seed) = spawn().await;
     let batch = json!([{ "jsonrpc": "2.0", "id": 1, "method": "ping" }]);
     let send = |version: &'static str| {
         client

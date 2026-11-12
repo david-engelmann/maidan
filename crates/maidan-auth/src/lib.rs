@@ -12,6 +12,7 @@ pub mod error;
 pub mod event_visibility;
 pub mod export_sign;
 pub mod peer_secret;
+pub mod principal;
 pub mod resolve;
 pub mod subscribe;
 pub mod thread_lookup;
@@ -45,6 +46,10 @@ pub use peer_secret::{
     decrypt_fallback_keys_from_env, decrypt_peer_secret, decrypt_peer_secret_multi,
     decrypt_peer_secret_rotating, encrypt_peer_secret, encryption_key_from_env,
     init_decrypt_fallback_keys, PeerSecretError,
+};
+pub use principal::{
+    member_can_access_channel, member_can_access_thread, resolve_anonymous_reader, resolve_session,
+    SessionPrincipal, SYNTHETIC_WORKSPACE_PREFIX,
 };
 pub use resolve::{
     ensure_workspace_active, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,

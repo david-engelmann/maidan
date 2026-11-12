@@ -47,7 +47,7 @@ pub async fn create_recipe(
             channel_id,
             name: body.name.trim().to_string(),
             spec: body.spec,
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
         })
         .await?;
     Ok((StatusCode::CREATED, Json(recipe)))
@@ -125,7 +125,7 @@ pub async fn instantiate_recipe(
 
     let (run, events) = state
         .store
-        .instantiate_recipe(recipe_id, body.params, auth.member_id)
+        .instantiate_recipe(recipe_id, body.params, auth.member_id())
         .await?;
     for stored in events {
         publish_stored(&state, stored).await;

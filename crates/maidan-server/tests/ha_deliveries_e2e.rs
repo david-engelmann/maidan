@@ -102,7 +102,6 @@ impl Replica {
             seen,
             Arc::new(maidan_search::PostgresSearch::new(pool.clone())),
         );
-        state.auth_disabled = false;
         state.webhooks = WebhookRuntime::new(Some(Arc::new(KEY)));
         state.fsm_hooks = FsmHookRuntime::new(Some(Arc::new(KEY)));
         let workers = (

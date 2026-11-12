@@ -31,7 +31,10 @@ pub async fn ensure_channel_access(
     if !channel.private || channel.name == DM_CHANNEL_NAME {
         return Ok(());
     }
-    if store.channel_is_member(channel_id, auth.member_id).await? {
+    if store
+        .channel_is_member(channel_id, auth.member_id())
+        .await?
+    {
         Ok(())
     } else {
         Err(AuthError::Forbidden(
@@ -73,7 +76,7 @@ pub async fn visible_channels(
         return Ok(store.list_channels(workspace_id).await?);
     }
     Ok(store
-        .list_channels_with_membership(workspace_id, auth.member_id)
+        .list_channels_with_membership(workspace_id, auth.member_id())
         .await?
         .into_iter()
         .filter(|(channel, is_member)| listed_for_member(channel, *is_member))
@@ -97,7 +100,7 @@ pub async fn private_channel_deny_set(
         return Ok(Vec::new());
     }
     Ok(store
-        .list_channels_with_membership(workspace_id, auth.member_id)
+        .list_channels_with_membership(workspace_id, auth.member_id())
         .await?
         .into_iter()
         .filter(|(channel, is_member)| !listed_for_member(channel, *is_member))
@@ -115,7 +118,7 @@ pub async fn ensure_dm_participant(
     auth: &AuthContext,
     thread_id: ThreadId,
 ) -> Result<(), AuthError> {
-    let me = auth.member_id;
+    let me = auth.member_id();
     if let Some(dm) = store.dm_conversation_for_thread(thread_id).await? {
         if dm.member_low_id == me || dm.member_high_id == me {
             return Ok(());
@@ -170,7 +173,11 @@ pub async fn authorize_thread(
     auth.ensure_workspace(channel.workspace_id)?;
     if channel.name == DM_CHANNEL_NAME {
         ensure_dm_participant(store, auth, thread_id).await?;
-    } else if channel.private && !store.channel_is_member(channel.id, auth.member_id).await? {
+    } else if channel.private
+        && !store
+            .channel_is_member(channel.id, auth.member_id())
+            .await?
+    {
         return Err(AuthError::Forbidden(
             "caller is not a member of this private channel".into(),
         ));
@@ -225,7 +232,7 @@ pub async fn can_read_gate(
     if auth.bypass {
         return Ok(true);
     }
-    if gate.workspace_id != auth.workspace_id {
+    if gate.workspace_id != auth.workspace_id() {
         return Ok(false);
     }
     match gate.thread_id {
@@ -249,7 +256,7 @@ pub async fn can_read_artifact(
         return Ok(true);
     }
     Ok(store
-        .artifact_visible_to(auth.workspace_id, auth.member_id, sha256)
+        .artifact_visible_to(auth.workspace_id(), auth.member_id(), sha256)
         .await?)
 }
 
@@ -265,8 +272,8 @@ async fn is_workspace_admin(
 ) -> Result<bool, AuthError> {
     let now = chrono::Utc::now();
     Ok(auth.bypass
-        || (auth.member_id == member_id && auth.has_capability(crate::TOKEN_ADMIN))
-        || (auth.delegation_grant_id.is_none()
+        || (auth.member_id() == member_id && auth.has_capability(crate::TOKEN_ADMIN))
+        || (auth.delegation_grant_id().is_none()
             && store
                 .list_api_tokens_for_member(workspace_id, member_id)
                 .await?

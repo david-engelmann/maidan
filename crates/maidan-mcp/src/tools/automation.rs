@@ -94,7 +94,7 @@ pub(super) async fn register_slash_command(
                 handler_kind,
                 handler_target,
                 secret_ciphertext: ciphertext,
-                created_by_token: auth.token_id,
+                created_by_token: auth.token_id(),
             })
             .await
             .map_err(McpError::from)?;
@@ -114,7 +114,7 @@ pub(super) async fn register_slash_command(
             handler_kind,
             handler_target,
             secret_ciphertext,
-            created_by_token: auth.token_id,
+            created_by_token: auth.token_id(),
         })
         .await
         .map_err(McpError::from)?;
@@ -132,14 +132,14 @@ async fn record_slash_registration(
 ) {
     let event = NewAuditEvent {
         scope: AuditScope::Workspace(workspace_id),
-        actor_id: (!auth.bypass).then_some(auth.actor_id),
+        actor_id: (!auth.bypass).then_some(auth.actor_id()),
         action: "slash_command.create".into(),
         target_kind: Some("slash_command".into()),
         target_id: Some(command.id.0),
         metadata: json!({
             "workspace_id": workspace_id.0,
-            "created_by_token": auth.token_id.map(|token| token.0),
-            "member_id": (!auth.bypass).then_some(auth.member_id.0),
+            "created_by_token": auth.token_id().map(|token| token.0),
+            "member_id": (!auth.bypass).then_some(auth.member_id().0),
         }),
     };
     if let Err(err) = store.append_audit(event).await {
@@ -291,7 +291,7 @@ pub(super) async fn register_fsm_hook(
                 handler_kind,
                 handler_target: a.handler_target.trim().to_string(),
                 secret_ciphertext: ciphertext,
-                created_by_token: auth.token_id,
+                created_by_token: auth.token_id(),
             })
             .await
             .map_err(McpError::from)?;
@@ -311,7 +311,7 @@ pub(super) async fn register_fsm_hook(
             handler_kind,
             handler_target: a.handler_target.trim().to_string(),
             secret_ciphertext,
-            created_by_token: auth.token_id,
+            created_by_token: auth.token_id(),
         })
         .await
         .map_err(McpError::from)?;

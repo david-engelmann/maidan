@@ -10,7 +10,7 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, subscribe_resume, AppState};
+use maidan_server::{router, subscribe_resume, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use tokio_tungstenite::{
@@ -18,7 +18,7 @@ use tokio_tungstenite::{
     tungstenite::{client::IntoClientRequest, Message},
 };
 
-async fn spawn_server(max_connections: usize) -> (std::net::SocketAddr, tempfile::TempDir) {
+async fn spawn_server(max_connections: usize) -> (std::net::SocketAddr, String, tempfile::TempDir) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -32,6 +32,7 @@ async fn spawn_server(max_connections: usize) -> (std::net::SocketAddr, tempfile
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "acme").await;
     let mut state = AppState::for_tests(
         store,
         Arc::new(LocalFsStore::new(dir.path())),
@@ -44,20 +45,22 @@ async fn spawn_server(max_connections: usize) -> (std::net::SocketAddr, tempfile
     let addr = listener.local_addr().unwrap();
     let app = router(state);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, dir)
+    (addr, tenant.token, dir)
 }
 
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-async fn subscribed(addr: std::net::SocketAddr) -> Socket {
+async fn subscribed(addr: std::net::SocketAddr, token: &str) -> Socket {
     let url = format!("ws://{addr}/ws/subscribe");
     let (mut ws, _) = connect_async(url.into_client_request().unwrap())
         .await
         .expect("connect");
-    ws.send(Message::Text(json!({ "filter": {} }).to_string()))
-        .await
-        .unwrap();
+    ws.send(Message::Text(
+        json!({ "token": token, "filter": {} }).to_string(),
+    ))
+    .await
+    .unwrap();
     loop {
         let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
             .await
@@ -72,8 +75,8 @@ async fn subscribed(addr: std::net::SocketAddr) -> Socket {
 
 #[tokio::test]
 async fn an_oversized_client_frame_closes_the_connection() {
-    let (addr, _dir) = spawn_server(100).await;
-    let mut ws = subscribed(addr).await;
+    let (addr, token, _dir) = spawn_server(100).await;
+    let mut ws = subscribed(addr, &token).await;
     let oversized = "x".repeat(maidan_server::ws::MAX_CLIENT_WS_MESSAGE_BYTES + 1);
     let _ = ws.send(Message::Text(oversized)).await;
     let closed = tokio::time::timeout(Duration::from_secs(5), async {
@@ -91,8 +94,8 @@ async fn an_oversized_client_frame_closes_the_connection() {
 
 #[tokio::test]
 async fn subscriber_connections_are_capped_and_a_slot_frees_on_close() {
-    let (addr, _dir) = spawn_server(1).await;
-    let mut first = subscribed(addr).await;
+    let (addr, token, _dir) = spawn_server(1).await;
+    let mut first = subscribed(addr, &token).await;
 
     let url = format!("ws://{addr}/ws/subscribe");
     let refused = connect_async(url.clone().into_client_request().unwrap()).await;

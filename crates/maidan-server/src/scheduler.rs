@@ -101,9 +101,14 @@ async fn creator_may_fire(state: &AppState, sched: &TaskSchedule) -> Result<(), 
         Ok(_) => {}
         Err(_) => return Err(NotActing::Held("creator check failed")),
     }
-    let creator =
-        maidan_auth::AuthContext::from_session(sched.created_by, sched.workspace_id, Vec::new());
-    match maidan_auth::can_access_channel(store, &creator, sched.channel_id).await {
+    match maidan_auth::member_can_access_channel(
+        store,
+        sched.workspace_id,
+        sched.created_by,
+        sched.channel_id,
+    )
+    .await
+    {
         Ok(true) => Ok(()),
         Ok(false) => Err(NotActing::Ended("creator is not in the channel")),
         Err(_) => Err(NotActing::Held("creator check failed")),

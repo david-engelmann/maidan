@@ -67,7 +67,7 @@ pub async fn list_oauth_grants(
     ensure_workspace(&auth, workspace_id)?;
     let grants = state
         .store
-        .list_oauth_grants(workspace_id, auth.member_id)
+        .list_oauth_grants(workspace_id, auth.member_id())
         .await?;
     let mut views = Vec::with_capacity(grants.len());
     for grant in &grants {
@@ -99,7 +99,7 @@ pub async fn revoke_oauth_grant(
         .store
         .get_oauth_grant(OAuthGrantId(grant_id))
         .await?
-        .filter(|grant| grant.workspace_id == workspace_id && grant.member_id == auth.member_id)
+        .filter(|grant| grant.workspace_id == workspace_id && grant.member_id == auth.member_id())
         .ok_or(ApiError::NotFound)?;
     let revoked = state
         .store
@@ -108,7 +108,7 @@ pub async fn revoke_oauth_grant(
             crate::oauth::token::lineage_audit_as(
                 "member_revocation",
                 grant.client_id.clone(),
-                Some(auth.member_id),
+                Some(auth.member_id()),
             ),
         )
         .await?;

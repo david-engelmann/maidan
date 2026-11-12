@@ -25,7 +25,7 @@ pub fn bind_to_caller_workspace(
     }
     match filter.workspace_id {
         None => {
-            filter.workspace_id = Some(auth.workspace_id);
+            filter.workspace_id = Some(auth.workspace_id());
             Ok(())
         }
         Some(ws) => auth
@@ -67,7 +67,7 @@ pub async fn apply_subscribe_grants(
                 Some(_)
                     if state
                         .store
-                        .channel_is_member(cid, auth.member_id)
+                        .channel_is_member(cid, auth.member_id())
                         .await
                         .map_err(|e| format!("channel_is_member: {e}"))? =>
                 {

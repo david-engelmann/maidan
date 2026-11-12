@@ -11,7 +11,7 @@ cargo-fuzz = true
 chrono = "0.4"
 libfuzzer-sys = "0.4"
 maidan-a2a = { path = "../crates/maidan-a2a" }
-maidan-auth = { path = "../crates/maidan-auth" }
+maidan-auth = { path = "../crates/maidan-auth", features = ["test-support"] }
 maidan-mcp = { path = "../crates/maidan-mcp" }
 maidan-types = { path = "../crates/maidan-types" }
 serde = "1"

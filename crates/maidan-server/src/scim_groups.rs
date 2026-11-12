@@ -169,7 +169,7 @@ pub async fn list_groups(
         Ok(filter) => filter,
         Err(fault) => return fault.into_response(),
     };
-    let groups = match state.store.list_scim_groups(auth.workspace_id).await {
+    let groups = match state.store.list_scim_groups(auth.workspace_id()).await {
         Ok(groups) => groups,
         Err(err) => return store_failure(err),
     };
@@ -227,7 +227,7 @@ pub async fn get_group(
     }
     match state
         .store
-        .get_scim_group(auth.workspace_id, ScimGroupId(id))
+        .get_scim_group(auth.workspace_id(), ScimGroupId(id))
         .await
     {
         Ok(Some(group)) => scim_response(
@@ -252,13 +252,13 @@ pub async fn create_group(
         Ok(parsed) => parsed,
         Err(fault) => return fault.into_response(),
     };
-    let actor = auth.actor_id;
-    let workspace_id = auth.workspace_id;
+    let actor = auth.actor_id();
+    let workspace_id = auth.workspace_id();
     match state
         .store
         .scim_create_group_audited(
             NewScimGroup {
-                workspace_id: auth.workspace_id,
+                workspace_id: auth.workspace_id(),
                 display_name,
                 external_id,
                 members,
@@ -289,12 +289,12 @@ async fn update_group(
     id: ScimGroupId,
     change: ScimGroupChange,
 ) -> Response {
-    let actor = auth.actor_id;
-    let workspace_id = auth.workspace_id;
+    let actor = auth.actor_id();
+    let workspace_id = auth.workspace_id();
     match state
         .store
         .scim_update_group_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             id,
             change,
             Box::new(move |write| NewAuditEvent {
@@ -485,14 +485,14 @@ pub async fn delete_group(
         return resp;
     }
     let id = ScimGroupId(id);
-    let group = match state.store.get_scim_group(auth.workspace_id, id).await {
+    let group = match state.store.get_scim_group(auth.workspace_id(), id).await {
         Ok(Some(group)) => group,
         Ok(None) => return no_such_group(),
         Err(err) => return store_failure(err),
     };
     let event = NewAuditEvent {
-        scope: AuditScope::Workspace(auth.workspace_id),
-        actor_id: Some(auth.actor_id),
+        scope: AuditScope::Workspace(auth.workspace_id()),
+        actor_id: Some(auth.actor_id()),
         action: "scim.group.delete".into(),
         target_kind: Some("scim_group".into()),
         target_id: Some(id.0),
@@ -503,7 +503,7 @@ pub async fn delete_group(
     };
     match state
         .store
-        .scim_delete_group_audited(auth.workspace_id, id, event)
+        .scim_delete_group_audited(auth.workspace_id(), id, event)
         .await
     {
         Ok(true) => (StatusCode::NO_CONTENT, ()).into_response(),

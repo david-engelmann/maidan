@@ -2,13 +2,13 @@
 //! claimed / working / blocked — over HTTP, splitting held work by the working
 //! clock (whether the holder has acknowledged via `acknowledge_claim`).
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewMember, NewThread};
 
 #[tokio::test]
 async fn occupancy_splits_claimed_from_working_over_http() {
@@ -26,15 +26,10 @@ async fn occupancy_splits_claimed_from_working_over_http() {
 
     // Set the scenario up through the store (the counts logic is store-tested on
     // both backends; this test proves the HTTP route surfaces it).
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "occ-ws".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "occ-ws").await;
     let member = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "worker".into(),
             display_name: None,
             kind: MemberKind::Agent,
@@ -43,7 +38,7 @@ async fn occupancy_splits_claimed_from_working_over_http() {
         .unwrap();
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "occ".into(),
             topic: None,
             private: false,
@@ -79,10 +74,7 @@ async fn occupancy_splits_claimed_from_working_over_http() {
     let addr = listener.local_addr().unwrap();
     let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let occ: serde_json::Value = client
         .get(format!("http://{addr}/channels/{}/occupancy", channel.id.0))
         .send()

@@ -38,7 +38,7 @@ pub async fn allow_egress_target(
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let target = state
         .store
         .allow_egress_target_audited(
@@ -114,7 +114,7 @@ pub async fn revoke_egress_target(
             EgressTargetId(tid),
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "egress_target.revoke".into(),
                 target_kind: Some("egress_target".into()),
                 target_id: Some(tid),
