@@ -73,6 +73,65 @@ test("a kept key expires, and a new credential starts fresh", async () => {
   assert.notEqual(b.keys[0], b.keys[1]);
 });
 
+// A server whose answers the test hands out one at a time, so requests overlap.
+function heldServer() {
+  const keys: string[] = [];
+  const waiting: ((step: Step) => void)[] = [];
+  const fetchFn = (_url: string, init?: RequestInit): Promise<Response> => {
+    keys.push((init?.headers as Record<string, string>)["Idempotency-Key"]);
+    return new Promise((resolve, reject) => {
+      waiting.push((step) => (step === "drop" ? reject(new TypeError("Failed to fetch")) : resolve(new Response("{}", { status: step }))));
+    });
+  };
+  return { keys, send: guarded(fetchFn), answer: (i: number, step: Step) => waiting[i](step) };
+}
+
+test("an identical write sent while the first is still pending gets its own key", async () => {
+  const { keys, send, answer } = heldServer();
+  const first = send("/threads/t1/messages", post('{"body":"ship it"}'));
+  const second = send("/threads/t1/messages", post('{"body":"ship it"}'));
+  assert.notEqual(keys[0], keys[1], "a pending write's key is not shared, so the server never answers the second with 409 in flight");
+  answer(0, 201);
+  answer(1, 201);
+  assert.equal((await first).status, 201);
+  assert.equal((await second).status, 201);
+  // A retry that is itself pending holds the kept key the same way.
+  const third = send("/x", post("{}"));
+  answer(2, "drop");
+  await assert.rejects(third);
+  const retry = send("/x", post("{}"));
+  const other = send("/x", post("{}"));
+  assert.equal(keys[3], keys[2], "the retry reuses the dropped write's key");
+  assert.notEqual(keys[4], keys[2], "a write that starts while the retry is pending does not");
+  answer(3, 200);
+  answer(4, 200);
+  await Promise.all([retry, other]);
+});
+
+test("an answer under an older credential leaves the newer request's kept key alone", async () => {
+  const { keys, send, answer } = heldServer();
+  const old = send("/y", post("{}"));
+  bumpAuthEpoch();
+  const fresh = send("/y", post("{}"));
+  answer(1, "drop");
+  await assert.rejects(fresh);
+  answer(0, 200);
+  await old;
+  const retry = send("/y", post("{}"));
+  answer(2, 200);
+  await retry;
+  assert.equal(keys[2], keys[1], "the old request's success did not settle the new credential's write");
+  // And an old request whose answer never came does not seed the new credential's key.
+  const stale = send("/z", post("{}"));
+  bumpAuthEpoch();
+  answer(3, "drop");
+  await assert.rejects(stale);
+  const next = send("/z", post("{}"));
+  answer(4, 200);
+  await next;
+  assert.notEqual(keys[4], keys[3]);
+});
+
 test("a read carries no key and is not tracked", async () => {
   const { keys, send } = server([200]);
   await send("/x", { method: "GET" });

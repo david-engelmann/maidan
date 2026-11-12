@@ -365,22 +365,33 @@ export function guarded(fetchFn: (url: string, init?: RequestInit) => Promise<Re
   return async (url: string, init?: RequestInit): Promise<Response> => {
     const epoch = authEpoch;
     const print = writeFingerprint(url, init);
+    let key: string | null = null;
     if (print !== null && init) {
-      const now = Date.now();
+      // Take the key of an identical write whose outcome is unknown. Taking it
+      // means a second identical write that starts while this retry is still
+      // pending gets a fresh key instead of the server's 409 for a key in flight.
       const kept = unsettled.get(print);
-      const key = kept && now - kept.at < RETRY_KEY_MS ? kept.key : (init.headers as Record<string, string>)["Idempotency-Key"];
       unsettled.delete(print);
-      unsettled.set(print, { key, at: now });
-      if (unsettled.size > RETRY_KEYS_MAX) unsettled.delete(unsettled.keys().next().value as string);
+      key = kept && Date.now() - kept.at < RETRY_KEY_MS ? kept.key : (init.headers as Record<string, string>)["Idempotency-Key"];
       init = { ...init, headers: { ...(init.headers as Record<string, string>), "Idempotency-Key": key } };
     }
+    // Only an uncertain outcome keeps the key, and only under the credential
+    // it was sent with: an answer for an older credential must not touch an
+    // entry a newer request owns.
+    const keepKey = () => {
+      if (print === null || key === null || epoch !== authEpoch) return;
+      unsettled.delete(print);
+      unsettled.set(print, { key, at: Date.now() });
+      if (unsettled.size > RETRY_KEYS_MAX) unsettled.delete(unsettled.keys().next().value as string);
+    };
     try {
       const res = await fetchFn(url, init);
       if (res && typeof res === "object" && !sentUnder.has(res)) sentUnder.set(res, epoch);
-      if (print !== null && typeof res?.status === "number" && !outcomeUnknown(res.status)) unsettled.delete(print);
+      if (typeof res?.status === "number" && outcomeUnknown(res.status)) keepKey();
       reach.answered();
       return res;
     } catch (e) {
+      keepKey();
       if (e instanceof DOMException && e.name === "AbortError") throw e;
       reach.unreachable();
       throw new Err(OFFLINE, 0);
