@@ -1214,6 +1214,11 @@ async fn github_result(
     let reference =
         deliver_github_result_comment(sender.as_ref(), entry, row, repo, issue_number, body)
             .await?;
+    // The comment's webhook echo can arrive while the review, check run and
+    // status below are still being posted; with its receipt taken now, the
+    // echo is recognised as our own comment rather than a new message. The
+    // worker records it again after delivery, which is a no-op.
+    record_own_comment(state, entry, reference.as_ref()).await;
     // Additive: a review or check-run skip/failure never undoes a landed summary.
     post_result_inline_review(state, sender.as_ref(), repo, issue_number, entry.thread_id).await;
     post_result_check_run(state, sender.as_ref(), repo, entry.thread_id).await;
