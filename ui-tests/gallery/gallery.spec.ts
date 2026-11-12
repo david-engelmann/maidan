@@ -2,12 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, resolve } from "path";
 import { test, expect, type Page } from "@playwright/test";
 
-// The review gallery: the screens a person sees first, at a desktop and a
-// phone width, so a UI change is looked at before it merges rather than after
-// it ships. The pictures are for eyes; two things are checked because no eye
-// should have to: a screen that scrolls sideways on its own viewport, and a
-// page that throws. Both fail the run, and report.json lists every screen
-// with what was measured.
+// The review gallery: the screens a person sees first, at a desktop, two
+// tablet and a phone width, so a UI change is looked at before it merges
+// rather than after it ships. The pictures are for eyes; three things are
+// checked because no eye should have to: a screen that scrolls sideways on its
+// own viewport, a page that throws, and a page that logs a console error (a
+// refused request the screen should never have sent shows up there). Each
+// fails the run, and report.json lists every screen with what was measured.
 
 interface Board {
   workspace_id: string;
@@ -41,10 +42,29 @@ async function openLanding(page: Page) {
 const OUT = resolve(__dirname, "..", process.env.GALLERY_OUT ?? "gallery-out");
 mkdirSync(OUT, { recursive: true });
 
+// The tablet widths are where Files once scrolled sideways (a select that
+// escaped its card at 900px) while 1440 and 390 both looked fine.
 const VIEWPORTS = [
   { tag: "desktop", width: 1440, height: 900, mobile: false },
+  { tag: "tablet", width: 1024, height: 768, mobile: false },
+  { tag: "tablet-portrait", width: 768, height: 1024, mobile: false },
   { tag: "phone", width: 390, height: 844, mobile: true },
 ] as const;
+
+// Requests the console sends knowing the server may refuse them: probes whose
+// refusal is the answer. Chromium logs each refusal as a console error. Each
+// entry is a known debt, not a pass: a screen should ask for what it may
+// read, not learn it from a failure. Any refusal not listed here fails the
+// shot, so a new probe has to be argued for here.
+const EXPECTED_REFUSALS: { status: number; path: RegExp; why: string }[] = [
+  { status: 404, path: /^\/support$/, why: "the shell checks whether this server has a support page" },
+  { status: 401, path: /^\/auth\/session$/, why: "a page asks whether a browser session exists before it has one" },
+  { status: 404, path: /^\/threads\/[^/]+\/result$/, why: "a task with no result yet answers 404 for its result" },
+];
+function expectedRefusal(text: string, path: string): boolean {
+  const status = Number(/status of (\d{3})/.exec(text)?.[1] ?? 0);
+  return EXPECTED_REFUSALS.some((r) => r.status === status && r.path.test(path));
+}
 
 interface Row {
   shot: string;
@@ -91,6 +111,12 @@ for (const vp of VIEWPORTS) {
     test.beforeEach(({ page }) => {
       errors = [];
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+      page.on("console", (m) => {
+        if (m.type() !== "error") return;
+        const at = m.location().url ? new URL(m.location().url).pathname : "";
+        if (expectedRefusal(m.text(), at)) return;
+        errors.push(`console: ${m.text()}${at ? ` (${at})` : ""}`);
+      });
       // A stylesheet, script, font or image that fails leaves a page that
       // throws nothing and looks broken.
       page.on("response", (r) => {
@@ -121,8 +147,8 @@ for (const vp of VIEWPORTS) {
 
     test(`board in flight, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.flight);
-      // A phone shows one lane at a time; a desktop shows all seven tasks.
-      if (vp.mobile) await expect(page.locator("button.task").first()).toBeVisible();
+      // Below 900px the board shows one lane at a time; wider, all seven tasks.
+      if (vp.width < 900) await expect(page.locator("button.task").first()).toBeVisible();
       else await expect(page.locator("button.task")).toHaveCount(7);
       await shoot(page, `board-in-flight-${vp.tag}`, vp.width, errors);
     });
@@ -177,6 +203,17 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByRole("heading", { name: "Connect an agent" })).toBeVisible();
       await shoot(page, `connect-${vp.tag}`, vp.width, errors);
     });
+
+    // The places a first visit reaches from the rail, after their data loads.
+    for (const place of ["people", "activity", "catalog", "artifacts"] as const) {
+      test(`${place}, ${vp.tag}`, async ({ page }) => {
+        await signIn(page, fx.flight, `#/${place}`);
+        const main = page.locator("#main");
+        await expect(main).not.toBeEmpty();
+        await expect(main.locator('[aria-busy="true"], .ghost-line')).toHaveCount(0);
+        await shoot(page, `${place}-${vp.tag}`, vp.width, errors);
+      });
+    }
 
     test(`empty channel, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.empty);
