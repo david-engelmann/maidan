@@ -40,3 +40,6 @@ maidan:
     # authenticated call. In config, not secrets: the server reads it only from
     # the environment, and it is a published CI value, not a secret.
     MAIDAN_DEV_ADMIN_TOKEN: "maidan-dev-admin-token-local-stacks-only"
+  secrets:
+    # The server always authenticates, so it signs resume tokens with this.
+    MAIDAN_SESSION_SECRET: "ci-kind-session-secret-0123456789abcdef"

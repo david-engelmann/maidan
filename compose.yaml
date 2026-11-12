@@ -135,6 +135,8 @@ services:
       # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
       MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
       MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
+      # The server always authenticates, and signs resume tokens with this.
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
@@ -204,7 +206,12 @@ services:
       # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
       MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
       MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
+      # The server always authenticates, and signs resume tokens with this.
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       DATABASE_URL: postgres://maidan:maidan@postgres-b:5432/maidan
+      # B has its own database, so it seeds its own first admin with the same
+      # dev value; the smoke scripts open workspaces on each instance with it.
+      MAIDAN_DEV_ADMIN_TOKEN: ${MAIDAN_DEV_ADMIN_TOKEN:-maidan-dev-admin-token-local-stacks-only}
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       FEDERATION_DISABLED: "0"
@@ -404,6 +411,8 @@ services:
       # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
       MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
       MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
+      # The server always authenticates, and signs resume tokens with this.
+      MAIDAN_SESSION_SECRET: "smoke-compose-session-secret-32bytes!"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts

@@ -28,6 +28,12 @@ fn exempt_files() -> HashMap<&'static str, &'static str> {
         "src/session/handlers.rs",
         "OIDC first-admin bootstrap: no caller auth, hardcoded capabilities",
     );
+    // A development stack's first admin, minted at boot like `maidan init`:
+    // there is no caller, and only on an instance with no workspace yet.
+    m.insert(
+        "src/dev_admin.rs",
+        "dev first-admin seed at boot: no caller auth, refused in production",
+    );
     m
 }
 
