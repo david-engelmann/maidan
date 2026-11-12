@@ -1,5 +1,0 @@
-### A read-only token can no longer change personal state; existing tokens keep it
-
-- **Added:** a `member:self` capability for writes to the caller's own personal state: follow and unfollow a channel, thread or member, mute and unmute a thread or channel, mark notifications read, mark all read, snooze, notification preferences, delivery mode, the member email, and the inbox read mark. It is in `maidan.agent.worker`, `maidan.human.admin`, the default mint, browser sessions and the recipe agent scopes, and it is delegatable.
-- **Changed:** those 18 MCP tools and their 18 REST twins now need `member:self` instead of `workspace:read` (MCP-002). A token minted from now on with only `workspace:read` is refused with `403`. Their `GET` twins still take `workspace:read`.
-- **Changed:** migration 0237 grants `member:self` to every stored token, delegation grant, app installation and OAuth client, grant, code and pending request whose capabilities hold `workspace:read`, so a token minted before this release keeps marking notifications read and following threads with no change on the caller's side.
