@@ -110,6 +110,7 @@ fn sample() -> WorkspaceImport {
                 posted_at: now,
                 edited_at: None,
                 tombstoned_at: None,
+                provenance: None,
             },
             Message {
                 id: msg2,
@@ -121,6 +122,7 @@ fn sample() -> WorkspaceImport {
                 posted_at: now,
                 edited_at: None,
                 tombstoned_at: Some(now),
+                provenance: None,
             },
         ],
         message_edits: vec![MessageEdit {

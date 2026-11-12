@@ -144,6 +144,12 @@ fn http_deny_caps(required: &str) -> Vec<String> {
     match required {
         capability::WORKSPACE_READ => vec![],
         capability::WORKSPACE_WRITE => vec![capability::WORKSPACE_READ.into()],
+        // The shape of a token minted before `member:self` existed: read and
+        // write, and no personal-state writes (MCP-002).
+        capability::MEMBER_SELF => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         capability::MESSAGE_POST => vec![
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),

@@ -7,8 +7,8 @@
 //! `dispatch`) and the shared [`content_json`] helper live here.
 
 use maidan_auth::capability::{
-    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, TOKEN_ADMIN,
-    WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    ARTIFACT_UPLOAD, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ,
+    TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -287,6 +287,29 @@ pub fn slash_target_capability(tool: &str) -> Option<&'static str> {
     (!is_read_only(tool)).then_some(maidan_auth::capability::CHANNEL_ADMIN)
 }
 
+/// The tools that need `member:self`: writes to the caller's own personal
+/// state (MCP-002). Kept beside [`required_capability`], which must agree.
+pub const MEMBER_SELF_TOOLS: &[&str] = &[
+    "mark_inbox_read",
+    "mark_notification_read",
+    "mark_all_notifications_read",
+    "snooze_notification",
+    "set_notification_pref",
+    "set_delivery_mode",
+    "set_member_email",
+    "delete_member_email",
+    "follow_channel",
+    "unfollow_channel",
+    "follow_thread",
+    "unfollow_thread",
+    "follow_member",
+    "unfollow_member",
+    "mute_thread",
+    "unmute_thread",
+    "mute_channel",
+    "unmute_channel",
+];
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"
@@ -305,7 +328,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_approval_gate"
         | "list_mentions"
         | "get_inbox"
-        | "mark_inbox_read"
         | "wait_for_mention"
         | "wait_for_ready"
         | "wait_for_claim_expired"
@@ -361,32 +383,15 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_buried_decisions"
         | "get_manager_digest"
         | "get_unread_count"
-        | "mark_notification_read"
-        | "mark_all_notifications_read"
-        | "snooze_notification"
         | "wait_for_notification"
         | "list_notification_prefs"
-        | "set_notification_pref"
-        | "set_delivery_mode"
         | "get_delivery_mode"
-        | "set_member_email"
         | "get_member_email"
-        | "delete_member_email"
-        | "follow_channel"
-        | "unfollow_channel"
         | "list_channel_follows"
-        | "follow_thread"
-        | "unfollow_thread"
         | "list_thread_follows"
-        | "follow_member"
-        | "unfollow_member"
         | "list_member_follows"
         | "list_child_threads"
         | "list_recently_active_threads"
-        | "mute_thread"
-        | "unmute_thread"
-        | "mute_channel"
-        | "unmute_channel"
         | "get_thread_budget"
         | "usage_rollup"
         | "list_dlq"
@@ -421,6 +426,28 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "attenuate_token"
         | "rotate_token" => Ok(WORKSPACE_READ),
         "delegate_token" => Ok(WORKSPACE_READ),
+        // The holder's own personal state (MCP-002). Self-scoped to the
+        // token's member by `enforce_member_self_scope`; `member:self` says
+        // the token may write it at all, so a bare `workspace:read` token
+        // can't. `MEMBER_SELF_TOOLS` is the same list.
+        "mark_inbox_read"
+        | "mark_notification_read"
+        | "mark_all_notifications_read"
+        | "snooze_notification"
+        | "set_notification_pref"
+        | "set_delivery_mode"
+        | "set_member_email"
+        | "delete_member_email"
+        | "follow_channel"
+        | "unfollow_channel"
+        | "follow_thread"
+        | "unfollow_thread"
+        | "follow_member"
+        | "unfollow_member"
+        | "mute_thread"
+        | "unmute_thread"
+        | "mute_channel"
+        | "unmute_channel" => Ok(MEMBER_SELF),
         "create_delegation_grant"
         | "list_delegation_grants"
         | "revoke_delegation_grant"
@@ -1150,6 +1177,51 @@ mod catalog_filter_tests {
         for name in &names {
             assert_eq!(required_capability(name).unwrap(), WORKSPACE_READ, "{name}");
         }
+    }
+
+    #[test]
+    fn personal_state_writes_need_member_self_not_workspace_read() {
+        assert_eq!(MEMBER_SELF_TOOLS.len(), 18);
+        for name in MEMBER_SELF_TOOLS {
+            assert_eq!(required_capability(name).unwrap(), MEMBER_SELF, "{name}");
+            assert!(!is_read_only(name), "{name} writes");
+        }
+        let member = MemberId(uuid::Uuid::new_v4());
+        let workspace = WorkspaceId(uuid::Uuid::new_v4());
+        let read_only = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            member,
+            workspace,
+            vec![WORKSPACE_READ.to_string()],
+        );
+        let names = tool_names(&catalog_for(&read_only));
+        for name in MEMBER_SELF_TOOLS {
+            assert!(
+                !names.contains(&name.to_string()),
+                "{name} offered to workspace:read"
+            );
+        }
+        let personal = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            member,
+            workspace,
+            vec![WORKSPACE_READ.to_string(), MEMBER_SELF.to_string()],
+        );
+        let names = tool_names(&catalog_for(&personal));
+        for name in MEMBER_SELF_TOOLS {
+            assert!(
+                names.contains(&name.to_string()),
+                "{name} hidden from member:self"
+            );
+        }
+        let worker = maidan_auth::expand_set(maidan_auth::AGENT_WORKER).unwrap();
+        assert!(
+            worker.iter().any(|c| c == MEMBER_SELF),
+            "the worker preset keeps them"
+        );
+        assert!(maidan_auth::capability::default_minted()
+            .iter()
+            .any(|c| c == MEMBER_SELF));
     }
 
     #[test]

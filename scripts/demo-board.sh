@@ -117,7 +117,7 @@ agent() { # agent <handle> <display name> -> "<member id> <worker token>"
     "$(ttl "$(jq -nc --arg h "$1" --arg d "$2" '{handle:$h,display_name:$d}')")" \
     | jq -r '"\(.member.id) \(.token.secret)"'
 }
-human_caps='["workspace:read","message:post","thread:transition","event:subscribe"]'
+human_caps='["workspace:read","member:self","message:post","thread:transition","event:subscribe"]'
 
 read -r planner PT < <(agent planner Planner)
 read -r coder_a AT < <(agent coder-a "Coder A")

@@ -399,8 +399,9 @@ struct OpenGroupDmArgs {
 }
 
 /// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `message:post`
-/// and `open_group_dm_conversation`. At least three distinct members, all in
-/// the workspace, as the store requires.
+/// and `open_group_dm_conversation`. The caller is added when the list leaves
+/// them out; then at least three distinct members, all in the workspace, as
+/// the store requires.
 pub(super) async fn open_group_dm(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -410,7 +411,9 @@ pub(super) async fn open_group_dm(
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
-    let member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
+    let mut member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
+    // The opener is one of the group's members, as a 1:1 DM's opener is.
+    member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id());
     let group = store
         .open_group_dm_conversation(workspace_id, &member_ids, a.title)
         .await?;

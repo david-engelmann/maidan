@@ -19,7 +19,16 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
-    mint_with(store, ws, member, vec![capability::WORKSPACE_READ.into()]).await
+    mint_with(
+        store,
+        ws,
+        member,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::MEMBER_SELF.into(),
+        ],
+    )
+    .await
 }
 
 async fn mint_with(

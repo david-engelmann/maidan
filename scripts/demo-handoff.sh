@@ -103,7 +103,7 @@ agent() { # agent <handle> -> "<member id> <worker token>"
   rest "$ADMIN" POST "/workspaces/$WS/agents" "{\"handle\":\"$1$SUFFIX\"}" \
     | jq -r '"\(.member.id) \(.token.secret)"'
 }
-human_caps='["workspace:read","workspace:write","message:post","thread:transition","event:subscribe"]'
+human_caps='["workspace:read","member:self","workspace:write","message:post","thread:transition","event:subscribe"]'
 read -r planner PT < <(agent planner)
 read -r coder CT < <(agent coder)
 david=$(rest "$ADMIN" GET /me | jq -r .member_id)

@@ -29,6 +29,8 @@ OTLP_ENDPOINT=http://alloy:4317 OTLP_METRICS=1
 ```
 
 Alloy reads `MAIDAN_METRICS_TARGET` (default `maidan:8080`),
+`MAIDAN_METRICS_TOKEN` (the server's scrape token; a production server answers
+`/metrics` only to it),
 `TRACES_OTLP_ENDPOINT` (default `tempo:4317`) and `PROM_REMOTE_WRITE_URL`
 (default `http://prometheus:9090/api/v1/write`). Before export it deletes any
 `prompt`, `diff`, `rendered`, `body` or `content` span attribute, so no prompt or

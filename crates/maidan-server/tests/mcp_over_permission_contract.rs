@@ -44,37 +44,20 @@ const PRIVILEGED_READS: &[(&str, &str)] = &[
     ("verify_workspace_export", capability::TOKEN_ADMIN),
 ];
 
-/// Mutating tools that declare a read capability. Personal self-scoped
-/// state and holder-side token operations, plus the documented HTTP twins
+/// Mutating tools that declare a read capability: holder-side token
+/// operations, a top-up intent, and the documented HTTP twins
 /// (`POST /tokens/attenuate`, secret resolve) that use the same cap. A write
 /// that reaches other people (a group DM, an approval gate) is not one of
-/// them: it needs `message:post` (MCP-003).
+/// them: it needs `message:post` (MCP-003). Nor is a write to the caller's
+/// own personal state: it needs `member:self` (MCP-002).
 const READ_CAP_WRITES: &[(&str, &str)] = &[
     ("attenuate_token", capability::WORKSPACE_READ),
     ("delegate_token", capability::WORKSPACE_READ),
-    ("delete_member_email", capability::WORKSPACE_READ),
-    ("follow_channel", capability::WORKSPACE_READ),
-    ("follow_member", capability::WORKSPACE_READ),
-    ("follow_thread", capability::WORKSPACE_READ),
-    ("mark_all_notifications_read", capability::WORKSPACE_READ),
-    ("mark_inbox_read", capability::WORKSPACE_READ),
-    ("mark_notification_read", capability::WORKSPACE_READ),
-    ("mute_channel", capability::WORKSPACE_READ),
-    ("mute_thread", capability::WORKSPACE_READ),
     ("resolve_secret", capability::SECRET_READ),
     ("rotate_token", capability::WORKSPACE_READ),
-    ("set_delivery_mode", capability::WORKSPACE_READ),
-    ("set_member_email", capability::WORKSPACE_READ),
-    ("set_notification_pref", capability::WORKSPACE_READ),
-    ("snooze_notification", capability::WORKSPACE_READ),
     // A top-up intent moves no money: it records the amount a payment must
     // match, so any member, and an agent past its allowance, may open one.
     ("top_up_credits", capability::WORKSPACE_READ),
-    ("unfollow_channel", capability::WORKSPACE_READ),
-    ("unfollow_member", capability::WORKSPACE_READ),
-    ("unfollow_thread", capability::WORKSPACE_READ),
-    ("unmute_channel", capability::WORKSPACE_READ),
-    ("unmute_thread", capability::WORKSPACE_READ),
 ];
 
 /// Store methods that need at least this capability when a tool handler

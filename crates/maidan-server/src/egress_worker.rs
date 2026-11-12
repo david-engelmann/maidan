@@ -181,6 +181,32 @@ impl DeliveryFailure {
     }
 }
 
+/// Take the GitHub ingress key for a comment we just posted, so the
+/// `issue_comment` webhook that delivers it back posts nothing (RED-003). A
+/// GitHub App's comments are also skipped by app id; a token's comments look
+/// like anyone's, and this is what tells them apart. Best effort: a missed
+/// key costs one echoed comment, never a lost delivery.
+async fn record_own_comment(
+    state: &AppState,
+    entry: &EgressOutbox,
+    reference: Option<&ExternalRef>,
+) {
+    let Some(ExternalRef::Github { comment_id, .. }) = reference else {
+        return;
+    };
+    if let Err(err) = state
+        .store
+        .record_bridge_receipt(
+            entry.workspace_id,
+            maidan_types::MessageOrigin::Github,
+            &comment_id.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %err, id = %entry.id, comment_id, "egress worker: own comment not recorded");
+    }
+}
+
 /// Post one claimed delivery through the sender for its surface.
 ///
 /// Projector rows always post. Result rows update in place when a stored
@@ -1188,6 +1214,11 @@ async fn github_result(
     let reference =
         deliver_github_result_comment(sender.as_ref(), entry, row, repo, issue_number, body)
             .await?;
+    // The comment's webhook echo can arrive while the review, check run and
+    // status below are still being posted; with its receipt taken now, the
+    // echo is recognised as our own comment rather than a new message. The
+    // worker records it again after delivery, which is a no-op.
+    record_own_comment(state, entry, reference.as_ref()).await;
     // Additive: a review or check-run skip/failure never undoes a landed summary.
     post_result_inline_review(state, sender.as_ref(), repo, issue_number, entry.thread_id).await;
     post_result_check_run(state, sender.as_ref(), repo, entry.thread_id).await;
@@ -1934,6 +1965,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 stats.refused += 1;
             }
             Ok(Sent::Landed(reference)) => {
+                record_own_comment(state, &entry, reference.as_ref()).await;
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }
