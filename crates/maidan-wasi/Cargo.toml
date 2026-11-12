@@ -21,11 +21,11 @@ tracing.workspace = true
 # allowlist makes a banned import a *link* failure instead of a check we could
 # get wrong. It also keeps the filesystem-escape class (cf. the wasmtime WASI
 # trailing-slash escape, RUSTSEC-2026-0269) out of the trust path entirely.
-wasmi = "0.51"
+wasmi = "2.0"
 # `LimiterError` (the `ResourceLimiter` error type) is not re-exported from
 # `wasmi`, so the memory cap has to name it from `wasmi_core` directly. Same
 # version, already in the tree.
-wasmi_core = "0.51"
+wasmi_core = "2.0"
 
 [dev-dependencies]
 # Hand-written WAT keeps each sandbox test pinned to one property.

@@ -24,17 +24,17 @@ otel = [
 ]
 
 [dependencies]
-opentelemetry = { version = "0.31", features = ["trace", "metrics"], optional = true }
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "metrics"], optional = true }
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace", "metrics"], optional = true }
+opentelemetry = { version = "0.33", features = ["trace", "metrics"], optional = true }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "metrics"], optional = true }
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio", "trace", "metrics"], optional = true }
 metrics = "0.24"
 metrics-util = "0.20"
 metrics-exporter-opentelemetry = { version = "0.2", optional = true }
 maidan-types = { path = "../maidan-types" }
 thiserror.workspace = true
 tracing.workspace = true
-tracing-opentelemetry = { version = "0.32", optional = true }
+tracing-opentelemetry = { version = "0.34", optional = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [dev-dependencies]
-opentelemetry_sdk = { version = "0.31", features = ["metrics", "testing"] }
+opentelemetry_sdk = { version = "0.33", features = ["metrics", "testing"] }

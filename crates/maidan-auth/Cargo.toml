@@ -22,12 +22,12 @@ test-support = []
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
 metrics = "0.24"
-rand = "0.8"
-base64 = "0.22"
-chacha20poly1305 = "0.10"
+rand = "0.10"
+base64 = "0.23"
+chacha20poly1305 = "0.11"
 chrono.workspace = true
 hex = "0.4"
-hmac = "0.12"
+hmac = "0.13"
 ed25519-dalek = { version = "2.1", default-features = false, features = ["std", "zeroize"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -46,8 +46,8 @@ maidan-search = { path = "../maidan-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 sqlx.workspace = true
 chrono.workspace = true
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers = "0.24"
+testcontainers-modules = { version = "0.12", features = ["postgres"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
