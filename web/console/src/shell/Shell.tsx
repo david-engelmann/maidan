@@ -20,6 +20,7 @@ import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommand
 import { clearPaletteIndex } from "./paletteIndex.ts";
 import { ROUTES, navigate, phoneTabs, usePlace, useRoute, type Route, type RouteId } from "./router.ts";
 import { EmptyState } from "./EmptyState.tsx";
+import { OfflineBanner } from "./OfflineBanner.tsx";
 import { THEME_CHOICES, setChoice } from "../core/theme.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
@@ -204,6 +205,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       </header>
 
       <main className="content" id="main" tabIndex={-1}>
+        {signedIn ? <OfflineBanner /> : null}
         <motion.section
           key={route}
           // A slide, not a fade: a screen's skeletons and empty states must be
