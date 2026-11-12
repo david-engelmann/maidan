@@ -55,6 +55,7 @@ bash scripts/check-our-domains.sh        # no link to the old problem-type domai
 bash scripts/check-action-pins.sh        # every `uses:` names a commit SHA with a `# vX.Y.Z` comment (resolve with gh api repos/<o>/<r>/commits/<tag>)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 python3 scripts/test-mcp-fault-injection.py   # the Python claimants behind scripts/mcp-fault-proxy.py (in `lint`)
+python3 scripts/check-sdk-parity.py      # every method in sdk/methods.json is in all four SDKs and the Client Contract (in `lint`)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
 

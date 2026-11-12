@@ -119,6 +119,12 @@ func (c *Client) WaitForReady(workspaceID, channelID string, timeout time.Durati
 	return c.waitForKind(f, "thread_ready", timeout)
 }
 
+// WaitForApprovalRequest blocks until a gate is requested in the workspace, or
+// timeout (nil, nil). Answer it with ApprovalGatesService.Answer.
+func (c *Client) WaitForApprovalRequest(workspaceID string, timeout time.Duration) (Event, error) {
+	return c.waitForKind(M{"workspace_id": workspaceID}, "approval_requested", timeout)
+}
+
 // Follow is the projector shape for HTTP backfill then WS cutover.
 type Follow struct {
 	WorkspaceID string

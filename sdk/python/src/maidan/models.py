@@ -436,8 +436,35 @@ class ThreadReview(Model):
     actor_id: Optional[str] = None
     note: Optional[str] = None
     dismissed_at: Optional[str] = None
+    #: Root of the review packet an approval was given against.
+    evidence_root: Optional[str] = None
     #: Full head SHA of the change the verdict was given against.
     head_sha: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class ReviewPacket(Model):
+    """The evidence a reviewer is shown. An approval names its ``evidence_root``."""
+
+    id: str
+    thread_id: str
+    requested_by: str
+    thread_version: int
+    #: The evidence manifest (result hash, artifacts, attestation tiers), as sent.
+    manifest: Any
+    evidence_root: str
+    #: True when nothing in the packet was checked by the server.
+    self_reported_only: bool
+    created_at: str
+
+
+@dataclass(kw_only=True)
+class ReviewStatus(Model):
+    required_count: int
+    approvals: int
+    approvals_met: bool
+    send_backs: int
+    max_rounds: int
 
 
 @dataclass(kw_only=True)
@@ -521,7 +548,100 @@ class StoredEvent(Model):
     tracestate: Optional[str] = None
 
 
+@dataclass(kw_only=True)
+class ApprovalGate(Model):
+    id: str
+    workspace_id: str
+    requested_by: str
+    prompt: str
+    #: ``pending``, ``accepted``, ``declined`` or ``cancelled``.
+    state: str
+    created_at: str
+    thread_id: Optional[str] = None
+    schema: Any = None
+    content: Any = None
+    resolved_by: Optional[str] = None
+    requested_actor_id: Optional[str] = None
+    resolved_actor_id: Optional[str] = None
+    resolved_at: Optional[str] = None
+    #: ``low``, ``medium`` or ``high``.
+    risk: Optional[str] = None
+    decided_via: Any = None
+    #: ``request`` or ``review_round_cap``.
+    kind: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class ModelRequest(Model):
+    """A model's accept waiting on a person's confirmation."""
+
+    member_id: str
+    expires_at: str
+    client_name: Optional[str] = None
+    client_version: Optional[str] = None
+    client_id: Optional[str] = None
+    client_source: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class ApprovalGateView(Model):
+    """A pending gate with the ``request_state`` its answer must echo."""
+
+    gate: ApprovalGate
+    request_state: str
+    model_request: Optional[ModelRequest] = None
+
+
+@dataclass(kw_only=True)
+class FootprintItem(Model):
+    #: ``path``, ``glob``, ``crate``, ``lane``, ``branch`` or ``slot``.
+    kind: str
+    value: str
+
+
+@dataclass(kw_only=True)
+class Footprint(Model):
+    """What a thread will touch, read by ``claim_next`` before handing it out."""
+
+    repo: str
+    #: ``exclusive`` or ``shared``.
+    mode: str
+    items: List[FootprintItem]
+
+
+@dataclass(kw_only=True)
+class DelegationGrant(Model):
+    id: str
+    workspace_id: str
+    subject_id: str
+    delegate_id: str
+    capabilities: List[str]
+    purpose: str
+    authorized_by: str
+    expires_at: str
+    created_at: str
+    revoked_at: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class DelegatedToken(Model):
+    """A grant exchanged for a token. ``token.secret`` is returned here once."""
+
+    grant_id: str
+    delegate_id: str
+    token: MintedToken
+
+
 __all__ = [
+    "ApprovalGate",
+    "ApprovalGateView",
+    "DelegatedToken",
+    "DelegationGrant",
+    "Footprint",
+    "FootprintItem",
+    "ModelRequest",
+    "ReviewPacket",
+    "ReviewStatus",
     "AcceptedDecision",
     "Artifact",
     "Channel",
