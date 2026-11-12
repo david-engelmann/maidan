@@ -100,14 +100,16 @@ async fn assert_granted(store: &dyn Store, s: &Seeded) {
     );
     assert_eq!(token(s.reader).await, caps(&[READ, SELF]));
     assert_eq!(token(s.searcher).await, caps(&["search:query"]));
-    assert_eq!(
-        store
-            .get_delegation_grant(s.grant)
-            .await
-            .expect("grant")
-            .capabilities,
-        caps(&[READ, "thread:transition", SELF])
-    );
+    // A stored grant keeps its list sorted, so compare it as a set.
+    let mut grant = store
+        .get_delegation_grant(s.grant)
+        .await
+        .expect("grant")
+        .capabilities;
+    grant.sort();
+    let mut want = caps(&[READ, "thread:transition", SELF]);
+    want.sort();
+    assert_eq!(grant, want);
 }
 
 #[tokio::test]
