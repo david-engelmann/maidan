@@ -4,7 +4,8 @@
 //!
 //! - `POST /workspaces/:wid/approval-gates` needs `message:post`, opens a
 //!   pending gate attributed to the caller, and refuses another workspace or
-//!   a thread the caller cannot read without writing anything.
+//!   a thread the caller cannot read (403, as MCP's id-scope guard does)
+//!   without writing anything.
 //! - `GET /approval-gates/:id` is 404 for a gate in another workspace or on a
 //!   thread the caller cannot read.
 //! - Nobody accepts a gate they opened here.
@@ -362,7 +363,7 @@ async fn a_gate_opened_over_rest_reads_back_by_id_and_no_other_workspace_reaches
             json!({ "prompt": "hold their thread?", "thread_id": w.open_thread.0 }),
         )
         .await;
-    assert_eq!(borrowed.status(), StatusCode::NOT_FOUND);
+    assert_eq!(borrowed.status(), StatusCode::FORBIDDEN);
     assert_eq!(w.pending(w.home).await, 1);
     assert_eq!(w.pending(w.away).await, 0);
 
@@ -393,15 +394,23 @@ async fn a_gate_opened_over_rest_reads_back_by_id_and_no_other_workspace_reaches
 }
 
 /// A gate holds its thread, so only someone who can read the thread opens or
-/// reads one there: a member outside a private channel gets 404 for both,
-/// and nothing is written.
+/// reads one there: a member outside a private channel is refused the open
+/// (403, as over MCP) and gets 404 for the gate, and nothing is written.
 #[tokio::test]
 async fn a_gate_on_a_private_thread_is_opened_and_read_only_by_its_participants() {
     let w = world().await;
     let body = json!({ "prompt": "send the deck?", "thread_id": w.private_thread.0 });
 
     let refused = w.open(&w.carol_tok, w.home, body.clone()).await;
-    assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    let unknown = w
+        .open(
+            &w.alice_tok,
+            w.home,
+            json!({ "prompt": "hold a ghost?", "thread_id": uuid::Uuid::now_v7() }),
+        )
+        .await;
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
     assert_eq!(w.pending(w.home).await, 0, "a refused open wrote a gate");
 
     let opened = w.open(&w.alice_tok, w.home, body).await;

@@ -3379,7 +3379,7 @@ pub fn list_approval_gates() {}
 ///
 /// The REST twin of MCP `request_approval`: a `pending` gate attributed to
 /// the caller. Needs `message:post`. A `thread_id` the caller cannot read is
-/// 404. Waiters learn the answer from `approval_resolved` on the event stream
+/// 403, and an unknown one 404. Waiters learn the answer from `approval_resolved` on the event stream
 /// or by polling `GET /approval-gates/{id}`.
 #[utoipa::path(post, path = "/workspaces/{wid}/approval-gates", tag = "approval-gates",
     params(("wid" = Uuid, Path, description = "Workspace id")),

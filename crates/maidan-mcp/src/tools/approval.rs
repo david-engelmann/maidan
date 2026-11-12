@@ -62,9 +62,10 @@ struct RequestApprovalArgs {
 /// The gate is created `pending` and attributed to the caller
 /// (`auth.member_id`); a human resolves it later to accept/decline/cancel. The
 /// tool does **not** block — poll `get_approval_gate` with the returned
-/// `gate_id` for the outcome, or wait for `approval_resolved`. A `thread_id`
-/// the caller cannot read is not found. Requires `message:post`: a gate asks a person to
-/// decide and notifies them, so a read-only token cannot open one (MCP-003).
+/// `gate_id` for the outcome, or wait for `approval_resolved`. The id-scope
+/// guard has already refused a `thread_id` the caller cannot read. Requires
+/// `message:post`: a gate asks a person to decide and notifies them, so a
+/// read-only token cannot open one (MCP-003).
 /// The human's answer (`POST /approval-gates/:id/answer`) needs
 /// `workspace:write`.
 pub(super) async fn request_approval(
@@ -73,14 +74,6 @@ pub(super) async fn request_approval(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RequestApprovalArgs = crate::tools::parse_args(args)?;
-    // A gate holds its thread, so the caller must be able to read it. One
-    // not-found for a thread in another workspace or a private channel, the
-    // same as REST, so a thread id is no oracle.
-    if let Some(thread_id) = a.thread_id.map(maidan_types::ThreadId)
-        && !maidan_auth::can_access_thread(server.store.as_ref(), auth, thread_id).await?
-    {
-        return Err(McpError::NotFound);
-    }
     let (gate, event) = server
         .store
         .create_approval_gate_with_event(&NewApprovalGate {

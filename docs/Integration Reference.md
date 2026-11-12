@@ -1630,8 +1630,8 @@ gate stays `pending` indefinitely.
 Over REST, open a gate with `POST /workspaces/{wid}/approval-gates` (the same
 body, `message:post`; it answers `201` with the pending gate) and read it with
 `GET /approval-gates/{id}` (`workspace:read`). A `thread_id` you cannot read is
-`404` on both surfaces, and so is a gate in another workspace or on a thread you
-cannot read. The gate is always the caller's: the body names no requester, so
+refused on both surfaces (`403`; an unknown thread is `404`). A gate in another
+workspace, or on a thread you cannot read, is `404` by id. The gate is always the caller's: the body names no requester, so
 the rule that nobody accepts their own request holds however it was opened.
 
 Every answer appends `approval_resolved` (`gate_id`, `state`, `requested_by`,

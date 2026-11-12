@@ -157,9 +157,11 @@ fn round_cap_refusal(result: ApiResult<()>) -> ApiResult<()> {
 /// The gate is `pending` and attributed to the caller (and to the person a
 /// delegated token acts for), never to anyone the body names, so the rule
 /// that nobody accepts their own request holds for a gate opened here. A
-/// `thread_id` must be a thread the caller can read; any other answers 404,
-/// so a thread id is no oracle across tenants or into a private channel. The
-/// gate and its `approval_requested` event are written in one transaction.
+/// `thread_id` must be a thread the caller can read, checked as MCP checks it
+/// and as `POST /members/:id/follows` checks a body thread: 403 for one in
+/// another workspace or a private channel the caller is not in, 404 for an
+/// unknown one. The gate and its `approval_requested` event are written in
+/// one transaction.
 /// Answers `201` with the gate; poll `GET /approval-gates/:id` or wait for
 /// `approval_resolved` on the stream.
 pub async fn request_approval_gate(
@@ -171,10 +173,11 @@ pub async fn request_approval_gate(
     cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(wid);
     ensure_workspace(&auth, workspace_id)?;
-    if let Some(thread_id) = body.thread_id
-        && !maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id).await?
-    {
-        return Err(ApiError::NotFound);
+    // The same check MCP's id-scope guard makes before `request_approval`
+    // runs: a thread in another workspace or a private channel the caller is
+    // not in is 403, an unknown one 404.
+    if let Some(thread_id) = body.thread_id {
+        maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     }
     let (gate, event) = state
         .store

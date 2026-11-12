@@ -1,7 +1,7 @@
 //! A gate answered through `approval_decide` is announced as
 //! `approval_resolved` on the gate's own workspace stream, once, and nowhere
-//! else. `request_approval` on a thread the caller cannot read is not found
-//! and writes nothing.
+//! else. `request_approval` on a thread the caller cannot read is refused and
+//! writes nothing.
 
 use std::{sync::Arc, time::Duration};
 
@@ -124,7 +124,7 @@ async fn approval_decide_announces_approval_resolved_to_the_gates_workspace_only
     let as_person = AuthContext::from_session(person, home, caps.clone());
     let as_stranger = AuthContext::from_session(stranger, away, caps);
 
-    // A private channel the agent is not in: not found, nothing written.
+    // A private channel the agent is not in: refused, nothing written.
     let refused = server
         .call_tool(
             &as_agent,
@@ -133,8 +133,8 @@ async fn approval_decide_announces_approval_resolved_to_the_gates_workspace_only
         )
         .await;
     assert!(
-        matches!(refused, Err(McpError::NotFound)),
-        "a thread the caller cannot read must read as not found, got {refused:?}"
+        matches!(refused, Err(McpError::Forbidden(_))),
+        "a thread the caller cannot read must be refused, got {refused:?}"
     );
     assert!(store
         .list_pending_approval_gates(home, None, 50)

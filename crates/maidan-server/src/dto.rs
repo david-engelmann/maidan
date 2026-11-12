@@ -714,7 +714,8 @@ pub struct RequestApprovalGate {
     #[schema(value_type = Option<Object>)]
     pub schema: Option<serde_json::Value>,
     /// Optional thread to hold: while the gate is pending, `claim_next` does
-    /// not hand the thread to an agent. The caller must be able to read it.
+    /// not hand the thread to an agent. The caller must be able to read it
+    /// (403 otherwise; 404 for an unknown thread).
     #[serde(default)]
     pub thread_id: Option<ThreadId>,
     /// How much a wrong accept would cost; `high` when omitted. The
