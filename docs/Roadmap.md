@@ -194,8 +194,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    #1325 a gate is accepted only by a browser session the person signed in to
    or a token holding `approval:grant`, nobody accepts their own request, and
    `approval_decide` (#1332) lets a model ask but sends a person to the console
-   to confirm unless the workspace set a threshold. `AUTH_DISABLED` is never a
-   deployment mode. The privacy policy, terms and trust page are the
+   to confirm unless the workspace set a threshold. The server has no
+   unauthenticated mode (#2258). The privacy policy, terms and trust page are the
    maintainer's, prepared outside the repo.
 
 8. **The swarm factory runs unattended.** Many agents, of several model
