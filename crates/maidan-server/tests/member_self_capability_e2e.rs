@@ -244,22 +244,36 @@ async fn a_token_minted_before_member_self_still_marks_a_notification_read_after
         world
             .post(
                 bearer,
-                &format!("/members/{}/notifications/{}/read", seat.id, notifications[1]),
+                &format!(
+                    "/members/{}/notifications/{}/read",
+                    seat.id, notifications[1]
+                ),
             )
             .await,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        store.list_notifications(seat.id, true, 10).await.unwrap().len(),
+        store
+            .list_notifications(seat.id, true, 10)
+            .await
+            .unwrap()
+            .len(),
         2,
         "nothing was marked read while refused"
     );
 
-    sqlx::raw_sql(SQLITE_0237).execute(&world.pool).await.unwrap();
+    sqlx::raw_sql(SQLITE_0237)
+        .execute(&world.pool)
+        .await
+        .unwrap();
 
     let mut expected: Vec<String> = PRE_CHANGE_WORKER.iter().map(|c| c.to_string()).collect();
     expected.push(capability::MEMBER_SELF.into());
-    assert_eq!(world.stored_caps(token.id).await, expected, "appended, order kept");
+    assert_eq!(
+        world.stored_caps(token.id).await,
+        expected,
+        "appended, order kept"
+    );
     assert_eq!(
         world.stored_caps(read_only.id).await,
         vec![capability::WORKSPACE_READ, capability::MEMBER_SELF]
@@ -283,13 +297,20 @@ async fn a_token_minted_before_member_self_still_marks_a_notification_read_after
         world
             .post(
                 bearer,
-                &format!("/members/{}/notifications/{}/read", seat.id, notifications[1]),
+                &format!(
+                    "/members/{}/notifications/{}/read",
+                    seat.id, notifications[1]
+                ),
             )
             .await,
         StatusCode::OK
     );
     assert!(
-        store.list_notifications(seat.id, true, 10).await.unwrap().is_empty(),
+        store
+            .list_notifications(seat.id, true, 10)
+            .await
+            .unwrap()
+            .is_empty(),
         "both marked read"
     );
     for (tool, args) in [
@@ -311,7 +332,10 @@ async fn a_token_minted_before_member_self_still_marks_a_notification_read_after
     }
 
     // Run again, nothing changes: no second `member:self`.
-    sqlx::raw_sql(SQLITE_0237).execute(&world.pool).await.unwrap();
+    sqlx::raw_sql(SQLITE_0237)
+        .execute(&world.pool)
+        .await
+        .unwrap();
     assert_eq!(world.stored_caps(token.id).await, expected);
 }
 
@@ -370,7 +394,10 @@ async fn a_bare_workspace_read_token_minted_now_cannot_write_personal_state() {
     }
     assert_eq!(
         world
-            .post(bearer, &format!("/members/{}/notifications/read-all", reader.id))
+            .post(
+                bearer,
+                &format!("/members/{}/notifications/read-all", reader.id)
+            )
             .await,
         StatusCode::FORBIDDEN
     );

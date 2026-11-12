@@ -8,8 +8,8 @@ use axum::{
 };
 use maidan_auth::{
     capability::{
-        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION,
-        WORKSPACE_READ, WORKSPACE_WRITE,
+        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY,
+        THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE,
     },
     record_delegated_authorization, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,
     AuthContext, AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,

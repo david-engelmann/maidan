@@ -7,8 +7,8 @@
 //! `dispatch`) and the shared [`content_json`] helper live here.
 
 use maidan_auth::capability::{
-    ARTIFACT_UPLOAD, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, TOKEN_ADMIN,
-    WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    ARTIFACT_UPLOAD, MEMBER_SELF, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ,
+    TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -1215,7 +1215,10 @@ mod catalog_filter_tests {
         );
         let names = tool_names(&catalog_for(&read_only));
         for name in MEMBER_SELF_TOOLS {
-            assert!(!names.contains(&name.to_string()), "{name} offered to workspace:read");
+            assert!(
+                !names.contains(&name.to_string()),
+                "{name} offered to workspace:read"
+            );
         }
         let personal = AuthContext::from_token(
             ApiTokenId(uuid::Uuid::new_v4()),
@@ -1225,11 +1228,19 @@ mod catalog_filter_tests {
         );
         let names = tool_names(&catalog_for(&personal));
         for name in MEMBER_SELF_TOOLS {
-            assert!(names.contains(&name.to_string()), "{name} hidden from member:self");
+            assert!(
+                names.contains(&name.to_string()),
+                "{name} hidden from member:self"
+            );
         }
         let worker = maidan_auth::expand_set(maidan_auth::AGENT_WORKER).unwrap();
-        assert!(worker.iter().any(|c| c == MEMBER_SELF), "the worker preset keeps them");
-        assert!(maidan_auth::capability::default_minted().iter().any(|c| c == MEMBER_SELF));
+        assert!(
+            worker.iter().any(|c| c == MEMBER_SELF),
+            "the worker preset keeps them"
+        );
+        assert!(maidan_auth::capability::default_minted()
+            .iter()
+            .any(|c| c == MEMBER_SELF));
     }
 
     #[test]

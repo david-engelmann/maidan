@@ -6,7 +6,8 @@ use axum::http::{header, Response};
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{
-        ARTIFACT_UPLOAD, MEMBER_SELF, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+        ARTIFACT_UPLOAD, MEMBER_SELF, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ,
+        WORKSPACE_WRITE,
     },
     AuthContext,
 };
