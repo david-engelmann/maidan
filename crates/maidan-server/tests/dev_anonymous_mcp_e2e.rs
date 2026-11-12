@@ -208,8 +208,8 @@ async fn a_caller_with_no_credential_reads_the_synthetic_workspace_and_nothing_e
     assert!(refused(&write), "{write}");
     let read_cap_write = world
         .call(
-            "open_group_dm",
-            json!({ "workspace_id": world.synthetic, "member_ids": [] }),
+            "mark_all_notifications_read",
+            json!({ "member_id": world.synthetic }),
         )
         .await;
     assert!(
