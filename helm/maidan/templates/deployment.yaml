@@ -52,6 +52,13 @@ spec:
             {{- tpl (toYaml .) $ | nindent 12 }}
             {{- end }}
           env:
+            {{- if .Values.production }}
+            # Turns on the server's own production refusals (the OIDC mock,
+            # AUTH_DISABLED, the development KEK, fault injection). Named here
+            # rather than in the ConfigMap so nothing in envFrom overrides it.
+            - name: MAIDAN_ENV
+              value: production
+            {{- end }}
             {{- if .Values.secretFiles.enabled }}
             # Each secret is a file under /run/secrets/maidan, named here. The
             # mount lists every key, so a Secret without one (the content KEK

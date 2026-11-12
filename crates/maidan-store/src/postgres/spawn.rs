@@ -52,7 +52,7 @@ pub async fn set_budget(
 }
 
 pub async fn get_budget(
-    pool: &PgPool,
+    db: impl sqlx::PgExecutor<'_>,
     workspace_id: WorkspaceId,
 ) -> Result<Option<SpawnBudget>, StoreError> {
     let row = sqlx::query(
@@ -60,7 +60,7 @@ pub async fn get_budget(
          FROM maidan_spawn_budgets WHERE workspace_id = $1",
     )
     .bind(workspace_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(db)
     .await?;
     Ok(row.as_ref().map(row_to_budget))
 }
@@ -68,7 +68,7 @@ pub async fn get_budget(
 /// A parent's non-tombstoned direct children — the fan-out counted against
 /// `max_children`.
 pub async fn count_active_children(
-    pool: &PgPool,
+    db: impl sqlx::PgExecutor<'_>,
     parent_thread_id: ThreadId,
 ) -> Result<i64, StoreError> {
     let row = sqlx::query(
@@ -76,13 +76,16 @@ pub async fn count_active_children(
          WHERE parent_thread_id = $1 AND tombstoned_at IS NULL",
     )
     .bind(parent_thread_id.0)
-    .fetch_one(pool)
+    .fetch_one(db)
     .await?;
     Ok(row.get::<i64, _>("n"))
 }
 
 /// A thread's nesting depth (a root thread is 1) via an ancestor walk.
-pub async fn thread_depth(pool: &PgPool, thread_id: ThreadId) -> Result<i64, StoreError> {
+pub async fn thread_depth(
+    db: impl sqlx::PgExecutor<'_>,
+    thread_id: ThreadId,
+) -> Result<i64, StoreError> {
     let row = sqlx::query(
         "WITH RECURSIVE anc(id, parent, d) AS (
              SELECT id, parent_thread_id, CAST(1 AS BIGINT) FROM maidan_threads WHERE id = $1
@@ -93,7 +96,7 @@ pub async fn thread_depth(pool: &PgPool, thread_id: ThreadId) -> Result<i64, Sto
          SELECT COALESCE(MAX(d), CAST(0 AS BIGINT)) AS depth FROM anc",
     )
     .bind(thread_id.0)
-    .fetch_one(pool)
+    .fetch_one(db)
     .await?;
     Ok(row.get::<i64, _>("depth"))
 }

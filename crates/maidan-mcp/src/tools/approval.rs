@@ -62,9 +62,10 @@ struct RequestApprovalArgs {
 /// The gate is created `pending` and attributed to the caller
 /// (`auth.member_id`); a human resolves it later to accept/decline/cancel. The
 /// tool does **not** block — poll `get_approval_gate` with the returned
-/// `gate_id` for the outcome. Requires `workspace:read`: asking a human is part
-/// of an agent's read-only reasoning loop, and only the human's answer
-/// (`POST /approval-gates/:id/answer`) needs `workspace:write`.
+/// `gate_id` for the outcome. Requires `message:post`: a gate asks a person to
+/// decide and notifies them, so a read-only token cannot open one (MCP-003).
+/// The human's answer (`POST /approval-gates/:id/answer`) needs
+/// `workspace:write`.
 pub(super) async fn request_approval(
     server: &crate::server::McpServer,
     auth: &AuthContext,
