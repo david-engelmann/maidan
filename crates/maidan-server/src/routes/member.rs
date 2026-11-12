@@ -3,7 +3,7 @@
 use axum::http::StatusCode;
 use axum::{extract::State, Extension, Json};
 use maidan_auth::{
-    capability::{TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{MEMBER_SELF, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     capability_set::AGENT_WORKER,
     hash_secret, AuthContext, TokenSecret,
 };
@@ -597,7 +597,7 @@ pub async fn mark_member_inbox_read(
     ApiJson(body): ApiJson<MarkInboxRead>,
 ) -> ApiResult<Json<MemberInbox>> {
     requested_member(&state, &auth, MemberId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     // `advance_inbox_last_read_at` writes one member's read marker, so only
     // that member may move it.
     ensure_own_personal_state(&auth, MemberId(id))?;
@@ -719,7 +719,7 @@ pub async fn mark_member_notification_read(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<UnreadCount>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
@@ -742,7 +742,7 @@ pub async fn snooze_member_notification(
     ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<SnoozeNotification>,
 ) -> ApiResult<Json<UnreadCount>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
@@ -762,7 +762,7 @@ pub async fn mark_all_member_notifications_read(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MarkAllRead>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     let cleared = state
@@ -780,7 +780,7 @@ pub async fn set_member_notification_pref(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetNotificationPref>,
 ) -> ApiResult<Json<NotificationPref>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
@@ -813,7 +813,7 @@ pub async fn follow_member_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowChannel>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, body.channel_id).await?;
@@ -830,7 +830,7 @@ pub async fn unfollow_member_channel(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, cid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state
@@ -864,7 +864,7 @@ pub async fn follow_member_thread(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowThread>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, body.thread_id).await?;
@@ -881,7 +881,7 @@ pub async fn unfollow_member_thread(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state
@@ -915,7 +915,7 @@ pub async fn follow_member_occupancy(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowMember>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let follower_id = MemberId(id);
     let follower = requested_member(&state, &auth, follower_id).await?;
     ensure_own_personal_state(&auth, follower_id)?;
@@ -939,7 +939,7 @@ pub async fn unfollow_member_occupancy(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, followed_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let follower_id = MemberId(id);
     requested_member(&state, &auth, follower_id).await?;
     ensure_own_personal_state(&auth, follower_id)?;
@@ -1011,7 +1011,7 @@ pub async fn set_member_email(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetEmail>,
 ) -> ApiResult<Json<MemberEmail>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     let email = body.email.trim();
@@ -1044,7 +1044,7 @@ pub async fn delete_member_email(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     if state.store.delete_member_email(MemberId(id)).await? {
@@ -1063,7 +1063,7 @@ pub async fn set_member_delivery_mode(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetDeliveryMode>,
 ) -> ApiResult<Json<DeliveryModeView>> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     state

@@ -101,7 +101,7 @@ say()  { printf '  %s\n' "$*"; }
 member() { rest "$ADMIN" POST "/workspaces/$WS/members" "{\"handle\":\"$1$SUFFIX\",\"kind\":\"$2\"}" | jq -r .id; }
 token()  { rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "{\"capabilities\":$2}" | jq -r .secret; }
 agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
-human_caps='["workspace:read","workspace:write","message:post","thread:transition","event:subscribe"]'
+human_caps='["workspace:read","member:self","workspace:write","message:post","thread:transition","event:subscribe"]'
 planner=$(member planner agent); coder=$(member coder agent); david=$(member david human)
 PT=$(token "$planner" "$agent_caps"); CT=$(token "$coder" "$agent_caps"); HT=$(token "$david" "$human_caps")
 channel=$(rest "$ADMIN" POST "/workspaces/$WS/channels" "{\"name\":\"build$SUFFIX\"}" | jq -r .id)

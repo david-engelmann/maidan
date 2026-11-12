@@ -983,7 +983,7 @@
         "readOnlyHint": false,
         "title": "Mark inbox read"
       },
-      "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.",
+      "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox. Requires member:self.",
       "inputSchema": {
         "properties": {
           "member_id": {
@@ -1011,7 +1011,7 @@
         "readOnlyHint": false,
         "title": "Mark notification read"
       },
-      "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).",
+      "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's). Requires member:self.",
       "inputSchema": {
         "properties": {
           "member_id": {

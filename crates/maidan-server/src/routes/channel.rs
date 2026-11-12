@@ -2,7 +2,7 @@
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{CHANNEL_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{CHANNEL_ADMIN, MEMBER_SELF, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::*;
@@ -244,7 +244,7 @@ pub async fn mute_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     state.store.mute_channel(auth.member_id, channel.id).await?;
@@ -258,7 +258,7 @@ pub async fn unmute_channel(
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
     if state
