@@ -155,3 +155,112 @@ async fn group_dm_open_post_and_list() {
 
     server.abort();
 }
+
+async fn member(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    handle: &str,
+) -> maidan_types::MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id,
+            handle: handle.into(),
+            display_name: None,
+            kind: maidan_types::MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+/// The opener of a group DM is one of its members, as a 1:1 DM's opener is:
+/// a list that leaves the caller out gets them added, so a token can never
+/// open a conversation among others that it cannot post into. A member of
+/// another workspace still cannot open one here.
+#[tokio::test]
+async fn group_dm_opener_is_always_a_member() {
+    let (addr, client, server, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "group-dm-opener".into(),
+        })
+        .await
+        .unwrap();
+    let a = member(store.as_ref(), ws.id, "a").await;
+    let b = member(store.as_ref(), ws.id, "b").await;
+    let c = member(store.as_ref(), ws.id, "c").await;
+    let token = mint_token(store.as_ref(), ws.id, a).await;
+
+    let open = client
+        .post(format!("{base}/workspaces/{}/group-dms", ws.id))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "member_ids": [b.0, c.0] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(open.status(), StatusCode::CREATED);
+    let group: serde_json::Value = open.json().await.unwrap();
+    let ids: Vec<&str> = group["member_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 3);
+    assert!(
+        ids.contains(&a.0.to_string().as_str()),
+        "the opener was added"
+    );
+    let gid = group["id"].as_str().unwrap();
+
+    let msg = client
+        .post(format!("{base}/group-dms/{gid}/messages"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "body": "the opener can post" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(msg.status(), StatusCode::CREATED);
+
+    // Listing the opener explicitly does not add them twice.
+    let listed = client
+        .post(format!("{base}/workspaces/{}/group-dms", ws.id))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "member_ids": [a.0, b.0, c.0] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::CREATED);
+    let group: serde_json::Value = listed.json().await.unwrap();
+    assert_eq!(group["member_ids"].as_array().unwrap().len(), 3);
+
+    // A member of another workspace cannot open a group DM in this one.
+    let other_ws = store
+        .create_workspace(NewWorkspace {
+            name: "elsewhere".into(),
+        })
+        .await
+        .unwrap();
+    let outsider = member(store.as_ref(), other_ws.id, "outsider").await;
+    let outsider_token = mint_token(store.as_ref(), other_ws.id, outsider).await;
+    let refused = client
+        .post(format!("{base}/workspaces/{}/group-dms", ws.id))
+        .header("Authorization", format!("Bearer {outsider_token}"))
+        .json(&json!({ "member_ids": [a.0, b.0, c.0] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    // Nor can it fold this workspace's members into a group in its own.
+    let mixed = client
+        .post(format!("{base}/workspaces/{}/group-dms", other_ws.id))
+        .header("Authorization", format!("Bearer {outsider_token}"))
+        .json(&json!({ "member_ids": [b.0, c.0] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mixed.status(), StatusCode::NOT_FOUND);
+
+    server.abort();
+}

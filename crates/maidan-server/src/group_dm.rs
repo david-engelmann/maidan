@@ -34,7 +34,12 @@ pub async fn open_group_dm(
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
-    let member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();
+    let mut member_ids: Vec<MemberId> = body.member_ids.into_iter().map(MemberId).collect();
+    // The opener is one of the group's members, as a 1:1 DM's opener is. A
+    // bypass caller is no member, so its list stands as sent.
+    if !auth.bypass {
+        member_ids = maidan_store::group_dm::with_opener(member_ids, auth.member_id);
+    }
     let group = state
         .store
         .open_group_dm_conversation(workspace_id, &member_ids, body.title)

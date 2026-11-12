@@ -217,3 +217,32 @@ async fn authorized_gap_tools_succeed_and_a_weak_caller_is_refused() {
         assert_forbidden(err);
     }
 }
+
+#[tokio::test]
+async fn open_group_dm_makes_the_opener_a_member() {
+    // A token that can post could open a group DM of others it could then not
+    // post into. As with a 1:1 DM, the opener is always one of the members.
+    let (server, workspace, ada, bea, cy, _, _, _) = server().await;
+    let caller = bearer(
+        ada,
+        workspace,
+        vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+    );
+    let opened = server
+        .call_tool(
+            &caller,
+            "open_group_dm",
+            &json!({ "workspace_id": workspace.0, "member_ids": [bea.0, cy.0] }),
+        )
+        .await
+        .expect("open_group_dm without the caller listed");
+    let group: GroupDmConversation =
+        serde_json::from_str(opened["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(group.member_ids.len(), 3);
+    assert!(group.member_ids.contains(&ada));
+    assert!(server
+        .store
+        .group_dm_has_member(group.id, ada)
+        .await
+        .unwrap());
+}
