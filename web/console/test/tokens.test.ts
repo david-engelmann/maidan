@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 
 // The console's surfaces share one radius scale and one palette, so a corner
 // or a colour changes in one place and light and dark stay in step.
 
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = sheet().replace(/\/\*[\s\S]*?\*\//g, "");
 const defined = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
 // Set at runtime from script (viewport, keyboard, composer, drag position, font).
 const RUNTIME = new Set(["--vv-top", "--vv-h", "--composer-h", "--kb", "--left", "--font"]);

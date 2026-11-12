@@ -1,6 +1,6 @@
 /* Policy pages. No scripts and no inline styles: the Worker CSP is
    default-src 'none' and style-src 'self'. The palettes are the console's
-   (web/console/src/styles.css): graphite and one signal orange by default,
+   (web/console/src/styles/00-tokens.css): graphite and one signal orange by default,
    the landing's warm paper and ink in light. With no script there is no
    stored choice to read, so a page is dark unless it sets data-theme. */
 /* The landing's Geist, served by the container at a fixed name. */

@@ -408,6 +408,7 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
               <svg viewBox="0 0 24 24" className="icon" aria-hidden="true"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg>
             </button>
             {menu && (
+              // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus moves to the items; the menu handles their arrow keys.
               <div ref={menuBox} className="menu" role="menu" aria-label="More actions" onKeyDown={onMenuKey}>
                 {extra.map((x) => (
                   <button key={x.key} type="button" role="menuitem" className={`menu-item ${x.danger ? "danger" : ""}`} disabled={disabled} onClick={x.run}>

@@ -130,6 +130,7 @@ function Blocks({ blocks, min, ranks }: { blocks: Block[]; min: number; ranks: {
     if (block.kind === "hr") return <hr key={i} className="msg-rule" />;
     if (block.kind === "table") {
       return (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a wide table scrolls, so its wrapper takes keyboard focus.
         <div key={i} className="msg-table-wrap" tabIndex={0}>
           <table className="msg-table">
             <thead>

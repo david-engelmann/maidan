@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { sheet } from "./sheet.ts";
 
 // The wide board is four lanes. Whatever the last `.lanes.wide` rule says,
 // its smallest track times four plus three gaps must fit the content column,
 // or Done is pushed past the right edge at 1024px.
 
-const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = sheet().replace(/\/\*[\s\S]*?\*\//g, "");
 const space3 = 12;
 
 function lastColumns(): string {
