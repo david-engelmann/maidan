@@ -145,6 +145,47 @@ impl Harness {
         .1
     }
 
+    async fn register_slash_rest(
+        &self,
+        ws: WorkspaceId,
+        bearer: &str,
+        name: &str,
+        tool: &str,
+    ) -> (StatusCode, Value) {
+        self.send(
+            self.client
+                .post(format!("{}/workspaces/{}/slash-commands", self.base, ws.0))
+                .bearer_auth(bearer)
+                .json(&slash_body(name, tool)),
+        )
+        .await
+    }
+
+    async fn register_slash_mcp(
+        &self,
+        ws: WorkspaceId,
+        bearer: &str,
+        name: &str,
+        tool: &str,
+    ) -> Value {
+        let mut arguments = slash_body(name, tool);
+        arguments["workspace_id"] = json!(ws.0);
+        self.send(
+            self.client
+                .post(format!("{}/mcp", self.base))
+                .bearer_auth(bearer)
+                .header("accept", "application/json, text/event-stream")
+                .json(&json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "register_slash_command", "arguments": arguments},
+                })),
+        )
+        .await
+        .1
+    }
+
     async fn create_webhook(&self, ws: WorkspaceId, bearer: &str) -> (StatusCode, Value) {
         self.send(
             self.client
@@ -185,6 +226,21 @@ fn hook_body() -> Value {
         "handler_kind": "mcp_tool",
         "handler_target": "clear_review_requirement",
     })
+}
+
+/// RED-004: a slash command runs its tool as whoever types it.
+fn slash_body(name: &str, tool: &str) -> Value {
+    json!({
+        "name": name,
+        "handler_kind": "mcp_tool",
+        "handler_target": tool,
+    })
+}
+
+fn missing_capability(body: &Value, capability: &str) -> bool {
+    body["error"]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains(capability))
 }
 
 fn missing_admin(body: &Value) -> bool {
@@ -272,4 +328,90 @@ async fn a_worker_token_cannot_create_a_webhook_or_choose_the_mention_webhook_an
         .set_mention_webhook(a.workspace, &a.admin, webhook_id)
         .await;
     assert_eq!(status, StatusCode::OK, "admin mention-webhook");
+}
+
+/// RED-004: a writer could bind `/help` to a destructive tool and wait for an
+/// admin to type it, since the command runs as its invoker. Binding a command
+/// to a tool that is not read-only takes `channel:admin`; a read-only tool
+/// still takes only `workspace:write`.
+#[tokio::test]
+async fn a_worker_token_binds_a_slash_command_only_to_a_read_only_tool_and_an_admin_to_any() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    let destructive = "clear_review_requirement";
+
+    let (status, body) = h
+        .register_slash_rest(a.workspace, &a.worker, "help", destructive)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "worker over REST: {body}");
+    let body = h
+        .register_slash_mcp(a.workspace, &a.worker, "help", destructive)
+        .await;
+    assert!(
+        missing_capability(&body, "channel:admin"),
+        "worker over MCP: {body}"
+    );
+    let (status, body) = h
+        .register_slash_rest(a.workspace, &b.admin, "help", destructive)
+        .await;
+    assert!(
+        matches!(status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "another workspace's admin over REST: {status} {body}"
+    );
+    let body = h
+        .register_slash_mcp(a.workspace, &b.admin, "help", destructive)
+        .await;
+    assert!(
+        body.get("error").is_some(),
+        "another workspace's admin over MCP: {body}"
+    );
+    assert!(
+        h.store
+            .list_slash_commands(a.workspace)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a refused registration left a command behind"
+    );
+
+    // A read-only tool is still a writer's to bind.
+    let (status, body) = h
+        .register_slash_rest(a.workspace, &a.worker, "channels", "list_channels")
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "worker, read-only tool: {body}"
+    );
+    let body = h
+        .register_slash_mcp(a.workspace, &a.worker, "channels-mcp", "list_channels")
+        .await;
+    assert!(
+        body.get("result").is_some(),
+        "worker over MCP, read-only tool: {body}"
+    );
+
+    let (status, body) = h
+        .register_slash_rest(a.workspace, &a.admin, "help", destructive)
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "admin over REST: {body}");
+    let body = h
+        .register_slash_mcp(a.workspace, &a.admin, "help-mcp", destructive)
+        .await;
+    assert!(body.get("result").is_some(), "admin over MCP: {body}");
+    assert_eq!(
+        h.store
+            .list_slash_commands(a.workspace)
+            .await
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(h
+        .store
+        .list_slash_commands(b.workspace)
+        .await
+        .unwrap()
+        .is_empty());
 }

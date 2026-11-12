@@ -86,6 +86,9 @@ mod catch_up_scale;
 #[path = "../channel_closed_results.rs"]
 mod channel_closed_results;
 
+#[path = "../channel_reads_for_member.rs"]
+mod channel_reads_for_member;
+
 #[path = "../child_threads.rs"]
 mod child_threads;
 
@@ -281,6 +284,9 @@ mod member_display_name_event;
 #[path = "../member_emails.rs"]
 mod member_emails;
 
+#[path = "../member_end_registrations.rs"]
+mod member_end_registrations;
+
 #[path = "../member_freezes.rs"]
 mod member_freezes;
 
@@ -356,6 +362,9 @@ mod oidc_signup;
 #[path = "../oldest_event_after_of_kinds.rs"]
 mod oldest_event_after_of_kinds;
 
+#[path = "../one_delivery_per_event.rs"]
+mod one_delivery_per_event;
+
 #[path = "../ops_alerts.rs"]
 mod ops_alerts;
 
@@ -394,6 +403,9 @@ mod reactions_pins;
 
 #[path = "../read_routing.rs"]
 mod read_routing;
+
+#[path = "../read_visibility.rs"]
+mod read_visibility;
 
 #[path = "../reader_pool.rs"]
 mod reader_pool;
@@ -509,6 +521,9 @@ mod slash_command_sqlite;
 #[path = "../spawn_budget.rs"]
 mod spawn_budget;
 
+#[path = "../spawn_budget_race.rs"]
+mod spawn_budget_race;
+
 #[path = "../spawn_enforce.rs"]
 mod spawn_enforce;
 
@@ -587,6 +602,9 @@ mod thread_owner;
 #[path = "../thread_page_filters.rs"]
 mod thread_page_filters;
 
+#[path = "../thread_parent_checks.rs"]
+mod thread_parent_checks;
+
 #[path = "../thread_plans.rs"]
 mod thread_plans;
 
@@ -628,6 +646,9 @@ mod tombstoned_member_tokens;
 
 #[path = "../trace_context.rs"]
 mod trace_context;
+
+#[path = "../typed_reference_rules.rs"]
+mod typed_reference_rules;
 
 #[path = "../unique_thread_attributes.rs"]
 mod unique_thread_attributes;

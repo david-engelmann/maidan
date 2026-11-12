@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    NewWebhookSubscription, WebhookDelivery, WebhookSubscription, WebhookSubscriptionDelivery,
-    WebhookSubscriptionId, WorkspaceId,
+    ApiTokenId, NewWebhookSubscription, WebhookDelivery, WebhookSubscription,
+    WebhookSubscriptionDelivery, WebhookSubscriptionId, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -9,13 +9,13 @@ use uuid::Uuid;
 use crate::automation_deliveries::AutomationDeliveryFilter;
 use crate::error::StoreError;
 
-const SUB_COLS: &str =
-    "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at";
+const SUB_COLS: &str = "id, workspace_id, url, label, event_kinds, secret_ciphertext, enabled, created_at, revoked_at, created_by_token";
 
 #[derive(Debug, Clone)]
 pub struct WebhookSubscriptionRow {
     pub subscription: WebhookSubscription,
     pub secret_ciphertext: String,
+    pub created_by_token: Option<ApiTokenId>,
 }
 
 pub async fn create(
@@ -26,8 +26,8 @@ pub async fn create(
     let kinds_json = serde_json::to_string(&new.event_kinds)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_webhook_subscriptions
-            (id, workspace_id, url, label, event_kinds, secret_ciphertext)
-         VALUES (?, ?, ?, ?, ?, ?)
+            (id, workspace_id, url, label, event_kinds, secret_ciphertext, created_by_token)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          RETURNING {SUB_COLS}"
     ))
     .bind(id)
@@ -36,6 +36,7 @@ pub async fn create(
     .bind(&new.label)
     .bind(&kinds_json)
     .bind(&new.secret_ciphertext)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(pool)
     .await?;
     row_to_subscription(&row)
@@ -55,6 +56,7 @@ pub async fn get(
     let subscription = row_to_subscription(&row)?;
     Ok(WebhookSubscriptionRow {
         secret_ciphertext: row.get("secret_ciphertext"),
+        created_by_token: created_by_token(&row),
         subscription,
     })
 }
@@ -93,6 +95,7 @@ pub async fn list_enabled_for_workspace(
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: created_by_token(row),
                 subscription,
             })
         })
@@ -112,6 +115,7 @@ pub async fn list_enabled(pool: &SqlitePool) -> Result<Vec<WebhookSubscriptionRo
             let subscription = row_to_subscription(row)?;
             Ok(WebhookSubscriptionRow {
                 secret_ciphertext: row.get("secret_ciphertext"),
+                created_by_token: created_by_token(row),
                 subscription,
             })
         })
@@ -139,17 +143,20 @@ pub async fn revoke(
     row_to_subscription(&row)
 }
 
+/// Enqueue one delivery of event `log_id` to a subscription, unless one is
+/// already queued; see the Postgres twin. `None` when it was already there.
 pub async fn enqueue_delivery(
     pool: &SqlitePool,
     subscription_id: WebhookSubscriptionId,
     log_id: i64,
     payload: &str,
-) -> Result<i64, StoreError> {
+) -> Result<Option<i64>, StoreError> {
     let (traceparent, tracestate) = super::events::trace_columns(pool, log_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_webhook_deliveries
             (subscription_id, log_id, payload, traceparent, tracestate)
          VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (subscription_id, log_id) DO NOTHING
          RETURNING id",
     )
     .bind(subscription_id.0)
@@ -157,9 +164,9 @@ pub async fn enqueue_delivery(
     .bind(payload)
     .bind(traceparent)
     .bind(tracestate)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(row.get("id"))
+    Ok(row.map(|row| row.get("id")))
 }
 
 const PENDING: &str = "d.delivered_at IS NULL AND d.quarantined_at IS NULL";
@@ -182,20 +189,48 @@ pub async fn list_pending_deliveries(
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| WebhookSubscriptionDelivery {
-            id: row.get("id"),
-            subscription_id: WebhookSubscriptionId(row.get::<Uuid, _>("subscription_id")),
-            log_id: row.get("log_id"),
-            payload: row.get("payload"),
-            attempts: row.get("attempts"),
-            trace: maidan_types::TraceContext::from_columns(
-                row.try_get("traceparent").unwrap_or(None),
-                row.try_get("tracestate").unwrap_or(None),
-            ),
-        })
-        .collect())
+    Ok(rows.iter().map(row_to_pending).collect())
+}
+
+/// Claim the oldest due delivery by leasing it `lease_secs` forward; see the
+/// Postgres twin. SQLite runs one writer at a time, so the one statement is
+/// the claim.
+pub async fn claim_next_delivery(
+    pool: &SqlitePool,
+    lease_secs: i64,
+) -> Result<Option<WebhookSubscriptionDelivery>, StoreError> {
+    let now = Utc::now();
+    let lease = (now + chrono::Duration::seconds(lease_secs)).to_rfc3339();
+    let row = sqlx::query(&format!(
+        "UPDATE maidan_webhook_deliveries
+         SET next_attempt_at = ?
+         WHERE id = (
+             SELECT d.id FROM maidan_webhook_deliveries d
+             WHERE {PENDING} AND d.next_attempt_at <= ?
+             ORDER BY d.id ASC
+             LIMIT 1
+         )
+         RETURNING id, subscription_id, log_id, payload, attempts, traceparent, tracestate"
+    ))
+    .bind(&lease)
+    .bind(now.to_rfc3339())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.as_ref().map(row_to_pending))
+}
+
+fn row_to_pending(row: &sqlx::sqlite::SqliteRow) -> WebhookSubscriptionDelivery {
+    WebhookSubscriptionDelivery {
+        id: row.get("id"),
+        subscription_id: WebhookSubscriptionId(row.get::<Uuid, _>("subscription_id")),
+        log_id: row.get("log_id"),
+        payload: row.get("payload"),
+        attempts: row.get("attempts"),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
+    }
 }
 
 pub async fn mark_delivered(pool: &SqlitePool, delivery_id: i64) -> Result<(), StoreError> {
@@ -384,4 +419,9 @@ fn row_to_subscription(row: &sqlx::sqlite::SqliteRow) -> Result<WebhookSubscript
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         revoked_at: row.get("revoked_at"),
     })
+}
+
+fn created_by_token(row: &sqlx::sqlite::SqliteRow) -> Option<ApiTokenId> {
+    row.get::<Option<Uuid>, _>("created_by_token")
+        .map(ApiTokenId)
 }

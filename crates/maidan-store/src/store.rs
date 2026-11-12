@@ -787,16 +787,6 @@ pub trait BudgetStore: Send + Sync {
         thread_id: ThreadId,
         delta: UsageDelta,
     ) -> Result<ThreadBudget, StoreError>;
-    /// Report usage and enforce the budget — the "stop the run" path.
-    /// Accumulates `delta`; if the thread is now over budget AND has an active
-    /// claim, atomically releases the claim, appends a `ClaimFailed` event, and
-    /// records a DLQ entry. Returns the new totals + whether the run stopped,
-    /// plus the `ClaimFailed` event to publish (`None` when not stopped).
-    async fn report_thread_usage(
-        &self,
-        thread_id: ThreadId,
-        delta: UsageDelta,
-    ) -> Result<(UsageReport, Option<StoredEvent>), StoreError>;
     /// Record a dead-lettered agent run — a run stopped for exceeding its
     /// budget. `id`/`failed_at` are assigned by the store.
     async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError>;
@@ -975,9 +965,14 @@ pub trait ApprovalGateStore: Send + Sync {
         &self,
         id: ApprovalGateId,
     ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// The pending gates in a workspace, oldest first, that `readable_by`
+    /// may read: those on a thread it can read, and those on no thread.
+    /// `None` keeps every gate and is only for a caller that bypasses auth;
+    /// every other caller names itself.
     async fn list_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
     /// A keyset page of the pending gates, newest first (see
@@ -1718,7 +1713,7 @@ pub trait PresenceDigestStore: Send + Sync {
 
     /// Email digest data model: a per-member delivery mode (`set`/`get`,
     /// default `Immediate` when unset), a digest watermark
-    /// (`set_last_digest_at`, advanced after a digest is sent), and the
+    /// (`advance_last_digest_at`, moved before a digest is sent), and the
     /// sweeper's enumeration (`members_due_for_digest` — digest-mode members
     /// with an address and unread notifications since their last digest). No
     /// worker/routes yet — a zero-blast-radius foundation.
@@ -1729,11 +1724,16 @@ pub trait PresenceDigestStore: Send + Sync {
     ) -> Result<(), StoreError>;
     async fn get_delivery_mode(&self, member_id: MemberId)
         -> Result<EmailDeliveryMode, StoreError>;
-    async fn set_last_digest_at(
+    /// Move a member's digest watermark from `seen` (what the caller read;
+    /// `None` for never digested) to `to`, only if it still holds `seen`.
+    /// `false` when it had moved: another replica's sweeper took this digest,
+    /// so this one sends nothing.
+    async fn advance_last_digest_at(
         &self,
         member_id: MemberId,
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(), StoreError>;
+        seen: Option<chrono::DateTime<chrono::Utc>>,
+        to: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool, StoreError>;
     /// Members of `skip_workspaces` are left out of the page, so a large
     /// workspace past its deliveries allowance cannot fill every page and
     /// starve the rest.
@@ -1773,6 +1773,14 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// Bind the identity to its member only while no other identity signs
+    /// in as that member, checked and written atomically. `None` when another
+    /// identity already holds the member: linking a verified email by handle
+    /// is only for a member no login has claimed yet.
+    async fn link_unclaimed_oidc_identity(
+        &self,
+        new: NewOidcIdentity,
+    ) -> Result<Option<OidcIdentity>, StoreError>;
     /// The workspaces a signed-in identity can switch to (the workspace
     /// switcher): every workspace where the same issuer and subject have an
     /// identity row, newest sign-in first, at most `limit`. Its own workspace
@@ -1869,6 +1877,16 @@ pub trait SessionStore: Send + Sync {
     async fn delete_expired_session(&self, id: SessionId) -> Result<(), StoreError>;
 }
 
+/// Names for a set of channel, thread and member ids, read in one pass by
+/// [`ChannelStore::display_names`]. An id outside the workspace, or one that
+/// no longer resolves, is absent; so is a thread with no title.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DisplayNames {
+    pub channels: std::collections::HashMap<ChannelId, String>,
+    pub threads: std::collections::HashMap<ThreadId, String>,
+    pub members: std::collections::HashMap<MemberId, String>,
+}
+
 #[async_trait]
 pub trait ChannelStore: Send + Sync {
     async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError>;
@@ -1882,6 +1900,27 @@ pub trait ChannelStore: Send + Sync {
     ) -> Result<(Channel, StoredEvent), StoreError>;
     async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError>;
     async fn list_channels(&self, workspace_id: WorkspaceId) -> Result<Vec<Channel>, StoreError>;
+
+    /// Every channel in `workspace_id`, each paired with whether `member_id`
+    /// has a membership row in it, in one query. Visibility is decided from
+    /// the pair (`maidan_auth::visible_channels`), so listing channels costs
+    /// one round trip however many private channels the workspace has.
+    async fn list_channels_with_membership(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<(Channel, bool)>, StoreError>;
+
+    /// Channel names, thread titles and member handles for the given ids,
+    /// limited to `workspace_id`. Search uses it to name its hits with a fixed
+    /// number of queries instead of up to three point reads per hit.
+    async fn display_names(
+        &self,
+        workspace_id: WorkspaceId,
+        channels: &[ChannelId],
+        threads: &[ThreadId],
+        members: &[MemberId],
+    ) -> Result<DisplayNames, StoreError>;
 
     /// Per-channel membership. Public channels are open to the workspace and
     /// need no rows; these gate private channels. `add` is an idempotent upsert
@@ -3976,6 +4015,18 @@ pub trait ArtifactMetaStore: Send + Sync {
         sha256: &str,
     ) -> Result<bool, StoreError>;
 
+    /// Whether `member_id` may read the artifact `sha256` in `workspace_id`:
+    /// the workspace holds a ref, and every thread in the workspace that
+    /// references it is one the member can read, unless the member uploaded
+    /// it. An artifact referenced nowhere is the workspace's. The one rule
+    /// every artifact read goes through (`thread_access::artifact_visible_to`).
+    async fn artifact_visible_to(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+
     /// Erase `workspace_id`'s reference to `sha256`, with its audit row in the
     /// same transaction. The artifact row goes with the last reference; the
     /// caller then deletes the blob. `NotFound` without a reference,
@@ -5117,16 +5168,26 @@ pub trait WebhookStore: Send + Sync {
         &self,
         id: WebhookSubscriptionId,
     ) -> Result<WebhookSubscriptionWithSecret, StoreError>;
+    /// Enqueue one delivery of event `log_id` to a subscription. Every
+    /// replica's worker sees every event, so the store keeps one row per
+    /// subscription and event: `None` when it was already queued.
     async fn enqueue_webhook_delivery(
         &self,
         subscription_id: WebhookSubscriptionId,
         log_id: i64,
         payload: &str,
-    ) -> Result<i64, StoreError>;
+    ) -> Result<Option<i64>, StoreError>;
     async fn list_pending_webhook_deliveries(
         &self,
         limit: i64,
     ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError>;
+    /// Claim the oldest due delivery for this poller by leasing its next
+    /// attempt `lease_secs` forward, so two replicas never send one row at
+    /// once. The send's outcome replaces the lease.
+    async fn claim_next_webhook_delivery(
+        &self,
+        lease_secs: i64,
+    ) -> Result<Option<WebhookSubscriptionDelivery>, StoreError>;
     async fn mark_webhook_delivery_delivered(&self, delivery_id: i64) -> Result<(), StoreError>;
     async fn record_webhook_delivery_attempt(
         &self,
@@ -5163,14 +5224,23 @@ pub trait WebhookStore: Send + Sync {
 
 #[async_trait]
 pub trait AutomationStore: Send + Sync {
+    /// Enqueue a delivery. One made for an event (`log_id` set) is kept once
+    /// per source and event however many replicas enqueue it: `None` when it
+    /// was already queued.
     async fn enqueue_automation_delivery(
         &self,
         new: NewAutomationDelivery,
-    ) -> Result<i64, StoreError>;
+    ) -> Result<Option<i64>, StoreError>;
     async fn list_pending_automation_deliveries(
         &self,
         limit: i64,
     ) -> Result<Vec<AutomationDeliveryPending>, StoreError>;
+    /// Claim the oldest due delivery by leasing it `lease_secs` forward; see
+    /// [`WebhookStore::claim_next_webhook_delivery`].
+    async fn claim_next_automation_delivery(
+        &self,
+        lease_secs: i64,
+    ) -> Result<Option<AutomationDeliveryPending>, StoreError>;
     async fn list_automation_deliveries(
         &self,
         workspace_id: WorkspaceId,
@@ -5244,6 +5314,14 @@ pub trait FsmHookStore: Send + Sync {
         from_state: ThreadState,
         to_state: ThreadState,
     ) -> Result<Vec<FsmHookWithSecret>, StoreError>;
+    /// Claim a hook's run for one event before running it. Every replica
+    /// sees the event, and only the caller that gets `true` runs the hook.
+    async fn claim_fsm_hook_run(
+        &self,
+        workspace_id: WorkspaceId,
+        hook_id: FsmHookId,
+        log_id: i64,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
@@ -5322,6 +5400,16 @@ pub trait A2aStore: Send + Sync {
         &self,
         task_id: &str,
         config_id: &str,
+    ) -> Result<bool, StoreError>;
+    /// [`Self::delete_a2a_task_push_config`], only while the config is still
+    /// the one `created_by_token` registered: a config re-registered under the
+    /// same id by another token is left alone. `None` matches a config
+    /// registered without a token.
+    async fn delete_a2a_task_push_config_created_by(
+        &self,
+        task_id: &str,
+        config_id: &str,
+        created_by_token: Option<ApiTokenId>,
     ) -> Result<bool, StoreError>;
 }
 

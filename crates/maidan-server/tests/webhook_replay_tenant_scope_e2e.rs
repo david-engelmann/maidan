@@ -134,6 +134,7 @@ async fn subscription(store: &dyn Store, ws: WorkspaceId) -> WebhookSubscription
             label: None,
             event_kinds: vec!["message.posted".into()],
             secret_ciphertext: "cipher".into(),
+            created_by_token: None,
         })
         .await
         .unwrap()
@@ -145,6 +146,7 @@ async fn dead_delivery(store: &dyn Store, sub: WebhookSubscriptionId) -> i64 {
     let id = store
         .enqueue_webhook_delivery(sub, 1, r#"{"kind":"message.posted"}"#)
         .await
+        .unwrap()
         .unwrap();
     for _ in 0..2 {
         store
