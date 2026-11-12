@@ -489,7 +489,10 @@ async fn held_lease_and_direct_send_back(store: &dyn Store) {
         .transition_thread(direct, reviewer, ThreadAction::RequestChanges)
         .await
         .unwrap();
-    let gates = store.list_pending_approval_gates(ws, 20).await.unwrap();
+    let gates = store
+        .list_pending_approval_gates(ws, None, 20)
+        .await
+        .unwrap();
     let gate = gates
         .iter()
         .find(|g| g.thread_id == Some(direct) && g.kind == ApprovalGateKind::ReviewRoundCap)

@@ -1,8 +1,9 @@
 use chrono::Utc;
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    CloseAbandoned, CloseReason, ContentKeyring, Event, MemberId, NewAuditEvent, RelationKind,
-    StoredEvent, Thread, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult,
+    CloseAbandoned, CloseReason, ContentKeyring, Event, MemberId, NewAuditEvent, NewReference,
+    RefSide, RelationKind, StoredEvent, Thread, ThreadId, ThreadState, ThreadTransition,
+    ThreadTransitionResult,
 };
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -611,6 +612,14 @@ pub(crate) async fn close_abandoned_in_tx(
                 "duplicate_of is not a thread you can read in this workspace".into(),
             ));
         }
+        let reference = NewReference {
+            src_kind: RefSide::Thread,
+            src_id: src.0,
+            dst_kind: RefSide::Thread,
+            dst_id: dst.0,
+            relation: kind,
+        };
+        super::refs::validate_in_tx(tx, &reference).await?;
         let inserted = sqlx::query(
             "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -622,7 +631,7 @@ pub(crate) async fn close_abandoned_in_tx(
         .bind(src.0)
         .bind(maidan_types::RefSide::Thread.as_str())
         .bind(dst.0)
-        .bind(kind.as_str())
+        .bind(reference.relation.as_str())
         .bind(Utc::now())
         .fetch_optional(&mut **tx)
         .await?;

@@ -111,11 +111,15 @@ pub(super) async fn get_approval_gate(
     call: &CallContext,
 ) -> Result<Value, McpError> {
     let a: GetApprovalGateArgs = crate::tools::parse_args(args)?;
-    let gate = server.store.get_approval_gate(a.gate_id).await?;
+    let gate = match server.store.get_approval_gate(a.gate_id).await? {
+        Some(g) if maidan_auth::can_read_gate(server.store.as_ref(), auth, &g).await? => Some(g),
+        _ => None,
+    };
     match gate {
-        // Scope to the caller's workspace (bypass sees all); an out-of-workspace
-        // id reads as "not found" — no cross-tenant existence oracle.
-        Some(g) if auth.bypass || g.workspace_id == auth.workspace_id => {
+        // A gate in another workspace, or on a thread the caller cannot read,
+        // reads as "not found": no existence oracle across tenants or into a
+        // private channel.
+        Some(g) => {
             let result = content_json(&serde_json::to_value(&g)?);
             if !call.ui.offers_card() {
                 return Ok(result);
@@ -250,14 +254,16 @@ pub(super) async fn approval_decide(
     };
     // An out-of-workspace or unknown id reads as not found, so no tenant can
     // learn another's gate ids.
+    let not_found =
+        || McpError::InvalidParams("gate_id: no such approval gate in your workspace".into());
     let gate = server
         .store
         .get_approval_gate(a.gate_id)
         .await?
-        .filter(|g| auth.bypass || g.workspace_id == auth.workspace_id)
-        .ok_or_else(|| {
-            McpError::InvalidParams("gate_id: no such approval gate in your workspace".into())
-        })?;
+        .ok_or_else(not_found)?;
+    if !maidan_auth::can_read_gate(server.store.as_ref(), auth, &gate).await? {
+        return Err(not_found());
+    }
     if gate.state.is_resolved() {
         return Ok(already_resolved(&gate, call.ui));
     }

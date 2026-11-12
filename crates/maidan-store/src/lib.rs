@@ -169,6 +169,7 @@ pub mod outbox;
 pub mod postgres;
 pub mod pull_watch;
 mod queue_counts;
+mod reference_rules;
 pub mod result_delivery;
 mod result_metrics;
 pub mod retention_policy;
