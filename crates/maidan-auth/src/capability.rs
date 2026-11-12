@@ -10,6 +10,16 @@ pub use crate::capability_set::{
 
 pub const WORKSPACE_READ: &str = "workspace:read";
 pub const WORKSPACE_WRITE: &str = "workspace:write";
+/// Change the holder's own personal state: follows, mutes, notification
+/// read / snooze / preferences, delivery mode, the member's email and the
+/// inbox read mark (MCP-002). The write is still self-scoped to the token's
+/// member; this capability only says the token may make it at all, so a bare
+/// `workspace:read` token cannot. Every member preset carries it, and it is
+/// delegatable: it is the holder's own work.
+///
+/// Tokens minted before it existed got it from migration 0237, which granted
+/// it to every stored capability list that held `workspace:read`.
+pub const MEMBER_SELF: &str = "member:self";
 pub const MESSAGE_POST: &str = "message:post";
 pub const THREAD_TRANSITION: &str = "thread:transition";
 pub const ARTIFACT_UPLOAD: &str = "artifact:upload";
@@ -67,6 +77,7 @@ pub const WORKSPACE_ADMIN: &str = "workspace:admin";
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
+    MEMBER_SELF,
     MESSAGE_POST,
     THREAD_TRANSITION,
     ARTIFACT_UPLOAD,
@@ -97,6 +108,7 @@ const KNOWN: &[&str] = &[
 const DELEGATABLE: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
+    MEMBER_SELF,
     MESSAGE_POST,
     THREAD_TRANSITION,
     ARTIFACT_UPLOAD,
@@ -125,6 +137,7 @@ pub fn default_minted() -> Vec<String> {
     vec![
         WORKSPACE_READ.into(),
         WORKSPACE_WRITE.into(),
+        MEMBER_SELF.into(),
         EVENT_SUBSCRIBE.into(),
         SEARCH_QUERY.into(),
     ]

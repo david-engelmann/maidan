@@ -461,6 +461,9 @@ mod member_display_name_rest_e2e;
 #[path = "../member_reference_e2e.rs"]
 mod member_reference_e2e;
 
+#[path = "../member_self_capability_e2e.rs"]
+mod member_self_capability_e2e;
+
 #[path = "../memory_block_rest_e2e.rs"]
 mod memory_block_rest_e2e;
 

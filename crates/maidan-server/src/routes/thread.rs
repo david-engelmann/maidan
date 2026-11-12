@@ -6,7 +6,8 @@ use axum::http::{header, Response};
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{
-        ARTIFACT_UPLOAD, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+        ARTIFACT_UPLOAD, MEMBER_SELF, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ,
+        WORKSPACE_WRITE,
     },
     AuthContext,
 };
@@ -1069,7 +1070,7 @@ pub async fn mute_thread(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     state.store.mute_thread(auth.member_id(), thread_id).await?;
@@ -1082,7 +1083,7 @@ pub async fn unmute_thread(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, MEMBER_SELF)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     if state
