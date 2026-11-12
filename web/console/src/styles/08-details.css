@@ -1,0 +1,106 @@
+/* Details across places: reactions, tab strips, notifications, pickers,
+   empty lanes, ending a task, sign-in and the credential badge. */
+/* ---- console-11 finish ---- */
+/* Reactions: on touch the "+" is gone; tapping a message opens its actions.
+   With a mouse it is a quiet glyph that appears on hover. */
+.reacts.none .react.add { min-height: 44px; min-width: 44px; padding: 0 var(--space-1-5); border-color: transparent; background: transparent; color: var(--muted); font-size: var(--text-base); }
+.reacts.none .react.add:hover { color: var(--ink); background: var(--paper-2); }
+@media (hover: none) { .reacts.none .react.add:not([aria-expanded="true"]) { display: none; } }
+.react.word.danger, .button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+
+/* Tools tab strip: snap, and fade the edge so it reads as scrollable. */
+.seg-wrap { position: relative; min-width: 0; }
+.seg-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; pointer-events: none; background: linear-gradient(to right, transparent, var(--paper)); border-radius: 0 var(--r-md) var(--r-md) 0; }
+.seg-scroll { scroll-snap-type: x proximity; scroll-padding-inline: var(--space-7); }
+.seg-scroll a { scroll-snap-align: start; }
+.seg-scroll a:last-child { margin-right: var(--space-7); }
+
+/* Notifications: words first, then a full-width pair on a phone. */
+.push-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-2); }
+.push-actions .button { min-height: 44px; width: 100%; justify-content: center; }
+@media (min-width: 600px) { .push-actions { display: flex; } .push-actions .button { width: auto; min-width: 140px; } }
+/* Appearance: the theme choice sits under its one line of help. */
+.theme-pick { margin-top: var(--space-1); }
+
+/* Board lanes: one line per segment, count as a badge. */
+.lane-pick button { flex-direction: row; gap: var(--space-1-5); white-space: nowrap; font-size: var(--text-sm); }
+.lane-pick .count { min-width: 20px; height: 20px; padding: 0 var(--space-1-5); border-radius: var(--r-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-2xs); opacity: 1; }
+
+/* Native selects dressed like the console's fields. */
+.channel-pick select, select.select {
+  appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 var(--space-9) 0 var(--space-3); border-radius: var(--r-md); border: 1px solid var(--line);
+  color: var(--ink); font: inherit; font-size: var(--text-md); background-color: var(--card);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+/* On a phone the picker takes its own row so a channel's name fits; wider,
+   it sits beside the summary (10-board-layout.css). The select never shrinks below a short name. */
+.channel-pick { flex: 1 1 100%; min-width: 0; }
+.channel-pick select { flex: 1; min-width: 12ch; width: 100%; text-overflow: ellipsis; }
+
+/* Empty lanes: say what is going on, offer the next move. */
+.cards .empty:has(.empty-state) { text-align: left; padding: 0; }
+.empty-state { display: grid; gap: var(--space-1-5); justify-items: start; text-align: left; padding: var(--space-4-5) var(--space-4); border: 1px dashed var(--line); border-radius: var(--r-md); }
+.empty-state p { margin: 0; }
+
+/* Task sheet extras and Connect. */
+.result-form { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+.result-form textarea, .result-form input { width: 100%; font: inherit; font-size: var(--text-input); padding: var(--space-2) var(--space-2-5); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+/* Ending a task early: say why, then read what it does and confirm. Ink, muted and danger reach AA on --card in both themes (contrast.test.ts). */
+.end-task { display: grid; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); color: var(--ink); }
+.end-task-title { margin: 0; font-size: var(--text-md); font-weight: 600; }
+.end-task-title:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.end-task .field textarea, .end-task .field input { width: 100%; min-height: 44px; font: inherit; font-size: var(--text-input); padding: var(--space-2) var(--space-2-5); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.end-reasons { display: grid; margin: 0; padding: 0; border: 0; min-width: 0; }
+.end-reasons legend { padding: 0; margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--muted); }
+.end-effects { display: grid; gap: var(--space-1); margin: 0; padding-left: 1.2em; font-size: var(--text-sm); }
+.end-task-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.end-task-actions .button, .task-end .button { min-height: 44px; min-width: 44px; }
+.end-task-problem { margin: 0; color: var(--danger); }
+.task-end { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--pad) var(--space-2); }
+.task-end .end-task { flex: 1 1 100%; margin-top: 0; }
+.snippet { margin-top: var(--space-2-5); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.snippet-head { display: flex; justify-content: space-between; align-items: center; padding: var(--space-1-5) var(--space-2-5); background: var(--paper-2); }
+.snippet-scroll { position: relative; }
+.snippet-scroll::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 24px; pointer-events: none; background: linear-gradient(to right, transparent, var(--card)); }
+.snippet-body { margin: 0; padding: var(--space-2-5) var(--space-6) var(--space-2-5) var(--space-2-5); font-family: var(--mono); font-size: var(--text-xs); white-space: pre; overflow-x: auto; background: var(--card); }
+.brand .mark { color: var(--mark-ink); border-radius: 0; filter: var(--mark-glow); }
+.snippet, .snippet-scroll { min-width: 0; max-width: 100%; }
+.snippet-body { max-width: 100%; }
+.tools { grid-template-columns: minmax(0, 1fr); }
+.content { min-width: 0; }
+/* console-12: sign-in */
+.sign-in { display: grid; gap: var(--space-3); max-width: 480px; }
+.sign-in-token { display: grid; gap: var(--space-1-5); }
+.sign-in-token input {
+  min-width: 0; min-height: 44px; padding: 0 var(--space-3); border-radius: var(--r-md);
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+  font: inherit; font-size: var(--text-input);
+}
+
+
+@media (hover: none) { .msg:has(.reacts.none) { padding-right: var(--space-9); } }
+
+/* Needs you: the evidence an approval signs, shown before Approve. */
+.need-evidence { margin: 0.7rem 0 0.2rem; padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper); font-size: var(--text-base); }
+.need-evidence .ev-head { margin: 0 0 0.4rem; font-weight: 600; }
+.need-evidence code { font-family: var(--mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.need-evidence .ev-warn { margin: 0.3rem 0 0.5rem; padding: 0.45rem 0.6rem; border-radius: var(--r-sm); background: color-mix(in srgb, var(--signal) 12%, var(--paper)); color: var(--ink); }
+.need-evidence .ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.need-evidence .ev-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; }
+.need-evidence .ev-kind { font-family: var(--mono); font-size: var(--text-2xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.need-evidence .ev-name { font-weight: 500; overflow-wrap: anywhere; }
+.need-evidence .ev-tier { padding: 0 0.45rem; border: 1px solid var(--line); border-radius: var(--r-pill); font-size: var(--text-xs); color: var(--muted); }
+.need-evidence .ev-tier.tier-verified { color: var(--ok); border-color: currentColor; }
+.need-evidence .ev-unlinked { color: var(--signal-ink); }
+.need-evidence .ev-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-weight: 500; }
+
+/* The credential badge, the capability card and the front door's chooser. */
+.mode-chip { font-size: var(--text-xs); padding: 3px 9px; border-radius: var(--r-pill); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.mode-chip[data-mode="delegated"] { border-color: var(--signal); color: var(--ink); }
+.cap-card { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.cap-cant code { color: var(--muted); }
+.chooser-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: var(--space-4); background: var(--scrim); }
+.chooser { width: min(440px, 100%); display: grid; gap: var(--space-2-5); }
+.chooser .button { min-height: 44px; }
+.no-workspace { margin: 0; }

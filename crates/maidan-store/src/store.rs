@@ -951,7 +951,7 @@ pub trait ApprovalGateStore: Send + Sync {
     /// A durable human-approval gate: `create` opens a `Pending` gate,
     /// `resolve` compare-and-sets it to accept/decline/cancel (a second answer
     /// is a no-op → `None`), `list_pending` is the queryable outstanding-gate
-    /// list. No worker/routes yet — a zero-blast-radius foundation.
+    /// list.
     async fn create_approval_gate(
         &self,
         gate: &NewApprovalGate,
@@ -988,13 +988,16 @@ pub trait ApprovalGateStore: Send + Sync {
         workspace_id: WorkspaceId,
         query: PendingGateQuery,
     ) -> Result<i64, StoreError>;
+    /// Answer a pending gate and append its `ApprovalResolved` event in the
+    /// same transaction. `None` when it was no longer pending: nothing is
+    /// written and no event is appended.
     async fn resolve_approval_gate(
         &self,
         id: ApprovalGateId,
         resolved_by: MemberId,
         state: ApprovalGateState,
         content: Option<&serde_json::Value>,
-    ) -> Result<Option<ApprovalGate>, StoreError>;
+    ) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError>;
     /// [`Self::resolve_approval_gate`] for a decision a model made through
     /// `approval_decide`: records the client it came through and that a model
     /// asked, with `audit` in the same transaction when the gate resolved.
@@ -1006,7 +1009,7 @@ pub trait ApprovalGateStore: Send + Sync {
         content: Option<&serde_json::Value>,
         via: &GateDecisionVia,
         audit: crate::AuditFor<ApprovalGate>,
-    ) -> Result<Option<ApprovalGate>, StoreError>;
+    ) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError>;
     /// The workspace's `approval_decide` threshold and confirmation-link
     /// lifetime; `low` and 600 seconds when unset.
     async fn get_approval_policy(

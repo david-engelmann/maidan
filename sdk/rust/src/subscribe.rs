@@ -244,6 +244,20 @@ impl Client {
         }
         self.wait_for_kind(f, "thread_ready", timeout)
     }
+
+    /// Block until a gate is requested in the workspace, or `timeout`
+    /// (`Ok(None)`). Answer it with [`crate::ApprovalGates::answer`].
+    pub fn wait_for_approval_request(
+        &self,
+        workspace_id: &str,
+        timeout: Duration,
+    ) -> Result<Option<Value>> {
+        self.wait_for_kind(
+            json!({ "workspace_id": workspace_id }),
+            "approval_requested",
+            timeout,
+        )
+    }
 }
 
 fn ws_url(base_url: &str) -> String {

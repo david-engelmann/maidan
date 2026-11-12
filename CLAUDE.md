@@ -55,6 +55,7 @@ bash scripts/check-our-domains.sh        # no link to the old problem-type domai
 bash scripts/check-action-pins.sh        # every `uses:` names a commit SHA with a `# vX.Y.Z` comment (resolve with gh api repos/<o>/<r>/commits/<tag>)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 python3 scripts/test-mcp-fault-injection.py   # the Python claimants behind scripts/mcp-fault-proxy.py (in `lint`)
+python3 scripts/check-sdk-parity.py      # every method in sdk/methods.json is in all four SDKs and the Client Contract (in `lint`)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
 
@@ -424,14 +425,21 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   Bumping the Chainguard MinIO digest in compose means bumping it in `k8s/`
   and `helm/maidan-stack/values.yaml` too; `check-deploy-contract.sh` (in the
   `lint` job) fails while they differ.
-- **A console colour is a token in both palettes.** `web/console/src/styles.css`
-  paints only from the `:root[data-theme="dark"]` and `:root[data-theme="light"]`
+- **A console colour is a token in both palettes.** The console's sheets
+  (`web/console/src/styles.css` imports `src/styles/*.css` in cascade order)
+  paint only from the `:root[data-theme="dark"]` and `:root[data-theme="light"]`
   blocks; `test/tokens.test.ts` fails on a colour literal anywhere else and on
   a token one palette lacks, and `test/contrast.test.ts` checks AA in both.
   Dark is the default, set before the first paint by `public/theme.js`. The
   try page (`deploy/cloudflare/try/try.css`) is held to the same rules by
   `deploy/cloudflare/test/try-theme.test.js`, and its shared tokens to the
   landing's values; the demo deploy copies `theme.js` in beside it.
+- **Console spacing, type and breakpoints are tokens too.** A padding, margin
+  or gap takes a `--space-*` token and a font size a `--text-*` token (both in
+  `src/styles/00-tokens.css`), and a media query uses only the named
+  breakpoints listed there (380, 599/600, 899/900, 1440). `npm run lint` runs
+  stylelint (`stylelint.config.js`) and eslint with jsx-a11y; a new rule goes in
+  the module for its place.
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports used only under the test-only
   `bootstrap` feature, which the default build lacks) and

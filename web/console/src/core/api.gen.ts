@@ -116,7 +116,7 @@ export type EnqueueRequest = { pull_number: number; repo: string; };
 export type EnqueueResponse = { already: boolean; applied: boolean; label: string; number: number; reason?: string | null; };
 export type EraseWorkspace = { confirm_workspace_id: string; };
 export type EscalationPolicy = "notify" | "park";
-export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "evidence_added" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "intake_proposed" | "intake_accepted" | "intake_rejected" | "usage_over_allowance" | "credits_deposited" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
+export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "approval_resolved" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "evidence_added" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "intake_proposed" | "intake_accepted" | "intake_rejected" | "usage_over_allowance" | "credits_deposited" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
 export type EventLink = { content_hash: string; id: number; lsn: number; prev_hash: string; };
 export type EventOrder = "asc" | "desc";
 export type EvidenceAttestation = { attested_by: MemberId; kind: EvidenceKind; sha256?: string | null; tier: AttestationTier; };
@@ -307,6 +307,7 @@ export type RenewClaim = { claim_lease_id: string; lease_secs: number; };
 export type ReplicaStatus = { lag_bytes: number; };
 export type RepoPause = { paused_at: string; paused_by: MemberId; reason?: string | null; repo: string; workspace_id: WorkspaceId; };
 export type RepoRollup = SliceNumbers & { by_engine: EngineRollup[]; by_harness: HarnessRollup[]; by_provider: ProviderRollup[]; by_risk: RiskRollup[]; by_size: SizeRollup[]; by_tier: TierRollup[]; closed_unmerged: number; flagged: number; median_time_to_ready_secs?: number | null; repo: string; };
+export type RequestApprovalGate = { prompt: string; risk?: ApprovalRisk; schema?: Record<string, unknown> | null; thread_id?: null | ThreadId; };
 export type ResultDelivery = { armed_revision: string; attempts: number; created_at: string; delivered_revision?: string | null; delivery_warnings?: string[]; external_ref?: string | null; head_sha?: string | null; id: ResultDeliveryId; last_error?: string | null; pr_number?: number | null; pr_url?: string | null; selector: string; status: string; surface: string; thread_id: ThreadId; updated_at: string; };
 export type ResultDeliveryId = string;
 export type ResultEvidence = { produced_by: MemberId; sha256: string; };
@@ -553,6 +554,7 @@ export type ApiRoute =
   | "GET /.well-known/mcp/server-card.json"
   | "GET /.well-known/oauth-authorization-server"
   | "GET /.well-known/oauth-protected-resource/mcp/streamable"
+  | "GET /approval-gates/{id}"
   | "GET /artifacts/{sha}"
   | "GET /artifacts/{sha}/meta"
   | "GET /auth/oidc/callback"
@@ -851,6 +853,7 @@ export type ApiRoute =
   | "POST /workspaces/{id}/purge"
   | "POST /workspaces/{wid}/agents"
   | "POST /workspaces/{wid}/app-installations/{iid}/tokens"
+  | "POST /workspaces/{wid}/approval-gates"
   | "POST /workspaces/{wid}/apps"
   | "POST /workspaces/{wid}/apps/{app_id}/install"
   | "POST /workspaces/{wid}/apps/{app_id}/oauth/authorize"

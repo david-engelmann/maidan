@@ -699,6 +699,31 @@ pub struct RunLineageQuery {
     pub parent_run_id: String,
 }
 
+/// Open a durable human-approval gate: the REST twin of MCP
+/// `request_approval`. The gate is attributed to the caller; the body cannot
+/// name a requester. Unknown fields are refused: a misspelled `thread_id`
+/// would otherwise open an unattached gate that holds nobody.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestApprovalGate {
+    /// What needs approval, in words a person can decide on.
+    pub prompt: String,
+    /// Optional JSON Schema for structured detail the person may supply with
+    /// their decision. Kept on the gate.
+    #[serde(default)]
+    #[schema(value_type = Option<Object>)]
+    pub schema: Option<serde_json::Value>,
+    /// Optional thread to hold: while the gate is pending, `claim_next` does
+    /// not hand the thread to an agent. The caller must be able to read it
+    /// (403 otherwise; 404 for an unknown thread).
+    #[serde(default)]
+    pub thread_id: Option<ThreadId>,
+    /// How much a wrong accept would cost; `high` when omitted. The
+    /// workspace's approval policy reads it for a model's accept.
+    #[serde(default)]
+    pub risk: ApprovalRisk,
+}
+
 /// Answer a human-approval gate: accept / decline / cancel, with the HMAC
 /// `request_state` the server issued alongside the pending gate.
 #[derive(Debug, Deserialize, ToSchema)]

@@ -8,6 +8,9 @@
 // per file that uses them, as they did when every file was its own binary.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../approval_resolved_event.rs"]
+mod approval_resolved_event;
+
 #[path = "../arg_strictness_contract.rs"]
 mod arg_strictness_contract;
 

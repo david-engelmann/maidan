@@ -532,3 +532,54 @@ func TestChannelsBootFromASecondWorkspaceSeesNothingOfTheFirst(t *testing.T) {
 		t.Fatal("two workspaces' boots share a hash")
 	}
 }
+
+func TestFootprintAndReviewsStayInTheirWorkspace(t *testing.T) {
+	c := testClient(t)
+	strictDecoding(t)
+	otherToken, otherWID := os.Getenv("MAIDAN_OTHER_TOKEN"), os.Getenv("MAIDAN_OTHER_WORKSPACE")
+	if otherToken == "" || otherWID == "" {
+		t.Fatal("scripts/sdk-test.sh provisions a second workspace")
+	}
+	wid, _, _, thread := seed(t, c)
+	fp := Footprint{Repo: "acme/widgets", Mode: FootprintExclusive, Items: []FootprintItem{{Kind: FootprintPath, Value: "sdk/go"}}}
+	stored := must(c.Threads.SetFootprint(thread.ID, fp))
+	if stored == nil || stored.Repo != fp.Repo || stored.Mode != fp.Mode || len(stored.Items) != 1 || stored.Items[0] != fp.Items[0] {
+		t.Fatalf("stored footprint %+v", stored)
+	}
+	if got := must(c.Threads.GetFootprint(thread.ID)); got.Repo != fp.Repo || len(got.Items) != 1 || got.Items[0] != fp.Items[0] {
+		t.Fatalf("read back %+v", got)
+	}
+	if reviews := must(c.Reviews.List(thread.ID)); len(reviews) != 0 {
+		t.Fatalf("reviews on a fresh thread: %+v", reviews)
+	}
+	if status := must(c.Reviews.Status(thread.ID)); status.Approvals != 0 {
+		t.Fatalf("status %+v", status)
+	}
+
+	other := New(os.Getenv("MAIDAN_URL"), otherToken)
+	refused := map[string]func() error{
+		"Threads.GetFootprint": func() error { _, err := other.Threads.GetFootprint(thread.ID); return err },
+		"Threads.SetFootprint": func() error { _, err := other.Threads.SetFootprint(thread.ID, fp); return err },
+		"Reviews.List":         func() error { _, err := other.Reviews.List(thread.ID); return err },
+		"Reviews.Status":       func() error { _, err := other.Reviews.Status(thread.ID); return err },
+		"ApprovalGates.List":   func() error { _, err := other.ApprovalGates.List(wid); return err },
+		"Tokens.Delegate": func() error {
+			// No grant has this id; the refusal must not depend on the grant existing.
+			_, err := other.Tokens.Delegate("00000000-0000-4000-8000-000000000000", nil, nil)
+			return err
+		},
+	}
+	for name, call := range refused {
+		var ae *APIError
+		if err := call(); !errors.As(err, &ae) || (ae.Status != 403 && ae.Status != 404) {
+			t.Errorf("%s from a second workspace: expected a 403 or 404, got %v", name, err)
+			continue
+		}
+		if body, _ := json.Marshal(ae.Problem); strings.Contains(string(body), wid) {
+			t.Errorf("%s: the refusal names the first workspace", name)
+		}
+	}
+	if got := must(c.Threads.GetFootprint(thread.ID)); len(got.Items) != 1 || got.Items[0] != fp.Items[0] {
+		t.Fatalf("a refused write changed the footprint: %+v", got)
+	}
+}

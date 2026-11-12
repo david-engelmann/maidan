@@ -259,6 +259,65 @@ export class Client {
           ...(opts.expiresAt === undefined ? {} : { expires_at: opts.expiresAt }),
         }),
       list: (wid, mid) => this._req("GET", `/workspaces/${wid}/members/${mid}/tokens`),
+      // Exchange a delegation grant for a token, with the delegate's own
+      // token (`workspace:read`). At most the grant's capabilities and the
+      // caller's, living no longer than either; `[]` asks for every capability
+      // both hold. A delegated token cannot delegate again.
+      delegate: (grantId, capabilities = [], opts = {}) =>
+        this._req("POST", "/tokens/delegate", {
+          grant_id: grantId,
+          capabilities,
+          ...tokenOpts(opts),
+        }),
+      // A weaker token derived from the caller's: a subset of its
+      // capabilities, expiring no later than it does.
+      attenuate: (capabilities, opts = {}) =>
+        this._req("POST", "/tokens/attenuate", { capabilities, ...tokenOpts(opts) }),
+    };
+    // Delegation grants (`token:admin`): a subject lets a delegate act for it,
+    // within a capability set, until an expiry. `revoke` stops every token
+    // already exchanged for the grant.
+    this.delegationGrants = {
+      create: (wid, subjectId, delegateId, capabilities, purpose, expiresAt) =>
+        this._req("POST", `/workspaces/${wid}/delegation-grants`, {
+          subject_id: subjectId,
+          delegate_id: delegateId,
+          capabilities,
+          purpose,
+          expires_at: expiresAt,
+        }),
+      revoke: (wid, grantId) => this._req("DELETE", `/workspaces/${wid}/delegation-grants/${grantId}`),
+    };
+    // Reviews. Nobody counts as their own reviewer: an owner or assignee may
+    // submit, but the verdict does not count. `approve` needs the packet's
+    // `evidenceRoot`; `request_changes` needs a `note`.
+    this.reviews = {
+      packet: (tid) => this._req("GET", `/threads/${tid}/review-packet`),
+      request: async (tid, memberId) => {
+        await this._req("POST", `/threads/${tid}/reviewers`, { member_id: memberId });
+      },
+      submit: (tid, decision, opts = {}) =>
+        this._req("POST", `/threads/${tid}/reviews`, {
+          decision,
+          ...(opts.note === undefined ? {} : { note: opts.note }),
+          ...(opts.evidenceRoot === undefined ? {} : { evidence_root: opts.evidenceRoot }),
+          ...(opts.headSha === undefined ? {} : { head_sha: opts.headSha }),
+        }),
+      list: (tid) => this._req("GET", `/threads/${tid}/reviews`),
+      status: (tid) => this._req("GET", `/threads/${tid}/review-status`),
+    };
+    // Approval gates, the human side: the pending gates (each with the
+    // `request_state` an answer must echo) and the answer. Accepting needs a
+    // person's signed-in session or `approval:grant`, and nobody accepts a gate
+    // they asked for. A gate is opened over MCP (`request_approval`).
+    this.approvalGates = {
+      list: (wid) => this._req("GET", `/workspaces/${wid}/approval-gates`),
+      answer: (gateId, requestState, action, opts = {}) =>
+        this._req("POST", `/approval-gates/${gateId}/answer`, {
+          request_state: requestState,
+          action,
+          ...(opts.content === undefined ? {} : { content: opts.content }),
+        }),
     };
     this.channels = {
       list: (wid) => this._req("GET", `/workspaces/${wid}/channels`),
@@ -278,6 +337,12 @@ export class Client {
       setResult: (id, result, claimLeaseId) =>
         this._readableResult("PUT", `/threads/${id}/result`, { result, claim_lease_id: claimLeaseId }),
       getResult: (id) => this._readableResult("GET", `/threads/${id}/result`),
+      // What the thread will touch; claim-next will not hand out two threads
+      // whose exclusive footprints overlap. Only an open thread nobody holds
+      // takes one. Resolves to null when the server stored none.
+      setFootprint: async (id, footprint) =>
+        (await this._req("PUT", `/threads/${id}/footprint`, footprint)) ?? null,
+      getFootprint: (id) => this._req("GET", `/threads/${id}/footprint`),
     };
     this.messages = {
       list: (tid, query) => this._req("GET", `/threads/${tid}/messages${qs(query)}`),
@@ -606,6 +671,18 @@ export class Client {
     if (channelId) f.channel_id = channelId;
     return this._waitForKind(f, "thread_ready", timeoutMs);
   }
+  /** The next `approval_requested` event in the workspace, or null after `timeoutMs`. */
+  waitForApprovalRequest(workspaceId, timeoutMs) {
+    return this._waitForKind({ workspace_id: workspaceId }, "approval_requested", timeoutMs);
+  }
+}
+
+/** The optional `expires_at` / `label` of a delegated or attenuated token. */
+function tokenOpts(opts) {
+  return {
+    ...(opts.expiresAt === undefined ? {} : { expires_at: opts.expiresAt }),
+    ...(opts.label === undefined ? {} : { label: opts.label }),
+  };
 }
 
 function parsesJson(text) {

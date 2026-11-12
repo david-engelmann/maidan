@@ -1,0 +1,252 @@
+/* Tokens: type, space, radius, motion, breakpoints and both palettes. */
+/* Console tokens: the landing's steel language (paper, ink, steel, signal),
+   in two palettes. Every colour a rule paints comes from here, so the two
+   themes cannot drift; test/tokens.test.ts fails on a colour written anywhere
+   else. public/theme.js sets <html data-theme> before the first paint. */
+@font-face { font-family: Geist; src: url("../fonts/geist-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root {
+  --btn-h: 44px; /* every button, .button or .btn, is one height and one shape */
+  /* Type: one scale, tight headings, tabular numbers where they line up. */
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-input: 16px; /* inputs stay 16px so phones do not zoom */
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-title: 18px; /* Activity's heading */
+  --text-glyph: 26px; /* the back chevron */
+  --control-h: 44px; /* Board filter controls match the 44px lane and view pills */
+  /* Space: a 4px rhythm, --space-N is N x 4px, with half steps (-0-5 is
+     2px, -1-5 is 6px ...) for the denser controls. Every padding, margin and
+     gap takes one of these; stylelint refuses a raw px there, except a 1, 3,
+     5, 7 or 9px optical nudge on a chip or a key cap. */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-4-5: 18px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-18: 72px;
+  /* Breakpoints. A media query cannot read a custom property, so these are
+     the names, and stylelint allows no other width in a media query:
+       narrow  (max-width: 380px)                       small phones
+       phone   (max-width: 599px) / (min-width: 600px)  phone or not
+       wide    (max-width: 899px) / (min-width: 900px)  the tab bar becomes a rail
+       xwide   (min-width: 1440px)                      content stops growing */
+  --pad: max(1.1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  --tab-h: 56px;
+  /* Radius. */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--signal) 35%, transparent);
+  /* Motion: short and eased; reduced motion turns it off below. */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --content-max: 1280px;
+}
+
+/* Dark, the default: graphite surfaces a step apart, hairlines of light
+   instead of ink, and the signal orange as the one lit thing on the panel.
+   A page with no data-theme (script blocked, a crawler) gets this too. */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  /* Surfaces: the page, then three steps up. Each step is lighter, never
+     bluer, so the stack reads as depth rather than as different materials. */
+  --paper: #0c0d0f;
+  --paper-2: #111215;
+  --elev-1: #16171b;
+  --elev-2: #1c1e22;
+  --elev-3: #23252a;
+  --card: var(--elev-1);
+  --page-bg: radial-gradient(1100px 560px at 88% -14%, rgba(255, 112, 52, 0.075), transparent 62%), radial-gradient(900px 640px at -8% 108%, rgba(118, 138, 178, 0.07), transparent 60%), #0c0d0f;
+  /* Ink: warm off-white on cool graphite, so text keeps the paper's hue. */
+  --ink: #ecebe7;
+  --muted: #9fa3ab;
+  --line: rgba(236, 240, 248, 0.09);
+  --line-strong: rgba(236, 240, 248, 0.16);
+  --hairline: rgba(236, 240, 248, 0.065);
+  --hover: rgba(236, 240, 248, 0.055);
+  --hi: rgba(255, 255, 255, 0.055);
+  /* Signal and status, lifted for a dark ground: the same hues, brighter. */
+  --signal: #ff6a2b;
+  --signal-ink: #ff9b6e;
+  --ok: #43d08a;
+  --danger: #ff6f64;
+  --review: #929fff;
+  --idle: #6c717b; /* offline and open dots: 3:1 on every surface */
+  --vote-yes: #4fd393;
+  --vote-no: #ff7d73;
+  --presence-on: #43d08a;
+  --presence-away: #f2b33d;
+  --steel-1: #3b3f46;
+  --steel-2: #272a30;
+  --steel-3: #1a1c20;
+  --glass: rgba(12, 13, 15, 0.72);
+  --glass-rest: transparent; /* the page's glow runs up under the title until the page scrolls */
+  --glass-bar: rgba(17, 18, 21, 0.84);
+  --scrim: rgba(3, 4, 6, 0.62);
+  --avatar-agent: #353a42;
+  --avatar-agent-ink: #e4e5e8;
+  --avatar-human: #1f2125;
+  --avatar-human-ink: #ecebe7;
+  /* The primary action is the lamp: lit orange with dark text. A white pill
+     on graphite was the brightest thing on every screen. */
+  --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
+  --primary-flat: #f45a1d;
+  --primary-hover: linear-gradient(180deg, #ff8a55, #ff6a2b);
+  --primary-ink: #1b0b03;
+  --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
+  --selected: var(--signal);
+  --mark-ink: var(--signal); /* the mark and the open place are lit, like the lamp on the tile */
+  --mark-glow: drop-shadow(0 0 6px rgba(255, 106, 43, 0.45));
+  --tab-on-icon: var(--signal);
+  --toast-bg: var(--elev-3);
+  --toast-ink: var(--ink);
+  --sheet-bg: var(--elev-2);
+  --lane-bg: var(--elev-1);
+  --lane-line: var(--hairline);
+  --field-bg: var(--paper-2);
+  --field-line: var(--line-strong);
+  /* Elevation: light from above catches each surface's top edge; shadows
+     are near black, since a warm brown shadow reads as dirt on graphite. */
+  --shadow-1: inset 0 1px 0 var(--hi), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: inset 0 1px 0 var(--hi), 0 18px 36px -22px rgba(0, 0, 0, 0.9);
+  --shadow-3: inset 0 1px 0 var(--hi), 0 0 0 1px rgba(236, 240, 248, 0.06), 0 30px 80px -24px rgba(0, 0, 0, 0.9);
+  --shadow-drawer: -1px 0 0 var(--line), -24px 0 60px -16px rgba(0, 0, 0, 0.7);
+  --glow: 0 0 0 1px color-mix(in srgb, var(--signal) 55%, transparent), 0 0 22px -6px color-mix(in srgb, var(--signal) 70%, transparent);
+  --steel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -3px 6px rgba(0, 0, 0, 0.35), 0 18px 36px -18px rgba(0, 0, 0, 0.8);
+  --mark-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 6px 14px -8px rgba(0, 0, 0, 0.8);
+  /* The swarm builder's tile: anodised gunmetal, bead-blasted, with wells
+     milled into it and lit lamps. */
+  --tile-bg: linear-gradient(150deg, #474b53 0%, #2c2f35 46%, #1d1f23 100%);
+  --tile-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 -4px 8px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04), 0 34px 70px -24px rgba(0, 0, 0, 0.95), 0 0 90px -30px rgba(255, 106, 43, 0.22);
+  --tile-grain: rgba(255, 255, 255, 0.025);
+  --screw-bg: radial-gradient(circle at 35% 35%, #c4c7cc, #4a4d53 70%);
+  --screw-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.08);
+  --lamp-off: #2a2d32;
+  --lamp-off-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.06);
+  --lamp-ok: #43d08a;
+  --lamp-bad: #ff6a2b;
+  --well-bg: radial-gradient(circle at 50% 36%, #08090a 0, #121316 42%, #1e2024 74%, #2b2e33 100%);
+  --well-shadow: inset 0 8px 14px rgba(0, 0, 0, 0.75), inset 0 -2px 3px rgba(255, 255, 255, 0.07), 0 1px 0 rgba(255, 255, 255, 0.1), 0 -1px 0 rgba(0, 0, 0, 0.4);
+  --well-depth: inset 0 8px 14px rgba(0, 0, 0, 0.75);
+  --well-label: #8b9099;
+  --well-gap-label: #ff9b6e;
+  --puck-planner-bg: radial-gradient(circle at 35% 28%, #ffb08a, #ff6a2b 52%, #b33c0c);
+  --puck-planner-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.5), inset 0 -3px 5px rgba(0, 0, 0, 0.3), 0 8px 14px -5px rgba(0, 0, 0, 0.7), 0 0 26px -6px rgba(255, 106, 43, 0.75);
+  --puck-planner-ink: #1b0b03;
+  --puck-agent-bg: radial-gradient(circle at 35% 28%, #6a6f78, #2a2d33 58%, #121316);
+  --puck-agent-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.35), inset 0 -3px 5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 14px -5px rgba(0, 0, 0, 0.8);
+  --puck-agent-ink: #eceef2;
+  --puck-human-bg: radial-gradient(circle at 35% 28%, #f4f2ee, #cfccc5 62%, #9c988f);
+  --puck-human-ink: #23211d;
+  --engrave: #959ba4;
+  --engrave-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Light: the landing's warm paper and ink. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --paper: #f2eee6;
+  --paper-2: #e9e4d9;
+  --card: #faf8f3;
+  --elev-1: var(--card);
+  --elev-2: var(--card);
+  --elev-3: var(--card);
+  --page-bg: #f2eee6;
+  --ink: #151411;
+  --muted: #5c5850;
+  --line: rgba(21, 20, 17, 0.12);
+  --line-strong: rgba(21, 20, 17, 0.22);
+  --hairline: var(--line);
+  --hover: rgba(21, 20, 17, 0.05);
+  --hi: #fdfcf9;
+  --signal: #e8501c;
+  --signal-ink: #a83a0d;
+  --ok: #256b41;
+  --danger: #b4231a;
+  --review: #4a55c9;
+  --idle: #7d7a72; /* offline and open dots: 3:1 on card, paper and paper-2 */
+  --vote-yes: #2a7030; /* small text, so 4.5:1 on every surface a vote sits on */
+  --vote-no: #b42222;
+  --presence-on: #3fbf6a;
+  --presence-away: #e0a930;
+  --steel-1: #f7f7f5;
+  --steel-2: #c9c8c3;
+  --steel-3: #9d9b95;
+  --glass: rgba(242, 238, 230, 0.72);
+  --glass-rest: var(--glass);
+  --glass-bar: rgba(247, 245, 240, 0.8);
+  --scrim: rgba(21, 20, 17, 0.32);
+  --avatar-agent: #2b2a27;
+  --avatar-agent-ink: #f6f3ec;
+  --avatar-human: #fbfaf7;
+  --avatar-human-ink: #2a2824;
+  --primary: #151411;
+  --primary-flat: #151411;
+  --primary-hover: color-mix(in srgb, #151411 86%, #f2eee6);
+  --primary-ink: #f2eee6;
+  --primary-shadow: var(--shadow-1);
+  --selected: var(--ink);
+  --mark-ink: var(--ink);
+  --mark-glow: none;
+  --tab-on-icon: currentColor;
+  --toast-bg: var(--ink);
+  --toast-ink: var(--paper);
+  --sheet-bg: var(--paper);
+  --lane-bg: color-mix(in srgb, var(--ink) 3%, transparent);
+  --lane-line: color-mix(in srgb, var(--line) 60%, transparent);
+  --field-bg: var(--paper-2);
+  --field-line: var(--line);
+  --shadow-1: 0 1px 0 var(--hi) inset, 0 1px 2px rgba(21, 20, 17, 0.06);
+  --shadow-2: 0 1px 0 var(--hi) inset, 0 12px 30px -22px rgba(60, 50, 30, 0.5);
+  --shadow-3: 0 30px 80px -30px rgba(21, 20, 17, 0.55);
+  --shadow-drawer: -1px 0 0 var(--line), -16px 0 40px -12px rgba(0, 0, 0, 0.28);
+  --glow: var(--ring);
+  --steel-shadow: inset 0 2px 1px var(--hi), inset 0 -3px 6px rgba(0, 0, 0, 0.18), 0 1px 0 var(--hi), 0 18px 36px -18px rgba(60, 50, 30, 0.45);
+  --mark-shadow: inset 0 1px 0 var(--hi), 0 6px 14px -8px rgba(21, 20, 17, 0.45);
+  --tile-bg: linear-gradient(145deg, #f7f7f5, #c9c8c3 60%, #9d9b95);
+  --tile-shadow: inset 0 2px 1px #fff, inset 0 -3px 6px rgba(0, 0, 0, 0.18), 0 1px 0 #fff, 0 30px 60px -20px rgba(60, 50, 30, 0.45), 0 10px 20px -10px rgba(60, 50, 30, 0.35);
+  --tile-grain: rgba(255, 255, 255, 0.06);
+  --screw-bg: radial-gradient(circle at 35% 35%, #fff, #8d8b85);
+  --screw-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  --lamp-off: #8d8b85;
+  --lamp-off-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
+  --lamp-ok: #3fbf6a;
+  --lamp-bad: #e8501c;
+  --well-bg: radial-gradient(circle at 50% 38%, #7d7a73 0, #a19e97 38%, #c8c6c0 70%, #e3e1dc 100%);
+  --well-shadow: inset 0 7px 12px rgba(0, 0, 0, 0.5), inset 0 -2px 3px rgba(255, 255, 255, 0.85), 0 1px 0 rgba(255, 255, 255, 0.95), 0 -1px 0 rgba(0, 0, 0, 0.12);
+  --well-depth: inset 0 7px 12px rgba(0, 0, 0, 0.5);
+  --well-label: #3a3833;
+  --well-gap-label: #7a2a0b;
+  --puck-planner-bg: radial-gradient(circle at 35% 28%, #ff9a6a, #e8501c 55%, #a8380e);
+  --puck-planner-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.55), inset 0 -3px 5px rgba(0, 0, 0, 0.28), 0 8px 12px -5px rgba(110, 40, 10, 0.55);
+  --puck-planner-ink: #1d0c03;
+  --puck-agent-bg: radial-gradient(circle at 35% 28%, #57544f, #1b1a18 68%);
+  --puck-agent-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.28), inset 0 -3px 5px rgba(0, 0, 0, 0.5), 0 8px 12px -5px rgba(0, 0, 0, 0.5);
+  --puck-agent-ink: #f6f3ec;
+  --puck-human-bg: radial-gradient(circle at 35% 28%, #fff, #e4e1d9 68%, #c9c5bb);
+  --puck-human-ink: #2a2824;
+  --engrave: #46443f;
+  --engrave-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}

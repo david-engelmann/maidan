@@ -1,0 +1,64 @@
+/* Header and screens: the connection chip, the phone header, Tools tabs,
+   a thread's result and the Files buttons. */
+/* Connection: silent when live, a dot when not. */
+.live { padding: 0; border: 0; width: 24px; height: 24px; justify-content: center; }
+.live .dot { width: 8px; height: 8px; }
+.live-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.live-reconnecting .dot { animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .task, .task:hover { transition: none; transform: none; }
+  .lease-fill { transition: none; }
+  .live-reconnecting .dot { animation: none; }
+}
+/* At 390px the header names its controls. A pasted or delegated token stays
+   visible, and Search is a word, so the bar is readable without a tooltip. */
+@media (max-width: 599px) {
+  .top { flex-wrap: wrap; row-gap: 0.35rem; }
+  .top h1 { flex: 1 1 8rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .top .icon-btn { width: auto; display: inline-flex; align-items: center; padding: 0 var(--space-3); gap: var(--space-1-5); border-radius: var(--r-pill); }
+  .top .icon-btn .btn-label { display: inline; font-size: var(--text-sm); font-weight: 600; }
+  .mode-chip { display: inline-flex; align-items: center; max-width: 100%; min-height: 44px; }
+  .top .live { width: auto; height: auto; min-height: 44px; padding: 0 var(--space-2-5); gap: var(--space-1-5); }
+  .top .live-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+}
+
+.state-text { display: inline-block; }
+.state-text::first-letter { text-transform: uppercase; }
+
+/* Tools tabs: one underlined nav; on phones it scrolls under an edge fade. */
+@media all {
+  .seg-wrap { border-bottom: 1px solid var(--line); margin-bottom: var(--space-4); }
+  .seg-wrap::after { border-radius: 0; bottom: 1px; }
+  .seg.seg-scroll { scrollbar-width: none; }
+  .seg.seg-scroll { display: flex; gap: var(--space-1); padding: 0; background: none; border: 0; border-radius: 0; overflow-x: auto; }
+  .seg-scroll a { position: relative; min-height: 44px; min-width: 44px; padding: 0 var(--space-2-5); border-radius: var(--r-sm); font-size: var(--text-sm); }
+  .seg-scroll a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .seg-scroll a:last-child { margin-right: 0; }
+  .seg.seg-scroll a[aria-selected="true"] { background: none; box-shadow: none; color: var(--ink); font-weight: 600; }
+  .seg-scroll a[aria-selected="true"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
+}
+
+/* Thread: result and evidence as a quiet disclosure, not a bar. */
+.pins.facts-panel { padding: 0 var(--pad); background: none; font-size: var(--text-sm); }
+.pins.facts-panel summary { min-height: 44px; min-width: 44px; gap: var(--space-1-5); font-weight: 500; color: var(--muted); list-style: none; }
+.pins.facts-panel summary::-webkit-details-marker { display: none; }
+.pins.facts-panel summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-right: var(--space-1); }
+.pins.facts-panel[open] summary::before { transform: rotate(45deg); }
+.pins.facts-panel summary:hover { color: var(--ink); }
+summary:focus-visible { border-radius: var(--r-xs); }
+.pins.facts-panel[open] { padding-bottom: var(--space-2); }
+
+/* Files: one button family. */
+.tool-panel .button, .artifact .button { min-height: 44px; min-width: 44px; padding: 0 1.1rem; border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: 500; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+.tool-panel .button:hover, .artifact .button:hover { border-color: color-mix(in srgb, var(--ink) 22%, var(--line)); }
+.tool-panel .button.danger, .artifact .button.danger { color: var(--danger); }
+.tool-panel .button[disabled], .artifact .button[disabled] { background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; cursor: not-allowed; }
+.tool-panel .row-form .button { align-self: end; min-height: 44px; }
+@media (prefers-reduced-motion: reduce) { .pins.facts-panel summary::before { transition: none; } }
+
+.conv-detail { display: inline-block; }
+.conv-detail::first-letter { text-transform: uppercase; }
+.tool-panel .field input { border-radius: var(--r-md); }

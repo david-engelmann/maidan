@@ -431,10 +431,109 @@ export interface ThreadReview {
   decision: ReviewDecision;
   note?: string | null;
   dismissed_at?: string | null;
+  /** Root of the review packet an approval was given against. */
+  evidence_root?: string | null;
   /** Full head SHA of the change the verdict was given against. */
   head_sha?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** The evidence a reviewer is shown. An approval names its `evidence_root`. */
+export interface ReviewPacket {
+  id: string;
+  thread_id: ThreadId;
+  requested_by: MemberId;
+  thread_version: number;
+  /** The evidence manifest (result hash, artifacts, attestation tiers), as sent. */
+  manifest: Record<string, unknown>;
+  evidence_root: string;
+  /** True when nothing in the packet was checked by the server. */
+  self_reported_only: boolean;
+  created_at: string;
+}
+
+export interface ReviewStatus {
+  required_count: number;
+  approvals: number;
+  approvals_met: boolean;
+  send_backs: number;
+  max_rounds: number;
+}
+
+export type ApprovalGateState = "pending" | "accepted" | "declined" | "cancelled" | (string & {});
+
+export interface ApprovalGate {
+  id: string;
+  workspace_id: WorkspaceId;
+  thread_id: ThreadId | null;
+  requested_by: MemberId;
+  prompt: string;
+  schema: unknown;
+  state: ApprovalGateState;
+  content: unknown;
+  resolved_by: MemberId | null;
+  requested_actor_id?: MemberId | null;
+  resolved_actor_id?: MemberId | null;
+  created_at: string;
+  resolved_at: string | null;
+  /** `low`, `medium` or `high`. */
+  risk?: string;
+  decided_via?: unknown;
+  /** `request` or `review_round_cap`. */
+  kind?: string;
+}
+
+/** A model's accept waiting on a person's confirmation. */
+export interface ModelRequest {
+  member_id: MemberId;
+  client_name?: string | null;
+  client_version?: string | null;
+  client_id?: string | null;
+  client_source?: string | null;
+  expires_at: string;
+}
+
+/** A pending gate with the `request_state` its answer must echo. */
+export interface ApprovalGateView {
+  gate: ApprovalGate;
+  request_state: string;
+  model_request?: ModelRequest | null;
+}
+
+export type FootprintMode = "exclusive" | "shared" | (string & {});
+export type FootprintKind = "path" | "glob" | "crate" | "lane" | "branch" | "slot" | (string & {});
+
+export interface FootprintItem {
+  kind: FootprintKind;
+  value: string;
+}
+
+/** What a thread will touch; claim-next reads it before handing the thread out. */
+export interface Footprint {
+  repo: string;
+  mode: FootprintMode;
+  items: FootprintItem[];
+}
+
+export interface DelegationGrant {
+  id: string;
+  workspace_id: WorkspaceId;
+  subject_id: MemberId;
+  delegate_id: MemberId;
+  capabilities: string[];
+  purpose: string;
+  authorized_by: MemberId;
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+/** A grant exchanged for a token. `token.secret` is returned here once. */
+export interface DelegatedToken {
+  grant_id: string;
+  delegate_id: MemberId;
+  token: MintedToken;
 }
 
 export interface GlossaryTerm {
@@ -660,6 +759,53 @@ export declare class Client {
       opts?: { label?: string; capabilitySet?: string; expiresAt?: string },
     ): Promise<MintedToken>;
     list(wid: WorkspaceId, mid: MemberId): Promise<TokenSummary[]>;
+    /** Exchange a delegation grant for a token, with the delegate's own token. */
+    delegate(
+      grantId: string,
+      capabilities?: string[],
+      opts?: { expiresAt?: string; label?: string },
+    ): Promise<DelegatedToken>;
+    /** A weaker token derived from the caller's. */
+    attenuate(capabilities: string[], opts?: { expiresAt?: string; label?: string }): Promise<MintedToken>;
+  };
+
+  /** Delegation grants. Needs `token:admin`. */
+  delegationGrants: {
+    create(
+      wid: WorkspaceId,
+      subjectId: MemberId,
+      delegateId: MemberId,
+      capabilities: string[],
+      purpose: string,
+      expiresAt: string,
+    ): Promise<DelegationGrant>;
+    revoke(wid: WorkspaceId, grantId: string): Promise<DelegationGrant>;
+  };
+
+  /** Reviews. Nobody counts as their own reviewer. */
+  reviews: {
+    packet(tid: ThreadId): Promise<ReviewPacket>;
+    /** Designate a member of the thread's workspace as a reviewer. */
+    request(tid: ThreadId, memberId: MemberId): Promise<void>;
+    /** `approve` needs `evidenceRoot` (from `packet`); `request_changes` needs `note`. */
+    submit(
+      tid: ThreadId,
+      decision: ReviewDecision,
+      opts?: { note?: string; evidenceRoot?: string; headSha?: string },
+    ): Promise<ThreadReview>;
+    list(tid: ThreadId): Promise<ThreadReview[]>;
+    status(tid: ThreadId): Promise<ReviewStatus>;
+  };
+
+  /** Approval gates, the human side. A gate is opened over MCP (`request_approval`). */
+  approvalGates: {
+    list(wid: WorkspaceId): Promise<ApprovalGateView[]>;
+    answer(
+      gateId: string,
+      requestState: string,
+      action: "accept" | "decline" | "cancel",
+      opts?: { content?: unknown },
+    ): Promise<ApprovalGate>;
   };
 
   channels: {
@@ -681,6 +827,9 @@ export declare class Client {
     /** Write the result under your live claim: pass the claim's `claim_lease_id`. */
     setResult(id: ThreadId, result: unknown, claimLeaseId: string): Promise<ThreadResult>;
     getResult(id: ThreadId): Promise<ThreadResult>;
+    /** Declare what the thread will touch; null when the server stored none. */
+    setFootprint(id: ThreadId, footprint: Footprint): Promise<Footprint | null>;
+    getFootprint(id: ThreadId): Promise<Footprint>;
   };
   messages: {
     list(tid: ThreadId, query?: Record<string, string | number>): Promise<Message[]>;
@@ -725,6 +874,8 @@ export declare class Client {
   waitForResult(threadId: ThreadId, workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
   waitForMention(memberId: MemberId, workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
   waitForReady(workspaceId: WorkspaceId, channelId?: ChannelId, timeoutMs?: number): Promise<EventFrame | null>;
+  /** The next `approval_requested` event in the workspace. */
+  waitForApprovalRequest(workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
 }
 
 /** The ledger's token tiers. `input` is uncached input on every provider. */

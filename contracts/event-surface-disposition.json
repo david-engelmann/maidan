@@ -1,9 +1,17 @@
 [
   {
     "kind": "approval_requested",
-    "disposition": "mcp_only",
-    "mcp_evidence": "crates/maidan-mcp/src/server/tests/reviews.rs#approval_gate_tools_request_and_poll",
-    "note": "Agents request durable approval over MCP; HTTP exposes the human list/answer side, not a second requester."
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/approval_gate_rest_e2e.rs#answering_a_gate_announces_approval_resolved_only_to_those_who_can_read_it",
+    "mcp_evidence": "crates/maidan-mcp/tests/approval_resolved_event.rs#approval_decide_announces_approval_resolved_to_the_gates_workspace_only",
+    "note": "POST /workspaces/{wid}/approval-gates and MCP request_approval both call create_approval_gate_with_event, which writes the gate and the event in one transaction."
+  },
+  {
+    "kind": "approval_resolved",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/approval_gate_rest_e2e.rs#answering_a_gate_announces_approval_resolved_only_to_those_who_can_read_it",
+    "mcp_evidence": "crates/maidan-mcp/tests/approval_resolved_event.rs#approval_decide_announces_approval_resolved_to_the_gates_workspace_only",
+    "note": "Appended by the resolve compare-and-set itself, so every answer announces it: POST /approval-gates/{id}/answer, the console, MCP approval_decide and a confirmation link. A refused second answer appends nothing."
   },
   {
     "kind": "artifact_upserted",

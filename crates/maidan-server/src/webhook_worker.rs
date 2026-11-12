@@ -241,6 +241,12 @@ async fn creator_may_read(
         Err(maidan_store::StoreError::NotFound) => return Some(false),
         Err(_) => return None,
     };
+    // `event_visible` passes a workspace-level event to anyone, so the
+    // workspace is checked here: enqueue only matches a subscription in the
+    // event's own workspace, and a retry must not be wider than that.
+    if stored.workspace_id != Some(creator.workspace_id()) {
+        return Some(false);
+    }
     let Ok(envelope) = crate::event_stream::envelope_from_stored(&stored) else {
         return Some(false);
     };

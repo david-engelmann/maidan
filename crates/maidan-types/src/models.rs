@@ -1376,8 +1376,9 @@ pub struct NewApprovalConfirmation {
 /// What confirming a model's request came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmOutcome {
-    /// The gate is accepted, recorded as decided via the requesting client.
-    Accepted(Box<ApprovalGate>),
+    /// The gate is accepted, recorded as decided via the requesting client,
+    /// with the `ApprovalResolved` event appended in the same transaction.
+    Accepted(Box<(ApprovalGate, crate::StoredEvent)>),
     /// No live confirmation matches: unknown, someone else's, used or
     /// expired. One answer, so nothing about another's link leaks.
     NotFound,
