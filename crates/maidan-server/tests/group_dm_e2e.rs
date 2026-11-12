@@ -219,8 +219,13 @@ async fn a_read_only_token_cannot_open_a_group_dm() {
         }
     };
 
-    let read_only =
-        mint_token_with(store.as_ref(), here, members[0], &[capability::WORKSPACE_READ]).await;
+    let read_only = mint_token_with(
+        store.as_ref(),
+        here,
+        members[0],
+        &[capability::WORKSPACE_READ],
+    )
+    .await;
     let writer = mint_token_with(
         store.as_ref(),
         here,

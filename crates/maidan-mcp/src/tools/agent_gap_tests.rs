@@ -268,7 +268,10 @@ async fn a_read_only_token_cannot_open_a_group_dm_or_an_approval_gate() {
                 .unwrap()
         }
     };
-    assert!(pending(workspace).await.is_empty(), "a refused gate was written");
+    assert!(
+        pending(workspace).await.is_empty(),
+        "a refused gate was written"
+    );
     assert!(
         server
             .store
@@ -302,14 +305,12 @@ async fn a_read_only_token_cannot_open_a_group_dm_or_an_approval_gate() {
     }
     assert!(pending(workspace).await.is_empty());
     assert!(pending(other.id).await.is_empty());
-    assert!(
-        server
-            .store
-            .list_group_dm_conversations_for_member(other.id, outsiders[0])
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(server
+        .store
+        .list_group_dm_conversations_for_member(other.id, outsiders[0])
+        .await
+        .unwrap()
+        .is_empty());
 
     // `message:post` in the right workspace is enough for both.
     let poster = bearer(
