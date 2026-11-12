@@ -1,10 +1,9 @@
 {
   "$comment": "The SDK method map: every method the four hand-written SDKs expose, under the name each language gives it. docs/Client Contract.md §1 documents it and scripts/check-sdk-parity.py fails when an SDK omits an entry. An entry with an `example` is also called offline in each SDK's tests: the request must match `request` and the `reply` must decode.",
   "methods": [
-    {"op": "workspaces.create", "http": "POST /workspaces", "python": "workspaces.create", "typescript": "workspaces.create", "go": "Workspaces.Create", "rust": "workspaces().create"},
     {"op": "workspaces.get", "http": "GET /workspaces/{id}", "python": "workspaces.get", "typescript": "workspaces.get", "go": "Workspaces.Get", "rust": "workspaces().get"},
     {"op": "workspaces.import", "http": "POST /workspaces/import", "python": "workspaces.import_", "typescript": "workspaces.import", "go": "Workspaces.Import", "rust": "workspaces().import"},
-    {"op": "members.create", "http": "POST /workspaces/{wid}/members", "python": "members.create", "typescript": "members.create", "go": "Members.Create", "rust": "members().create"},
+    {"op": "agents.create", "http": "POST /workspaces/{wid}/agents", "python": "agents.create", "typescript": "agents.create", "go": "Agents.Create", "rust": "agents().create"},
     {"op": "members.list", "http": "GET /workspaces/{wid}/members", "python": "members.list", "typescript": "members.list", "go": "Members.List", "rust": "members().list"},
     {"op": "tokens.mint", "http": "POST /workspaces/{wid}/members/{mid}/tokens", "python": "tokens.mint", "typescript": "tokens.mint", "go": "Tokens.Mint", "rust": "tokens().mint"},
     {"op": "tokens.list", "http": "GET /workspaces/{wid}/members/{mid}/tokens", "python": "tokens.list", "typescript": "tokens.list", "go": "Tokens.List", "rust": "tokens().list"},

@@ -118,7 +118,6 @@ Create body: `{ "name", "private": false }`.
 
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
-| `members.create` | `POST /workspaces/{wid}/members` | (bootstrap) | The unauthenticated seed route, only on a server built with `bootstrap` |
 | `members.list` | `GET /workspaces/{wid}/members` | `workspace:read` | |
 | `tokens.mint` | `POST /workspaces/{wid}/members/{mid}/tokens` | `token:admin` | The secret comes back once |
 | `tokens.list` | `GET /workspaces/{wid}/members/{mid}/tokens` | `token:admin` | Metadata only |
