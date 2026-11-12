@@ -6,6 +6,8 @@
 //! implementation, suitable for local development and single-node
 //! deployments. S3-compatible backends arrive in Cluster E.
 
+#![forbid(unsafe_code)]
+
 pub mod error;
 pub mod helpers;
 pub mod localfs;

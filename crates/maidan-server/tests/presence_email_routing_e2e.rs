@@ -35,7 +35,10 @@ async fn presence_window_skips_email_for_recently_seen_member() {
     // treated as active; unset/0 would send unconditionally.
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300")
+    };
 
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)

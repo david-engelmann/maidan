@@ -35,15 +35,24 @@ struct Env {
 async fn spawn(signup: bool, domains: Vec<String>) -> Env {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX", "2") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX", "2")
+    };
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS", "3600") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS", "3600")
+    };
     // Each request names its own address, so the tests can show that a
     // spread of addresses still meets the domain's one budget.
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
-    unsafe { std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1")
+    };
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")

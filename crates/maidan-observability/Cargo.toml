@@ -38,3 +38,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
 [dev-dependencies]
 opentelemetry_sdk = { version = "0.31", features = ["metrics", "testing"] }
+
+[lints.rust]
+unsafe_code = "forbid"

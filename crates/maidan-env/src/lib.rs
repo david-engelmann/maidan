@@ -9,6 +9,8 @@
 //! the list honest: every name the server's crates read is on it, and nothing
 //! is on it that nothing reads.
 
+#![deny(unsafe_code)]
+
 mod secret_files;
 
 pub use secret_files::{load_secret_files, resolve_secret_files, SecretFileError, SECRET_FILE_ENV};

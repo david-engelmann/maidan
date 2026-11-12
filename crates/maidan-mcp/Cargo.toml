@@ -59,3 +59,6 @@ path = "src/bin/gen_mcp_reference.rs"
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
