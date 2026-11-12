@@ -72,6 +72,7 @@ fn message(thread_id: ThreadId, author_id: MemberId, body: &str) -> Message {
         posted_at: Utc::now(),
         edited_at: None,
         tombstoned_at: None,
+        provenance: None,
     }
 }
 

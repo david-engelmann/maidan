@@ -68,12 +68,12 @@ impl AuthorizationDecision {
     ) -> Self {
         Self {
             surface,
-            principal: (!auth.bypass).then_some(auth.actor_id),
-            subject: auth.delegation_grant_id.map(|_| auth.member_id),
-            grant_id: auth.delegation_grant_id.map(|id| id.0),
+            principal: (!auth.bypass).then_some(auth.actor_id()),
+            subject: auth.delegation_grant_id().map(|_| auth.member_id()),
+            grant_id: auth.delegation_grant_id().map(|id| id.0),
             action: bounded_action(capability),
             outcome,
-            resource_workspace: (!auth.bypass).then_some(auth.workspace_id),
+            resource_workspace: (!auth.bypass).then_some(auth.workspace_id()),
         }
     }
 
@@ -154,20 +154,20 @@ pub async fn record_delegated_authorization(
     action: &str,
     outcome: AuthorizationOutcome,
 ) {
-    let Some(grant_id) = auth.delegation_grant_id else {
+    let Some(grant_id) = auth.delegation_grant_id() else {
         return;
     };
     let event = NewAuditEvent {
-        scope: AuditScope::Workspace(auth.workspace_id),
-        actor_id: Some(auth.actor_id),
+        scope: AuditScope::Workspace(auth.workspace_id()),
+        actor_id: Some(auth.actor_id()),
         action: "authorization.decision".into(),
         target_kind: Some("workspace".into()),
-        target_id: Some(auth.workspace_id.0),
+        target_id: Some(auth.workspace_id().0),
         metadata: serde_json::json!({
             "surface": surface.label(),
             "authorization_action": action,
             "outcome": outcome.label(),
-            "subject_id": auth.member_id.0,
+            "subject_id": auth.member_id().0,
             "grant_id": grant_id.0,
         }),
     };
@@ -182,8 +182,8 @@ pub async fn record_delegated_authorization(
         tracing::error!(
             target: "audit",
             %err,
-            actor_id = %auth.actor_id.0,
-            subject_id = %auth.member_id.0,
+            actor_id = %auth.actor_id().0,
+            subject_id = %auth.member_id().0,
             grant_id = %grant_id.0,
             "delegated_authorization.write_failed"
         );
@@ -249,7 +249,7 @@ mod tests {
             AuthorizationOutcome::Allowed,
         );
 
-        assert_eq!(decision.principal, Some(auth.member_id));
+        assert_eq!(decision.principal, Some(auth.member_id()));
         assert_eq!(decision.action, capability::WORKSPACE_READ);
         assert_eq!(decision.resource_label(), "workspace");
         assert_eq!(decision.subject, None);

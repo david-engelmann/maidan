@@ -21,8 +21,14 @@ use axum::{
 };
 use maidan_bus::InMemoryBus;
 use maidan_search::{Indexer, LoggingHandler};
-use maidan_server::{router, webhook_worker::WebhookWorker, AppState, WebhookRuntime};
+use maidan_server::{
+    router,
+    test_support::{self, Caller, Tenant},
+    webhook_worker::WebhookWorker,
+    AppState, WebhookRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -72,7 +78,7 @@ struct Harness {
     receiver: tokio::task::JoinHandle<()>,
     webhook_worker: WebhookWorker,
     indexer: maidan_search::IndexerHandle,
-    client: reqwest::Client,
+    store: Arc<dyn Store>,
     receiver_state: ReceiverState,
     _dir: tempfile::TempDir,
 }
@@ -106,19 +112,18 @@ async fn spawn() -> Harness {
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::new());
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus.clone(),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
+        false,
         maidan_server::FederationRuntime::new(true, webhook_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.webhooks = WebhookRuntime::new(webhook_test_key());
-    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let webhook_worker = WebhookWorker::spawn(state.clone());
@@ -141,11 +146,6 @@ async fn spawn() -> Harness {
     let receiver_addr = recv_listener.local_addr().unwrap();
     let receiver = tokio::spawn(async move { axum::serve(recv_listener, recv_app).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-
     Harness {
         base: format!("http://{addr}"),
         receiver_addr,
@@ -153,24 +153,18 @@ async fn spawn() -> Harness {
         receiver,
         webhook_worker,
         indexer,
-        client,
+        store,
         receiver_state,
         _dir: dir,
     }
 }
 
-async fn bootstrap_member(h: &Harness, wid: &str) -> String {
-    let member: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces/{wid}/members", h.base))
-        .json(&json!({ "handle": "author", "kind": "agent" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    member["id"].as_str().unwrap().to_string()
+async fn tenant(h: &Harness, name: &str) -> (Tenant, Caller) {
+    let tenant = test_support::tenant(h.store.as_ref(), name).await;
+    let author = tenant
+        .member(h.store.as_ref(), "author", MemberKind::Agent)
+        .await;
+    (tenant, author)
 }
 
 async fn wait_for_received(state: &ReceiverState, timeout: Duration) -> bool {
@@ -188,22 +182,12 @@ async fn wait_for_received(state: &ReceiverState, timeout: Duration) -> bool {
 async fn webhook_delivers_signed_event_on_message_posted() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "hooks" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let author_id = bootstrap_member(&h, wid).await;
+    let (tenant, author) = tenant(&h, "hooks").await;
+    let client = tenant.client();
+    let wid = tenant.workspace_id.0;
 
     let hook_url = format!("http://{}/hook", h.receiver_addr);
-    let mint: serde_json::Value = h
-        .client
+    let mint: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/webhooks", h.base))
         .json(&json!({
             "url": hook_url,
@@ -219,8 +203,7 @@ async fn webhook_delivers_signed_event_on_message_posted() {
     let secret = mint["secret"].as_str().unwrap().to_string();
     *h.receiver_state.secret.lock().await = secret;
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "general" }))
         .send()
@@ -231,8 +214,7 @@ async fn webhook_delivers_signed_event_on_message_posted() {
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
 
-    let th: serde_json::Value = h
-        .client
+    let th: serde_json::Value = client
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "t" }))
         .send()
@@ -243,10 +225,9 @@ async fn webhook_delivers_signed_event_on_message_posted() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let msg = h
-        .client
+    let msg = author
+        .client()
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({ "body": "hello webhook" }))
         .send()
         .await
@@ -284,22 +265,12 @@ async fn webhook_delivers_signed_event_on_message_posted() {
 async fn webhook_filters_by_event_kind() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "filter" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let _author_id = bootstrap_member(&h, wid).await;
+    let (tenant, _author) = tenant(&h, "filter").await;
+    let client = tenant.client();
+    let wid = tenant.workspace_id.0;
 
     let hook_url = format!("http://{}/hook", h.receiver_addr);
-    let mint: serde_json::Value = h
-        .client
+    let mint: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/webhooks", h.base))
         .json(&json!({
             "url": hook_url,
@@ -313,8 +284,7 @@ async fn webhook_filters_by_event_kind() {
         .unwrap();
     *h.receiver_state.secret.lock().await = mint["secret"].as_str().unwrap().to_string();
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "c" }))
         .send()
@@ -325,8 +295,7 @@ async fn webhook_filters_by_event_kind() {
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
 
-    let _ = h
-        .client
+    let _ = client
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "only-thread" }))
         .send()
@@ -345,22 +314,12 @@ async fn webhook_filters_by_event_kind() {
 async fn revoke_webhook_stops_delivery() {
     let h = spawn().await;
 
-    let ws: serde_json::Value = h
-        .client
-        .post(format!("{}/workspaces", h.base))
-        .json(&json!({ "name": "revoke" }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let author_id = bootstrap_member(&h, wid).await;
+    let (tenant, author) = tenant(&h, "revoke").await;
+    let client = tenant.client();
+    let wid = tenant.workspace_id.0;
 
     let hook_url = format!("http://{}/hook", h.receiver_addr);
-    let mint: serde_json::Value = h
-        .client
+    let mint: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/webhooks", h.base))
         .json(&json!({
             "url": hook_url,
@@ -375,8 +334,7 @@ async fn revoke_webhook_stops_delivery() {
     *h.receiver_state.secret.lock().await = mint["secret"].as_str().unwrap().to_string();
     let whid = mint["webhook"]["id"].as_str().unwrap();
 
-    let ch: serde_json::Value = h
-        .client
+    let ch: serde_json::Value = client
         .post(format!("{}/workspaces/{wid}/channels", h.base))
         .json(&json!({ "name": "c" }))
         .send()
@@ -386,8 +344,7 @@ async fn revoke_webhook_stops_delivery() {
         .await
         .unwrap();
     let cid = ch["id"].as_str().unwrap();
-    let th: serde_json::Value = h
-        .client
+    let th: serde_json::Value = client
         .post(format!("{}/channels/{cid}/threads", h.base))
         .json(&json!({ "title": "t" }))
         .send()
@@ -398,10 +355,9 @@ async fn revoke_webhook_stops_delivery() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let _ = h
-        .client
+    let _ = author
+        .client()
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", &author_id)
         .json(&json!({ "body": "first" }))
         .send()
         .await
@@ -409,18 +365,16 @@ async fn revoke_webhook_stops_delivery() {
     assert!(wait_for_received(&h.receiver_state, Duration::from_secs(5)).await);
 
     h.receiver_state.received.store(false, Ordering::SeqCst);
-    let del = h
-        .client
+    let del = client
         .delete(format!("{}/workspaces/{wid}/webhooks/{whid}", h.base))
         .send()
         .await
         .unwrap();
     assert_eq!(del.status(), StatusCode::NO_CONTENT);
 
-    let _ = h
-        .client
+    let _ = author
+        .client()
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .header("maidan-test-member-id", author_id)
         .json(&json!({ "body": "second" }))
         .send()
         .await

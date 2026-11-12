@@ -9,7 +9,7 @@ use std::{
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::{header, header::HeaderMap, RequestBuilder, StatusCode};
 use serde_json::{json, Value};
@@ -21,6 +21,8 @@ const ID: &str = "00000000-0000-0000-0000-000000000001";
 struct Server {
     base: String,
     client: reqwest::Client,
+    /// `/workspaces/{id}` of the workspace the caller's token acts in.
+    workspace: String,
     _artifacts: tempfile::TempDir,
     task: tokio::task::JoinHandle<()>,
 }
@@ -37,7 +39,8 @@ impl Server {
     }
 }
 
-/// Auth is disabled so a request reaches the extractors (auth would 401 first).
+/// Every request carries the admin's bearer, so it reaches the extractors
+/// (an anonymous one would get auth's 401 first).
 async fn spawn() -> Server {
     // `router` reads the cap once, at build; every test sets the same value.
     // SAFETY: test setup. Maidan reads this variable only through std,
@@ -54,14 +57,15 @@ async fn spawn() -> Server {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let artifacts = tempfile::tempdir().unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "problems").await;
     let state = AppState::new(
         store,
         Arc::new(LocalFsStore::new(artifacts.path())),
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
-        true,
+        false,
+        false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -72,7 +76,8 @@ async fn spawn() -> Server {
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Server {
         base: format!("http://{addr}"),
-        client: reqwest::Client::new(),
+        client: tenant.client(),
+        workspace: format!("/workspaces/{}", tenant.workspace_id.0),
         _artifacts: artifacts,
         task,
     }
@@ -134,7 +139,7 @@ async fn a_malformed_query_string_is_a_400_problem() {
     .await;
     // `member_id` is required on the direct-message list.
     assert_problem(
-        s.client.get(s.url(&format!("/workspaces/{ID}/dm"))),
+        s.client.get(s.url(&format!("{}/dm", s.workspace))),
         StatusCode::BAD_REQUEST,
     )
     .await;
@@ -146,7 +151,7 @@ async fn a_json_body_that_does_not_parse_or_fit_is_a_400_problem() {
     for body in ["{not json", r#"{"name": 5}"#, "[]"] {
         assert_problem(
             s.client
-                .post(s.url("/workspaces"))
+                .post(s.url(&format!("{}/channels", s.workspace)))
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(body),
             StatusCode::BAD_REQUEST,
@@ -156,7 +161,7 @@ async fn a_json_body_that_does_not_parse_or_fit_is_a_400_problem() {
     // The direct-message routes took axum's plain `Json` and answered in text.
     assert_problem(
         s.client
-            .post(s.url(&format!("/workspaces/{ID}/dm")))
+            .post(s.url(&format!("{}/dm", s.workspace)))
             .header(header::CONTENT_TYPE, "application/json")
             .body("{not json"),
         StatusCode::BAD_REQUEST,
@@ -176,7 +181,9 @@ async fn a_json_body_that_does_not_parse_or_fit_is_a_400_problem() {
 async fn a_body_not_sent_as_json_is_a_415_problem() {
     let s = spawn().await;
     assert_problem(
-        s.client.post(s.url("/workspaces")).body(r#"{"name":"w"}"#),
+        s.client
+            .post(s.url(&format!("{}/channels", s.workspace)))
+            .body(r#"{"name":"w"}"#),
         StatusCode::UNSUPPORTED_MEDIA_TYPE,
     )
     .await;
@@ -196,7 +203,7 @@ async fn a_body_over_the_limit_is_a_413_problem() {
     let big = "x".repeat(4096);
     assert_problem(
         s.client
-            .post(s.url("/workspaces"))
+            .post(s.url(&format!("{}/channels", s.workspace)))
             .json(&json!({ "name": big })),
         StatusCode::PAYLOAD_TOO_LARGE,
     )
@@ -217,7 +224,7 @@ async fn an_unknown_route_is_a_404_and_a_wrong_method_a_405_problem() {
     let s = spawn().await;
     assert_problem(s.client.get(s.url("/no/such/route")), StatusCode::NOT_FOUND).await;
     let wrong_method = assert_problem(
-        s.client.delete(s.url("/workspaces")),
+        s.client.delete(s.url(&format!("{}/channels", s.workspace))),
         StatusCode::METHOD_NOT_ALLOWED,
     )
     .await;
@@ -234,8 +241,8 @@ async fn a_well_formed_request_still_succeeds() {
     let s = spawn().await;
     let created = s
         .client
-        .post(s.url("/workspaces"))
-        .json(&json!({ "name": "fine" }))
+        .post(s.url(&format!("{}/channels", s.workspace)))
+        .json(&json!({ "name": "fine", "private": false }))
         .send()
         .await
         .unwrap();

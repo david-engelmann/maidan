@@ -1,14 +1,14 @@
 //! Subscribe / HTTP backfill fail loud on a pruned-gap cursor (409
 //! `must_refetch`, never a silent clamp) and honour projector shapes.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, MemberKind, NewChannel, NewMember, NewWorkspace};
+use maidan_types::{Event, MemberKind, NewChannel, NewMember};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use tokio_tungstenite::{
@@ -18,7 +18,6 @@ use tokio_tungstenite::{
 
 async fn spawn() -> (
     std::net::SocketAddr,
-    reqwest::Client,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
     Arc<dyn Store>,
@@ -42,23 +41,15 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    (addr, client, server, dir, store)
+    (addr, server, dir, store)
 }
 
-async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "cursor-ws".into(),
-        })
-        .await
-        .unwrap();
+async fn seed(store: &dyn Store) -> (test_support::Tenant, Vec<i64>) {
+    let tenant = test_support::tenant(store, "cursor-ws").await;
+    let ws_id = tenant.workspace_id;
     let member = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             handle: "u".into(),
             display_name: None,
             kind: MemberKind::Human,
@@ -67,7 +58,7 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             name: "c".into(),
             topic: None,
             private: false,
@@ -77,7 +68,7 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
     let e1 = store
         .append_event(&Event::MemberJoined {
             occurred_at: chrono::Utc::now(),
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             member: member.clone(),
         })
         .await
@@ -85,7 +76,7 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
     let e2 = store
         .append_event(&Event::ChannelCreated {
             occurred_at: chrono::Utc::now(),
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             channel: ch,
         })
         .await
@@ -93,18 +84,20 @@ async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
     let e3 = store
         .append_event(&Event::MemberJoined {
             occurred_at: chrono::Utc::now(),
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             member,
         })
         .await
         .unwrap();
-    (ws.id, vec![e1.id, e2.id, e3.id])
+    (tenant, vec![e1.id, e2.id, e3.id])
 }
 
 #[tokio::test]
 async fn list_events_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, ids) = seed(store.as_ref()).await;
+    let ws = tenant.workspace_id;
+    let client = tenant.client();
     let cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
     let deleted = store.prune_events(cutoff, ids[1], 10).await.unwrap();
     assert!(deleted >= 2);
@@ -154,8 +147,10 @@ async fn list_events_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
 
 #[tokio::test]
 async fn list_events_filters_by_projector_shape_types() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, _ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, _ids) = seed(store.as_ref()).await;
+    let ws = tenant.workspace_id;
+    let client = tenant.client();
 
     let all: Vec<Value> = client
         .get(format!(
@@ -202,8 +197,10 @@ async fn list_events_filters_by_projector_shape_types() {
 
 #[tokio::test]
 async fn list_events_stamps_type_on_stored_event_for_known_kinds() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, _ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, _ids) = seed(store.as_ref()).await;
+    let ws = tenant.workspace_id;
+    let client = tenant.client();
 
     let events: Vec<Value> = client
         .get(format!(
@@ -243,8 +240,10 @@ async fn list_events_stamps_type_on_stored_event_for_known_kinds() {
 
 #[tokio::test]
 async fn durable_consumer_cursor_that_points_into_a_pruned_gap_is_409() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, ids) = seed(store.as_ref()).await;
+    let ws = tenant.workspace_id;
+    let client = tenant.client();
     store
         .advance_delivery_cursor("proj-1", ws, ids[0])
         .await
@@ -273,8 +272,9 @@ async fn durable_consumer_cursor_that_points_into_a_pruned_gap_is_409() {
 
 #[tokio::test]
 async fn ws_subscribe_sends_cursor_too_old_frame_then_closes() {
-    let (addr, _client, server, _dir, store) = spawn().await;
-    let (ws_id, ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, ids) = seed(store.as_ref()).await;
+    let ws_id = tenant.workspace_id;
     let cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
     store.prune_events(cutoff, ids[1], 10).await.unwrap();
 
@@ -284,6 +284,7 @@ async fn ws_subscribe_sends_cursor_too_old_frame_then_closes() {
     socket
         .send(Message::Text(
             json!({
+                "token": tenant.token,
                 "filter": { "workspace_id": ws_id.0 },
                 "after_id": ids[0]
             })
@@ -321,8 +322,10 @@ async fn ws_subscribe_sends_cursor_too_old_frame_then_closes() {
 
 #[tokio::test]
 async fn mcp_stream_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
-    let (addr, client, server, _dir, store) = spawn().await;
-    let (ws, ids) = seed(store.as_ref()).await;
+    let (addr, server, _dir, store) = spawn().await;
+    let (tenant, ids) = seed(store.as_ref()).await;
+    let ws = tenant.workspace_id;
+    let client = tenant.client();
     let cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
     store.prune_events(cutoff, ids[1], 10).await.unwrap();
 

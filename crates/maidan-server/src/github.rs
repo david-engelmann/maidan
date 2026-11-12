@@ -21,7 +21,8 @@ use axum::{
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
     EgressKind, EgressTarget, ExternalRef, GithubCheckRun, GithubIssueLink, GithubReviewComment,
-    NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
+    MessageOrigin, MessageProvenance, NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId,
+    GITHUB_REVIEW_EVENT_COMMENT,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -260,8 +261,8 @@ async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Valu
 /// == true`), emit a `ThreadLanded` fact on that thread. This "steals the
 /// landed fact" — it records that the work landed; it does **not** transition
 /// the thread's FSM (not an automation product). A linked PR that closes
-/// without merging is not a land either: the thread gets one message, tagged
-/// `metadata.github` so egress does not echo it back to GitHub. Best-effort;
+/// without merging is not a land either: the thread gets one message, with a
+/// GitHub provenance so egress does not echo it back to GitHub. Best-effort;
 /// the ingress always ACKs. A PR not linked to a thread is ignored.
 async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("closed") {
@@ -326,8 +327,8 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
 }
 
 /// One message on the linked thread when the PR closes without merging.
-/// Not a `ThreadLanded` fact, and not an FSM transition. `metadata.github`
-/// keeps egress from posting the sentence back onto the PR.
+/// Not a `ThreadLanded` fact, and not an FSM transition. Its GitHub
+/// provenance keeps egress from posting the sentence back onto the PR.
 async fn signal_pull_request_closed_unmerged(
     state: &AppState,
     link: &maidan_types::GithubIssueLink,
@@ -356,8 +357,26 @@ async fn signal_pull_request_closed_unmerged(
         }),
         content: None,
     };
-    match state.store.post_message_with_event(new, None).await {
-        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+    // Keyed on when it closed: a redelivery of this close says nothing new,
+    // while a reopen closed again later is a second close.
+    let provenance = match pr
+        .and_then(|p| p.get("closed_at"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        Some(closed_at) => MessageProvenance::delivered(
+            MessageOrigin::Github,
+            format!("pull/{repo}#{pr_number}/closed/{closed_at}"),
+        ),
+        None => MessageProvenance::reported(MessageOrigin::Github),
+    };
+    match state
+        .store
+        .post_bridged_message_with_event(new, provenance)
+        .await
+    {
+        Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+        Ok(None) => tracing::debug!(repo, pr_number, "github pull_request: close redelivered"),
         Err(err) => {
             tracing::warn!(error = %err, "github pull_request: unmerged close signal failed")
         }
@@ -366,25 +385,26 @@ async fn signal_pull_request_closed_unmerged(
 
 /// Route an inbound GitHub `issue_comment` event: a new comment on a linked
 /// issue/PR is posted into the mapped Maidan thread. Best-effort — the ingress
-/// always ACKs. Only `action == "created"` projects; a `Bot` comment (our own
-/// egress echo) is skipped to avoid loops.
+/// always ACKs. Only `action == "created"` projects.
+///
+/// The post is keyed on the comment id (RED-002): GitHub signatures carry no
+/// timestamp, so a redelivery or a replayed capture verifies, and the key is
+/// what keeps it from posting twice. Our own egress comments come back the
+/// same way: egress takes the key for each comment it posts, and a comment
+/// made by our GitHub App is skipped outright (RED-003). Other bots are not:
+/// a review app with a role on the repository speaks like anyone with one.
 async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Value) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("created") {
         return;
     }
     let comment = payload.get("comment");
-    if comment
-        .and_then(|c| c.get("user"))
-        .and_then(|u| u.get("type"))
-        .and_then(|t| t.as_str())
-        == Some("Bot")
-    {
+    if made_by_our_app(state, comment) {
         return; // our own egress comment — don't re-ingest (loop prevention)
     }
     if !speaks_for_the_repository(comment) {
         return;
     }
-    let (Some(repo), Some(issue_number), Some(text)) = (
+    let (Some(repo), Some(issue_number), Some(text), Some(comment_id)) = (
         payload
             .get("repository")
             .and_then(|r| r.get("full_name"))
@@ -394,6 +414,8 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
             .and_then(|i| i.get("number"))
             .and_then(|v| v.as_i64()),
         comment.and_then(|c| c.get("body")).and_then(|v| v.as_str()),
+        // Without its id a comment cannot be told from its redelivery.
+        comment.and_then(|c| c.get("id")).and_then(|v| v.as_i64()),
     ) else {
         return;
     };
@@ -414,15 +436,43 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
         thread_id: link.thread_id,
         author_id: link.member_id,
         body: format!("{author}: {text}"),
-        // Tag the origin so egress never echoes a GitHub-sourced message back
-        // to GitHub (loop prevention).
         metadata: serde_json::json!({ "github": { "user": author, "repo": repo, "issue": issue_number } }),
         content: None,
     };
-    match state.store.post_message_with_event(new, None).await {
-        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+    // The provenance, not the metadata above, keeps egress from echoing the
+    // comment back to GitHub: a member can write metadata, not provenance.
+    let provenance = MessageProvenance::delivered(MessageOrigin::Github, comment_id.to_string());
+    match state
+        .store
+        .post_bridged_message_with_event(new, provenance)
+        .await
+    {
+        Ok(Some((_, stored))) => crate::routes::publish_stored(state, stored).await,
+        Ok(None) => tracing::debug!(
+            repo,
+            comment_id,
+            "github ingress: comment already delivered"
+        ),
         Err(err) => tracing::warn!(error = %err, "github ingress: post failed"),
     }
+}
+
+/// Whether our own GitHub App made this comment: GitHub names the app in
+/// `performed_via_github_app`, by its numeric id and its client id. Only the
+/// app we comment as counts, never every `Bot`.
+fn made_by_our_app(state: &AppState, comment: Option<&serde_json::Value>) -> bool {
+    let Some(ours) = state.github_sender.as_ref().and_then(|s| s.app_id()) else {
+        return false;
+    };
+    let Some(app) = comment.and_then(|c| c.get("performed_via_github_app")) else {
+        return false;
+    };
+    let id = app
+        .get("id")
+        .and_then(|v| v.as_i64())
+        .map(|n| n.to_string());
+    let client_id = app.get("client_id").and_then(|v| v.as_str());
+    id.as_deref() == Some(ours) || client_id == Some(ours)
 }
 
 /// Whether a comment's author has a role on the repository. The comment is
@@ -789,6 +839,13 @@ pub trait GithubSender: Send + Sync {
     /// default) means this sender can comment but cannot commit, and a
     /// `github_branch` delivery dead-letters saying so.
     fn git(&self) -> Option<&dyn GithubGit> {
+        None
+    }
+
+    /// The GitHub App this sender comments as, by the id or client id it was
+    /// configured with; `None` for a token. Ingress skips a comment this app
+    /// made, so our own egress is never projected back into the thread.
+    fn app_id(&self) -> Option<&str> {
         None
     }
 }
@@ -1493,6 +1550,13 @@ impl GithubSender for GithubApiClient {
 
     fn posts_check_runs(&self) -> bool {
         matches!(self.auth, GithubAuth::App(_))
+    }
+
+    fn app_id(&self) -> Option<&str> {
+        match &self.auth {
+            GithubAuth::App(app) => Some(app.app_id()),
+            GithubAuth::Token(_) => None,
+        }
     }
 
     async fn create_check_run(
@@ -2683,8 +2747,8 @@ pub(crate) fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
 ///
 /// No-op unless a [`GithubSender`] is configured (the worker only runs then, so
 /// queueing without one would pile up rows nothing drains); **skips messages
-/// that originated in GitHub** (the `metadata.github` tag from 311's ingress)
-/// so a projected inbound comment is never echoed back — loop prevention.
+/// that originated in GitHub** (their server-set provenance) so a projected
+/// inbound comment is never echoed back — loop prevention.
 ///
 /// `log_id` is the `maidan_events` row being routed — the dedup key together
 /// with the target, so every replica enqueueing yields one comment.
@@ -2697,7 +2761,9 @@ pub async fn route_message_to_github(
     if state.github_sender.is_none() {
         return;
     }
-    if message.metadata.get("github").is_some() {
+    // The server-set provenance, never `metadata`: a member could forge the
+    // key to keep a message off GitHub, or strip it to echo one back.
+    if MessageProvenance::is_from(message.provenance.as_ref(), MessageOrigin::Github) {
         return; // originated in GitHub — don't echo it back
     }
     let link = match state.store.get_github_issue_link_by_thread(thread_id).await {
@@ -2759,7 +2825,7 @@ pub async fn link_github_issue(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(body.thread_id),
-            member_id: auth.member_id,
+            member_id: auth.member_id(),
         })
         .await?;
     Ok((StatusCode::CREATED, Json(link)))

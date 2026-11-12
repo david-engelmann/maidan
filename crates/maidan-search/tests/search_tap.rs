@@ -557,6 +557,7 @@ async fn a_faulted_workspace_is_not_projected_live_or_after_lag() {
                     posted_at: chrono::Utc::now(),
                     edited_at: None,
                     tombstoned_at: None,
+                    provenance: None,
                 },
                 sealed: None,
             },

@@ -16,7 +16,7 @@ use axum::{extract::State, http::StatusCode, routing::post, Router};
 use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{webhook_worker, AppState};
+use maidan_server::{test_support, webhook_worker, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::*;
 use serde_json::json;
@@ -105,7 +105,14 @@ async fn receiver(status: StatusCode) -> (SocketAddr, Arc<AtomicUsize>) {
     (addr, hits)
 }
 
-async fn subscribed(state: &AppState, ws: WorkspaceId, addr: SocketAddr) -> WebhookSubscriptionId {
+/// A hook in `ws` registered by `creator`, the token whose authority it
+/// delivers with.
+async fn subscribed(
+    state: &AppState,
+    ws: WorkspaceId,
+    creator: ApiTokenId,
+    addr: SocketAddr,
+) -> WebhookSubscriptionId {
     let sub = state
         .store
         .create_webhook_subscription(NewWebhookSubscription {
@@ -114,12 +121,28 @@ async fn subscribed(state: &AppState, ws: WorkspaceId, addr: SocketAddr) -> Webh
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
-            created_by_token: None,
+            created_by_token: Some(creator),
         })
         .await
         .unwrap();
     maidan_server::webhooks::remember_webhook_secret(&state.webhooks.secrets, sub.id, "s".into());
     sub.id
+}
+
+/// The log id of a new event in `ws`, one its admin can read, for a delivery
+/// to carry: a delivery goes out only while its hook's creator can read the
+/// event.
+async fn logged_event(store: &dyn Store, ws: WorkspaceId, name: &str) -> i64 {
+    let (_, stored) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: ws,
+            name: name.into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    stored.id
 }
 
 /// Deliveries counted for `ws` since the last take.
@@ -144,17 +167,19 @@ async fn suite(backend: &Backend) {
     let (a_addr, a_hits) = receiver(StatusCode::OK).await;
     let (b_addr, b_hits) = receiver(StatusCode::OK).await;
     let (down_addr, down_hits) = receiver(StatusCode::SERVICE_UNAVAILABLE).await;
-    let a_sub = subscribed(&state, a, a_addr).await;
-    let b_sub = subscribed(&state, b, b_addr).await;
-    let b_down = subscribed(&state, b, down_addr).await;
+    let a_creator = test_support::registrar(store, a).await;
+    let b_creator = test_support::registrar(store, b).await;
+    let a_sub = subscribed(&state, a, a_creator, a_addr).await;
+    let b_sub = subscribed(&state, b, b_creator, b_addr).await;
+    let b_down = subscribed(&state, b, b_creator, down_addr).await;
 
     let a_fresh = store
-        .enqueue_webhook_delivery(a_sub, 1, "{}")
+        .enqueue_webhook_delivery(a_sub, logged_event(store, a, "a-fresh").await, "{}")
         .await
         .unwrap()
         .unwrap();
     let a_retry = store
-        .enqueue_webhook_delivery(a_sub, 2, "{}")
+        .enqueue_webhook_delivery(a_sub, logged_event(store, a, "a-retry").await, "{}")
         .await
         .unwrap()
         .unwrap();
@@ -167,12 +192,12 @@ async fn suite(backend: &Backend) {
         .await
         .unwrap();
     store
-        .enqueue_webhook_delivery(b_sub, 3, "{}")
+        .enqueue_webhook_delivery(b_sub, logged_event(store, b, "b-up").await, "{}")
         .await
         .unwrap()
         .unwrap();
     store
-        .enqueue_webhook_delivery(b_down, 4, "{}")
+        .enqueue_webhook_delivery(b_down, logged_event(store, b, "b-down").await, "{}")
         .await
         .unwrap()
         .unwrap();
@@ -311,18 +336,20 @@ async fn a_delivery_enqueued_before_the_cutoff_and_replayed_after_it_still_sends
     let (b, _) = signed_up(store, "bea", true).await;
     let (a_addr, a_hits) = receiver(StatusCode::OK).await;
     let (down_addr, down_hits) = receiver(StatusCode::INTERNAL_SERVER_ERROR).await;
-    let a_sub = subscribed(&state, a, a_addr).await;
-    let b_down = subscribed(&state, b, down_addr).await;
+    let a_creator = test_support::registrar(store, a).await;
+    let b_creator = test_support::registrar(store, b).await;
+    let a_sub = subscribed(&state, a, a_creator, a_addr).await;
+    let b_down = subscribed(&state, b, b_creator, down_addr).await;
 
     // Enqueued while A is under its allowance, then dead-lettered.
     let a_dead = store
-        .enqueue_webhook_delivery(a_sub, 1, "{}")
+        .enqueue_webhook_delivery(a_sub, logged_event(store, a, "a-dead").await, "{}")
         .await
         .unwrap()
         .unwrap();
     store.quarantine_webhook_delivery(a_dead).await.unwrap();
     store
-        .enqueue_webhook_delivery(b_down, 2, "{}")
+        .enqueue_webhook_delivery(b_down, logged_event(store, b, "b-down").await, "{}")
         .await
         .unwrap()
         .unwrap();

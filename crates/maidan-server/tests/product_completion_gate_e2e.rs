@@ -6,16 +6,15 @@ use std::{
 };
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::NewWorkspace;
 use reqwest::StatusCode;
 
 async fn spawn() -> (
     SocketAddr,
     reqwest::Client,
     tokio::task::JoinHandle<()>,
-    Arc<dyn Store>,
+    test_support::Tenant,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
@@ -27,17 +26,18 @@ async fn spawn() -> (
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "gate-ws").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let mut state = AppState::new(
-        store.clone(),
+        store,
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -49,12 +49,12 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), server, store)
+    (addr, tenant.client(), server, tenant)
 }
 
 #[tokio::test]
 async fn completion_gate_health_ui_mcp_and_a2a_endpoints_exist() {
-    let (addr, client, server, _store) = spawn().await;
+    let (addr, client, server, _tenant) = spawn().await;
     let base = format!("http://{addr}");
 
     assert_eq!(
@@ -100,16 +100,9 @@ async fn completion_gate_health_ui_mcp_and_a2a_endpoints_exist() {
 
 #[tokio::test]
 async fn completion_gate_v2_workspace_and_operator_surfaces_respond() {
-    let (addr, client, server, store) = spawn().await;
+    let (addr, client, server, tenant) = spawn().await;
     let base = format!("http://{addr}");
-
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "gate-ws".into(),
-        })
-        .await
-        .unwrap();
-    let wid = ws.id.0;
+    let wid = tenant.workspace_id.0;
 
     assert_eq!(
         client

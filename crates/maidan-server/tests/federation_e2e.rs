@@ -42,50 +42,6 @@ impl Harness {
     }
 }
 
-async fn spawn_with_auth_disabled() -> Harness {
-    let pool = maidan_search::sqlite_pool_options()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
-    let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(
-        store.clone(),
-        artifacts,
-        bus,
-        search,
-        Arc::new(maidan_search::HashV1Provider),
-        true,
-        false,
-        FederationRuntime::new(true, federation_test_key()),
-        Arc::new(AtomicI64::new(0)),
-        None,
-    ));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    Harness {
-        addr,
-        server,
-        client,
-        store,
-        _dir: dir,
-    }
-}
-
 async fn spawn() -> Harness {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
@@ -362,7 +318,7 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
 
 #[tokio::test]
 async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
-    let h = spawn_with_auth_disabled().await;
+    let h = spawn().await;
     let ws = h
         .store
         .create_workspace(NewWorkspace {
@@ -370,10 +326,12 @@ async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
         })
         .await
         .unwrap();
+    let admin = mint_admin_token(h.store.as_ref(), ws.id).await;
 
     let create = h
         .client
         .post(format!("{}/workspaces/{}/peers", h.base(), ws.id.0))
+        .bearer_auth(&admin)
         .json(&json!({
             "name": "remote-a",
             "base_url": "https://remote.example"
@@ -488,7 +446,7 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, Some(key.clone())),
         Arc::new(AtomicI64::new(0)),
@@ -523,7 +481,7 @@ async fn federation_peer_outbound_secret_hydrates_after_restart() {
         state.bus.clone(),
         state.search.clone(),
         state.embedding_provider.clone(),
-        true,
+        false,
         false,
         FederationRuntime::new(true, Some(key)),
         Arc::new(AtomicI64::new(0)),
@@ -1052,7 +1010,7 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
         Arc::new(maidan_bus::InMemoryBus::new()),
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, Some(key.clone())),
         Arc::new(AtomicI64::new(0)),

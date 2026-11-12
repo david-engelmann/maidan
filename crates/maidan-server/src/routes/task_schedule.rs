@@ -69,7 +69,7 @@ pub async fn create_task_schedule(
             title: body.title.trim().to_string(),
             interval_secs: body.interval_secs,
             next_run_at: body.first_run_at.unwrap_or_else(chrono::Utc::now),
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
             recipe_id,
         })
         .await?;

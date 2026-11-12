@@ -153,7 +153,7 @@ pub async fn create_fsm_hook(
             handler_kind,
             handler_target: body.handler_target.trim().to_string(),
             secret_ciphertext,
-            created_by_token: auth.token_id,
+            created_by_token: auth.token_id(),
         })
         .await?;
 
@@ -352,7 +352,7 @@ async fn creator_authority(
         ) => return Err("creator token no longer valid"),
         Err(maidan_auth::AuthError::Store(_)) => return Err("creator check failed"),
     };
-    if auth.workspace_id != registration.hook.workspace_id {
+    if auth.workspace_id() != registration.hook.workspace_id {
         return Err("creator token is for another workspace");
     }
     if auth

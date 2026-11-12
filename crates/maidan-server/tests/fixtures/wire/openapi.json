@@ -5903,6 +5903,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageProvenance",
+                "description": "The bridge the message came in through, when it came in through one.\nOnly the server writes it, on bridge ingress: no post or edit can set,\nchange or clear it, and `metadata` keys that look like it count for\nnothing. Omitted for a message a member posted, so a log written before\nthe field hashes the same."
+              }
+            ]
+          },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
           },
@@ -6038,6 +6049,33 @@
       "MessageId": {
         "format": "uuid",
         "type": "string"
+      },
+      "MessageOrigin": {
+        "description": "A bridge that carries text into Maidan from outside it.",
+        "enum": [
+          "github",
+          "slack"
+        ],
+        "type": "string"
+      },
+      "MessageProvenance": {
+        "description": "Where a bridged message came from, set by the server (RED-007).",
+        "properties": {
+          "external_id": {
+            "description": "The bridge's own id for what it delivered: a GitHub comment id, a\nSlack `event_id`. Ingress is keyed on it per workspace, so a\nredelivery posts nothing. `None` for a sentence the server wrote about\na bridge's state, such as a pull request closing.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MessageOrigin"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "type": "object"
       },
       "MessageVotes": {
         "description": "One message's votes inside `GET /threads/{tid}/votes`: a count per kind,\nthen every vote row (who voted, which kind, when, optional confidence).",

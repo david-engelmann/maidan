@@ -694,7 +694,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {
         tracing::warn!(
-            workspace_id = %reader.workspace_id,
+            workspace_id = %reader.workspace_id(),
             "{} is set; MCP requests with no credential read this workspace",
             maidan_server::dev_anonymous::ENV
         );

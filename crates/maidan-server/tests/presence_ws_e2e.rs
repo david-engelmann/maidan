@@ -5,17 +5,24 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{
+    router, subscribe_resume, test_support, test_support::Tenant, AppState, FederationRuntime,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use serde_json::json;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
 };
 
-async fn spawn() -> (
+async fn spawn(
+    name: &str,
+) -> (
     std::net::SocketAddr,
     reqwest::Client,
+    Arc<dyn Store>,
+    Tenant,
     tokio::task::JoinHandle<()>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
@@ -32,13 +39,14 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let tenant = test_support::tenant(store.as_ref(), name).await;
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -49,11 +57,7 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, tenant.client(), store, tenant, server)
 }
 
 fn is_control_frame(v: &serde_json::Value) -> bool {
@@ -116,41 +120,19 @@ fn snapshot_status(snapshot: &serde_json::Value, member_id: &str) -> Option<Stri
 
 #[tokio::test]
 async fn presence_and_typing_fan_out_between_subscribers() {
-    let (addr, client, server) = spawn().await;
+    let (addr, client, store, tenant, server) = spawn("presence-ws").await;
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
+    let workspace_id = tenant.workspace_id.0.to_string();
 
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "presence-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-
-    let alice: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bob: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bob", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
-    let bob_id = bob["id"].as_str().unwrap();
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let bob = tenant
+        .member(store.as_ref(), "bob", MemberKind::Human)
+        .await;
+    let alice_id = alice.member_id.0.to_string();
+    let bob_id = bob.member_id.0.to_string();
 
     let ch: serde_json::Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -175,6 +157,7 @@ async fn presence_and_typing_fan_out_between_subscribers() {
     let thread_id = th["id"].as_str().unwrap();
 
     let filter = json!({
+        "token": alice.token,
         "filter": { "workspace_id": workspace_id },
         "member_id": alice_id
     });
@@ -191,6 +174,7 @@ async fn presence_and_typing_fan_out_between_subscribers() {
     presence_snapshot(&mut ws_alice).await;
 
     let filter_bob = json!({
+        "token": bob.token,
         "filter": { "workspace_id": workspace_id },
         "member_id": bob_id
     });
@@ -246,45 +230,29 @@ async fn presence_and_typing_fan_out_between_subscribers() {
 /// said `offline`.
 #[tokio::test]
 async fn a_member_connected_first_is_online_in_a_later_subscribers_snapshot() {
-    let (addr, client, server) = spawn().await;
-    let base = format!("http://{addr}");
+    let (addr, _client, store, tenant, server) = spawn("presence-order").await;
     let ws_url = format!("ws://{addr}/ws/subscribe");
-    let ws_resp: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "presence-order"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws_resp["id"].as_str().unwrap();
-    let member = |handle: &'static str| {
-        let (client, base) = (client.clone(), base.clone());
-        async move {
-            let m: serde_json::Value = client
-                .post(format!("{base}/workspaces/{workspace_id}/members"))
-                .json(&json!({"handle": handle, "kind": "human"}))
-                .send()
-                .await
-                .unwrap()
-                .json()
-                .await
-                .unwrap();
-            m["id"].as_str().unwrap().to_string()
-        }
-    };
-    let alice_id = member("alice").await;
-    let bob_id = member("bob").await;
-    let subscribe = |member_id: String| {
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let bob = tenant
+        .member(store.as_ref(), "bob", MemberKind::Human)
+        .await;
+    let bob_id = bob.member_id.0.to_string();
+    let subscribe = |caller: test_support::Caller| {
         let ws_url = ws_url.clone();
         async move {
             let (mut ws, _) = connect_async(ws_url.into_client_request().unwrap())
                 .await
                 .unwrap();
             ws.send(Message::Text(
-                json!({"filter": {"workspace_id": workspace_id}, "member_id": member_id})
-                    .to_string(),
+                json!({
+                    "token": caller.token,
+                    "filter": {"workspace_id": workspace_id},
+                    "member_id": caller.member_id.0,
+                })
+                .to_string(),
             ))
             .await
             .unwrap();
@@ -292,9 +260,9 @@ async fn a_member_connected_first_is_online_in_a_later_subscribers_snapshot() {
         }
     };
 
-    let mut ws_bob = subscribe(bob_id.clone()).await;
+    let mut ws_bob = subscribe(bob).await;
     presence_snapshot(&mut ws_bob).await;
-    let mut ws_alice = subscribe(alice_id).await;
+    let mut ws_alice = subscribe(alice).await;
     let snapshot = presence_snapshot(&mut ws_alice).await;
     assert_eq!(
         snapshot_status(&snapshot, &bob_id).as_deref(),

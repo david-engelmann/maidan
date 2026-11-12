@@ -3,11 +3,11 @@
 //! egress could never fire (the link table could not be populated). The test
 //! proves a created link is exactly what the egress reverse-lookup reads.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use reqwest::StatusCode;
@@ -31,22 +31,13 @@ async fn projector_links_link_list_and_unlink() {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::new());
 
-    let ws = store
-        .create_workspace(NewWorkspace { name: "w".into() })
-        .await
-        .unwrap();
-    let member = store
-        .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "bot".into(),
-            display_name: None,
-            kind: MemberKind::Agent,
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "w").await;
+    let member = tenant
+        .member(store.as_ref(), "bot", MemberKind::Agent)
+        .await;
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "g".into(),
             topic: None,
             private: false,
@@ -68,17 +59,14 @@ async fn projector_links_link_list_and_unlink() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
+    let bot = member.client();
     let base = format!("http://{addr}");
-    let wid = ws.id.0;
+    let wid = tenant.workspace_id.0;
 
     // --- Slack ---
-    let created: Value = client
+    let created: Value = bot
         .post(format!("{base}/workspaces/{wid}/slack-links"))
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({
             "slack_channel_id": "C12345",
             "thread_id": thread.id.0
@@ -131,9 +119,8 @@ async fn projector_links_link_list_and_unlink() {
     assert_eq!(del2.status(), StatusCode::NOT_FOUND);
 
     // --- GitHub ---
-    let gh: Value = client
+    let gh: Value = bot
         .post(format!("{base}/workspaces/{wid}/github-links"))
-        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({
             "repo": "acme/widgets",
             "issue_number": 42,

@@ -308,6 +308,7 @@ mod tests {
             posted_at: Utc::now(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         };
         let ev = Event::MessagePosted {
             occurred_at: Utc::now(),
@@ -354,6 +355,7 @@ mod tests {
             posted_at: Utc::now(),
             edited_at: None,
             tombstoned_at: None,
+            provenance: None,
         };
         let out = message_events(&message);
         let types: Vec<String> = out.iter().map(type_of).collect();

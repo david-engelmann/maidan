@@ -12,6 +12,12 @@ description = "AuthN/AuthZ for Maidan: tokens, capabilities, ACLs."
 # instead of one per tests/*.rs, so the crate links once.
 autotests = false
 
+[features]
+# Makes `AuthContext`'s constructors public, so a test can hold any caller
+# without a credential round trip. Only dev-dependencies enable it; a release
+# build never does, and outside this crate a caller comes only from a resolver.
+test-support = []
+
 [dependencies]
 maidan-types = { path = "../maidan-types" }
 maidan-store = { path = "../maidan-store" }
@@ -34,6 +40,7 @@ url = "2"
 uuid.workspace = true
 
 [dev-dependencies]
+maidan-auth = { path = ".", features = ["test-support"] }
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
 maidan-search = { path = "../maidan-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

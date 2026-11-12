@@ -22,7 +22,7 @@ pub async fn enforce_mcp_quota(
     if auth.bypass {
         return Ok(());
     }
-    let Some(token_id) = auth.token_id else {
+    let Some(token_id) = auth.token_id() else {
         return Ok(());
     };
     let Some(cap) = tool_capability(request) else {

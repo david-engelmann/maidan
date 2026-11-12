@@ -3,10 +3,10 @@
 //! immutable event log, so a since-edited message shows its as-of body and a
 //! since-tombstoned message reappears. Deterministic; no fresh search.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
@@ -38,10 +38,6 @@ async fn as_of_replay_reconstructs_the_thread_at_a_point() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
     let base = format!("http://{addr}");
 
     let ws = store
@@ -57,6 +53,8 @@ async fn as_of_replay_reconstructs_the_thread_at_a_point() {
         })
         .await
         .unwrap();
+    let client =
+        test_support::bearer_client(&test_support::admin_token(store.as_ref(), member.id).await);
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws.id,

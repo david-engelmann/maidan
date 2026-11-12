@@ -87,6 +87,21 @@ async fn workspace(store: &dyn Store, name: &str) -> WorkspaceId {
         .id
 }
 
+/// The log id of a new event in `ws`, one its admin can read, for a webhook
+/// delivery to carry.
+async fn logged_event(store: &dyn Store, ws: WorkspaceId, name: &str) -> i64 {
+    let (_, stored) = store
+        .create_channel_with_event(NewChannel {
+            workspace_id: ws,
+            name: name.into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    stored.id
+}
+
 /// A receiver that has recovered: it answers every POST with 200 and counts them.
 async fn receiver() -> (SocketAddr, Arc<AtomicUsize>) {
     let hits = Arc::new(AtomicUsize::new(0));
@@ -111,6 +126,9 @@ async fn webhook_suite(backend: &Backend) {
     let store = backend.store.as_ref();
     let ws = workspace(store, "hooks").await;
     let (addr, hits) = receiver().await;
+    // A delivery goes out only while the hook's creator could still register
+    // it and still read the event it carries.
+    let creator = maidan_server::test_support::registrar(store, ws).await;
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
             workspace_id: ws,
@@ -118,13 +136,14 @@ async fn webhook_suite(backend: &Backend) {
             label: None,
             event_kinds: vec!["message_posted".into()],
             secret_ciphertext: "x".into(),
-            created_by_token: None,
+            created_by_token: Some(creator),
         })
         .await
         .unwrap();
     maidan_server::webhooks::remember_webhook_secret(&state.webhooks.secrets, sub.id, "s".into());
     let mut backlog = Vec::new();
-    for log_id in 0..BACKLOG as i64 {
+    for n in 0..BACKLOG {
+        let log_id = logged_event(store, ws, &format!("backlog-{n}")).await;
         let id = store
             .enqueue_webhook_delivery(sub.id, log_id, "{}")
             .await
@@ -136,9 +155,10 @@ async fn webhook_suite(backend: &Backend) {
             .unwrap();
         backlog.push(id);
     }
-    for log_id in 0..FRESH as i64 {
+    for n in 0..FRESH {
+        let log_id = logged_event(store, ws, &format!("fresh-{n}")).await;
         store
-            .enqueue_webhook_delivery(sub.id, 100 + log_id, "{}")
+            .enqueue_webhook_delivery(sub.id, log_id, "{}")
             .await
             .unwrap()
             .unwrap();

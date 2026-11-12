@@ -191,7 +191,7 @@ pub async fn replay_delivery(
     let actor_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     state
         .store

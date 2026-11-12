@@ -30,7 +30,7 @@ pub async fn submit_plan(
     let held = plan.needs_hold();
     match state
         .store
-        .submit_plan(parent, auth.member_id, plan)
+        .submit_plan(parent, auth.member_id(), plan)
         .await?
     {
         PlanOutcome::Created { children, events } => {
@@ -63,7 +63,7 @@ pub async fn amend_plan(
     let amend = body.checked().map_err(ApiError::BadRequest)?;
     let outcome = state
         .store
-        .amend_plan(parent, auth.member_id, amend)
+        .amend_plan(parent, auth.member_id(), amend)
         .await?;
     for stored in outcome.events {
         super::publish_stored(&state, stored).await;
@@ -89,7 +89,7 @@ pub async fn release_plan(
             parent,
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(ctx.workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "plan.release".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(parent.0),

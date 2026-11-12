@@ -52,10 +52,10 @@ pub(super) async fn add_member_skill(
                 .get_member(target)
                 .await
                 .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
-            if member.workspace_id != auth.workspace_id {
+            if member.workspace_id != auth.workspace_id() {
                 return Err(McpError::Forbidden("member_id is not yours".to_string()));
             }
-        } else if target != auth.member_id {
+        } else if target != auth.member_id() {
             return Err(McpError::Forbidden("member_id is not yours".to_string()));
         }
     }
@@ -67,7 +67,7 @@ pub(super) async fn add_member_skill(
                 a.skill.trim(),
                 maidan_types::NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
-                    actor_id: Some(auth.actor_id),
+                    actor_id: Some(auth.actor_id()),
                     action: "member_skill.grant_governance".into(),
                     target_kind: Some("member".into()),
                     target_id: Some(a.member_id),
@@ -160,7 +160,7 @@ pub(super) async fn remove_member_skill(
         )
         .is_ok();
         if !(is_governance_skill(&a.skill) && admin) {
-            if target != auth.member_id {
+            if target != auth.member_id() {
                 return Err(McpError::Forbidden("member_id is not yours".into()));
             }
         } else {
@@ -168,7 +168,7 @@ pub(super) async fn remove_member_skill(
                 .get_member(target)
                 .await
                 .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
-            if member.workspace_id != auth.workspace_id {
+            if member.workspace_id != auth.workspace_id() {
                 return Err(McpError::Forbidden("member_id is not yours".to_string()));
             }
         }

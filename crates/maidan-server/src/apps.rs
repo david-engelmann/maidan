@@ -39,7 +39,7 @@ pub async fn register_app(
             slug,
             name: body.name,
             description: body.description,
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
         })
         .await?;
     Ok((StatusCode::CREATED, Json(AppResponse::from(app))))
@@ -83,7 +83,7 @@ pub async fn install_app(
     // so it is bounded here by what the caller could mint directly.
     within_vocabulary(&auth, &granted)?;
 
-    let (actor, audited_capabilities) = (auth.actor_id, granted.clone());
+    let (actor, audited_capabilities) = (auth.actor_id(), granted.clone());
     let installed = state
         .store
         .install_app_audited(
@@ -147,7 +147,7 @@ pub async fn revoke_app_installation(
     if row.workspace_id != workspace_id {
         return Err(ApiError::NotFound);
     }
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let revoked = state
         .store
         .revoke_app_installation_audited(
@@ -198,7 +198,7 @@ pub async fn mint_app_token(
 
     let secret = TokenSecret::generate();
     let (actor, bot_member_id, audited_capabilities) = (
-        auth.actor_id,
+        auth.actor_id(),
         installation.bot_member_id,
         capabilities.clone(),
     );

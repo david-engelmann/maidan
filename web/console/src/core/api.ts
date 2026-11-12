@@ -83,6 +83,8 @@ export function idempotencyKey(): string {
 /**
  * A mutating request. Each call carries a fresh Idempotency-Key, so a
  * duplicated delivery replays the first response instead of writing twice.
+ * `guarded` swaps in the key of an identical earlier attempt whose outcome
+ * never arrived, so a person's retry is the same write, not a second one.
  */
 export function writeInit(init: RequestInit = {}, key = idempotencyKey()): RequestInit {
   return { ...init, headers: { ...(init.headers as Record<string, string> | undefined), "Idempotency-Key": key } };
@@ -229,6 +231,8 @@ let authEpoch = 0;
 const sentUnder = new WeakMap<Response, number>();
 export function bumpAuthEpoch(): void {
   authEpoch++;
+  // A retry under another credential is a new write.
+  unsettled.clear();
 }
 /** A 401 on this response says nothing about the tab's credential (a cookie-only route). */
 export function keepAuth(res: Response): void {
@@ -272,16 +276,124 @@ export async function failure(
   throw new Err(text, res.status, retry);
 }
 
+// Retries of one write. A write whose answer never came (the network dropped,
+// the request was cancelled or timed out) or came back as a 408, 429 or 5xx
+// may still have landed, so the next identical request (same method, URL and
+// body) reuses its Idempotency-Key and the server replays the first result
+// instead of writing twice. Any other answer settles the write, and the next
+// identical request is a new one.
+export const RETRY_KEY_MS = 15 * 60_000;
+const RETRY_KEYS_MAX = 200;
+const unsettled = new Map<string, { key: string; at: number }>();
+
+function writeFingerprint(url: string, init: RequestInit | undefined): string | null {
+  const headers = init?.headers;
+  if (!headers || headers instanceof Headers || Array.isArray(headers) || !headers["Idempotency-Key" as keyof typeof headers]) return null;
+  const b = init.body;
+  let body: string;
+  if (b == null) body = "";
+  else if (typeof b === "string") body = b;
+  else if (typeof Blob !== "undefined" && b instanceof Blob) {
+    const f = b as Blob & { name?: string; lastModified?: number };
+    body = `blob ${f.name ?? ""} ${f.size} ${f.type} ${f.lastModified ?? ""}`;
+  } else return null;
+  return `${(init.method ?? "GET").toUpperCase()} ${url}\n${body}`;
+}
+
+/** The answer may not be the write's outcome: retrying it could repeat the write. */
+export function outcomeUnknown(status: number): boolean {
+  return status === 0 || status === 408 || status === 429 || status >= 500;
+}
+
+/** Forget every unsettled write (a sign-out, or a test). */
+export function forgetRetryKeys(): void {
+  unsettled.clear();
+}
+
+/** Whether the console can reach its server: what the browser says, and what the last request found. */
+export type Reach = { browserOnline: boolean; serverReachable: boolean; lastAnswerAt: number | null };
+
+export class ReachStore {
+  private state: Reach = { browserOnline: true, serverReachable: true, lastAnswerAt: null };
+  private lastAnswer: number | null = null;
+  private readonly listeners = new Set<() => void>();
+  subscribe = (fn: () => void): (() => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+  getSnapshot = (): Reach => this.state;
+  private set(next: Omit<Reach, "lastAnswerAt">): void {
+    if (next.browserOnline === this.state.browserOnline && next.serverReachable === this.state.serverReachable) return;
+    // The time of the last answer is taken when reach changes, so the
+    // snapshot changes only when a listener is told.
+    this.state = { ...next, lastAnswerAt: this.lastAnswer };
+    for (const fn of this.listeners) fn();
+  }
+  /** Any HTTP answer, whatever its status, means the server is there. */
+  answered(now = Date.now()): void {
+    this.lastAnswer = now;
+    this.set({ browserOnline: this.state.browserOnline, serverReachable: true });
+  }
+  unreachable(): void {
+    this.set({ browserOnline: this.state.browserOnline, serverReachable: false });
+  }
+  /** The browser's own word. Back online, a failure while offline no longer counts: the next request decides. */
+  browser(online: boolean): void {
+    this.set({ browserOnline: online, serverReachable: online ? true : this.state.serverReachable });
+  }
+}
+
+export const reach = new ReachStore();
+
+/**
+ * The app-wide line over every place while the server is out of reach, or
+ * null. Screens keep what they last loaded, so it says that what is on screen
+ * may be out of date.
+ */
+export function offlineBanner(r: Reach, now = Date.now()): string | null {
+  if (r.browserOnline && r.serverReachable) return null;
+  const head = r.browserOnline ? "Can't reach the server." : "You're offline.";
+  // Within a minute "may be out of date" says enough; after that, say since when.
+  const since = r.lastAnswerAt !== null && now - r.lastAnswerAt > 60_000
+    ? ` is from ${new Date(r.lastAnswerAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} and`
+    : "";
+  return `${head} What you see${since} may be out of date, and changes won't send until the connection is back.`;
+}
+
 /** A fetch that never rejects with a raw TypeError: an unreachable server reads as OFFLINE. */
 export function guarded(fetchFn: (url: string, init?: RequestInit) => Promise<Response>, Err: new (message: string, status?: number) => ApiError = ApiError) {
   return async (url: string, init?: RequestInit): Promise<Response> => {
     const epoch = authEpoch;
+    const print = writeFingerprint(url, init);
+    let key: string | null = null;
+    if (print !== null && init) {
+      // Take the key of an identical write whose outcome is unknown. Taking it
+      // means a second identical write that starts while this retry is still
+      // pending gets a fresh key instead of the server's 409 for a key in flight.
+      const kept = unsettled.get(print);
+      unsettled.delete(print);
+      key = kept && Date.now() - kept.at < RETRY_KEY_MS ? kept.key : (init.headers as Record<string, string>)["Idempotency-Key"];
+      init = { ...init, headers: { ...(init.headers as Record<string, string>), "Idempotency-Key": key } };
+    }
+    // Only an uncertain outcome keeps the key, and only under the credential
+    // it was sent with: an answer for an older credential must not touch an
+    // entry a newer request owns.
+    const keepKey = () => {
+      if (print === null || key === null || epoch !== authEpoch) return;
+      unsettled.delete(print);
+      unsettled.set(print, { key, at: Date.now() });
+      if (unsettled.size > RETRY_KEYS_MAX) unsettled.delete(unsettled.keys().next().value as string);
+    };
     try {
       const res = await fetchFn(url, init);
       if (res && typeof res === "object" && !sentUnder.has(res)) sentUnder.set(res, epoch);
+      if (typeof res?.status === "number" && outcomeUnknown(res.status)) keepKey();
+      reach.answered();
       return res;
     } catch (e) {
+      keepKey();
       if (e instanceof DOMException && e.name === "AbortError") throw e;
+      reach.unreachable();
       throw new Err(OFFLINE, 0);
     }
   };
