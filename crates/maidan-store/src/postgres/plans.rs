@@ -27,9 +27,9 @@ pub async fn submit(
     member_id: MemberId,
     plan: SubmitPlan,
 ) -> Result<PlanOutcome, StoreError> {
-    spawn_budget_precheck(pool, parent_id, plan.children.len() as i64).await?;
     let mut tx = pool.begin().await?;
     let parent = parent_row(&mut tx, parent_id).await?;
+    spawn_budget_on(&mut tx, parent_id, &parent, plan.children.len() as i64).await?;
     hold_check(&parent, member_id, plan.lease_id)?;
     if let Some(outcome) = existing(&mut tx, parent_id, &plan).await? {
         return Ok(outcome);
@@ -350,31 +350,23 @@ async fn existing(
 
 /// The workspace's spawn budget, counted for the whole plan: a plan that
 /// would take the parent past `max_children`, or nest past `max_depth`,
-/// creates nothing.
-async fn spawn_budget_precheck(
-    pool: &PgPool,
+/// creates nothing. Counted inside `tx`, after [`parent_row`] has locked the
+/// parent `FOR UPDATE`, which a child create's `FOR NO KEY UPDATE` waits on, so
+/// a concurrent create cannot take a slot the plan counted as free.
+async fn spawn_budget_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     parent_id: ThreadId,
+    parent: &Parent,
     adding: i64,
 ) -> Result<(), StoreError> {
-    let Some(row) = sqlx::query(
-        "SELECT t.channel_id, c.workspace_id FROM maidan_threads t
-         JOIN maidan_channels c ON c.id = t.channel_id WHERE t.id = $1",
-    )
-    .bind(parent_id.0)
-    .fetch_optional(pool)
-    .await?
-    else {
-        return Err(StoreError::NotFound);
-    };
-    let workspace_id = WorkspaceId(row.get("workspace_id"));
-    let channel_id = maidan_types::ChannelId(row.get("channel_id"));
-    let Some(budget) = spawn::get_budget(pool, workspace_id).await? else {
+    let workspace_id = WorkspaceId(parent.workspace_id);
+    let Some(budget) = spawn::get_budget(&mut **tx, workspace_id).await? else {
         return Ok(());
     };
     let refuse = |axis, limit, observed| {
         Err(StoreError::spawn_rejected(SpawnDenial {
             workspace_id,
-            channel_id,
+            channel_id: maidan_types::ChannelId(parent.channel_id),
             thread_id: parent_id,
             axis,
             limit,
@@ -382,13 +374,13 @@ async fn spawn_budget_precheck(
         }))
     };
     if let Some(max_children) = budget.max_children {
-        let children = spawn::count_active_children(pool, parent_id).await?;
+        let children = spawn::count_active_children(&mut **tx, parent_id).await?;
         if children + adding > max_children {
             return refuse(SpawnAxis::Children, max_children, children + adding);
         }
     }
     if let Some(max_depth) = budget.max_depth {
-        let depth = spawn::thread_depth(pool, parent_id).await?;
+        let depth = spawn::thread_depth(&mut **tx, parent_id).await?;
         if depth >= max_depth {
             return refuse(SpawnAxis::Depth, max_depth, depth);
         }
@@ -760,13 +752,13 @@ pub async fn amend(
     amend: AmendPlan,
 ) -> Result<AmendOutcome, StoreError> {
     let net_adding = amend.add.len() as i64 - amend.cancel.len() as i64;
-    if net_adding > 0 {
-        spawn_budget_precheck(pool, parent_id, net_adding).await?;
-    }
     let mut tx = pool.begin().await?;
     // Locked for the transaction, so two amendments run one after the other
     // and the cap counts both.
     let parent = parent_row(&mut tx, parent_id).await?;
+    if net_adding > 0 {
+        spawn_budget_on(&mut tx, parent_id, &parent, net_adding).await?;
+    }
     hold_check(&parent, member_id, amend.lease_id)?;
     let amendments: i64 = sqlx::query_scalar(
         "SELECT amendments::BIGINT FROM maidan_thread_plans WHERE parent_thread_id = $1",

@@ -20,12 +20,13 @@ use crate::thread_access::readable_row;
 
 pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
-    enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
     let now = Utc::now();
     // The thread and its default routing land together, so no claimer sees
     // it unrouted.
     let mut tx = super::tx::begin_write(pool).await?;
+    enforce_spawn_budget_on(&mut tx, new.channel_id, new.parent_thread_id).await?;
+    validate_parent_on(&mut tx, new.channel_id, new.parent_thread_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_at, updated_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -204,17 +205,19 @@ pub async fn create_superseding(
     })
 }
 
-/// The reads a thread create checks before its transaction: the parent is
-/// in the channel and the spawn budget allows one more thread.
+/// The read a thread create checks before its transaction: the parent is
+/// in the channel. The spawn budget is counted inside the transaction, by
+/// [`insert_on`].
 pub(crate) async fn precheck(pool: &SqlitePool, new: &NewThread) -> Result<(), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
-    enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     Ok(())
 }
 
 /// Insert a validated thread, its footprint, attributes and priority, and
 /// its `ThreadCreated` event inside `tx`, so a caller can make the thread
-/// part of a larger transaction. Run [`precheck`] first, outside `tx`.
+/// part of a larger transaction. Run [`precheck`] first, outside `tx`. The
+/// spawn budget is counted here, inside `tx`, so concurrent creates cannot
+/// both take a parent's last child slot.
 /// `exempt` is a thread this one supersedes in the same transaction, which
 /// does not hold the values the workspace keeps unique against it.
 pub(crate) async fn insert_on(
@@ -225,6 +228,8 @@ pub(crate) async fn insert_on(
     priority_by: Option<(i64, maidan_types::MemberId)>,
     exempt: Option<ThreadId>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    enforce_spawn_budget_on(tx, new.channel_id, new.parent_thread_id).await?;
+    validate_parent_on(tx, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(
@@ -1975,6 +1980,38 @@ pub async fn page_for_channel(
     rows.iter().map(row_to_board_thread).collect()
 }
 
+/// The parent check that decides, inside the insert's transaction. The
+/// [`validate_parent`] precheck runs on the pool, so a parent archived or
+/// removed after it would otherwise still take the child. The transaction holds
+/// SQLite's write lock (`BEGIN IMMEDIATE`), so no archive commits between this
+/// read and the insert.
+async fn validate_parent_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    channel_id: ChannelId,
+    parent_thread_id: Option<ThreadId>,
+) -> Result<(), StoreError> {
+    let Some(parent_id) = parent_thread_id else {
+        return Ok(());
+    };
+    let row = sqlx::query(
+        "SELECT channel_id, state, tombstoned_at IS NOT NULL AS gone
+         FROM maidan_threads WHERE id = ?",
+    )
+    .bind(parent_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    if row.get::<Uuid, _>("channel_id") != channel_id.0 || row.get::<bool, _>("gone") {
+        return Err(StoreError::NotFound);
+    }
+    if row.get::<String, _>("state") == ThreadState::Archived.as_str() {
+        return Err(StoreError::Conflict(
+            "cannot create child under an archived parent".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn validate_parent(
     pool: &SqlitePool,
     channel_id: ChannelId,
@@ -1984,12 +2021,9 @@ async fn validate_parent(
         return Ok(());
     };
     let parent = get(pool, parent_id).await?;
-    if parent.channel_id != channel_id {
-        return Err(StoreError::InvalidInput(
-            "parent thread must be in the same channel".into(),
-        ));
-    }
-    if parent.tombstoned_at.is_some() {
+    // A parent in another channel reads as missing, like one that does not
+    // exist, so the refusal does not tell a caller which ids are real.
+    if parent.channel_id != channel_id || parent.tombstoned_at.is_some() {
         return Err(StoreError::NotFound);
     }
     if parent.state == ThreadState::Archived {
@@ -2000,28 +2034,32 @@ async fn validate_parent(
     Ok(())
 }
 
-/// Enforce the workspace's spawn budget — refuse a child once the parent holds
-/// `max_children` or its nesting would exceed `max_depth`. Root threads /
-/// no-budget workspaces are unrestricted. A refusal is a typed `SpawnRejected`:
-/// a 409/InvalidParams for the caller, and the payload the route publishes as
-/// `ThreadSpawnDenied`.
-async fn enforce_spawn_budget(
-    pool: &SqlitePool,
+/// Enforce the workspace's spawn budget inside the insert's transaction —
+/// refuse a child once the parent holds `max_children` or its nesting would
+/// exceed `max_depth`. Root threads / no-budget workspaces are unrestricted. A
+/// refusal is a typed `SpawnRejected`: a 409/InvalidParams for the caller, and
+/// the payload the route publishes as `ThreadSpawnDenied`. Every caller's
+/// transaction holds SQLite's write lock (`BEGIN IMMEDIATE`), so no sibling
+/// commits between this count and the insert, and only one create takes the
+/// last slot.
+async fn enforce_spawn_budget_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     channel_id: ChannelId,
     parent_thread_id: Option<ThreadId>,
 ) -> Result<(), StoreError> {
     let Some(parent_id) = parent_thread_id else {
         return Ok(());
     };
-    let Some(ws_row) = sqlx::query("SELECT workspace_id FROM maidan_channels WHERE id = ?")
-        .bind(channel_id.0)
-        .fetch_optional(pool)
-        .await?
+    let Some(workspace_id) =
+        sqlx::query_scalar::<_, Uuid>("SELECT workspace_id FROM maidan_channels WHERE id = ?")
+            .bind(channel_id.0)
+            .fetch_optional(&mut **tx)
+            .await?
     else {
         return Ok(());
     };
-    let workspace_id = maidan_types::WorkspaceId(ws_row.get::<Uuid, _>("workspace_id"));
-    let Some(budget) = super::spawn::get_budget(pool, workspace_id).await? else {
+    let workspace_id = maidan_types::WorkspaceId(workspace_id);
+    let Some(budget) = super::spawn::get_budget(&mut **tx, workspace_id).await? else {
         return Ok(());
     };
     let refuse = |axis, limit, observed| {
@@ -2035,13 +2073,13 @@ async fn enforce_spawn_budget(
         }))
     };
     if let Some(max_children) = budget.max_children {
-        let children = super::spawn::count_active_children(pool, parent_id).await?;
+        let children = super::spawn::count_active_children(&mut **tx, parent_id).await?;
         if children >= max_children {
             return refuse(SpawnAxis::Children, max_children, children);
         }
     }
     if let Some(max_depth) = budget.max_depth {
-        let depth = super::spawn::thread_depth(pool, parent_id).await?;
+        let depth = super::spawn::thread_depth(&mut **tx, parent_id).await?;
         if depth >= max_depth {
             return refuse(SpawnAxis::Depth, max_depth, depth);
         }

@@ -46,6 +46,55 @@ pub mod docker {
     }
 }
 
+/// Counting the SQL statements a piece of code runs, for tests that pin a
+/// read to a fixed number of round trips.
+///
+/// The count comes from the per-statement event sqlx logs under the
+/// `sqlx::query` target, seen by a subscriber scoped to the counted future.
+/// The Postgres driver logs on the task that polls the query, so its
+/// statements are counted. The SQLite driver runs statements on its own
+/// worker thread, outside the scope, so a SQLite store always counts zero:
+/// pin round trips against Postgres.
+#[cfg(feature = "test-support")]
+pub mod statements {
+    use std::future::Future;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use tracing::instrument::WithSubscriber;
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
+
+    const TARGET: &str = "sqlx::query";
+
+    struct Counter(Arc<AtomicUsize>);
+
+    impl Subscriber for Counter {
+        fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+            metadata.target() == TARGET
+        }
+        fn new_span(&self, _: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+        fn record(&self, _: &Id, _: &Record<'_>) {}
+        fn record_follows_from(&self, _: &Id, _: &Id) {}
+        fn event(&self, event: &Event<'_>) {
+            if event.metadata().target() == TARGET {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        fn enter(&self, _: &Id) {}
+        fn exit(&self, _: &Id) {}
+    }
+
+    /// Run `fut` and return its output with the number of statements it ran.
+    pub async fn count<F: Future>(fut: F) -> (F::Output, usize) {
+        let counted = Arc::new(AtomicUsize::new(0));
+        let output = fut.with_subscriber(Counter(Arc::clone(&counted))).await;
+        (output, counted.load(Ordering::SeqCst))
+    }
+}
+
 /// Write a result the way a seat does, for tests and seeded fixtures: claim
 /// the thread for `member` when it is unassigned (or use the lease `member`
 /// already holds), write under that lease, and release a claim taken here,

@@ -71,21 +71,9 @@ pub async fn list_channels(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    let all = state.store.list_channels(workspace_id).await?;
-    if auth.bypass {
-        return Ok(Json(all));
-    }
-    // Hide private channels the caller is not a member of. Public and the DM
-    // system channel are always listed.
-    let mut visible = Vec::with_capacity(all.len());
-    for ch in all {
-        if !ch.private
-            || ch.name == DM_CHANNEL_NAME
-            || state.store.channel_is_member(ch.id, auth.member_id).await?
-        {
-            visible.push(ch);
-        }
-    }
+    // Public channels and the DM system channel are always listed; a private
+    // one only to its members.
+    let visible = maidan_auth::visible_channels(state.store.as_ref(), &auth, workspace_id).await?;
     Ok(Json(visible))
 }
 

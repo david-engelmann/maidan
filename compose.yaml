@@ -165,6 +165,29 @@ services:
     profiles:
       - federation
 
+  # Instance B of the federation profile gets its own database. Two servers on
+  # one database would see each other's channels and threads as local, and
+  # ingest refuses a federated event that names a local location.
+  postgres-b:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.db
+    image: maidan-postgres:dev
+    container_name: maidan-postgres-b
+    environment:
+      POSTGRES_USER: maidan
+      POSTGRES_PASSWORD: maidan
+      POSTGRES_DB: maidan
+    volumes:
+      - postgres_b_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maidan -d maidan"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    profiles:
+      - federation
+
   maidan-b:
     build:
       context: .
@@ -172,14 +195,14 @@ services:
     image: maidan-server:dev
     container_name: maidan-b
     depends_on:
-      postgres:
+      postgres-b:
         condition: service_healthy
     environment:
       # Development stack: an explicit opt-in to the public development content
       # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
       MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
       MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
-      DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
+      DATABASE_URL: postgres://maidan:maidan@postgres-b:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
       AUTH_DISABLED: 1
@@ -414,6 +437,7 @@ services:
 
 volumes:
   postgres_data:
+  postgres_b_data:
   minio_data:
   minio_scale_data:
   maidan_data:
