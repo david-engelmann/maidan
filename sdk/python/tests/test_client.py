@@ -12,6 +12,7 @@ import pytest
 import dataclasses
 
 from maidan import (
+    ApprovalGate,
     Artifact,
     Footprint,
     ReviewStatus,
@@ -404,3 +405,34 @@ def test_footprint_and_reviews_stay_in_their_workspace():
         assert refused.value.status in (403, 404), f"{name}: {refused.value.status}"
         assert WORKSPACE not in json.dumps(refused.value.problem), f"{name} names the first workspace"
     assert c.threads.get_footprint(thread.id) == stored, "a refused write changed the footprint"
+
+
+def test_a_gate_opened_over_rest_reads_back_and_its_answer_is_heard():
+    """``approval_gates.request`` opens a pending gate that ``get`` reads back,
+    a second workspace cannot read it, its requester cannot accept it, and
+    ``wait_for_approval_decision`` hears the answer."""
+    assert OTHER_TOKEN and OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace"
+    c, _ws, member, _channel, thread = _seed()
+    gate = c.approval_gates.request(WORKSPACE, "Ship the py release?", thread_id=thread.id, risk="low")
+    assert isinstance(gate, ApprovalGate)
+    assert (gate.state, gate.requested_by, gate.thread_id, gate.risk) == ("pending", member["id"], thread.id, "low")
+    assert c.approval_gates.get(gate.id) == gate
+
+    with pytest.raises(MaidanError) as hidden:
+        Client(BASE, OTHER_TOKEN).approval_gates.get(gate.id)
+    assert hidden.value.status == 404
+
+    view = next(v for v in c.approval_gates.list(WORKSPACE) if v.gate.id == gate.id)
+    with pytest.raises(MaidanError) as own:
+        c.approval_gates.answer(gate.id, view.request_state, "accept")
+    assert own.value.status == 403, "nobody accepts a gate they asked for"
+
+    cancel = threading.Timer(1.0, lambda: c.approval_gates.answer(gate.id, view.request_state, "cancel"))
+    cancel.start()
+    try:
+        event = c.wait_for_approval_decision(gate.id, WORKSPACE, timeout=20)
+    finally:
+        cancel.join()
+    assert event is not None, "no approval_resolved within the timeout"
+    assert (event["gate_id"], event["state"], event["resolved_by"]) == (gate.id, "cancelled", member["id"])
+    assert c.approval_gates.get(gate.id).state == "cancelled"

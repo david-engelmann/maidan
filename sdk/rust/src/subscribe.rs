@@ -183,11 +183,17 @@ impl Client {
         )
     }
 
-    fn wait_for_kind(
+    fn wait_for_kind(&self, filter: Value, kind: &str, timeout: Duration) -> Result<Option<Value>> {
+        self.wait_for_kind_matching(filter, kind, timeout, |_| true)
+    }
+
+    /// `wait_for_kind` for the first event `matches` accepts.
+    fn wait_for_kind_matching(
         &self,
         mut filter: Value,
         kind: &str,
         timeout: Duration,
+        matches: impl Fn(&Value) -> bool + Send + 'static,
     ) -> Result<Option<Value>> {
         if !filter.is_object() {
             filter = json!({});
@@ -195,7 +201,9 @@ impl Client {
         filter["kinds"] = json!([kind]);
         let (tx, rx) = mpsc::channel();
         let sub = self.subscribe(filter, move |e| {
-            let _ = tx.send(e);
+            if matches(&e) {
+                let _ = tx.send(e);
+            }
         })?;
         let out = rx.recv_timeout(timeout).ok();
         sub.close();
@@ -256,6 +264,25 @@ impl Client {
             json!({ "workspace_id": workspace_id }),
             "approval_requested",
             timeout,
+        )
+    }
+
+    /// Block until the gate is answered (its `approval_resolved` event, with
+    /// `state` `accepted`, `declined` or `cancelled`), or `timeout`
+    /// (`Ok(None)`). Only an answer given after the wait starts is heard; read
+    /// a gate that may already be answered with [`crate::ApprovalGates::get`].
+    pub fn wait_for_approval_decision(
+        &self,
+        gate_id: &str,
+        workspace_id: &str,
+        timeout: Duration,
+    ) -> Result<Option<Value>> {
+        let gate_id = gate_id.to_string();
+        self.wait_for_kind_matching(
+            json!({ "workspace_id": workspace_id }),
+            "approval_resolved",
+            timeout,
+            move |e| e["gate_id"].as_str() == Some(gate_id.as_str()),
         )
     }
 }

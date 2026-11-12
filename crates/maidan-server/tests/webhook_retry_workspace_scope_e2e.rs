@@ -29,17 +29,19 @@ async fn state() -> (AppState, tempfile::TempDir) {
     (state, dir)
 }
 
-/// The log id of a workspace-level event in `ws`.
-async fn workspace_event(store: &dyn Store, ws: WorkspaceId, name: &str) -> i64 {
+/// The log id of a workspace-level event in `ws`: a member joining names no
+/// channel or thread, so channel access does not gate it.
+async fn workspace_event(store: &dyn Store, ws: WorkspaceId, handle: &str) -> i64 {
     let (_, stored) = store
-        .create_channel_with_event(NewChannel {
+        .create_member_with_event(NewMember {
             workspace_id: ws,
-            name: name.into(),
-            topic: None,
-            private: false,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Human,
         })
         .await
         .unwrap();
+    assert!(stored.channel_id.is_none() && stored.thread_id.is_none());
     stored.id
 }
 
@@ -57,7 +59,7 @@ async fn a_queued_delivery_carrying_another_workspaces_event_is_quarantined_unse
             // attempt, one that is refused first records none.
             url: "http://127.0.0.1:9/hook".into(),
             label: None,
-            event_kinds: vec!["channel_created".into()],
+            event_kinds: vec!["member_joined".into()],
             secret_ciphertext: "x".into(),
             created_by_token: Some(creator),
         })

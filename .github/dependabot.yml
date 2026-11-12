@@ -24,6 +24,13 @@ updates:
       day: monday
     commit-message:
       prefix: build
+    # Patch releases only. Dependabot files 0.x minor bumps (sqlx 0.8 to 0.9,
+    # the RustCrypto 0.10 to 0.11 set) as minor, and each of those is a
+    # migration; one week's group held eight of them and could not compile.
+    # Breaking and minor upgrades are deliberate PRs, each with `cargo vet`.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       cargo:
         patterns: ["*"]
@@ -42,6 +49,11 @@ updates:
       day: monday
     commit-message:
       prefix: build
+    # A major (TypeScript 7, ESLint 10, Vite 8) is a migration, not a weekly
+    # bump; it lands as its own PR.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm:
         patterns: ["*"]
@@ -67,6 +79,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Ubuntu's minor is its release: 24.04 to 24.10 left an LTS for a
+      # nine-month release past its end of life. The next LTS is a decision.
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-minor"]
     groups:
       docker:
         patterns: ["*"]
