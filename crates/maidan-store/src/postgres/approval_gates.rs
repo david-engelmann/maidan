@@ -217,21 +217,24 @@ pub async fn resolve(
     resolved_by: MemberId,
     state: ApprovalGateState,
     content: Option<&serde_json::Value>,
-) -> Result<Option<ApprovalGate>, StoreError> {
+) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError> {
     let mut tx = pool.begin().await?;
     let gate = resolve_on(&mut tx, id, resolved_by, state, content, None).await?;
     tx.commit().await?;
     Ok(gate)
 }
 
+/// The compare-and-set every answer goes through, with the gate's
+/// `ApprovalResolved` event appended in the same transaction, so a waiter
+/// hears every decision whichever surface made it.
 async fn resolve_on(
-    conn: &mut sqlx::PgConnection,
+    tx: &mut Transaction<'_, Postgres>,
     id: ApprovalGateId,
     resolved_by: MemberId,
     state: ApprovalGateState,
     content: Option<&serde_json::Value>,
     via: Option<&GateDecisionVia>,
-) -> Result<Option<ApprovalGate>, StoreError> {
+) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError> {
     let row = sqlx::query(&format!(
         "UPDATE maidan_approval_gates
          SET state = $2, content = $3, resolved_by = $4, resolved_at = now(),
@@ -251,7 +254,7 @@ async fn resolve_on(
     .bind(via.is_some_and(|v| v.model_asked))
     .bind(via.map(|v| v.client_source.as_str()))
     .bind(via.and_then(|v| v.client_id.as_deref()))
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&mut **tx)
     .await?;
     let gate = row.as_ref().map(row_to_gate);
     if let Some(gate) = &gate
@@ -273,10 +276,28 @@ async fn resolve_on(
         .bind(thread_id.0)
         .bind(REVIEW_ROUND_HELD_REASON)
         .bind(resolved_by.0)
-        .execute(&mut *conn)
+        .execute(&mut **tx)
         .await?;
     }
-    Ok(gate)
+    let Some(gate) = gate else {
+        return Ok(None);
+    };
+    let channel_id = match gate.thread_id {
+        Some(thread_id) => Some(super::events::thread_scope_in_tx(tx, thread_id).await?.1),
+        None => None,
+    };
+    let event = Event::ApprovalResolved {
+        occurred_at: gate.resolved_at.unwrap_or_else(Utc::now),
+        workspace_id: gate.workspace_id,
+        channel_id,
+        thread_id: gate.thread_id,
+        gate_id: gate.id,
+        state: gate.state,
+        requested_by: gate.requested_by,
+        resolved_by,
+    };
+    let stored = super::events::append_in_tx(tx, &event).await?;
+    Ok(Some((gate, stored)))
 }
 
 /// [`resolve`] for a decision a model made, recording the client it came
@@ -290,10 +311,10 @@ pub async fn resolve_audited(
     content: Option<&serde_json::Value>,
     via: &GateDecisionVia,
     audit: crate::AuditFor<ApprovalGate>,
-) -> Result<Option<ApprovalGate>, StoreError> {
+) -> Result<Option<(ApprovalGate, StoredEvent)>, StoreError> {
     let mut tx = pool.begin().await?;
     let gate = resolve_on(&mut tx, id, resolved_by, state, content, Some(via)).await?;
-    if let Some(gate) = &gate {
+    if let Some((gate, _)) = &gate {
         super::audit::append_scoped(&mut tx, gate.workspace_id, audit(gate)).await?;
     }
     tx.commit().await?;
@@ -516,9 +537,9 @@ pub async fn confirm(
     )
     .await?;
     let outcome = match gate {
-        Some(gate) => {
+        Some((gate, event)) => {
             super::audit::append_scoped(&mut tx, workspace_id, audit(&gate)).await?;
-            ConfirmOutcome::Accepted(Box::new(gate))
+            ConfirmOutcome::Accepted(Box::new((gate, event)))
         }
         None => ConfirmOutcome::GateResolved,
     };

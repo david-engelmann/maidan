@@ -1,13 +1,14 @@
 //! Durable human-approval gates: create a pending gate, list it while
 //! outstanding, resolve it to accept/decline/cancel, and prove the resolve is a
-//! compare-and-set on `pending` (a double-answer is a no-op). Both backends. No
-//! routes/tool yet — the zero-blast-radius foundation.
+//! compare-and-set on `pending` (a double-answer is a no-op). Every answer
+//! appends one `ApprovalResolved` event in the resolve's own transaction,
+//! scoped to the gate's workspace, channel and thread. Both backends.
 
 use chrono::Timelike;
 use maidan_store::{prelude::*, run_sqlite_migrations, PendingGateQuery};
 use maidan_types::{
-    ApprovalGate, ApprovalGateState, MemberKind, NewApprovalGate, NewChannel, NewMember, NewThread,
-    NewWorkspace,
+    ApprovalGate, ApprovalGateState, Event, EventKind, MemberKind, NewApprovalGate, NewChannel,
+    NewMember, NewThread, NewWorkspace,
 };
 use serde_json::json;
 
@@ -22,6 +23,17 @@ async fn sqlite() -> SqliteStore {
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
     SqliteStore::for_tests(pool)
+}
+
+/// How many `ApprovalResolved` events `workspace` has in its log.
+async fn resolved_events(store: &dyn Store, workspace: maidan_types::WorkspaceId) -> usize {
+    store
+        .list_events_after(workspace, 0, 500)
+        .await
+        .expect("events")
+        .iter()
+        .filter(|e| e.kind == EventKind::ApprovalResolved)
+        .count()
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -124,7 +136,7 @@ async fn run_suite(store: &dyn Store) {
 
     // A human accepts, with response content.
     let content = json!({ "ok": true, "note": "ship it" });
-    let resolved = store
+    let (resolved, resolved_event) = store
         .resolve_approval_gate(
             gate.id,
             human.id,
@@ -135,6 +147,22 @@ async fn run_suite(store: &dyn Store) {
         .expect("resolve")
         .expect("was pending");
     assert_eq!(resolved.state, ApprovalGateState::Accepted);
+    // The answer is announced in the same transaction, where the gate is.
+    assert_eq!(resolved_event.kind, EventKind::ApprovalResolved);
+    assert_eq!(resolved_event.workspace_id, Some(ws.id));
+    assert_eq!(resolved_event.channel_id, Some(channel.id));
+    assert_eq!(resolved_event.thread_id, Some(thread.id));
+    let event: Event = serde_json::from_value(resolved_event.payload).expect("event payload");
+    assert!(matches!(
+        event,
+        Event::ApprovalResolved {
+            gate_id,
+            state: ApprovalGateState::Accepted,
+            requested_by,
+            resolved_by,
+            ..
+        } if gate_id == gate.id && requested_by == requester.id && resolved_by == human.id
+    ));
     assert_eq!(resolved.content.as_ref(), Some(&content));
     assert_eq!(resolved.resolved_by, Some(human.id));
     assert!(resolved.resolved_at.is_some());
@@ -145,6 +173,8 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("second resolve ok");
     assert!(again.is_none(), "a resolved gate cannot be re-resolved");
+    // ...and a refused second answer announces nothing.
+    assert_eq!(resolved_events(store, ws.id).await, 1);
     // ...and the original outcome stands.
     assert_eq!(
         store
@@ -175,13 +205,16 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("create declined");
-    let d = store
+    let (d, d_event) = store
         .resolve_approval_gate(declined.id, human.id, ApprovalGateState::Declined, None)
         .await
         .expect("decline")
         .expect("was pending");
     assert_eq!(d.state, ApprovalGateState::Declined);
     assert!(d.thread_id.is_none());
+    // A gate on no thread is a workspace-level question, announced as one.
+    assert_eq!(d_event.workspace_id, Some(ws.id));
+    assert!(d_event.channel_id.is_none() && d_event.thread_id.is_none());
 
     let cancelled = store
         .create_approval_gate(&NewApprovalGate {
@@ -194,12 +227,49 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("create cancelled");
-    let c = store
+    let (c, _) = store
         .resolve_approval_gate(cancelled.id, human.id, ApprovalGateState::Cancelled, None)
         .await
         .expect("cancel")
         .expect("was pending");
     assert_eq!(c.state, ApprovalGateState::Cancelled);
+    assert_eq!(resolved_events(store, ws.id).await, 3);
+
+    // Another workspace's answer lands in that workspace's log only.
+    let away = store
+        .create_workspace(NewWorkspace {
+            name: "away".into(),
+        })
+        .await
+        .expect("away ws");
+    let stranger = store
+        .create_member(NewMember {
+            workspace_id: away.id,
+            handle: "stranger".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("stranger");
+    let away_gate = store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: away.id,
+            thread_id: None,
+            requested_by: stranger.id,
+            prompt: "Theirs?".into(),
+            schema: None,
+            risk: Default::default(),
+        })
+        .await
+        .expect("away gate");
+    let (_, away_event) = store
+        .resolve_approval_gate(away_gate.id, stranger.id, ApprovalGateState::Declined, None)
+        .await
+        .expect("away decline")
+        .expect("was pending");
+    assert_eq!(away_event.workspace_id, Some(away.id));
+    assert_eq!(resolved_events(store, away.id).await, 1);
+    assert_eq!(resolved_events(store, ws.id).await, 3);
 
     // Both resolved → the pending queue is empty again.
     assert!(store

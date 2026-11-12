@@ -239,8 +239,11 @@ async fn run_suite(store: &dyn Store) {
     let ConfirmOutcome::Accepted(resolved) = outcome else {
         panic!("expected accepted, got {outcome:?}");
     };
-    let resolved = *resolved;
+    let (resolved, event) = *resolved;
     assert_eq!(resolved.state, ApprovalGateState::Accepted);
+    // A confirmed accept is announced like any other answer.
+    assert_eq!(event.kind, maidan_types::EventKind::ApprovalResolved);
+    assert_eq!(event.workspace_id, Some(ws.id));
     assert_eq!(resolved.resolved_by, Some(approver.id));
     assert_eq!(resolved.decided_via, Some(via));
     assert_eq!(

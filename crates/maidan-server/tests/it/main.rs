@@ -56,6 +56,9 @@ mod approval_decide_e2e;
 #[path = "../approval_gate_e2e.rs"]
 mod approval_gate_e2e;
 
+#[path = "../approval_gate_rest_e2e.rs"]
+mod approval_gate_rest_e2e;
+
 #[path = "../artifact_e2e.rs"]
 mod artifact_e2e;
 

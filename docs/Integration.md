@@ -387,7 +387,8 @@ closed without review.
 **Approval gates.** When the work needs a person's decision, open a gate with
 `request_approval {"prompt": "Deploy to production?", "thread_id": "…"}`
 (REST `POST /workspaces/{wid}/approval-gates`). It returns at once with a
-`gate_id`; poll `get_approval_gate` for the answer. A gate tied to a thread
+`gate_id`; wait for the `approval_resolved` event, or poll `get_approval_gate`
+(REST `GET /approval-gates/{id}`) for the answer. A gate tied to a thread
 keeps that thread from being claimed until it resolves, but your lease keeps
 running, so renew or release around a long wait. An unanswered gate stays
 pending: silence is never consent.

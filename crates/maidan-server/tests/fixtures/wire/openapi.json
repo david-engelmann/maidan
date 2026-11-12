@@ -3461,6 +3461,7 @@
           "thread_cancelled",
           "thread_attributes_set",
           "approval_requested",
+          "approval_resolved",
           "thread_blocked",
           "blocked_resolved",
           "status_declared",
@@ -8616,6 +8617,42 @@
           }
         ],
         "description": "One repository's rollup. Unattended workers are given small and medium\nwork and sessions the risky work, so an engine comparison is read within a\nsize or a risk tier, not across the whole repository."
+      },
+      "RequestApprovalGate": {
+        "additionalProperties": false,
+        "description": "Open a durable human-approval gate: the REST twin of MCP\n`request_approval`. The gate is attributed to the caller; the body cannot\nname a requester. Unknown fields are refused: a misspelled `thread_id`\nwould otherwise open an unattached gate that holds nobody.",
+        "properties": {
+          "prompt": {
+            "description": "What needs approval, in words a person can decide on.",
+            "type": "string"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/ApprovalRisk",
+            "description": "How much a wrong accept would cost; `high` when omitted. The\nworkspace's approval policy reads it for a model's accept."
+          },
+          "schema": {
+            "description": "Optional JSON Schema for structured detail the person may supply with\ntheir decision. Kept on the gate.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "Optional thread to hold: while the gate is pending, `claim_next` does\nnot hand the thread to an agent. The caller must be able to read it\n(403 otherwise; 404 for an unknown thread)."
+              }
+            ]
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "type": "object"
       },
       "ResultDelivery": {
         "description": "One `(thread, target)` delivery's durable state.",
@@ -14200,7 +14237,7 @@
     "contact": {
       "name": "David Engelmann"
     },
-    "description": "The operating layer for teams of AI agents. A team of agents coordinates work, keeps a durable searchable record, and pulls exactly the context each step needs, so they do better work for fewer tokens. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).\n\nWebSocket GET /ws/subscribe: after upgrade, send one JSON text frame with `filter`, optional `after_id`, optional `resume_token` (replaces filter and after_id), and optional bearer `token` when auth is enabled. Control frames: `subscribe_ack` (resume_token + after_id watermark), `replay_hint`, `replay_truncated` (after_id + limit 500), then event envelopes with log_id.\n\nMCP SSE GET /mcp/stream: query workspace_id, after_id, or resume_token; narrow with channel_id, thread_id, member_id, and kinds (comma-separated snake_case event kinds, e.g. mention_recorded) so an agent can await just its mentions or one thread; same control frames; requires bearer event:subscribe.\nMCP SSE GET /mcp/notifications: JSON-RPC notifications (e.g. notifications/resources/updated); requires workspace:read.\nMCP JSON-RPC POST /mcp: one request or a top-level array as a batch; a notification (no `id`) is executed for effect and answered `202 Accepted` with no body. No session, ever. `POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed tool profile, the same bytes for every caller; a tool the token cannot call is refused at `tools/call`.\nMCP streamable HTTP POST /mcp/streamable: send `MCP-Protocol-Version: 2026-07-28` (the revision `initialize` negotiates by default) and the request lands cold and returns a single JSON-RPC response — no `Mcp-Session-Id` is minted or required. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route without parsing the body; when present they must agree with the body, else 400. One request per call here — batches go to POST /mcp. Omitting the version header falls back to `2024-11-05`, which is still fully supported and keeps the session model: an SSE-accepting POST opens the stream and returns `Mcp-Session-Id`, follow-up POSTs on that id return `202 Accepted` and multiplex their JSON-RPC results on the stream, frames carry an `id:` so GET /mcp/streamable with `Last-Event-ID` replays retained frames, and DELETE /mcp/streamable closes it. On either revision, `Accept: application/json` (no `text/event-stream`) gets a single JSON body. An unsupported `MCP-Protocol-Version` is a 400.\nThe server issues no sampling or roots requests, and asks for input in one place only: `approval_decide`, when a model asks to accept a gate that needs a person, returns a URL-mode elicitation (as an `input_required` result) to a `2026-07-28` client that declared `elicitation.url`, pointing at a one-time console link, and the link in its result to any other client. It never asks for form input. Human approval is a durable gate — the MCP `request_approval` tool returns `input_required` with a `gate_id` immediately, a human answers over POST /approval-gates/:id/answer or the `/ui`, and the agent polls `get_approval_gate`. Live waits ride GET /mcp/stream, the WebSocket, or the `wait_for_*` tools.\n\nGET /metrics: Prometheus exposition (HTTP latency + maidan_bus_lag_total, maidan_subscribe_replay_total, maidan_indexer_last_event_age_seconds, maidan_bus_listener_ok, maidan_bus_notify_hydrate_total, maidan_outbox_pending, maidan_outbox_quarantined, maidan_outbox_oldest_pending_seconds, maidan_outbox_relay_total{result} on Postgres). Fixed label cardinality only.",
+    "description": "The operating layer for teams of AI agents. A team of agents coordinates work, keeps a durable searchable record, and pulls exactly the context each step needs, so they do better work for fewer tokens. Human login uses OIDC + `maidan_session` cookie (see `auth` tag).\n\nWebSocket GET /ws/subscribe: after upgrade, send one JSON text frame with `filter`, optional `after_id`, optional `resume_token` (replaces filter and after_id), and optional bearer `token` when auth is enabled. Control frames: `subscribe_ack` (resume_token + after_id watermark), `replay_hint`, `replay_truncated` (after_id + limit 500), then event envelopes with log_id.\n\nMCP SSE GET /mcp/stream: query workspace_id, after_id, or resume_token; narrow with channel_id, thread_id, member_id, and kinds (comma-separated snake_case event kinds, e.g. mention_recorded) so an agent can await just its mentions or one thread; same control frames; requires bearer event:subscribe.\nMCP SSE GET /mcp/notifications: JSON-RPC notifications (e.g. notifications/resources/updated); requires workspace:read.\nMCP JSON-RPC POST /mcp: one request or a top-level array as a batch; a notification (no `id`) is executed for effect and answered `202 Accepted` with no body. No session, ever. `POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed tool profile, the same bytes for every caller; a tool the token cannot call is refused at `tools/call`.\nMCP streamable HTTP POST /mcp/streamable: send `MCP-Protocol-Version: 2026-07-28` (the revision `initialize` negotiates by default) and the request lands cold and returns a single JSON-RPC response — no `Mcp-Session-Id` is minted or required. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route without parsing the body; when present they must agree with the body, else 400. One request per call here — batches go to POST /mcp. Omitting the version header falls back to `2024-11-05`, which is still fully supported and keeps the session model: an SSE-accepting POST opens the stream and returns `Mcp-Session-Id`, follow-up POSTs on that id return `202 Accepted` and multiplex their JSON-RPC results on the stream, frames carry an `id:` so GET /mcp/streamable with `Last-Event-ID` replays retained frames, and DELETE /mcp/streamable closes it. On either revision, `Accept: application/json` (no `text/event-stream`) gets a single JSON body. An unsupported `MCP-Protocol-Version` is a 400.\nThe server issues no sampling or roots requests, and asks for input in one place only: `approval_decide`, when a model asks to accept a gate that needs a person, returns a URL-mode elicitation (as an `input_required` result) to a `2026-07-28` client that declared `elicitation.url`, pointing at a one-time console link, and the link in its result to any other client. It never asks for form input. Human approval is a durable gate — the MCP `request_approval` tool returns `input_required` with a `gate_id` immediately (POST /workspaces/:wid/approval-gates answers 201 with the pending gate), a human answers over POST /approval-gates/:id/answer or the `/ui`, and the agent waits for `approval_resolved` on the stream or polls `get_approval_gate` (GET /approval-gates/:id). Live waits ride GET /mcp/stream, the WebSocket, or the `wait_for_*` tools.\n\nGET /metrics: Prometheus exposition (HTTP latency + maidan_bus_lag_total, maidan_subscribe_replay_total, maidan_indexer_last_event_age_seconds, maidan_bus_listener_ok, maidan_bus_notify_hydrate_total, maidan_outbox_pending, maidan_outbox_quarantined, maidan_outbox_oldest_pending_seconds, maidan_outbox_relay_total{result} on Postgres). Fixed label cardinality only.",
     "license": {
       "name": "MIT OR Apache-2.0",
       "url": "https://github.com/david-engelmann/maidan"
@@ -14457,6 +14494,69 @@
         "summary": "Ingest events pushed by a federation peer",
         "tags": [
           "federation"
+        ]
+      }
+    },
+    "/approval-gates/{id}": {
+      "get": {
+        "description": "The REST twin of MCP `get_approval_gate`. Needs `workspace:read`. A gate in\nanother workspace, or on a thread the caller cannot read, is 404.",
+        "operationId": "get_approval_gate",
+        "parameters": [
+          {
+            "description": "Approval gate id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalGate"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get an approval gate",
+        "tags": [
+          "approval-gates"
         ]
       }
     },
@@ -40796,6 +40896,100 @@
           }
         ],
         "summary": "List a workspace's pending approval gates",
+        "tags": [
+          "approval-gates"
+        ]
+      },
+      "post": {
+        "description": "The REST twin of MCP `request_approval`: a `pending` gate attributed to\nthe caller. Needs `message:post`. A `thread_id` the caller cannot read is\n403, and an unknown one 404. Waiters learn the answer from `approval_resolved` on the event stream\nor by polling `GET /approval-gates/{id}`.",
+        "operationId": "request_approval_gate",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestApprovalGate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalGate"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Open an approval gate",
         "tags": [
           "approval-gates"
         ]

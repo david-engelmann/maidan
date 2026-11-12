@@ -401,6 +401,7 @@ fn attention_reason(event: &Event) -> Option<String> {
             ReviewDecision::Approve => "approved".into(),
         },
         Event::ApprovalRequested { .. } => "approval requested".into(),
+        Event::ApprovalResolved { state, .. } => format!("approval {}", state.as_str()),
         Event::WaitTimedOut { reason, .. } => match reason {
             Some(reason) => format!("wait timed out: {reason}"),
             None => "wait timed out".into(),

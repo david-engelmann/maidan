@@ -23,6 +23,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ThreadResultSet,
         EventKind::ThreadCancelled,
         EventKind::ApprovalRequested,
+        EventKind::ApprovalResolved,
         EventKind::BlockedResolved,
         EventKind::ClaimExpired,
         EventKind::ClaimFailed,

@@ -711,8 +711,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/approval-gates",
-            get(routes::list_approval_gates),
+            get(routes::list_approval_gates).merge(post(routes::request_approval_gate)),
         )
+        .route("/approval-gates/{id}", get(routes::get_approval_gate))
         .route(
             "/approval-gates/{id}/answer",
             post(routes::answer_approval_gate),
