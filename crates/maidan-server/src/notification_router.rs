@@ -909,11 +909,14 @@ async fn add_accessible_member_followers(
             .map_err(|e| e.to_string())?
         {
             let can_access = if let Some(thread_id) = thread_id {
-                let auth =
-                    maidan_auth::AuthContext::from_session(follower_id, workspace_id, vec![]);
-                maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
-                    .await
-                    .map_err(|e| e.to_string())?
+                maidan_auth::member_can_access_thread(
+                    state.store.as_ref(),
+                    workspace_id,
+                    follower_id,
+                    thread_id,
+                )
+                .await
+                .map_err(|e| e.to_string())?
             } else {
                 true
             };
@@ -939,8 +942,7 @@ async fn member_can_read_thread(
         Ok(_) | Err(maidan_store::StoreError::NotFound) => return Ok(false),
         Err(err) => return Err(err.to_string()),
     }
-    let auth = maidan_auth::AuthContext::from_session(member_id, workspace_id, vec![]);
-    maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
+    maidan_auth::member_can_access_thread(state.store.as_ref(), workspace_id, member_id, thread_id)
         .await
         .map_err(|e| e.to_string())
 }

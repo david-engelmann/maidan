@@ -42,7 +42,7 @@ pub async fn set_glossary_term(
             term: term.trim().to_string(),
             definition: body.definition,
             aliases: body.aliases.unwrap_or_default(),
-            created_by: auth.member_id,
+            created_by: auth.member_id(),
         })
         .await?;
     Ok(Json(saved))

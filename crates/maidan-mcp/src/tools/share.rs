@@ -26,7 +26,7 @@ pub(super) async fn create_share_ticket(
 ) -> Result<Value, McpError> {
     let a: CreateArgs = crate::tools::parse_args(args)?;
     let secret = ShareTicketSecret::generate();
-    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
+    let (actor, workspace_id) = (auth.actor_id(), auth.workspace_id());
     // The store rejects any SHA that is not lowercase hex, so the distinct
     // inputs are exactly what a successful create stores.
     let artifact_count = a
@@ -40,8 +40,8 @@ pub(super) async fn create_share_ticket(
             NewShareTicket {
                 workspace_id,
                 channel_id: ChannelId(a.channel_id),
-                owner_id: auth.member_id,
-                created_by: auth.member_id,
+                owner_id: auth.member_id(),
+                created_by: auth.member_id(),
                 token_hash: hash_secret(secret.as_str()),
                 expires_at: a.expires_at,
                 artifact_shas: a.artifact_shas,
@@ -75,7 +75,7 @@ pub(super) async fn list_share_tickets(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let tickets = server.store.list_share_tickets(auth.workspace_id).await?;
+    let tickets = server.store.list_share_tickets(auth.workspace_id()).await?;
     let mut response = Vec::with_capacity(tickets.len());
     for ticket in tickets {
         let artifact_shas = server.store.list_share_ticket_artifacts(ticket.id).await?;
@@ -100,15 +100,15 @@ pub(super) async fn revoke_share_ticket(
     if !server
         .store
         .revoke_share_ticket_audited(
-            auth.workspace_id,
+            auth.workspace_id(),
             ticket_id,
             NewAuditEvent {
-                scope: AuditScope::Workspace(auth.workspace_id),
-                actor_id: Some(auth.actor_id),
+                scope: AuditScope::Workspace(auth.workspace_id()),
+                actor_id: Some(auth.actor_id()),
                 action: "share_ticket.revoke".into(),
                 target_kind: Some("share_ticket".into()),
                 target_id: Some(ticket_id.0),
-                metadata: json!({ "workspace_id": auth.workspace_id.0 }),
+                metadata: json!({ "workspace_id": auth.workspace_id().0 }),
             },
         )
         .await?

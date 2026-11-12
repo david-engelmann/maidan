@@ -87,9 +87,9 @@ impl StreamLimit {
         if self.max == 0 || auth.bypass {
             return Ok(StreamSlot { _held: None });
         }
-        let credential = match auth.token_id {
+        let credential = match auth.token_id() {
             Some(token_id) => Credential::Token(token_id),
-            None => Credential::Member(auth.actor_id),
+            None => Credential::Member(auth.actor_id()),
         };
         // A poisoned lock still holds consistent counts: every writer changes
         // one entry by one.

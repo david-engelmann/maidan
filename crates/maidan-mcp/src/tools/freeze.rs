@@ -46,11 +46,11 @@ pub(super) async fn freeze_member(
     let member_id = MemberId(a.member_id);
     let workspace_id = ensure_same_workspace(store, auth, member_id).await?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
-    let actor = auth.actor_id;
+    let actor = auth.actor_id();
     let (freeze, released, stored) = store
         .freeze_member_audited(
             member_id,
-            auth.member_id,
+            auth.member_id(),
             reason,
             Box::new(move |(freeze, released)| maidan_types::NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
@@ -86,10 +86,10 @@ pub(super) async fn unfreeze_member(
     let stored = store
         .unfreeze_member_audited(
             member_id,
-            auth.member_id,
+            auth.member_id(),
             maidan_types::NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(auth.actor_id),
+                actor_id: Some(auth.actor_id()),
                 action: "member.unfreeze".into(),
                 target_kind: Some("member".into()),
                 target_id: Some(member_id.0),
@@ -109,6 +109,6 @@ pub(super) async fn list_frozen_members(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let frozen = store.list_frozen_members(auth.workspace_id).await?;
+    let frozen = store.list_frozen_members(auth.workspace_id()).await?;
     Ok(content_json(&frozen))
 }

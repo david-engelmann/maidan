@@ -7,7 +7,7 @@ use std::{
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret};
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewApiToken, NewWorkspace};
 use reqwest::StatusCode;
@@ -16,7 +16,7 @@ async fn spawn() -> (
     SocketAddr,
     reqwest::Client,
     tokio::task::JoinHandle<()>,
-    Arc<dyn Store>,
+    test_support::Tenant,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
@@ -32,13 +32,14 @@ async fn spawn() -> (
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let tenant = test_support::tenant(store.as_ref(), "ctx-ws").await;
     let mut state = AppState::new(
-        store.clone(),
+        store,
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
@@ -49,12 +50,12 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), server, store)
+    (addr, tenant.client(), server, tenant)
 }
 
 #[tokio::test]
 async fn well_known_and_workspace_context_respond() {
-    let (addr, client, server, store) = spawn().await;
+    let (addr, client, server, tenant) = spawn().await;
     let base = format!("http://{addr}");
 
     let well = client
@@ -85,15 +86,11 @@ async fn well_known_and_workspace_context_respond() {
         .unwrap();
     assert_eq!(card.status(), StatusCode::OK);
 
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "ctx-ws".into(),
-        })
-        .await
-        .unwrap();
-
     let ctx = client
-        .get(format!("{base}/workspaces/{}/context", ws.id.0))
+        .get(format!(
+            "{base}/workspaces/{}/context",
+            tenant.workspace_id.0
+        ))
         .send()
         .await
         .unwrap();

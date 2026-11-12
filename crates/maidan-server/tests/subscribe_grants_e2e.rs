@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::{router, subscribe_grants, AppState};
+use maidan_server::{router, subscribe_grants, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
 use tokio_tungstenite::{
@@ -15,7 +15,7 @@ use tokio_tungstenite::{
 
 async fn spawn() -> (
     std::net::SocketAddr,
-    reqwest::Client,
+    test_support::Tenant,
     tokio::task::JoinHandle<()>,
 ) {
     let pool = maidan_search::sqlite_pool_options()
@@ -29,6 +29,7 @@ async fn spawn() -> (
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "grants-ws").await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -37,35 +38,23 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, tenant, server)
 }
 
 #[tokio::test]
 async fn subscribe_denies_private_channel_without_grant() {
-    let (addr, client, server) = spawn().await;
+    let (addr, tenant, server) = spawn().await;
+    let client = tenant.client();
     let base = format!("http://{addr}");
     let ws_url = format!("ws://{addr}/ws/subscribe");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "grants-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
+    let workspace_id = tenant.workspace_id.0.to_string();
 
     let req = ws_url.clone().into_client_request().unwrap();
     let (mut socket, _resp) = connect_async(req).await.unwrap();
     socket
         .send(Message::Text(
             json!({
+                "token": tenant.token,
                 "filter": {
                     "workspace_id": workspace_id,
                     "channel_grants": []
@@ -146,6 +135,7 @@ async fn subscribe_denies_private_channel_without_grant() {
     socket2
         .send(Message::Text(
             json!({
+                "token": tenant.token,
                 "filter": {
                     "workspace_id": workspace_id,
                     "channel_id": private_id

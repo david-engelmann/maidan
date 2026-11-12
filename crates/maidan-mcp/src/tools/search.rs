@@ -72,7 +72,7 @@ pub(super) async fn search_messages(
     let reader_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     let filters = maidan_search::SearchFilters {
         author_id: a.author_id.map(maidan_types::MemberId),

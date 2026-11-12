@@ -125,7 +125,7 @@ pub async fn start_reindex_embeddings(
     let actor_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     let audit_workspace = workspace_id.map(|w| w.0);
     let mut job_clone = job.clone();

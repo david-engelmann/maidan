@@ -31,7 +31,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),

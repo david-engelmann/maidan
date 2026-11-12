@@ -52,7 +52,7 @@ struct KindCensusArgs {
 }
 
 fn workspace(auth: &AuthContext, id: Option<Uuid>) -> Result<WorkspaceId, McpError> {
-    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id.0));
+    let workspace_id = WorkspaceId(id.unwrap_or(auth.workspace_id().0));
     auth.ensure_workspace(workspace_id)?;
     Ok(workspace_id)
 }
@@ -71,7 +71,7 @@ pub(super) async fn list_tombstones(
     let reader_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     let rows = store
         .list_tombstones(
@@ -95,7 +95,7 @@ pub(super) async fn list_message_backlinks(
     let reader_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     let backlinks = store
         .list_message_backlinks(MessageId(a.message_id), reader_id)
@@ -115,7 +115,7 @@ pub(super) async fn get_kind_census(
     let reader_id = if auth.bypass {
         None
     } else {
-        Some(auth.member_id)
+        Some(auth.member_id())
     };
     let census = store
         .event_kind_census(

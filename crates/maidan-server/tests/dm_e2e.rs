@@ -8,13 +8,13 @@ use std::{
 
 use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, test_support, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::EventFilter;
+use maidan_types::{EventFilter, MemberKind};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
-async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
+async fn spawn() -> (SocketAddr, Arc<dyn Store>, tokio::task::JoinHandle<()>) {
     let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
@@ -35,65 +35,38 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        true,
+        false,
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
-    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    (addr, client, server)
+    (addr, store, server)
 }
 
 #[tokio::test]
 async fn dm_open_post_and_list_messages_round_trip() {
-    let (addr, client, server) = spawn().await;
+    let (addr, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "dm-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap();
-    let bob: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "bob", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let bob_id = bob["id"].as_str().unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "dm-ws").await;
+    let workspace_id = tenant.workspace_id.0;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let bob = tenant
+        .member(store.as_ref(), "bob", MemberKind::Agent)
+        .await;
+    let client = alice.client();
 
     let dm: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .header("maidan-test-member-id", alice_id)
-        .json(&json!({ "other_member_id": bob_id }))
+        .json(&json!({ "other_member_id": bob.member_id.0 }))
         .send()
         .await
         .unwrap()
@@ -104,7 +77,6 @@ async fn dm_open_post_and_list_messages_round_trip() {
 
     let msg: Value = client
         .post(format!("{base}/dm/{dm_id}/messages"))
-        .header("maidan-test-member-id", alice_id)
         .json(&json!({
             "body": "hello bob"
         }))
@@ -136,44 +108,18 @@ async fn dm_open_post_and_list_messages_round_trip() {
 
 #[tokio::test]
 async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
-    let (addr, client, server) = spawn().await;
+    let (addr, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "dm-ws-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let a: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "a", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let a_id = a["id"].as_str().unwrap();
-    let b: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "b", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let b_id = b["id"].as_str().unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "dm-ws-ws").await;
+    let workspace_id = tenant.workspace_id;
+    let a = tenant.member(store.as_ref(), "a", MemberKind::Human).await;
+    let b = tenant.member(store.as_ref(), "b", MemberKind::Human).await;
+    let client = a.client();
 
     let dm: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .header("maidan-test-member-id", a_id)
-        .json(&json!({ "other_member_id": b_id }))
+        .post(format!("{base}/workspaces/{}/dm", workspace_id.0))
+        .json(&json!({ "other_member_id": b.member_id.0 }))
         .send()
         .await
         .unwrap()
@@ -185,15 +131,14 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
     let (notify_tx, mut notify_rx) = tokio::sync::mpsc::channel::<String>(4);
     let ws_url = format!("ws://{addr}/ws/subscribe");
     let filter = EventFilter {
-        workspace_id: Some(maidan_types::WorkspaceId(
-            uuid::Uuid::parse_str(workspace_id).unwrap(),
-        )),
+        workspace_id: Some(workspace_id),
         dm_conversation_id: Some(maidan_types::DmConversationId(
             uuid::Uuid::parse_str(dm_id).unwrap(),
         )),
         ..Default::default()
     };
     let subscribe_frame = json!({
+        "token": a.token,
         "filter": filter,
         "after_id": 0
     });
@@ -238,7 +183,6 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
 
     let resp = client
         .post(format!("{base}/dm/{dm_id}/messages"))
-        .header("maidan-test-member-id", a_id)
         .json(&json!({ "body": "via dm filter" }))
         .send()
         .await

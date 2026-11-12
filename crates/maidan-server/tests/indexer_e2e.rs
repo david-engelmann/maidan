@@ -6,9 +6,9 @@ use std::{sync::Arc, time::Duration};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus};
 use maidan_search::{Indexer, LoggingHandler, SqliteSearch};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::EventKind;
+use maidan_types::{EventKind, MemberKind};
 use serde_json::{json, Value};
 
 #[tokio::test]
@@ -24,6 +24,10 @@ async fn http_post_drives_indexer() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "idx").await;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -37,32 +41,9 @@ async fn http_post_drives_indexer() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
-
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "idx"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
+    let workspace_id = tenant.workspace_id.0;
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
         .json(&json!({"name": "general"}))
@@ -83,9 +64,9 @@ async fn http_post_drives_indexer() {
         .await
         .unwrap();
     let thread_id = th["id"].as_str().unwrap().to_string();
-    let _: Value = client
+    let _: Value = alice
+        .client()
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .header("maidan-test-member-id", &alice_id)
         .json(&json!({"body": "hello"}))
         .send()
         .await

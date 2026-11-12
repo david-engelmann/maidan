@@ -1,21 +1,29 @@
 //! End-to-end test for `GET /workspaces/:wid/search` and the MCP
 //! `search_messages` tool. Both share `Arc<dyn Search>` in AppState.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_search::SqliteSearch;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::MemberKind;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+
+/// The workspace a test searches, and its author's client.
+struct Corpus {
+    workspace_id: String,
+    alice: reqwest::Client,
+}
 
 async fn spawn() -> (
     std::net::SocketAddr,
     reqwest::Client,
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
+    Corpus,
 ) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
@@ -28,6 +36,14 @@ async fn spawn() -> (
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let tenant = test_support::tenant(store.as_ref(), "search-ws").await;
+    let alice = tenant
+        .member(store.as_ref(), "alice", MemberKind::Human)
+        .await;
+    let corpus = Corpus {
+        workspace_id: tenant.workspace_id.0.to_string(),
+        alice: alice.client(),
+    };
     let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -37,35 +53,15 @@ async fn spawn() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    (addr, client, server, dir)
+    (addr, tenant.client(), server, dir, corpus)
 }
 
-async fn seed_corpus(client: &reqwest::Client, base: &str) -> (String, String, String) {
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "search-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap().to_string();
-
-    let alice: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "alice", "kind": "human"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let alice_id = alice["id"].as_str().unwrap().to_string();
+async fn seed_corpus(
+    client: &reqwest::Client,
+    base: &str,
+    corpus: &Corpus,
+) -> (String, String, String) {
+    let workspace_id = corpus.workspace_id.clone();
 
     let ch: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/channels"))
@@ -95,9 +91,9 @@ async fn seed_corpus(client: &reqwest::Client, base: &str) -> (String, String, S
         "the deployment shipped without rust",
         "rollback the deployment immediately",
     ] {
-        let _: Value = client
+        let _: Value = corpus
+            .alice
             .post(format!("{base}/threads/{thread_id}/messages"))
-            .header("maidan-test-member-id", &alice_id)
             .json(&json!({"body": body}))
             .send()
             .await
@@ -112,10 +108,10 @@ async fn seed_corpus(client: &reqwest::Client, base: &str) -> (String, String, S
 
 #[tokio::test]
 async fn http_search_returns_ranked_hits() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, corpus) = spawn().await;
     let base = format!("http://{addr}");
 
-    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+    let (workspace_id, _, _) = seed_corpus(&client, &base, &corpus).await;
 
     let hits: Vec<Value> = client
         .get(format!("{base}/workspaces/{workspace_id}/search?q=rust"))
@@ -166,9 +162,9 @@ async fn http_search_returns_ranked_hits() {
 
 #[tokio::test]
 async fn http_search_snippet_only_drops_bodies_and_keeps_snippets() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, corpus) = spawn().await;
     let base = format!("http://{addr}");
-    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+    let (workspace_id, _, _) = seed_corpus(&client, &base, &corpus).await;
 
     // Default: full bodies present.
     let full: Vec<Value> = client
@@ -203,10 +199,10 @@ async fn http_search_snippet_only_drops_bodies_and_keeps_snippets() {
 
 #[tokio::test]
 async fn http_search_accepts_author_channel_and_kind_facets() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, corpus) = spawn().await;
     let base = format!("http://{addr}");
 
-    let (workspace_id, channel_id, _) = seed_corpus(&client, &base).await;
+    let (workspace_id, channel_id, _) = seed_corpus(&client, &base, &corpus).await;
 
     let hits: Vec<serde_json::Value> = client
         .get(format!(
@@ -249,9 +245,9 @@ async fn http_search_accepts_author_channel_and_kind_facets() {
 
 #[tokio::test]
 async fn mcp_search_messages_tool_works() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, corpus) = spawn().await;
     let base = format!("http://{addr}");
-    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+    let (workspace_id, _, _) = seed_corpus(&client, &base, &corpus).await;
 
     let resp: Value = client
         .post(format!("{base}/mcp"))
@@ -317,9 +313,9 @@ async fn mcp_search_messages_tool_works() {
 /// to save tokens — parity with REST.
 #[tokio::test]
 async fn mcp_search_messages_snippet_only_drops_bodies() {
-    let (addr, client, server, _dir) = spawn().await;
+    let (addr, client, server, _dir, corpus) = spawn().await;
     let base = format!("http://{addr}");
-    let (workspace_id, _, _) = seed_corpus(&client, &base).await;
+    let (workspace_id, _, _) = seed_corpus(&client, &base, &corpus).await;
 
     let resp: Value = client
         .post(format!("{base}/mcp"))

@@ -42,7 +42,7 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
 }
 
 fn multipart_scope(auth: &AuthContext) -> Option<uuid::Uuid> {
-    (!auth.bypass).then_some(auth.workspace_id.0)
+    (!auth.bypass).then_some(auth.workspace_id().0)
 }
 
 fn map_artifact(err: maidan_artifacts::ArtifactError) -> McpError {
@@ -161,7 +161,7 @@ pub(super) async fn complete_artifact_multipart(
     // upload's bytes go unless another workspace holds them.
     if let Err(refused) = ensure_media_quota(server, auth, a.kind, &sha.to_hex(), bytes.len()).await
     {
-        reap_if_orphaned(server, auth.workspace_id, &sha).await;
+        reap_if_orphaned(server, auth.workspace_id(), &sha).await;
         return Err(refused);
     }
     let (artifact, stored) = upsert_uploaded_artifact(
@@ -173,7 +173,7 @@ pub(super) async fn complete_artifact_multipart(
             mime_type: a.mime_type,
             filename: None,
             kind: a.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
         },
     )
     .await?;
@@ -241,7 +241,7 @@ pub(super) async fn upload_artifact(
             mime_type: a.mime_type,
             filename: None,
             kind: a.kind,
-            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+            uploaded_by: (!auth.bypass).then_some(auth.member_id()),
         },
     )
     .await?;
@@ -286,7 +286,7 @@ pub(super) async fn get_artifact_metadata(
         store.get_artifact_by_sha(&a.sha256).await?
     } else {
         store
-            .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
+            .get_artifact_for_workspace(auth.workspace_id(), &a.sha256)
             .await?
     };
     Ok(content_json(&artifact))
@@ -311,7 +311,7 @@ pub(super) async fn get_artifact(
     } else {
         server
             .store
-            .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
+            .get_artifact_for_workspace(auth.workspace_id(), &a.sha256)
             .await?
     };
     let bytes = server
@@ -342,7 +342,7 @@ async fn ensure_media_quota(
     let upload_bytes = i64::try_from(upload_bytes).unwrap_or(i64::MAX);
     match maidan_store::media_retention::check_media_quota(
         server.store.as_ref(),
-        auth.workspace_id,
+        auth.workspace_id(),
         &server.instance_retention(),
         kind,
         sha256,
@@ -368,7 +368,7 @@ pub(super) fn refuse_stored_bytes(
     server
         .store
         .usage_meters()
-        .refuse(auth.workspace_id, UsageMeter::StoredBytes)
+        .refuse(auth.workspace_id(), UsageMeter::StoredBytes)
         .map_err(McpError::from)
 }
 
@@ -381,7 +381,7 @@ pub(super) async fn upsert_uploaded_artifact(
     auth: &AuthContext,
     new: NewArtifact,
 ) -> Result<(Artifact, StoredEvent), McpError> {
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id());
     let sha = maidan_artifacts::Sha256::from_hex(&new.sha256).ok();
     match server
         .store
@@ -390,7 +390,7 @@ pub(super) async fn upsert_uploaded_artifact(
     {
         Err(refused @ maidan_store::StoreError::OverAllowance(_)) => {
             if let Some(sha) = sha {
-                reap_if_orphaned(server, auth.workspace_id, &sha).await;
+                reap_if_orphaned(server, auth.workspace_id(), &sha).await;
             }
             Err(refused.into())
         }
@@ -494,7 +494,7 @@ mod stored_bytes_cutoff_tests {
         f.server
             .store
             .usage_meters()
-            .set_cut_off([(f.cut.workspace_id, UsageMeter::StoredBytes)]);
+            .set_cut_off([(f.cut.workspace_id(), UsageMeter::StoredBytes)]);
     }
 
     fn new_artifact(sha: &Sha256, auth: &AuthContext, len: usize) -> NewArtifact {
@@ -504,7 +504,7 @@ mod stored_bytes_cutoff_tests {
             mime_type: None,
             filename: None,
             kind: ArtifactKind::Attachment,
-            uploaded_by: Some(auth.member_id),
+            uploaded_by: Some(auth.member_id()),
         }
     }
 
@@ -597,7 +597,7 @@ mod stored_bytes_cutoff_tests {
         );
         let part = json!({
             "upload_id": "up",
-            "object_key": format!("multipart/{}/{}", f.cut.workspace_id.0, uuid::Uuid::now_v7()),
+            "object_key": format!("multipart/{}/{}", f.cut.workspace_id().0, uuid::Uuid::now_v7()),
             "part_number": 1,
             "content_base64": "",
         });
@@ -617,7 +617,7 @@ mod stored_bytes_cutoff_tests {
             "e3/b0/c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
             format!(
                 "multipart/{}/{}",
-                f.other.workspace_id.0,
+                f.other.workspace_id().0,
                 uuid::Uuid::now_v7()
             ),
             format!("multipart/{}", uuid::Uuid::now_v7()),

@@ -203,9 +203,9 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     let ctx = maidan_auth::resolve_bearer(h.store.as_ref(), app_secret)
         .await
         .expect("app bearer resolves");
-    assert!(ctx.app_installation_id.is_some());
+    assert!(ctx.app_installation_id().is_some());
     // The minted token expires: 24 hours from now, not never.
-    let token_id = ctx.token_id.expect("a bearer");
+    let token_id = ctx.token_id().expect("a bearer");
     let record = h.store.get_api_token(token_id).await.unwrap();
     let expires = record.expires_at.expect("app OAuth token has an expiry");
     assert!(
@@ -223,12 +223,12 @@ async fn oauth_authorize_then_exchange_is_single_use() {
         rows.iter().any(|row| {
             row.action == "app_token.mint"
                 && row.actor_id.is_none()
-                && row.target_id == Some(ctx.token_id.expect("a bearer").0)
+                && row.target_id == Some(ctx.token_id().expect("a bearer").0)
         })
     };
     let own = h
         .store
-        .list_audit_for_workspace(ctx.workspace_id, 50)
+        .list_audit_for_workspace(ctx.workspace_id(), 50)
         .await
         .unwrap();
     assert!(minted(&own), "the mint is in its workspace's view: {own:?}");

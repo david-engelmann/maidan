@@ -111,6 +111,8 @@ pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
 pub mod suspension;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod thread_context;
 pub mod trace_context;
 pub mod trace_redaction;

@@ -1,9 +1,9 @@
 //! Artifact upload/download HTTP round-trip.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use maidan_artifacts::LocalFsStore;
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
 
@@ -26,15 +26,13 @@ async fn upload_and_download_artifact_round_trip() {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let tenant = test_support::tenant(store.as_ref(), "acme").await;
     let app = router(AppState::for_tests(store, artifacts, bus, search));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let payload = b"screenshot bytes for cluster e";

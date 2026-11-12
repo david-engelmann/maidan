@@ -6,9 +6,9 @@ use std::time::Duration;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_search::{hash_embedding, model_name, sqlite_pool_options, Search, SqliteSearch};
-use maidan_server::{router, AppState};
+use maidan_server::{router, test_support, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
+use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread};
 
 #[tokio::test]
 async fn operator_reindex_job_indexes_workspace_messages() {
@@ -25,15 +25,10 @@ async fn operator_reindex_job_indexes_workspace_messages() {
 
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
-    let ws = store
-        .create_workspace(NewWorkspace {
-            name: "reindex-job".into(),
-        })
-        .await
-        .unwrap();
+    let tenant = test_support::tenant(store.as_ref(), "reindex-job").await;
     let member = store
         .create_member(NewMember {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             handle: "bot".into(),
             display_name: None,
             kind: MemberKind::Agent,
@@ -42,7 +37,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
         .unwrap();
     let ch = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: tenant.workspace_id,
             name: "general".into(),
             topic: None,
             private: false,
@@ -84,15 +79,12 @@ async fn operator_reindex_job_indexes_workspace_messages() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
+    let client = tenant.client();
     let base = format!("http://{addr}");
 
     let started: serde_json::Value = client
         .post(format!("{base}/operator/reindex-embeddings"))
-        .json(&serde_json::json!({ "workspace_id": ws.id.0 }))
+        .json(&serde_json::json!({ "workspace_id": tenant.workspace_id.0 }))
         .send()
         .await
         .unwrap()
@@ -124,7 +116,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
 
     let hits = search
         .semantic_search(
-            ws.id,
+            tenant.workspace_id,
             &hash_embedding(body),
             5,
             &maidan_search::SearchFilters::default(),
