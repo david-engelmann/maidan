@@ -18,7 +18,7 @@ mod source_scan;
 
 use std::path::Path;
 
-use source_scan::{rust_files, without_tests};
+use source_scan::{rust_files, test_only_modules, without_tests};
 
 /// Modules that never run inside a request, each with why.
 const BACKGROUND: &[(&str, &str)] = &[
@@ -55,6 +55,8 @@ fn request_serving_code_spawns_only_inside_its_attribution_scope() {
     for dir in &roots {
         rust_files(dir, &mut files);
     }
+    let test_only = test_only_modules(&files);
+    files.retain(|f| !test_only.contains(f));
     assert!(files.len() > 100, "found only {} source files", files.len());
 
     for (name, _) in BACKGROUND {

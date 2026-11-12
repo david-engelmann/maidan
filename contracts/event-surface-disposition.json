@@ -17,14 +17,14 @@
     "kind": "artifact_upserted",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/artifact_e2e.rs#upload_and_download_artifact_round_trip",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_artifact_tools_enforce_tenant_isolation",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/access.rs#mcp_artifact_tools_enforce_tenant_isolation",
     "note": "Single-shot and multipart uploads atomically upsert metadata, record access, and append the global artifact event on both surfaces."
   },
   {
     "kind": "blocked_resolved",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_block_e2e.rs#blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#block_tools_park_a_thread_from_dispatch",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/claims.rs#block_tools_park_a_thread_from_dispatch",
     "note": "Clearing an explicit dispatch block is available over REST and MCP."
   },
   {
@@ -38,14 +38,14 @@
     "kind": "claim_expired",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_assignment_e2e.rs#assign_claim_unassign_and_emit_events_over_rest",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_claim_next_reclaim_emits_claim_expired_then_assignment",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/claims.rs#mcp_claim_next_reclaim_emits_claim_expired_then_assignment",
     "note": "Claim-next reclaim uses the same expiry-aware store operation on both surfaces."
   },
   {
     "kind": "claim_failed",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/budget_enforce_e2e.rs#report_usage_over_budget_stops_and_dead_letters",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#budget_tools_set_report_and_dlq",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/threads.rs#budget_tools_set_report_and_dlq",
     "note": "Usage reporting can exhaust a claimed thread over REST or MCP."
   },
   {
@@ -64,7 +64,7 @@
     "kind": "member_frozen",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/freeze_rest_e2e.rs#a_freeze_is_announced_to_its_own_workspace_only",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#freeze_tools_freeze_unfreeze_and_list",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/access.rs#freeze_tools_freeze_unfreeze_and_list",
     "note": "REST and MCP freezes share freeze_member_audited, which appends the event with the freeze and its audit row."
   },
   {
@@ -77,7 +77,7 @@
     "kind": "member_unfrozen",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/freeze_rest_e2e.rs#a_freeze_is_announced_to_its_own_workspace_only",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#freeze_tools_freeze_unfreeze_and_list",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/access.rs#freeze_tools_freeze_unfreeze_and_list",
     "note": "Only an unfreeze that lifts a freeze appends it; a no-op unfreeze records nothing on either surface."
   },
   {
@@ -108,35 +108,35 @@
     "kind": "memory_block_updated",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/memory_block_rest_e2e.rs#memory_blocks_over_http",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#memory_block_tools_create_read_rewrite_and_attach",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/workspace.rs#memory_block_tools_create_read_rewrite_and_attach",
     "note": "Rewriting a memory block publishes the same update event over REST and MCP."
   },
   {
     "kind": "mention_recorded",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/post_mention_routing_e2e.rs#post_message_routes_at_handles_and_skips_plain_posts",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "Explicit and parsed mentions are emitted from message posts on both surfaces."
   },
   {
     "kind": "message_edited",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/http_crud_e2e.rs#sqlite_backend",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_edit_message_appends_messageedited_event",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_edit_message_appends_messageedited_event",
     "note": "Both edit surfaces append MessageEdited."
   },
   {
     "kind": "message_pinned",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/reactions_pins_e2e.rs#reaction_and_pin_http_flow",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "Both pin surfaces use pin_message_with_event."
   },
   {
     "kind": "message_posted",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/event_emission_e2e.rs#http_mutations_publish_matching_events",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "REST and MCP message posts share atomic message/event writes."
   },
   {
@@ -149,7 +149,7 @@
     "kind": "message_unpinned",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/reactions_pins_e2e.rs#reaction_and_pin_http_flow",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "A real unpin emits on REST and MCP; idempotent no-ops do not."
   },
   {
@@ -162,21 +162,21 @@
     "kind": "reaction_added",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/reactions_pins_e2e.rs#reaction_and_pin_http_flow",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "Both social-write surfaces use add_reaction_with_event."
   },
   {
     "kind": "reaction_removed",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/reactions_pins_e2e.rs#reaction_and_pin_http_flow",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "A real removal emits on REST and MCP; idempotent no-ops do not."
   },
   {
     "kind": "reference_added",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/references_reverse_e2e.rs#references_query_by_source_target_and_relation",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "REST and MCP reference writers share add_reference_with_event."
   },
   {
@@ -189,7 +189,7 @@
     "kind": "review_submitted",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/review_signals_e2e.rs#a_change_request_notifies_the_last_worker_and_stays_in_its_workspace",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#submit_review_tool_publishes_review_submitted",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/reviews.rs#submit_review_tool_publishes_review_submitted",
     "note": "REST and MCP reviews share submit_review, which appends the verdict event in the review's transaction; the critical-review adapter uses it too."
   },
   {
@@ -202,21 +202,21 @@
     "kind": "status_declared",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/declare_status_e2e.rs#a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_workspace",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#status_tools_declare_read_back_and_log_status_declared",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/threads.rs#status_tools_declare_read_back_and_log_status_declared",
     "note": "An agent declares its own status on a thread over REST (PUT /threads/:id/status) or MCP (declare_status); each declaration emits StatusDeclared."
   },
   {
     "kind": "thread_assignment_changed",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_assignment_e2e.rs#assign_claim_unassign_and_emit_events_over_rest",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_claim_next_reclaim_emits_claim_expired_then_assignment",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/claims.rs#mcp_claim_next_reclaim_emits_claim_expired_then_assignment",
     "note": "Assignment, claim, release, and reclaim exist on both public surfaces."
   },
   {
     "kind": "thread_blocked",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_block_e2e.rs#blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#block_tools_park_a_thread_from_dispatch",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/claims.rs#block_tools_park_a_thread_from_dispatch",
     "note": "Setting an explicit dispatch block is available over REST and MCP; emits ThreadBlocked."
   },
   {
@@ -255,49 +255,49 @@
     "kind": "thread_ready",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_ready_e2e.rs#closing_last_dependency_publishes_thread_ready",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#transition_thread_tool_advances_fsm_and_honors_gates",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/reviews.rs#transition_thread_tool_advances_fsm_and_honors_gates",
     "note": "A terminal transition can unblock a dependent through either transition surface."
   },
   {
     "kind": "thread_result_set",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_result_e2e.rs#set_get_result_over_http_and_event",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#result_tools_set_get_wait_and_aggregate",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/results.rs#result_tools_set_get_wait_and_aggregate",
     "note": "REST and MCP result writers share the eventing store operation."
   },
   {
     "kind": "thread_spawn_denied",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/spawn_denied_event_e2e.rs#a_refused_spawn_publishes_thread_spawn_denied",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#a_refused_tool_post_publishes_thread_spawn_denied",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#a_refused_tool_post_publishes_thread_spawn_denied",
     "note": "Spawn-budget rejection is observed by both message/thread creation paths."
   },
   {
     "kind": "thread_state_changed",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_transition_e2e.rs#transition_thread_publishes_thread_state_changed",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#transition_thread_tool_advances_fsm_and_honors_gates",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/reviews.rs#transition_thread_tool_advances_fsm_and_honors_gates",
     "note": "REST and MCP share the FSM transition store operation."
   },
   {
     "kind": "usage_reported",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/budget_enforce_e2e.rs#report_usage_over_budget_stops_and_dead_letters",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#budget_tools_set_report_and_dlq",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/threads.rs#budget_tools_set_report_and_dlq",
     "note": "REST and MCP both publish the accepted, claim-fenced usage event; exact retries publish nothing."
   },
   {
     "kind": "vote_cast",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/vote_confidence_e2e.rs#vote_confidence_round_trips_and_validates",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "Both social-write surfaces use cast_vote_with_event."
   },
   {
     "kind": "vote_retracted",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/vote_integrity_e2e.rs#a_member_holds_one_verdict_and_can_take_it_back",
-    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "mcp_evidence": "crates/maidan-mcp/src/server/tests/events.rs#mcp_write_tools_emit_domain_events",
     "note": "A retract, or a verdict that replaces the member's opposing one, appends it in the vote's own transaction."
   },
   {
