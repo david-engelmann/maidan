@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [453.0.0] — 2026-11-13
+
+This release carries 4 changes: the console passes the React Compiler's checks; a board card's name starts with the words it shows; quinn advisories; a copy button's name starts with the word it shows.
+
+### The console passes the React Compiler's checks
+
+- **Changed:** `eslint-plugin-react-hooks` moves to 7.1.1, and the console no longer sets state from an effect where it can derive it, reads refs from closures built during render, assigns `location` from a memo, or calls `Date.now()` while rendering.
+- **Fixed:** In Needs you, retrying a review's evidence ignores a late answer from the earlier try, and an answer for one task can no longer land on another.
+- **Fixed:** A conversation left open overnight turns its "Today" separator into "Yesterday" at midnight, not at the next message.
+- **Fixed:** The command palette shows a workspace's saved channels and people in the first render after a switch, and a new search query shows "Searching…" without a stale result render first.
+
+### A board card's name starts with the words it shows
+
+- **Fixed:** A task card on the board no longer replaces its visible text with an `aria-label`. Its accessible name is the title and details it shows, followed by hidden words for its state: stalled, waiting on a person, close refused, and the votes. A screen reader and a voice-control user now name the card with the same words (WCAG 2.5.3) (#2273).
+- **Changed:** The console and landing move to React 19.3, Vite 7.3.8 and motion 12.43, and the UI tests to Playwright 1.65 and axe 4.14. `eslint-plugin-react-hooks` stays at 7.0.1 until the console's React Compiler findings from 7.1 are fixed (#2273).
+
+### quinn advisories
+
+- **Security:** `quinn-proto` moves to 0.11.19 and `quinn-udp` to 0.5.16 in the root and fuzz lockfiles, clearing RUSTSEC-2026-0523, RUSTSEC-2026-0524 and RUSTSEC-2026-0538. Of the new versions, only `quinn-proto` 0.11.19 needs a `cargo vet` exemption until an imported audit covers it. Imported audits cover the rest, including the `rand` 0.10, `rand_pcg` 0.10 and `chacha20` 0.10 it brings in (#2283).
+
+### A copy button's name starts with the word it shows
+
+- **Fixed:** The code block's Copy button and the catalog's Copy name button no longer put an `aria-label` over their visible words. Their names are what they show plus hidden context ("Copy code", "Copied code", "Copy name of this tool", "Copied tool name"), so after a copy the name still contains the "Copied" a voice-control user sees (WCAG 2.5.3).
+
 ## [452.0.0] — 2026-11-13
 
 This release carries one change: the landing's illustrations show the product working.
