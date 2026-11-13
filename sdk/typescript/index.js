@@ -306,11 +306,20 @@ export class Client {
       list: (tid) => this._req("GET", `/threads/${tid}/reviews`),
       status: (tid) => this._req("GET", `/threads/${tid}/review-status`),
     };
-    // Approval gates, the human side: the pending gates (each with the
+    // Approval gates: open one and read it back (wait for its answer with
+    // `waitForApprovalDecision`), the pending gates (each with the
     // `request_state` an answer must echo) and the answer. Accepting needs a
     // person's signed-in session or `approval:grant`, and nobody accepts a gate
-    // they asked for. A gate is opened over MCP (`request_approval`).
+    // they asked for.
     this.approvalGates = {
+      request: (wid, prompt, opts = {}) =>
+        this._req("POST", `/workspaces/${wid}/approval-gates`, {
+          prompt,
+          ...(opts.schema === undefined ? {} : { schema: opts.schema }),
+          ...(opts.threadId === undefined ? {} : { thread_id: opts.threadId }),
+          ...(opts.risk === undefined ? {} : { risk: opts.risk }),
+        }),
+      get: (gateId) => this._req("GET", `/approval-gates/${gateId}`),
       list: (wid) => this._req("GET", `/workspaces/${wid}/approval-gates`),
       answer: (gateId, requestState, action, opts = {}) =>
         this._req("POST", `/approval-gates/${gateId}/answer`, {
@@ -636,7 +645,7 @@ export class Client {
   }
 
   /** Resolve with the first event whose `kind` matches, or null after `timeoutMs`. */
-  _waitForKind(filter, kind, timeoutMs = 30000) {
+  _waitForKind(filter, kind, timeoutMs = 30000, match = undefined) {
     return new Promise((resolve, reject) => {
       let handle;
       const timer = setTimeout(() => {
@@ -646,6 +655,7 @@ export class Client {
       this.subscribe(
         { ...filter, kinds: [kind] },
         (event) => {
+          if (match && !match(event)) return;
           clearTimeout(timer);
           if (handle) handle.close();
           resolve(event);
@@ -674,6 +684,19 @@ export class Client {
   /** The next `approval_requested` event in the workspace, or null after `timeoutMs`. */
   waitForApprovalRequest(workspaceId, timeoutMs) {
     return this._waitForKind({ workspace_id: workspaceId }, "approval_requested", timeoutMs);
+  }
+  /**
+   * The `approval_resolved` event for `gateId`, or null after `timeoutMs`.
+   * Only an answer given after the wait starts is heard; read a gate that may
+   * already be answered with `approvalGates.get`.
+   */
+  waitForApprovalDecision(gateId, workspaceId, timeoutMs) {
+    return this._waitForKind(
+      { workspace_id: workspaceId },
+      "approval_resolved",
+      timeoutMs,
+      (event) => event.gate_id === gateId,
+    );
   }
 }
 

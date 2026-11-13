@@ -173,7 +173,10 @@ async fn refused(response: reqwest::Response) -> (i64, i64, i64) {
 #[tokio::test]
 async fn with_the_quota_unset_an_upload_past_the_default_is_refused() {
     // SAFETY: only removes the variable; no test in this binary sets it.
-    unsafe { std::env::remove_var("MAIDAN_MEDIA_QUOTA_BYTES") };
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::remove_var("MAIDAN_MEDIA_QUOTA_BYTES")
+    };
     let ctx = spawn().await;
     let (full, tok_full) = workspace_with_token(&ctx, "acme").await;
     let (_other, tok_other) = workspace_with_token(&ctx, "other").await;

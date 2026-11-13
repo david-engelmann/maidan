@@ -588,6 +588,7 @@ mod emails_verified_env_tests {
     /// so setting these variables races no other reader in the process.
     fn emails_verified_with(value: Option<&str>) -> Option<bool> {
         // SAFETY: no other test in this binary reads these variables.
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
         unsafe {
             std::env::set_var("MAIDAN_OIDC_ENABLED", "1");
             std::env::set_var("MAIDAN_OIDC_MOCK", "1");
@@ -622,6 +623,7 @@ mod emails_verified_env_tests {
         for off in ["0", "false", "yes", ""] {
             assert_eq!(emails_verified_with(Some(off)), Some(false), "{off}");
         }
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
         unsafe {
             for name in [
                 "MAIDAN_OIDC_ENABLED",

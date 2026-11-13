@@ -61,6 +61,11 @@ var parityCalls = map[string]func(c *Client) error{
 	"reviews.list":        func(c *Client) error { _, err := c.Reviews.List("t1"); return err },
 	"reviews.status":      func(c *Client) error { _, err := c.Reviews.Status("t1"); return err },
 	"approval_gates.list": func(c *Client) error { _, err := c.ApprovalGates.List("w1"); return err },
+	"approval_gates.request": func(c *Client) error {
+		_, err := c.ApprovalGates.Request("w1", "Ship the release?", &ApprovalRequestOptions{ThreadID: "t1", Risk: "high"})
+		return err
+	},
+	"approval_gates.get": func(c *Client) error { _, err := c.ApprovalGates.Get("g1"); return err },
 	"approval_gates.answer": func(c *Client) error {
 		_, err := c.ApprovalGates.Answer("g1", "ab12", "decline", nil)
 		return err

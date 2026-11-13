@@ -779,7 +779,10 @@ mod tests {
 
     #[test]
     fn the_private_escape_hatch_still_bounds_the_url() {
-        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+        };
         assert!(matches!(
             validate_egress_target(&format!(
                 "http://10.0.0.5/{}",
@@ -792,7 +795,10 @@ mod tests {
             Err(EgressTargetError::InvalidUrl)
         ));
         assert!(validate_egress_target("http://10.0.0.5/x").is_ok());
-        unsafe { std::env::remove_var("MAIDAN_ALLOW_PRIVATE_EGRESS") };
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::remove_var("MAIDAN_ALLOW_PRIVATE_EGRESS")
+        };
     }
 
     #[test]

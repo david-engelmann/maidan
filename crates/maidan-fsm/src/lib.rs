@@ -4,6 +4,8 @@
 //! state or [`InvalidTransition`]. Persistence and HTTP wiring live in
 //! `maidan-store` and `maidan-server` (Cluster D.3).
 
+#![forbid(unsafe_code)]
+
 pub mod hsm;
 
 use maidan_types::ThreadState;

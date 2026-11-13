@@ -7,8 +7,9 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use maidan::{
-    ArtifactKind, Channel, Client, Footprint, FootprintItem, FootprintKind, FootprintMode,
-    ImportMode, MaidanError, MemberKind, Thread, ThreadState, PROBLEM_BASE,
+    ApprovalGateState, ApprovalRequestOptions, ArtifactKind, Channel, Client, Footprint,
+    FootprintItem, FootprintKind, FootprintMode, ImportMode, MaidanError, MemberKind, Thread,
+    ThreadState, PROBLEM_BASE,
 };
 use serde_json::{json, Value};
 
@@ -645,5 +646,81 @@ fn a_footprint_and_a_threads_reviews_stay_in_their_workspace() {
         c.threads().get_footprint(&thread.id).unwrap(),
         stored,
         "a refused write changed the footprint"
+    );
+}
+
+/// `approval_gates().request` opens a pending gate that `get` reads back, a
+/// second workspace cannot read it, its requester cannot accept it, and
+/// `wait_for_approval_decision` hears the answer.
+#[test]
+fn a_gate_opened_over_rest_reads_back_and_its_answer_is_heard() {
+    let Some(base) = base() else {
+        return;
+    };
+    let other_token = std::env::var("MAIDAN_OTHER_TOKEN").unwrap_or_default();
+    assert!(
+        !other_token.is_empty(),
+        "scripts/sdk-test.sh provisions a second workspace"
+    );
+    let c = Client::new(&base, token());
+    let (wid, member_id, _channel, thread) = seed(&c, &base);
+    let gate = c
+        .approval_gates()
+        .request(
+            &wid,
+            "Ship the rust release?",
+            &ApprovalRequestOptions {
+                thread_id: Some(&thread.id),
+                risk: Some("low"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(gate.unknown_members().is_empty());
+    assert_eq!(gate.state, ApprovalGateState::Pending);
+    assert_eq!(gate.requested_by, member_id);
+    assert_eq!(gate.thread_id.as_deref(), Some(thread.id.as_str()));
+    assert_eq!(c.approval_gates().get(&gate.id).unwrap().id, gate.id);
+
+    let hidden = Client::new(&base, other_token)
+        .approval_gates()
+        .get(&gate.id)
+        .unwrap_err();
+    assert_eq!(hidden.status(), 404, "{hidden:?}");
+
+    let request_state = c
+        .approval_gates()
+        .list(&wid)
+        .unwrap()
+        .into_iter()
+        .find(|v| v.gate.id == gate.id)
+        .expect("the pending gate is listed")
+        .request_state;
+    let own = c
+        .approval_gates()
+        .answer(&gate.id, &request_state, "accept", None)
+        .unwrap_err();
+    assert_eq!(own.status(), 403, "nobody accepts a gate they asked for");
+
+    let answerer = Client::new(&base, token());
+    let (gate_id, state) = (gate.id.clone(), request_state.clone());
+    let cancel = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(1));
+        answerer
+            .approval_gates()
+            .answer(&gate_id, &state, "cancel", None)
+            .map(|_| ())
+    });
+    let event = c
+        .wait_for_approval_decision(&gate.id, &wid, Duration::from_secs(20))
+        .unwrap();
+    cancel.join().unwrap().unwrap();
+    let event = event.expect("no approval_resolved within the timeout");
+    assert_eq!(event["gate_id"], gate.id.as_str());
+    assert_eq!(event["state"], "cancelled");
+    assert_eq!(event["resolved_by"], member_id.as_str());
+    assert_eq!(
+        c.approval_gates().get(&gate.id).unwrap().state,
+        ApprovalGateState::Cancelled
     );
 }

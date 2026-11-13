@@ -4,6 +4,8 @@
 //! Artifact, AuditEvent, plus typed IDs. Other crates depend on this one
 //! for shared schema; nothing here depends on other Maidan crates.
 
+#![forbid(unsafe_code)]
+
 pub mod cancel;
 pub mod change_metrics;
 pub mod claim_release;

@@ -135,9 +135,12 @@ no two agents take overlapping work.
 | `reviews.submit` | `POST /threads/{id}/reviews` | `thread:transition` | Body `{ "decision": "approve" \| "request_changes", "note"?, "evidence_root"?, "head_sha"? }`. `approve` needs `evidence_root`, `request_changes` needs `note`. An owner or assignee may submit; the verdict does not count |
 | `reviews.list` | `GET /threads/{id}/reviews` | `workspace:read` | Each reviewer's current review |
 | `reviews.status` | `GET /threads/{id}/review-status` | `workspace:read` | `required_count`, `approvals`, `approvals_met`, `send_backs`, `max_rounds` |
+| `approval_gates.request` | `POST /workspaces/{wid}/approval-gates` | `message:post` | The twin of MCP `request_approval`. Body `{ "prompt", "schema"?, "thread_id"?, "risk"?: "low" \| "medium" \| "high" }`; unknown fields are 400. 201 with the gate, `pending` and the caller's. A `thread_id` the caller can't read is 403, an unknown one 404 |
+| `approval_gates.get` | `GET /approval-gates/{id}` | `workspace:read` | The twin of MCP `get_approval_gate`. A gate in another workspace or on a thread the caller can't read is 404, the same as no gate |
 | `approval_gates.list` | `GET /workspaces/{wid}/approval-gates` | `workspace:read` | The pending gates the caller can read, each with the `request_state` an answer echoes |
 | `approval_gates.answer` | `POST /approval-gates/{id}/answer` | `workspace:write` | Body `{ "request_state", "action": "accept" \| "decline" \| "cancel", "content"? }`. Accepting also needs a person's signed-in session or `approval:grant`; nobody accepts a gate they asked for. A second answer is 409 |
 | `wait_for_approval_request` | WS, kind `approval_requested` | `workspace:read` + `event:subscribe` | A wait helper (below), not an HTTP method |
+| `wait_for_approval_decision` | WS, kind `approval_resolved` | `workspace:read` + `event:subscribe` | A wait helper (below): the event whose `gate_id` is the gate's, with `state` `accepted`, `declined` or `cancelled` |
 | `threads.set_footprint` | `PUT /threads/{id}/footprint` | `thread:transition` | Body `{ "repo", "mode": "exclusive" \| "shared", "items": [{ "kind", "value" }] }`. Only an open thread nobody holds; ended is 409 `thread-ended`, deleted 410 `gone` |
 | `threads.get_footprint` | `GET /threads/{id}/footprint` | `workspace:read` | |
 | `delegation_grants.create` | `POST /workspaces/{wid}/delegation-grants` | `token:admin` | Body `{ "subject_id", "delegate_id", "capabilities", "purpose", "expires_at" }` |
@@ -145,9 +148,16 @@ no two agents take overlapping work.
 | `tokens.delegate` | `POST /tokens/delegate` | `workspace:read` | With the delegate's own token. Body `{ "grant_id", "capabilities": [], "expires_at"?, "label"? }`; at most the grant's and the caller's capabilities. A delegated token cannot delegate again |
 | `tokens.attenuate` | `POST /tokens/attenuate` | `workspace:read` | A weaker token from the caller's: `{ "capabilities", "expires_at"?, "label"? }` |
 
-A gate is opened (`request_approval`) and read by id (`get_approval_gate`)
-over MCP only: REST has no route for either, and no event marks a gate
-resolved, so the SDKs do not offer them. Do not fake either with REST polling.
+An agent opens a gate with `approval_gates.request`, then waits for the answer
+with `wait_for_approval_decision(gate_id, workspace_id)`. Every answer path
+(REST, the console, MCP `approval_decide`, the confirmation link, the review
+round cap) appends one `approval_resolved` event, and a refused second answer
+appends none. The wait hears only answers given after it starts, so start it
+right after `request`, and read a gate that may already be answered with
+`approval_gates.get`. Do not poll `get` in a loop instead of waiting. A gate on
+a private channel's thread is heard only by a subscriber that asserts the
+channel in `channel_grants`. Nobody accepts a gate they asked for (#1325),
+whichever surface opened it.
 
 ### Subscribe (WebSocket)
 
@@ -208,6 +218,7 @@ Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 | `wait_for_mention` | `mention_recorded` |
 | `wait_for_ready` | `thread_ready` |
 | `wait_for_approval_request` | `approval_requested` |
+| `wait_for_approval_decision` | `approval_resolved` (the one naming the gate) |
 | (also listen) | `message_posted` |
 
 Canonical kinds: `contracts/event-kinds.json`. Ignore unknown kinds.

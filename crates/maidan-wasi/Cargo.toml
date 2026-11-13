@@ -32,3 +32,6 @@ wasmi_core = "0.51"
 wat = "1"
 serde_json.workspace = true
 uuid.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
