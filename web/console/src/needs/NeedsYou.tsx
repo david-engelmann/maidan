@@ -300,9 +300,11 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   const reduce = Boolean(useReducedMotion());
   const [state, setState] = useState<RowState>({ phase: "idle" });
   const [note, setNote] = useState("");
-  // The packet this row shows. Approve signs its root and nothing else.
-  const [packet, setPacket] = useState<PacketRead | null>(null);
-  const [items, setItems] = useState<EvidenceItem[] | null>(null);
+  // The packet this row shows. Approve signs its root and nothing else. A read
+  // counts only for the task and the try it was made for, so a retry shows
+  // "loading" again and a late answer from an older try never lands.
+  const [attempt, setAttempt] = useState(0);
+  const [evidence, setEvidence] = useState<{ tid: string; attempt: number; packet: PacketRead; items: EvidenceItem[] | null } | null>(null);
   const [owner, setOwner] = useState<{ owns: boolean; required: number | null }>({ owns: false, required: null });
   const tid = item.thread_id ?? null;
   const isReview = item.kind === "review_request" || item.kind === "unassigned_review";
@@ -315,32 +317,39 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
   const pendingRestore = useRef(false);
   const prevPhaseRef = useRef<RowState["phase"]>(state.phase);
 
+  const current = evidence && evidence.tid === tid && evidence.attempt === attempt ? evidence : null;
+  const packet = current?.packet ?? null;
+  const items = current?.items ?? null;
+
   // A review can only be approved against the evidence it was handed, and
   // the person approving sees that evidence first.
-  const loadEvidence = useCallback(async () => {
-    if (!tid) return;
-    setPacket(null);
-    setItems(null);
-    const read = await api.reviewPacket(tid);
-    setPacket(read);
-    if (read.state !== "ready") return;
-    const shas = read.packet.manifest?.artifacts ?? [];
-    const [links, metas] = await Promise.all([api.threadLinks(tid), Promise.all(shas.map((sha) => api.artifactMeta(sha)))]);
-    setItems(evidenceItems(read.packet, new Map(shas.map((sha, i) => [sha, metas[i]])), links));
-  }, [api, tid]);
-
   useEffect(() => {
     if (!isReview || !tid) return;
     let live = true;
-    void loadEvidence();
-    if (item.kind === "unassigned_review" && me)
-      void Promise.all([api.ownerOf(tid), api.reviewStatus(tid)]).then(([o, rs]) => {
-        if (live) setOwner({ owns: o === me, required: rs ? rs.required_count : null });
-      });
+    void (async () => {
+      const read = await api.reviewPacket(tid);
+      if (!live) return;
+      setEvidence({ tid, attempt, packet: read, items: null });
+      if (read.state !== "ready") return;
+      const shas = read.packet.manifest?.artifacts ?? [];
+      const [links, metas] = await Promise.all([api.threadLinks(tid), Promise.all(shas.map((sha) => api.artifactMeta(sha)))]);
+      if (live) setEvidence({ tid, attempt, packet: read, items: evidenceItems(read.packet, new Map(shas.map((sha, i) => [sha, metas[i]])), links) });
+    })();
     return () => {
       live = false;
     };
-  }, [api, tid, isReview, item.kind, me, loadEvidence]);
+  }, [api, tid, isReview, attempt]);
+
+  useEffect(() => {
+    if (!isReview || !tid || item.kind !== "unassigned_review" || !me) return;
+    let live = true;
+    void Promise.all([api.ownerOf(tid), api.reviewStatus(tid)]).then(([o, rs]) => {
+      if (live) setOwner({ owns: o === me, required: rs ? rs.required_count : null });
+    });
+    return () => {
+      live = false;
+    };
+  }, [api, tid, isReview, item.kind, me]);
 
   const root = packet?.state === "ready" ? packet.packet.evidence_root : null;
 
@@ -615,7 +624,7 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
         {lines.map((l) => (
           <p key={l} className="need-line">{l}</p>
         ))}
-        {isReview && tid && <EvidenceBlock read={packet} items={items} retry={() => void loadEvidence()} />}
+        {isReview && tid && <EvidenceBlock read={packet} items={items} retry={() => setAttempt((a) => a + 1)} />}
         {isReview && tid && selected && <ReviewContext tid={tid} shas={packet?.state === "ready" ? (packet.packet.manifest?.artifacts ?? []) : []} />}
         {isReview && tid && <a className="ev-open" href={convHash({ kind: "task", id: tid })}>Open full thread</a>}
         {ownerOnly && owner.required !== 0 && <p className="need-line warn">Your approval does not count on your own task: name a reviewer.</p>}

@@ -46,6 +46,11 @@ export function targetHash(id: RouteId): string {
   return `#/${id}`;
 }
 
+/** Go to any hash, sub-routes included. A callback built during render calls this rather than assigning `location` itself. */
+export function goToHash(hash: string): void {
+  window.location.hash = hash;
+}
+
 export function navigate(id: RouteId): void {
   const next = targetHash(id);
   if (window.location.hash !== next) window.location.hash = `/${id}`;
