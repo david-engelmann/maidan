@@ -323,8 +323,16 @@ func TestAgentsCreateAddsAnAgentWithItsWorkerToken(t *testing.T) {
 	}
 	// Strict decoding refuses a "secret" member, so a leak fails the list.
 	strictDecoding(t)
+	// The member holds the worker token agents.create minted and the one
+	// minted here: both are listed, and the scoped one carries its label.
 	listed := must(c.Tokens.List(wid, member.ID))
-	if len(listed) != 1 || listed[0].ID != minted.ID || listed[0].Label == nil || *listed[0].Label != "scoped worker" {
+	var scoped *TokenSummary
+	for i := range listed {
+		if listed[i].ID == minted.ID {
+			scoped = &listed[i]
+		}
+	}
+	if len(listed) != 2 || scoped == nil || scoped.Label == nil || *scoped.Label != "scoped worker" {
 		t.Fatalf("listed %+v", listed)
 	}
 }
