@@ -159,13 +159,12 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
     };
   }, [board, ws]);
 
-  useEffect(() => {
-    setDir((d) => absorbPayloadNames(d, rows));
-  }, [rows]);
+  // Names the rows carry fill what the reads have not, without a second render.
+  const named = useMemo(() => absorbPayloadNames(dir, rows), [dir, rows]);
 
   useEffect(() => {
     const ids = [...new Set(rows.map((r) => r.threadId).filter((id): id is string => !!id))].filter(
-      (id) => !dir.threads.has(id) && !rows.some((r) => r.threadId === id && !!r.title?.trim()) && !missed.current.has(id) && !inflight.current.has(id),
+      (id) => !named.threads.has(id) && !rows.some((r) => r.threadId === id && !!r.title?.trim()) && !missed.current.has(id) && !inflight.current.has(id),
     );
     if (!ids.length) return;
     for (const id of ids) inflight.current.add(id);
@@ -194,7 +193,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
         inflight.current.delete(id);
       }
     });
-  }, [rows, dir, threads]);
+  }, [rows, named, threads]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -212,8 +211,8 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
     setQuery("");
   };
 
-  const channels = useMemo(() => activityChannels(rows, dir), [rows, dir]);
-  const shown = useMemo(() => filterActivity(rows, filter, query, channelId, dir), [rows, filter, query, channelId, dir]);
+  const channels = useMemo(() => activityChannels(rows, named), [rows, named]);
+  const shown = useMemo(() => filterActivity(rows, filter, query, channelId, named), [rows, filter, query, channelId, named]);
   return (
     <div className="activity">
       <header className="activity-head">
@@ -261,13 +260,13 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
       ) : (
         <ol className="activity-list" aria-live={paused ? "off" : "polite"}>
           {shown.map((r) => {
-            const channel = channelText(r, dir);
-            const who = actorText(r, dir);
+            const channel = channelText(r, named);
+            const who = actorText(r, named);
             return (
               <li key={r.id} className="activity-row">
                 <span className="mono-id">#{r.id}</span>
                 <span className="grow">{describeActivity(r)}</span>
-                {r.threadId ? <a href={`#/threads/t/${encodeURIComponent(r.threadId)}`}>{threadText(r, dir)}</a> : null}
+                {r.threadId ? <a href={`#/threads/t/${encodeURIComponent(r.threadId)}`}>{threadText(r, named)}</a> : null}
                 {r.channelId && channel ? <a className="activity-channel muted small" href={`#/board?channel=${encodeURIComponent(r.channelId)}`}>{channel}</a> : null}
                 {who ? <span className="muted small">by {who}</span> : null}
                 {r.at && <time className="muted small" dateTime={r.at}>{ago(r.at, now)}</time>}

@@ -369,19 +369,29 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
     }
   };
 
-  const extra: { key: string; label: string; danger?: boolean; run: () => void }[] = [];
-  if (!terminal) extra.push({ key: "result", label: "Record a result…", run: () => { closeMenu(false); setPanel("result"); } });
-  if (can.close) extra.push({ key: "close", label: "Close task", danger: true, run: () => { closeMenu(); void act("close"); } });
+  // The items carry no closures: the menu's handler runs them, so nothing built
+  // during render reaches the refs that closing the menu moves focus with.
+  type Extra = "result" | "close" | "cancel" | "abandon" | "archive";
+  const extra: { key: Extra; label: string; danger?: boolean }[] = [];
+  if (!terminal) extra.push({ key: "result", label: "Record a result…" });
+  if (can.close) extra.push({ key: "close", label: "Close task", danger: true });
   for (const k of ["cancel", "abandon"] as const) {
-    if (ending[k]) extra.push({ key: k, label: `${END_TITLE[k]}…`, danger: true, run: () => { closeMenu(false); setPanel(k); } });
+    if (ending[k]) extra.push({ key: k, label: `${END_TITLE[k]}…`, danger: true });
   }
-  if (moves.includes("archive"))
-    extra.push({
-      key: "archive",
-      label: armed ? "Archive? Choose again" : "Archive",
-      danger: true,
-      run: () => (armed ? (closeMenu(), void go("archive", () => api.transition(th.id, "archive"), "Archived.")) : setArmed(true)),
-    });
+  if (moves.includes("archive")) extra.push({ key: "archive", label: armed ? "Archive? Choose again" : "Archive", danger: true });
+  const pick = (key: Extra) => {
+    if (key === "close") {
+      closeMenu();
+      void act("close");
+    } else if (key === "archive") {
+      if (!armed) return setArmed(true);
+      closeMenu();
+      void go("archive", () => api.transition(th.id, "archive"), "Archived.");
+    } else {
+      closeMenu(false);
+      setPanel(key);
+    }
+  };
 
   return (
     <>
@@ -411,7 +421,7 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
               // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- focus moves to the items; the menu handles their arrow keys.
               <div ref={menuBox} className="menu" role="menu" aria-label="More actions" onKeyDown={onMenuKey}>
                 {extra.map((x) => (
-                  <button key={x.key} type="button" role="menuitem" className={`menu-item ${x.danger ? "danger" : ""}`} disabled={disabled} onClick={x.run}>
+                  <button key={x.key} type="button" role="menuitem" className={`menu-item ${x.danger ? "danger" : ""}`} disabled={disabled} onClick={() => pick(x.key)}>
                     {busy === "close" && x.key === "close" ? "Closing…" : x.label}
                   </button>
                 ))}
