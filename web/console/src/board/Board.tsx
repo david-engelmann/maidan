@@ -2,7 +2,7 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
-import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardAriaLabel, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, shownBadgeTargets, limitForOpen, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
+import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, presenceWords, ago, cardHiddenWords, chips, healthMatch, leaseLeft, staleBanner, badgeTargets, shownBadgeTargets, limitForOpen, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member, type Thread } from "../core/board.ts";
 import { useCardVotes } from "../hooks/useCardVotes.ts";
 import { liveStatus } from "../core/bus.ts";
 import { offlineBanner, reach } from "../core/api.ts";
@@ -438,7 +438,7 @@ function TaskCard({ card, now, member, fresh, refusal, votes, selected, onOpen }
   const lease = card.chrome.lane === "working" ? leaseView(th.assignment_expires_at, now) : null;
   const tone = th.closed_without_review ? "unreviewed" : card.chrome.lane;
   return (
-    <button type="button" className={`task ${fresh ? "fresh" : ""} ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}${hasVotes(votes) ? `, votes: ${voteWords(votes)}` : ""}`} aria-haspopup="dialog" onClick={onOpen}>
+    <button type="button" className={`task ${fresh ? "fresh" : ""} ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined} data-chrome={card.chrome.label} aria-haspopup="dialog" onClick={onOpen}>
       <span className="task-title">{card.title}</span>
       <span className="task-meta">
         <span className={`state state-${tone}`} title={th.closed_without_review ? "Closed without review" : th.status?.note || undefined}>
@@ -467,6 +467,7 @@ function TaskCard({ card, now, member, fresh, refusal, votes, selected, onOpen }
           <span className="lease-fill" style={{ "--left": lease.frac } as CSSProperties} />
         </span>
       ) : null}
+      <span className="visually-hidden">{`${cardHiddenWords(card)}${refusal !== undefined ? ", close refused" : ""}${hasVotes(votes) ? `, votes: ${voteWords(votes)}` : ""}`}</span>
     </button>
   );
 }

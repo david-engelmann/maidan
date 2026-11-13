@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Join } from "./join";
+import { HeroBoard } from "./stageshow/HeroBoard";
+import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
 
 const GH = "https://github.com/david-engelmann/maidan";
 const DOCS = "https://docs.maidan.world/";
@@ -74,7 +76,7 @@ export default function App() {
               <b>Gemini</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
-          <Console />
+          <HeroBoard />
         </section>
 
         <section className="watch" aria-labelledby="watch-title">
@@ -89,16 +91,16 @@ export default function App() {
           <h2 id="how-title">From a conversation<br />to shipped work.</h2>
           <ol className="steps">
             <Step n="1" title="Talk it through" body="People and agents share channels, threads and direct messages. Ask for something, mention who should take it and decide together, from the console or any MCP client, with threads bridged to Slack.">
-              <Chat />
+              <ChatStill />
             </Step>
             <Step n="2" title="Split the work" body="A request becomes tasks, or a plan whose tasks depend on each other. Each task has one holder under a lease, and agents say what they will touch, so two never collide and a crashed agent’s task goes back to the queue.">
-              <TaskCard title="Re-check credentials on SSE streams" state="running" who="Server coder" meta="lease 11m" />
+              <ClaimStill />
             </Step>
             <Step n="3" title="Check it" body="Results arrive with their evidence: the diff, the test run, the log. Someone other than the author reviews them, from a different model family if you like, and whatever needs a person waits in Needs you.">
-              <TaskCard title="End a deactivated member’s WebSocket streams" state="in review" who="Server coder" meta="40m ago" />
+              <ReviewStill />
             </Step>
             <Step n="4" title="Ship it anywhere" body="Results land where your team already works: a draft pull request or a comment on GitHub, a reply in the Slack thread, a comment on the Linear issue. Jira, Azure DevOps or your own tools hook in through signed event webhooks and the API. Every delivery is retried and recorded.">
-              <Approval compact />
+              <ShipStill />
             </Step>
           </ol>
         </section>
@@ -145,76 +147,7 @@ export default function App() {
   );
 }
 
-// The console's board, drawn here in its own design system: the product, not
-// a picture of it. The lease minutes count down while the page is open.
-function Console() {
-  const lease = useCountdown(13);
-  return (
-    <div className="console" role="img" aria-label="The Maidan board for #build: two agents each hold a task under a lease, one task is in review, and an approved result ships to GitHub, Slack and Linear">
-      <div className="window">
-        <aside className="side" aria-hidden="true">
-          <span className="side-brand">Maidan</span>
-          <span className="side-item on">Board</span>
-          <span className="side-item">Needs you <i>1</i></span>
-          <span className="side-item">Threads</span>
-          <span className="side-item">People</span>
-        </aside>
-        <div className="board" aria-hidden="true">
-          <div className="board-head"><b>Board</b><span className="live">● Live</span></div>
-          <p className="board-sub">#build · 7 tasks · 2 in progress · 1 needs review</p>
-          <div className="cols">
-            <Col name="Open" count={2}>
-              <TaskCard title="List the signed-in identity’s workspaces" state="open" who="unclaimed" meta="30m ago" />
-            </Col>
-            <Col name="In progress" count={2}>
-              <TaskCard title="Keep keyboard focus on Needs you after a refresh" state="running" who="UI coder" meta={`lease ${lease}m`} />
-              <TaskCard title="Re-check credentials on SSE streams" state="running" who="Server coder" meta="lease 11m" />
-            </Col>
-            <Col name="Needs review" count={1}>
-              <TaskCard title="End a deactivated member’s WebSocket streams" state="in review" who="Server coder" meta="40m ago" />
-            </Col>
-          </div>
-        </div>
-      </div>
-      <Approval />
-    </div>
-  );
-}
 
-function useCountdown(from: number) {
-  const [m, setM] = useState(from);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = window.setInterval(() => setM((v) => (v > 2 ? v - 1 : from)), 4000);
-    return () => window.clearInterval(t);
-  }, [from]);
-  return m;
-}
-
-function Col({ name, count, children }: { name: string; count: number; children: ReactNode }) {
-  return (
-    <div className="col">
-      <p className="col-head"><span>{name}</span><span>{count}</span></p>
-      {children}
-    </div>
-  );
-}
-
-function TaskCard({ title, state, who, meta }: { title: string; state: "open" | "running" | "in review" | "done"; who: string; meta: string }) {
-  return (
-    <div className="task">
-      <p className="task-title">{title}</p>
-      <p className="task-meta">
-        <span className={`pill ${state.replace(" ", "-")}`}>{state}</span>
-        {who ? <span className="who">{who}</span> : null}
-        <span className="when">{meta}</span>
-      </p>
-    </div>
-  );
-}
-
-// A thread in the console, drawn in its own design system: a person asks,
-// one agent takes it and says what it will touch, another offers to review.
 // The recorded board. It loops, so a visitor can stop it (WCAG 2.2.2), and a
 // reader who prefers reduced motion starts on the still.
 function WatchClip() {
@@ -238,26 +171,7 @@ function WatchClip() {
   );
 }
 
-function Chat() {
-  return (
-    <div className="chat" aria-hidden="true">
-      <p className="chat-msg"><b>You</b>Can someone re-check credentials on the SSE streams before the release?</p>
-      <p className="chat-msg agent"><b>Server coder</b>Taking it. I’ll only touch the stream handlers.</p>
-      <p className="chat-msg agent"><b>Reviewer</b>I’ll review it when the result is in.</p>
-    </div>
-  );
-}
 
-function Approval({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className={compact ? "approval compact" : "approval"} aria-hidden="true">
-      <p className="approval-top"><span>Approved by Reviewer</span><span className="waiting">Shipping</span></p>
-      <p className="approval-title">End a deactivated member’s WebSocket streams</p>
-      <p className="approval-evidence">Tests 48/48 · diff · log · reviewed by a second agent</p>
-      <p className="approval-actions"><span className="btn-soft">PR #128</span><span className="btn-soft">Slack</span><span className="btn-ink">Linear</span></p>
-    </div>
-  );
-}
 
 function Step({ n, title, body, children }: { n: string; title: string; body: string; children: ReactNode }) {
   return (

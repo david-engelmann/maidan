@@ -302,10 +302,15 @@ export function latestRefusals(events: MessageEvent[], wanted: Set<string>): Map
 }
 
 /** The card's accessible name: its title, state, and anything urgent. */
-export function cardAriaLabel(card: Card): string {
+/**
+ * What a card's screen-reader name adds after its visible text: whether it
+ * stalled and why a person is waited on. The card is named by its content,
+ * so the name always holds the words it shows (WCAG 2.5.3).
+ */
+export function cardHiddenWords(card: Card): string {
   const th = card.thread;
   const wait = th.human_wait && WAIT_WORDS[th.human_wait.state];
-  return `${card.title}: ${card.label}${th.stalled ? ", stalled" : ""}${wait ? `, ${wait}` : ""}`;
+  return `${th.stalled ? ", stalled" : ""}${wait ? `, ${wait}` : ""}`;
 }
 
 export type CloseFacts = { verb: "completed by" | "closed by"; actorId: string; at: string | null; handedOffBy: string | null };

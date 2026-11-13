@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BoardApi, BoardError, actionsFor, ago, cardAriaLabel, chips, chromeFor, closeFacts, leaseLeft, movesBoard, presenceWords, toLanes, type Thread } from "../src/core/board.ts";
+import { BoardApi, BoardError, actionsFor, ago, cardHiddenWords, chips, chromeFor, closeFacts, leaseLeft, movesBoard, presenceWords, toLanes, type Thread } from "../src/core/board.ts";
 import type { Credentials } from "../src/core/api.ts";
 import { LiveBus } from "../src/core/bus.ts";
 
@@ -53,7 +53,7 @@ test("chips and the card's accessible name", () => {
   assert.deepEqual(chips(t, "open").map((c) => c.kind), ["stalled", "wait-overdue", "blocked", "unclaimed"]);
   assert.deepEqual(chips(th({ id: "a", state: "closed" }), "done"), []);
   const card = toLanes([t], {}).open[0];
-  assert.equal(cardAriaLabel(card), "T: open, stalled, overdue on a person");
+  assert.equal(cardHiddenWords(card), ", stalled, overdue on a person");
 });
 
 test("times read as people say them", () => {

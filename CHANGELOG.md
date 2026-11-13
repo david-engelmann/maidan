@@ -7,6 +7,54 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [452.0.0] — 2026-11-13
+
+This release carries one change: the landing's illustrations show the product working.
+
+### The landing's illustrations show the product working
+
+- **Changed:** The landing hero is an animated #build board in the console's own look: an agent claims a task and it moves to In progress under its lease, its result lands in Needs review with tests and a diff, a person approves it, and a draft pull request opens on GitHub. It loops in about 15 seconds with a Pause control, shows its final frame as a still under reduced motion, follows the page's dark or light theme, and has its own phone-width design.
+- **Changed:** The four "How it works" illustrations are stills in the same look: a thread where a person asks and two agents answer, a task held under a lease with the paths it touches, a result with its evidence waiting on a different reviewer, and approved work delivered to GitHub, Slack and Linear with their real marks.
+- **Changed:** The illustrations are built on a vendored subset of the MIT-licensed Stageshow kit (`web/landing/src/stageshow/`, notices beside it), with no new runtime dependency.
+
+## [451.0.0] — 2026-11-13
+
+This release carries 7 changes: approval gates open, read by id and announce their answer over REST; a retried webhook delivery stays in its workspace; the four SDKs reach reviews, approval gates, footprints and delegated tokens, from one method map; the console's stylesheet is modules on one token system; the four SDKs open an approval gate, read it back, and wait for its answer; the MCP server's tests move out of `server.rs`; no unsafe code without a reason at the site.
+
+### Approval gates open, read by id and announce their answer over REST
+
+- **Added:** `POST /workspaces/{wid}/approval-gates` opens a pending approval gate attributed to the caller, the REST twin of MCP `request_approval` (`message:post`; `prompt`, optional `schema`, `thread_id` and `risk`; unknown fields are a 400). It answers `201` with the gate. A `thread_id` the caller cannot read is `403`, as over MCP, and an unknown one `404`.
+- **Added:** `GET /approval-gates/{id}` reads one gate, the REST twin of `get_approval_gate` (`workspace:read`). A gate in another workspace, or on a thread the caller cannot read, is `404`.
+- **Added:** the `approval_resolved` event (`gate_id`, `state`, `requested_by`, `resolved_by`, and the gate's thread and channel when it has one). It is appended in the same transaction as the answer, on every path that answers a gate: REST, the console, MCP `approval_decide` and a confirmation link. A refused second answer appends nothing. It follows the thread visibility rule and is not federatable. `Store::resolve_approval_gate` and `resolve_approval_gate_audited` now return the event with the gate, and `ConfirmOutcome::Accepted` carries it.
+
+### A retried webhook delivery stays in its workspace
+
+- **Security:** a queued webhook delivery is retried only for an event in its hook's own workspace; one carrying another workspace's event is quarantined unsent.
+
+### The four SDKs reach reviews, approval gates, footprints and delegated tokens, from one method map
+
+- **Added:** All four SDKs (Python, TypeScript, Go, Rust) gain the same 13 methods: `reviews.packet`, `reviews.request`, `reviews.submit`, `reviews.list` and `reviews.status`; `approval_gates.list` and `approval_gates.answer`, plus the `wait_for_approval_request` wait helper; `threads.set_footprint` and `threads.get_footprint`; `delegation_grants.create` and `delegation_grants.revoke`; and `tokens.delegate` and `tokens.attenuate`. Each language names them its own way (`approvalGates.answer`, `ApprovalGates.Answer`, `approval_gates().answer`). Each returns a typed model. `ThreadReview` now carries `evidence_root`. Requesting a gate and reading one by id stay MCP-only, because REST has no route for either.
+- **Added:** `sdk/methods.json` lists every SDK method with its name in each language, and `docs/Client Contract.md` documents each one. `scripts/check-sdk-parity.py` (CI `lint`) fails if an SDK or the contract leaves a mapped method out. It also calls each map example offline through Python and TypeScript and checks that the request matches the map. `sdk/go/parity_test.go` and `sdk/rust/tests/parity.rs` call the same examples and require that each reply decodes with no undeclared members. The live suites gain a two-workspace test: a second workspace's token cannot read or set the first workspace's footprints, reviews, gates or grants.
+
+### The console's stylesheet is modules on one token system
+
+- **Changed:** the console's 1,524-line `styles.css` is now 20 modules under `web/console/src/styles/`, imported in cascade order; the split bundles to a byte-identical stylesheet.
+- **Changed:** every padding, margin and gap in the console takes a `--space-*` token (a 4px scale with half steps), every font size a `--text-*` token, and media queries use four named breakpoints (narrow 380px, phone 600px, wide 900px, xwide 1440px) in place of nine widths. Values are unchanged; only layouts between 520px and 1100px wide move to the nearest named breakpoint.
+- **Added:** `npm run lint` in `web/console` runs stylelint, which refuses a raw px spacing or font size and an unnamed breakpoint, and eslint now checks the markup with `eslint-plugin-jsx-a11y`.
+
+### The four SDKs open an approval gate, read it back, and wait for its answer
+
+- **Added:** All four SDKs (Python, TypeScript, Go, Rust) gain `approval_gates.request` (`POST /workspaces/{wid}/approval-gates`, `message:post`, the twin of MCP `request_approval`), `approval_gates.get` (`GET /approval-gates/{id}`, `workspace:read`, the twin of `get_approval_gate`), and the `wait_for_approval_decision` wait helper, which returns the `approval_resolved` event naming the gate. Each language names them its own way (`approvalGates.request`, `ApprovalGates.Request`, `approval_gates().request`). `sdk/methods.json` and `docs/Client Contract.md` list all three, and the map examples run offline in all four SDKs. The live suites open a gate, read it back, check that a second workspace gets a 404 and that the requester cannot accept their own gate, and hear the cancel through the wait helper.
+
+### The MCP server's tests move out of `server.rs`
+
+- **Changed:** `crates/maidan-mcp/src/server.rs` drops from 11,011 lines to 1,536. Its 82 tests move unchanged into `src/server/tests/`, one file per tool family (protocol, access, claims, waits, results, threads, reviews, members, workspace, events, resources), with the fixtures several families share in `tests/mod.rs`. They stay inside the crate because they reach `pub(crate)` items such as `McpServer::publish_event`; no visibility changed. A new test fails if a family file is left undeclared. Test paths gain the family, as in `server::tests::claims::claim_next_without_a_lease_gets_the_server_default_and_bounds_hold`.
+- **Changed:** the source scans that skip test-only modules (`auth_context_seal_contract`, now also `uuid_v7_contract`, `authority_audit_contract` and `attribution_scope_contract`) share one `test_only_modules` in `source_scan`, so a `#[cfg(test)] mod x;` file is left out of each, as the inline test module was. Event evidence in `contracts/event-surface-disposition.json` and `docs/Claims.md` names the new files.
+
+### No unsafe code without a reason at the site
+
+- **Changed:** every workspace crate now sets the `unsafe_code` lint, so a new `unsafe` block fails to compile. Ten crates (types, store, bus, fsm, router, artifacts, mcp, a2a, observability, wasi) forbid it outright. Five deny it and allow it one site at a time, each with a one-line reason: maidan-server, maidan-cli and maidan-env for environment writes (edition 2024 makes `std::env::set_var` and `remove_var` unsafe) in tests or before the runtime starts in `main`, maidan-auth for environment writes in tests, and maidan-search for the sqlite-vec FFI. `scripts/check-unsafe-code.sh`, in the lint job, fails if a crate drops the setting or an allow comes without its reason. No behaviour change.
+
 ## [450.0.0] — 2026-11-12
 
 This release carries 31 changes: a superseded task hands its pull request to the round that replaces it; an over-permission scan of the MCP tool surface; thread transitions follow a store model; the seat runner runs Claude Code, Gemini CLI and ZCode seats; one delivery per event, however many replicas run; the MCP id guard fails closed; every registration has an owner; every GitHub Action pinned to a commit; one visibility rule for every read; worker timings are constants, and the configuration reference is checked; typed references are refused when they break the room's rules; the console says loading, empty and failed the same way everywhere; the Board opens on one toolbar row; an accessibility gate over every console place; security tails from the November audit (R26 P3); email linking claims a member on its first sign-in only; usage is reported only through the claim fence, and a child's parent is checked in its own transaction; channel listing, the search pre-filter and search hit names take one query; one child takes a parent's last spawn slot; a read-only token can no longer open group DMs or approval gates; production deployments run in production mode; a caller is something a credential proved; a retried write is the same write, and offline says so; a group DM's opener is one of its members; bridged text carries a server-set provenance and posts once per delivery; HTTP metrics that a client cannot inflate, behind a token in production; a read-only token can no longer change personal state; existing tokens keep it; fewer fixed sleeps in the test suites; coverage floors re-measured and raised; every caller is authenticated; the default media quota is held by tests.

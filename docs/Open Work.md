@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `6242a75c` (2026-11-12, `v450.0.0`).
+on a decision. Last reconciled against `main` at `1f4afb32` (2026-11-13, `v452.0.0`).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -29,7 +29,7 @@ maidan.world reports the tag. A rerun resumes where the last one stopped
 (#2124, #2125). `deploy prod` runs in the `prod` GitHub environment (#1738),
 which allows only `main` and `v*` tags, after a Neon pre-deploy branch and
 with automatic rollback to the release that was running (#1969).
-maidan.world and try.maidan.world run `v450.0.0` (checked 2026-11-12), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
+maidan.world and try.maidan.world run `v452.0.0` (checked 2026-11-13), with open sign-up on since `v445.0.0` and USDC credits on since `v447.0.0`. The
 `v437.0.0` `deploy prod` run sampled `/health` once a second through the swap
 (`scripts/measure-deploy-gap.sh`, #2137): no probe went unanswered and the
 slowest answered in 8.9 s. The probe sees only its own requests; see Claims. There is no pins PR any more:

@@ -67,7 +67,7 @@ jobs:
       - name: dispatched from dev
         run: |
           [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::run cut release from dev, not ${GITHUB_REF}"; exit 1; }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -120,7 +120,7 @@ jobs:
             echo "::error::the 'release' environment has no RELEASE_TOKEN; docs/Operations.md ('The release token') says what it is and how to store it: gh secret set RELEASE_TOKEN --env release -R ${REPO}"
             exit 1
           fi
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.base }}
           fetch-depth: 0
@@ -208,7 +208,7 @@ jobs:
             echo "::error::the 'release' environment has no RELEASE_TOKEN; docs/Operations.md ('The release token') says what it is and how to store it: gh secret set RELEASE_TOKEN --env release -R ${REPO}"
             exit 1
           fi
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: dev
           fetch-depth: 0
@@ -264,7 +264,7 @@ jobs:
       SHA: ${{ needs.promote.outputs.sha }}
       SINCE: ${{ needs.promote.outputs.since }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts/cut-release.sh
           sparse-checkout-cone-mode: false

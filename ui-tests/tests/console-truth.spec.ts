@@ -61,7 +61,7 @@ test("a refused close is visible on its card, with the server's sentence", async
   await expect(card).toHaveCount(1);
   await expect(card.locator(".flag-refused")).toHaveText("Close refused");
   await expect(card.locator(".flag-refused")).toHaveAttribute("title", note.body);
-  await expect(card).toHaveAttribute("aria-label", /close refused$/);
+  await expect(card).toHaveAccessibleName(/close refused$/);
   const after = await (await request.get(`/threads/${fx.desk_waiting_thread_id}`, { headers: bearer(fx.review_token) })).json();
   expect(after.state).toBe("in_review");
 });

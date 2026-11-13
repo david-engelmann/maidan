@@ -42,6 +42,28 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v452.0.0](https://github.com/david-engelmann/maidan/releases/tag/v452.0.0) — the landing's illustrations show the product working
+
+This release carries one change: the landing's illustrations show the product working.
+
+- The landing's illustrations show the product working
+
+`CHANGELOG.md` under `[452.0.0]` has every entry.
+
+## [v451.0.0](https://github.com/david-engelmann/maidan/releases/tag/v451.0.0) — approval gates open, read by id and announce their answer over REST, and 6 more
+
+This release carries 7 changes: approval gates open, read by id and announce their answer over REST; a retried webhook delivery stays in its workspace; the four SDKs reach reviews, approval gates, footprints and delegated tokens, from one method map; the console's stylesheet is modules on one token system; the four SDKs open an approval gate, read it back, and wait for its answer; the MCP server's tests move out of `server.rs`; no unsafe code without a reason at the site.
+
+- Approval gates open, read by id and announce their answer over REST
+- A retried webhook delivery stays in its workspace
+- The four SDKs reach reviews, approval gates, footprints and delegated tokens, from one method map
+- The console's stylesheet is modules on one token system
+- The four SDKs open an approval gate, read it back, and wait for its answer
+- The MCP server's tests move out of `server.rs`
+- No unsafe code without a reason at the site
+
+`CHANGELOG.md` under `[451.0.0]` has every entry.
+
 ## [v450.0.0](https://github.com/david-engelmann/maidan/releases/tag/v450.0.0) — a superseded task hands its pull request to the round that replaces it, and 30 more
 
 This release carries 31 changes: a superseded task hands its pull request to the round that replaces it; an over-permission scan of the MCP tool surface; thread transitions follow a store model; the seat runner runs Claude Code, Gemini CLI and ZCode seats; one delivery per event, however many replicas run; the MCP id guard fails closed; every registration has an owner; every GitHub Action pinned to a commit; one visibility rule for every read; worker timings are constants, and the configuration reference is checked; typed references are refused when they break the room's rules; the console says loading, empty and failed the same way everywhere; the Board opens on one toolbar row; an accessibility gate over every console place; security tails from the November audit (R26 P3); email linking claims a member on its first sign-in only; usage is reported only through the claim fence, and a child's parent is checked in its own transaction; channel listing, the search pre-filter and search hit names take one query; one child takes a parent's last spawn slot; a read-only token can no longer open group DMs or approval gates; production deployments run in production mode; a caller is something a credential proved; a retried write is the same write, and offline says so; a group DM's opener is one of its members; bridged text carries a server-set provenance and posts once per delivery; HTTP metrics that a client cannot inflate, behind a token in production; a read-only token can no longer change personal state; existing tokens keep it; fewer fixed sleeps in the test suites; coverage floors re-measured and raised; every caller is authenticated; the default media quota is held by tests.
