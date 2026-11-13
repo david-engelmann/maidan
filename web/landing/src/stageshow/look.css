@@ -111,7 +111,8 @@
   font-weight: 600;
 }
 
-.ml .ss-button[data-variant="primary"][data-hover] {
+/* An approved button keeps its approved green under the resting cursor */
+.ml .ss-button[data-variant="primary"][data-hover]:not([data-approved]) {
   background-color: var(--ml-primary-hover);
 }
 
