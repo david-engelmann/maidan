@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v453.0.0](https://github.com/david-engelmann/maidan/releases/tag/v453.0.0) — the console passes the React Compiler's checks, and 3 more
+
+This release carries 4 changes: the console passes the React Compiler's checks; a board card's name starts with the words it shows; quinn advisories; a copy button's name starts with the word it shows.
+
+- The console passes the React Compiler's checks
+- A board card's name starts with the words it shows
+- quinn advisories
+- A copy button's name starts with the word it shows
+
+`CHANGELOG.md` under `[453.0.0]` has every entry.
+
 ## [v452.0.0](https://github.com/david-engelmann/maidan/releases/tag/v452.0.0) — the landing's illustrations show the product working
 
 This release carries one change: the landing's illustrations show the product working.
