@@ -1,0 +1,115 @@
+/* A task card as the console's board draws it, shared by the hero and the
+   step stills. */
+.ml-card {
+  display: grid;
+  gap: 6px;
+  padding: 11px 12px 12px;
+  border-radius: var(--ss-radius-lg);
+  background: var(--ml-card);
+  box-shadow: var(--ss-shadow-card);
+}
+
+.ml-card__title {
+  margin-bottom: 2px;
+  color: var(--ss-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+}
+
+.ml-card__who,
+.ml-card__state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 16px;
+  color: var(--ss-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ml-card__who {
+  color: var(--ss-text-strong);
+  font-weight: 500;
+}
+
+.ml-card__state {
+  font-variant-numeric: tabular-nums;
+}
+
+.ml-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+}
+
+/* The holder: a dashed ring while nobody has it, the agent once claimed */
+.ml-holder {
+  display: grid;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.ml-holder > * {
+  grid-area: 1 / 1;
+  transition: opacity 0.25s ease, scale 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ml-holder__ring {
+  border-radius: 50%;
+  border: 1px dashed var(--ss-text-faint);
+}
+
+.ml-holder .ss-avatar {
+  opacity: 0;
+  scale: 0.6;
+}
+
+.ml-holder[data-held] .ss-avatar {
+  opacity: 1;
+  scale: 1;
+}
+
+.ml-holder[data-held] .ml-holder__ring {
+  opacity: 0;
+}
+
+/* Evidence: the console's facts, then the action for the reviewer */
+.ml-ev {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--ss-line);
+}
+
+.ml-ev__row {
+  display: flex;
+  justify-content: space-between;
+  height: 16px;
+  align-items: center;
+  color: var(--ss-text);
+  font-size: 11px;
+}
+
+.ml-ev__row b {
+  color: var(--ss-text-strong);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ml-ev .ml-ok {
+  color: var(--ss-success-text);
+}
+
+.ml-add {
+  color: var(--ss-success-text);
+}
+
+.ml-del {
+  color: var(--ss-danger-text);
+}
+
