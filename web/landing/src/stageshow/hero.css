@@ -13,11 +13,16 @@
 
 @media (min-width: 1080px) {
   .hero-art { margin-right: -6vw; }
+  .hero-art__toggle { right: calc(6vw + 0.8rem); }
 }
 
+/* In the stage's faded foot at the visible right edge, where the recording's
+   toggle sits, not floating in the empty band beside the window. */
 .hero-art__toggle {
+  position: absolute;
+  right: calc(var(--pad) + 0.8rem);
+  bottom: 0.8rem;
   min-height: 44px;
-  margin-top: 0.4rem;
   padding: 0 1rem;
   border-radius: 99px;
   border: 1px solid var(--line);
