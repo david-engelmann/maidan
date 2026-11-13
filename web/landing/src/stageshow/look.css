@@ -1,0 +1,163 @@
+/* Maidan's look for every stage on the landing: the console's own tokens
+   (web/console/src/styles/00-tokens.css) mapped onto the kit's. The stage
+   takes the page's theme, so these follow <html data-theme>. Dark is the
+   page's default, so it is the base and light overrides it. */
+.ml .ss-stage {
+  --ss-font: var(--sans);
+  --ss-mono: var(--mono);
+
+  /* Surfaces a step apart on graphite: the window is a step lighter than the
+     page, its sidebar a step darker than its body, the cards a step up again */
+  --ss-canvas: #111215;
+  --ss-surface: #141519;
+  --ss-chrome: #141519;
+  --ss-raised: #1c1e22;
+  --ss-well: transparent;
+  --ss-fill: #2a2d33;
+  --ml-lane: rgba(236, 240, 248, 0.025);
+  --ml-card: #1c1e22;
+
+  --ss-line: rgba(236, 240, 248, 0.09);
+  --ss-line-faint: rgba(236, 240, 248, 0.065);
+  --ss-text-strong: #ecebe7;
+  --ss-text: #9fa3ab;
+  --ss-text-faint: #6c717b;
+  --ss-icon: #9fa3ab;
+  --ss-icon-faint: #6c717b;
+
+  --ss-accent: #ff6a2b;
+  --ss-accent-2: #ff6a2b;
+  --ss-accent-soft: rgba(255, 106, 43, 0.16);
+  --ss-accent-text: #ff9b6e;
+  --ss-success: #43d08a;
+  --ss-success-text: #43d08a;
+  --ss-danger: #ff6f64;
+  --ss-danger-text: #ff8f86;
+  --ml-review: #929fff;
+  --ml-idle: #6c717b;
+  --ml-agent: #353a42;
+  --ml-agent-ink: #e4e5e8;
+  /* Flat, so it can ease to the done green; the lit top edge is the ring's */
+  --ml-primary: #f45a1d;
+  --ml-primary-hover: #ff6a2b;
+  --ml-primary-ink: #1b0b03;
+  --ml-primary-ring: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5);
+  --ml-hi: rgba(255, 255, 255, 0.055);
+
+  --ss-radius-sm: 6px;
+  --ss-radius-md: 8px;
+  --ss-radius-lg: 12px;
+  --ss-radius-window: 16px;
+
+  /* Shadows don't show on near-black: depth is the hairline and the lit top
+     edge, the drop only falls below so nothing is cut at the stage's top */
+  --ss-shadow-hero: 0 0 0 1px rgba(236, 240, 248, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 40px 70px -40px rgba(0, 0, 0, 0.95);
+  --ss-shadow-card: inset 0 1px 0 var(--ml-hi), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --ss-shadow-satellite: 0 0 0 1px rgba(236, 240, 248, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 18px 40px -12px rgba(0, 0, 0, 0.85);
+  --ss-shadow-lift: 0 0 0 1px rgba(236, 240, 248, 0.14), inset 0 1px 0 var(--ml-hi), 0 18px 32px -10px rgba(0, 0, 0, 0.8);
+}
+
+.ml .ss-stage[data-theme="light"] {
+  --ss-canvas: #ebe6dc;
+  --ss-surface: #f7f4ee;
+  --ss-chrome: #f7f4ee;
+  --ss-raised: #fdfcf9;
+  --ss-fill: #e3ded3;
+  --ml-lane: rgba(21, 20, 17, 0.03);
+  --ml-card: #fdfcf9;
+
+  --ss-line: rgba(21, 20, 17, 0.12);
+  --ss-line-faint: rgba(21, 20, 17, 0.08);
+  --ss-ink-1: rgba(21, 20, 17, 0.05);
+  --ss-ink-2: rgba(21, 20, 17, 0.07);
+  --ss-ink-3: rgba(21, 20, 17, 0.1);
+  --ss-ink-4: rgba(21, 20, 17, 0.13);
+  --ss-ink-5: rgba(21, 20, 17, 0.18);
+  --ss-text-strong: #151411;
+  --ss-text: #5c5850;
+  --ss-text-faint: #7d7a72;
+  --ss-icon: #5c5850;
+  --ss-icon-faint: #9d9b95;
+
+  --ss-accent: #e8501c;
+  --ss-accent-2: #e8501c;
+  --ss-accent-soft: #f6d3c4;
+  --ss-accent-text: #a83a0d;
+  --ss-success: #256b41;
+  --ss-success-text: #256b41;
+  --ss-danger: #b4231a;
+  --ss-danger-text: #b4231a;
+  --ml-review: #4a55c9;
+  --ml-idle: #7d7a72;
+  --ml-agent: #2b2a27;
+  --ml-agent-ink: #f6f3ec;
+  --ml-primary: #151411;
+  --ml-primary-hover: #2b2925;
+  --ml-primary-ink: #f2eee6;
+  --ml-primary-ring: none;
+  --ml-hi: #fdfcf9;
+
+  --ss-shadow-hero: 0 0 0 1px rgba(21, 20, 17, 0.12), 0 40px 70px -40px rgba(40, 32, 20, 0.5);
+  --ss-shadow-card: 0 0 0 1px rgba(21, 20, 17, 0.06), 0 1px 2px rgba(21, 20, 17, 0.08);
+  --ss-shadow-satellite: 0 0 0 1px rgba(21, 20, 17, 0.1), 0 18px 40px -14px rgba(40, 32, 20, 0.45), 0 4px 10px -4px rgba(21, 20, 17, 0.12);
+  --ss-shadow-lift: 0 0 0 1px rgba(21, 20, 17, 0.08), 0 16px 30px -10px rgba(40, 32, 20, 0.4);
+}
+
+/* The console's primary button: the lit orange on dark, ink on paper */
+.ml .ss-button[data-variant="primary"] {
+  background-color: var(--ml-primary);
+  color: var(--ml-primary-ink);
+  box-shadow: var(--ml-primary-ring);
+  font-weight: 600;
+}
+
+/* An approved button keeps its approved green under the resting cursor */
+.ml .ss-button[data-variant="primary"][data-hover]:not([data-approved]) {
+  background-color: var(--ml-primary-hover);
+}
+
+/* An agent's avatar is steel with a mono initial, as the console draws it */
+.ml .ss-avatar[data-tone="ink"] {
+  background: var(--ml-agent);
+  color: var(--ml-agent-ink);
+  font-family: var(--ss-mono);
+  font-weight: 600;
+}
+
+/* A task's state, as the console's board marks it: a ring while open, the
+   signal while someone holds it, the review blue, green when done */
+.ml-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ss-text);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ml-dot[data-state="running"] {
+  background: var(--ss-accent);
+  box-shadow: none;
+}
+
+.ml-dot[data-state="review"] {
+  background: var(--ml-review);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ml-review) 22%, transparent);
+}
+
+.ml-dot[data-state="done"] {
+  background: var(--ss-success);
+  box-shadow: none;
+}
+
+/* The console's line icons, at one stroke */
+.ml-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
