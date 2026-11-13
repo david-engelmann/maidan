@@ -12,7 +12,7 @@ import { PeopleApi } from "../core/people.ts";
 import { ThreadsApi } from "../core/threads.ts";
 import { ToolsApi, searchQuery, type SearchHit } from "../core/tools.ts";
 import { useSession } from "../hooks/useSession.ts";
-import { navigate, useRoute } from "./router.ts";
+import { goToHash, navigate, useRoute } from "./router.ts";
 import type { Command } from "./commands.ts";
 import {
   PALETTE_SEARCH_DEBOUNCE_MS,
@@ -27,6 +27,8 @@ import {
   storePaletteIndex,
   type PaletteIndex,
 } from "./paletteIndex.ts";
+
+const NO_HITS: SearchHit[] = [];
 
 export type { Command };
 
@@ -89,8 +91,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [index, setIndex] = useState<PaletteIndex | null>(() => (workspaceId ? peekPaletteIndex(workspaceId) : null));
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [found, setFound] = useState<{ workspaceId: string; q: string; hits: SearchHit[] } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   useEffect(() => input.current?.focus(), []);
@@ -123,7 +124,6 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
           /* loadPaletteIndex already swallows a refused read */
         });
     };
-    setIndex(peekPaletteIndex(workspaceId));
     void refresh();
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = liveBus.listen((m) => {
@@ -143,27 +143,23 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
   }, [workspaceId, apis]);
 
   // Message search waits a beat, and a newer query or a close drops the answer.
+  // An answer counts only for the query and workspace it was asked for, so a
+  // new query shows "Searching…" with no stale hits and no reset render.
+  const q = query.trim();
+  const searchable = !!workspaceId && q.length >= PALETTE_SEARCH_MIN;
+  const answered = searchable && found?.workspaceId === workspaceId && found.q === q;
+  const hits = answered ? found.hits : NO_HITS;
+  const searching = searchable && !answered;
   useEffect(() => {
-    const q = query.trim();
-    if (!workspaceId || q.length < PALETTE_SEARCH_MIN) {
-      setHits([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    setHits([]);
+    if (!workspaceId || q.length < PALETTE_SEARCH_MIN) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void apis.tools.search(workspaceId, searchQuery(q, "lexical", "", "")).then(
         (rows) => {
-          if (cancelled) return;
-          setHits(rows);
-          setSearching(false);
+          if (!cancelled) setFound({ workspaceId, q, hits: rows });
         },
         () => {
-          if (cancelled) return;
-          setHits([]);
-          setSearching(false);
+          if (!cancelled) setFound({ workspaceId, q, hits: NO_HITS });
         },
       );
     }, PALETTE_SEARCH_DEBOUNCE_MS);
@@ -171,16 +167,19 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query, workspaceId, apis]);
+  }, [q, workspaceId, apis]);
+
+  // A workspace switch shows that workspace's last index until its read answers.
+  const shownIndex = index?.workspaceId === workspaceId ? index : workspaceId ? peekPaletteIndex(workspaceId) : null;
 
   const shown = useMemo(
     () =>
       paletteItems({
         commands,
         query,
-        channels: index?.workspaceId === workspaceId ? index.channels : [],
-        people: index?.workspaceId === workspaceId ? index.people : [],
-        tasks: index?.workspaceId === workspaceId ? index.tasks : [],
+        channels: shownIndex?.channels ?? [],
+        people: shownIndex?.people ?? [],
+        tasks: shownIndex?.tasks ?? [],
         hits,
         me,
         jumpChannel: (id) => followChannelJump(route, id),
@@ -188,17 +187,17 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
           if (!workspaceId || !me) return;
           void apis.threads.openDm(workspaceId, me, id).then(
             (dm) => {
-              window.location.hash = `#/threads/dm/${encodeURIComponent(dm.id)}`;
+              goToHash(`#/threads/dm/${encodeURIComponent(dm.id)}`);
             },
             (e: unknown) => sayError(e, "Could not open that conversation"),
           );
         },
         openSelf: () => navigate("people"),
         openThread: (id) => {
-          window.location.hash = openThreadHash(id);
+          goToHash(openThreadHash(id));
         },
       }),
-    [commands, query, index, hits, me, workspaceId, route, apis],
+    [commands, query, shownIndex, hits, me, workspaceId, route, apis],
   );
   const at = Math.min(active, Math.max(0, shown.length - 1));
   const activeId = shown[at] ? `cmd-${shown[at].id}` : undefined;

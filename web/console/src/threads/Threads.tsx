@@ -62,6 +62,7 @@ import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 import { LoadError } from "../shell/LoadError";
 import { EmptyState } from "../shell/EmptyState";
+import { useDayNow } from "../hooks/useDayNow.ts";
 
 type Tab = "tasks" | "direct";
 
@@ -414,6 +415,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
 }
 
 function ConversationView({ api, conv, me, members, threads, onTaskChanged }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member>; threads: Thread[]; onTaskChanged: () => void }) {
+  const today = useDayNow();
   const { data, send, react, refresh } = useConversation(api, conv.threadId, me);
   const [pins, setPins] = useState<{ thread: string; ids: ReadonlySet<string> }>({ thread: conv.threadId, ids: new Set() });
   const pinned = pins.thread === conv.threadId ? pins.ids : EMPTY_PINS;
@@ -575,7 +577,7 @@ function ConversationView({ api, conv, me, members, threads, onTaskChanged }: { 
               />
               );
               return newDay
-                ? [<li key={`day-${dayKey(m.posted_at)}`} className="day-sep"><span>{dayLabel(m.posted_at, Date.now())}</span></li>, row]
+                ? [<li key={`day-${dayKey(m.posted_at)}`} className="day-sep"><span>{dayLabel(m.posted_at, today)}</span></li>, row]
                 : [row];
             })}
           </ol>
