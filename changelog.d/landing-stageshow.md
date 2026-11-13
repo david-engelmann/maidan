@@ -1,5 +1,0 @@
-### The landing's illustrations show the product working
-
-- **Changed:** The landing hero is an animated #build board in the console's own look: an agent claims a task and it moves to In progress under its lease, its result lands in Needs review with tests and a diff, a person approves it, and a draft pull request opens on GitHub. It loops in about 15 seconds with a Pause control, shows its final frame as a still under reduced motion, follows the page's dark or light theme, and has its own phone-width design.
-- **Changed:** The four "How it works" illustrations are stills in the same look: a thread where a person asks and two agents answer, a task held under a lease with the paths it touches, a result with its evidence waiting on a different reviewer, and approved work delivered to GitHub, Slack and Linear with their real marks.
-- **Changed:** The illustrations are built on a vendored subset of the MIT-licensed Stageshow kit (`web/landing/src/stageshow/`, notices beside it), with no new runtime dependency.
