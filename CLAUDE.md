@@ -117,7 +117,10 @@ change.
   is tagged on `05549018` but was never published (the aarch64 `cross` build
   had no npm for `build.rs`), and `v421.0.0` on `16898a6b` (the release
   scan refused the distroless `libssl3`); `v422.0.0` carries both, and was
-  published but never deployed; `v423.0.0` carries it.
+  published but never deployed; `v423.0.0` carries it. `v451.0.0` is tagged
+  but was never published (the native release legs ran the runner image's
+  npm 11, which refused `web/console`'s lockfile; #2279 pins Node 22 on every
+  leg); `v452.0.0` carries it.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 and
   44): a day at 8 concurrent claimants unattended, and the lockstep rename
   of the external change producer's wire names. Then the launch path (Next
