@@ -32,6 +32,11 @@ jobs:
           targets: x86_64-apple-darwin
       - name: cache cargo
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # build.rs runs npm for the landing and the console: pin the Node (and
+      # npm) CI uses, not the runner image's.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
       - name: build
         run: cargo build --release --bin maidan-server --bin maidan --target x86_64-apple-darwin
       - name: package
