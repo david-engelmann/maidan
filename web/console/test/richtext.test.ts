@@ -184,7 +184,8 @@ test("the message view maps blocks to elements and never injects HTML", () => {
   assert.match(src, /import "\.\/richtext\.css"/);
   assert.doesNotMatch(src, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(src, /<h1|<h2/);
-  assert.match(src, /aria-label="Copy code"/);
+  assert.match(src, /<span className="visually-hidden"> code<\/span>/);
+  assert.doesNotMatch(src, /aria-label="Copy code"/);
   assert.match(src, /className="msg-copy"/);
   assert.match(src, /target="_blank" rel="noopener noreferrer"/);
   assert.match(src, /startsWith\("#\/"\)/);

@@ -59,8 +59,18 @@ function CopyToolName({ name }: { name: string }) {
   };
   return (
     <>
-      <button type="button" className="chip-btn" aria-label="Copy tool name" onClick={copy}>
-        {copied === "copied" ? "Copied" : "Copy name"}
+      {/* Visible words first, hidden context after: an aria-label of "Copy tool
+          name" over "Copy name" or "Copied" does not contain what is shown. */}
+      <button type="button" className="chip-btn" onClick={copy}>
+        {copied === "copied" ? (
+          <>
+            Copied<span className="visually-hidden"> tool name</span>
+          </>
+        ) : (
+          <>
+            Copy <span className="visually-hidden">tool </span>name
+          </>
+        )}
       </button>
       {copied === "failed" ? <p className="err small" role="alert">This browser would not copy. Select the name and copy it by hand.</p> : null}
     </>

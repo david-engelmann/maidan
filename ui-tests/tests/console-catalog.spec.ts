@@ -145,8 +145,12 @@ test("a conditional schema labels one-of fields, nullable enums and the copied n
   await expect(detail).toContainText("/mcp/worker");
   await expect(detail).toContainText("/mcp/reviewer");
   await expect(detail).toContainText("/mcp/coordinator");
-  await page.getByRole("button", { name: "Copy tool name" }).click();
-  await expect(page.getByRole("button", { name: "Copy tool name" })).toHaveText("Copied");
+  const copyName = page.getByRole("button", { name: "Copy tool name" });
+  await expect(copyName).toHaveText("Copy tool name");
+  await copyName.click();
+  await expect(detail.getByRole("button", { name: "Copied tool name" })).toBeVisible();
+  const copied = await new AxeBuilder({ page }).include(".tool-detail").analyze();
+  expect(copied.violations.filter((v) => v.id === "label-content-name-mismatch")).toEqual([]);
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("post_message");
 });
 

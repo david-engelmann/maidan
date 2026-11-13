@@ -38,7 +38,13 @@ function CopyCode({ text }: { text: string }) {
   };
   return (
     <>
-      <button type="button" className="msg-copy" aria-label="Copy code" onClick={(e) => { e.stopPropagation(); copy(); }}>{copied === "copied" ? "Copied" : "Copy"}</button>
+      {/* The name is the visible word plus hidden context, never an aria-label
+          over it: "Copied" under a "Copy code" label is a name a voice-control
+          user cannot say (WCAG 2.5.3). */}
+      <button type="button" className="msg-copy" onClick={(e) => { e.stopPropagation(); copy(); }}>
+        {copied === "copied" ? "Copied" : "Copy"}
+        <span className="visually-hidden"> code</span>
+      </button>
       {copied === "failed" ? <p className="err small" role="alert">Could not copy.</p> : null}
     </>
   );
