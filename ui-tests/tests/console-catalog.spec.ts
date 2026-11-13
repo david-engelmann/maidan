@@ -145,8 +145,10 @@ test("a conditional schema labels one-of fields, nullable enums and the copied n
   await expect(detail).toContainText("/mcp/worker");
   await expect(detail).toContainText("/mcp/reviewer");
   await expect(detail).toContainText("/mcp/coordinator");
-  const copyName = page.getByRole("button", { name: "Copy tool name" });
-  await expect(copyName).toHaveText("Copy tool name");
+  const copyName = detail.getByRole("button", { name: "Copy name of this tool" });
+  await expect(copyName).toHaveText("Copy name of this tool");
+  const before = await new AxeBuilder({ page }).include(".tool-detail").analyze();
+  expect(before.violations.filter((v) => v.id === "label-content-name-mismatch")).toEqual([]);
   await copyName.click();
   await expect(detail.getByRole("button", { name: "Copied tool name" })).toBeVisible();
   const copied = await new AxeBuilder({ page }).include(".tool-detail").analyze();
@@ -181,7 +183,7 @@ test.describe("catalog on a phone", () => {
     expect(listed.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
 
     await page.locator(".tool-row", { hasText: "Post a message" }).click();
-    await expect(page.getByRole("button", { name: "Copy tool name" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy name of this tool" })).toBeVisible();
     await assertNoHorizontalOverflow(page);
     const detailSmall = await page.locator(".tool-detail button:visible, .member-detail a.back:visible").evaluateAll((els) =>
       els

@@ -59,8 +59,9 @@ function CopyToolName({ name }: { name: string }) {
   };
   return (
     <>
-      {/* Visible words first, hidden context after: an aria-label of "Copy tool
-          name" over "Copy name" or "Copied" does not contain what is shown. */}
+      {/* The whole visible phrase first, hidden context after it: an aria-label
+          of "Copy tool name" over "Copy name" or "Copied" does not contain what
+          is shown, and a hidden word between visible ones splits the phrase. */}
       <button type="button" className="chip-btn" onClick={copy}>
         {copied === "copied" ? (
           <>
@@ -68,7 +69,7 @@ function CopyToolName({ name }: { name: string }) {
           </>
         ) : (
           <>
-            Copy <span className="visually-hidden">tool </span>name
+            Copy name<span className="visually-hidden"> of this tool</span>
           </>
         )}
       </button>
