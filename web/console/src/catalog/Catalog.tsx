@@ -59,8 +59,19 @@ function CopyToolName({ name }: { name: string }) {
   };
   return (
     <>
-      <button type="button" className="chip-btn" aria-label="Copy tool name" onClick={copy}>
-        {copied === "copied" ? "Copied" : "Copy name"}
+      {/* The whole visible phrase first, hidden context after it: an aria-label
+          of "Copy tool name" over "Copy name" or "Copied" does not contain what
+          is shown, and a hidden word between visible ones splits the phrase. */}
+      <button type="button" className="chip-btn" onClick={copy}>
+        {copied === "copied" ? (
+          <>
+            Copied<span className="visually-hidden"> tool name</span>
+          </>
+        ) : (
+          <>
+            Copy name<span className="visually-hidden"> of this tool</span>
+          </>
+        )}
       </button>
       {copied === "failed" ? <p className="err small" role="alert">This browser would not copy. Select the name and copy it by hand.</p> : null}
     </>

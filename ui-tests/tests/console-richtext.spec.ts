@@ -86,11 +86,14 @@ test("a message renders structure, safe links and a copyable code block", async 
   await expect(msg).toContainText("javascript:alert(1)");
   await expect(msg.locator(".msg-lang")).toHaveText("sh");
   await expect(msg.locator("pre code")).toHaveText(CODE);
-  const copy = msg.getByRole("button", { name: "Copy code" });
-  await expect(copy).toHaveText("Copy");
+  const copy = msg.locator("button.msg-copy");
+  await expect(copy).toHaveAccessibleName("Copy code");
   await copy.click();
-  await expect(copy).toHaveText("Copied");
+  await expect(copy).toHaveAccessibleName("Copied code");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(CODE);
+  // The copied state is where an aria-label over the visible word stopped matching it.
+  const copied = await new AxeBuilder({ page }).include(".msg-codehead").analyze();
+  expect(copied.violations.map((v) => `${v.id} (${v.impact})`)).toEqual([]);
 
   let popped = false;
   page.on("popup", () => {
