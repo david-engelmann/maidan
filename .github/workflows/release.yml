@@ -91,8 +91,10 @@ jobs:
       # build.rs builds web/landing and web/console with npm, and the cross
       # container has no node: build both here, on the host, into the dist
       # directories the container sees, and tell build.rs to use them.
+      # Every leg pins Node 22 (and its npm), as CI does: the runner image's
+      # own Node brought npm 11, which refused a lockfile CI had accepted, and
+      # v451 never published.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: matrix.cross
         with:
           node-version: "22"
       - name: build the web assets for the cross container
