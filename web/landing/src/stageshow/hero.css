@@ -1,0 +1,395 @@
+/* The hero board. Corner bleed on the page's own ground: the window is inset
+   from the top and left, runs off the right where the stage meets the edge
+   of the page, and fades out at its foot over placeholder cards. The pull
+   request straddles its left edge over the sidebar. */
+
+/* The stage runs to the right edge of the page, so the window's bleed is the
+   page's edge rather than a line drawn through the middle of it */
+.hero-art {
+  position: relative;
+  min-width: 0;
+  margin-right: calc(-1 * var(--pad));
+}
+
+@media (min-width: 1080px) {
+  .hero-art { margin-right: -6vw; }
+}
+
+.hero-art__toggle {
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0 1rem;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.hb .ss-stage {
+  overflow: hidden;
+}
+
+.hb-frame {
+  position: absolute;
+  inset: 0;
+  /* The window's last third dissolves into the page, over placeholders only */
+  mask-image: linear-gradient(to bottom, #000 350px, transparent 490px);
+}
+
+.hb-win {
+  position: absolute;
+  top: 24px;
+  left: 100px;
+  width: 740px;
+  height: 560px;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+.hb-win .ss-window__dot {
+  background: var(--ss-ink-4);
+  box-shadow: none;
+}
+
+.hb-win .ss-window__main > .ss-window__bar {
+  padding: 0 14px;
+}
+
+.hb-win .ss-window__heading {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.hb-tool {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  /* The window runs 60px past the page's edge; the bar's end sits in what shows */
+  margin-right: 50px;
+  color: var(--ss-icon);
+}
+
+/* Sidebar: the console's rail */
+.hb-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 8px;
+}
+
+.hb-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  margin: 0 0 8px;
+  padding: 0 6px;
+  color: var(--ss-text-strong);
+  font-size: 12.5px;
+  font-weight: 640;
+  letter-spacing: -0.03em;
+}
+
+.hb-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--ss-radius-md);
+  color: var(--ss-text);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.hb-nav[data-on] {
+  background: var(--ss-raised);
+  box-shadow: var(--ss-shadow-card);
+  color: var(--ss-text-strong);
+  font-weight: 500;
+}
+
+.hb-nav[data-on] .ml-icon {
+  color: var(--ss-accent);
+}
+
+/* Board */
+.hb-body {
+  position: relative;
+  height: 100%;
+  padding: 12px 14px 0;
+}
+
+.hb-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 26px;
+  margin-bottom: 12px;
+}
+
+.hb-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border-radius: var(--ss-radius-pill);
+  box-shadow: inset 0 0 0 1px var(--ss-line);
+  color: var(--ss-text-strong);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hb-channel .ml-icon {
+  color: var(--ss-icon);
+}
+
+.hb-hash {
+  color: var(--ss-text-faint);
+}
+
+.hb-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, 168px);
+  gap: 10px;
+  align-items: start;
+}
+
+.hb-lane {
+  min-height: 420px;
+  padding: 8px;
+  border-radius: var(--ss-radius-lg);
+  background: var(--ml-lane);
+  box-shadow: inset 0 0 0 1px var(--ss-line-faint);
+}
+
+.hb-lane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 20px;
+  /* Words on the card's text edge: 8px of lane, 12 of card */
+  margin: 0 4px 8px 12px;
+  color: var(--ss-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hb-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--ss-radius-pill);
+  background: var(--ss-ink-2);
+  color: var(--ss-text);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* The room a lane opens for the card: a hidden copy, so the height is the
+   card's own, with the gap to the next card inside it */
+.hb-slot {
+  padding-bottom: 8px;
+}
+
+.ml-card[data-ghost] {
+  visibility: hidden;
+}
+
+.hb-filler {
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.hb-filler__lines {
+  display: grid;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.hb-filler__meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hb-approve {
+  justify-self: start;
+  margin-top: 3px;
+}
+
+/* Approved is the one real change the button makes: it turns to the
+   console's done green on itself */
+.ml .hb-approve[data-approved] {
+  background-color: color-mix(in srgb, var(--ss-success) 18%, transparent);
+  color: var(--ss-success-text);
+  box-shadow: none;
+}
+
+/* The card that travels: one object, lifted while it is carried, landing
+   soft on its lane's open room */
+.hb-mover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  will-change: transform;
+  transition:
+    transform 0.76s cubic-bezier(0.45, 0, 0.1, 1),
+    scale 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+    box-shadow 0.3s ease,
+    opacity 0.5s ease,
+    translate 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.hb-mover[data-lifted] {
+  scale: 1.03;
+  box-shadow: var(--ss-shadow-lift);
+}
+
+.hb-mover[data-hidden] {
+  opacity: 0;
+  translate: 0 -12px;
+}
+
+/* The pull request: straddles the window's left edge over the sidebar,
+   arriving whole from below at the beat it pays off */
+.hb-ship {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 3;
+  width: 164px;
+  padding: 12px 14px 14px;
+  border-radius: var(--ss-radius-lg);
+  background: var(--ss-raised);
+  box-shadow: var(--ss-shadow-satellite);
+  opacity: 0;
+  transform: translateY(14px);
+  will-change: transform;
+  transition:
+    opacity 0.3s ease,
+    transform 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.hb-ship[data-show] {
+  opacity: 1;
+  transform: none;
+}
+
+.hb-ship__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--ss-line);
+}
+
+.hb-ship__who {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hb-ship__title {
+  color: var(--ss-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.hb-ship__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ss-text);
+  font-size: 10.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.hb-ship__lines {
+  display: grid;
+  gap: 7px;
+  padding-top: 12px;
+}
+
+.hb-rest {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+}
+
+/* Compact: the console on a phone, one lane at a time behind its picker;
+   the view follows the task, and the pull request rises over the foot */
+.hb .ss-stage[data-layout="compact"] .hb-frame {
+  mask-image: linear-gradient(to bottom, #000 290px, transparent 346px);
+}
+
+/* As wide as it is shown tall: the crop runs off the right and the foot */
+.hb .ss-stage[data-layout="compact"] .hb-win {
+  top: 16px;
+  left: 16px;
+  width: 380px;
+  height: 420px;
+}
+
+.hb .ss-stage[data-layout="compact"] .hb-body {
+  padding: 10px 52px 0 14px;
+}
+
+.hb-seg {
+  margin-bottom: 10px;
+}
+
+.hb-seg .ss-seg__option {
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+
+.hb-list .ml-card__title {
+  font-size: 12.5px;
+}
+
+.ml-card__state--end {
+  margin-left: auto;
+}
+
+/* On the phone's one-line card, what follows the holder is its body, so it
+   starts at the holder's name, not under the avatar */
+.hb-list .ml-ev,
+.hb-list .hb-pr {
+  margin-left: 23px;
+}
+
+.hb-pr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--ss-line);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.hb-pr__lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hb-pr__title {
+  color: var(--ss-text-strong);
+  font-weight: 600;
+}
+
+.hb-pr__sub {
+  color: var(--ss-text);
+}
