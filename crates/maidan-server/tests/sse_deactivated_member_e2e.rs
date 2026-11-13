@@ -399,12 +399,19 @@ impl Sse {
 
     /// The stream must end with `stream_ended` naming `reason`, then close.
     async fn assert_ended(&mut self, wait: Duration, reason: &str) {
+        self.assert_ended_one_of(wait, &[reason]).await;
+    }
+
+    /// The stream must end with `stream_ended` naming one of `reasons`, then
+    /// close.
+    async fn assert_ended_one_of(&mut self, wait: Duration, reasons: &[&str]) {
         match self.until(STREAM_ENDED, wait).await {
             Frame::Event(Some(name), data) if name == STREAM_ENDED => {
                 let v: Value = serde_json::from_str(&data).unwrap();
-                assert_eq!(v["reason"], reason, "{data}");
+                let got = v["reason"].as_str().unwrap_or_default();
+                assert!(reasons.contains(&got), "{data}");
             }
-            other => panic!("expected a stream_ended {reason:?} event, got {other:?}"),
+            other => panic!("expected a stream_ended {reasons:?} event, got {other:?}"),
         }
         match self.next(Duration::from_secs(3)).await {
             Frame::Closed => {}
@@ -624,8 +631,9 @@ async fn a_live_token_whose_scim_link_is_inactive_ends_too() {
 
     // Mark the SCIM link inactive without revoking the token. Since #1871 the
     // bearer lookup refuses a token whose member's SCIM link is inactive, so
-    // the token check ends the stream before the SCIM link check is reached,
-    // the same reason a full deactivation gives.
+    // the token check usually ends the stream first ("token no longer
+    // valid"); dev CI once saw the SCIM link check win ("member deactivated").
+    // Either ends the stream for the same cause, and that is what this pins.
     env.store
         .update_scim_user(alice, None, false)
         .await
@@ -635,7 +643,10 @@ async fn a_live_token_whose_scim_link_is_inactive_ends_too() {
 
     env.create_channel(a, &carol_token, "after-alice").await;
     alice_stream
-        .assert_ended(Duration::from_secs(5), "token no longer valid")
+        .assert_ended_one_of(
+            Duration::from_secs(5),
+            &["token no longer valid", "member deactivated"],
+        )
         .await;
     env.create_channel(b, &bob_token, "bravo-news").await;
     bob_stream.assert_carries("bravo-news").await;

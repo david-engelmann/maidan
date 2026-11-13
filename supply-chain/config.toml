@@ -1065,8 +1065,9 @@ version = "0.11.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.quinn-proto]]
-version = "0.11.14"
+version = "0.11.19"
 criteria = "safe-to-deploy"
+notes = "Security bump for RUSTSEC-2026-0523/0524/0538 (quinn-proto, quinn-udp) and the crates it pulls in; no imported audit covers this version yet."
 
 [[exemptions.quoted_printable]]
 version = "0.5.2"
