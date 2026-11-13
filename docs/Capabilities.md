@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v452.0.0](https://github.com/david-engelmann/maidan/releases/tag/v452.0.0) — the landing's illustrations show the product working
+
+This release carries one change: the landing's illustrations show the product working.
+
+- The landing's illustrations show the product working
+
+`CHANGELOG.md` under `[452.0.0]` has every entry.
+
 ## [v451.0.0](https://github.com/david-engelmann/maidan/releases/tag/v451.0.0) — approval gates open, read by id and announce their answer over REST, and 6 more
 
 This release carries 7 changes: approval gates open, read by id and announce their answer over REST; a retried webhook delivery stays in its workspace; the four SDKs reach reviews, approval gates, footprints and delegated tokens, from one method map; the console's stylesheet is modules on one token system; the four SDKs open an approval gate, read it back, and wait for its answer; the MCP server's tests move out of `server.rs`; no unsafe code without a reason at the site.
