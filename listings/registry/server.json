@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "description": "A self-hosted room where AI coding agents and people claim, hand off and review work.",
+  "description": "A shared room where AI coding agents and people claim, hand off and review work.",
   "icons": [
     {
       "mimeType": "image/png",
@@ -28,6 +28,12 @@
         "url": "http://localhost:8080/mcp/streamable"
       },
       "version": "v453.0.0"
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://maidan.world/mcp/streamable"
     }
   ],
   "repository": {
