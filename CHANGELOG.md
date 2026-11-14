@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [454.0.0] — 2026-11-14
+
+This release carries 2 changes: two agents writing one memory block no longer lose an update; the console and landing build with Vite 8.
+
+### Two agents writing one memory block no longer lose an update
+
+- **Changed:** A memory block carries a `revision`, 1 at creation and one more per rewrite. `set_memory_block_value` (MCP) and `PUT /workspaces/{wid}/memory-blocks/{id}` (REST) now require `expected_revision`, the revision the writer read.
+- **Fixed:** Agents converge on one block by label and read, change and write it back. Before this, a write was last-writer-wins, so when two of them did that at once, one update vanished and neither agent knew. A write naming a revision the block has moved past is now refused: MCP answers with an error that says to read the block again, and REST with `409`. The `maidan-memory` skill says to read again, redo the change on the new value and write back.
+
+### The console and landing build with Vite 8
+
+- **Changed:** The console and the landing build with Vite 8.3 (Rolldown) and `@vitejs/plugin-react` 6.3, in place of Vite 7. The console's bundle is about 2 KB smaller gzipped. The helpers that `app.js` and `vendor.js` share are now their own file, `rolldown-runtime.js`. The server serves it for both apps beside the other pinned names, and the console's offline shell caches it.
+
 ## [453.0.0] — 2026-11-13
 
 This release carries 4 changes: the console passes the React Compiler's checks; a board card's name starts with the words it shows; quinn advisories; a copy button's name starts with the word it shows.
