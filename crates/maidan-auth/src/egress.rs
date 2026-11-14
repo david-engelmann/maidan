@@ -259,8 +259,9 @@ fn peer_address(ip: IpAddr) -> IpAddr {
         && segments[5] == 0;
     let local = segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 1;
     if well_known || local {
-        let embedded = ((segments[6] as u32) << 16) | u32::from(segments[7]);
-        return IpAddr::V4(Ipv4Addr::from(embedded));
+        // The IPv4 address is the last four octets (RFC 6052, a /96 prefix).
+        let [.., a, b, c, d] = v6.octets();
+        return IpAddr::V4(Ipv4Addr::new(a, b, c, d));
     }
     ip
 }
@@ -807,6 +808,28 @@ mod tests {
 
     /// The length bound is inclusive, a user name alone is a credential, and
     /// surrounding space is refused, on both the target and the peer path.
+    #[test]
+    fn only_http_and_https_with_a_host_are_targets() {
+        for raw in [
+            "ftp://example.com/hook",
+            "ws://example.com/hook",
+            "file:///etc/passwd",
+            "mailto:ops@example.com",
+        ] {
+            assert!(
+                matches!(parse_egress_target(raw), Err(EgressTargetError::InvalidUrl)),
+                "accepted {raw}"
+            );
+            assert!(
+                matches!(
+                    validate_with_peers(raw, &[]),
+                    Err(EgressTargetError::InvalidUrl)
+                ),
+                "the peer path accepted {raw}"
+            );
+        }
+    }
+
     #[test]
     fn the_url_bound_and_the_credential_check_are_exact() {
         let base = "https://example.com/";

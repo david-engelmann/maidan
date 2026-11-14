@@ -8,6 +8,9 @@
 // per file that uses them, as they did when every file was its own binary.
 #![allow(clippy::duplicate_mod)]
 
+#[path = "../access_rules.rs"]
+mod access_rules;
+
 #[path = "../capability_matrix.rs"]
 mod capability_matrix;
 
