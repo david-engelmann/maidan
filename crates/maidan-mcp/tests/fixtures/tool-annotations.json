@@ -4057,7 +4057,7 @@
       },
       "destructiveHint": {
         "value": true,
-        "reason": "full rewrite of value (last-writer-wins) replaces what another agent stored"
+        "reason": "full rewrite of value replaces what was stored, at the revision the caller read"
       },
       "idempotentHint": {
         "value": false,

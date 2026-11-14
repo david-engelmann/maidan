@@ -5753,6 +5753,11 @@
           "read_only": {
             "type": "boolean"
           },
+          "revision": {
+            "description": "1 at creation, plus one per rewrite. A write names the revision it\nread, so two writers sharing the block cannot lose each other's update.",
+            "format": "int64",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -5771,6 +5776,7 @@
           "read_only",
           "value",
           "owner_id",
+          "revision",
           "created_at",
           "updated_at"
         ],
@@ -9662,14 +9668,20 @@
         "type": "object"
       },
       "SetMemoryBlockValue": {
-        "description": "Full-rewrite a memory block's value. A read-only block or a value over the\nblock's char limit is rejected (400).",
+        "description": "Full-rewrite a memory block's value at the revision the writer read. A\nblock another write has moved past that revision is refused (409): read it\nagain, redo the change and write back. A read-only block or a value over the\nblock's char limit is rejected (400).",
         "properties": {
+          "expected_revision": {
+            "description": "The block's `revision` when this writer read it.",
+            "format": "int64",
+            "type": "integer"
+          },
           "value": {
             "type": "string"
           }
         },
         "required": [
-          "value"
+          "value",
+          "expected_revision"
         ],
         "type": "object"
       },

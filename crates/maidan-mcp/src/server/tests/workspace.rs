@@ -240,18 +240,40 @@ async fn memory_block_tools_create_read_rewrite_and_attach() {
             .call_tool(
                 &auth,
                 "set_memory_block_value",
-                &json!({ "label": "shared", "value": "world" }),
+                &json!({ "label": "shared", "value": "world", "expected_revision": 1 }),
             )
             .await
             .unwrap(),
     );
     assert_eq!(updated["value"], "world");
+    assert_eq!(updated["revision"], 2);
+    // A second writer that read revision 1 is refused, and told to read again.
+    let stale = server
+        .call_tool(
+            &auth,
+            "set_memory_block_value",
+            &json!({ "label": "shared", "value": "lost", "expected_revision": 1 }),
+        )
+        .await;
+    assert!(
+        matches!(&stale, Err(crate::error::McpError::InvalidParams(m)) if m.contains("read it again")),
+        "{stale:?}"
+    );
+    // The revision is required: a blind write is refused before the store.
+    assert!(server
+        .call_tool(
+            &auth,
+            "set_memory_block_value",
+            &json!({ "label": "shared", "value": "blind" }),
+        )
+        .await
+        .is_err());
     // Over the char limit → error.
     assert!(server
         .call_tool(
             &auth,
             "set_memory_block_value",
-            &json!({ "label": "shared", "value": "this is way too long" }),
+            &json!({ "label": "shared", "value": "this is way too long", "expected_revision": 2 }),
         )
         .await
         .is_err());
@@ -352,7 +374,7 @@ async fn memory_block_wait_wakes_on_update() {
     // A parent waits; the child rewrites the block → the wait wakes with the
     // fresh value (proving the MemoryBlockUpdated emit + the wait match).
     let wait_args = json!({ "label": "child.result", "timeout_ms": 5000 });
-    let set_args = json!({ "label": "child.result", "value": "done" });
+    let set_args = json!({ "label": "child.result", "value": "done", "expected_revision": 1 });
     let (out, _) = tokio::join!(
         server.call_tool(&auth, "wait_for_memory_block", &wait_args),
         async {
@@ -373,7 +395,7 @@ async fn memory_block_wait_wakes_on_update() {
         .await
         .unwrap();
     let wait_args = json!({ "label": "child.result", "timeout_ms": 400 });
-    let other_args = json!({ "label": "other", "value": "x" });
+    let other_args = json!({ "label": "other", "value": "x", "expected_revision": 1 });
     let (out, _) = tokio::join!(
         server.call_tool(&auth, "wait_for_memory_block", &wait_args),
         async {

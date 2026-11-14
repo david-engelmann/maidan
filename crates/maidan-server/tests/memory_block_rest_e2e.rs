@@ -163,7 +163,7 @@ async fn memory_blocks_over_http() {
             ws.id.0
         ))
         .header("Authorization", &wh)
-        .json(&json!({ "value": "world" }))
+        .json(&json!({ "value": "world", "expected_revision": 1 }))
         .send()
         .await
         .unwrap()
@@ -171,6 +171,20 @@ async fn memory_blocks_over_http() {
         .await
         .unwrap();
     assert_eq!(updated["value"], "world");
+    assert_eq!(updated["revision"], 2);
+
+    // A writer that read revision 1 is refused with 409, not merged over.
+    let stale = client
+        .put(format!(
+            "{base}/workspaces/{}/memory-blocks/{block_id}",
+            ws.id.0
+        ))
+        .header("Authorization", &wh)
+        .json(&json!({ "value": "lost", "expected_revision": 1 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::CONFLICT);
 
     // Over the char limit → 400.
     let too_long = client
@@ -179,7 +193,7 @@ async fn memory_blocks_over_http() {
             ws.id.0
         ))
         .header("Authorization", &wh)
-        .json(&json!({ "value": "this is way too long" }))
+        .json(&json!({ "value": "this is way too long", "expected_revision": 2 }))
         .send()
         .await
         .unwrap();
@@ -203,7 +217,7 @@ async fn memory_blocks_over_http() {
             ws.id.0
         ))
         .header("Authorization", &wh)
-        .json(&json!({ "value": "nope" }))
+        .json(&json!({ "value": "nope", "expected_revision": 1 }))
         .send()
         .await
         .unwrap();

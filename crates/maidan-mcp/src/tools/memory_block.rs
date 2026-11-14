@@ -98,11 +98,12 @@ pub(super) async fn list_memory_blocks(
 struct SetArgs {
     label: String,
     value: String,
+    expected_revision: i64,
 }
 
-/// Full-rewrite a block's value by label (last-writer-wins). A missing block →
-/// `InvalidParams`; a read-only block or over-limit value → `InvalidParams` (the
-/// store's `InvalidInput`).
+/// Full-rewrite a block's value by label, at the revision the caller read. A
+/// missing block, a stale revision (the store's `Conflict`), a read-only block
+/// or an over-limit value → `InvalidParams`.
 pub(super) async fn set_memory_block_value(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -116,7 +117,7 @@ pub(super) async fn set_memory_block_value(
         .ok_or_else(|| McpError::InvalidParams("no such memory block".into()))?;
     let updated = server
         .store
-        .set_memory_block_value(block.id, &a.value)
+        .set_memory_block_value(block.id, a.expected_revision, &a.value)
         .await?;
     // A "go fetch" pointer so a parent watching the block wakes.
     if server.event_bus.is_some() {
