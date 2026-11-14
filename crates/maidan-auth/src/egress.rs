@@ -234,47 +234,65 @@ fn host_is_listed(url: &Url, hosts: &[String]) -> bool {
 }
 
 /// Whether `ip` is link-local (IPv4 169.254/16, IPv6 fe80::/10, or an IPv4
-/// mapped link-local), which a listed private peer still may not resolve to.
+/// link-local address carried in IPv4-mapped or NAT64 form), which a listed
+/// private peer still may not resolve to.
 fn is_link_local(ip: IpAddr) -> bool {
-    match peer_address(ip) {
-        IpAddr::V4(ip) => ip.is_link_local(),
-        IpAddr::V6(ip) => (ip.segments()[0] & 0xffc0) == 0xfe80,
+    match peer_addresses(ip) {
+        Some(carried) => carried.iter().any(Ipv4Addr::is_link_local),
+        None => {
+            matches!(ip, IpAddr::V4(v4) if v4.is_link_local())
+                || matches!(ip, IpAddr::V6(v6) if (v6.segments()[0] & 0xffc0) == 0xfe80)
+        }
     }
 }
 
-/// IPv4 mapped and NAT64 addresses as the IPv4 they carry, otherwise `ip`.
-fn peer_address(ip: IpAddr) -> IpAddr {
-    let IpAddr::V6(v6) = ip else {
-        return ip;
+/// The IPv4 addresses an IPv4-mapped or NAT64 address may carry, or `None`
+/// when `ip` is neither.
+///
+/// The well-known prefix `64:ff9b::/96` has one layout: the last four octets.
+/// The local-use block `64:ff9b:1::/48` (RFC 8215) is carved by each operator
+/// into a translator prefix of its own, and RFC 6052 puts the IPv4 address in
+/// a different place for a /48, /56, /64 and /96 prefix (skipping the reserved
+/// octet 8). Which one this network uses is not known here, so every layout is
+/// a candidate, and a peer is refused if any of them is refused. That fails
+/// closed: a local-use address whose other layouts read as 0.0.0.0 is refused
+/// too, and a peer behind a local-use translator is listed by its IPv4 address
+/// instead.
+fn peer_addresses(ip: IpAddr) -> Option<Vec<Ipv4Addr>> {
+    let v6 = match ip {
+        IpAddr::V4(_) => return None,
+        IpAddr::V6(v6) => v6,
     };
     if let Some(mapped) = v6.to_ipv4_mapped() {
-        return IpAddr::V4(mapped);
+        return Some(vec![mapped]);
     }
+    let o = v6.octets();
     let segments = v6.segments();
-    let well_known = segments[0] == 0x0064
-        && segments[1] == 0xff9b
-        && segments[2] == 0
-        && segments[3] == 0
-        && segments[4] == 0
-        && segments[5] == 0;
-    let local = segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 1;
-    if well_known || local {
-        // The IPv4 address is the last four octets (RFC 6052, a /96 prefix).
-        let [.., a, b, c, d] = v6.octets();
-        return IpAddr::V4(Ipv4Addr::new(a, b, c, d));
+    if segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+        return Some(vec![Ipv4Addr::new(o[12], o[13], o[14], o[15])]);
     }
-    ip
+    if segments[..3] == [0x0064, 0xff9b, 1] {
+        return Some(vec![
+            Ipv4Addr::new(o[6], o[7], o[9], o[10]),
+            Ipv4Addr::new(o[7], o[9], o[10], o[11]),
+            Ipv4Addr::new(o[9], o[10], o[11], o[12]),
+            Ipv4Addr::new(o[12], o[13], o[14], o[15]),
+        ]);
+    }
+    None
 }
 
 /// Addresses a listed peer may not be: unspecified, multicast, broadcast, and
-/// link-local, including those embedded in IPv4-mapped or NAT64 form.
+/// link-local, including those carried in IPv4-mapped or NAT64 form.
 /// Loopback stays allowed: a listed host may resolve to it.
 fn is_disallowed_peer_ip(ip: IpAddr) -> bool {
-    match peer_address(ip) {
-        IpAddr::V4(ip) => {
-            ip.is_unspecified() || ip.is_broadcast() || ip.is_multicast() || ip.is_link_local()
-        }
-        IpAddr::V6(ip) => ip.is_unspecified() || ip.is_multicast() || is_link_local(IpAddr::V6(ip)),
+    let refused = |v4: &Ipv4Addr| {
+        v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast() || v4.is_link_local()
+    };
+    match (peer_addresses(ip), ip) {
+        (Some(carried), _) => carried.iter().any(refused),
+        (None, IpAddr::V4(v4)) => refused(&v4),
+        (None, IpAddr::V6(v6)) => v6.is_unspecified() || v6.is_multicast() || is_link_local(ip),
     }
 }
 
@@ -872,8 +890,22 @@ mod tests {
         // 169.254.169.254, cloud metadata, behind both NAT64 prefixes.
         assert!(is_disallowed_peer_ip(ip("64:ff9b::a9fe:a9fe")));
         assert!(is_disallowed_peer_ip(ip("64:ff9b:1::a9fe:a9fe")));
+        // The same address in each local-use layout RFC 6052 allows inside
+        // 64:ff9b:1::/48: a /48, /56 and /64 translator prefix.
+        for raw in [
+            "64:ff9b:1:a9fe:a9:fe00::",
+            "64:ff9b:1:a9:fe:a9fe::",
+            "64:ff9b:1:0:a9:fea9:fe00:0",
+        ] {
+            assert!(
+                is_disallowed_peer_ip(ip(raw)),
+                "{raw} carries 169.254.169.254"
+            );
+            assert!(is_link_local(ip(raw)), "{raw} carries a link-local address");
+        }
         // 10.0.0.1, a private peer, stays allowed once unwrapped.
         assert!(!is_disallowed_peer_ip(ip("64:ff9b::a00:1")));
+        assert!(!is_disallowed_peer_ip(ip("::ffff:10.0.0.1")));
         // Outside the prefixes nothing is unwrapped.
         for raw in [
             "64:ff9b:0:1::a9fe:a9fe",
