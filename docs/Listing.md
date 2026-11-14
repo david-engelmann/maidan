@@ -10,18 +10,21 @@ names. If a sentence outruns its evidence, fix the sentence.
 
 ## Before any of this is used
 
-- **The hosted room must be running.** The copy names the hosted room at
-  `maidan.world`, as decided on 2026-10-12 ([Decisions](Decisions.md)). Until
-  Next 24 serves it, [Claims](Claims.md) still says "No hosted SaaS". So
-  either wait, or use the self-hosted variants marked below.
+- **The hosted room runs.** maidan.world has taken open sign-ups since
+  `v445.0.0`, and [Claims](Claims.md) says so. Use the hosted variants, except
+  where a listing ships the container image, which is self-hosted by nature.
 - **Name and logo clearance** comes before the first submission. That's the
   maintainer's call, and it isn't done.
-- **The legal pages are the maintainer's,** prepared outside the repo
-  ([Decisions](Decisions.md), 2026-10-12). Every listing links the privacy
-  policy, terms, support contact and data statement; this page doesn't write
-  them.
-- **The demo instance** where directory reviewers start a sandbox is built but
-  not deployed. See [The demo instance](#the-demo-instance) below.
+- **The legal pages are live and the maintainer's.** Every listing links
+  <https://maidan.world/privacy>, <https://maidan.world/terms> and
+  <https://maidan.world/support> (support@maidan.world); this page doesn't
+  write them.
+- **The demo instance is deployed** at try.maidan.world. See
+  [The demo instance](#the-demo-instance) below.
+- **The launch gate comes first.** Submissions wait until the
+  `maidan-launch-1.0` gate passes on the launch release, each with that
+  release's validation record (Open Work, Next 14). After that the maintainer
+  has said go for every listing below (2026-11-14).
 
 ## Name and short description
 
@@ -100,18 +103,20 @@ Self-hosted variant: in place of the "Hosted or self-hosted" paragraph, use
 | Scoped tokens; private channels on reads, events and search | [Claims](Claims.md), "Access is scoped on every token…" |
 | One binary, SQLite to a Postgres cluster | [Claims](Claims.md), "Single static binary, laptop SQLite → multi-replica Postgres cluster" |
 | MIT-licensed; signed release artifacts | [`LICENSE`](../LICENSE); [Claims](Claims.md), "Signed release artifacts" |
-| Hosted at maidan.world, free up to an allowance | [Decisions](Decisions.md), 2026-10-12. **Not yet true**; see "Before any of this is used" |
+| Hosted at maidan.world, free up to an allowance | [Claims](Claims.md), "The hosted room is new"; [Credits](Credits.md) |
 | Doesn't run models or plan | [Claims](Claims.md), "Not an orchestration planner or an agent runtime" |
 
 The copy deliberately gives no tool count: a listing leads with the room.
 
 ## Where the pack is wired in
 
-The listing files under `listings/` carry the self-hosted short description,
-because that variant is true today. Switch them to the hosted one once
-`maidan.world` serves the room. `listings/registry/server.json` also sets the
-`title`, the `repository` and both icons, and `listings/docker/server.yaml`'s
-`about` block sets the title, the description and the 400×400 icon. The icons point at the PNGs above on
+`listings/registry/server.json` carries the short description and lists
+both ways in: the hosted remote, `https://maidan.world/mcp/streamable`, and the
+container image to run yourself. It also sets the `title`, the `repository`
+and both icons. `listings/toolhive/server.json` and `listings/docker/server.yaml`
+list only the image, so they keep the self-hosted variant;
+`listings/docker/server.yaml`'s `about` block sets the title, the description
+and the 400×400 icon. The icons point at the PNGs above on
 `main`, so they resolve only after this page's assets are merged. The file
 validates against the registry's 2025-12-11 schema. Nothing has been
 submitted.
@@ -176,6 +181,67 @@ What keeps it safe to leave open:
 3. Open `https://try.maidan.world` and start a sandbox. The first sandbox after
    a deploy or a reset waits a few seconds for the container to boot.
 4. A reviewer needs nothing from us: point them at `https://try.maidan.world`.
+
+## The Claude connector directory
+
+The hosted room as a remote MCP connector, submitted through the developer
+portal at claude.ai/directory/manage (**Submit new**, **MCP connector**) from
+the maintainer's paid Claude account. Anthropic scans it and lists it as a
+Community connector; a Verified review, if it comes, asks for test access by
+email, and a reviewer can sign up with their own address because sign-up is
+open. The requirements are at
+<https://claude.com/docs/connectors/building/submission>. Each portal step,
+filled in:
+
+| Step | Field | Value |
+| --- | --- | --- |
+| Connection | Server URL | `https://maidan.world/mcp/streamable` (one URL for every user) |
+| Tools | Synced from the server | Every tool carries a `title` and the four hints, held by `tool_annotations_contract` |
+| Listing | Name | Maidan |
+| Listing | One-liner (200) | A shared room where AI coding agents and people claim, hand off and review work. |
+| Listing | Description (2,000) | The [long description](#long-description), hosted variant (about 1,500 characters) |
+| Listing | Categories | Developer tools; Productivity; Project management (whichever the portal offers closest) |
+| Listing | Documentation URL | <https://docs.maidan.world> |
+| Listing | Privacy policy URL | <https://maidan.world/privacy> |
+| Listing | Support contact | support@maidan.world |
+| Listing | Icon | `docs/assets/listing/maidan-icon-400.png` |
+| Listing | Slug (permanent) | `maidan` |
+| Use cases | Primary use cases | File a task for an agent and track it; let an agent claim and hand back work; review and close an agent's result; read what the room did while you were away |
+| Use cases | What users need first | A maidan.world account (open sign-up, free up to an allowance) |
+| Use cases | Reads or writes | Both |
+| Company | Name, website, contact | The maintainer's |
+| Authentication | Requirement | Required |
+| Authentication | Method | OAuth 2.0. Maidan is its own authorization server (`/.well-known/oauth-authorization-server`), and the person consents in the console, signed in. Claude's connector was recorded working on 2026-11-09 (Open Work, Next 23 P6) |
+| Data handling | Whose API | Our own, first-party |
+| Data handling | Health data, sponsored content | Neither |
+| Test & launch | Tested by | The MCP Inspector over the release (`listings/validation/`), and Claude as a custom connector (P6) |
+| Compliance | Seven acknowledgments | The maintainer's |
+
+**Before submitting, check:**
+- Every tool name is 64 characters or fewer. The longest is 30.
+- No tool mixes safe and unsafe HTTP methods behind one parameter. The four documented writes that also read (decided 2026-10-07) each do one thing.
+- No tool transfers money. `top_up_credits` answers what to pay and where; the payer sends it.
+
+## The ChatGPT directory
+
+Not ready to submit. ChatGPT's rules
+(<https://developers.openai.com/apps-sdk/app-submission-guidelines>) add three
+things that the Claude listing doesn't need:
+
+1. **A verified submitter.** The maintainer verifies their identity or
+   business in the OpenAI Platform dashboard.
+2. **A reviewer login without a code.** A listing that needs sign-up or a
+   second factor the reviewer can't complete is rejected, so the submission
+   gives a username and password for a demo account with sample data.
+   maidan.world signs in through Cloudflare Access with a one-time code by
+   email, which a reviewer can't receive. One of these has to exist first:
+   - an Access login method a reviewer account can use with a password;
+   - or a listing of the sandbox at try.maidan.world, whose sign-in is the
+     sandbox link.
+3. **No commerce in the listed surface.** Selling credits is refused, so the
+   ChatGPT surface leaves out `top_up_credits` and `get_credits`. OAuth tokens
+   are bound to `/mcp/streamable`, which serves every tool, so this needs a
+   curated surface an OAuth grant can reach.
 
 ## The Cursor package
 
