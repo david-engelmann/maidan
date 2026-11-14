@@ -26,7 +26,7 @@ export default defineConfig({
     assetsDir: "",
     cssCodeSplit: false,
     modulePreload: false,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: "app.js",
         chunkFileNames: "[name].js",
@@ -36,11 +36,9 @@ export default defineConfig({
           if (name.endsWith(".woff2")) return "geist.woff2";
           return "[name][extname]";
         },
-        manualChunks(id) {
-          if (id.includes("node_modules")) return "vendor";
-          
-          
-        },
+        // Dependencies in vendor.js. Rolldown puts the helpers both chunks
+        // share in rolldown-runtime.js, which the server embeds beside them.
+        codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] },
       },
     },
   },

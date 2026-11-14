@@ -61,7 +61,7 @@ fn build_web(manifest: &Path, name: &str) {
     }
 
     let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
-    if !web.join("node_modules").is_dir() {
+    if needs_install(&web) {
         let status = Command::new(npm)
             .arg("ci")
             .current_dir(&web)
@@ -81,6 +81,22 @@ fn build_web(manifest: &Path, name: &str) {
     }
     if let Err(err) = std::fs::write(&stamp, hash) {
         panic!("could not write the {name} source hash: {err}");
+    }
+}
+
+/// Whether `npm ci` must run first: there is no installed tree, or the
+/// lockfile is newer than the tree npm last installed (npm rewrites
+/// `node_modules/.package-lock.json` on every install). A checkout that kept
+/// `node_modules` from before a dependency change would otherwise build with
+/// the old packages, and a bundler major changes the files this crate embeds.
+fn needs_install(web: &Path) -> bool {
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    match (
+        modified(&web.join("node_modules").join(".package-lock.json")),
+        modified(&web.join("package-lock.json")),
+    ) {
+        (Some(installed), Some(lock)) => lock > installed,
+        _ => true,
     }
 }
 
