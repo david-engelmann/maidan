@@ -179,6 +179,15 @@ jobs:
       - name: clippy (dev-only MCP frame capture)
         # The feature is off in every shipped build, so nothing else compiles it.
         run: cargo clippy -p maidan-mcp --features frame-capture --all-targets -- -D warnings
+      - name: fuzz targets compile
+        # The fuzz crate sits outside the workspace, so the clippy passes above
+        # never compile it, and only the nightly fuzz job did: AuthContext's
+        # sealed fields (#2250) left that job red for two nights before anyone
+        # read it. A stable check here fails the PR instead. It shares the
+        # workspace's target dir, so the cached dependencies are reused.
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
       - name: no unwrap/expect in library/binary code
         # Scoped to --lib --bins so it covers crates/*/src only; test modules
         # (#[cfg(test)]) aren't compiled here, and tests/ + benches are excluded.

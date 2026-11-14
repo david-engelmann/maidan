@@ -59,7 +59,7 @@ fn gates_agree_with_handlers(request: &JsonRpcRequest) {
         .get("workspace_id")
         .map(|v| serde_json::from_value::<WorkspaceId>(v.clone()))
     {
-        assert_eq!(ws, auth.workspace_id, "{name} passed naming {ws:?}");
+        assert_eq!(ws, auth.workspace_id(), "{name} passed naming {ws:?}");
     }
     let Some(Ok(member)) = args
         .get("member_id")
@@ -67,7 +67,7 @@ fn gates_agree_with_handlers(request: &JsonRpcRequest) {
     else {
         return;
     };
-    if member == auth.member_id {
+    if member == auth.member_id() {
         return;
     }
     // Only member tools gate `member_id`. Ask the gate whether this tool is
