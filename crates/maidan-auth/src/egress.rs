@@ -259,8 +259,9 @@ fn peer_address(ip: IpAddr) -> IpAddr {
         && segments[5] == 0;
     let local = segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 1;
     if well_known || local {
-        let embedded = ((segments[6] as u32) << 16) | u32::from(segments[7]);
-        return IpAddr::V4(Ipv4Addr::from(embedded));
+        // The IPv4 address is the last four octets (RFC 6052, a /96 prefix).
+        let [.., a, b, c, d] = v6.octets();
+        return IpAddr::V4(Ipv4Addr::new(a, b, c, d));
     }
     ip
 }
@@ -449,6 +450,10 @@ mod tests {
             "http://[64:ff9b::7f00:1]/x",
             "http://[100::1]/x",
             "http://[2001::1]/x",
+            "http://[2001:2::1]/x",
+            "http://[2001:10::1]/x",
+            "http://[2001:20::1]/x",
+            "http://[2001:db8::1]/x",
             "http://[2002:7f00:1::]/x",
             "http://[4000::1]/x",
             "http://localhost/x",
@@ -777,8 +782,170 @@ mod tests {
         ));
     }
 
+    /// Every block `is_public_ipv6` carves out of 2000::/3 has a public
+    /// neighbor, and the neighbor opens: a carve-out that grew past its prefix
+    /// would close real hosts, and nothing else here would notice.
+    #[test]
+    fn public_ipv6_next_to_every_carve_out_is_accepted() {
+        for raw in [
+            "https://[2001:4860:4860::8888]/hook",
+            "https://[2606:4700:4700::1111]/hook",
+            "https://[2620:fe::fe]/hook",
+            "https://[2620:4f:8001::1]/hook",
+            "https://[2001:4:113::1]/hook",
+            "https://[2001:40::1]/hook",
+            "https://[2001:db9::1]/hook",
+            "https://[2003::1]/hook",
+            "https://[3fff:1000::1]/hook",
+        ] {
+            assert!(parse_egress_target(raw).is_ok(), "refused public {raw}");
+            assert!(
+                validate_with_peers(raw, &[]).is_ok(),
+                "the peer path refused public {raw}"
+            );
+        }
+    }
+
+    /// The length bound is inclusive, a user name alone is a credential, and
+    /// surrounding space is refused, on both the target and the peer path.
+    #[test]
+    fn only_http_and_https_with_a_host_are_targets() {
+        for raw in [
+            "ftp://example.com/hook",
+            "ws://example.com/hook",
+            "file:///etc/passwd",
+            "mailto:ops@example.com",
+        ] {
+            assert!(
+                matches!(parse_egress_target(raw), Err(EgressTargetError::InvalidUrl)),
+                "accepted {raw}"
+            );
+            assert!(
+                matches!(
+                    validate_with_peers(raw, &[]),
+                    Err(EgressTargetError::InvalidUrl)
+                ),
+                "the peer path accepted {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_url_bound_and_the_credential_check_are_exact() {
+        let base = "https://example.com/";
+        let at_limit = format!("{base}{}", "a".repeat(MAX_EGRESS_URL_LEN - base.len()));
+        assert_eq!(at_limit.len(), MAX_EGRESS_URL_LEN);
+        assert!(parse_egress_target(&at_limit).is_ok());
+        assert!(validate_with_peers(&at_limit, &[]).is_ok());
+        for raw in [
+            "https://user@example.com/hook",
+            "https://:secret@example.com/hook",
+        ] {
+            assert!(
+                matches!(
+                    parse_egress_target(raw),
+                    Err(EgressTargetError::Credentials)
+                ),
+                "{raw}"
+            );
+            assert!(
+                matches!(
+                    validate_with_peers(raw, &[]),
+                    Err(EgressTargetError::Credentials)
+                ),
+                "{raw}"
+            );
+        }
+        for raw in [" https://example.com/", "https://example.com/ "] {
+            assert!(matches!(
+                parse_egress_target(raw),
+                Err(EgressTargetError::InvalidUrl)
+            ));
+        }
+    }
+
+    /// NAT64 addresses are judged by the IPv4 address they carry, and only
+    /// the two NAT64 prefixes are unwrapped.
+    #[test]
+    fn a_peer_address_is_judged_by_the_ipv4_inside_nat64() {
+        let ip = |raw: &str| raw.parse::<IpAddr>().expect("address");
+        // 169.254.169.254, cloud metadata, behind both NAT64 prefixes.
+        assert!(is_disallowed_peer_ip(ip("64:ff9b::a9fe:a9fe")));
+        assert!(is_disallowed_peer_ip(ip("64:ff9b:1::a9fe:a9fe")));
+        // 10.0.0.1, a private peer, stays allowed once unwrapped.
+        assert!(!is_disallowed_peer_ip(ip("64:ff9b::a00:1")));
+        // Outside the prefixes nothing is unwrapped.
+        for raw in [
+            "64:ff9b:0:1::a9fe:a9fe",
+            "64:ff9b::1:0:a9fe:a9fe",
+            "64:fe9b::a9fe:a9fe",
+            "65:ff9b::a9fe:a9fe",
+            "65:ff9b:1::a9fe:a9fe",
+            "64:ff9b:2::a9fe:a9fe",
+        ] {
+            assert!(!is_disallowed_peer_ip(ip(raw)), "{raw} was unwrapped");
+        }
+    }
+
+    #[test]
+    fn the_escape_hatch_needs_its_flag_and_never_opens_in_production() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let set = |allow: Option<&str>, env: Option<&str>| {
+            #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+            unsafe {
+                match allow {
+                    Some(v) => std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", v),
+                    None => std::env::remove_var("MAIDAN_ALLOW_PRIVATE_EGRESS"),
+                }
+                match env {
+                    Some(v) => std::env::set_var("MAIDAN_ENV", v),
+                    None => std::env::remove_var("MAIDAN_ENV"),
+                }
+            }
+        };
+        set(None, None);
+        assert!(!private_egress_explicitly_allowed(), "off by default");
+        set(Some("0"), None);
+        assert!(!private_egress_explicitly_allowed(), "only 1 opens it");
+        set(Some("1"), Some("production"));
+        assert!(!private_egress_explicitly_allowed(), "never in production");
+        set(Some("1"), Some("development"));
+        assert!(private_egress_explicitly_allowed());
+        set(None, None);
+    }
+
+    #[test]
+    fn the_host_lists_come_from_their_variables() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::set_var(PRIVATE_EGRESS_HOSTS_ENV, "peer-under-test.corp, 10.9.8.7");
+            std::env::set_var(
+                INTERNAL_EGRESS_HOSTS_ENV,
+                "probe-under-test.internal, example.com",
+            );
+        }
+        assert_eq!(
+            private_egress_hosts(),
+            vec!["peer-under-test.corp", "10.9.8.7"]
+        );
+        assert_eq!(internal_egress_hosts(), vec!["probe-under-test.internal"]);
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::remove_var(PRIVATE_EGRESS_HOSTS_ENV);
+            std::env::remove_var(INTERNAL_EGRESS_HOSTS_ENV);
+        }
+        assert!(private_egress_hosts().is_empty());
+        assert!(internal_egress_hosts().is_empty());
+    }
+
+    /// Tests that write the process environment take this, so no other such
+    /// test reads a value it set halfway through.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn the_private_escape_hatch_still_bounds_the_url() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
         unsafe {
             std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
