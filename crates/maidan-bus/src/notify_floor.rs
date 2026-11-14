@@ -740,14 +740,17 @@ mod sim {
         }
     }
 
-    fn run(seed: u64) {
+    /// One seed's run; returns the steps it took before settling.
+    fn run(seed: u64) -> Vec<String> {
         let mut world = World::new(seed);
         for _ in 0..STEPS {
             world.step();
         }
+        let stepped = world.trace.clone();
         world.settle();
         world.check_delivered_are_committed();
         world.check_everything_arrived();
+        stepped
     }
 
     fn seeds() -> Vec<u64> {
@@ -766,13 +769,36 @@ mod sim {
 
     #[test]
     fn the_floor_delivers_every_committed_event_under_faults() {
+        let mut stepped = Vec::new();
         for seed in seeds() {
-            if let Err(panic) = std::panic::catch_unwind(|| run(seed)) {
-                let msg = panic
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .unwrap_or_else(|| "panic".into());
-                panic!("seed {seed} (replay with MAIDAN_SIM_SEED={seed}): {msg}");
+            match std::panic::catch_unwind(|| run(seed)) {
+                Ok(trace) => stepped.extend(trace),
+                Err(panic) => {
+                    let msg = panic
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .unwrap_or_else(|| "panic".into());
+                    panic!("seed {seed} (replay with MAIDAN_SIM_SEED={seed}): {msg}");
+                }
+            }
+        }
+        // The invariants hold trivially in a world where nothing happens, so
+        // the runs must have met every fault the floor exists to survive.
+        if std::env::var("MAIDAN_SIM_SEED").is_err() {
+            type Seen = fn(&str) -> bool;
+            let faults: [(&str, Seen); 4] = [
+                ("a disconnect that dropped a NOTIFY", |s| {
+                    s.contains(": disconnect, lost [") && !s.ends_with("[]")
+                }),
+                ("a rollback", |s| s.starts_with("roll back ")),
+                ("a reconnect", |s| s.contains(": reconnect, ")),
+                ("a NOTIFY delivered", |s| s.contains(": notify ")),
+            ];
+            for (fault, seen) in faults {
+                assert!(
+                    stepped.iter().any(|step| seen(step)),
+                    "no run took a step with {fault}: the simulation stopped exercising the floor"
+                );
             }
         }
     }
