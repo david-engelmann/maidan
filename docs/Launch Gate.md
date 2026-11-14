@@ -18,6 +18,15 @@ checklist for the launch release.
 This is a maintainer page, like [Hosted Operations](Hosted%20Operations.md),
 and is not published on the docs site.
 
+**The terminal half is a script.** `scripts/launch-gate-run.sh [EVIDENCE_DIR]`
+makes every operator and agent call below in order, finds the ids itself,
+checks what a terminal can check, and keeps the evidence. Tokens are read
+without echo and never saved, and the invite link is shown once and never
+saved. It stops at each browser step with what to do, and asks you to confirm
+what only a browser can show. At the end it writes `record.md`, which holds
+every check as PASS or FAIL and lists the screenshots to add. The steps below
+remain the reference for what each check means.
+
 ## Before you start
 
 ### Who takes part
