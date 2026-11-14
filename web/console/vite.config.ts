@@ -27,7 +27,7 @@ export default defineConfig({
     // Preload the chunks app.js imports, without the polyfill (every target
     // browser has modulepreload). scripts/check-csp.mjs holds the build to it.
     modulePreload: { polyfill: false },
-    rollupOptions: {
+    rolldownOptions: {
       // The service worker is its own entry so it lands at /ui/sw.js,
       // where its scope covers the whole console.
       input: { app: "index.html", sw: "src/pwa/sw.ts" },
@@ -40,9 +40,9 @@ export default defineConfig({
           if (name.endsWith(".woff2")) return "geist.woff2";
           return "[name][extname]";
         },
-        manualChunks(id) {
-          if (id.includes("node_modules")) return "vendor";
-        },
+        // Dependencies in vendor.js. Rolldown puts the helpers both chunks
+        // share in rolldown-runtime.js, which the server embeds beside them.
+        codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] },
       },
     },
   },

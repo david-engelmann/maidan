@@ -1387,6 +1387,11 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/vendor.js"),
             ),
+            // The helpers app.js and vendor.js share, split out by Rolldown.
+            "rolldown-runtime.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/rolldown-runtime.js"),
+            ),
             "style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../static/landing/dist/style.css"),
@@ -1448,6 +1453,11 @@ pub fn router(state: AppState) -> Router {
             "vendor.js" => (
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/console/dist/vendor.js"),
+            ),
+            // The helpers app.js and vendor.js share, split out by Rolldown.
+            "rolldown-runtime.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/rolldown-runtime.js"),
             ),
             // Sets the stored theme on <html> before the first paint
             // (web/console/public/theme.js).

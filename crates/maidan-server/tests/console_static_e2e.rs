@@ -100,6 +100,7 @@ async fn console_assets_are_pinned_names_only() {
     for (name, kind) in [
         ("app.js", "text/javascript"),
         ("vendor.js", "text/javascript"),
+        ("rolldown-runtime.js", "text/javascript"),
         ("theme.js", "text/javascript"),
         ("style.css", "text/css"),
         ("geist.woff2", "font/woff2"),
