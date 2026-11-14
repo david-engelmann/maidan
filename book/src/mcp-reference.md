@@ -4777,7 +4777,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_memory_block_value`
 
-**Set memory block value.** Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.
+**Set memory block value.** Full-rewrite a memory block's value by label, at the revision you read. Read the block with get_memory_block, change its value, and pass its revision as expected_revision. If another write landed since, the call is refused: read it again, redo the change and retry. A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.
 
 **Capability:** `workspace:write`
 
@@ -4786,6 +4786,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "expected_revision": {
+      "description": "the block's revision when you read it",
+      "minimum": 1,
+      "type": "integer"
+    },
     "label": {
       "type": "string"
     },
@@ -4795,7 +4800,8 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   },
   "required": [
     "label",
-    "value"
+    "value",
+    "expected_revision"
   ],
   "type": "object"
 }

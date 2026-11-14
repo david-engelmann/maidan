@@ -103,17 +103,45 @@ async fn run_suite(store: &dyn Store) {
     );
     assert_eq!(store.list_memory_blocks(ws.id).await.unwrap().len(), 1);
 
-    // set_value is a full rewrite (last-writer-wins).
+    // set_value is a full rewrite at the revision the writer read, and moves
+    // the block to the next revision.
+    assert_eq!(block.revision, 1, "a new block starts at revision 1");
     let updated = store
-        .set_memory_block_value(block.id, "world")
+        .set_memory_block_value(block.id, 1, "world")
         .await
         .expect("set");
     assert_eq!(updated.value, "world");
+    assert_eq!(updated.revision, 2);
     assert!(updated.updated_at >= block.updated_at);
+
+    // Two writers read revision 2. The first write lands; the second names a
+    // revision the block has moved past, so it is refused instead of silently
+    // replacing the first writer's value.
+    store
+        .set_memory_block_value(block.id, 2, "first")
+        .await
+        .expect("the first writer lands");
+    let stale = store.set_memory_block_value(block.id, 2, "second").await;
+    assert!(
+        matches!(&stale, Err(StoreError::Conflict(m)) if m.contains("revision 3")),
+        "{stale:?}"
+    );
+    let now = store.get_memory_block(block.id).await.unwrap().unwrap();
+    assert_eq!((now.value.as_str(), now.revision), ("first", 3));
+    // A revision from the future is as stale as one from the past.
+    assert!(matches!(
+        store.set_memory_block_value(block.id, 9, "ahead").await,
+        Err(StoreError::Conflict(_))
+    ));
+    let updated = store
+        .set_memory_block_value(block.id, 3, "world")
+        .await
+        .expect("a writer that read again lands");
+    assert_eq!(updated.revision, 4);
 
     // Over the char limit is refused (InvalidInput).
     let too_long = store
-        .set_memory_block_value(block.id, "this is way too long")
+        .set_memory_block_value(block.id, 4, "this is way too long")
         .await;
     assert!(matches!(too_long, Err(StoreError::InvalidInput(_))));
     // The value was NOT changed.
@@ -140,7 +168,7 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("ro");
-    let refused = store.set_memory_block_value(ro.id, "nope").await;
+    let refused = store.set_memory_block_value(ro.id, 1, "nope").await;
     assert!(matches!(refused, Err(StoreError::InvalidInput(_))));
 
     // Attach to a thread (idempotent).
@@ -185,7 +213,7 @@ async fn run_suite(store: &dyn Store) {
     assert!(store.get_memory_block(ro.id).await.unwrap().is_none());
     // set_value on an unknown block is NotFound.
     assert!(matches!(
-        store.set_memory_block_value(ro.id, "x").await,
+        store.set_memory_block_value(ro.id, 1, "x").await,
         Err(StoreError::NotFound)
     ));
 }

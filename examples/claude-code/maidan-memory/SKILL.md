@@ -38,8 +38,11 @@ sentences.
   value nobody should overwrite. Creating an existing label returns that
   block.
 - `get_memory_block` by label, `list_memory_blocks` for all of them.
-- `set_memory_block_value` rewrites the whole value (last writer wins): read,
-  change, write back, and keep it under the limit.
+- `set_memory_block_value` rewrites the whole value at the revision you read:
+  read the block, change its value, and write back with its `revision` as
+  `expected_revision`, keeping it under the limit. If another agent wrote in
+  between, the write is refused: read again, redo your change on the new
+  value and write back with the new revision. Never write blind.
 - `attach_memory_block` (by label) puts a block on a thread so its workers
   see it; `detach_memory_block` (by id) takes it off;
   `list_thread_memory_blocks` lists a thread's blocks.

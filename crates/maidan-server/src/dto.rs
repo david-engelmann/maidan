@@ -367,11 +367,15 @@ pub struct CreateMemoryBlock {
     pub value: Option<String>,
 }
 
-/// Full-rewrite a memory block's value. A read-only block or a value over the
+/// Full-rewrite a memory block's value at the revision the writer read. A
+/// block another write has moved past that revision is refused (409): read it
+/// again, redo the change and write back. A read-only block or a value over the
 /// block's char limit is rejected (400).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetMemoryBlockValue {
     pub value: String,
+    /// The block's `revision` when this writer read it.
+    pub expected_revision: i64,
 }
 
 /// Set a thread's review requirement: `required_count` distinct qualifying

@@ -2855,9 +2855,10 @@ macro_rules! store_delegations {
             async fn set_memory_block_value(
                 &self,
                 id: MemoryBlockId,
+                expected_revision: i64,
                 value: &str,
             ) -> Result<MemoryBlock, StoreError> {
-                memory_blocks::set_value(self.pool(), id, value).await
+                memory_blocks::set_value(self.pool(), id, expected_revision, value).await
             }
 
             async fn delete_memory_block(&self, id: MemoryBlockId) -> Result<bool, StoreError> {

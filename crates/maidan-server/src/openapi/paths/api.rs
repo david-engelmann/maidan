@@ -2400,6 +2400,7 @@ pub fn get_memory_block() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     ))]
 pub fn set_memory_block_value() {}
 

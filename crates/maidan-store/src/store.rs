@@ -2449,9 +2449,9 @@ pub trait MemoryBlockStore: Send + Sync {
     /// `create_memory_block` is concurrent-safe on `(workspace_id, label)` — a
     /// racing create returns the existing block rather than erroring, so two
     /// racers converge on one block. `set_memory_block_value` is a full rewrite
-    /// (last-writer-wins) that returns `InvalidInput` for a read-only block or
-    /// a value over the block's char limit, and `NotFound` for an unknown
-    /// block. `attach_memory_block` / `detach_memory_block` are idempotent and
+    /// at `expected_revision`, the revision the writer read: `Conflict` when
+    /// another write landed since, `InvalidInput` for a read-only block or a
+    /// value over the block's char limit, and `NotFound` for an unknown block. `attach_memory_block` / `detach_memory_block` are idempotent and
     /// report whether they changed anything.
     async fn create_memory_block(&self, new: NewMemoryBlock) -> Result<MemoryBlock, StoreError>;
     async fn get_memory_block(&self, id: MemoryBlockId) -> Result<Option<MemoryBlock>, StoreError>;
@@ -2467,6 +2467,7 @@ pub trait MemoryBlockStore: Send + Sync {
     async fn set_memory_block_value(
         &self,
         id: MemoryBlockId,
+        expected_revision: i64,
         value: &str,
     ) -> Result<MemoryBlock, StoreError>;
     async fn delete_memory_block(&self, id: MemoryBlockId) -> Result<bool, StoreError>;

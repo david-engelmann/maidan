@@ -1,8 +1,9 @@
 //! Attachable labeled memory-block store: the `maidan_memory_blocks` +
 //! `maidan_thread_memory_blocks` tables. A block is a Letta-shaped `{label,
 //! description, limit, read_only, value}` workspace object a thread attaches
-//! to; `set_value` is a full rewrite (last-writer-wins) that refuses a
-//! read-only block or an over-limit value. See the SQLite twin.
+//! to; `set_value` is a full rewrite at the revision the writer read, which
+//! refuses a stale revision, a read-only block or an over-limit value. See the
+//! SQLite twin.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
@@ -13,8 +14,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str = "id, workspace_id, label, description, char_limit, read_only, value, owner_id, created_at, updated_at";
-const COLS_B: &str = "b.id, b.workspace_id, b.label, b.description, b.char_limit, b.read_only, b.value, b.owner_id, b.created_at, b.updated_at";
+const COLS: &str = "id, workspace_id, label, description, char_limit, read_only, value, owner_id, revision, created_at, updated_at";
+const COLS_B: &str = "b.id, b.workspace_id, b.label, b.description, b.char_limit, b.read_only, b.value, b.owner_id, b.revision, b.created_at, b.updated_at";
 
 fn row_to_block(row: &sqlx::postgres::PgRow) -> MemoryBlock {
     MemoryBlock {
@@ -26,6 +27,7 @@ fn row_to_block(row: &sqlx::postgres::PgRow) -> MemoryBlock {
         read_only: row.get::<bool, _>("read_only"),
         value: row.get("value"),
         owner_id: MemberId(row.get::<Uuid, _>("owner_id")),
+        revision: row.get::<i64, _>("revision"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     }
@@ -103,12 +105,16 @@ pub async fn list(
     Ok(rows.iter().map(row_to_block).collect())
 }
 
-/// Full-rewrite the value (last-writer-wins). `NotFound` for an unknown block,
+/// Full-rewrite the value at `expected_revision`, the revision the writer read,
+/// and move the block to the next one. `NotFound` for an unknown block,
+/// `Conflict` when another write landed since that revision (several writers
+/// share a block by label, and a blind rewrite lost one of their updates),
 /// `InvalidInput` for a read-only block or a value over the char limit. The
-/// read-and-write runs in one tx (`FOR UPDATE`) so the guard can't be raced.
+/// read-and-write runs in one tx (`FOR UPDATE`) so the guards can't be raced.
 pub async fn set_value(
     pool: &PgPool,
     id: MemoryBlockId,
+    expected_revision: i64,
     value: &str,
 ) -> Result<MemoryBlock, StoreError> {
     let mut tx = pool.begin().await?;
@@ -125,13 +131,18 @@ pub async fn set_value(
     if block.read_only {
         return Err(StoreError::InvalidInput("memory block is read-only".into()));
     }
+    // The writer names the revision it read; the row lock (a write transaction
+    // on SQLite) orders this check against every other rewrite.
+    if block.revision != expected_revision {
+        return Err(stale_revision(&block, expected_revision));
+    }
     if !fits_char_limit(value, block.char_limit) {
         return Err(StoreError::InvalidInput(
             "value exceeds the block char limit".into(),
         ));
     }
     let row = sqlx::query(&format!(
-        "UPDATE maidan_memory_blocks SET value = $2, updated_at = NOW() WHERE id = $1 RETURNING {COLS}"
+        "UPDATE maidan_memory_blocks SET value = $2, revision = revision + 1, updated_at = NOW() WHERE id = $1 RETURNING {COLS}"
     ))
     .bind(id.0)
     .bind(value)
@@ -139,6 +150,13 @@ pub async fn set_value(
     .await?;
     tx.commit().await?;
     Ok(row_to_block(&row))
+}
+
+fn stale_revision(block: &MemoryBlock, expected: i64) -> StoreError {
+    StoreError::Conflict(format!(
+        "memory block \"{}\" is at revision {}, not {expected}: read it again, redo the change and write back with the new revision",
+        block.label, block.revision
+    ))
 }
 
 pub async fn delete(pool: &PgPool, id: MemoryBlockId) -> Result<bool, StoreError> {

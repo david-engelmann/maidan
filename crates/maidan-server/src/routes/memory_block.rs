@@ -104,10 +104,11 @@ pub async fn set_memory_block_value(
     cap(&auth, WORKSPACE_WRITE)?;
     let block_id = MemoryBlockId(block_id);
     resolve_block(&state, &auth, WorkspaceId(workspace_id), block_id).await?;
-    // A read-only block or an over-limit value surfaces as InvalidInput → 400.
+    // A stale revision surfaces as Conflict → 409; a read-only block or an
+    // over-limit value as InvalidInput → 400.
     let updated = state
         .store
-        .set_memory_block_value(block_id, &body.value)
+        .set_memory_block_value(block_id, body.expected_revision, &body.value)
         .await?;
     // A "go fetch" pointer so a parent watching the block reacts without
     // polling. Best-effort — a bus hiccup never fails the write.

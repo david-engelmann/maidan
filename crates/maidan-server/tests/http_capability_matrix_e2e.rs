@@ -770,7 +770,7 @@ fn apply_route_defaults(
         return b.json(&json!({ "label": "cap-matrix" }));
     }
     if path == "/workspaces/{wid}/memory-blocks/{id}" && method == "PUT" {
-        return b.json(&json!({ "value": "cap matrix" }));
+        return b.json(&json!({ "value": "cap matrix", "expected_revision": 1 }));
     }
     if path == "/threads/{id}/review-requirement" && method == "PUT" {
         return b.json(&json!({ "required_count": 1 }));

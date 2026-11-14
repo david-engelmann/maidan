@@ -37,6 +37,9 @@ pub struct MemoryBlock {
     pub read_only: bool,
     pub value: String,
     pub owner_id: MemberId,
+    /// 1 at creation, plus one per rewrite. A write names the revision it
+    /// read, so two writers sharing the block cannot lose each other's update.
+    pub revision: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
