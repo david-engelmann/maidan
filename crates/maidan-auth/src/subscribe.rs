@@ -267,6 +267,61 @@ mod tests {
         ));
     }
 
+    /// A token the right secret signed, over any payload bytes.
+    fn signed_raw(json: &[u8]) -> String {
+        let encoded = URL_SAFE_NO_PAD.encode(json);
+        let mac = mac_for_payload(encoded.as_bytes(), SECRET);
+        format!("{encoded}.{}", hex::encode(mac))
+    }
+
+    /// Both size bounds are inclusive: a payload of exactly the limit is read
+    /// (and here fails to parse), one byte more is refused before parsing.
+    #[test]
+    fn the_payload_bounds_are_exact() {
+        let at_limit = signed_raw(&[b'x'; MAX_PAYLOAD_BYTES]);
+        assert!(matches!(
+            verify_resume_token(&at_limit, SECRET),
+            Err(SubscribeResumeError::Malformed)
+        ));
+        let over = signed_raw(&[b'x'; MAX_PAYLOAD_BYTES + 1]);
+        assert!(matches!(
+            verify_resume_token(&over, SECRET),
+            Err(SubscribeResumeError::PayloadTooLarge)
+        ));
+        // The encoded bound is the base64 size of the payload bound.
+        let mac = "ab".repeat(MAC_HEX_LEN / 2);
+        let encoded_at_limit = format!("{}.{mac}", "a".repeat(MAX_ENCODED_PAYLOAD_BYTES));
+        assert!(matches!(
+            verify_resume_token(&encoded_at_limit, SECRET),
+            Err(SubscribeResumeError::InvalidSignature)
+        ));
+    }
+
+    #[test]
+    fn a_resume_token_at_cursor_zero_is_valid_and_a_replay_needs_a_workspace() {
+        let ws = WorkspaceId(uuid::Uuid::now_v7());
+        let token = sign_resume_token(&EventFilter::workspace(ws), 0, SECRET, 3600).unwrap();
+        assert_eq!(verify_resume_token(&token, SECRET).unwrap().1, 0);
+
+        let unscoped = EventFilter::default();
+        let live = sign_resume_token(&unscoped, 0, SECRET, 3600).unwrap();
+        let sub = frame(serde_json::json!({ "resume_token": live }));
+        assert_eq!(resolve_subscribe(&sub, Some(SECRET)).unwrap().1, 0);
+        let replay = sign_resume_token(&unscoped, 3, SECRET, 3600).unwrap();
+        let sub = frame(serde_json::json!({ "resume_token": replay }));
+        assert!(matches!(
+            resolve_subscribe(&sub, Some(SECRET)),
+            Err(SubscribeRefusal::ResumeReplayNeedsWorkspace)
+        ));
+    }
+
+    #[test]
+    fn a_frame_at_cursor_zero_needs_no_workspace() {
+        let (filter, after_id) =
+            resolve_subscribe(&frame(serde_json::json!({ "after_id": 0 })), None).unwrap();
+        assert_eq!((filter.workspace_id, after_id), (None, 0));
+    }
+
     fn frame(json: serde_json::Value) -> SubscribeFrame {
         serde_json::from_value(json).unwrap()
     }
