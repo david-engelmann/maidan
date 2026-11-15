@@ -116,7 +116,10 @@ container image to run yourself. It also sets the `title`, the `repository`
 and both icons. `listings/toolhive/server.json` and `listings/docker/server.yaml`
 list only the image, so they keep the self-hosted variant;
 `listings/docker/server.yaml`'s `about` block sets the title, the description
-and the 400×400 icon. The icons point at the PNGs above on
+and the 400×400 icon. The official registry entry publishes by hand with the
+`publish MCP registry` workflow (`.github/workflows/publish-mcp-registry.yml`),
+dispatched with the release the entry names typed out. GitHub's OIDC token
+proves the `io.github.david-engelmann` namespace, so no secret is involved. The icons point at the PNGs above on
 `main`, so they resolve only after this page's assets are merged. The file
 validates against the registry's 2025-12-11 schema. Nothing has been
 submitted.

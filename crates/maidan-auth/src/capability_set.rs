@@ -219,6 +219,44 @@ pub fn delegated_expiry(
 mod tests {
     use super::*;
     use crate::capability::{FEDERATION_ADMIN, FEDERATION_INGEST};
+
+    #[test]
+    fn only_the_two_named_sets_are_named_sets() {
+        assert!(is_named_set(AGENT_WORKER));
+        assert!(is_named_set(HUMAN_ADMIN));
+        assert!(!is_named_set("maidan.agent.reviewer"));
+        assert!(!is_named_set(""));
+    }
+
+    /// The ceilings are inclusive: a token may live exactly as long as its
+    /// parent, and a delegated token exactly one hour, never a second more.
+    #[test]
+    fn expiry_ceilings_are_inclusive() {
+        let now = Utc::now();
+        let parent = now + chrono::Duration::hours(2);
+        assert_eq!(
+            attenuate_expiry(Some(parent), Some(parent), now),
+            Ok(Some(parent))
+        );
+        assert!(attenuate_expiry(
+            Some(parent),
+            Some(parent + chrono::Duration::seconds(1)),
+            now
+        )
+        .is_err());
+
+        let grant = now + chrono::Duration::days(1);
+        let hour = now + chrono::Duration::seconds(maidan_types::DELEGATED_TOKEN_MAX_TTL_SECS);
+        assert_eq!(delegated_expiry(grant, None, Some(hour), now), Ok(hour));
+        assert!(
+            delegated_expiry(grant, None, Some(hour + chrono::Duration::seconds(1)), now).is_err()
+        );
+        assert_eq!(delegated_expiry(hour, None, Some(hour), now), Ok(hour));
+        assert_eq!(
+            delegated_expiry(grant, Some(hour), Some(hour), now),
+            Ok(hour)
+        );
+    }
     use chrono::Duration;
 
     #[test]
