@@ -178,6 +178,44 @@ mod tests {
         assert!(vis.allows_in(None, Some(public_own)).await.unwrap());
     }
 
+    /// A logged event names its thread, and the thread's access rule decides:
+    /// hidden in a private channel the reader is not in, shown once they are.
+    #[tokio::test]
+    async fn a_logged_event_follows_its_threads_access() {
+        let (store, auth, public_own, _, _) = seed().await;
+        let inner = channel(&store, auth.workspace_id(), "inner", true).await;
+        let thread = |channel_id| maidan_types::NewThread {
+            channel_id,
+            parent_thread_id: None,
+            title: Some("logged".into()),
+            description: None,
+            created_by: None,
+        };
+        let (_, shown) = store
+            .create_thread_with_event(thread(public_own))
+            .await
+            .expect("public thread");
+        let (_, hidden) = store
+            .create_thread_with_event(thread(inner))
+            .await
+            .expect("private thread");
+        let mut vis = EventVisibility::new(&store, &auth);
+        assert!(vis.allows(&shown).await.expect("shown"));
+        assert!(!vis.allows(&hidden).await.expect("hidden"));
+        store
+            .add_channel_member(
+                inner,
+                auth.member_id(),
+                maidan_types::ChannelMemberRole::Member,
+            )
+            .await
+            .expect("join");
+        assert!(EventVisibility::new(&store, &auth)
+            .allows(&hidden)
+            .await
+            .expect("after joining"));
+    }
+
     #[tokio::test]
     async fn a_private_channel_in_another_workspace_is_not_visible() {
         let (store, auth, _, _, private_other) = seed().await;
