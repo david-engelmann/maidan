@@ -207,6 +207,35 @@ pub fn validate_subset(granted: &[String], requested: &[String]) -> Result<(), S
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_capability_lists_are_exactly_their_tables() {
+        assert_eq!(
+            delegatable(),
+            DELEGATABLE
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(delegatable()
+            .iter()
+            .all(|c| is_delegatable(c) && is_known(c)));
+        assert!(
+            !is_delegatable(TOKEN_ADMIN),
+            "a grant never carries token:admin"
+        );
+        assert_eq!(all().len(), KNOWN.len());
+        assert!(all().iter().all(|c| is_known(c)));
+        assert!(all().contains(&TOKEN_ADMIN.to_string()));
+    }
+
+    #[test]
+    fn the_const_check_compares_every_byte() {
+        assert!(is_known_const(WORKSPACE_READ));
+        // Same length as `workspace:read`, one byte off.
+        assert!(!is_known_const("workspace:reax"));
+        assert!(!is_known_const("workspace:rea"));
+    }
+
     /// Everything that is not work. Listed so a new capability is a decision,
     /// not a default: it must land in exactly one of the two lists.
     const AUTHORITY: &[&str] = &[
