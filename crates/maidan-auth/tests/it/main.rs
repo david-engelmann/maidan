@@ -26,6 +26,9 @@ mod keyring_rotation;
 #[path = "../peer_secret_aead.rs"]
 mod peer_secret_aead;
 
+#[path = "../principal_rules.rs"]
+mod principal_rules;
+
 #[path = "../token_lifecycle.rs"]
 mod token_lifecycle;
 
