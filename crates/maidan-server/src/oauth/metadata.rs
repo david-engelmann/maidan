@@ -27,12 +27,26 @@ use serde::Serialize;
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// The MCP endpoint clients connect to, and so the protected resource's path.
+/// The MCP endpoint clients connect to, and so the protected resource's path:
+/// the full catalog, and the resource a request that names none is given.
 pub const MCP_RESOURCE_PATH: &str = "/mcp/streamable";
 
-/// Where the resource's metadata is served, per RFC 9728 section 3.1: the
-/// well-known prefix inserted before the resource's path.
+/// The coordinator profile's endpoint, a protected resource of its own: the
+/// fixed, smaller tool set (filing, finding, tracking and reviewing work)
+/// for a directory that lists one surface and refuses some of the full
+/// catalog's tools, such as buying credits (Open Work Next 50).
+pub const COORDINATOR_RESOURCE_PATH: &str = "/mcp/coordinator";
+
+/// Every MCP endpoint an OAuth token can be bound to. A grant names one, and
+/// its tokens answer there alone.
+pub const OAUTH_RESOURCE_PATHS: [&str; 2] = [MCP_RESOURCE_PATH, COORDINATOR_RESOURCE_PATH];
+
+/// Where the full catalog's metadata is served, per RFC 9728 section 3.1:
+/// the well-known prefix inserted before the resource's path.
 pub const RESOURCE_METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp/streamable";
+
+/// Where the coordinator profile's metadata is served.
+pub const COORDINATOR_METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp/coordinator";
 
 /// Where the authorization server's metadata is served, per RFC 8414
 /// section 3: the well-known suffix appended to the issuer identifier, which
@@ -52,10 +66,23 @@ pub const REVOKE_PATH: &str = "/oauth/revoke";
 /// Basic, the form body, or not at all for a public client.
 const CLIENT_AUTH_METHODS: [&str; 3] = ["client_secret_basic", "client_secret_post", "none"];
 
-/// The MCP resource's identifier (RFC 8707) under `origin`: the only resource
-/// the authorization server issues tokens for, and the one they are bound to.
+/// The full catalog's identifier (RFC 8707) under `origin`: the resource a
+/// request that names none is given.
 pub fn mcp_resource(origin: &str) -> String {
-    format!("{origin}{MCP_RESOURCE_PATH}")
+    resource_url(origin, MCP_RESOURCE_PATH)
+}
+
+/// The identifier (RFC 8707) of the resource served at `path` under `origin`.
+pub fn resource_url(origin: &str, path: &str) -> String {
+    format!("{origin}{path}")
+}
+
+/// Whether `resource` is one this server issues tokens for under `origin`:
+/// exactly the URL of one of [`OAUTH_RESOURCE_PATHS`], nothing near it.
+pub fn is_oauth_resource(origin: &str, resource: &str) -> bool {
+    OAUTH_RESOURCE_PATHS
+        .iter()
+        .any(|path| resource == resource_url(origin, path))
 }
 
 /// Parse `MAIDAN_PUBLIC_ORIGIN`: `https://host[:port]`, or `http://` on a
@@ -96,7 +123,7 @@ pub fn public_origin_from(raw: Option<&str>) -> Result<Option<String>, String> {
     Ok(Some(url.origin().ascii_serialization()))
 }
 
-/// RFC 9728 protected-resource metadata for the MCP endpoint.
+/// RFC 9728 protected-resource metadata for an MCP endpoint.
 ///
 /// No `scopes_supported`: a client treats it as the set it may request, and
 /// the set a member can delegate is their own capabilities intersected with
@@ -109,22 +136,36 @@ pub struct ProtectedResourceMetadata {
     resource_name: String,
 }
 
-fn resource_document(origin: &str) -> ProtectedResourceMetadata {
+fn resource_document(origin: &str, path: &str) -> ProtectedResourceMetadata {
+    let resource_name = if path == COORDINATOR_RESOURCE_PATH {
+        "Maidan (coordinator)"
+    } else {
+        "Maidan"
+    };
     ProtectedResourceMetadata {
-        resource: mcp_resource(origin),
+        resource: resource_url(origin, path),
         authorization_servers: vec![origin.into()],
         bearer_methods_supported: vec!["header".into()],
-        resource_name: "Maidan".into(),
+        resource_name: resource_name.into(),
     }
 }
 
-/// `GET /.well-known/oauth-protected-resource[/mcp/streamable]`. 404 until
+/// `GET /.well-known/oauth-protected-resource/mcp/streamable`. 404 until
 /// `MAIDAN_PUBLIC_ORIGIN` is set.
 pub async fn oauth_protected_resource(
     State(state): State<AppState>,
 ) -> Result<Json<ProtectedResourceMetadata>, ApiError> {
     let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
-    Ok(Json(resource_document(origin)))
+    Ok(Json(resource_document(origin, MCP_RESOURCE_PATH)))
+}
+
+/// `GET /.well-known/oauth-protected-resource/mcp/coordinator`: the
+/// coordinator profile's document. 404 until `MAIDAN_PUBLIC_ORIGIN` is set.
+pub async fn oauth_protected_coordinator(
+    State(state): State<AppState>,
+) -> Result<Json<ProtectedResourceMetadata>, ApiError> {
+    let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
+    Ok(Json(resource_document(origin, COORDINATOR_RESOURCE_PATH)))
 }
 
 /// RFC 8414 authorization-server metadata.
@@ -215,24 +256,28 @@ pub fn issuer_param(origin: Option<&str>) -> String {
     }
 }
 
-/// The value of the challenge a 401 from an MCP route carries.
-pub fn challenge_value(origin: &str) -> String {
-    format!("Bearer resource_metadata=\"{origin}{RESOURCE_METADATA_PATH}\"")
+/// The value of the challenge a 401 from the MCP endpoint at `path` carries:
+/// RFC 9728 inserts the well-known prefix before the resource's path.
+pub fn challenge_value(origin: &str, path: &str) -> String {
+    format!("Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource{path}\"")
 }
 
-/// Add the RFC 9728 challenge to a 401 from the MCP endpoint, so a client
-/// learns where the resource's metadata is. Only the endpoint the metadata
-/// names gets one: a client must reject metadata whose `resource` is not the
-/// URL it asked, so pointing `/mcp` or another route at it would send that
-/// client to a document it has to refuse. Other 401s, such as a webhook's
-/// failed signature, are not about a bearer token and get none.
+/// Add the RFC 9728 challenge to a 401 from an MCP endpoint OAuth tokens are
+/// bound to, so a client learns where that resource's metadata is. Only the
+/// endpoints a document names get one: a client must reject metadata whose
+/// `resource` is not the URL it asked, so pointing `/mcp` or another route at
+/// one would send that client to a document it has to refuse. Other 401s,
+/// such as a webhook's failed signature, are not about a bearer token and
+/// get none.
 pub async fn challenge(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    let mcp = req.uri().path() == MCP_RESOURCE_PATH;
+    let resource = OAUTH_RESOURCE_PATHS
+        .into_iter()
+        .find(|path| req.uri().path() == *path);
     let mut response = next.run(req).await;
-    if mcp
+    if let Some(path) = resource
         && response.status() == StatusCode::UNAUTHORIZED
         && let Some(origin) = state.public_origin.as_deref()
-        && let Ok(value) = HeaderValue::from_str(&challenge_value(origin))
+        && let Ok(value) = HeaderValue::from_str(&challenge_value(origin, path))
     {
         response
             .headers_mut()
@@ -292,8 +337,11 @@ mod tests {
 
     #[test]
     fn the_resource_document_names_the_mcp_endpoint_and_its_authorization_server() {
-        let json =
-            serde_json::to_value(resource_document("https://maidan.example.com")).expect("json");
+        let json = serde_json::to_value(resource_document(
+            "https://maidan.example.com",
+            MCP_RESOURCE_PATH,
+        ))
+        .expect("json");
         assert_eq!(
             json["resource"],
             "https://maidan.example.com/mcp/streamable"
@@ -308,9 +356,59 @@ mod tests {
             "no scope set is advertised, since what a member can delegate is not a server-wide set"
         );
         assert_eq!(
-            challenge_value("https://maidan.example.com"),
+            challenge_value("https://maidan.example.com", MCP_RESOURCE_PATH),
             "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/streamable\""
         );
+    }
+
+    #[test]
+    fn the_coordinator_profile_is_a_resource_of_its_own() {
+        assert_eq!(
+            COORDINATOR_RESOURCE_PATH,
+            maidan_mcp::Profile::Coordinator.path(),
+            "the resource is the endpoint that serves the profile"
+        );
+        assert_eq!(
+            COORDINATOR_METADATA_PATH,
+            format!("/.well-known/oauth-protected-resource{COORDINATOR_RESOURCE_PATH}")
+        );
+        assert_eq!(
+            RESOURCE_METADATA_PATH,
+            format!("/.well-known/oauth-protected-resource{MCP_RESOURCE_PATH}")
+        );
+        let json = serde_json::to_value(resource_document(
+            "https://maidan.example.com",
+            COORDINATOR_RESOURCE_PATH,
+        ))
+        .expect("json");
+        assert_eq!(
+            json["resource"],
+            "https://maidan.example.com/mcp/coordinator"
+        );
+        assert_eq!(json["resource_name"], "Maidan (coordinator)");
+        assert_eq!(
+            challenge_value("https://maidan.example.com", COORDINATOR_RESOURCE_PATH),
+            "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/coordinator\""
+        );
+        let origin = "https://maidan.example.com";
+        assert!(is_oauth_resource(
+            origin,
+            "https://maidan.example.com/mcp/streamable"
+        ));
+        assert!(is_oauth_resource(
+            origin,
+            "https://maidan.example.com/mcp/coordinator"
+        ));
+        for not_ours in [
+            "https://maidan.example.com/mcp",
+            "https://maidan.example.com/mcp/worker",
+            "https://maidan.example.com/mcp/coordinator/",
+            "https://maidan.example.com/mcp/streamable?x=1",
+            "https://other.example.com/mcp/coordinator",
+            "/mcp/coordinator",
+        ] {
+            assert!(!is_oauth_resource(origin, not_ours), "{not_ours}");
+        }
     }
 
     #[test]

@@ -6749,6 +6749,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "resource": {
+            "description": "The MCP endpoint the grant's tokens answer on (RFC 8707).",
+            "type": "string"
+          },
           "scope": {
             "items": {
               "type": "string"
@@ -6760,7 +6764,8 @@
           "id",
           "client_id",
           "scope",
-          "lineage_id"
+          "lineage_id",
+          "resource"
         ],
         "type": "object"
       },
@@ -14394,6 +14399,49 @@
           {}
         ],
         "summary": "The OAuth authorization server's metadata (RFC 8414)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/.well-known/oauth-protected-resource/mcp/coordinator": {
+      "get": {
+        "operationId": "oauth_protected_coordinator_metadata",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectedResourceMetadata"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "`MAIDAN_PUBLIC_ORIGIN` is not set"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "The coordinator profile endpoint's OAuth protected-resource metadata (RFC 9728)",
         "tags": [
           "auth"
         ]

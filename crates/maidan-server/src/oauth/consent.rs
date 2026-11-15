@@ -114,7 +114,7 @@ pub async fn consent_page(
 {warning}
 <h2>It will be able to</h2>
 {capabilities}
-<p class="note">It cannot invite people, change roles, mint tokens or read secrets. You can disconnect it at any time from <a href="/ui/oauth/grants">Connected apps</a>.</p>
+{surface}<p class="note">It cannot invite people, change roles, mint tokens or read secrets. You can disconnect it at any time from <a href="/ui/oauth/grants">Connected apps</a>.</p>
 <div class="actions"><form method="post" action="/ui/api/oauth/consent">
 <input type="hidden" name="request_id" value="{request_id}">
 <button type="submit" name="approved" value="false">Deny</button>
@@ -124,6 +124,7 @@ pub async fn consent_page(
         you = html_escape(you),
         workspace = html_escape(&workspace.name),
         capabilities = page::capability_list(&pending.scope),
+        surface = surface_note(state.public_origin.as_deref(), pending.resource.as_deref()),
         returns_to = html_escape(&returns_to),
         request_id = pending.id.0,
     );
@@ -248,6 +249,10 @@ pub async fn decide_consent(
     // index on live grants makes this atomic: a concurrent approval for the
     // same tuple gets a Conflict, which we treat as "already exists".
     let scope = pending.scope.clone();
+    // The resource the authorize step validated: the grant is for it alone.
+    let resource = pending.resource.clone().ok_or_else(|| {
+        ApiError::BadRequest("the authorization request names no resource".into())
+    })?;
     let mut existing = state
         .store
         .find_oauth_grant(
@@ -255,6 +260,7 @@ pub async fn decide_consent(
             pending.member_id,
             pending.workspace_id,
             &scope,
+            &resource,
         )
         .await?;
     // A grant whose lineage has reached its end is not reused: this consent
@@ -291,6 +297,7 @@ pub async fn decide_consent(
                     workspace_id: pending.workspace_id,
                     scope: scope.clone(),
                     lineage_id: Uuid::now_v7(),
+                    resource: resource.clone(),
                 },
                 Box::new(move |grant| NewAuditEvent {
                     scope: AuditScope::Workspace(workspace_id),
@@ -301,6 +308,7 @@ pub async fn decide_consent(
                     metadata: serde_json::json!({
                         "client_id": client_id,
                         "scope": scope_meta,
+                        "resource": grant.resource,
                         "lineage_id": grant.lineage_id,
                         "member_id": member_id.0,
                     }),
@@ -325,6 +333,7 @@ pub async fn decide_consent(
             pending.member_id,
             pending.workspace_id,
             &scope,
+            &resource,
         )
         .await?
         .map(|grant| grant.lineage_id);
@@ -342,7 +351,7 @@ pub async fn decide_consent(
             redirect_uri: pending.redirect_uri.clone(),
             code_challenge: pending.code_challenge.clone(),
             scope,
-            resource: pending.resource.clone(),
+            resource: Some(resource),
             expires_at: Utc::now() + chrono::Duration::seconds(CODE_TTL_SECS),
             lineage_id,
         })
@@ -360,6 +369,24 @@ pub async fn decide_consent(
         StatusCode::SEE_OTHER,
         [(axum::http::header::LOCATION, redirect_to)],
     ))
+}
+
+/// What the consent page says about the tools the app reaches. A grant for
+/// the coordinator profile says so, so the person knows the app sees that
+/// set and not the full one; the full catalog needs no note.
+fn surface_note(origin: Option<&str>, resource: Option<&str>) -> String {
+    use super::metadata::{resource_url, COORDINATOR_RESOURCE_PATH};
+    let coordinator = origin.zip(resource).is_some_and(|(origin, resource)| {
+        resource == resource_url(origin, COORDINATOR_RESOURCE_PATH)
+    });
+    if !coordinator {
+        return String::new();
+    }
+    format!(
+        r#"<p class="note">It connects through the coordinator tools only: {count} tools to file, find, track and review work, not Maidan's full set.</p>
+"#,
+        count = maidan_mcp::Profile::Coordinator.tool_names().len(),
+    )
 }
 
 /// The CSP origin for a redirect URI: `scheme://host:port` for a tuple

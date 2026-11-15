@@ -2385,3 +2385,15 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** After launch, when the `workspace:write` split above is taken up. The REST-only push-subscription writes (`POST` and `DELETE /members/:id/push-subscriptions`) are personal state too and still take `workspace:read`; they have no MCP twin and were not part of the approved slice.
 
 **Record.** `maidan_auth::capability::MEMBER_SELF`, `maidan_mcp::tools::MEMBER_SELF_TOOLS`, migration 0237 (both backends), [Capability Map](Capability%20Map.md), issue #1495.
+
+### The coordinator profile is a second OAuth resource, and a grant names its resource (2026-11-15)
+
+**Decision.** Delegated to the coordinator under the maintainer's 2026-11-14 go for the directories ("anywhere we can"). `/mcp/coordinator` becomes an OAuth protected resource beside `/mcp/streamable`, with its own RFC 9728 document and 401 challenge. An authorize or token request may name either endpoint as its RFC 8707 resource, and one that names none still gets the full catalog. The grant records the resource (migration 0239), one live grant per client, member, workspace, scope and resource, and a token answers only on its grant's resource: a coordinator token is no credential on the full catalog, and the reverse. The consent page and Connected apps say when a grant reaches the coordinator tools only.
+
+**Alternative.** A new curated profile made for directories, which is a third tool list to keep and a choice of tools nobody has asked for yet; the coordinator profile already is the filing, tracking and reviewing surface, and it sells nothing. Or hide tools from `tools/list` by the token's scope, which makes what a reviewer sees depend on what the consent asked for. Or accept OAuth tokens on both endpoints, which hands a client that connected to the smaller surface the full catalog, including buying credits, with the same token.
+
+**Why.** ChatGPT's directory refuses a listing that sells digital goods, and the full catalog has `top_up_credits`. Binding the token to the grant's resource keeps the surface a person consented to the surface the client holds, which is the point of RFC 8707.
+
+**To revisit.** If a client connecting to `/mcp/coordinator` turns out not to send `resource` (claude.ai's connector sends none), its token is bound to the full catalog and refused on the coordinator endpoint. The answer then is a per-client default, not a looser binding.
+
+**Record.** `crates/maidan-server/src/oauth/metadata.rs` (`OAUTH_RESOURCE_PATHS`), `maidan_auth::resolve_resource_bearer`, migration 0239 (both backends), [OAuth](OAuth.md), [Listing](Listing.md#the-chatgpt-directory).

@@ -1925,6 +1925,10 @@ pub fn router(state: AppState) -> Router {
             get(oauth::oauth_protected_resource),
         )
         .route(
+            "/.well-known/oauth-protected-resource/mcp/coordinator",
+            get(oauth::oauth_protected_coordinator),
+        )
+        .route(
             "/.well-known/oauth-authorization-server",
             get(oauth::oauth_authorization_server),
         )

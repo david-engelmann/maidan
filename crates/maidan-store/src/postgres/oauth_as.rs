@@ -20,7 +20,7 @@ use crate::error::StoreError;
 const CLIENT_COLUMNS: &str = "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at, metadata_url, registered_at";
 const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
 const GRANT_COLUMNS: &str =
-    "id, client_id, member_id, workspace_id, scope, lineage_id, created_at, revoked_at";
+    "id, client_id, member_id, workspace_id, scope, lineage_id, resource, created_at, revoked_at";
 
 fn scopes_from(json: &str) -> Result<Vec<String>, StoreError> {
     serde_json::from_str(json)
@@ -65,6 +65,7 @@ fn row_to_grant(row: &sqlx::postgres::PgRow) -> Result<OAuthGrant, StoreError> {
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         scope: scopes_from(&row.get::<String, _>("scope"))?,
         lineage_id: row.get::<Uuid, _>("lineage_id"),
+        resource: row.get("resource"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
     })
@@ -295,8 +296,8 @@ pub(crate) async fn insert_grant_on(
     let scope = serde_json::to_string(&new.scope)?;
     let row = sqlx::query(&format!(
         "INSERT INTO oauth_grants
-            (id, client_id, member_id, workspace_id, scope, lineage_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+            (id, client_id, member_id, workspace_id, scope, lineage_id, resource)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING {GRANT_COLUMNS}"
     ))
     .bind(id)
@@ -305,6 +306,7 @@ pub(crate) async fn insert_grant_on(
     .bind(new.workspace_id.0)
     .bind(&scope)
     .bind(new.lineage_id)
+    .bind(&new.resource)
     .fetch_one(&mut *conn)
     .await
     .map_err(|e| {
@@ -352,12 +354,13 @@ pub async fn find_grant(
     member_id: MemberId,
     workspace_id: WorkspaceId,
     scope: &[String],
+    resource: &str,
 ) -> Result<Option<OAuthGrant>, StoreError> {
     let scope_json = serde_json::to_string(scope)?;
     let row = sqlx::query(&format!(
         "SELECT {GRANT_COLUMNS} FROM oauth_grants
          WHERE client_id = $1 AND member_id = $2 AND workspace_id = $3
-           AND scope = $4 AND revoked_at IS NULL
+           AND scope = $4 AND resource = $5 AND revoked_at IS NULL
          ORDER BY created_at DESC
          LIMIT 1"
     ))
@@ -365,6 +368,7 @@ pub async fn find_grant(
     .bind(member_id.0)
     .bind(workspace_id.0)
     .bind(&scope_json)
+    .bind(resource)
     .fetch_optional(pool)
     .await?;
     row.map(|r| row_to_grant(&r)).transpose()

@@ -52,8 +52,18 @@ pub async fn grants_page(
         .store
         .list_oauth_grants(session.workspace_id, session.member_id)
         .await?;
+    let coordinator = state.public_origin.as_deref().map(|origin| {
+        super::metadata::resource_url(origin, super::metadata::COORDINATOR_RESOURCE_PATH)
+    });
     let mut rows = String::new();
     for grant in &grants {
+        // A grant for the coordinator profile reaches that tool set alone,
+        // and the row says so; one for the full catalog needs no note.
+        let surface = if coordinator.as_deref() == Some(grant.resource.as_str()) {
+            " · coordinator tools only"
+        } else {
+            ""
+        };
         let client_name = match state
             .store
             .get_oauth_client_by_client_id(&grant.client_id)
@@ -63,7 +73,7 @@ pub async fn grants_page(
             None => html_escape(&grant.client_id),
         };
         rows.push_str(&format!(
-            r#"<section class="app"><header><div><h2>{client_name}</h2><div class="id">{client_id}</div></div><form method="post" action="/ui/api/oauth/grants/{grant_id}/revoke"><button type="submit" class="danger">Disconnect</button></form></header>{capabilities}</section>"#,
+            r#"<section class="app"><header><div><h2>{client_name}</h2><div class="id">{client_id}{surface}</div></div><form method="post" action="/ui/api/oauth/grants/{grant_id}/revoke"><button type="submit" class="danger">Disconnect</button></form></header>{capabilities}</section>"#,
             client_id = html_escape(&grant.client_id),
             capabilities = page::capability_list(&grant.scope),
             grant_id = grant.id.0,

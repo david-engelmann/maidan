@@ -479,6 +479,7 @@ pub async fn seed_victim(h: &Harness, doc: &Value) -> Victim {
             workspace_id: ws,
             scope: vec!["workspace:read".into()],
             lineage_id: Uuid::new_v4(),
+            resource: "https://maidan.example.com/mcp/streamable".into(),
         })
         .await
         .unwrap();

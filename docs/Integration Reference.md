@@ -223,7 +223,11 @@ server it needs `MAIDAN_PUBLIC_ORIGIN` set.
   page ([OAuth](OAuth.md#dynamic-client-registration)).
 - The scopes are capabilities, never wider than the signed-in member's own, and
   never `token:*`, `operator:*` or `audit:read-global`. Tokens are bound to the
-  MCP resource.
+  MCP resource the client names: `/mcp/streamable` (the full catalog, and the
+  default when it names none) or `/mcp/coordinator` (the coordinator profile,
+  with its own document at
+  `/.well-known/oauth-protected-resource/mcp/coordinator`). A token answers on
+  its own resource only.
 - An OAuth token never accepts an approval gate.
 - `GET /workspaces/{wid}/oauth-grants` lists the grants in a workspace, and
   `POST /workspaces/{wid}/oauth-grants/{gid}/revoke` ends one.

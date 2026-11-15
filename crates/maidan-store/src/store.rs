@@ -4578,15 +4578,16 @@ pub trait OAuthAsStore: Send + Sync {
         grant_id: OAuthGrantId,
     ) -> Result<Option<OAuthGrant>, StoreError>;
 
-    /// The live grant for this client, member, workspace and scope set, if
-    /// one exists — so a second exchange reuses the grant instead of piling
-    /// up duplicates. `scope` must be sorted before calling.
+    /// The live grant for this client, member, workspace, scope set and
+    /// resource, if one exists — so a second exchange reuses the grant
+    /// instead of piling up duplicates. `scope` must be sorted before calling.
     async fn find_oauth_grant(
         &self,
         client_id: &str,
         member_id: MemberId,
         workspace_id: WorkspaceId,
         scope: &[String],
+        resource: &str,
     ) -> Result<Option<OAuthGrant>, StoreError>;
 
     /// A member's live grants in one workspace, oldest first — the list

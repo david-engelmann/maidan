@@ -15,8 +15,10 @@
 //! it was refreshed: no token it mints outlives that, and a refresh after it
 //! revokes the lineage, so the person consents again.
 //!
-//! Every token is bound to the MCP resource (RFC 8707): the request must name
-//! it, and the bearer middleware accepts the access token nowhere else. No
+//! Every token is bound to the MCP resource its grant names (RFC 8707): the
+//! full catalog at `/mcp/streamable` or the coordinator profile at
+//! `/mcp/coordinator`. A request that names a resource must name that one,
+//! and the bearer middleware accepts the access token nowhere else. No
 //! token carries `approval:grant` (stripped at mint, so an OAuth token can
 //! never accept an approval gate). Errors are RFC 6749 section 5.2 errors,
 //! not problems: this is the endpoint the RFC 8414 document advertises to
@@ -108,8 +110,9 @@ pub struct OAuthTokenRequest {
     pub code_verifier: Option<String>,
     /// `client_secret_post`; never beside an `Authorization` header.
     pub client_secret: Option<String>,
-    /// RFC 8707 resource indicator: must be the MCP endpoint,
-    /// `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`.
+    /// RFC 8707 resource indicator: an MCP endpoint tokens are issued for,
+    /// `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable` or `.../mcp/coordinator`, and
+    /// the one the code or refresh token was issued for.
     pub resource: Option<String>,
     /// The refresh token (`refresh_token`).
     pub refresh_token: Option<String>,
@@ -260,7 +263,7 @@ async fn exchange_code(
         return Err(OAuthError::invalid_grant("the code is no longer valid"));
     }
 
-    let grant = grant_for(state, &pending).await?;
+    let grant = grant_for(state, &pending, &resource).await?;
     let now = Utc::now();
     if lineage_end(&grant) <= now {
         return Err(refuse_ended_lineage(state, &grant, &creds.client_id).await);
@@ -327,6 +330,7 @@ async fn exchange_code(
 async fn grant_for(
     state: &AppState,
     pending: &maidan_types::OAuthAuthorizationCode,
+    resource: &str,
 ) -> Result<OAuthGrant, OAuthError> {
     state
         .store
@@ -335,6 +339,7 @@ async fn grant_for(
             pending.member_id,
             pending.workspace_id,
             &pending.scope,
+            resource,
         )
         .await?
         .ok_or_else(|| OAuthError::invalid_grant("the grant behind this code was revoked"))
@@ -573,18 +578,24 @@ fn required(value: Option<String>, name: &str) -> Result<String, OAuthError> {
         .ok_or_else(|| OAuthError::invalid_request(format!("{name} is required")))
 }
 
-/// RFC 8707: a request that names a resource must name the one tokens are
-/// issued for. One that names none gets that one: RFC 8707 makes the
-/// parameter optional, and claude.ai's connector sends none at all, so
-/// requiring it refused every claude.ai sign-in (2026-11-09). The token is
-/// bound to the MCP resource either way, so the default widens nothing.
+/// RFC 8707: a request that names a resource must name one tokens are issued
+/// for, the full catalog or the coordinator profile. One that names none gets
+/// the full catalog: RFC 8707 makes the parameter optional, and claude.ai's
+/// connector sends none at all, so requiring it refused every claude.ai
+/// sign-in (2026-11-09). The token is bound to that resource either way, so
+/// the default widens nothing.
 pub(super) fn require_resource(given: Option<&str>, origin: &str) -> Result<String, OAuthError> {
-    let expected = super::metadata::mcp_resource(origin);
+    use super::metadata::{is_oauth_resource, resource_url, OAUTH_RESOURCE_PATHS};
     match given.filter(|r| !r.is_empty()) {
-        None => Ok(expected),
-        Some(resource) if resource == expected => Ok(expected),
+        None => Ok(super::metadata::mcp_resource(origin)),
+        Some(resource) if is_oauth_resource(origin, resource) => Ok(resource.to_owned()),
         Some(_) => Err(OAuthError::invalid_target(format!(
-            "this server issues tokens only for the resource {expected}"
+            "this server issues tokens only for the resources {}",
+            OAUTH_RESOURCE_PATHS
+                .iter()
+                .map(|path| resource_url(origin, path))
+                .collect::<Vec<_>>()
+                .join(" and ")
         ))),
     }
 }
@@ -710,9 +721,9 @@ mod tests {
     }
 
     #[test]
-    fn the_resource_must_be_the_mcp_endpoint_of_the_configured_origin() {
+    fn the_resource_must_be_an_mcp_endpoint_of_the_configured_origin() {
         let origin = "https://maidan.example.com";
-        // Named or omitted, the resource is the MCP endpoint.
+        // Named or omitted, the full catalog is the default resource.
         for given in [
             Some("https://maidan.example.com/mcp/streamable"),
             None,
@@ -724,9 +735,16 @@ mod tests {
                 "{given:?}"
             );
         }
+        // The coordinator profile only when named.
+        assert_eq!(
+            require_resource(Some("https://maidan.example.com/mcp/coordinator"), origin).unwrap(),
+            "https://maidan.example.com/mcp/coordinator"
+        );
         for bad in [
             Some("https://maidan.example.com/mcp"),
+            Some("https://maidan.example.com/mcp/worker"),
             Some("https://other.example.com/mcp/streamable"),
+            Some("https://other.example.com/mcp/coordinator"),
         ] {
             let err = require_resource(bad, origin).unwrap_err();
             assert_eq!(err.code, OAuthErrorCode::InvalidTarget, "{bad:?}");

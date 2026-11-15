@@ -261,7 +261,7 @@ The test also checks that the OAuth token is refused on `/me` and on `/mcp`.
 By hand the token stays inside Claude Code and is not something to extract.
 The hosted check is the one recorded at P6: a connector pointed at
 `https://maidan.world/mcp` signs in, and its calls are refused, because tokens
-are bound to `/mcp/streamable`.
+are bound to the endpoint their grant names, here `/mcp/streamable`.
 
 ### 3b. Person A adds the agent
 

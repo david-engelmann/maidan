@@ -184,9 +184,10 @@ async fn resolve_peer_bearer_round_trips_then_rejects_a_forged_secret() {
     assert!(matches!(err, AuthError::Store(StoreError::NotFound)));
 }
 
-/// An OAuth-minted token is bound to the MCP resource (RFC 8707): the general
-/// resolver refuses it, so every surface that resolves a bearer refuses it,
-/// and only the resource resolver accepts it.
+/// An OAuth-minted token is bound to the MCP resource its grant names
+/// (RFC 8707): the general resolver refuses it, so every surface that
+/// resolves a bearer refuses it, and only the resource resolver accepts it,
+/// for that resource alone.
 #[tokio::test]
 async fn an_oauth_token_resolves_only_through_the_resource_resolver() {
     let (store, workspace_id, member_id) = store_with_member().await;
@@ -207,6 +208,7 @@ async fn an_oauth_token_resolves_only_through_the_resource_resolver() {
             workspace_id,
             scope: vec!["workspace:read".into()],
             lineage_id: uuid::Uuid::now_v7(),
+            resource: COORDINATOR.into(),
         })
         .await
         .expect("grant");
@@ -229,17 +231,49 @@ async fn an_oauth_token_resolves_only_through_the_resource_resolver() {
         .await
         .expect_err("the general resolver refuses a resource-bound token");
     assert!(matches!(refused, AuthError::Unauthorized));
-    let ctx = maidan_auth::resolve_resource_bearer(&store, secret.as_str())
+    let ctx = maidan_auth::resolve_resource_bearer(&store, secret.as_str(), COORDINATOR)
         .await
         .expect("the resource resolver accepts it");
     assert_eq!(ctx.member_id(), member_id);
     assert!(ctx.has_capability("workspace:read"));
+    // On another resource it is no credential, the full catalog included.
+    for elsewhere in [
+        "https://maidan.example.com/mcp/streamable",
+        "https://other.example.com/mcp/coordinator",
+    ] {
+        let refused = maidan_auth::resolve_resource_bearer(&store, secret.as_str(), elsewhere)
+            .await
+            .expect_err("a token answers only on its grant's resource");
+        assert!(matches!(refused, AuthError::Unauthorized), "{elsewhere}");
+    }
+    // A token that is not OAuth's answers on any resource: the binding is
+    // the grant's, not the endpoint's.
+    let own = TokenSecret::generate();
+    store
+        .create_api_token(mint(
+            workspace_id,
+            member_id,
+            &own,
+            vec!["workspace:read".to_string()],
+            None,
+        ))
+        .await
+        .expect("own token");
+    maidan_auth::resolve_resource_bearer(
+        &store,
+        own.as_str(),
+        "https://maidan.example.com/mcp/streamable",
+    )
+    .await
+    .expect("a member's own token is not bound to a resource");
 
     // A revoked grant ends it there too.
     store.revoke_oauth_grant(grant.id).await.expect("revoke");
     assert!(
-        maidan_auth::resolve_resource_bearer(&store, secret.as_str())
+        maidan_auth::resolve_resource_bearer(&store, secret.as_str(), COORDINATOR)
             .await
             .is_err()
     );
 }
+
+const COORDINATOR: &str = "https://maidan.example.com/mcp/coordinator";

@@ -242,9 +242,13 @@ things that the Claude listing doesn't need:
    - or a listing of the sandbox at try.maidan.world, whose sign-in is the
      sandbox link.
 3. **No commerce in the listed surface.** Selling credits is refused, so the
-   ChatGPT surface leaves out `top_up_credits` and `get_credits`. OAuth tokens
-   are bound to `/mcp/streamable`, which serves every tool, so this needs a
-   curated surface an OAuth grant can reach.
+   ChatGPT surface leaves out `top_up_credits` and `get_credits`. The listing
+   connects to `https://maidan.world/mcp/coordinator`: the coordinator
+   profile, an OAuth resource of its own, whose tools file, find, track and
+   review work and sell nothing. A token ChatGPT gets there answers on that
+   endpoint alone, and the consent page tells the person it reaches the
+   coordinator tools only. This one is built; the first two are the
+   maintainer's.
 
 ## The Cursor package
 

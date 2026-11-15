@@ -168,12 +168,11 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     };
 
     // RFC 8707: a token the OAuth authorization server minted is bound to the
-    // MCP resource. Everywhere else it resolves as no token at all, before any
-    // handler runs.
-    let resolved = if is_oauth_resource(&req) {
-        resolve_resource_bearer(state.store.as_ref(), &secret).await
-    } else {
-        resolve_bearer(state.store.as_ref(), &secret).await
+    // MCP resource its grant names. Everywhere else it resolves as no token at
+    // all, before any handler runs.
+    let resolved = match oauth_resource(&req, state.public_origin.as_deref()) {
+        Some(resource) => resolve_resource_bearer(state.store.as_ref(), &secret, &resource).await,
+        None => resolve_bearer(state.store.as_ref(), &secret).await,
     };
     // A good credential of a suspended workspace: say so, rather than the
     // 401 that would send its client to look for a new token.
@@ -242,13 +241,18 @@ fn invalid_token() -> Response {
     response
 }
 
-/// Whether this request is for the MCP resource an OAuth token is bound to.
-/// The matched route, not the raw path, decides, so only a request the router
-/// dispatches to that route's handlers qualifies.
-fn is_oauth_resource(req: &Request) -> bool {
-    req.extensions()
-        .get::<MatchedPath>()
-        .is_some_and(|matched| matched.as_str() == crate::oauth::metadata::MCP_RESOURCE_PATH)
+/// The resource identifier of the MCP endpoint this request is for, when it
+/// is one an OAuth token can be bound to. The matched route, not the raw
+/// path, decides, so only a request the router dispatches to that route's
+/// handlers qualifies. Without a public origin the authorization server is
+/// off and names no resource, so no OAuth token answers anywhere.
+fn oauth_resource(req: &Request, origin: Option<&str>) -> Option<String> {
+    let origin = origin?;
+    let matched = req.extensions().get::<MatchedPath>()?;
+    crate::oauth::metadata::OAUTH_RESOURCE_PATHS
+        .into_iter()
+        .find(|path| matched.as_str() == *path)
+        .map(|path| crate::oauth::metadata::resource_url(origin, path))
 }
 
 /// Run a request on the bearer tree as `ctx`, recording a delegated caller's

@@ -689,6 +689,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::well_known,
         paths::well_known_room,
         paths::oauth_protected_resource_metadata,
+        paths::oauth_protected_coordinator_metadata,
         paths::oauth_authorization_server_metadata,
         paths::mcp_server_card,
         paths::list_tool_catalog,
