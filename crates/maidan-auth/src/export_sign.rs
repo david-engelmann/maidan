@@ -206,6 +206,43 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Every pinned verify key is parsed, in either encoding, and a bad entry
+    /// refuses the whole list rather than dropping a pin.
+    #[test]
+    fn verify_keys_parse_every_entry_and_refuse_a_bad_one() {
+        let hex_key = "22".repeat(32);
+        let b64_key = STANDARD.encode([0x33u8; 32]);
+        assert_eq!(
+            parse_verify_keys(&format!(" {hex_key} ,, {b64_key} ")).expect("two keys"),
+            vec![[0x22u8; 32], [0x33u8; 32]]
+        );
+        assert_eq!(
+            parse_verify_keys(" , ").expect("none"),
+            Vec::<[u8; 32]>::new()
+        );
+        assert!(matches!(
+            parse_verify_keys(&format!("{hex_key},not-a-key")),
+            Err(ExportSignError::InvalidVerifyKey)
+        ));
+    }
+
+    #[test]
+    fn verify_keys_come_from_their_variable() {
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::set_var("MAIDAN_EXPORT_VERIFY_KEYS", "44".repeat(32))
+        };
+        assert_eq!(
+            export_verify_keys_from_env().expect("one key"),
+            vec![[0x44u8; 32]]
+        );
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            std::env::remove_var("MAIDAN_EXPORT_VERIFY_KEYS")
+        };
+        assert!(export_verify_keys_from_env().expect("unset").is_empty());
+    }
+
     fn test_key() -> ExportSigningKey {
         ExportSigningKey::from_seed([0x11; 32])
     }

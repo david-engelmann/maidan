@@ -3,7 +3,9 @@
 //! matrix.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use maidan_auth::peer_secret::{encryption_key_from_env, PeerSecretError};
+use maidan_auth::peer_secret::{
+    decrypt_fallback_keys_from_env, encryption_key_from_env, PeerSecretError,
+};
 use maidan_auth::{decrypt_peer_secret, encrypt_peer_secret};
 
 const KEY_A: [u8; 32] = [0x11; 32];
@@ -148,4 +150,36 @@ fn encryption_key_from_env_accepts_hex_and_base64_and_rejects_the_rest() {
     unsafe {
         std::env::remove_var(VAR)
     };
+}
+
+/// The rotation's old keys are read from their variable, every one of them,
+/// and a malformed entry is refused rather than dropped (its ciphertexts would
+/// become undecryptable).
+#[test]
+fn decrypt_fallback_keys_are_read_whole_from_their_variable() {
+    let set = |raw: Option<String>| {
+        #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+        unsafe {
+            match raw {
+                Some(raw) => std::env::set_var("FEDERATION_DECRYPT_KEYS", raw),
+                None => std::env::remove_var("FEDERATION_DECRYPT_KEYS"),
+            }
+        }
+    };
+    set(Some(format!(
+        "{}, {}",
+        "11".repeat(32),
+        STANDARD.encode(KEY_B)
+    )));
+    assert_eq!(
+        decrypt_fallback_keys_from_env().expect("two keys"),
+        vec![KEY_A, KEY_B]
+    );
+    set(Some(format!("{},broken", "11".repeat(32))));
+    assert!(matches!(
+        decrypt_fallback_keys_from_env(),
+        Err(PeerSecretError::InvalidKey)
+    ));
+    set(None);
+    assert!(decrypt_fallback_keys_from_env().expect("unset").is_empty());
 }
