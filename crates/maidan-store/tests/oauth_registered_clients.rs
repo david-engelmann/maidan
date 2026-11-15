@@ -105,6 +105,7 @@ async fn run_suite(store: &dyn Store) {
             workspace_id: ws.id,
             scope: vec!["workspace:read".into()],
             lineage_id: uuid::Uuid::now_v7(),
+            resource: "https://maidan.example.com/mcp/streamable".into(),
         })
         .await
         .unwrap();

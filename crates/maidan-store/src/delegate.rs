@@ -5142,8 +5142,17 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 workspace_id: WorkspaceId,
                 scope: &[String],
+                resource: &str,
             ) -> Result<Option<OAuthGrant>, StoreError> {
-                oauth_as::find_grant(self.pool(), client_id, member_id, workspace_id, scope).await
+                oauth_as::find_grant(
+                    self.pool(),
+                    client_id,
+                    member_id,
+                    workspace_id,
+                    scope,
+                    resource,
+                )
+                .await
             }
 
             async fn list_oauth_grants(

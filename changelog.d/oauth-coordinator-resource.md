@@ -1,0 +1,5 @@
+### The coordinator profile is an OAuth resource of its own
+
+- **Added:** `/mcp/coordinator` takes OAuth tokens. A client that names `<origin>/mcp/coordinator` as its RFC 8707 resource gets a token for the coordinator profile's tools (filing, finding, tracking and reviewing work, nothing that sells credits), described at `/.well-known/oauth-protected-resource/mcp/coordinator` and pointed at by that endpoint's 401. This is the surface a directory that refuses commerce, such as ChatGPT's, connects to (Open Work Next 50).
+- **Changed:** an OAuth grant names its resource (migration 0239), and a token answers only on the resource its grant names: a coordinator token is no credential on `/mcp/streamable`, and a full-catalog token none on `/mcp/coordinator`. One client holds a grant per resource. Grants made before the migration take the resource of their refresh tokens; one with no refresh token has no live token and is revoked. The consent page and Connected apps say when a grant reaches the coordinator tools only.
+- **Changed:** without `MAIDAN_PUBLIC_ORIGIN` no OAuth token answers anywhere. The authorization server is already off without it.

@@ -36,4 +36,6 @@ pub mod registry;
 pub mod revoke;
 pub mod token;
 
-pub use metadata::{challenge, oauth_authorization_server, oauth_protected_resource};
+pub use metadata::{
+    challenge, oauth_authorization_server, oauth_protected_coordinator, oauth_protected_resource,
+};

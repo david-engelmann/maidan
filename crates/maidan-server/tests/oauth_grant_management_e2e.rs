@@ -155,6 +155,7 @@ async fn grant_with_tokens(
             workspace_id: t.ws,
             scope: vec!["workspace:read".into()],
             lineage_id,
+            resource: "https://maidan.example.com/mcp/streamable".into(),
         })
         .await
         .unwrap();
@@ -268,6 +269,10 @@ async fn a_member_lists_their_own_grants_and_no_one_elses() {
         .find(|g| g["client_id"] == "registered-app")
         .expect("the registered client's grant");
     assert_eq!(registered["client_name"], "Registered App");
+    assert_eq!(
+        registered["resource"], "https://maidan.example.com/mcp/streamable",
+        "a grant says which MCP endpoint its tokens answer on"
+    );
     let metadata = grants
         .iter()
         .find(|g| g["client_id"] == "https://apps.example/oauth.json")

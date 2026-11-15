@@ -3477,6 +3477,9 @@ pub struct NewOAuthGrant {
     pub workspace_id: WorkspaceId,
     pub scope: Vec<String>,
     pub lineage_id: uuid::Uuid,
+    /// The RFC 8707 resource the member consented for: the URL of the MCP
+    /// endpoint its tokens answer on, and nowhere else.
+    pub resource: String,
 }
 
 /// A stored OAuth grant (see [`NewOAuthGrant`]).
@@ -3488,6 +3491,8 @@ pub struct OAuthGrant {
     pub workspace_id: WorkspaceId,
     pub scope: Vec<String>,
     pub lineage_id: uuid::Uuid,
+    /// The resource the grant is for (see [`NewOAuthGrant::resource`]).
+    pub resource: String,
     /// When the member first consented: the start of the lineage, which a
     /// refresh can extend for at most 90 days from here.
     pub created_at: DateTime<Utc>,

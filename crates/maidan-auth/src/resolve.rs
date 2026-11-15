@@ -8,7 +8,7 @@ use crate::token::{hash_secret, hashes_equal};
 /// Resolve a bearer secret to an [`AuthContext`] via the store.
 ///
 /// A token minted by the OAuth authorization server is refused here: it is
-/// bound to the MCP resource (RFC 8707), and only
+/// bound to the MCP resource its grant names (RFC 8707), and only
 /// [`resolve_resource_bearer`] accepts it. Refusing by default means every
 /// surface that resolves a bearer (REST, WebSocket, gRPC, a session made
 /// from a token) is closed to it without each having to remember.
@@ -20,14 +20,29 @@ pub async fn resolve_bearer(store: &dyn Store, bearer: &str) -> Result<AuthConte
     active_token_context(store, token).await
 }
 
-/// [`resolve_bearer`] for the one route an OAuth token is bound to, the MCP
-/// resource: it also accepts a token minted under an OAuth grant. Call it
-/// only once the request is known to be for that resource.
+/// [`resolve_bearer`] for a request to an MCP endpoint OAuth tokens can be
+/// bound to, `resource` being that endpoint's URL: it also accepts a token
+/// minted under an OAuth grant, but only one whose grant names `resource`.
+/// A token for the coordinator profile is no credential on the full
+/// catalog, and the reverse, so a client holds exactly the tool surface the
+/// member consented to.
 pub async fn resolve_resource_bearer(
     store: &dyn Store,
     bearer: &str,
+    resource: &str,
 ) -> Result<AuthContext, AuthError> {
     let token = active_token(store, bearer).await?;
+    if let Some(grant_id) = token.oauth_grant_id {
+        // `get_oauth_grant` answers None for a revoked grant, which refuses
+        // too, though the active-token lookup has already required a live one.
+        let bound = store
+            .get_oauth_grant(grant_id)
+            .await?
+            .is_some_and(|grant| grant.resource == resource);
+        if !bound {
+            return Err(AuthError::Unauthorized);
+        }
+    }
     active_token_context(store, token).await
 }
 

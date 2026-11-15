@@ -34,6 +34,9 @@ pub struct OAuthGrantView {
     pub client_name: Option<String>,
     pub scope: Vec<String>,
     pub lineage_id: Uuid,
+    /// The MCP endpoint the grant's tokens answer on (RFC 8707): the URL of
+    /// `/mcp/streamable` or `/mcp/coordinator`. Every live grant names one.
+    pub resource: String,
 }
 
 impl From<&OAuthGrant> for OAuthGrantView {
@@ -44,6 +47,7 @@ impl From<&OAuthGrant> for OAuthGrantView {
             client_name: None,
             scope: grant.scope.clone(),
             lineage_id: grant.lineage_id,
+            resource: grant.resource.clone(),
         }
     }
 }

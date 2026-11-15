@@ -4,7 +4,8 @@
 //! or a code is reused, the scope a refresh may narrow but never widen,
 //! RFC 7009 revocation scoped to the client that holds the token, and the
 //! RFC 8707 binding that makes an OAuth access token good on the MCP
-//! endpoint and nowhere else. Auth is enabled throughout.
+//! endpoint its grant names (the full catalog or the coordinator profile)
+//! and nowhere else. Auth is enabled throughout.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -24,6 +25,8 @@ use sqlx::SqlitePool;
 
 const ORIGIN: &str = "https://maidan.example.com";
 const RESOURCE: &str = "https://maidan.example.com/mcp/streamable";
+/// The coordinator profile, a resource of its own.
+const COORDINATOR: &str = "https://maidan.example.com/mcp/coordinator";
 const REDIRECT: &str = "https://client.example/callback";
 const SESSION_SECRET: &[u8] = b"oauth-token-endpoint-e2e-secret-32";
 /// The confidential client's secret.
@@ -184,6 +187,16 @@ async fn signed_in(h: &Harness, t: &Tenant) -> String {
 /// An authorization code for `client_id` from `t`'s member, through
 /// authorize and consent, and the PKCE verifier that goes with it.
 async fn code_for(h: &Harness, t: &Tenant, client_id: &str) -> (String, String) {
+    code_for_resource(h, t, client_id, RESOURCE).await
+}
+
+/// [`code_for`], for the resource the authorize request names.
+async fn code_for_resource(
+    h: &Harness,
+    t: &Tenant,
+    client_id: &str,
+    resource: &str,
+) -> (String, String) {
     let verifier = URL_SAFE_NO_PAD.encode(uuid::Uuid::now_v7().as_bytes())
         + "-pkce-verifier-of-rfc-7636-length";
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
@@ -192,7 +205,7 @@ async fn code_for(h: &Harness, t: &Tenant, client_id: &str) -> (String, String) 
         h.base,
         urlencoding::encode(client_id),
         urlencoding::encode(REDIRECT),
-        urlencoding::encode(RESOURCE),
+        urlencoding::encode(resource),
     );
     let resp = h
         .no_redirect
@@ -261,6 +274,17 @@ async fn post_form(
 }
 
 async fn exchange(h: &Harness, auth: Auth<'_>, code: &str, verifier: &str) -> reqwest::Response {
+    exchange_for(h, auth, code, verifier, RESOURCE).await
+}
+
+/// [`exchange`], naming `resource`.
+async fn exchange_for(
+    h: &Harness,
+    auth: Auth<'_>,
+    code: &str,
+    verifier: &str,
+    resource: &str,
+) -> reqwest::Response {
     post_form(
         h,
         "/oauth/token",
@@ -270,7 +294,7 @@ async fn exchange(h: &Harness, auth: Auth<'_>, code: &str, verifier: &str) -> re
             ("code", code),
             ("redirect_uri", REDIRECT),
             ("code_verifier", verifier),
-            ("resource", RESOURCE),
+            ("resource", resource),
         ],
     )
     .await
@@ -353,6 +377,61 @@ async fn mcp_initialize(h: &Harness, token: &str) -> StatusCode {
         .await
         .unwrap()
         .status()
+}
+
+/// The consent page `t`'s member sees for an authorize request naming
+/// `resource`.
+async fn consent_page_for(h: &Harness, t: &Tenant, resource: &str) -> String {
+    let url = format!(
+        "{}/oauth/authorize?response_type=code&client_id=public-client&redirect_uri={}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&scope=workspace%3Aread&state=xyz&resource={}",
+        h.base,
+        urlencoding::encode(REDIRECT),
+        urlencoding::encode(resource),
+    );
+    let resp = h
+        .no_redirect
+        .get(&url)
+        .bearer_auth(&t.bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp.headers()["location"].to_str().unwrap().to_string();
+    let page = h
+        .client
+        .get(format!("{}{location}", h.base))
+        .header("Cookie", signed_in(h, t).await)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    page.text().await.unwrap()
+}
+
+/// `tools/list` on the MCP endpoint at `path` with `token`: the status, and
+/// the tool names when the endpoint answered.
+async fn mcp_tools(h: &Harness, path: &str, token: &str) -> (StatusCode, Vec<String>) {
+    let resp = h
+        .client
+        .post(format!("{}{path}", h.base))
+        .bearer_auth(token)
+        .header("accept", "application/json")
+        .json(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    if status != StatusCode::OK {
+        return (status, Vec::new());
+    }
+    let body: Value = resp.json().await.unwrap();
+    let names = body["result"]["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{path}: {body}"))
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_string())
+        .collect();
+    (status, names)
 }
 
 async fn refresh_used(h: &Harness, refresh_token: &str) -> bool {
@@ -468,6 +547,111 @@ async fn an_oauth_access_token_is_accepted_on_the_mcp_resource_and_nowhere_else(
         .await
         .unwrap();
     assert_eq!(channels.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// The coordinator profile is a resource of its own (Open Work Next 50): a
+/// directory that lists a fixed, smaller tool surface connects there, and
+/// the token it holds reaches that surface and no other. A full-catalog
+/// token is no credential on it either, and a refresh keeps the binding.
+#[tokio::test]
+async fn a_token_for_the_coordinator_profile_answers_there_and_nowhere_else() {
+    let h = spawn(Some(ORIGIN)).await;
+    let t = tenant(&h, "coordinator").await;
+    register(&h, "public-client", None).await;
+    let client = Auth::Public("public-client");
+    let (code, verifier) = code_for_resource(&h, &t, "public-client", COORDINATOR).await;
+    // The code was issued for the coordinator, so an exchange naming the
+    // full catalog is refused, and the refusal leaves the code usable.
+    let wrong = exchange_for(&h, client, &code, &verifier, RESOURCE).await;
+    assert_oauth_error(wrong, StatusCode::BAD_REQUEST, "invalid_grant").await;
+    let tokens = pair(exchange_for(&h, client, &code, &verifier, COORDINATOR).await).await;
+
+    let (status, tools) = mcp_tools(&h, "/mcp/coordinator", &tokens.access).await;
+    assert_eq!(status, StatusCode::OK);
+    let expected: Vec<String> = maidan_mcp::Profile::Coordinator
+        .tool_names()
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    assert_eq!(tools, expected);
+    assert!(
+        !tools.iter().any(|name| name == "top_up_credits"),
+        "the coordinator surface sells nothing"
+    );
+    // Off its resource the token is no credential, the full catalog included.
+    for path in ["/mcp/streamable", "/mcp", "/mcp/worker", "/mcp/reviewer"] {
+        let (status, _) = mcp_tools(&h, path, &tokens.access).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}");
+    }
+    let me = h
+        .client
+        .get(format!("{}/me", h.base))
+        .bearer_auth(&tokens.access)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(me.status(), StatusCode::UNAUTHORIZED);
+    // Its 401s send a client to the metadata of the resource it asked.
+    let challenged = h
+        .client
+        .post(format!("{}/mcp/coordinator", h.base))
+        .bearer_auth("not-a-token")
+        .json(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(challenged.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        challenged.headers()[header::WWW_AUTHENTICATE],
+        "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/coordinator\""
+    );
+
+    // The same client's full-catalog grant is a second grant, and its token
+    // is no credential on the coordinator endpoint.
+    let full = issue(&h, &t, "public-client").await;
+    assert_eq!(mcp_initialize(&h, &full.access).await, StatusCode::OK);
+    let (status, _) = mcp_tools(&h, "/mcp/coordinator", &full.access).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // The member's own token is bound to no resource and answers on both.
+    assert_eq!(
+        mcp_tools(&h, "/mcp/coordinator", &t.bearer).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(mcp_initialize(&h, &t.bearer).await, StatusCode::OK);
+
+    // A refresh keeps the resource: naming the other is refused and leaves
+    // the refresh token usable, and the rotated pair is bound like the first.
+    let refused = refresh(&h, client, &tokens.refresh, &[("resource", RESOURCE)]).await;
+    assert_oauth_error(refused, StatusCode::BAD_REQUEST, "invalid_target").await;
+    let rotated =
+        pair(refresh(&h, client, &tokens.refresh, &[("resource", COORDINATOR)]).await).await;
+    assert_eq!(
+        mcp_tools(&h, "/mcp/coordinator", &rotated.access).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        mcp_initialize(&h, &rotated.access).await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // The person is told, when consenting and afterwards, that the app
+    // reaches the coordinator tools only; the full catalog needs no note.
+    let note = "coordinator tools only";
+    assert!(consent_page_for(&h, &t, COORDINATOR).await.contains(note));
+    assert!(!consent_page_for(&h, &t, RESOURCE).await.contains(note));
+    let connected = h
+        .client
+        .get(format!("{}/ui/oauth/grants", h.base))
+        .header("Cookie", signed_in(&h, &t).await)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(connected.status(), StatusCode::OK);
+    assert_eq!(
+        connected.text().await.unwrap().matches(note).count(),
+        1,
+        "one of the client's two grants is for the coordinator"
+    );
 }
 
 #[tokio::test]
@@ -798,6 +982,7 @@ async fn reusing_an_authorization_code_revokes_its_lineage() {
             t.member,
             t.ws,
             &["workspace:read".to_string(), "workspace:write".to_string()],
+            RESOURCE,
         )
         .await
         .unwrap()

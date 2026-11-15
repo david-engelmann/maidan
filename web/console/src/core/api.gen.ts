@@ -239,7 +239,7 @@ export type NotificationId = string;
 export type NotificationPref = { kind: EventKind; member_id: MemberId; muted: boolean; updated_at: string; };
 export type NotificationThreadGroup = { count: number; latest: Notification; thread_id?: null | ThreadId; unread_count: number; };
 export type OAuthErrorBody = { error: string; error_description: string; };
-export type OAuthGrantView = { client_id: string; client_name?: string | null; id: string; lineage_id: string; scope: string[]; };
+export type OAuthGrantView = { client_id: string; client_name?: string | null; id: string; lineage_id: string; resource: string; scope: string[]; };
 export type OAuthRevokeRequest = { client_id?: string | null; client_secret?: string | null; token?: string | null; token_type_hint?: string | null; };
 export type OAuthTokenRequest = { client_id?: string | null; client_secret?: string | null; code?: string | null; code_verifier?: string | null; grant_type?: string | null; redirect_uri?: string | null; refresh_token?: string | null; resource?: string | null; scope?: string | null; };
 export type OAuthTokenResponse = { access_token: string; expires_in: number; refresh_token: string; scope: string; token_type: string; };
@@ -553,6 +553,7 @@ export type ApiRoute =
   | "GET /.well-known/maidan.json"
   | "GET /.well-known/mcp/server-card.json"
   | "GET /.well-known/oauth-authorization-server"
+  | "GET /.well-known/oauth-protected-resource/mcp/coordinator"
   | "GET /.well-known/oauth-protected-resource/mcp/streamable"
   | "GET /approval-gates/{id}"
   | "GET /artifacts/{sha}"

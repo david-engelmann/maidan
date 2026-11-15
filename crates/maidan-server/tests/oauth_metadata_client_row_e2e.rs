@@ -158,6 +158,7 @@ async fn seed_code(h: &Harness, t: &Tenant, client_id: &str) -> (String, String)
             workspace_id: t.ws,
             scope: vec!["workspace:read".into()],
             lineage_id,
+            resource: RESOURCE.into(),
         })
         .await
         .unwrap();

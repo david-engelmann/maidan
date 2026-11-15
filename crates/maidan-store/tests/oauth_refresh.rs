@@ -56,6 +56,7 @@ async fn seed(store: &dyn Store, name: &str, client_id: &str) -> Seed {
             workspace_id: ws.id,
             scope: vec!["workspace:read".into(), "workspace:write".into()],
             lineage_id: uuid::Uuid::now_v7(),
+            resource: RESOURCE.into(),
         })
         .await
         .unwrap();
@@ -390,6 +391,7 @@ async fn assert_code_reuse_and_access_revocation(store: &dyn Store) {
             workspace_id: d.ws,
             scope: d.grant.scope.clone(),
             lineage_id: Uuid::now_v7(),
+            resource: RESOURCE.into(),
         })
         .await
         .unwrap();

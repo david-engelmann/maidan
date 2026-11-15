@@ -44,7 +44,8 @@ pub struct AuthorizeQuery {
     pub scope: Option<String>,
     pub state: String,
     /// RFC 8707 resource indicator the grant is bound to. When given it must
-    /// be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`; when omitted, that is the one.
+    /// be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable` or `.../mcp/coordinator`;
+    /// when omitted, it is the first.
     pub resource: Option<String>,
     /// OAuth 2.1 requires `response_type=code`.
     pub response_type: String,
@@ -170,11 +171,11 @@ pub async fn authorize(
     scope.sort();
     scope.dedup();
 
-    // RFC 8707: every grant is for the MCP resource, so the code and every
-    // token minted from it carry the one resource they are bound to. A
-    // request that names no resource gets that one (`require_resource`):
-    // claude.ai's connector names none, and refusing it refused every
-    // claude.ai sign-in.
+    // RFC 8707: every grant is for one MCP resource, the full catalog or the
+    // coordinator profile, so the code and every token minted from it carry
+    // the resource they are bound to. A request that names none gets the full
+    // catalog (`require_resource`): claude.ai's connector names none, and
+    // refusing it refused every claude.ai sign-in.
     let resource = super::token::require_resource(query.resource.as_deref(), origin)
         .map_err(|err| ApiError::BadRequest(format!("invalid_target: {}", err.description)))?;
 

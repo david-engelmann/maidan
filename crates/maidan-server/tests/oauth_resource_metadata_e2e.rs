@@ -53,6 +53,7 @@ async fn without_a_public_origin_no_oauth_metadata_is_served_or_pointed_at() {
     for path in [
         "/.well-known/oauth-protected-resource",
         "/.well-known/oauth-protected-resource/mcp/streamable",
+        "/.well-known/oauth-protected-resource/mcp/coordinator",
         "/.well-known/oauth-authorization-server",
     ] {
         let s = client
@@ -63,14 +64,16 @@ async fn without_a_public_origin_no_oauth_metadata_is_served_or_pointed_at() {
             .status();
         assert_eq!(s, StatusCode::NOT_FOUND, "{path}");
     }
-    let refused = client
-        .post(format!("{base}/mcp/streamable"))
-        .body("{}")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
-    assert!(refused.headers().get(WWW_AUTHENTICATE).is_none());
+    for path in ["/mcp/streamable", "/mcp/coordinator"] {
+        let refused = client
+            .post(format!("{base}{path}"))
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::UNAUTHORIZED, "{path}");
+        assert!(refused.headers().get(WWW_AUTHENTICATE).is_none(), "{path}");
+    }
 }
 
 #[tokio::test]
@@ -134,6 +137,17 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
         .unwrap();
     assert_eq!(legacy.status(), StatusCode::UNAUTHORIZED);
     assert!(legacy.headers().get(WWW_AUTHENTICATE).is_none());
+    // Nor do the worker and reviewer profiles, which take no OAuth token.
+    for path in ["/mcp/worker", "/mcp/reviewer"] {
+        let profile = client
+            .post(format!("{base}{path}"))
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(profile.status(), StatusCode::UNAUTHORIZED, "{path}");
+        assert!(profile.headers().get(WWW_AUTHENTICATE).is_none(), "{path}");
+    }
     // A 401 that is not about an MCP bearer token carries no challenge.
     let elsewhere = client
         .get(format!(
@@ -145,6 +159,52 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
         .unwrap();
     assert_eq!(elsewhere.status(), StatusCode::UNAUTHORIZED);
     assert!(elsewhere.headers().get(WWW_AUTHENTICATE).is_none());
+}
+
+/// The coordinator profile is a protected resource of its own: a directory
+/// that lists its smaller tool set connects there, discovers its document
+/// from the 401, and gets a token bound to it.
+#[tokio::test]
+async fn with_a_public_origin_the_coordinator_profile_describes_itself_and_its_401_points_there() {
+    let origin = "https://maidan.example.com";
+    let base = spawn(Some(origin)).await;
+    let client = reqwest::Client::new();
+
+    let doc: Value = client
+        .get(format!(
+            "{base}/.well-known/oauth-protected-resource/mcp/coordinator"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        doc["resource"],
+        "https://maidan.example.com/mcp/coordinator"
+    );
+    assert_eq!(
+        doc["authorization_servers"],
+        serde_json::json!([origin]),
+        "{doc}"
+    );
+    assert_eq!(doc["resource_name"], "Maidan (coordinator)");
+
+    let refused = client
+        .post(format!("{base}/mcp/coordinator"))
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        refused
+            .headers()
+            .get(WWW_AUTHENTICATE)
+            .map(|v| v.to_str().unwrap()),
+        Some("Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/coordinator\"")
+    );
 }
 
 #[tokio::test]
