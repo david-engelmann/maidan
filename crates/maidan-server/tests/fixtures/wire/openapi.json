@@ -6750,7 +6750,7 @@
             "type": "string"
           },
           "resource": {
-            "description": "The MCP endpoint the grant's tokens answer on (RFC 8707).",
+            "description": "The MCP endpoint the grant's tokens answer on (RFC 8707): the URL of\n`/mcp/streamable` or `/mcp/coordinator`. Every live grant names one.",
             "type": "string"
           },
           "scope": {

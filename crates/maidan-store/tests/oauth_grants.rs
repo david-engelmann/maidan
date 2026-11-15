@@ -262,6 +262,95 @@ async fn assert_a_grant_is_for_one_resource(store: &dyn Store) {
     );
 }
 
+/// Migration 0239 gives each existing grant the resource its refresh tokens
+/// carry, and revokes a grant that has none: such a grant has no live token,
+/// and every live grant must name a real endpoint.
+#[tokio::test]
+async fn migration_0239_takes_a_grants_resource_from_its_refresh_tokens_sqlite() {
+    let pool = maidan_search::sqlite_pool_options()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::for_tests(pool.clone());
+    let ws = seed_workspace(&store, "migrated-ws").await;
+    let member = seed_member(&store, ws, "migrated-member").await;
+    seed_client(&store, "migrated-client").await;
+    let new = |scope: &str| NewOAuthGrant {
+        client_id: "migrated-client".into(),
+        member_id: member,
+        workspace_id: ws,
+        scope: vec![scope.into()],
+        lineage_id: uuid::Uuid::now_v7(),
+        resource: STREAMABLE.into(),
+    };
+    let refreshed = store
+        .create_oauth_grant(new("workspace:read"))
+        .await
+        .unwrap();
+    let unused = store
+        .create_oauth_grant(new("workspace:write"))
+        .await
+        .unwrap();
+    // The refresh token names the coordinator, so a resource read back as
+    // the coordinator came from it and not from a default.
+    sqlx::query(
+        "INSERT INTO oauth_refresh_tokens
+            (token_hash, grant_id, lineage_id, client_id, resource, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("migrated-refresh-hash")
+    .bind(refreshed.id.0)
+    .bind(refreshed.lineage_id)
+    .bind("migrated-client")
+    .bind(COORDINATOR)
+    .bind(Utc::now())
+    .bind(Utc::now() + chrono::Duration::days(30))
+    .execute(&pool)
+    .await
+    .unwrap();
+    // Back to the schema before 0239, then run it.
+    sqlx::raw_sql(
+        "DROP INDEX idx_oauth_grants_live_unique;
+         ALTER TABLE oauth_grants DROP COLUMN resource;
+         CREATE UNIQUE INDEX idx_oauth_grants_live_unique
+             ON oauth_grants (client_id, member_id, workspace_id, scope)
+             WHERE revoked_at IS NULL;",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/sqlite/0239_oauth_grant_resource.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let kept = store
+        .get_oauth_grant(refreshed.id)
+        .await
+        .unwrap()
+        .expect("a grant with a refresh token stays live");
+    assert_eq!(kept.resource, COORDINATOR);
+    assert!(
+        store.get_oauth_grant(unused.id).await.unwrap().is_none(),
+        "a grant with no refresh token is revoked"
+    );
+    let listed: Vec<_> = store
+        .list_oauth_grants(ws, member)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|g| g.id)
+        .collect();
+    assert_eq!(listed, vec![refreshed.id]);
+}
+
 #[tokio::test]
 async fn a_grant_is_for_one_resource_sqlite() {
     let pool = maidan_search::sqlite_pool_options()

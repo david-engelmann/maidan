@@ -5,8 +5,8 @@
 --
 -- Every grant before this one was for /mcp/streamable, and its refresh
 -- tokens carry that URL under the origin it was issued at. A grant with no
--- refresh token never minted an access token, so it keeps '' and binds
--- nothing.
+-- refresh token has no live token to keep, so it is revoked rather than
+-- listed with no resource: every live grant names a real endpoint.
 ALTER TABLE oauth_grants ADD COLUMN resource TEXT NOT NULL DEFAULT '';
 
 UPDATE oauth_grants
@@ -16,6 +16,9 @@ SET resource = COALESCE(
      ORDER BY r.created_at DESC
      LIMIT 1),
     '');
+
+UPDATE oauth_grants SET revoked_at = NOW()
+WHERE resource = '' AND revoked_at IS NULL;
 
 ALTER TABLE oauth_grants ALTER COLUMN resource DROP DEFAULT;
 

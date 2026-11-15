@@ -1,5 +1,6 @@
 -- An OAuth grant names the resource it was given for. See the Postgres twin
--- (0239) for why. SQLite cannot drop a column default, so '' stays the
+-- (0239) for why, and for revoking a grant that has no refresh token to take
+-- its resource from. SQLite cannot drop a column default, so '' stays the
 -- default here; the store always writes the resource.
 ALTER TABLE oauth_grants ADD COLUMN resource TEXT NOT NULL DEFAULT '';
 
@@ -10,6 +11,9 @@ SET resource = COALESCE(
      ORDER BY r.created_at DESC
      LIMIT 1),
     '');
+
+UPDATE oauth_grants SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE resource = '' AND revoked_at IS NULL;
 
 DROP INDEX idx_oauth_grants_live_unique;
 CREATE UNIQUE INDEX idx_oauth_grants_live_unique

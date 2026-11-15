@@ -34,7 +34,8 @@ pub struct OAuthGrantView {
     pub client_name: Option<String>,
     pub scope: Vec<String>,
     pub lineage_id: Uuid,
-    /// The MCP endpoint the grant's tokens answer on (RFC 8707).
+    /// The MCP endpoint the grant's tokens answer on (RFC 8707): the URL of
+    /// `/mcp/streamable` or `/mcp/coordinator`. Every live grant names one.
     pub resource: String,
 }
 
