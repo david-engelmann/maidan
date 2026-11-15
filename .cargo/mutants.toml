@@ -21,4 +21,13 @@ exclude_re = [
   # The fake event log inside that test module: mutating a test double
   # tests the test, not the bus.
   'notify_floor\.rs:\d+:\d+: .*\bdrain_tests::',
+  # The deterministic simulation in the same file is a test double too: its
+  # random source, its world and its invariant checks. A missed mutant there
+  # says the harness has slack, not the floor; the floor test instead asserts
+  # that the runs met every fault (a dropped NOTIFY, a rollback, a reconnect).
+  'notify_floor\.rs:\d+:\d+: .*\bsim::',
+  # Kani proof harnesses (`#[cfg(kani)] mod proofs`). The test build never
+  # compiles them, so every mutant there is missed by construction; the kani
+  # job is what checks them.
+  '\.rs:\d+:\d+: .*\bproofs::',
 ]

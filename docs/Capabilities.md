@@ -42,6 +42,15 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v454.0.0](https://github.com/david-engelmann/maidan/releases/tag/v454.0.0) — two agents writing one memory block no longer lose an update, and 1 more
+
+This release carries 2 changes: two agents writing one memory block no longer lose an update; the console and landing build with Vite 8.
+
+- Two agents writing one memory block no longer lose an update
+- The console and landing build with Vite 8
+
+`CHANGELOG.md` under `[454.0.0]` has every entry.
+
 ## [v453.0.0](https://github.com/david-engelmann/maidan/releases/tag/v453.0.0) — the console passes the React Compiler's checks, and 3 more
 
 This release carries 4 changes: the console passes the React Compiler's checks; a board card's name starts with the words it shows; quinn advisories; a copy button's name starts with the word it shows.

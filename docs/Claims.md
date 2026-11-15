@@ -197,15 +197,21 @@ outside attribution entirely, listed under "Every other mutation" below.
 
 ## Not yet / honest limits
 
-- **No hosted SaaS.** Maidan is self-hosted only. There is no managed cloud and no
-  public playground.
+- **The hosted room is new.** maidan.world has taken open sign-ups since
+  `v445.0.0`, free up to an allowance and with prepaid USDC credits past it
+  ([Credits](Credits.md)), and try.maidan.world starts a throwaway sandbox with
+  no sign-up. Each runs as one container that sleeps when idle, so the first
+  request after a quiet spell waits for it to start. The hosted service has no
+  SLA yet.
 - **Not a library on crates.io.** The workspace is `publish = false` on purpose; the
   "release" is the tagged binary + container image, not a crate.
-- **Projectors + email are config-gated and unproven in public.** The code ships and is
-  tested with mocks; a live Slack/GitHub/SMTP deployment needs you to create the app and
-  set the secrets. We don't claim a running public instance.
-- **OIDC human login is present but maturing.** `MAIDAN_OIDC_*` enables `/auth/oidc/*` +
-  session mint; treat it as config-gated, not a polished consumer login.
+- **Delivery and email are config-gated.** Result delivery to GitHub runs on
+  maidan.world (`v427.0.0`). Slack and Linear delivery and the email digest
+  ship and are tested against fakes; a deployment turns each on with its own
+  app and secrets. maidan.world sends no email.
+- **Self-hosted sign-in needs your own identity provider.** `MAIDAN_OIDC_*`
+  enables `/auth/oidc/*` and the session mint. maidan.world signs people in
+  through Cloudflare Access in front of it, with a one-time code by email.
 - **SDKs are 0.1.0.** Usable against the frozen v1 contract, dependency-light, but early.
   Typed responses and an error per problem type are on `main`
   (`scripts/sdk-test.sh`) but not yet tagged, so the published packages return
