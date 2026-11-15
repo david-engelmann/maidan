@@ -6855,7 +6855,7 @@
             ]
           },
           "resource": {
-            "description": "RFC 8707 resource indicator: must be the MCP endpoint,\n`<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`.",
+            "description": "RFC 8707 resource indicator: an MCP endpoint tokens are issued for,\n`<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable` or `.../mcp/coordinator`, and\nthe one the code or refresh token was issued for.",
             "type": [
               "string",
               "null"
@@ -7675,7 +7675,7 @@
         "type": "object"
       },
       "ProtectedResourceMetadata": {
-        "description": "RFC 9728 protected-resource metadata for the MCP endpoint.\n\nNo `scopes_supported`: a client treats it as the set it may request, and\nthe set a member can delegate is their own capabilities intersected with\nthe client's allowed scopes, so there is no server-wide set to name.",
+        "description": "RFC 9728 protected-resource metadata for an MCP endpoint.\n\nNo `scopes_supported`: a client treats it as the set it may request, and\nthe set a member can delegate is their own capabilities intersected with\nthe client's allowed scopes, so there is no server-wide set to name.",
         "properties": {
           "authorization_servers": {
             "items": {
