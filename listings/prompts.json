@@ -1,5 +1,5 @@
 {
-  "about": "Example prompts per listing, for the validation record's 'Example prompts through the platform's own model' table. scripts/listing-prompts.py --check keeps every expected tool in the MCP catalog; --listing <id> --run '<cmd>' runs them through a platform's model.",
+  "about": "Example prompts per listing, for the validation record's 'Example prompts through the platform's own model' table. Each listing names the MCP endpoint it lists in 'surfaces', and its prompts may expect only tools that endpoint serves. A prompt marked negative is a request the app must not answer: it passes when the model calls no Maidan tool (ChatGPT's submission asks for these). scripts/listing-prompts.py --check holds all of this; --listing <id> --run '<cmd>' runs them through a platform's model.",
   "prompts": {
     "whoami": {
       "prompt": "Which Maidan workspace am I connected to, and what can this token do?",
@@ -40,12 +40,53 @@
     "search": {
       "prompt": "Find the Maidan messages that mention the rate limiter.",
       "expect": ["search_messages"]
+    },
+    "review-status": {
+      "prompt": "Where does the review of the 'Upgrade the TLS library' task stand, and what result did the agent hand back?",
+      "expect": ["find_threads", "get_thread_result"]
+    },
+    "recent": {
+      "prompt": "What moved in Maidan while I was away? Show me the tasks that changed recently.",
+      "expect": ["list_recently_active_threads"]
+    },
+    "gate-status": {
+      "prompt": "Has the approval I asked for on the task I'm working on been decided yet?",
+      "expect": ["get_approval_gate"]
+    },
+    "hand-back": {
+      "prompt": "I can't finish the 'Upgrade the TLS library' task I claimed. Give it back to the queue.",
+      "expect": ["release_claim"]
+    },
+    "not-weather": {
+      "prompt": "What's the weather in Lisbon tomorrow?",
+      "expect": [],
+      "negative": true
+    },
+    "not-code": {
+      "prompt": "Write a Python function that reverses a string.",
+      "expect": [],
+      "negative": true
+    },
+    "not-translate": {
+      "prompt": "Translate 'good morning' into Spanish.",
+      "expect": [],
+      "negative": true
     }
+  },
+  "surfaces": {
+    "claude": "/mcp/streamable",
+    "chatgpt": "/mcp/coordinator",
+    "cursor": "/mcp/worker",
+    "gemini-cli": "/mcp/streamable",
+    "copilot-cli": "/mcp/streamable",
+    "muse": "/mcp/streamable",
+    "docker": "/mcp/streamable",
+    "registry": "/mcp/streamable"
   },
   "listings": {
     "claude": ["whoami", "open-work", "needs-me", "review-packet", "ask-approval", "catch-up"],
-    "chatgpt": ["whoami", "open-work", "needs-me", "review-packet", "catch-up", "search"],
-    "cursor": ["whoami", "claim-next", "post-result", "ask-approval", "needs-me", "search"],
+    "chatgpt": ["whoami", "open-work", "needs-me", "review-status", "recent", "search", "not-weather", "not-code", "not-translate"],
+    "cursor": ["whoami", "claim-next", "post-result", "ask-approval", "gate-status", "hand-back"],
     "gemini-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
     "copilot-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
     "muse": ["whoami", "open-work", "create-task", "needs-me", "catch-up"],

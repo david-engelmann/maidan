@@ -3,7 +3,11 @@
 
     scripts/listing-prompts.py --check
         Every prompt's expected tools exist in the MCP catalog
-        (listings/docker/tools.json), and every listing names known prompts.
+        (listings/docker/tools.json), every listing names known prompts, and
+        each listing's prompts expect only tools the endpoint it lists serves
+        ("surfaces": /mcp/streamable is the whole catalog, a profile endpoint
+        its list in crates/maidan-mcp/src/profiles.rs). Where the listing's
+        package names its endpoint, the package and "surfaces" must agree.
     scripts/listing-prompts.py --listing cursor
         Print that listing's prompts and the tools each should pick.
     scripts/listing-prompts.py --listing claude --run 'claude -p {prompt}'
@@ -13,7 +17,8 @@
         tools picked are the catalog tool names the command's output mentions,
         so point the command at a transcript or verbose output that names the
         tool calls (for example `--output-format stream-json`). A prompt passes
-        when every expected tool was picked.
+        when every expected tool was picked; a negative prompt passes when no
+        Maidan tool was.
 
 Exit status: --check and --run exit 1 on any failure.
 """
@@ -30,6 +35,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROMPTS = ROOT / "listings" / "prompts.json"
 CATALOG = ROOT / "listings" / "docker" / "tools.json"
+PROFILES = ROOT / "crates" / "maidan-mcp" / "src" / "profiles.rs"
+FULL = "/mcp/streamable"
+# Packages that name the endpoint they connect to: the listing, the file, and
+# how to read the endpoint's URL out of it.
+MANIFESTS = {
+    "cursor": (".cursor-plugin/plugin.json", lambda m: m["mcpServers"]["maidan"]["url"]),
+    "gemini-cli": ("gemini-extension.json", lambda m: next(iter(m["mcpServers"].values()))["httpUrl"]),
+    "registry": ("listings/registry/server.json", lambda m: m["remotes"][0]["url"]),
+}
 
 
 def load() -> tuple[dict, set[str]]:
@@ -38,22 +52,51 @@ def load() -> tuple[dict, set[str]]:
     return data, tools
 
 
+def profile_tools() -> dict[str, set[str]]:
+    """Each profile endpoint's tools, read from the Rust lists the server serves."""
+    src = PROFILES.read_text()
+    out = {}
+    for name in re.findall(r"pub const ([A-Z]+)_TOOLS: &\[&str\]", src):
+        body = re.search(name + r"_TOOLS: &\[&str\] = &\[(.*?)\];", src, re.S)
+        out[f"/mcp/{name.lower()}"] = set(re.findall(r'"([a-z_]+)"', body.group(1)))
+    return out
+
+
 def check(data: dict, tools: set[str]) -> list[str]:
     problems = []
     for key, p in data["prompts"].items():
         if not p.get("prompt", "").strip():
             problems.append(f"prompt {key}: empty prompt")
-        if not p.get("expect"):
+        if p.get("negative"):
+            if p.get("expect"):
+                problems.append(f"prompt {key}: a negative prompt expects no tool")
+        elif not p.get("expect"):
             problems.append(f"prompt {key}: no expected tools")
         for t in p.get("expect", []):
             if t not in tools:
                 problems.append(f"prompt {key}: {t} is not in the MCP catalog")
+    surfaces = {FULL: tools, **profile_tools()}
     for listing, keys in data["listings"].items():
         if not keys:
             problems.append(f"listing {listing}: no prompts")
+        surface = data.get("surfaces", {}).get(listing)
+        if surface not in surfaces:
+            problems.append(f"listing {listing}: surface {surface!r} is not one of {', '.join(sorted(surfaces))}")
         for k in keys:
             if k not in data["prompts"]:
                 problems.append(f"listing {listing}: unknown prompt {k}")
+                continue
+            for t in data["prompts"][k].get("expect", []):
+                if surface in surfaces and t not in surfaces[surface]:
+                    problems.append(f"listing {listing}: prompt {k} expects {t}, which {surface} does not serve")
+    for listing, (path, url) in MANIFESTS.items():
+        try:
+            endpoint = url(json.loads((ROOT / path).read_text()))
+        except (OSError, KeyError, StopIteration, IndexError, json.JSONDecodeError) as err:
+            problems.append(f"listing {listing}: cannot read its endpoint from {path} ({err!r})")
+            continue
+        if not endpoint.endswith(data.get("surfaces", {}).get(listing) or "\0"):
+            problems.append(f"listing {listing}: {path} connects to {endpoint}, not its surface {data.get('surfaces', {}).get(listing)}")
     return problems
 
 
@@ -84,9 +127,9 @@ def run(data: dict, tools: set[str], listing: str, cmd: str, timeout: int) -> in
         except subprocess.TimeoutExpired:
             text = ""
         got = picked(text, tools)
-        ok = all(t in got for t in p["expect"])
+        ok = not got if p.get("negative") else all(t in got for t in p["expect"])
         failed += 0 if ok else 1
-        print(f"| {cell(p['prompt'])} | {', '.join(p['expect'])} | {', '.join(got) or '(none)'} | {'yes' if ok else 'no'} |")
+        print(f"| {cell(p['prompt'])} | {', '.join(p['expect']) or '(none: negative)'} | {', '.join(got) or '(none)'} | {'yes' if ok else 'no'} |")
     return 1 if failed else 0
 
 
@@ -113,7 +156,7 @@ def main() -> int:
         return run(data, tools, args.listing, args.run, args.timeout)
     for key in data["listings"][args.listing]:
         p = data["prompts"][key]
-        print(f"{p['prompt']}\n  expect: {', '.join(p['expect'])}")
+        print(f"{p['prompt']}\n  expect: {', '.join(p['expect']) or 'no Maidan tool (negative)'}")
     return 0
 
 

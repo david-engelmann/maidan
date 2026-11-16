@@ -35,9 +35,11 @@ release owns the re-run.
 
 ## Example prompts through the platform's own model
 
-The prompts per listing are in `listings/prompts.json`. Run them with
-`scripts/listing-prompts.py --listing <id> --run '<command> {prompt}'`, which
-prints this table.
+The prompts per listing are in `listings/prompts.json`, each expecting only
+tools the endpoint the listing connects to serves (its `surfaces` entry). Run
+them with `scripts/listing-prompts.py --listing <id> --run '<command> {prompt}'`
+against that endpoint, which prints this table. A negative prompt passes when
+the model calls no Maidan tool.
 
 | Prompt | Tools expected | Tools picked | Pass |
 |---|---|---|---|

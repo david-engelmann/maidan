@@ -250,6 +250,15 @@ things that the Claude listing doesn't need:
    coordinator tools only. This one is built; the first two are the
    maintainer's.
 
+**Test cases.** The form asks for five positive and three negative test
+cases. They are the `chatgpt` prompts in `listings/prompts.json`: six that
+should pick coordinator tools (who am I, open work, what waits on me, where a
+review stands, what moved recently, a message search) and three that should
+call no Maidan tool (the weather, writing code, a translation).
+`scripts/listing-prompts.py --check` holds every positive one to tools that
+`/mcp/coordinator` serves, and `--listing chatgpt --run` runs all nine through
+ChatGPT connected there.
+
 ## The Cursor package
 
 `.cursor-plugin/plugin.json` at the repository root is the Cursor Plugin
