@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v455.0.0](https://github.com/david-engelmann/maidan/releases/tag/v455.0.0) — the coordinator profile is an OAuth resource of its own
+
+The coordinator profile is an OAuth resource of its own, the commerce-free surface the ChatGPT directory connects to.
+
+- The coordinator profile is an OAuth resource of its own
+
+`CHANGELOG.md` under `[455.0.0]` has every entry.
+
 ## [v454.0.0](https://github.com/david-engelmann/maidan/releases/tag/v454.0.0) — two agents writing one memory block no longer lose an update, and 1 more
 
 This release carries 2 changes: two agents writing one memory block no longer lose an update; the console and landing build with Vite 8.
