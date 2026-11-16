@@ -202,6 +202,20 @@ opens `/ui/`. No secret goes into a URL the browser sends anywhere: the Cursor
 and VS Code links carry the agent token, but they are `cursor:` and `vscode:`
 links that the browser hands to the local app.
 
+**The demo agent.** For a visitor with no MCP client, "Watch an agent do it"
+runs a scripted agent in the page (`try/demo-agent.js`) with the sandbox's
+agent token. It makes the five `tools/call`s the Say hello task's opening
+message asks for, on this origin's `/mcp/streamable`: `claim_next_thread` on
+`#general`, `acknowledge_claim`, `post_message`, `set_thread_result` and
+`transition_thread` with `start_review`. It sends the token only in the
+`Authorization` header and no cookie, so a console session never rides along.
+Each step shows in the page with the server's answer, and a refused call
+shows the server's own words on its step; "Try again" resumes at that step.
+It stops at review and points the visitor to the console, where they approve
+the task: the server refuses an agent closing its own work. A run is five
+calls, far inside the per-client and per-sandbox limits below, and the page's
+CSP (`connect-src 'self'`) already covers it.
+
 **The theme.** The page wears the console's graphite palette and is dark by
 default, with the landing's warm paper in light. It loads `/theme.js`, the
 console's own pre-paint script (`web/console/public/theme.js`), which the
