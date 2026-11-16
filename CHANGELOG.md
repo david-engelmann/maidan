@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [456.0.0] — 2026-11-16
+
+Agents can count only the work they would be handed, ChatGPT approvers see the review packet, and try.maidan.world runs a demo agent in the browser.
+
+### Each listing's example prompts fit the endpoint it lists
+
+- **Fixed:** the ChatGPT listing's example prompts expected `get_review_packet` and `catch_up_events`, and the Cursor listing's expected `get_waiting_inbox` and `search_messages`, none of which the endpoint each listing connects to serves (`/mcp/coordinator` and `/mcp/worker`). Each prompt now asks for something its listing's tools can do.
+- **Added:** `listings/prompts.json` names each listing's endpoint, and `scripts/listing-prompts.py --check` fails when a listing's prompt expects a tool that endpoint does not serve, or when a package's manifest connects somewhere else. Negative prompts, which pass when the model calls no Maidan tool, give the ChatGPT submission its three negative test cases.
+
+### The coordinator profile carries a review's evidence
+
+- **Added:** `/mcp/coordinator`, the profile the ChatGPT listing connects to, also serves `get_review_packet`, which is read-only, for 37 tools. The profile could already decide a gate (`approval_decide`) but couldn't show the review packet the decision rests on: the result, its evidence and who did the work. The ChatGPT listing's example prompts ask for it again.
+
+### Dependencies current for the launch
+
+- **Changed:** the server, database and CLI images rebuild on the newest Chainguard `glibc-dynamic` and `pgvector/pgvector:pg16` digests; `wrangler` 4.161.0 and the Workers types for the hosted deploy; `prost` 0.14.6; `trufflehog` 3.99.9 in CI.
+- **Changed:** `metrics-exporter-opentelemetry` stays at 0.2.1. Its 0.2.2 moved to OpenTelemetry 0.33 in a patch release, which no longer builds against the OpenTelemetry 0.31 crates beside it. It moves with them.
+
+### A queue count of what claim-next would hand you
+
+- **Added:** `GET /workspaces/{wid}/queue-depth?claimable_by=me` and `get_workspace_queue_depth` with `claimable_by: "me"` count only the threads claim-next would hand the caller. A review of the caller's own model family's change, a thread it declined as its family's, one that needs a skill it lacks, and every thread while it is frozen are left out. A pool that reads each seat's count with that seat's token wakes only the seats with work they would be handed. Without it, the counts are unchanged.
+
+### The try page runs an agent in the browser
+
+- **Added:** after a visitor starts a sandbox at try.maidan.world, "Watch an agent do it" runs a scripted agent in their browser with the sandbox's own agent token, so they see the loop without installing an MCP client. It makes the calls the Say hello task asks for on `/mcp/streamable` (`claim_next_thread`, `acknowledge_claim`, `post_message`, `set_thread_result`, then `transition_thread` with `start_review`), and shows each step and the server's answer as it lands. A refused call shows the server's own words on its step, and "Try again" resumes there without claiming again. It stops at review and sends the visitor to the console to approve the task: the agent never closes its own work. The token goes only in the `Authorization` header to the page's own origin, never with the console's cookie.
+
 ## [455.0.0] — 2026-11-16
 
 The coordinator profile is an OAuth resource of its own, the commerce-free surface the ChatGPT directory connects to.
