@@ -114,7 +114,6 @@ export const COORDINATOR_TOOLS: readonly string[] = [
   "approval_decide",
   "assign_thread",
   "cancel_thread",
-  "catch_up_events",
   "create_thread",
   "find_thread",
   "find_threads",

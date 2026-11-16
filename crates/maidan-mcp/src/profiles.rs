@@ -77,13 +77,15 @@ pub const REVIEWER_TOOLS: &[&str] = &[
 /// The coordinator profile, in name order: the dispatcher, inbox and
 /// approver loops. Filing, finding, tracking, steering and cancelling a task,
 /// its results and deliveries, catching up and replying, reviews with their
-/// evidence (the review packet a decision rests on), and gate decisions.
+/// evidence (the review packet a decision rests on), and gate decisions. No
+/// tool here needs `token:admin`: an OAuth grant for `/mcp/coordinator`
+/// carries only delegatable capabilities, so such a tool would be listed and
+/// never answer (`catch_up_events` reads the whole workspace log, DMs too).
 pub const COORDINATOR_TOOLS: &[&str] = &[
     "add_reviewer",
     "approval_decide",
     "assign_thread",
     "cancel_thread",
-    "catch_up_events",
     "create_thread",
     "find_thread",
     "find_threads",
@@ -212,6 +214,19 @@ mod tests {
                     profile.name()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_coordinator_tool_answers_under_an_oauth_grant() {
+        // A grant for /mcp/coordinator carries only delegatable capabilities,
+        // so a tool needing any other would be listed and never answer.
+        for name in Profile::Coordinator.tool_names() {
+            let capability = tools::required_capability(name).expect("capability");
+            assert!(
+                maidan_auth::capability::is_delegatable(capability),
+                "{name} needs {capability}, which no OAuth grant carries"
+            );
         }
     }
 
