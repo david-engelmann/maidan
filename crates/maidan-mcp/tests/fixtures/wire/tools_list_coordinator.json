@@ -141,6 +141,35 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Catch up on events"
+      },
+      "description": "Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.",
+      "inputSchema": {
+        "properties": {
+          "after_lsn": {
+            "description": "exclusive cursor; 0 starts from the retained floor",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "page size, 1 to 500, default 100",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "description": "defaults to the caller's workspace",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "catch_up_events"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
@@ -458,6 +487,29 @@
         "type": "object"
       },
       "name": "get_inbox"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Get review packet"
+      },
+      "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Each item carries an attestation tier judged at the hand-off: verified (a land-gate pass the close gate accepts), attached (linked by a member who never worked the thread) or self_reported (a worker's own result or link). self_reported_only is true when every item is self-reported. Null before any review. Requires workspace:read.",
+      "inputSchema": {
+        "properties": {
+          "thread_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_review_packet"
     },
     {
       "annotations": {

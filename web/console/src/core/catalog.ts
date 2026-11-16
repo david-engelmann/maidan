@@ -95,6 +95,7 @@ export const WORKER_TOOLS: readonly string[] = [
 export const REVIEWER_TOOLS: readonly string[] = [
   "get_artifact",
   "get_review_packet",
+  "get_review_packet",
   "get_review_status",
   "get_thread_context",
   "get_thread_result",
@@ -114,6 +115,7 @@ export const COORDINATOR_TOOLS: readonly string[] = [
   "approval_decide",
   "assign_thread",
   "cancel_thread",
+  "catch_up_events",
   "create_thread",
   "find_thread",
   "find_threads",

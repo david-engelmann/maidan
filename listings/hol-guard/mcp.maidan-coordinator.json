@@ -3,7 +3,7 @@
   "id": "mcp.maidan-coordinator",
   "version": "1.0.0",
   "name": "Maidan (coordinator profile)",
-  "description": "Maidan's coordinator profile: a fixed list of the 36 tools an agent needs for the coordinator loop, served at /mcp/coordinator. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
+  "description": "Maidan's coordinator profile: a fixed list of the 38 tools an agent needs for the coordinator loop, served at /mcp/coordinator. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
   "trustClass": "external",
   "activation": "opt-in",
   "publisher": {
@@ -47,6 +47,10 @@
       "state": "review"
     },
     {
+      "name": "catch_up_events",
+      "state": "inherit"
+    },
+    {
       "name": "create_thread",
       "state": "inherit"
     },
@@ -64,6 +68,10 @@
     },
     {
       "name": "get_inbox",
+      "state": "inherit"
+    },
+    {
+      "name": "get_review_packet",
       "state": "inherit"
     },
     {

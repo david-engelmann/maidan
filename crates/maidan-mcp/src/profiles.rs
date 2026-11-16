@@ -76,18 +76,20 @@ pub const REVIEWER_TOOLS: &[&str] = &[
 
 /// The coordinator profile, in name order: the dispatcher, inbox and
 /// approver loops. Filing, finding, tracking, steering and cancelling a task,
-/// its results and deliveries, catching up and replying, reviews, and gate
-/// decisions.
+/// its results and deliveries, catching up and replying, reviews with their
+/// evidence (the review packet a decision rests on), and gate decisions.
 pub const COORDINATOR_TOOLS: &[&str] = &[
     "add_reviewer",
     "approval_decide",
     "assign_thread",
     "cancel_thread",
+    "catch_up_events",
     "create_thread",
     "find_thread",
     "find_threads",
     "get_approval_gate",
     "get_inbox",
+    "get_review_packet",
     "get_review_status",
     "get_thread_context",
     "get_thread_result",
