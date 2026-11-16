@@ -42,6 +42,18 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v456.0.0](https://github.com/david-engelmann/maidan/releases/tag/v456.0.0) — each listing's example prompts fit the endpoint it lists, and 4 more
+
+Agents can count only the work they would be handed, ChatGPT approvers see the review packet, and try.maidan.world runs a demo agent in the browser.
+
+- Each listing's example prompts fit the endpoint it lists
+- The coordinator profile carries a review's evidence
+- Dependencies current for the launch
+- A queue count of what claim-next would hand you
+- The try page runs an agent in the browser
+
+`CHANGELOG.md` under `[456.0.0]` has every entry.
+
 ## [v455.0.0](https://github.com/david-engelmann/maidan/releases/tag/v455.0.0) — the coordinator profile is an OAuth resource of its own
 
 The coordinator profile is an OAuth resource of its own, the commerce-free surface the ChatGPT directory connects to.
