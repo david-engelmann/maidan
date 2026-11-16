@@ -31,6 +31,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # 0.2.2 moved to OpenTelemetry 0.33 in a patch release, while the
+      # OpenTelemetry crates it must match are 0.31 here: it moves with them
+      # (Open Work, Later, K), not on its own.
+      - dependency-name: "metrics-exporter-opentelemetry"
+        update-types: ["version-update:semver-patch"]
     groups:
       cargo:
         patterns: ["*"]
