@@ -2202,6 +2202,11 @@ pub trait ThreadStore: Send + Sync {
     /// `engine` and `kind` narrow the count as they narrow
     /// [`claim_next_workspace_thread`](Self::claim_next_workspace_thread), so
     /// `ready` is what a claimer with the same filters would be handed.
+    /// `as_claimer` reads the counts for `readable_by` as the claimer
+    /// ([`maidan_types::QueueClaimer::Me`]): only the threads
+    /// `claim_next` could hand that member count, so `ready` is what it would
+    /// be handed, its own family's reviews and its declines left out. Without
+    /// a reader it changes nothing.
     async fn workspace_queue_depth(
         &self,
         workspace_id: WorkspaceId,
@@ -2209,6 +2214,7 @@ pub trait ThreadStore: Send + Sync {
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
         kind: Option<maidan_types::TaskKind>,
+        as_claimer: bool,
     ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —

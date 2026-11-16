@@ -2202,6 +2202,21 @@ pub struct QueueDepth {
     pub unclaimable: i64,
 }
 
+/// Whose `claim_next` a workspace queue count is read for. `me` narrows every
+/// count to the threads `claim_next` could hand the caller: on top of the
+/// repository, engine and kind filters, a review whose change the caller's
+/// model family wrote, a thread the caller declined as its own family's, one
+/// that needs a skill the caller lacks, and every thread while the caller is
+/// frozen are left out. A seat that wakes only for its own `ready` then never
+/// wakes for work `claim_next` would not give it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum QueueClaimer {
+    /// The caller: the member the token belongs to.
+    Me,
+}
+
 /// The occupancy of a channel's **open** task threads — the two-clocks
 /// refinement of [`QueueDepth`]. It splits `assigned` by the *working* clock,
 /// so an orchestrator sees not just how much work is held but how much is

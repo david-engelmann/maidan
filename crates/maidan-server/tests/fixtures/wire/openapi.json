@@ -7900,6 +7900,13 @@
         "format": "uuid",
         "type": "string"
       },
+      "QueueClaimer": {
+        "description": "Whose `claim_next` a workspace queue count is read for. `me` narrows every\ncount to the threads `claim_next` could hand the caller: on top of the\nrepository, engine and kind filters, a review whose change the caller's\nmodel family wrote, a thread the caller declined as its own family's, one\nthat needs a skill the caller lacks, and every thread while the caller is\nfrozen are left out. A seat that wakes only for its own `ready` then never\nwakes for work `claim_next` would not give it.",
+        "enum": [
+          "me"
+        ],
+        "type": "string"
+      },
       "QueueDepth": {
         "description": "A channel's task-queue depth — a point-in-time partition of its\n**open** (non-terminal, non-tombstoned) task threads, for an orchestrator\ndeciding whether to scale workers. The four sub-counts partition `open`:\n- `assigned`: actively held (an assignee with a live, non-expired lease).\n- `ready`: claimable now, exactly what `claim_next` would hand to a claimer\n  with no skill, repository or engine restriction. Not held (or its lease\n  lapsed) and not blocked or unclaimable.\n- `blocked`: not held but stalled on something that clears: an explicit\n  block, a non-terminal dependency, a pending approval gate, or a footprint\n  conflict.\n- `unclaimable`: not held but withheld until someone acts: parked from\n  dispatch, at its budget, or already holding a result it was not\n  re-queued after. Takes precedence over `blocked`.",
         "properties": {
@@ -46356,6 +46363,15 @@
             "schema": {
               "$ref": "#/components/schemas/TaskKind"
             }
+          },
+          {
+            "description": "`me`: count only the threads claim-next would hand the caller, leaving\nout reviews of its own model family's changes, threads it declined as\nits own family's, threads needing a skill it lacks, and every thread\nwhile it is frozen. Omitted, every thread the filters admit.",
+            "in": "query",
+            "name": "claimable_by",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/QueueClaimer"
+            }
           }
         ],
         "responses": {
@@ -46367,7 +46383,7 @@
                 }
               }
             },
-            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo`, `engine` and `kind` narrow it as they narrow claim-next"
+            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo`, `engine` and `kind` narrow it as they narrow claim-next, and `claimable_by=me` to the threads claim-next would hand the caller"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"

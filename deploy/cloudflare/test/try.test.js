@@ -60,6 +60,22 @@ test("the page is answered from assets with a CSP that runs only its own script"
   assert.equal(res.headers.get("cache-control"), "no-store");
 });
 
+test("every element the script looks up is on the page", () => {
+  const ids = new Set([...script.matchAll(/\$\(doc, "([^"]+)"\)/g)].map((m) => m[1]));
+  assert.ok(ids.has("agent-run") && ids.has("agent-log"), "the demo agent's controls are looked up");
+  for (const id of ids) assert.match(page, new RegExp(`id="${id}"`), `#${id} is not in index.html`);
+});
+
+test("the demo agent's calls stay on this origin, which the page's CSP allows and nothing else", async () => {
+  const agent = readFileSync(new URL("../try/demo-agent.js", import.meta.url), "utf8");
+  assert.match(agent, /export const MCP_PATH = "\/mcp\/streamable";/);
+  assert.doesNotMatch(agent, /https?:\/\//, "no absolute URL to call");
+  assert.doesNotMatch(agent, /^import /m, "it loads nothing else");
+  assert.doesNotMatch(agent, /localStorage|sessionStorage|document\.cookie/);
+  const csp = (await handleTry(new Request("https://try.maidan.world/"), assets())).headers.get("content-security-policy");
+  assert.match(csp, /connect-src 'self'(;|$)/);
+});
+
 test("the page carries no inline script or style, which its CSP would block", () => {
   assert.doesNotMatch(page, /<script(?![^>]*\bsrc=)[^>]*>/);
   assert.doesNotMatch(page, /\sstyle=|<style/);

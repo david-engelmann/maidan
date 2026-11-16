@@ -112,6 +112,23 @@ h3 { margin: 0 0 0.5rem; font-size: 1.08rem; font-weight: 620; letter-spacing: -
 .copy.done { background: var(--ink); color: var(--paper); }
 code { font-family: var(--mono); font-size: 0.9em; }
 
+/* The demo agent's log: one row per MCP call. Each row says its state in
+   words, so the colour only repeats what the text says. */
+.or { margin: 1.6rem 0 0.8rem; font-weight: 600; }
+.steps { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.step { padding: 0.7rem 0.9rem; border-radius: 10px; background: var(--paper-2); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.6rem; }
+.step-label { font-weight: 600; }
+.step-head code { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+.step-state { margin-left: auto; font-size: 0.88rem; font-weight: 560; color: var(--muted); }
+.step[data-state="done"] .step-state { color: var(--ink); }
+.step[data-state="failed"] .step-state, .step[data-state="failed"] .step-detail { color: var(--danger); }
+.step-detail { display: block; margin-top: 0.2rem; font-size: 0.92rem; color: var(--muted); overflow-wrap: anywhere; }
+.step-detail:empty { display: none; }
+.agent-run, .agent-done { display: flex; flex-direction: column; align-items: flex-start; gap: 0.8rem; }
+.agent-done { margin-top: 1rem; }
+.agent-done p { margin: 0; }
+
 .foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }
 .foot a { text-decoration: none; min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
 .foot a:hover { color: var(--ink); }

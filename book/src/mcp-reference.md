@@ -3198,7 +3198,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_queue_depth`
 
-**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo, engine and kind narrow the count as they narrow claim_next_workspace_thread.
+**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo, engine and kind narrow the count as they narrow claim_next_workspace_thread. claimable_by: me counts only the threads claim_next_workspace_thread would hand you: reviews of your own model family's changes, threads you declined as your family's, threads needing a skill you lack, and everything while you are frozen are left out, so a seat can wake only when its own ready is above 0.
 
 **Capability:** `workspace:read`
 
@@ -3207,6 +3207,13 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "claimable_by": {
+      "description": "me: count only the threads claim_next_workspace_thread would hand you. Omitted, every thread the other filters admit",
+      "enum": [
+        "me"
+      ],
+      "type": "string"
+    },
     "engine": {
       "description": "count only threads routed to this engine, as claim_next_workspace_thread's engine. Omitted, any work",
       "enum": [

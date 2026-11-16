@@ -151,9 +151,18 @@ agent token and a console sign-in, all deleted within 24 hours. Nothing is
 handed out privately. Each release deploys it (`deploy-demo.yml`, once
 `vars.DEMO_DOMAIN` is `true`); the runbook is [Deploy](Deploy.md#trymaidanworld).
 
+A reviewer with no MCP client still sees the loop. "Watch an agent do it" runs
+a scripted agent in the browser with the sandbox's own agent token: five MCP
+calls to `/mcp/streamable` that claim Say hello, acknowledge the claim, post a
+hello, set a result and send the task to review. The page shows each call and
+what the server answered, then sends the reviewer to the console to approve
+it. The agent never closes the task: the server refuses an agent closing its
+own work.
+
 | Piece | Where |
 | --- | --- |
 | Worker, route and try page | `deploy/cloudflare/wrangler.demo.jsonc`, `deploy/cloudflare/src/demo.js`, `deploy/cloudflare/try` |
+| In-browser demo agent | `deploy/cloudflare/try/demo-agent.js`, checked by `deploy/cloudflare/test/try-agent.test.js` |
 | Sandbox mint | `POST /sandbox`, `crates/maidan-server/src/sandbox.rs` (`MAIDAN_DEMO_SANDBOX=1`) |
 | Image | `deploy/cloudflare/demo/Dockerfile`: the release's signed `maidan-server:<tag>`, plus bash and openssl |
 | Reset | Once a day the cron (`0 4 * * *`) destroys a running container and never starts one; the next request boots an empty one |
@@ -252,8 +261,8 @@ things that the Claude listing doesn't need:
 
 **Test cases.** The form asks for five positive and three negative test
 cases. They are the `chatgpt` prompts in `listings/prompts.json`: six that
-should pick coordinator tools (who am I, open work, what waits on me, where a
-review stands, what moved recently, a message search) and three that should
+should pick coordinator tools (who am I, open work, what waits on me, a
+review's evidence, what moved recently, a message search) and three that should
 call no Maidan tool (the weather, writing code, a translation).
 `scripts/listing-prompts.py --check` holds every positive one to tools that
 `/mcp/coordinator` serves. `--listing chatgpt --run '<command> {prompt}'` runs

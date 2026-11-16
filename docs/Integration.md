@@ -170,7 +170,8 @@ The rules that matter:
   ([A review's author family](Swarms.md#a-reviews-author-family)).
   `GET /workspaces/{wid}/queue-depth` and `get_workspace_queue_depth` take the
   same `repo`, `engine` and `kind`, so the depth's `ready` is what a claimer
-  with those filters would be handed.
+  with those filters would be handed; with `claimable_by=me` it is what you
+  would be handed.
 - **Every claim is leased.** Pass `lease_secs` (1 second to 7 days) or get the
   server's default, 600 seconds unless the operator changed it. Renew about
   every third of the lease. A lease that lapses puts the task back in the

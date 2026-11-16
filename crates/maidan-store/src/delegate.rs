@@ -2327,6 +2327,7 @@ macro_rules! store_delegations {
                     None,
                     None,
                     None,
+                    false,
                 )
                 .await
             }
@@ -2338,6 +2339,7 @@ macro_rules! store_delegations {
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
                 kind: Option<maidan_types::TaskKind>,
+                as_claimer: bool,
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
@@ -2347,6 +2349,7 @@ macro_rules! store_delegations {
                     repo,
                     engine,
                     kind,
+                    as_claimer && readable_by.is_some(),
                 )
                 .await
             }

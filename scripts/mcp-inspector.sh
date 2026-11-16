@@ -9,7 +9,11 @@
 # Boots a source-built Maidan on a throwaway SQLite file with auth ENABLED,
 # seeds it with `maidan init` (a real bearer token), then:
 #   1. checks `initialize` negotiation for every supported revision directly;
-#   2. runs the Inspector CLI against `/mcp` and `/mcp/streamable`;
+#   2. runs the Inspector CLI against `/mcp` and `/mcp/streamable`, and against
+#      each profile endpoint (`/mcp/worker`, `/mcp/reviewer`, `/mcp/coordinator`),
+#      which must list exactly its profile's tools in
+#      crates/maidan-mcp/src/profiles.rs: listings connect there (ChatGPT's to
+#      the coordinator, which must sell nothing; Cursor's to the worker);
 #   3. makes one valid and one invalid call per tool group, and fails if the
 #      invalid call's error does not name the argument it got wrong.
 # Exits non-zero on the first failed check.
@@ -139,6 +143,39 @@ for endpoint in /mcp/streamable /mcp; do
   jq -e '.prompts | length > 0' <<<"$prompts" >/dev/null || fail "prompts/list: ${prompts}"
   pass "prompts/list: $(jq '.prompts | length' <<<"$prompts") prompts"
 done
+
+profile_tools() { # profile_tools NAME: NAME_TOOLS in profiles.rs, one per line, sorted
+  python3 - "$1" <<'PY'
+import re, sys
+src = open("crates/maidan-mcp/src/profiles.rs").read()
+body = re.search(sys.argv[1].upper() + r"_TOOLS: &\[&str\] = &\[(.*?)\];", src, re.S)
+print("\n".join(sorted(re.findall(r'"([a-z_]+)"', body.group(1)))))
+PY
+}
+# The member the bearer belongs to, as the full catalog names it: every
+# profile's whoami must name the same one, not merely some member.
+bearer_member="$(run /mcp/streamable --method tools/call --tool-name whoami |
+  jq -r '.content[0].text | fromjson | .member_id')"
+[[ -n "$bearer_member" && "$bearer_member" != null ]] || fail "whoami on /mcp/streamable named no member"
+for profile in worker reviewer coordinator; do
+  endpoint="/mcp/${profile}"
+  echo "=== Inspector ${inspector} against ${endpoint} ==="
+  tools="$(run "$endpoint" --method tools/list)" || fail "tools/list on ${endpoint}: ${tools}"
+  listed="$(jq -r '.tools[].name' <<<"$tools" | sort)"
+  want="$(profile_tools "$profile")"
+  [[ -n "$want" && "$listed" == "$want" ]] ||
+    fail "${endpoint} does not list the ${profile} profile: $(diff <(echo "$want") <(echo "$listed") | grep '^[<>]' | tr '\n' ' ')"
+  pass "tools/list on ${endpoint}: the ${profile} profile's $(wc -l <<<"$listed" | tr -d ' ') tools, every schema accepted by the SDK"
+  whoami="$(run "$endpoint" --method tools/call --tool-name whoami)" || fail "whoami on ${endpoint}: ${whoami}"
+  jq -e --arg m "$bearer_member" '.content[0].text | fromjson | .member_id == $m' <<<"$whoami" >/dev/null ||
+    fail "whoami on ${endpoint} did not name the bearer ${bearer_member}: ${whoami}"
+  pass "tools/call whoami on ${endpoint}: authenticated as the bearer"
+  [[ "$profile" == coordinator ]] && coordinator_tools="$listed"
+done
+if grep -qx -e top_up_credits -e get_credits <<<"$coordinator_tools"; then
+  fail "/mcp/coordinator lists a tool that sells credits"
+fi
+pass "/mcp/coordinator lists neither top_up_credits nor get_credits"
 
 echo "=== one valid and one invalid call per tool group (/mcp/streamable) ==="
 endpoint=/mcp/streamable
