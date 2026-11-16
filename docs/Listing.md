@@ -256,8 +256,9 @@ should pick coordinator tools (who am I, open work, what waits on me, where a
 review stands, what moved recently, a message search) and three that should
 call no Maidan tool (the weather, writing code, a translation).
 `scripts/listing-prompts.py --check` holds every positive one to tools that
-`/mcp/coordinator` serves, and `--listing chatgpt --run` runs all nine through
-ChatGPT connected there.
+`/mcp/coordinator` serves. `--listing chatgpt --run '<command> {prompt}'` runs
+all nine through `<command>`, which the operator points at ChatGPT connected
+to `/mcp/coordinator`; the script only runs it and reads the tools it names.
 
 ## The Cursor package
 

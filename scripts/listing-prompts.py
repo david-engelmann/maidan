@@ -121,15 +121,19 @@ def run(data: dict, tools: set[str], listing: str, cmd: str, timeout: int) -> in
             argv, stdin = cmd.replace("{prompt}", shlex.quote(p["prompt"])), None
         else:
             argv, stdin = cmd, p["prompt"]
+        # A run that timed out or failed picked nothing, which a negative
+        # prompt would otherwise count as a pass: judge only completed runs.
         try:
             out = subprocess.run(argv, shell=True, input=stdin, capture_output=True, text=True, timeout=timeout)
             text = out.stdout + out.stderr
+            broken = f"exit {out.returncode}" if out.returncode else ""
         except subprocess.TimeoutExpired:
-            text = ""
+            text, broken = "", f"timed out after {timeout} s"
         got = picked(text, tools)
-        ok = not got if p.get("negative") else all(t in got for t in p["expect"])
+        ok = not broken and (not got if p.get("negative") else all(t in got for t in p["expect"]))
         failed += 0 if ok else 1
-        print(f"| {cell(p['prompt'])} | {', '.join(p['expect']) or '(none: negative)'} | {', '.join(got) or '(none)'} | {'yes' if ok else 'no'} |")
+        verdict = "yes" if ok else f"no ({broken})" if broken else "no"
+        print(f"| {cell(p['prompt'])} | {', '.join(p['expect']) or '(none: negative)'} | {', '.join(got) or '(none)'} | {verdict} |")
     return 1 if failed else 0
 
 
