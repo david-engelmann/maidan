@@ -252,8 +252,8 @@ things that the Claude listing doesn't need:
 
 **Test cases.** The form asks for five positive and three negative test
 cases. They are the `chatgpt` prompts in `listings/prompts.json`: six that
-should pick coordinator tools (who am I, open work, what waits on me, where a
-review stands, what moved recently, a message search) and three that should
+should pick coordinator tools (who am I, open work, what waits on me, a
+review's evidence, what moved recently, a message search) and three that should
 call no Maidan tool (the weather, writing code, a translation).
 `scripts/listing-prompts.py --check` holds every positive one to tools that
 `/mcp/coordinator` serves. `--listing chatgpt --run '<command> {prompt}'` runs

@@ -119,6 +119,7 @@ export const COORDINATOR_TOOLS: readonly string[] = [
   "find_threads",
   "get_approval_gate",
   "get_inbox",
+  "get_review_packet",
   "get_review_status",
   "get_thread_context",
   "get_thread_result",

@@ -41,10 +41,6 @@
       "prompt": "Find the Maidan messages that mention the rate limiter.",
       "expect": ["search_messages"]
     },
-    "review-status": {
-      "prompt": "Where does the review of the 'Upgrade the TLS library' task stand, and what result did the agent hand back?",
-      "expect": ["find_threads", "get_thread_result"]
-    },
     "recent": {
       "prompt": "What moved in Maidan while I was away? Show me the tasks that changed recently.",
       "expect": ["list_recently_active_threads"]
@@ -85,7 +81,7 @@
   },
   "listings": {
     "claude": ["whoami", "open-work", "needs-me", "review-packet", "ask-approval", "catch-up"],
-    "chatgpt": ["whoami", "open-work", "needs-me", "review-status", "recent", "search", "not-weather", "not-code", "not-translate"],
+    "chatgpt": ["whoami", "open-work", "needs-me", "review-packet", "recent", "search", "not-weather", "not-code", "not-translate"],
     "cursor": ["whoami", "claim-next", "post-result", "ask-approval", "gate-status", "hand-back"],
     "gemini-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
     "copilot-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
