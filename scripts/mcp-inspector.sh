@@ -152,6 +152,11 @@ body = re.search(sys.argv[1].upper() + r"_TOOLS: &\[&str\] = &\[(.*?)\];", src, 
 print("\n".join(sorted(re.findall(r'"([a-z_]+)"', body.group(1)))))
 PY
 }
+# The member the bearer belongs to, as the full catalog names it: every
+# profile's whoami must name the same one, not merely some member.
+bearer_member="$(run /mcp/streamable --method tools/call --tool-name whoami |
+  jq -r '.content[0].text | fromjson | .member_id')"
+[[ -n "$bearer_member" && "$bearer_member" != null ]] || fail "whoami on /mcp/streamable named no member"
 for profile in worker reviewer coordinator; do
   endpoint="/mcp/${profile}"
   echo "=== Inspector ${inspector} against ${endpoint} ==="
@@ -162,7 +167,8 @@ for profile in worker reviewer coordinator; do
     fail "${endpoint} does not list the ${profile} profile: $(diff <(echo "$want") <(echo "$listed") | grep '^[<>]' | tr '\n' ' ')"
   pass "tools/list on ${endpoint}: the ${profile} profile's $(wc -l <<<"$listed" | tr -d ' ') tools, every schema accepted by the SDK"
   whoami="$(run "$endpoint" --method tools/call --tool-name whoami)" || fail "whoami on ${endpoint}: ${whoami}"
-  jq -e '.content[0].text | fromjson | .member_id' <<<"$whoami" >/dev/null || fail "whoami on ${endpoint}: ${whoami}"
+  jq -e --arg m "$bearer_member" '.content[0].text | fromjson | .member_id == $m' <<<"$whoami" >/dev/null ||
+    fail "whoami on ${endpoint} did not name the bearer ${bearer_member}: ${whoami}"
   pass "tools/call whoami on ${endpoint}: authenticated as the bearer"
   [[ "$profile" == coordinator ]] && coordinator_tools="$listed"
 done
