@@ -91,7 +91,8 @@ pub(crate) fn refused_to(member: &str) -> String {
 /// released the thread saying the review's change was written by its own
 /// family. [`refused_to`] reads a member's family from its usage evidence, and
 /// a seat with none yet would otherwise be handed the same review on every
-/// pass. Only `claim_next` reads it, and only for that member and thread:
+/// pass. Only `claim_next` reads it, and a queue count read for that member as
+/// its claimer, and only for that member and thread:
 /// everyone else is still handed the review, a direct claim or assign is the
 /// caller's explicit choice, and a later review round is a new thread. A
 /// review's author family is set once, so the decline cannot outlive what it

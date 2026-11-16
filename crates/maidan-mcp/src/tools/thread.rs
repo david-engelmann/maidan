@@ -2110,12 +2110,15 @@ struct WorkspaceQueueDepthArgs {
     engine: Option<maidan_types::TaskEngine>,
     #[serde(default)]
     kind: Option<maidan_types::TaskKind>,
+    #[serde(default)]
+    claimable_by: Option<maidan_types::QueueClaimer>,
 }
 
 /// `get_queue_depth` across every channel of the caller's workspace: the sum of
 /// the depths of the channels it may read, counting a DM only for its
 /// participants, narrowed by `claim_next_workspace_thread`'s `repo`, `engine`
-/// and `kind`. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+/// and `kind`, and with `claimable_by: me` to what it would hand the caller.
+/// The MCP twin of `GET /workspaces/:wid/queue-depth`.
 pub(super) async fn get_workspace_queue_depth(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -2132,6 +2135,7 @@ pub(super) async fn get_workspace_queue_depth(
             repo.as_deref(),
             a.engine,
             a.kind,
+            a.claimable_by.is_some(),
         )
         .await?;
     Ok(content_json(&depth))

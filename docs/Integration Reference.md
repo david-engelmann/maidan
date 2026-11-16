@@ -943,7 +943,12 @@ count only threads you may read, by the rule the claim applies: a private
 channel's threads count for its members and a DM's for its participants, so the
 workspace figures are the sums of the per-channel ones for the same caller.
 `ready` counts the unheld threads with no unfinished dependency, block or park;
-the claim also checks skills, approval gates and budgets. The channel routes
+the claim also checks skills, approval gates and budgets. With
+`claimable_by=me` (MCP `claimable_by: "me"`), every count covers only what
+claim-next would hand you: a review of your own model family's change, a
+thread you declined as your family's, one that needs a skill you lack, and
+everything while you are frozen are left out. A seat that wakes only when its
+own `ready` is above 0 never wakes for work it would not be handed. The channel routes
 (`GET /channels/:cid/queue-depth`, `…/occupancy`) apply the same rule, so on the
 `__dm__` channel they count your own DMs only. `workspace_id` is your own; another
 workspace's is refused (403 / Forbidden).

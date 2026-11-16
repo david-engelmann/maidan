@@ -1148,17 +1148,20 @@ pub async fn queue_depth(
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     kind: Option<maidan_types::TaskKind>,
+    as_claimer: bool,
 ) -> Result<QueueDepth, StoreError> {
-    let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
-        .bind(scope.id())
-        .bind(readable_by.map(|m| m.0))
-        .bind(DM_CHANNEL_NAME)
-        .bind(grace.lease_clock(Utc::now()).to_rfc3339())
-        .bind(repo)
-        .bind(engine.map(|engine| engine.as_str()))
-        .bind(kind.map(|kind| kind.as_str()))
-        .fetch_one(pool)
-        .await?;
+    let row = sqlx::query(&queue_counts::queue_depth_select(
+        scope, &QUEUE_SQL, as_claimer,
+    ))
+    .bind(scope.id())
+    .bind(readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .bind(grace.lease_clock(Utc::now()).to_rfc3339())
+    .bind(repo)
+    .bind(engine.map(|engine| engine.as_str()))
+    .bind(kind.map(|kind| kind.as_str()))
+    .fetch_one(pool)
+    .await?;
     Ok(QueueDepth {
         open: row.get::<i64, _>("open_count"),
         ready: row.get::<i64, _>("ready_count"),

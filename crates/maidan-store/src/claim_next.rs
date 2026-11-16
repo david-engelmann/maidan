@@ -173,8 +173,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
     let readable = readable_by(member, dm_channel);
     let warm = warm_for(member);
     let warming = sibling_warming(now, warm_hold_since, warm_ttl_since, later_than);
-    let refused = crate::review_family::refused_to(member);
-    let declined = crate::review_family::declined_by(member);
+    let takes = takes(member);
     let claimable = claimability::claimable(&ThreadSql {
         now,
         lapsed_worked_secs,
@@ -187,7 +186,27 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
          JOIN maidan_channels ch ON ch.id = cand.channel_id
          LEFT JOIN maidan_thread_priorities p ON p.thread_id = cand.id
          WHERE {in_scope} AND {claimable}
-           AND NOT EXISTS (
+           AND {takes}
+           AND {served}
+           AND {readable}
+           AND NOT {warming}
+         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
+                  {warm} DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
+         LIMIT 1"
+    )
+}
+
+/// True when `cand` is work `member` may be handed at all: it has every skill
+/// the thread requires, is not frozen, is not of the model family that wrote
+/// the change a review reviews, and has not declined it as its own family's.
+/// `claim_next` applies it, and a workspace queue count read for a claimer
+/// ([`maidan_types::QueueClaimer`]) applies the same clause, so that count's
+/// `ready` is what `claim_next` would hand the claimer.
+pub(crate) fn takes(member: &str) -> String {
+    let refused = crate::review_family::refused_to(member);
+    let declined = crate::review_family::declined_by(member);
+    format!(
+        "(NOT EXISTS (
                SELECT 1 FROM maidan_thread_required_skills trs
                WHERE trs.thread_id = cand.id
                  AND NOT EXISTS (
@@ -198,14 +217,8 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
            )
-           AND {served}
            AND NOT {refused}
-           AND NOT {declined}
-           AND {readable}
-           AND NOT {warming}
-         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
-                  {warm} DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
-         LIMIT 1"
+           AND NOT {declined})"
     )
 }
 

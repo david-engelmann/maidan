@@ -9,10 +9,10 @@ use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ApprovalGateId, ApprovalRisk, ArtifactKind,
     BlockedReason, ChannelId, ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId,
     EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, Footprint, FsmHookId, LandColor,
-    LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
-    RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, TaskAttributes,
-    TaskEngine, TaskKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind,
-    WaitlistEntry, WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
+    LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, QueueClaimer, RecipeSpec,
+    RefSide, RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind,
+    TaskAttributes, TaskEngine, TaskKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
+    VoteKind, WaitlistEntry, WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use maidan_types::{ResultDelivery, ThreadResult};
 use serde::{Deserialize, Serialize};
@@ -536,6 +536,11 @@ pub struct WorkspaceQueueDepthQuery {
     /// Count only threads of this kind (`change`, `plan` or `review`); a
     /// thread that never named its kind is a change. Omitted, any kind.
     pub kind: Option<TaskKind>,
+    /// `me`: count only the threads claim-next would hand the caller, leaving
+    /// out reviews of its own model family's changes, threads it declined as
+    /// its own family's, threads needing a skill it lacks, and every thread
+    /// while it is frozen. Omitted, every thread the filters admit.
+    pub claimable_by: Option<QueueClaimer>,
 }
 
 /// Query params for a thread's transition history.
