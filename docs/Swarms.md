@@ -706,7 +706,11 @@ filters on one engine never sees the reviews of changes routed to another. A
 seat that also filters on its own family never picks a review whose label
 names another, and those reviews wait for nobody. Size the review pool with
 the same filters: `GET /workspaces/{wid}/queue-depth?kind=review&repo=owner/name`
-(or `get_workspace_queue_depth` with `kind` and `repo`).
+(or `get_workspace_queue_depth` with `kind` and `repo`). To wake one seat
+rather than the pool, read each seat's count with its own token and
+`claimable_by=me`: its `ready` then leaves out the reviews of its own family's
+changes and the ones it declined, so a seat is woken only for a review
+`claim_next` would hand it.
 
 A seat that knows its own family declines a review of that family's change
 when it is handed one (the

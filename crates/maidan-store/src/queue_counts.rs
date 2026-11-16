@@ -9,6 +9,11 @@
 //! a DM's for its participants. Without a reader every thread in scope counts.
 //! The shared `__dm__` channel passes the route's channel check for every
 //! member, so before the read rule applied here its counts were everyone's DMs.
+//!
+//! Read for a claimer ([`maidan_types::QueueClaimer`]), the reader is also the
+//! claimer, and every count narrows to the threads `claim_next` could hand it
+//! ([`claim_next::takes`]), so its `ready` is what `claim_next` would hand it.
+//! A thread held warm for a sibling still counts: that hold lasts minutes.
 
 use maidan_types::{ChannelId, WorkspaceId};
 
@@ -73,8 +78,13 @@ impl<'a> QueueSql<'a> {
 /// exactly what `claim_next` would hand out to a claimer with no restriction.
 /// `unclaimable` is withheld work (parked, out of budget, finished), and
 /// `blocked` is stalled work (a block, a dependency, a gate, a footprint
-/// conflict).
-pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
+/// conflict). With `as_claimer`, only the threads the reader could be handed
+/// count, as the module says.
+pub(crate) fn queue_depth_select(
+    scope: QueueScope,
+    sql: &QueueSql<'_>,
+    as_claimer: bool,
+) -> String {
     let t = sql.thread();
     let held = claimability::held(sql.now);
     let available = claimability::available(sql.now);
@@ -91,7 +101,7 @@ pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> Strin
              COALESCE(SUM(CASE WHEN {available} AND {withheld}
                      THEN 1 ELSE 0 END), 0) AS unclaimable_count
          {}",
-        open_threads(scope, sql)
+        open_threads(scope, sql, as_claimer)
     )
 }
 
@@ -104,7 +114,7 @@ pub(crate) fn occupancy_select(scope: QueueScope, sql: &QueueSql<'_>) -> String 
     format!(
         "SELECT {} {}",
         occupancy_columns(&sql.thread()),
-        open_threads(scope, sql)
+        open_threads(scope, sql, false)
     )
 }
 
@@ -163,10 +173,10 @@ fn occupancy_columns(t: &ThreadSql<'_>) -> String {
 }
 
 /// `FROM … WHERE` of the open, live threads in `scope` the reader may read and
-/// the repo, engine and kind filters admit,
-/// aliased `cand` as [`claim_next::readable_by`] expects, with their channel
-/// `ch`.
-fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
+/// the repo, engine and kind filters admit, and with `as_claimer` the reader
+/// could be handed, aliased `cand` as [`claim_next::readable_by`] expects,
+/// with their channel `ch`.
+fn open_threads(scope: QueueScope, sql: &QueueSql<'_>, as_claimer: bool) -> String {
     let QueueSql {
         scope: scope_id,
         reader,
@@ -182,11 +192,16 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
     };
     let readable = claim_next::readable_by(reader, dm_channel);
     let served = claim_next::served_by(repo, engine, kind);
+    let taken = if as_claimer {
+        format!("AND {}", claim_next::takes(reader))
+    } else {
+        String::new()
+    };
     format!(
         "FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
          WHERE {in_scope} AND cand.state = 'open' AND cand.tombstoned_at IS NULL
            AND ({reader} IS NULL OR ({readable}))
-           AND {served}"
+           AND {served} {taken}"
     )
 }

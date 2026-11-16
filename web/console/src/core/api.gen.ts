@@ -277,6 +277,7 @@ export type PullCi = { failing_jobs?: string[]; gate_reasons?: string[]; head_sh
 export type PushKeys = { auth: string; p256dh: string; };
 export type PushSubscription = { auth: string; created_at: string; endpoint: string; id: PushSubscriptionId; member_id: MemberId; p256dh: string; };
 export type PushSubscriptionId = string;
+export type QueueClaimer = "me";
 export type QueueDepth = { assigned: number; blocked: number; open: number; ready: number; unclaimable: number; };
 export type QueueStatus = { indexer_capacity: number; indexer_depth: number; indexer_failed_total: number; outbox_pending?: number | null; outbox_quarantined?: number | null; ws_connections: number; ws_connections_max: number; };
 export type Reaction = { created_at: string; emoji: string; member_id: MemberId; message_id: MessageId; };

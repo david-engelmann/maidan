@@ -1394,7 +1394,7 @@ async fn depth(
     kind: Option<TaskKind>,
 ) -> QueueDepth {
     store
-        .workspace_queue_depth(room.ws, Some(room.third), repo, None, kind)
+        .workspace_queue_depth(room.ws, Some(room.third), repo, None, kind, false)
         .await
         .expect("depth")
 }
@@ -1459,9 +1459,110 @@ async fn the_queue_depth_by_kind_counts_only_that_kind(store: &dyn Store, pool: 
     assert_eq!(plans.open, 0, "{plans:?}");
 }
 
+/// The review queue depth `member` reads in `room`, for itself as the
+/// claimer (`claimable_by = me`) or as a reader only.
+async fn review_depth(
+    store: &dyn Store,
+    room: &Room,
+    member: MemberId,
+    as_claimer: bool,
+) -> QueueDepth {
+    store
+        .workspace_queue_depth(
+            room.ws,
+            Some(member),
+            Some(REPO),
+            None,
+            Some(TaskKind::Review),
+            as_claimer,
+        )
+        .await
+        .expect("depth")
+}
+
+/// Read for a claimer, the review queue counts only what `claim_next` would
+/// hand that seat: the author's family is handed neither review its seat
+/// wrote, so its `ready` is 0 while a reader's count still shows both, and a
+/// third-family seat that declines one as its own family's counts only the
+/// other. Every count after a claim agrees with the claim that follows it.
+async fn the_queue_depth_for_a_claimer_counts_what_claim_next_would_hand_it(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "claimer-depth").await;
+    for (title, path) in [("first change", "src/"), ("second change", "docs/")] {
+        change_into_review(
+            store,
+            pool,
+            &room,
+            title,
+            Some(exclusive(path)),
+            TaskAttributes {
+                kind: TaskKind::Change,
+                engine: Some(TaskEngine::Session),
+                repo: Some(REPO.into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await;
+    }
+
+    let read = review_depth(store, &room, room.author, false).await;
+    assert_eq!(
+        (read.open, read.ready),
+        (2, 2),
+        "a reader sees both: {read:?}"
+    );
+    let own = review_depth(store, &room, room.author, true).await;
+    assert_eq!(
+        (own.open, own.ready),
+        (0, 0),
+        "the author's family is handed neither review: {own:?}"
+    );
+    assert!(
+        kind_claim(store, &room, room.author, TaskKind::Review, Some(REPO))
+            .await
+            .is_none(),
+        "and claim_next agrees"
+    );
+
+    let third = review_depth(store, &room, room.third, true).await;
+    assert_eq!((third.open, third.ready), (2, 2), "{third:?}");
+    let held = kind_claim(store, &room, room.third, TaskKind::Review, Some(REPO))
+        .await
+        .expect("the third family is handed a review");
+    store
+        .release_claim_with_event(
+            held.id,
+            room.third,
+            held.claim_lease_id.expect("a leased claim"),
+            Some(ClaimDecline::OwnFamily),
+        )
+        .await
+        .expect("decline");
+    let declined = review_depth(store, &room, room.third, true).await;
+    assert_eq!(
+        (declined.open, declined.ready),
+        (1, 1),
+        "the declined review no longer counts for the seat that declined it: {declined:?}"
+    );
+    let reader = review_depth(store, &room, room.third, false).await;
+    assert_eq!(
+        reader.ready, 2,
+        "a reader's count still holds it: {reader:?}"
+    );
+    let next = kind_claim(store, &room, room.third, TaskKind::Review, Some(REPO))
+        .await
+        .expect("the one the count promised");
+    assert_ne!(next.id, held.id, "claim_next hands the other review");
+    let after = review_depth(store, &room, room.third, true).await;
+    assert_eq!(after.ready, 0, "and nothing is left for it: {after:?}");
+}
+
 async fn claimed_by_kind(store: &dyn Store, pool: &Pool) {
     a_review_seat_claims_every_review_in_its_repository_whatever_the_engine(store, pool).await;
     the_queue_depth_by_kind_counts_only_that_kind(store, pool).await;
+    the_queue_depth_for_a_claimer_counts_what_claim_next_would_hand_it(store, pool).await;
 }
 
 #[tokio::test]

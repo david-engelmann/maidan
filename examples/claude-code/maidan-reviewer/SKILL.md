@@ -36,7 +36,8 @@ repository whatever engine wrote the change; a review carries its change's
 engine, so an engine filter would hide the reviews of changes routed to
 another one. Never filter on `review_family`: any family but the author's may
 review. `get_workspace_queue_depth` with the same `kind` and `repo` says how
-many reviews wait. Handed a review of your own family's change, give it back
+many reviews wait; add `claimable_by: "me"` to count only the ones you would
+be handed. Handed a review of your own family's change, give it back
 with `release_claim`, its `claim_lease_id` and `decline: "own_family"`, and
 you are not handed it again.
 

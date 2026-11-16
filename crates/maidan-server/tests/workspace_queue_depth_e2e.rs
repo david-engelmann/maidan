@@ -738,3 +738,77 @@ async fn an_unknown_kind_is_refused_with_a_clear_message_over_rest_and_mcp() {
     let (_, depth) = get(&h, &bearer, &format!("/workspaces/{}/queue-depth", ws.0)).await;
     assert_eq!(depth["assigned"], 0, "nothing was claimed: {depth}");
 }
+
+/// `claimable_by=me` counts only what claim-next would hand the caller, the
+/// same over REST and MCP: a review that needs a skill the caller lacks is
+/// left out until the caller has it, while the plain count holds it all along.
+/// Any other value is refused, naming `me`.
+#[tokio::test]
+async fn the_workspace_depth_for_the_caller_counts_only_what_claim_next_would_hand_it() {
+    use maidan_types::TaskKind::Review;
+    let h = spawn().await;
+    let store = h.store.as_ref();
+    let ws = workspace(store, "claimable").await;
+    let agent = member(store, ws, "agent", MemberKind::Agent).await;
+    let chan = channel(store, ws, "work", false).await;
+    kind_task(store, chan, Review).await;
+    let skilled = kind_task(store, chan, Review).await;
+    store
+        .add_thread_required_skill(skilled, "rust")
+        .await
+        .unwrap();
+    let bearer = agent_token(store, ws, agent).await;
+
+    let plain = filtered_depth(&h, &bearer, ws, "kind=review", json!({ "kind": "review" })).await;
+    assert_eq!(plain["ready"], 2, "{plain}");
+    let mine = filtered_depth(
+        &h,
+        &bearer,
+        ws,
+        "kind=review&claimable_by=me",
+        json!({ "kind": "review", "claimable_by": "me" }),
+    )
+    .await;
+    assert_eq!(
+        (mine["open"].clone(), mine["ready"].clone()),
+        (json!(1), json!(1)),
+        "the review that needs rust is not the caller's to take: {mine}"
+    );
+    store.add_member_skill(agent, "rust").await.unwrap();
+    let skilled_now = filtered_depth(
+        &h,
+        &bearer,
+        ws,
+        "kind=review&claimable_by=me",
+        json!({ "kind": "review", "claimable_by": "me" }),
+    )
+    .await;
+    assert_eq!(skilled_now["ready"], 2, "{skilled_now}");
+
+    let (status, body) = get(
+        &h,
+        &bearer,
+        &format!("/workspaces/{}/queue-depth?claimable_by=someone", ws.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["detail"].as_str().unwrap_or_default().contains("`me`"),
+        "{body}"
+    );
+    let res = call_tool(
+        &h,
+        &bearer,
+        "get_workspace_queue_depth",
+        json!({ "workspace_id": ws.0, "claimable_by": "someone" }),
+    )
+    .await;
+    assert_eq!(res["error"]["code"], -32602, "{res}");
+    assert!(
+        res["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("`me`"),
+        "{res}"
+    );
+}

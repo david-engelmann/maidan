@@ -924,6 +924,7 @@ fn requires_credential(op: &Operation) -> bool {
         UnassignThread,
         ThreadClaimResult,
         QueueDepth,
+        QueueClaimer,
         maidan_types::ThreadUnclaimable,
         MarkUnclaimable,
         maidan_types::CancelledThread,
