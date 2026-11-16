@@ -1,16 +1,23 @@
-// The try page: start a sandbox, show its agent token once, set up a client,
-// and sign the console in as the sandbox's admin.
+// The try page: start a sandbox, show its agent token once, set up a client
+// or watch the page's own demo agent take the task, and sign the console in
+// as the sandbox's admin.
 //
-// Secrets stay in this page's memory. The agent token is shown in the page;
-// the admin token is never shown and never put in a URL: it is exchanged for
-// an HttpOnly session cookie by a POST (`/auth/session/from-token`, the same
+// Secrets stay in this page's memory. The agent token is shown in the page,
+// and the demo agent sends it only in a header to this origin; the admin
+// token is never shown and never put in a URL: it is exchanged for an
+// HttpOnly session cookie by a POST (`/auth/session/from-token`, the same
 // call the console's own token sign-in makes), and then dropped.
 
 import { claudeCommand, codexConfig, cursorLink, vscodeLink } from "./clients.js";
+import { STEPS, createDemoAgent } from "./demo-agent.js";
 
 // Keep in step with UNAVAILABLE_RETRY_SECS in src/edge.js. The Worker sends
 // that delay on the 503 it writes while the demo container is starting.
 export const START_RETRY_SECS = 20;
+
+// The demo agent's pause between calls: long enough to read each step as it
+// lands, short enough that the whole run takes a few seconds.
+export const AGENT_PAUSE_MS = 700;
 
 const OVERLOADED = "https://maidan.world/problems/overloaded";
 // POST /sandbox when the daily cap is hit (crates/maidan-server sandbox.rs).
@@ -68,8 +75,15 @@ function sentence(why) {
   return /[.!?]$/.test(lead) ? lead : `${lead}.`;
 }
 
-export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => window.location.assign(href)) {
+export function createTryPage(
+  doc,
+  fetch = globalThis.fetch,
+  assign = (href) => window.location.assign(href),
+  { agentPauseMs = AGENT_PAUSE_MS } = {},
+) {
   let adminToken = "";
+  let agent = null;
+  const agentSteps = new Map();
   let turnstileToken = "";
   let turnstileWidget = null;
   let turnstileFailed = false;
@@ -135,6 +149,14 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     $(doc, "cursor-link").href = cursorLink(url, token);
     $(doc, "vscode-link").href = vscodeLink(url, token);
     adminToken = sandbox.admin.token;
+    agent = createDemoAgent({
+      fetch,
+      token,
+      channelId: sandbox.channel_id,
+      taskId: sandbox.task_id,
+      retrySecs: START_RETRY_SECS,
+      pauseMs: agentPauseMs,
+    });
   }
 
   async function start() {
@@ -192,9 +214,9 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     $(doc, "ready-title").focus();
   }
 
-  async function openConsole() {
-    const button = $(doc, "console");
-    const status = $(doc, "console-status");
+  // The ready section's console button, or the one the demo agent's card
+  // shows once the task is in review: both sign in the same way.
+  async function openConsole(button = $(doc, "console"), status = $(doc, "console-status")) {
     if (!adminToken) {
       say(status, "Start a sandbox first.", true);
       return;
@@ -218,6 +240,69 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
       say(status, "Could not reach the demo. Try again.", true);
     }
     button.disabled = false;
+  }
+
+  // One list item per step, made when the step starts, so the log grows as
+  // the agent works. The log is not a live region: the status line under the
+  // button names each step as it starts, so a screen reader hears it once.
+  function showStep(index, state, detail) {
+    if (state === "running") {
+      say($(doc, "agent-status"), `Step ${index + 1} of ${STEPS.length}: ${STEPS[index].label}…`);
+    }
+    let item = agentSteps.get(index);
+    if (!item) {
+      const li = doc.createElement("li");
+      li.className = "step";
+      const head = doc.createElement("span");
+      head.className = "step-head";
+      const label = doc.createElement("span");
+      label.className = "step-label";
+      label.textContent = STEPS[index].label;
+      const tool = doc.createElement("code");
+      tool.textContent = STEPS[index].tool;
+      const mark = doc.createElement("span");
+      mark.className = "step-state";
+      const note = doc.createElement("span");
+      note.className = "step-detail";
+      head.appendChild(label);
+      head.appendChild(tool);
+      head.appendChild(mark);
+      li.appendChild(head);
+      li.appendChild(note);
+      const log = $(doc, "agent-log");
+      log.appendChild(li);
+      log.hidden = false;
+      item = { li, mark, note };
+      agentSteps.set(index, item);
+    }
+    item.li.dataset.state = state;
+    item.mark.textContent = state === "done" ? "Done" : state === "failed" ? "Failed" : "Working…";
+    item.note.textContent = detail;
+  }
+
+  async function watchAgent() {
+    const button = $(doc, "agent-run");
+    const status = $(doc, "agent-status");
+    if (!agent) {
+      say(status, "Start a sandbox first.", true);
+      return;
+    }
+    button.disabled = true;
+    const outcome = await agent.run(showStep);
+    if (outcome.ok) {
+      say(status, "The agent sent Say hello to review.");
+      button.hidden = true;
+      $(doc, "agent-done").hidden = false;
+      // The button that had focus is gone; the next thing to do is here.
+      $(doc, "agent-console").focus();
+      return;
+    }
+    say(status, `The agent stopped at step ${outcome.step + 1} of ${STEPS.length}. ${outcome.message}`, true);
+    button.textContent = "Try again";
+    button.disabled = false;
+    // Disabling the focused button dropped focus to the page; put it back
+    // where the next keypress tries again.
+    button.focus();
   }
 
   async function copy(button) {
@@ -248,6 +333,12 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     $(doc, "console").addEventListener("click", () => {
       void openConsole();
     });
+    $(doc, "agent-run").addEventListener("click", () => {
+      void watchAgent();
+    });
+    $(doc, "agent-console").addEventListener("click", () => {
+      void openConsole($(doc, "agent-console"), $(doc, "agent-console-status"));
+    });
     for (const button of doc.querySelectorAll("button.copy")) {
       button.addEventListener("click", () => {
         void copy(button);
@@ -258,7 +349,7 @@ export function createTryPage(doc, fetch = globalThis.fetch, assign = (href) => 
     });
   }
 
-  return { start, openConsole, mount };
+  return { start, openConsole, watchAgent, mount };
 }
 
 if (typeof document !== "undefined") {

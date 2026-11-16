@@ -66,6 +66,12 @@ function page() {
     "ready-title",
     "console",
     "console-status",
+    "agent-run",
+    "agent-status",
+    "agent-log",
+    "agent-done",
+    "agent-console",
+    "agent-console-status",
   ];
   const elements = new Map(ids.map((id) => [id, element(id)]));
   const doc = { getElementById: (id) => elements.get(id) };
