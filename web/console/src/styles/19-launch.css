@@ -110,6 +110,8 @@
    (300 px wide at its normal size) into its square compact form. */
 @media (max-width: 599px) { .content .card.sign-in { padding: var(--space-5); } }
 /* A sideways strip fades the edge that has more behind it (useScrollFade). */
-.seg[data-fade="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
-.seg[data-fade="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
-.seg[data-fade="both"] { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+/* A mask reads only alpha, so currentColor (opaque) keeps the strip and
+   transparent fades it, with no colour literal outside the tokens. */
+.seg[data-fade="end"] { mask-image: linear-gradient(to right, currentColor calc(100% - 28px), transparent); }
+.seg[data-fade="start"] { mask-image: linear-gradient(to left, currentColor calc(100% - 28px), transparent); }
+.seg[data-fade="both"] { mask-image: linear-gradient(to right, transparent, currentColor 28px, currentColor calc(100% - 28px), transparent); }
