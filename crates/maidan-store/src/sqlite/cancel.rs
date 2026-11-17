@@ -176,6 +176,17 @@ pub(crate) async fn cancel_in_tx(
     stored.push(events::append_with_keys_in_tx(tx, Some(keys), &posted, None).await?);
     // A cancel lands nothing, so a cancelled plan child blocks its dependents.
     stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
+    // Its review children have nothing left to review.
+    stored.extend(
+        cancel_review_children_in_tx(
+            tx,
+            keys,
+            thread_id,
+            actor,
+            "the change it reviews was cancelled",
+        )
+        .await?,
+    );
     Ok(CancelOutcome::Cancelled {
         cancelled: CancelledThread {
             thread: closed,
@@ -286,4 +297,46 @@ pub(crate) async fn queue_pull_withdrawals_in_tx(
         .await?;
     }
     Ok(())
+}
+
+/// Cancel `thread_id`'s open review children: the change they review was
+/// cancelled, or its pull request merged or closed. A review left open after
+/// that has nothing to review, and the claim queue hands out its oldest work
+/// first, so every such review stood ahead of the live ones and a seat
+/// handed it could not even fetch the head. In the caller's transaction, so
+/// the change's end and the cancels commit together. Returns the cancels'
+/// events, to publish.
+pub(crate) async fn cancel_review_children_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor: MemberId,
+    reason: &str,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let children: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT t.id FROM maidan_threads t
+         JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         WHERE t.parent_thread_id = ?1 AND a.kind = 'review'
+           AND t.tombstoned_at IS NULL AND t.state IN ('open', 'in_review')
+         ORDER BY t.created_at, t.id",
+    )
+    .bind(thread_id.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut stored = Vec::new();
+    for child in children {
+        if let maidan_types::CancelOutcome::Cancelled { events, .. } = Box::pin(cancel_in_tx(
+            tx,
+            keys,
+            ThreadId(child),
+            actor,
+            reason,
+            maidan_types::CancelAuthority::Transition,
+        ))
+        .await?
+        {
+            stored.extend(events);
+        }
+    }
+    Ok(stored)
 }

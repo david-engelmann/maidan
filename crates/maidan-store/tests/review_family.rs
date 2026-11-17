@@ -1355,12 +1355,38 @@ async fn a_closed_or_merged_pull_request_cancels_its_open_review_children(
     );
 }
 
+/// Cancelling a change cancels its open review children with it: the change
+/// they review will never land, so they would only hold the queue's front.
+async fn a_cancelled_change_cancels_its_open_review_children(store: &dyn Store, pool: &Pool) {
+    let room = room(store, pool, "cancelled").await;
+    let (change, review) =
+        delivered_change_in_review(store, pool, &room, "abandoned change", 61).await;
+    let outcome = store
+        .cancel_thread(
+            change,
+            room.author,
+            "superseded",
+            CancelAuthority::Transition,
+        )
+        .await
+        .expect("cancel");
+    let CancelOutcome::Cancelled { events, .. } = outcome else {
+        panic!("the change is cancelled, got {outcome:?}");
+    };
+    assert!(cancels(&events, review), "{events:?}");
+    assert_eq!(
+        store.get_thread(review).await.expect("review").state,
+        ThreadState::Closed
+    );
+}
+
 async fn served_where_the_change_is(store: &dyn Store, pool: &Pool) {
     a_spawned_review_names_the_pull_request_and_head_it_reviews(store, pool).await;
     a_spawned_review_carries_its_changes_engine_repository_and_lane(store, pool).await;
     a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(store, pool).await;
     the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(store, pool).await;
     a_closed_or_merged_pull_request_cancels_its_open_review_children(store, pool).await;
+    a_cancelled_change_cancels_its_open_review_children(store, pool).await;
 }
 
 #[tokio::test]
