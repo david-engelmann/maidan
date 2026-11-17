@@ -101,6 +101,9 @@ mod claim_boot_grace;
 #[path = "../claim_deadline.rs"]
 mod claim_deadline;
 
+#[path = "../claim_empty_release_backoff.rs"]
+mod claim_empty_release_backoff;
+
 #[path = "../claim_ended_thread.rs"]
 mod claim_ended_thread;
 

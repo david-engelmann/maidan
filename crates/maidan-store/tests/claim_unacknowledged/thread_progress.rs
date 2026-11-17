@@ -72,7 +72,7 @@ pub(super) async fn task(store: &dyn Store, room: &Room, title: &str) -> ThreadI
         .id
 }
 
-async fn post(store: &dyn Store, thread: ThreadId, author: MemberId, body: &str) {
+pub(super) async fn post(store: &dyn Store, thread: ThreadId, author: MemberId, body: &str) {
     store
         .post_message(NewMessage {
             thread_id: thread,

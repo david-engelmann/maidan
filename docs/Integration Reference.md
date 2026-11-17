@@ -1489,6 +1489,16 @@ head would not fetch or it names nothing to work on, is released with
 your `claimable_by: me` count skip it for you alone. The assignment event's note records the decline. MCP only;
 `POST /threads/{id}/claim/release` takes no decline.
 
+A plain release (no decline) of a hold in which you reported no usage, posted
+no message of your own on the thread and stored no result is an empty release.
+After one, `claim_next` and your `claimable_by: me` count skip that thread for
+you for 5 minutes, then 10, 20 and so on with each empty release of it in a
+row, up to 6 hours; every other member is handed it at once. A release that
+showed any progress ends the backoff. `release_own_claims`, a lapsed lease
+and a decline leave it as it was. Without it, a claimant that cannot work at
+all (its model provider out of balance, say) was handed the same thread back
+on every pass, since the queue favours the thread's last holder.
+
 An exit you do not control (a crash, a kill, a host restart) takes the fencing
 tokens with the process, and the claims stay yours until each lease lapses. A
 claimant that restarts calls `release_own_claims {workspace_id}` once, before

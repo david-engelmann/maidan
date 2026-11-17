@@ -359,6 +359,11 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   retries at once, then 2 a second). A test that drives more retries than that
   at one mock host in one pass sees them deferred, not sent; give it its own
   `state.retry_budget` on a `ManualClock`.
+- **An empty release backs the claimer off.** A plain `release_claim` whose
+  hold had no usage, no message of the member's own and no result keeps
+  `claim_next` from handing that thread back to that member for 5 minutes
+  (`claim_next::backed_off`). A test that releases and then expects the same
+  member to claim the same thread posts a message in the hold first.
 - **A fix is checked by breaking it.** Revert the fix, confirm its test fails,
   restore it. Delete any `.proptest-regressions` file a mutated run leaves.
 

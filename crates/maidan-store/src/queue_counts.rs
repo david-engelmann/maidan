@@ -61,6 +61,12 @@ pub(crate) struct QueueSql<'a> {
     pub lapsed_worked_secs: &'a str,
     /// [`ThreadSql::requeued_after_result`].
     pub requeued_after_result: &'a str,
+    /// [`claim_next::ClaimSql::later_than`].
+    pub later_than: &'a str,
+    /// Placeholder bound to the app's `now`, as
+    /// [`claim_next::ClaimSql::clock`]. Only a count read as a claimer
+    /// names it, so only that read binds it.
+    pub clock: &'a str,
 }
 
 impl<'a> QueueSql<'a> {
@@ -185,6 +191,8 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>, as_claimer: bool) -> Stri
         repo,
         engine,
         kind,
+        later_than,
+        clock,
         ..
     } = sql;
     let in_scope = match scope {
@@ -194,7 +202,7 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>, as_claimer: bool) -> Stri
     let readable = claim_next::readable_by(reader, dm_channel);
     let served = claim_next::served_by(repo, engine, kind);
     let taken = if as_claimer {
-        format!("AND {}", claim_next::takes(reader))
+        format!("AND {}", claim_next::takes(reader, clock, later_than))
     } else {
         String::new()
     };

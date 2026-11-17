@@ -350,6 +350,19 @@ async fn a_second_plan_replays_or_conflicts(store: Arc<dyn Store>) {
     .unwrap();
     assert_eq!(other_keys, PlanOutcome::Conflict(first.clone()));
 
+    // The planner says so on the thread before it lets go: a plan alone is
+    // not a hold's progress, and an empty release would hold the parent back
+    // from the planner, which claims it again below.
+    store
+        .post_message(NewMessage {
+            thread_id: parent,
+            author_id: room.planner,
+            body: "planned".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
     store
         .release_claim(parent, room.planner, lease)
         .await

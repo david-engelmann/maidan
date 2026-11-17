@@ -1021,6 +1021,7 @@ async fn claim_next_in_tx(
             warm_hold_since: "$9::timestamptz",
             warm_ttl_since: "$10::timestamptz",
             later_than: "{col} > {t}",
+            clock: "$11::timestamptz",
         },
     );
     // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
@@ -1101,7 +1102,8 @@ pub async fn claim_next(
 /// The placeholders the queue counts bind on Postgres: `$1` the scope, `$2` the
 /// reader, `$3` the DM channel name, `$4` the repo, `$5` the engine, `$6` the
 /// app clock, as `claim_next` binds it, so `ready` matches its claimability
-/// predicate exactly (#1605), and `$7` the kind.
+/// predicate exactly (#1605), `$7` the kind, and `$8`, bound only for a count
+/// read as a claimer, the wall clock its backoffs are read against.
 const QUEUE_SQL: QueueSql<'static> = QueueSql {
     scope: "$1",
     reader: "$2::uuid",
@@ -1112,6 +1114,8 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     kind: "$7::text",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
+    later_than: "{col} > {t}",
+    clock: "$8::timestamptz",
 };
 
 /// Seconds a lapsed claim on `cand` worked, for [`crate::claimability`].
@@ -1131,18 +1135,19 @@ pub async fn queue_depth(
     kind: Option<maidan_types::TaskKind>,
     as_claimer: bool,
 ) -> Result<QueueDepth, StoreError> {
-    let row = sqlx::query(&queue_counts::queue_depth_select(
-        scope, &QUEUE_SQL, as_claimer,
-    ))
-    .bind(scope.id())
-    .bind(readable_by.0)
-    .bind(DM_CHANNEL_NAME)
-    .bind(repo)
-    .bind(engine.map(|engine| engine.as_str()))
-    .bind(grace.lease_clock(chrono::Utc::now()))
-    .bind(kind.map(|kind| kind.as_str()))
-    .fetch_one(pool)
-    .await?;
+    let sql = queue_counts::queue_depth_select(scope, &QUEUE_SQL, as_claimer);
+    let now = chrono::Utc::now();
+    let query = sqlx::query(&sql)
+        .bind(scope.id())
+        .bind(readable_by.0)
+        .bind(DM_CHANNEL_NAME)
+        .bind(repo)
+        .bind(engine.map(|engine| engine.as_str()))
+        .bind(grace.lease_clock(now))
+        .bind(kind.map(|kind| kind.as_str()));
+    // Postgres refuses a bind the statement never names.
+    let query = if as_claimer { query.bind(now) } else { query };
+    let row = query.fetch_one(pool).await?;
     Ok(QueueDepth {
         open: row.get::<i64, _>("open_count"),
         ready: row.get::<i64, _>("ready_count"),
@@ -1577,12 +1582,53 @@ pub async fn acknowledge_claim(
     }
 }
 
+/// A plain release (no decline) of the claim under `lease_id`:
+/// [`release_fenced_in_tx`], then the member's backoff from the thread, set
+/// when the hold was empty and cleared when it was not
+/// ([`thread_workers::record_release_in_tx`]). The hold's start is read
+/// first, under the row lock, since the release clears it.
+async fn release_plain_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+    lease_clock: DateTime<Utc>,
+) -> Result<Thread, StoreError> {
+    let claimed_at = sqlx::query(
+        "SELECT claimed_at FROM maidan_threads
+         WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3
+         FOR UPDATE",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .and_then(|row| row.get::<Option<DateTime<Utc>>, _>("claimed_at"));
+    let thread = release_fenced_in_tx(tx, thread_id, member_id, lease_id, lease_clock).await?;
+    // Every claim stamps `claimed_at` with its token; a hold without one has
+    // no start to judge its progress from, so its backoff is left alone.
+    if let Some(claimed_at) = claimed_at {
+        thread_workers::record_release_in_tx(
+            tx,
+            thread_id,
+            member_id,
+            lease_id,
+            claimed_at,
+            crate::clock::db_now(),
+        )
+        .await?;
+    }
+    Ok(thread)
+}
+
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue immediately instead of waiting for the lease to lapse — e.g. an
 /// agent shutting down on SIGTERM. Fenced by `(assignee_id, claim_lease_id)`
 /// under a live lease; clears the assignee, lease, and working clock in one
 /// write. `NotFound` if the thread does not exist; `ClaimLost` if the caller
-/// does not hold it under a live `lease_id`, as `renew_claim` answers.
+/// does not hold it under a live `lease_id`, as `renew_claim` answers. An
+/// empty hold backs the member off the thread ([`release_plain_in_tx`]).
 pub async fn release_claim(
     pool: &PgPool,
     grace: &ClaimGrace,
@@ -1592,7 +1638,7 @@ pub async fn release_claim(
 ) -> Result<Thread, StoreError> {
     let mut tx = pool.begin().await?;
     let clock = grace.lease_clock(chrono::Utc::now());
-    match release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id, clock).await {
+    match release_plain_in_tx(&mut tx, thread_id, member_id, lease_id, clock).await {
         Ok(thread) => {
             tx.commit().await?;
             Ok(thread)
@@ -1626,7 +1672,12 @@ async fn release_with_event_in_tx(
         )
         .await?;
     }
-    let thread = release_fenced_in_tx(tx, thread_id, member_id, lease_id, lease_clock).await?;
+    // A decline says why the claimant let go, so it leaves the empty-release
+    // backoff as it was: only a plain release is judged by its progress.
+    let thread = match decline {
+        Some(_) => release_fenced_in_tx(tx, thread_id, member_id, lease_id, lease_clock).await?,
+        None => release_plain_in_tx(tx, thread_id, member_id, lease_id, lease_clock).await?,
+    };
     // In the release's transaction and after its fence, so only the holder
     // of the live lease records a decline, and only with its release.
     if let Some(decline) = decline {

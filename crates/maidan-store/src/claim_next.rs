@@ -34,6 +34,15 @@
 //! handed to it: neither when its usage evidence names that family
 //! ([`crate::review_family::refused_to`]) nor after it released the review
 //! with an `own_family` decline ([`crate::review_family::declined_by`]).
+//! A thread is not handed back to a member whose last plain release of it was
+//! empty ([`backed_off`]) until that release's hold runs out: a claimant that
+//! cannot work (its provider has no balance, say) and lets go without a usage
+//! report, a message of its own or a result is otherwise handed the same
+//! thread at once, since the oldest work comes first and [`warm_for`] breaks
+//! ties toward the last holder. The hold doubles with each empty release in a row, from
+//! [`EMPTY_RELEASE_BACKOFF_SECS`] to [`EMPTY_RELEASE_BACKOFF_MAX_SECS`]; every
+//! other member is handed the thread meanwhile, and unlike a decline it
+//! expires, since a plain release may be transient.
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -110,6 +119,11 @@ pub(crate) struct ClaimSql<'a> {
     /// in more than one format. Every age is measured against a cutoff the
     /// app computed from its own clock, never the database clock.
     pub later_than: &'a str,
+    /// Placeholder bound to the app's `now`, compared with a member's
+    /// `reclaim_after` ([`backed_off`]). Not [`Self::now`], which the boot
+    /// grace sets back to keep every lease live: a backoff runs on the wall
+    /// clock it was set by.
+    pub clock: &'a str,
 }
 
 /// Threads aliased `cand` within the claimer's `repo`, routed to its
@@ -165,6 +179,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         warm_hold_since,
         warm_ttl_since,
         later_than,
+        clock,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
@@ -173,7 +188,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
     let readable = readable_by(member, dm_channel);
     let warm = warm_for(member);
     let warming = sibling_warming(now, warm_hold_since, warm_ttl_since, later_than);
-    let takes = takes(member);
+    let takes = takes(member, clock, later_than);
     let claimable = claimability::claimable(&ThreadSql {
         now,
         lapsed_worked_secs,
@@ -198,13 +213,16 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
 
 /// True when `cand` is work `member` may be handed at all: it has every skill
 /// the thread requires, is not frozen, is not of the model family that wrote
-/// the change a review reviews, and has not declined it as its own family's.
-/// `claim_next` applies it, and a workspace queue count read for a claimer
-/// ([`maidan_types::QueueClaimer`]) applies the same clause, so that count's
-/// `ready` is what `claim_next` would hand the claimer.
-pub(crate) fn takes(member: &str) -> String {
+/// the change a review reviews, has not declined it as its own family's, and
+/// is not [`backed_off`] from it at `clock` (compared by `later_than`, as
+/// [`ClaimSql`] spells both). `claim_next` applies it, and a workspace queue
+/// count read for a claimer ([`maidan_types::QueueClaimer`]) applies the same
+/// clause, so that count's `ready` is what `claim_next` would hand the
+/// claimer.
+pub(crate) fn takes(member: &str, clock: &str, later_than: &str) -> String {
     let refused = crate::review_family::refused_to(member);
     let declined = crate::review_family::declined_by(member);
+    let backed_off = backed_off(member, clock, later_than);
     format!(
         "(NOT EXISTS (
                SELECT 1 FROM maidan_thread_required_skills trs
@@ -218,7 +236,57 @@ pub(crate) fn takes(member: &str) -> String {
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
            )
            AND NOT {refused}
-           AND NOT {declined})"
+           AND NOT {declined}
+           AND NOT {backed_off})"
+    )
+}
+
+/// The first hold after an empty release: long enough that a claimant which
+/// cannot work stops cycling one thread every few minutes, short enough that
+/// a transient failure costs little.
+pub(crate) const EMPTY_RELEASE_BACKOFF_SECS: i64 = 300;
+
+/// The longest hold, however many empty releases in a row: a claimant that
+/// was broken for a day is handed the thread again within hours of its fix.
+pub(crate) const EMPTY_RELEASE_BACKOFF_MAX_SECS: i64 = 21_600;
+
+/// How far before a claim's `claimed_at` a release still counts the member's
+/// message or a stored result as progress in its hold. Postgres stamps both
+/// with its own clock and the claim with the app's, and a skew between the
+/// two must not read a working hold as empty. A minute, as the database's
+/// clock can drift that far from a container host's; reading a message from
+/// just before the claim as progress costs at most one skipped backoff.
+pub(crate) const HOLD_CLOCK_SLACK_SECS: i64 = 60;
+
+/// Seconds `claim_next` holds a thread back from a member after its
+/// `empty_releases`-th empty release of it in a row: [`EMPTY_RELEASE_BACKOFF_SECS`]
+/// for the first, doubling with each one after, at most
+/// [`EMPTY_RELEASE_BACKOFF_MAX_SECS`]. The release path computes
+/// `reclaim_after` with it, so the claim query only compares two times.
+pub(crate) fn empty_release_backoff_secs(empty_releases: i64) -> i64 {
+    // Sixteen doublings are far past the cap, and keep the shift in range
+    // however long the run of empty releases grows.
+    let doublings = empty_releases.saturating_sub(1).clamp(0, 16);
+    (EMPTY_RELEASE_BACKOFF_SECS << doublings).min(EMPTY_RELEASE_BACKOFF_MAX_SECS)
+}
+
+/// True when `member`'s last plain release of `cand` was empty and its hold
+/// has not run out at `clock`. An empty release is a plain `release_claim`
+/// (no decline) in whose hold the member reported no usage, posted no message
+/// of its own and stored no result; the release path sets `reclaim_after` and
+/// a release that showed progress clears it. A restart's release of every
+/// claim, a lapse, and a decline leave it as it was. Only `claim_next` reads
+/// it, and a queue count read for that member as its claimer: everyone else
+/// is still handed the thread, and a direct claim or assign is the caller's
+/// explicit choice.
+pub(crate) fn backed_off(member: &str, clock: &str, later_than: &str) -> String {
+    let holding = later_than
+        .replace("{col}", "bo.reclaim_after")
+        .replace("{t}", clock);
+    format!(
+        "EXISTS (SELECT 1 FROM maidan_thread_workers bo
+                 WHERE bo.thread_id = cand.id AND bo.member_id = {member}
+                   AND bo.reclaim_after IS NOT NULL AND {holding})"
     )
 }
 
@@ -341,4 +409,31 @@ fn lane_rank(lane: &str) -> String {
         "CASE WHEN COALESCE({cand_lane}, '') = COALESCE({lane}, '') THEN 0 \
          WHEN {cand_lane} IS NULL THEN 1 ELSE 2 END"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_empty_release_hold_doubles_from_five_minutes_to_six_hours() {
+        assert_eq!(empty_release_backoff_secs(1), 300);
+        assert_eq!(empty_release_backoff_secs(2), 600);
+        assert_eq!(empty_release_backoff_secs(3), 1_200);
+        assert_eq!(empty_release_backoff_secs(7), 19_200);
+        assert_eq!(
+            empty_release_backoff_secs(8),
+            EMPTY_RELEASE_BACKOFF_MAX_SECS
+        );
+        assert_eq!(
+            empty_release_backoff_secs(i64::MAX),
+            EMPTY_RELEASE_BACKOFF_MAX_SECS
+        );
+    }
+
+    #[test]
+    fn a_count_below_one_still_holds_for_the_first_step() {
+        assert_eq!(empty_release_backoff_secs(0), EMPTY_RELEASE_BACKOFF_SECS);
+        assert_eq!(empty_release_backoff_secs(-4), EMPTY_RELEASE_BACKOFF_SECS);
+    }
 }

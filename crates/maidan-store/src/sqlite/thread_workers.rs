@@ -7,11 +7,15 @@
 //!
 //! The event log already records assignment changes, but retention prunes it,
 //! and a gate cannot depend on evidence that ages out.
+//!
+//! The row also carries the member's empty-release backoff from the thread.
+//! See the Postgres twin.
 
+use chrono::{DateTime, Duration, Utc};
 use sqlx::{Row, SqlitePool};
 
 use crate::StoreError;
-use maidan_types::{MemberId, ThreadId};
+use maidan_types::{ClaimLeaseId, MemberId, ThreadId};
 
 /// Record that `member_id` holds `thread_id`, on the caller's transaction.
 ///
@@ -52,6 +56,80 @@ pub async fn record_in_tx(
     )
     .bind(thread_id.0)
     .bind(member_id.0)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Judge `member_id`'s plain release of `thread_id`, on the release's
+/// transaction: an empty hold backs the member off the thread, any progress
+/// resets the backoff. See the Postgres twin.
+pub(crate) async fn record_release_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+    claimed_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    // The same window as on Postgres, so the two backends judge one hold
+    // alike, though here every stamp is the app's.
+    let since = claimed_at - Duration::seconds(crate::claim_next::HOLD_CLOCK_SLACK_SECS);
+    let progressed: bool = sqlx::query(
+        "SELECT EXISTS (
+                    SELECT 1 FROM maidan_usage_ledger u
+                    WHERE u.thread_id = ?1 AND u.claim_lease_id = ?3)
+                OR EXISTS (
+                    SELECT 1 FROM maidan_messages m
+                    WHERE m.thread_id = ?1 AND m.author_id = ?2
+                      AND julianday(m.posted_at) >= julianday(?4))
+                OR EXISTS (
+                    SELECT 1 FROM maidan_thread_results r
+                    WHERE r.thread_id = ?1
+                      AND julianday(r.produced_at) >= julianday(?4)) AS progressed",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .bind(since.to_rfc3339())
+    .fetch_one(&mut **tx)
+    .await?
+    .get("progressed");
+    if progressed {
+        sqlx::query(
+            "UPDATE maidan_thread_workers SET empty_releases = 0, reclaim_after = NULL
+             WHERE thread_id = ? AND member_id = ?",
+        )
+        .bind(thread_id.0)
+        .bind(member_id.0)
+        .execute(&mut **tx)
+        .await?;
+        return Ok(());
+    }
+    // The release's transaction holds SQLite's write lock, so no other
+    // release can read the same count.
+    let previous: i64 = sqlx::query(
+        "SELECT empty_releases FROM maidan_thread_workers
+         WHERE thread_id = ? AND member_id = ?",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .map_or(0, |row| row.get("empty_releases"));
+    // Kept within Postgres's INTEGER, so the two backends count alike.
+    let count = previous.saturating_add(1).min(i64::from(i32::MAX));
+    let hold = crate::claim_next::empty_release_backoff_secs(count);
+    sqlx::query(
+        "INSERT INTO maidan_thread_workers (thread_id, member_id, empty_releases, reclaim_after)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (thread_id, member_id) DO UPDATE
+         SET empty_releases = excluded.empty_releases, reclaim_after = excluded.reclaim_after",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(count)
+    .bind((now + Duration::seconds(hold)).to_rfc3339())
     .execute(&mut **tx)
     .await?;
     Ok(())
