@@ -69,7 +69,6 @@ pub(super) async fn search_messages(
     // authoritative, DM-aware check, applied in SQL.
     let deny_channels =
         maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;
-    let reader_id = Some(auth.member_id());
     let filters = maidan_search::SearchFilters {
         author_id: a.author_id.map(maidan_types::MemberId),
         channel_id: a.channel_id.map(maidan_types::ChannelId),
@@ -77,7 +76,7 @@ pub(super) async fn search_messages(
         after: a.after,
         before: a.before,
         deny_channels,
-        reader_id,
+        reader_id: auth.member_id(),
     };
     let hits = match a.mode {
         SearchMessagesMode::Lexical => {

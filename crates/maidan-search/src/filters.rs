@@ -1,10 +1,14 @@
-//! Optional lexical-search facets (v1.2.2).
+//! Search facets (v1.2.2), and the reader a search is run for.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{ChannelId, MemberId, MemberKind};
 
 /// Facets applied in addition to the workspace scope and FTS match.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// There is no `Default`: every search is run for a reader, so a caller cannot
+/// build filters that forget who is asking and read every thread. Start from
+/// [`SearchFilters::for_reader`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchFilters {
     pub author_id: Option<MemberId>,
     pub channel_id: Option<ChannelId>,
@@ -20,19 +24,33 @@ pub struct SearchFilters {
     /// RBAC pre-filter: channels whose messages must be excluded at the query
     /// level — the private channels the caller isn't a member of. Not a
     /// user-settable facet; the server computes it so inaccessible hits never
-    /// crowd out the requested `limit` (the thread-level post-filter stays the
-    /// authoritative, DM-aware check). Empty = no restriction.
+    /// crowd out the requested `limit`. Empty = no restriction.
     pub deny_channels: Vec<ChannelId>,
-    /// The caller's member ID for thread-level access control. When Some,
-    /// the query filters to threads the member can read via
-    /// `thread_access::readable_thread`, so hidden DM/private rows never
-    /// crowd out the limit and no post-filter is needed.
-    pub reader_id: Option<MemberId>,
+    /// Who is searching. Every query keeps only the threads this member may
+    /// read (`thread_access::readable_thread`): threads of their own
+    /// workspace, a private channel's only if they belong to it, a DM's only
+    /// if they are in it. It is filtered in the query so hidden rows never
+    /// crowd out the limit.
+    pub reader_id: MemberId,
 }
 
 impl SearchFilters {
-    /// `true` when no **user** facet is set. The RBAC `deny_channels` pre-filter is
-    /// deliberately excluded — it is applied by the query regardless.
+    /// Every hit `reader_id` may read, with no facet set.
+    pub fn for_reader(reader_id: MemberId) -> Self {
+        Self {
+            author_id: None,
+            channel_id: None,
+            author_kind: None,
+            after: None,
+            before: None,
+            deny_channels: Vec::new(),
+            reader_id,
+        }
+    }
+
+    /// `true` when no **user** facet is set. The reader and the RBAC
+    /// `deny_channels` pre-filter are deliberately excluded: the query applies
+    /// them regardless.
     pub fn is_empty(&self) -> bool {
         self.author_id.is_none()
             && self.channel_id.is_none()
@@ -47,40 +65,49 @@ mod tests {
     use super::*;
     use maidan_types::{ChannelId, MemberId, MemberKind};
 
+    fn reader() -> MemberId {
+        MemberId(uuid::Uuid::now_v7())
+    }
+
     #[test]
     fn is_empty_when_no_facets_set() {
-        assert!(SearchFilters::default().is_empty());
+        assert!(SearchFilters::for_reader(reader()).is_empty());
+        let denied = SearchFilters {
+            deny_channels: vec![ChannelId(uuid::Uuid::now_v7())],
+            ..SearchFilters::for_reader(reader())
+        };
+        assert!(denied.is_empty(), "the RBAC pre-filter is not a user facet");
     }
 
     #[test]
     fn is_not_empty_when_any_facet_set() {
         let with_author = SearchFilters {
-            author_id: Some(MemberId(uuid::Uuid::new_v4())),
-            ..Default::default()
+            author_id: Some(MemberId(uuid::Uuid::now_v7())),
+            ..SearchFilters::for_reader(reader())
         };
         assert!(!with_author.is_empty());
 
         let with_channel = SearchFilters {
-            channel_id: Some(ChannelId(uuid::Uuid::new_v4())),
-            ..Default::default()
+            channel_id: Some(ChannelId(uuid::Uuid::now_v7())),
+            ..SearchFilters::for_reader(reader())
         };
         assert!(!with_channel.is_empty());
 
         let with_kind = SearchFilters {
             author_kind: Some(MemberKind::Agent),
-            ..Default::default()
+            ..SearchFilters::for_reader(reader())
         };
         assert!(!with_kind.is_empty());
 
         let with_after = SearchFilters {
             after: Some(chrono::Utc::now()),
-            ..Default::default()
+            ..SearchFilters::for_reader(reader())
         };
         assert!(!with_after.is_empty());
 
         let with_before = SearchFilters {
             before: Some(chrono::Utc::now()),
-            ..Default::default()
+            ..SearchFilters::for_reader(reader())
         };
         assert!(!with_before.is_empty());
     }

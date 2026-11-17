@@ -62,10 +62,12 @@ pub(super) async fn begin_artifact_multipart(
         .begin_multipart_upload_scoped(multipart_scope(auth))
         .await
         .map_err(map_artifact)?;
-    Ok(json!({
+    // A client shows the model only a result's `content`: a bare object
+    // reached it as nothing, so no agent could read the upload id it needs.
+    Ok(content_json(&json!({
         "upload_id": upload.upload_id,
         "object_key": upload.object_key,
-    }))
+    })))
 }
 
 #[derive(Deserialize)]
@@ -98,10 +100,10 @@ pub(super) async fn upload_artifact_multipart_part(
         .upload_part(&upload, a.part_number, Bytes::from(raw))
         .await
         .map_err(map_artifact)?;
-    Ok(json!({
+    Ok(content_json(&json!({
         "part_number": a.part_number,
         "etag": etag,
-    }))
+    })))
 }
 
 #[derive(Deserialize)]
@@ -206,7 +208,7 @@ pub(super) async fn abort_artifact_multipart(
         .abort_multipart_upload(&upload)
         .await
         .map_err(map_artifact)?;
-    Ok(json!({ "aborted": true }))
+    Ok(content_json(&json!({ "aborted": true })))
 }
 
 pub(super) async fn upload_artifact(

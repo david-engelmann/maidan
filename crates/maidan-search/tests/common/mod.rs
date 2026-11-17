@@ -129,7 +129,12 @@ pub struct Fixture {
 #[allow(dead_code)]
 pub async fn assert_search_finds_rust(search: &dyn Search, fx: &Fixture) {
     let hits = search
-        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .search_messages(
+            fx.workspace_id,
+            "rust",
+            10,
+            &SearchFilters::for_reader(fx.alice_id),
+        )
         .await
         .expect("search rust");
     // 5 of the 6 messages mention rust, minus 1 tombstoned == 4 hits.
@@ -168,7 +173,12 @@ pub async fn assert_search_finds_rust(search: &dyn Search, fx: &Fixture) {
 #[allow(dead_code)]
 pub async fn assert_empty_query_rejected(search: &dyn Search, fx: &Fixture) {
     let err = search
-        .search_messages(fx.workspace_id, "   ", 10, &SearchFilters::default())
+        .search_messages(
+            fx.workspace_id,
+            "   ",
+            10,
+            &SearchFilters::for_reader(fx.alice_id),
+        )
         .await
         .unwrap_err();
     assert!(matches!(err, SearchError::InvalidQuery(_)));
@@ -181,7 +191,7 @@ pub async fn assert_unknown_term_returns_empty(search: &dyn Search, fx: &Fixture
             fx.workspace_id,
             "xyzzy-not-in-corpus",
             10,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(fx.alice_id),
         )
         .await
         .unwrap();
@@ -206,7 +216,7 @@ pub fn hit_ids(hits: &[SearchHit]) -> Vec<MessageId> {
 pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
     let release_only = SearchFilters {
         channel_id: Some(fx.release_channel_id),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &release_only)
@@ -216,7 +226,7 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 
     let general_only = SearchFilters {
         channel_id: Some(fx.general_channel_id),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &general_only)
@@ -230,7 +240,7 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 
     let human_only = SearchFilters {
         author_kind: Some(MemberKind::Human),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &human_only)
@@ -240,7 +250,7 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 
     let agent_only = SearchFilters {
         author_kind: Some(MemberKind::Agent),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &agent_only)
@@ -250,7 +260,7 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 
     let alice_only = SearchFilters {
         author_id: Some(fx.alice_id),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &alice_only)
@@ -260,7 +270,7 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 
     let bot_only = SearchFilters {
         author_id: Some(fx.bot_id),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "deployment", 10, &bot_only)
@@ -276,7 +286,12 @@ pub async fn assert_faceted_search(search: &dyn Search, fx: &Fixture) {
 pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
     // Baseline: "rust" matches messages in both channels.
     let all = search
-        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .search_messages(
+            fx.workspace_id,
+            "rust",
+            10,
+            &SearchFilters::for_reader(fx.alice_id),
+        )
         .await
         .unwrap();
     assert!(
@@ -288,7 +303,7 @@ pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
     // Deny `general` → no hit comes from it, and `release` hits survive.
     let deny_general = SearchFilters {
         deny_channels: vec![fx.general_channel_id],
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &deny_general)
@@ -302,7 +317,7 @@ pub async fn assert_deny_channels_filter(search: &dyn Search, fx: &Fixture) {
     // Deny both → the pre-filter empties the result.
     let deny_both = SearchFilters {
         deny_channels: vec![fx.general_channel_id, fx.release_channel_id],
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let hits = search
         .search_messages(fx.workspace_id, "rust", 10, &deny_both)
@@ -321,7 +336,12 @@ pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
     let far_future = chrono::DateTime::from_timestamp(32_503_680_000, 0).unwrap(); // 3000-01-01
 
     let baseline = search
-        .search_messages(fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .search_messages(
+            fx.workspace_id,
+            "rust",
+            10,
+            &SearchFilters::for_reader(fx.alice_id),
+        )
         .await
         .unwrap();
     let n = baseline.len();
@@ -330,7 +350,7 @@ pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
     // `after` in the far future excludes everything.
     let after_future = SearchFilters {
         after: Some(far_future),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     assert!(
         search
@@ -344,7 +364,7 @@ pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
     // `before` in the far past excludes everything.
     let before_past = SearchFilters {
         before: Some(far_past),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     assert!(
         search
@@ -359,7 +379,7 @@ pub async fn assert_date_range_filter(search: &dyn Search, fx: &Fixture) {
     let window = SearchFilters {
         after: Some(far_past),
         before: Some(far_future),
-        ..SearchFilters::default()
+        ..SearchFilters::for_reader(fx.alice_id)
     };
     let windowed = search
         .search_messages(fx.workspace_id, "rust", 10, &window)
