@@ -1,0 +1,450 @@
+/* Inside the room: the board with everyone on it. The hero's look (look.css,
+   card.css), a board big enough to read, and named cursors the way a
+   multiplayer tool shows who is where: agents with the lit arrow and a steel
+   tag, people with a warm white one. */
+.rm .ss-stage {
+  --rm-arrow: #ff6a2b;
+  --rm-arrow-edge: #1b0b03;
+  --rm-tag: #2b2f37;
+  --rm-tag-ink: #f4f3ef;
+  --rm-person: #f1e8da;
+  --rm-person-edge: #2a2620;
+  --rm-person-ink: #1b1a17;
+}
+.rm .ss-stage[data-theme="light"] {
+  --rm-arrow: #e8501c;
+  --rm-arrow-edge: #fdfcf9;
+  --rm-tag: #151411;
+  --rm-tag-ink: #f6f3ec;
+  --rm-person: #fdfcf9;
+  --rm-person-edge: #151411;
+  --rm-person-ink: #151411;
+}
+
+.rm-win {
+  position: absolute;
+  inset: 0;
+  box-shadow: var(--ss-shadow-hero);
+}
+.rm-win .ss-window__dot {
+  background: var(--ss-ink-4);
+  box-shadow: none;
+}
+.rm-body {
+  position: absolute;
+  inset: 0;
+}
+
+/* The channel and who is here */
+.rm-head {
+  position: absolute;
+  top: 12px;
+  left: 20px;
+  right: 20px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rm-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 11px 0 10px;
+  border-radius: var(--ss-radius-pill);
+  box-shadow: inset 0 0 0 1px var(--ss-line);
+  color: var(--ss-text-strong);
+  font-size: 13px;
+  font-weight: 550;
+}
+.rm-hash { color: var(--ss-text-faint); }
+.rm-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ss-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.rm-presence__stack { display: inline-flex; }
+.rm-presence__stack .ss-avatar {
+  margin-left: -1px;
+  box-shadow: 0 0 0 2px var(--ss-surface);
+}
+/* Two letters in the console's agent avatar */
+.rm-av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; letter-spacing: -0.04em; }
+.rm-presence__stack .ss-avatar:first-child { margin-left: 0; }
+
+/* Lanes: the console's, wider, so a title reads in one line */
+.rm-lane {
+  position: absolute;
+  height: 382px;
+  padding: 8px;
+  border-radius: var(--ss-radius-lg);
+  background: var(--ml-lane);
+  box-shadow: inset 0 0 0 1px var(--ss-line-faint);
+}
+.rm-lane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  margin: 0 4px 0 12px;
+  color: var(--ss-text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rm-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: var(--ss-radius-pill);
+  background: var(--ss-ink-2);
+  color: var(--ss-text);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Cards travel as one object between lanes; a new one drops in at the top */
+.rm-cards {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.45s ease;
+}
+.rm-cards[data-fade] { opacity: 0; }
+.rm-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  align-content: start;
+  overflow: hidden;
+  will-change: transform;
+  transition:
+    transform 0.8s cubic-bezier(0.45, 0, 0.1, 1),
+    opacity 0.45s ease,
+    translate 0.6s cubic-bezier(0.25, 0.8, 0.25, 1),
+    box-shadow 0.3s ease;
+}
+.rm-card:not([data-shown]) {
+  opacity: 0;
+  translate: 0 -14px;
+}
+.rm-card .ml-card__title {
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rm-card .ml-card__who,
+.rm-card .ml-card__state {
+  font-size: 11.5px;
+}
+.rm-ring {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px dashed var(--ss-text-faint);
+}
+.rm-unclaimed { color: var(--ss-text); font-weight: 400; }
+
+.rm-chip-wrap {
+  display: inline-flex;
+  border-radius: var(--ss-radius-pill);
+}
+/* Someone tried a held card: its lock answers once */
+.rm-chip-wrap[data-bump] { animation: rm-bump 0.9s cubic-bezier(0.3, 0.7, 0.4, 1); }
+@keyframes rm-bump {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ss-accent) 55%, transparent); }
+  12% { translate: -2px 0; }
+  24% { translate: 2px 0; }
+  36% { translate: 0 0; }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+.rm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--ss-text);
+}
+.rm-chip[data-k="lease"] { color: var(--ss-text-strong); font-weight: 500; }
+.rm-lock {
+  flex: none;
+  fill: none;
+  stroke: var(--ss-accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rm-chip[data-k="reviewing"] { color: var(--ss-text-strong); }
+.rm-chip[data-k="approved"],
+.rm-chip[data-k="merged"] { color: var(--ss-success-text); font-weight: 550; }
+.rm-chip[data-k="merged"] .ss-brandmark,
+.rm-chip[data-k="merged"] svg { flex: none; }
+
+.rm-ev {
+  display: flex;
+  gap: 14px;
+  height: 20px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--ss-line);
+  color: var(--ss-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rm-ev b { color: var(--ss-text-strong); font-weight: 500; font-variant-numeric: tabular-nums; }
+.rm-note {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: var(--ss-radius-md);
+  background: var(--ss-accent-soft);
+  color: var(--ss-accent-text);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.rm-note b { font-weight: 600; }
+
+/* Named cursors */
+.rm-cur {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  pointer-events: none;
+  will-change: transform;
+  transition:
+    transform 0.95s cubic-bezier(0.45, 0, 0.15, 1),
+    opacity 0.3s ease;
+}
+.rm-cur[data-off] { opacity: 0; }
+.rm-cur__drift {
+  position: relative;
+  display: block;
+  animation: rm-drift calc(4.6s + var(--i) * 0.55s) ease-in-out calc(var(--i) * -1.3s) infinite alternate;
+}
+@keyframes rm-drift {
+  from { translate: 0 0; }
+  to { translate: 3px 2px; }
+}
+.rm-cur__arrow {
+  display: block;
+  margin: -1px 0 0 -1px;
+  fill: var(--rm-arrow);
+  stroke: var(--rm-arrow-edge);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+.rm-cur__tag {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  padding: 3px 8px 3px 7px;
+  border-radius: 4px 10px 10px 10px;
+  background: var(--rm-tag);
+  color: var(--rm-tag-ink);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 10px -4px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  /* Held back while the cursor travels (0.95s), then in */
+  animation: rm-tag-in 1.2s linear both;
+}
+@keyframes rm-tag-in {
+  0%, 78% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.rm-cur[data-person] .rm-cur__arrow { fill: var(--rm-person); stroke: var(--rm-person-edge); }
+.rm-cur[data-person] .rm-cur__tag {
+  background: var(--rm-person);
+  color: var(--rm-person-ink);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 10px -4px rgba(0, 0, 0, 0.45);
+}
+.rm-cur[data-flip] .rm-cur__tag {
+  left: auto;
+  right: 6px;
+  border-radius: 10px 4px 10px 10px;
+}
+.rm-cur__press {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--rm-arrow);
+  opacity: 0;
+  animation: rm-press 0.6s ease-out;
+}
+.rm-cur[data-person] .rm-cur__press { border-color: var(--rm-person); }
+@keyframes rm-press {
+  from { opacity: 0.9; scale: 0.4; }
+  to { opacity: 0; scale: 1.7; }
+}
+
+/* The event log: newest on top, each line chained to the last */
+.rm-log {
+  position: absolute;
+  top: 452px;
+  left: 20px;
+  right: 20px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ss-line);
+}
+.rm-log__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  color: var(--ss-text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.rm-log__head .ml-icon { color: var(--ss-icon); }
+.rm-log__chain {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--ss-text);
+  font-weight: 500;
+}
+.rm-log__chain .ml-icon { color: var(--ss-success-text); }
+.rm-log__rows {
+  position: relative;
+  height: 96px;
+  margin-top: 8px;
+}
+.rm-log__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 22px;
+  transition: transform 0.45s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.45s ease;
+  animation: rm-log-in 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+@keyframes rm-log-in {
+  from { opacity: 0; translate: 0 -8px; }
+}
+.rm-log__hash {
+  flex: none;
+  width: 36px;
+  color: var(--ss-text);
+  font-family: var(--ss-mono);
+  font-size: 11px;
+}
+.rm-log__text {
+  overflow: hidden;
+  color: var(--ss-text-strong);
+  transition: color 0.45s ease;
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The phone: one column. The task's journey in one card, the lane it is in
+   on the rail above, the rest of the board as a list below. */
+.rm-body[data-compact] .rm-head { left: 14px; right: 14px; top: 8px; }
+/* Small avatars side by side, so both letters of each read */
+.rm-body[data-compact] .rm-presence__stack .ss-avatar { margin-left: 2px; }
+.rm-body[data-compact] .rm-presence__stack .ss-avatar:first-child { margin-left: 0; }
+.rm-rail {
+  position: absolute;
+  top: 48px;
+  left: 14px;
+  right: 14px;
+  height: 32px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 3px;
+  border-radius: var(--ss-radius-pill);
+  background: var(--ml-lane);
+  box-shadow: inset 0 0 0 1px var(--ss-line);
+}
+.rm-rail__mark {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 4);
+  border-radius: var(--ss-radius-pill);
+  background: var(--ss-raised);
+  box-shadow: var(--ss-shadow-card);
+  transform: translateX(calc(var(--at) * 100%));
+  transition: transform 0.7s cubic-bezier(0.45, 0, 0.1, 1);
+}
+.rm-rail__step {
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--ss-text);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+.rm-rail__step[data-on] { color: var(--ss-text-strong); font-weight: 600; }
+.rm-card[data-big] { padding: 14px 14px 14px; gap: 8px; }
+.rm-card[data-big] .ml-card__title { font-size: 15px; }
+.rm-card[data-big] .ml-card__who,
+.rm-card[data-big] .ml-card__state { height: 18px; font-size: 12.5px; }
+.rm-card[data-big] .rm-ev { font-size: 12px; height: 22px; }
+.rm-card[data-big] .rm-note { font-size: 12px; }
+.rm-also {
+  position: absolute;
+  left: 16px;
+  color: var(--ss-text);
+  font-family: var(--ss-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rm-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: var(--ss-radius-md);
+  background: var(--ml-card);
+  box-shadow: var(--ss-shadow-card);
+  font-size: 11.5px;
+}
+.rm-row__title {
+  overflow: hidden;
+  color: var(--ss-text-strong);
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* The newest line is the strongest; older ones settle to the quieter gray,
+   which still reads at full contrast */
+.rm-log__row[data-old] .rm-log__text { color: var(--ss-text); }
+.rm-body[data-compact] .rm-log { top: 472px; left: 14px; right: 14px; }
+.rm-body[data-compact] .rm-log__rows { height: 72px; }
+.rm-body[data-compact] .rm-log__text { font-size: 12px; }
+
+/* A still frame holds still */
+.rm .ss-stage[data-still] .rm-cur__drift,
+.rm .ss-stage[data-still] .rm-log__row,
+.rm .ss-stage[data-still] .rm-cur__press,
+.rm .ss-stage[data-still] .rm-cur__tag { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rm-cur__drift, .rm-log__row, .rm-cur__press, .rm-cur__tag, .rm-chip-wrap[data-bump] { animation: none; }
+}

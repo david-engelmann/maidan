@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { Bar, BrandMark, Button, Collapse, Roll, Segmented, Stage, Window, type Act, type Rect } from "./kit";
 import { Agent, Dot, Icon, usePageTheme, usePrefersReducedMotion, type DotState } from "./shared";
 import { MediaToggle } from "../MediaToggle";
+import { Square } from "../Square";
 import "./look.css";
 import "./card.css";
 import "./hero.css";
@@ -359,13 +360,14 @@ function Scene({ s, rect, layout }: { s: S; rect: (name: string) => Rect; layout
   );
 }
 
-/** The hero board, with its own pause control: it loops, so a reader can stop it (WCAG 2.2.2). */
+/** The hero board, standing on the square, with one pause control for both: they move, so a reader can stop them (WCAG 2.2.2). */
 export function HeroBoard() {
   const theme = usePageTheme();
   const reduced = usePrefersReducedMotion();
   const [paused, setPaused] = useState(false);
   return (
     <div className="hero-art">
+      <Square variant="hero" paused={paused} />
       <div className="hero-art__stage" role="img" aria-label={LABEL}>
         <Stage<S>
           width={780}

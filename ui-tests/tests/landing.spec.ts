@@ -12,12 +12,12 @@ const DIST = resolve(__dirname, "../../crates/maidan-server/static/landing/dist"
 
 const AXE = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
-// The hero is a looping picture whose words fade in and out as the board
-// changes, so a scan that lands mid-fade reads a word below 4.5:1. Text in a
-// picture is exempt (WCAG 1.4.3), so the scan skips the drawn stage; its
-// role="img" wrapper, and the name it carries, are still checked.
+// The hero and the room are looping pictures whose words fade in and out as
+// the board changes, so a scan that lands mid-fade reads a word below 4.5:1.
+// Text in a picture is exempt (WCAG 1.4.3), so the scan skips the drawn stages;
+// their role="img" wrappers, and the names they carry, are still checked.
 function axe(page: Page): AxeBuilder {
-  return new AxeBuilder({ page }).exclude(".hero-art__stage .ss-stage");
+  return new AxeBuilder({ page }).exclude(".hero-art__stage .ss-stage").exclude(".room-stage__art .ss-stage");
 }
 
 async function openLanding(page: Page): Promise<void> {
@@ -131,7 +131,7 @@ test("the example tabs move with the keyboard and wrap", async ({ page }) => {
 // the ring around it still takes a 44px tap.
 const MOVING = [
   ["animation", ".hero-art"],
-  ["visualization", ".room-stage"],
+  ["room animation", ".room-stage"],
   ["recording", ".watch-frame"],
 ] as const;
 
@@ -161,48 +161,68 @@ test("each moving picture has a small pause control that names what a press will
   }
 });
 
-test("the room's drawing loads near its section, paints, and each caption picks out its part as it passes", async ({ page }) => {
+const CAST = ["Claude Code", "Codex", "Cursor", "Grok", "Muse", "Antigravity", "Maya", "Jun"];
+
+test("the room's board loads near its section and plays claim, review and land, lighting each caption in turn", async ({ page }) => {
+  test.setTimeout(60_000);
   const fetched: string[] = [];
   page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
   await openLanding(page);
+  expect(fetched).not.toContain("/landing/room.js");
   const stage = page.locator(".room-stage");
   await stage.scrollIntoViewIfNeeded();
-  await expect.poll(() => fetched.includes("/landing/roomviz.js")).toBe(true);
-  const canvas = page.locator(".room-canvas");
-  await expect(canvas).toHaveAttribute("aria-hidden", "true");
-  await expect(stage.locator(".sr-only")).toContainText("tasks are posted into the middle");
-  await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => {
-    const data = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data ?? [];
-    let painted = 0;
-    for (let i = 3; i < data.length; i += 4 * 97) if (data[i] > 0) painted++;
-    return painted;
-  })).toBeGreaterThan(100);
-  for (const [i, phase] of [[1, "2"], [2, "3"]] as const) {
-    await page.locator(".room-step").nth(i).evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      window.scrollTo(0, window.scrollY + r.top + r.height / 2 - window.innerHeight * 0.5);
-    });
-    await expect(page.locator(".room-step").nth(i)).toHaveAttribute("data-active");
-    await expect(stage).toHaveAttribute("data-phase", phase);
+  await expect.poll(() => fetched.includes("/landing/room.js")).toBe(true);
+  // The picture is named as a whole, with everyone on the board
+  const art = page.locator(".room-stage__art");
+  await expect(art).toHaveAttribute("role", "img");
+  for (const who of CAST) {
+    await expect(art).toHaveAttribute("aria-label", new RegExp(who));
+    await expect(stage.locator(".rm-cur__tag", { hasText: who })).toHaveCount(1);
   }
+  const steps = page.locator(".room-step");
+  const beats = [
+    ["lease 15m", 0],
+    ["Codex reviewing", 1],
+    ["PR #482 merged", 2],
+  ] as const;
+  for (const [words, step] of beats) {
+    await expect(stage.getByText(words).first()).toBeVisible({ timeout: 25_000 });
+    await expect(steps.nth(step)).toHaveAttribute("data-active", "true", { timeout: 25_000 });
+  }
+  // The send-back and the merge are both on the record
+  await expect(stage.locator(".rm-log")).toContainText("PR #482 merged");
 });
 
 test.describe("with reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("the room is one still frame of the finished run, with nothing to pause", async ({ page }) => {
+  test("the room is one still frame of the landed task, with nothing to pause", async ({ page }) => {
     await openLanding(page);
     await page.locator(".room-stage").scrollIntoViewIfNeeded();
     await expect(page.locator(".hero-art .media-toggle")).toHaveCount(0);
     await expect(page.locator(".room-stage .media-toggle")).toHaveCount(0);
     await expect(page.locator(".watch-frame").getByRole("button", { name: "Play the recording" })).toBeVisible();
-    await expect.poll(() => page.locator(".room-canvas").evaluate((c: HTMLCanvasElement) => {
-      const data = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data ?? [];
-      let painted = 0;
-      for (let i = 3; i < data.length; i += 4 * 97) if (data[i] > 0) painted++;
-      return painted;
-    })).toBeGreaterThan(100);
+    const stage = page.locator(".room-stage");
+    await expect(stage.locator(".rm-card", { hasText: "PR #482 merged" })).toBeVisible();
+    await expect(stage.locator(".rm-log")).toContainText("Codex approved Claude Code’s change");
+    await expect(page.locator(".room-step[data-active]")).toHaveCount(0);
+    // The square holds still: no light crosses it
+    await expect(page.locator(".sq-walker").first()).toBeHidden();
   });
+});
+
+test("the square under the hero and the close is decoration only, and its lights stop with the hero's pause", async ({ page }) => {
+  await openLanding(page);
+  const squares = page.locator(".sq");
+  // The hero's (wide and one-column, one shown at a time) and the close's
+  await expect(squares).toHaveCount(3);
+  for (const sq of await squares.all()) await expect(sq).toHaveAttribute("aria-hidden", "true");
+  // The lights run only while their ground is on screen
+  const walker = page.locator(".hero-art .sq-walker").first();
+  await page.evaluate(() => window.scrollBy(0, 240));
+  await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("running");
+  await page.locator(".hero-art").getByRole("button", { name: "Pause the animation" }).click();
+  await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
 });
 
 test.describe("on a phone", () => {
@@ -216,6 +236,18 @@ test.describe("on a phone", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     const small = await smallTargets(page, ".join-btn, .cta, .tab, .copy, .sheet-close, .submit");
     expect(small).toEqual([]);
+  });
+
+  test("the square's horizon is on the first screen, above the calls to action", async ({ page }) => {
+    await openLanding(page);
+    await expect(page.locator(".hero-art .sq")).toBeHidden();
+    const horizon = await page.locator(".sq--lead .sq-horizon").boundingBox();
+    const cta = await page.locator(".hero .cta").first().boundingBox();
+    expect(horizon).not.toBeNull();
+    expect(cta).not.toBeNull();
+    expect(horizon!.width).toBeGreaterThanOrEqual(389);
+    expect(horizon!.y).toBeLessThan(cta!.y);
+    expect(horizon!.y).toBeLessThan(844);
   });
 });
 
