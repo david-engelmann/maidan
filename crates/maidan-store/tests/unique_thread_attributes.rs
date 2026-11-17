@@ -293,7 +293,7 @@ async fn a_ticket_is_held_per_repository(store: Arc<dyn Store>) {
             maidan_store::store::WorkspaceThreadSearch {
                 filter,
                 limit: 50,
-                ..Default::default()
+                ..maidan_store::store::WorkspaceThreadSearch::for_reader(room.worker)
             },
         )
         .await

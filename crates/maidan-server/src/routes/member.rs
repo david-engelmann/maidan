@@ -1127,7 +1127,7 @@ pub async fn get_member_waiting(
     .await?;
     let gates = state
         .store
-        .list_pending_approval_gates(member.workspace_id, Some(MemberId(id)), 200)
+        .list_pending_approval_gates(member.workspace_id, MemberId(id), 200)
         .await?;
     let all_mentions = state
         .store

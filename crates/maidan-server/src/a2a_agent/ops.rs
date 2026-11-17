@@ -953,7 +953,7 @@ pub(crate) async fn list_tasks(
     };
     let context_id = req.context_id.as_deref().filter(|c| !c.is_empty());
     let workspace_id = auth.workspace_id();
-    let readable_by = Some(auth.member_id());
+    let readable_by = auth.member_id();
     // One more than a page, to know whether another page follows.
     let want = i64::from(page_size) + 1;
 

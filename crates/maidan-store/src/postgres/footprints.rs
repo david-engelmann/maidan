@@ -168,12 +168,12 @@ pub(crate) async fn get_on(
 }
 
 /// The live claims in `workspace_id` with their footprints, in `repo` when
-/// given, limited to threads `readable_by` may read when given.
+/// given, limited to threads `readable_by` may read.
 pub async fn list_active(
     pool: &PgPool,
     workspace_id: WorkspaceId,
     repo: Option<String>,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<Vec<ActiveClaim>, StoreError> {
     let repo = repo
         .map(|repo| maidan_types::normalize_repo(&repo).map_err(StoreError::InvalidInput))
@@ -191,13 +191,13 @@ pub async fn list_active(
          WHERE f.workspace_id = $1
            AND ($2::text IS NULL OR f.repo = $2)
            AND {}
-           AND ($3::uuid IS NULL OR {readable})
+           AND ({readable})
          ORDER BY held.assignment_expires_at ASC NULLS LAST, f.thread_id, f.kind, f.value",
         live_claim("held", "$5")
     ))
     .bind(workspace_id.0)
     .bind(repo)
-    .bind(readable_by.map(|m| m.0))
+    .bind(readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .bind(chrono::Utc::now())
     .fetch_all(pool)
@@ -418,17 +418,17 @@ pub(crate) async fn insert_items_on(
 }
 
 /// The threads the claim queue defers in `workspace_id`, with why; only those
-/// `readable_by` may read when given.
+/// `readable_by` may read.
 pub async fn list_deferred(
     pool: &PgPool,
     workspace_id: WorkspaceId,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
     let rows = sqlx::query(&crate::footprints::deferred_select(
         "$1", "$2::uuid", "$3", "$4",
     ))
     .bind(workspace_id.0)
-    .bind(readable_by.map(|m| m.0))
+    .bind(readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .bind(chrono::Utc::now())
     .fetch_all(pool)

@@ -32,7 +32,7 @@ pub async fn build_workspace_context(
     thread_limit: i64,
     thread_cursor: Option<ThreadId>,
     limits: ThreadContextLimits,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<WorkspaceContext, ApiError> {
     build_workspace_context_store(
         store,

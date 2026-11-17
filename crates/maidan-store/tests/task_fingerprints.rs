@@ -446,7 +446,10 @@ async fn a_change_whose_issue_is_in_review_is_withheld(store: Arc<dyn Store>) {
         .await
         .unwrap()
         .is_none());
-    let depth = store.channel_queue_depth(home.channel, None).await.unwrap();
+    let depth = store
+        .channel_queue_depth(home.channel, agent)
+        .await
+        .unwrap();
     assert_eq!((depth.ready, depth.unclaimable), (0, 1), "{depth:?}");
 
     // Another workspace's thread for the same issue, in review, holds nothing

@@ -891,7 +891,7 @@ macro_rules! store_delegations {
             async fn list_pending_approval_gates(
                 &self,
                 workspace_id: WorkspaceId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
                 limit: i64,
             ) -> Result<Vec<ApprovalGate>, StoreError> {
                 approval_gates::list_pending(self.pool(), workspace_id, readable_by, limit).await
@@ -2229,7 +2229,7 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 after: Option<ThreadId>,
                 limit: i64,
-                reader_id: Option<MemberId>,
+                reader_id: MemberId,
             ) -> Result<Vec<Thread>, StoreError> {
                 threads::page_for_workspace(self.pool(), workspace_id, after, limit, reader_id)
                     .await
@@ -2323,7 +2323,7 @@ macro_rules! store_delegations {
             async fn channel_queue_depth(
                 &self,
                 channel_id: ChannelId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
@@ -2341,7 +2341,7 @@ macro_rules! store_delegations {
             async fn workspace_queue_depth(
                 &self,
                 workspace_id: WorkspaceId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
                 kind: Option<maidan_types::TaskKind>,
@@ -2355,7 +2355,7 @@ macro_rules! store_delegations {
                     repo,
                     engine,
                     kind,
-                    as_claimer && readable_by.is_some(),
+                    as_claimer,
                 )
                 .await
             }
@@ -2363,7 +2363,7 @@ macro_rules! store_delegations {
             async fn channel_occupancy(
                 &self,
                 channel_id: ChannelId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
             ) -> Result<ChannelOccupancy, StoreError> {
                 threads::occupancy(
                     self.read_pool(),
@@ -2377,7 +2377,7 @@ macro_rules! store_delegations {
             async fn workspace_occupancy(
                 &self,
                 workspace_id: WorkspaceId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
             ) -> Result<ChannelOccupancy, StoreError> {
                 threads::occupancy(
                     self.read_pool(),
@@ -3121,7 +3121,7 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
                 repo: Option<String>,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
             ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError> {
                 footprints::list_active(self.pool(), workspace_id, repo, readable_by).await
             }
@@ -3157,7 +3157,7 @@ macro_rules! store_delegations {
             async fn list_deferred_threads(
                 &self,
                 workspace_id: WorkspaceId,
-                readable_by: Option<MemberId>,
+                readable_by: MemberId,
             ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
                 footprints::list_deferred(self.read_pool(), workspace_id, readable_by).await
             }
@@ -4859,7 +4859,7 @@ macro_rules! store_delegations {
                 thread_id: Option<ThreadId>,
                 include_purged: bool,
                 limit: i64,
-                reader_id: Option<MemberId>,
+                reader_id: MemberId,
             ) -> Result<Vec<TombstoneRecord>, StoreError> {
                 explorer::list_tombstones(
                     self.read_pool(),
@@ -4876,7 +4876,7 @@ macro_rules! store_delegations {
             async fn list_message_backlinks(
                 &self,
                 message_id: MessageId,
-                reader_id: Option<MemberId>,
+                reader_id: MemberId,
             ) -> Result<MessageBacklinks, StoreError> {
                 explorer::list_message_backlinks(self.read_pool(), message_id, reader_id).await
             }
@@ -4887,7 +4887,7 @@ macro_rules! store_delegations {
                 channel_id: Option<ChannelId>,
                 thread_id: Option<ThreadId>,
                 deny_channels: &[ChannelId],
-                reader_id: Option<MemberId>,
+                reader_id: MemberId,
             ) -> Result<KindCensus, StoreError> {
                 explorer::event_kind_census(
                     self.read_pool(),

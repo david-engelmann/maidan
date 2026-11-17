@@ -204,7 +204,10 @@ async fn a_live_claim_entry_carries_the_attributes(store: Arc<dyn Store>) {
         .await
         .unwrap()
         .expect("the task claims");
-    let claims = store.list_active_claims(room.ws, None, None).await.unwrap();
+    let claims = store
+        .list_active_claims(room.ws, None, room.agents[0])
+        .await
+        .unwrap();
     let entry = claims
         .iter()
         .find(|claim| claim.thread_id == thread.id)
@@ -667,7 +670,10 @@ async fn a_tier_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
         .await
         .unwrap()
         .expect("the task claims");
-    let claims = store.list_active_claims(room.ws, None, None).await.unwrap();
+    let claims = store
+        .list_active_claims(room.ws, None, room.agents[0])
+        .await
+        .unwrap();
     let entry = claims
         .iter()
         .find(|claim| claim.thread_id == thread.id)
@@ -753,7 +759,10 @@ async fn a_lane_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
         .await
         .unwrap()
         .expect("the task claims");
-    let claims = store.list_active_claims(room.ws, None, None).await.unwrap();
+    let claims = store
+        .list_active_claims(room.ws, None, room.agents[0])
+        .await
+        .unwrap();
     let entry = claims
         .iter()
         .find(|claim| claim.thread_id == thread.id)

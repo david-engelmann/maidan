@@ -54,6 +54,15 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("other workspace");
+    let reader = store
+        .create_member(maidan_types::NewMember {
+            workspace_id: ws.id,
+            handle: "reader".into(),
+            display_name: None,
+            kind: maidan_types::MemberKind::Human,
+        })
+        .await
+        .expect("reader");
 
     // Tasks: minute order t0 < t1 < t2 < t3; t3 lives in another workspace.
     for (id, ctx, state, minute) in [
@@ -83,7 +92,7 @@ async fn run_suite(store: &dyn Store) {
 
     let all = |limit| A2aTaskQuery {
         limit,
-        ..Default::default()
+        ..A2aTaskQuery::for_reader(reader.id)
     };
     // Newest status first, workspace-scoped.
     let listed = store.list_a2a_tasks(ws.id, all(10)).await.expect("list");
@@ -99,7 +108,7 @@ async fn run_suite(store: &dyn Store) {
             A2aTaskQuery {
                 before: Some((last.updated_at, last.id.as_str())),
                 limit: 2,
-                ..Default::default()
+                ..A2aTaskQuery::for_reader(reader.id)
             },
         )
         .await
@@ -113,7 +122,7 @@ async fn run_suite(store: &dyn Store) {
             A2aTaskQuery {
                 context_id: Some("c1"),
                 limit: 10,
-                ..Default::default()
+                ..A2aTaskQuery::for_reader(reader.id)
             },
         )
         .await
@@ -125,7 +134,7 @@ async fn run_suite(store: &dyn Store) {
             A2aTaskQuery {
                 state: Some("TASK_STATE_CANCELED"),
                 limit: 10,
-                ..Default::default()
+                ..A2aTaskQuery::for_reader(reader.id)
             },
         )
         .await
@@ -137,7 +146,7 @@ async fn run_suite(store: &dyn Store) {
             A2aTaskQuery {
                 updated_since: Some(Utc.with_ymd_and_hms(2026, 9, 28, 12, 1, 0).unwrap()),
                 limit: 10,
-                ..Default::default()
+                ..A2aTaskQuery::for_reader(reader.id)
             },
         )
         .await
@@ -156,7 +165,7 @@ async fn run_suite(store: &dyn Store) {
                 state: Some("TASK_STATE_COMPLETED"),
                 context_id: Some("c1"),
                 updated_since: Some(Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap()),
-                ..Default::default()
+                ..A2aTaskQuery::for_reader(reader.id)
             },
         )
         .await

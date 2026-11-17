@@ -56,8 +56,10 @@ pub fn readable_thread(thread: &str, workspace: &str, member: &str, dm_channel: 
     )
 }
 
-/// The listing filter: no reader keeps every row, a row on no thread is the
-/// workspace's, and any other row needs [`readable_thread`].
+/// The listing filter: a row on no thread is the workspace's, and any other
+/// row needs [`readable_thread`]. There is no "no reader" form: a NULL
+/// `member` reads no thread, so an unbound reader shows nothing on a thread
+/// rather than everything.
 pub fn readable_row(
     thread_column: &str,
     workspace: &str,
@@ -65,7 +67,7 @@ pub fn readable_row(
     dm_channel: &str,
 ) -> String {
     let readable = readable_thread(thread_column, workspace, member, dm_channel);
-    format!("({member} IS NULL OR {thread_column} IS NULL OR {readable})")
+    format!("({thread_column} IS NULL OR {readable})")
 }
 
 /// [`readable_thread`] for a listing of one member's own rows (its inbox, its
