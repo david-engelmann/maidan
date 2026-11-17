@@ -1,10 +1,14 @@
 //! `claim_next` hands a thread back to the agent that last held it ahead of
 //! older work of the same aged priority (Context Economics C6): that agent's
 //! prompt prefix is the one most likely still cached. It is a tiebreak only.
-//! Both backends, both claim paths.
+//! Both backends, both claim paths. Each holder here worked its thread before
+//! letting go: an empty release would hold the thread back from it instead.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, Thread};
+use maidan_types::{
+    MemberId, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, Thread,
+    ThreadId,
+};
 
 async fn sqlite() -> SqliteStore {
     let pool = maidan_search::sqlite_pool_options()
@@ -37,6 +41,21 @@ async fn claim(
             .await
             .expect("claim")
     }
+}
+
+/// A message from `member` on `thread`: progress in its hold, so the
+/// release that follows is not an empty one.
+async fn worked(store: &dyn Store, thread: ThreadId, member: MemberId) {
+    store
+        .post_message(NewMessage {
+            thread_id: thread,
+            author_id: member,
+            body: "worked on it".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("message");
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -97,6 +116,7 @@ async fn run_suite(store: &dyn Store) {
             .expect("b");
         assert_eq!(b.id, threads[1].id);
         for (thread, member) in [(&a, alice), (&b, bob)] {
+            worked(store, thread.id, member.id).await;
             store
                 .release_claim(thread.id, member.id, thread.claim_lease_id.expect("leased"))
                 .await
@@ -183,6 +203,7 @@ async fn run_ordering_suite(store: &dyn Store, backdate: Backdate) {
         .await
         .expect("warm");
     assert_eq!(held.id, warm);
+    worked(store, warm, alice.id).await;
     store
         .release_claim(warm, alice.id, held.claim_lease_id.expect("leased"))
         .await
@@ -212,6 +233,7 @@ async fn run_ordering_suite(store: &dyn Store, backdate: Backdate) {
         .await
         .expect("warm again");
     assert_eq!(got.id, warm);
+    worked(store, warm, alice.id).await;
     store
         .release_claim(warm, alice.id, got.claim_lease_id.expect("leased"))
         .await

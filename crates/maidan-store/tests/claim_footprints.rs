@@ -667,6 +667,18 @@ async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
     assert_eq!(holders, expected, "the refusal names the slot's holders");
     assert!(refused.iter().all(|c| c.kind == FootprintKind::Slot));
 
+    // A word on the thread first: an empty release would hold it back from
+    // this agent, which claims it again below.
+    store
+        .post_message(NewMessage {
+            thread_id: first,
+            author_id: room.agents[0],
+            body: "building".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
     store
         .release_claim(first, room.agents[0], held.claim_lease_id.unwrap())
         .await

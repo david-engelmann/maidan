@@ -95,6 +95,22 @@ fn lease(thread: &Thread) -> ClaimLeaseId {
     thread.claim_lease_id.expect("a leased claim")
 }
 
+/// A message from `who` on `thread`: progress in its hold, so its plain
+/// release is not an empty one, which would hold the thread back from it
+/// for a while (`claim_empty_release_backoff`).
+async fn say(store: &dyn Store, thread: ThreadId, who: MemberId) {
+    store
+        .post_message(NewMessage {
+            thread_id: thread,
+            author_id: who,
+            body: "looked at it".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("message");
+}
+
 async fn run_suite(store: &dyn Store) {
     let w = room(store, "reviews").await;
     // `fresh` has reported no usage, so the usage-evidence guard cannot tell
@@ -104,10 +120,11 @@ async fn run_suite(store: &dyn Store) {
     let older = task(store, w.channel, "older review", true).await;
     let newer = task(store, w.channel, "newer review", true).await;
 
-    // The head-of-line block this fixes: a plain release hands the same
-    // oldest review straight back.
+    // The head-of-line block this fixes: a plain release, even one that
+    // showed progress, hands the same oldest review straight back.
     let held = next(store, w.channel, fresh).await.expect("a review");
     assert_eq!(held.id, older);
+    say(store, older, fresh).await;
     store
         .release_claim_with_event(older, fresh, lease(&held), None)
         .await
@@ -191,6 +208,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("its own review");
     assert_eq!(got.id, theirs);
+    say(store, older, other).await;
     store
         .release_claim_with_event(older, other, lease(&taken), None)
         .await
@@ -235,6 +253,7 @@ async fn run_suite(store: &dyn Store) {
     let kept = store.get_thread(plain).await.expect("thread");
     assert_eq!(kept.assignee_id, Some(fresh), "nothing was released");
     assert_eq!(kept.claim_lease_id, held.claim_lease_id);
+    say(store, plain, fresh).await;
     store
         .release_claim_with_event(plain, fresh, lease(&held), None)
         .await

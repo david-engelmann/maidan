@@ -14,7 +14,7 @@ use chrono::{Duration, Utc};
 use maidan_store::prelude::*;
 use maidan_types::*;
 
-use super::thread_progress::{postgres, room, sqlite, task, Room};
+use super::thread_progress::{post, postgres, room, sqlite, task, Room};
 
 async fn take(store: &dyn Store, room: &Room, acknowledge: bool) -> Thread {
     let claimed = store
@@ -121,7 +121,9 @@ async fn a_quiet_claim_is_reported_once_per_reason_and_left_alone(store: Arc<dyn
         "warned once"
     );
 
-    // A new claim mints a new token and is reported again.
+    // A new claim mints a new token and is reported again. The worker says
+    // a word first: an empty release would hold the thread back from it.
+    post(store, thread, room.worker, "still on it").await;
     store
         .release_claim(thread, room.worker, held.claim_lease_id.unwrap())
         .await

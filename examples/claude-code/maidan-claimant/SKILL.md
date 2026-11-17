@@ -50,7 +50,10 @@ In short:
    `decline: "own_family"`, and it is not handed back to you. A thread you
    cannot work at all (its head will not fetch, or it names nothing to
    review) is released with `decline: "unworkable"`, and is not handed back
-   to you either.
+   to you either. A plain release of a hold in which you reported no usage,
+   posted nothing and stored no result keeps that thread from you for 5
+   minutes, doubling with each such release in a row up to 6 hours; other
+   members are handed it meanwhile.
 7. **Follow-ups come first.** A thread sent back for changes gets new commits
    on the same branch. Never force-push, never send `"rebase": true`.
 

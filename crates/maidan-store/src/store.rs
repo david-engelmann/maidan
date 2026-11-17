@@ -3404,7 +3404,12 @@ pub trait AssignmentStore: Send + Sync {
     /// exist; [`StoreError::ClaimLost`] if the caller isn't the holder, the
     /// token is stale, or the lease expired. A status the holder declared on
     /// the thread is dropped with the claim; one another member declared
-    /// stays.
+    /// stays. A hold in which the member reported no usage under the lease,
+    /// posted no message of its own and stored no result is an empty release:
+    /// `claim_next` then skips the thread for this member until a backoff
+    /// that doubles with each empty release in a row runs out
+    /// (`claim_next::backed_off`); a release that showed progress
+    /// ends it.
     async fn release_claim(
         &self,
         thread_id: ThreadId,
@@ -3421,7 +3426,9 @@ pub trait AssignmentStore: Send + Sync {
     /// only the holder of the live lease can record one. An `own_family`
     /// decline needs a review that names its author's family; on any other
     /// thread it is refused with `Conflict` and nothing is released. The
-    /// event's note says why the claimant let go.
+    /// event's note says why the claimant let go. Without a decline, an empty
+    /// hold backs the member off the thread as [`Self::release_claim`] does;
+    /// a decline leaves that backoff as it was.
     async fn release_claim_with_event(
         &self,
         thread_id: ThreadId,
@@ -3441,7 +3448,9 @@ pub trait AssignmentStore: Send + Sync {
     /// open or in-review, untombstoned thread whose lease is live (by the boot
     /// grace's clock); a lapsed lease is the reaper's, and a lease-less
     /// assignment is a coordinator's decision, not a claim. A thread the member
-    /// can no longer read is left as `release_claim` would refuse it. Returns the
+    /// can no longer read is left as `release_claim` would refuse it. Unlike
+    /// `release_claim`, it is not judged for an empty hold: a restart says
+    /// nothing about whether the claimant can work. Returns the
     /// released threads with their events, in thread id order; empty when the
     /// member holds none.
     async fn release_member_claims_with_events(

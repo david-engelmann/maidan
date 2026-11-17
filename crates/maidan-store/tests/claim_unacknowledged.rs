@@ -14,8 +14,8 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ChannelId, Event, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewThread,
-    NewWorkspace, StoredEvent, Thread,
+    ChannelId, Event, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewMessage,
+    NewThread, NewWorkspace, StoredEvent, Thread,
 };
 
 async fn setup(store: &dyn Store, threads: usize) -> (ChannelId, MemberId) {
@@ -174,6 +174,18 @@ async fn a_new_claim_of_the_same_thread_is_reported_again(store: &dyn Store) {
     let (channel, holder) = setup(store, 1).await;
     let first = claim(store, channel, holder, Some(3600)).await;
     assert_eq!(report(store, 100).await.len(), 1);
+    // A word on the thread, without acknowledging: an empty release would
+    // hold the thread back from the holder, which claims it again below.
+    store
+        .post_message(NewMessage {
+            thread_id: first.id,
+            author_id: holder,
+            body: "looking".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
     store
         .release_claim(first.id, holder, first.claim_lease_id.unwrap())
         .await

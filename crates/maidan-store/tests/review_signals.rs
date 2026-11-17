@@ -10,8 +10,8 @@ use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     Attribution, ChannelId, DelegationGrantId, Event, EventKind, MemberId, MemberKind, NewChannel,
-    NewMember, NewThread, NewWorkspace, ReviewDecision, StoredEvent, ThreadId, WorkspaceId,
-    EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
+    NewMember, NewMessage, NewThread, NewWorkspace, ReviewDecision, StoredEvent, ThreadId,
+    WorkspaceId, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
 };
 use serde_json::json;
 
@@ -68,14 +68,26 @@ async fn thread(store: &dyn Store, channel: ChannelId) -> ThreadId {
         .id
 }
 
-/// `worker` takes the channel's next thread and lets go of it, leaving it
-/// `in_review` when `hand_in`, else `open`.
+/// `worker` takes the channel's next thread, says so on it and lets go of it,
+/// leaving it `in_review` when `hand_in`, else `open`. The message is the
+/// hold's progress: an empty release would hold the thread back from the
+/// worker, which takes it again after a change request.
 async fn work(store: &dyn Store, channel: ChannelId, worker: MemberId, hand_in: bool) -> ThreadId {
     let claimed = store
         .claim_next_thread(channel, worker, Some(60), None)
         .await
         .expect("claim")
         .expect("a claimable thread");
+    store
+        .post_message(NewMessage {
+            thread_id: claimed.id,
+            author_id: worker,
+            body: "worked on it".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .expect("message");
     if hand_in {
         store
             .transition_thread(claimed.id, worker, ThreadAction::StartReview)
