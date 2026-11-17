@@ -164,6 +164,9 @@ mod cursor_too_old;
 #[path = "../data_audit_tx.rs"]
 mod data_audit_tx;
 
+#[path = "../database_health.rs"]
+mod database_health;
+
 #[path = "../decision_history.rs"]
 mod decision_history;
 

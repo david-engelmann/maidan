@@ -144,10 +144,10 @@ tests:
                 primary until it catches up.
 
   # Past a billion transactions since the oldest unfrozen id for 15 minutes.
-  - interval: 5m
+  - interval: 1m
     input_series:
       - series: maidan_postgres_xid_age
-        values: "200000000 1200000000 1200000000 1200000000 1200000000 1200000000"
+        values: "200000000 1200000000+0x30"
     alert_rule_test:
       - alertname: MaidanPostgresXidAgeHigh
         eval_time: 10m
@@ -167,12 +167,12 @@ tests:
 
   # A 2 GiB slot with an inactive slot pages after 30 minutes; with every slot
   # active it does not.
-  - interval: 10m
+  - interval: 1m
     input_series:
       - series: maidan_postgres_replication_slot_retained_bytes
-        values: "2147483648+0x6"
+        values: "2147483648+0x45"
       - series: maidan_postgres_replication_slots_inactive
-        values: "1+0x6"
+        values: "1+0x45"
     alert_rule_test:
       - alertname: MaidanPostgresReplicationSlotRetainingWal
         eval_time: 20m
@@ -189,24 +189,24 @@ tests:
                 A replication slot holds 2GiB of WAL and
                 at least one slot has no consumer. Drop the slot, or restart
                 what reads it, before the disk fills.
-  - interval: 10m
+  - interval: 1m
     input_series:
       - series: maidan_postgres_replication_slot_retained_bytes
-        values: "2147483648+0x6"
+        values: "2147483648+0x45"
       - series: maidan_postgres_replication_slots_inactive
-        values: "0+0x6"
+        values: "0+0x45"
     alert_rule_test:
       - alertname: MaidanPostgresReplicationSlotRetainingWal
         eval_time: 40m
         exp_alerts: []
 
   # A quarter of the rows dead for an hour; a small table does not page.
-  - interval: 15m
+  - interval: 1m
     input_series:
       - series: maidan_postgres_dead_tuples
-        values: "250000+0x6"
+        values: "250000+0x80"
       - series: maidan_postgres_live_tuples
-        values: "1000000+0x6"
+        values: "1000000+0x80"
     alert_rule_test:
       - alertname: MaidanPostgresDeadTuplesHigh
         eval_time: 45m
@@ -223,12 +223,12 @@ tests:
                 Dead rows are 25% of the live rows
                 across Maidan's tables. Check autovacuum's progress and any
                 transaction holding back the xmin horizon.
-  - interval: 15m
+  - interval: 1m
     input_series:
       - series: maidan_postgres_dead_tuples
-        values: "5000+0x6"
+        values: "5000+0x80"
       - series: maidan_postgres_live_tuples
-        values: "1000+0x6"
+        values: "1000+0x80"
     alert_rule_test:
       - alertname: MaidanPostgresDeadTuplesHigh
         eval_time: 75m
