@@ -42,6 +42,18 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v460.0.0](https://github.com/david-engelmann/maidan/releases/tag/v460.0.0) — message search always filters by a reader, and 4 more
+
+maidan.world's landing shows the room working in a scroll-told visualization with compact pause controls, the console lists every result delivery and lets an admin edit where results may go, a member that releases a task without working it is not handed it straight back, message search always filters by its reader, and the multipart upload tools return their upload ids over MCP.
+
+- Message search always filters by a reader
+- The MCP tool sweep calls the six backend tools for real
+- A claimant that lets go without working is not handed the same thread straight back
+- The console shows where results went and where they may go
+- The landing draws the room at work
+
+`CHANGELOG.md` under `[460.0.0]` has every entry.
+
 ## [v459.0.0](https://github.com/david-engelmann/maidan/releases/tag/v459.0.0) — the landing's first paint is right and lighter, and 3 more
 
 maidan.world's landing paints the right sign-up words first and loads a third less script, the board recording is an AVIF a fifth the size, the board toolbar follows the board's width, the policy pages describe open sign-up and credits, and a pool topology guide is in Production.
