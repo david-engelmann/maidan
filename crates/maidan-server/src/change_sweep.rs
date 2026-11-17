@@ -20,6 +20,11 @@
 //! work open, and its dependents waiting, until someone closed it by hand.
 //! A thread closed or cancelled in the meantime settles without landing.
 //!
+//! Settling a close, merged or not, also cancels the change's open review
+//! children in the same commit: the pull request they review is gone, and
+//! the queue hands out its oldest work first, so a stale review stood ahead
+//! of every live one.
+//!
 //! A thread that only watches a pull request (`watch_pull`) closes when it
 //! merges and when it closes without merging, with a message saying which: it
 //! has no result or delivery of its own, so no land or review gate holds it,
@@ -1024,7 +1029,11 @@ async fn settle_closed_pulls(state: &AppState, workspace_id: WorkspaceId, stats:
             Ok(ChangeSettlement::ClosedUnmerged {
                 thread_id,
                 author_id,
+                events,
             }) => {
+                for event in events {
+                    crate::routes::publish_stored(state, event).await;
+                }
                 let notice = Notice {
                     thread_id,
                     author_id,

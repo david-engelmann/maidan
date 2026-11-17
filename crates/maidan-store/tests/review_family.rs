@@ -1207,11 +1207,160 @@ async fn a_spawned_review_names_the_pull_request_and_head_it_reviews(
     assert_eq!(plain.description, None);
 }
 
+/// A change delivered to pull request `pull_number`, written by the author
+/// and sent to review; returns the change and the review child it spawned.
+async fn delivered_change_in_review(
+    store: &dyn Store,
+    pool: &Pool,
+    room: &Room,
+    title: &str,
+    pull_number: i64,
+) -> (ThreadId, ThreadId) {
+    let (change, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: room.channel,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+                created_by: None,
+            },
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Change,
+                engine: Some(TaskEngine::Session),
+                repo: Some(REPO.into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("change");
+    store
+        .claim_thread(change.id, room.author)
+        .await
+        .expect("claim");
+    pool.usage(Usage {
+        ws: room.ws.0,
+        thread: change.id.0,
+        reporter: room.author.0,
+        model: "claude-sonnet-4",
+    })
+    .await;
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: change.id,
+            repo: REPO.into(),
+            pull_number,
+            commit_sha: format!("{pull_number:040}"),
+            base_sha: "b".repeat(40),
+            base_behind: None,
+            diff_lines: 3,
+            paths: vec!["src/lib.rs".into()],
+            base_branch: Some("dev".into()),
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .expect("round");
+    store
+        .set_thread_result_claiming(change.id, room.author, &json!({"status": "done"}))
+        .await
+        .expect("result");
+    let (_, events) = store
+        .transition_thread_with_event(change.id, room.author, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let review = events
+        .iter()
+        .map(|e| e.opened_event().expect("event"))
+        .find_map(|e| match e {
+            Event::ThreadCreated { thread, .. } if thread.parent_thread_id == Some(change.id) => {
+                Some(thread.id)
+            }
+            _ => None,
+        })
+        .expect("a review child is spawned");
+    (change.id, review)
+}
+
+fn cancels(events: &[StoredEvent], thread: ThreadId) -> bool {
+    events
+        .iter()
+        .any(|e| e.kind == EventKind::ThreadCancelled && e.thread_id == Some(thread))
+}
+
+/// A review child left open after its pull request closed or merged has
+/// nothing to review, and the queue hands out its oldest work first, so it
+/// stood ahead of every live review and a seat handed it could not fetch its
+/// head. Settling the close cancels it in the same commit, with the reason;
+/// the review of a change whose pull request is still open is left alone.
+async fn a_closed_or_merged_pull_request_cancels_its_open_review_children(
+    store: &dyn Store,
+    pool: &Pool,
+) {
+    let room = room(store, pool, "settled").await;
+    let (closed, closed_review) =
+        delivered_change_in_review(store, pool, &room, "closed change", 51).await;
+    let (_, merged_review) =
+        delivered_change_in_review(store, pool, &room, "merged change", 52).await;
+    let (_, open_review) = delivered_change_in_review(store, pool, &room, "open change", 53).await;
+    let now = chrono::Utc::now();
+
+    store
+        .close_change_pull(room.ws, REPO, 51, None, None, now)
+        .await
+        .expect("closed");
+    match store
+        .settle_change_pull(room.ws, REPO, 51)
+        .await
+        .expect("settle")
+    {
+        ChangeSettlement::ClosedUnmerged {
+            thread_id, events, ..
+        } => {
+            assert_eq!(thread_id, closed, "the change stays open for a person");
+            assert!(cancels(&events, closed_review), "{events:?}");
+        }
+        other => panic!("a close without a merge, got {other:?}"),
+    }
+    assert_eq!(
+        store.get_thread(closed_review).await.expect("review").state,
+        ThreadState::Closed
+    );
+
+    store
+        .close_change_pull(room.ws, REPO, 52, Some(now), Some("m52"), now)
+        .await
+        .expect("merged");
+    let ChangeSettlement::Landed(stored) = store
+        .settle_change_pull(room.ws, REPO, 52)
+        .await
+        .expect("settle")
+    else {
+        panic!("a merge lands its change");
+    };
+    assert!(cancels(&stored, merged_review), "{stored:?}");
+    assert_eq!(
+        store.get_thread(merged_review).await.expect("review").state,
+        ThreadState::Closed
+    );
+
+    assert_eq!(
+        store.get_thread(open_review).await.expect("review").state,
+        ThreadState::Open,
+        "a review of an open pull request is left alone"
+    );
+}
+
 async fn served_where_the_change_is(store: &dyn Store, pool: &Pool) {
     a_spawned_review_names_the_pull_request_and_head_it_reviews(store, pool).await;
     a_spawned_review_carries_its_changes_engine_repository_and_lane(store, pool).await;
     a_third_family_seat_filtered_by_engine_and_repository_claims_the_review(store, pool).await;
     the_0230_backfill_serves_a_waiting_review_and_leaves_a_closed_one(store, pool).await;
+    a_closed_or_merged_pull_request_cancels_its_open_review_children(store, pool).await;
 }
 
 #[tokio::test]
