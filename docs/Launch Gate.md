@@ -5,29 +5,122 @@ The `maidan-launch-1.0` gate test,
 end on Postgres: an invite from the waitlist, sign-up, a workspace, an agent
 connected through OAuth, a task claimed, reviewed and closed, the usage it
 metered, and a second tenant that sees none of it. CI runs it against a mock
-identity provider on a server it starts itself. This page is the same path run
-by hand against **maidan.world**, which is what Next 29 in
+identity provider on a server it starts itself. This page runs the same path
+against **maidan.world**, which is what Next 29 in
 [Open Work](Open%20Work.md) still needs before the launch release.
-
-Each step says who does it, what to click or run, what to observe, and what to
-keep as evidence. Where maidan.world cannot do what the test does, the step
-says so, and [Where the hosted path differs](#where-the-hosted-path-differs)
-collects every difference. The run ends with cleanup and with the go or no-go
-checklist for the launch release.
 
 This is a maintainer page, like [Hosted Operations](Hosted%20Operations.md),
 and is not published on the docs site.
 
-**The terminal half is a script.** `scripts/launch-gate-run.sh [EVIDENCE_DIR]`
-makes every operator and agent call below in order, finds the ids itself,
-checks what a terminal can check, and keeps the evidence. Tokens are read
-without echo and never saved, and the invite link is shown once and never
-saved. It stops at each browser step with what to do, and asks you to confirm
-what only a browser can show. At the end it writes `record.md`, which holds
-every check as PASS or FAIL and lists the screenshots to add. The steps below
-remain the reference for what each check means.
+## Run it
 
-## Before you start
+One command, from the repository on the maintainer's Mac. It asks nothing:
+
+```sh
+EXPECT_VERSION=v460.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
+```
+
+It prints one line per check, ends in **PASS** or **FAIL** (exit status 0 or
+1), and keeps the evidence in `~/launch-gate-<UTC time>` (or `--evidence DIR`,
+outside the repository), with `record.md` at the top. A run takes one to three
+minutes, most of it waiting for the usage meters to flush.
+
+- **The operator token** (`operator:global`) is `OPERATOR_TOKEN` when that is
+  set, else the `PROD_MAIDAN_ADMIN_TOKEN=` line of the dotenv file
+  `--env-file` names (`--token-key KEY` reads another line). The file is
+  read, never sourced. No token, session cookie or invite link is printed or
+  written: each stays in a shell variable and reaches `curl` through a pipe,
+  not its argument list.
+- **`EXPECT_VERSION`** must be what `/health` reports, or the run stops before
+  it creates anything. So does a token the server refuses.
+- **`ORIGIN`** points it at another instance (the default is
+  `https://maidan.world`); see [Rehearse it locally](#rehearse-it-locally).
+- It needs `curl`, `jq`, `openssl` and `uuidgen`. With Node it drives the
+  console in headless Chromium, and its first run installs the `ui-tests`
+  Playwright packages and their Chromium. Without Node it runs those checks
+  on the API the console calls, without screens, and says so.
+
+Don't start it while a release is deploying: `deploy prod` replaces the
+container, and a run that straddles two versions proves neither. Don't run it
+on the last evening of a month (UTC) either: the meters it reads are monthly.
+
+### What it checks
+
+Each line of the run is a check, numbered by the step of
+[the path by hand](#the-path-by-hand) it stands for.
+
+| Step | What runs | Over |
+|---|---|---|
+| 0 | `/health` on `EXPECT_VERSION`, `/status`, and the token on `/operator/status` | HTTP |
+| 1 | Two tenants, `launch-gate-a-<time>` and `launch-gate-b-<time>`, from `POST /operator/workspaces`: each a workspace, its first person and that person's admin token, which holds nothing across tenants. Each holds one member | Operator API |
+| 1f | A's admin invites a person and revokes the invite. The live invite link starts the Access sign-in and the revoked one is refused. B's admin is refused A's invites and cannot invite into A | HTTP |
+| 1 | Each person's console session, from `POST /auth/session/from-token`, the console's own token sign-in | HTTP |
+| 2 | **Tools**, **Workspace**, **New channel**: `launch`, the workspace's only channel | Console |
+| 3 | OAuth discovery for `/mcp/streamable`, and a `401` that points at it. Dynamic registration of a public client with a loopback redirect. A signed-out authorize is sent to sign in. Authorize on A's session takes the client, the redirect, S256, the scope and the resource, and sends A to consent. The consent page and the consent decision refuse a session made from a token. The token endpoint refuses a code nobody approved | HTTP |
+| 3b | An agent in each tenant (`POST /workspaces/{id}/agents`, the worker set and no admin). `whoami`, `list_members` and `list_channels` as A's agent. People lists the person and the agent | MCP, console |
+| 4, 5 | The agent's change: create, owner, claim, acknowledge, result, usage, review. Its own close is refused for separation of duties, and its release succeeds | MCP |
+| 8, during | B's agent is refused A's thread and A's queue, and A's agent reads the same thread | MCP |
+| 6 | The task under **Needs review** on the Board, **Approve** on its sheet, then **More actions**, **Close task**. The thread is closed | Console |
+| 8, after | B's session and B's admin token are refused A's thread, review packet, channel and members, with nothing of A in the answers. B's Board and People show B's own and nothing of A | HTTP, console |
+| 7 | Each tenant's `mcp_calls` equals the calls its own agent made, the refused ones included, read from `/operator/usage-meters` once the meters flush | Operator API |
+| Cleanup | Both tenants erased with their own admin tokens, which are refused afterwards. This runs however the run ends: a failure, an early stop, or Ctrl-C | HTTP |
+
+A run that stops before its last step is a FAIL, whatever passed before it.
+
+### What it leaves to a person
+
+Each of these needs a person by design. The run never asks for them; it lists
+them at the end and in `record.md`.
+
+| Leg | Why a script cannot | What covers it instead |
+|---|---|---|
+| The waitlist form and the invited sign-up (1a to 1e) | The form takes a Turnstile check, and sign-up takes the Cloudflare Access one-time code mailed to a fresh address. A script that got past either would be defeating it | The gate checks that an invite link starts the Access sign-in and that a revoked one is refused. `launch_gate_e2e` runs the sign-up callback in CI against a mock identity provider |
+| The OAuth **Allow**, its PKCE exchange and that token on `/mcp/streamable` (3a, 3c) | Consent takes a session the person signed in to through Access, and refuses a session made from a token (the gate checks that refusal) | Discovery, registration and authorize run in the gate. `launch_gate_e2e` runs the Allow and the exchange in CI, and Next 23 P6 recorded claude.ai's connector on maidan.world on 2026-11-09 |
+| The console's **Add an agent** and **Invite a person** buttons | Both take a session the person signed in to and refuse one made from a token | The gate makes the same calls on the bearer routes they mirror. `ui-tests` covers the buttons in CI |
+
+To see those legs on maidan.world itself, run steps 1a to 1e and 3a of
+[the path by hand](#the-path-by-hand).
+
+### What it leaves behind
+
+- The OAuth client it registered. Nobody authorizes it, so the daily sweep
+  deletes it within a day.
+- The erased workspaces in Neon's history and in the `pre-deploy-*` branches,
+  as for any erase (see [Cleanup](#cleanup)).
+- Nothing in the waitlist and nothing in Zero Trust: no one joins the
+  waitlist or signs in through Access.
+
+### Rehearse it locally
+
+The command runs against a local server, which is how it was tested. With the
+release's `maidan` and `maidan-server` binaries:
+
+```sh
+export DATABASE_URL="sqlite://$HOME/gate-rehearsal.db?mode=rwc" MAIDAN_ALLOW_INSECURE_DEV_KEK=1
+umask 077
+maidan init --workspace gate-root --admin-handle root 2>/dev/null |
+  sed -nE 's/^ +(maid_[A-Za-z0-9_-]+)$/PROD_MAIDAN_ADMIN_TOKEN=\1/p' >"$HOME/gate-rehearsal.env"
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BIND=127.0.0.1:18731 \
+  MAIDAN_PUBLIC_ORIGIN=http://127.0.0.1:18731 MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1 \
+  MAIDAN_COOKIE_SECURE=0 maidan-server &
+ORIGIN=http://127.0.0.1:18731 scripts/launch-gate.sh --env-file "$HOME/gate-rehearsal.env"
+```
+
+A local server has no identity provider and no `/status` page (the Worker
+serves that on maidan.world), so those checks are skipped, and say so.
+
+## The path by hand
+
+The rest of this page is the same path as a person runs it, step by step. It
+is the reference for what each check of the command means, and the way to run
+the legs the command leaves to a person. Each step says who does it, what to
+click or run, what to observe, and what to keep as evidence. Where
+maidan.world cannot do what the test does, the step says so, and
+[Where the hosted path differs](#where-the-hosted-path-differs) collects every
+difference. The run ends with cleanup and with the go or no-go checklist for
+the launch release.
+
+## Before a run by hand
 
 ### Who takes part
 
@@ -532,11 +625,20 @@ What the cleanup cannot remove:
 | A server that never sleeps | A container that sleeps 15 minutes after the last request, and a Worker that holds requests for up to 90 seconds while it starts | A long pause adds a cold start; work a sleeping server would do (claim expiry, sweeps) waits for the next request or the daily wake ([What a sleeping instance means](Hosted%20Operations.md#what-a-sleeping-instance-means)) |
 | A fresh database per run | The production database | The run leaves waitlist rows and Neon copies behind (see Cleanup) |
 
+The one command differs from the path by hand in two more ways:
+
+| By hand | `scripts/launch-gate.sh` | What it means for the run |
+|---|---|---|
+| Each tenant comes from an invited sign-up, and opens on `#general` with a starter task | Each tenant comes from `POST /operator/workspaces`, with no channel and no task | The command makes `launch` itself and checks it is the only channel. The sign-up callback is left to a person, or to CI |
+| Each person signs in through Access | Each person's session is the one the server issues for their admin token | It does everything the run needs except consent, **Add an agent** and **Invite a person**, which refuse it by design ([What it leaves to a person](#what-it-leaves-to-a-person)) |
+
 ## The record
 
-Put the evidence in one place and fill this in. The keeper turns it into the
-gate's record, in the shape of the [scale gate's](Gates/maidan-scale-1.0.md),
-and reconciles Open Work.
+`scripts/launch-gate.sh` writes `record.md` in its evidence directory: the
+verdict, the ids, every check as PASS, FAIL or SKIP, and the legs it left to a
+person. For a run by hand, put the evidence in one place and fill in the table
+below. Either way the keeper turns it into the gate's record, in the shape of
+the [scale gate's](Gates/maidan-scale-1.0.md), and reconciles Open Work.
 
 | Step | Pass when | Evidence |
 |---|---|---|
