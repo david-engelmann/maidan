@@ -12,12 +12,12 @@ const DIST = resolve(__dirname, "../../crates/maidan-server/static/landing/dist"
 
 const AXE = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
-// The hero and the room are looping pictures whose words fade in and out as
-// the board changes, so a scan that lands mid-fade reads a word below 4.5:1.
-// Text in a picture is exempt (WCAG 1.4.3), so the scan skips the drawn stages;
-// their role="img" wrappers, and the names they carry, are still checked.
+// The room is a looping picture whose words fade in and out as the board
+// changes, so a scan that lands mid-fade reads a word below 4.5:1. Text in a
+// picture is exempt (WCAG 1.4.3), so the scan skips the drawn stage; its
+// role="img" wrapper, and the name it carries, are still checked.
 function axe(page: Page): AxeBuilder {
-  return new AxeBuilder({ page }).exclude(".hero-art__stage .ss-stage").exclude(".room-stage__art .ss-stage");
+  return new AxeBuilder({ page }).exclude(".room-stage__art .ss-stage");
 }
 
 async function openLanding(page: Page): Promise<void> {
@@ -130,9 +130,10 @@ test("the example tabs move with the keyboard and wrap", async ({ page }) => {
 // glyph over the picture's corner; its name says what a press will do, and
 // the ring around it still takes a 44px tap.
 const MOVING = [
-  ["animation", ".hero-art"],
+  ["animation", ".hero"],
   ["room animation", ".room-stage"],
   ["recording", ".watch-frame"],
+  ["closing animation", ".close"],
 ] as const;
 
 test("each moving picture has a small pause control that names what a press will do", async ({ page }) => {
@@ -199,30 +200,66 @@ test.describe("with reduced motion", () => {
   test("the room is one still frame of the landed task, with nothing to pause", async ({ page }) => {
     await openLanding(page);
     await page.locator(".room-stage").scrollIntoViewIfNeeded();
-    await expect(page.locator(".hero-art .media-toggle")).toHaveCount(0);
+    await expect(page.locator(".hero .media-toggle")).toHaveCount(0);
+    await expect(page.locator(".close .media-toggle")).toHaveCount(0);
     await expect(page.locator(".room-stage .media-toggle")).toHaveCount(0);
     await expect(page.locator(".watch-frame").getByRole("button", { name: "Play the recording" })).toBeVisible();
     const stage = page.locator(".room-stage");
     await expect(stage.locator(".rm-card", { hasText: "PR #482 merged" })).toBeVisible();
     await expect(stage.locator(".rm-log")).toContainText("Codex approved Claude Code’s change");
     await expect(page.locator(".room-step[data-active]")).toHaveCount(0);
-    // The square holds still: no light crosses it
-    await expect(page.locator(".sq-walker").first()).toBeHidden();
+  });
+
+  test("the gathering is one composed still of the whole mark", async ({ page }) => {
+    await openLanding(page);
+    // A still where a GPU draws it; the poster of the mark where WebGL is
+    // missing or drawn on the CPU
+    await expect(page.locator(".gather--hero")).toHaveAttribute("data-state", /^(still|software|fallback)$/);
   });
 });
 
-test("the square under the hero and the close is decoration only, and its lights stop with the hero's pause", async ({ page }) => {
+test("the gathering under the hero and the close is decoration, and the hero's control stops it", async ({ page }) => {
+  const fetched: string[] = [];
+  page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
   await openLanding(page);
-  const squares = page.locator(".sq");
-  // The hero's (wide and one-column, one shown at a time) and the close's
-  await expect(squares).toHaveCount(3);
-  for (const sq of await squares.all()) await expect(sq).toHaveAttribute("aria-hidden", "true");
-  // The lights run only while their ground is on screen
-  const walker = page.locator(".hero-art .sq-walker").first();
-  await page.evaluate(() => window.scrollBy(0, 240));
-  await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("running");
-  await page.locator(".hero-art").getByRole("button", { name: "Pause the animation" }).click();
-  await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
+  const pictures = page.locator(".gather");
+  // The hero's and the close's
+  await expect(pictures).toHaveCount(2);
+  for (const picture of await pictures.all()) await expect(picture).toHaveAttribute("aria-hidden", "true");
+  // Its code is its own chunk, asked for once the page has loaded
+  await expect.poll(() => fetched.includes("/landing/gathering.js")).toBe(true);
+  const hero = page.locator(".gather--hero");
+  await expect(hero).toHaveAttribute("data-state", /^(running|software|fallback)$/);
+  // Where WebGL2 exists the scene compiles and draws, even on a software
+  // renderer that then leaves the poster up
+  const webgl = await page.evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
+  if (webgl) await expect(hero).not.toHaveAttribute("data-state", "fallback");
+  test.skip((await hero.getAttribute("data-state")) !== "running", "no GPU here: the poster stands in for the scene");
+  await page.locator(".hero").getByRole("button", { name: "Pause the animation" }).click();
+  await expect(hero).toHaveAttribute("data-state", "paused");
+  await page.locator(".hero").getByRole("button", { name: "Play the animation" }).click();
+  await expect(hero).toHaveAttribute("data-state", "running");
+});
+
+test("without WebGL the poster of the mark stays, and nothing errs", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await page.addInitScript(() => {
+    // A browser with no WebGL: every other context still answers
+    const get = HTMLCanvasElement.prototype.getContext as (this: HTMLCanvasElement, ...args: unknown[]) => unknown;
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      value(this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+        return type === "webgl2" || type === "webgl" ? null : get.call(this, type, ...rest);
+      },
+    });
+  });
+  await openLanding(page);
+  const hero = page.locator(".gather--hero");
+  await expect(hero).toHaveAttribute("data-state", "fallback");
+  await expect(hero.locator(".gather__canvas")).toHaveCSS("opacity", "0");
+  const poster = await hero.locator(".gather__mark").evaluate((el) => getComputedStyle(el, "::before").backgroundImage);
+  expect(poster).toContain("data:image/svg+xml");
+  expect(errors).toEqual([]);
 });
 
 test.describe("on a phone", () => {
@@ -237,19 +274,32 @@ test.describe("on a phone", () => {
     const small = await smallTargets(page, ".join-btn, .cta, .tab, .copy, .sheet-close, .submit");
     expect(small).toEqual([]);
   });
-
-  test("the square's horizon is on the first screen, above the calls to action", async ({ page }) => {
-    await openLanding(page);
-    await expect(page.locator(".hero-art .sq")).toBeHidden();
-    const horizon = await page.locator(".sq--lead .sq-horizon").boundingBox();
-    const cta = await page.locator(".hero .cta").first().boundingBox();
-    expect(horizon).not.toBeNull();
-    expect(cta).not.toBeNull();
-    expect(horizon!.width).toBeGreaterThanOrEqual(389);
-    expect(horizon!.y).toBeLessThan(cta!.y);
-    expect(horizon!.y).toBeLessThan(844);
-  });
 });
+
+// A phone's first screen holds the mark, the headline and the first call to
+// action, the short phone included.
+for (const vp of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
+  test.describe(`on a ${vp.width}x${vp.height} phone`, () => {
+    test.use({ viewport: vp, isMobile: true, hasTouch: true });
+
+    test("the mark, the headline and the first call to action are on the first screen", async ({ page }) => {
+      await openLanding(page);
+      const header = await page.locator(".top").boundingBox();
+      const mark = await page.locator(".gather--hero .gather__mark").boundingBox();
+      const h1 = await page.locator(".hero h1").boundingBox();
+      const cta = await page.locator(".hero .cta").first().boundingBox();
+      for (const box of [header, mark, h1, cta]) expect(box).not.toBeNull();
+      // About half the screen's width, under the header and over the words
+      expect(mark!.width).toBeGreaterThanOrEqual(vp.width * 0.45);
+      expect(mark!.width).toBeLessThanOrEqual(vp.width * 0.55);
+      expect(mark!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+      expect(mark!.y + mark!.height).toBeLessThanOrEqual(h1!.y);
+      expect(h1!.y + h1!.height).toBeLessThanOrEqual(cta!.y);
+      expect(cta!.y + cta!.height).toBeLessThanOrEqual(vp.height);
+      await expect(page.locator(".hero .cta").first()).toHaveText(/Join the waitlist|Create a workspace/);
+    });
+  });
+}
 
 test("the waitlist sheet validates, accepts a join, and Done returns to the button", async ({ page }) => {
   await openLanding(page);

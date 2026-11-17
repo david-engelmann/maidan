@@ -1428,6 +1428,12 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/room.js"),
             ),
+            // The gathering behind the hero and the close (raw WebGL2),
+            // loaded once the hero's words have painted.
+            "gathering.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/gathering.js"),
+            ),
             "style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../static/landing/dist/style.css"),
