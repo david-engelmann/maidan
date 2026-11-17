@@ -1336,6 +1336,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
         ChangeSettlement::ClosedUnmerged {
             thread_id,
             author_id,
+            ..
         } => assert_eq!((thread_id, author_id), (unmerged, agent)),
         other => panic!("a close without a merge owes a notice, got {other:?}"),
     }

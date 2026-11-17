@@ -291,6 +291,9 @@ pub(crate) async fn refuse_unfounded_decline_in_tx(
                 return Err(crate::review_family::decline_without_family());
             }
         }
+        // Whether a head fetches or a subject exists is the claimant's to
+        // know; any thread may be declined so, by its holder.
+        ClaimDecline::Unworkable => {}
     }
     Ok(())
 }

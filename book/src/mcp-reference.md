@@ -2619,7 +2619,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `release_claim`
 
-**Release claim.** Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed. Pass decline: "own_family" when you let go of a review because its author_family is your own model family: claim_next then stops handing you that review, even before you have reported any usage, and every other member is still handed it. A decline on a thread that is not a review naming its author_family is refused and nothing is released.
+**Release claim.** Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed. Pass decline: "own_family" when you let go of a review because its author_family is your own model family: claim_next then stops handing you that review, even before you have reported any usage, and every other member is still handed it. A decline on a thread that is not a review naming its author_family is refused and nothing is released. Pass decline: "unworkable" when you cannot work the thread at all (its head would not fetch, or it names nothing to work on): claim_next stops handing it to you and still hands it to everyone else.
 
 **Capability:** `thread:transition`
 
@@ -2634,9 +2634,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "decline": {
-      "description": "why you will not work this thread, so claim_next does not hand it back to you. own_family: a review whose author_family is your own model family. Omit for a plain release",
+      "description": "why you will not work this thread, so claim_next does not hand it back to you. own_family: a review whose author_family is your own model family. unworkable: any thread you cannot work (its head would not fetch, or it names nothing to work on). Omit for a plain release",
       "enum": [
-        "own_family"
+        "own_family",
+        "unworkable"
       ],
       "type": "string"
     },

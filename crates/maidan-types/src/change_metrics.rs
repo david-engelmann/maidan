@@ -24,13 +24,17 @@ use crate::ids::{MemberId, ThreadId, WorkspaceId};
 #[derive(Debug)]
 pub enum ChangeSettlement {
     /// It merged and the thread closed. The transitions' `ThreadStateChanged`
-    /// events and the `ThreadLanded`, committed with the close, to publish.
+    /// events and the `ThreadLanded`, committed with the close, then the
+    /// cancels of its open review children, to publish.
     Landed(Vec<StoredEvent>),
     /// It closed without merging. The thread stays open for a person or the
-    /// planner to decide, and `author_id` posts the one notice.
+    /// planner to decide, and `author_id` posts the one notice. Its open
+    /// review children were cancelled with the close, unless another of its
+    /// pull requests is still open; `events` are theirs, to publish.
     ClosedUnmerged {
         thread_id: ThreadId,
         author_id: MemberId,
+        events: Vec<StoredEvent>,
     },
     /// It merged, but the thread's close was refused (a review requirement
     /// not met, say). The thread stays open and `reason` is posted once. The
