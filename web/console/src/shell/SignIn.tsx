@@ -47,6 +47,10 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
         </div>
       ) : null}
       {showCreate ? (
+        // A section of its own, so its name field never reads as part of
+        // signing in.
+        <>
+        {oidcLoginPath && !check.active ? <p className="sign-in-divider"><span>{signupOpen ? "New to Maidan?" : "Have an invite?"}</span></p> : null}
         <CreateWorkspace
           action={signupPath ?? "/auth/oidc/signup"}
           initialName={joining ? "" : check.name}
@@ -55,13 +59,16 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
           returnTo={check.returnTo}
           siteKey={turnstileSiteKey}
           primary={check.active || signupOpen}
+          divided={Boolean(oidcLoginPath) && !check.active}
         />
+        </>
       ) : null}
       {signupPath && !signupOpen ? (
         <p className="sign-in-waitlist">No invite yet? <a href="/">Join the waitlist</a>.</p>
       ) : null}
+      {oidcLoginPath ? <p className="sign-in-divider"><span>Have a token?</span></p> : null}
       <form className="sign-in-token" onSubmit={(e) => void submit(e)}>
-        <label htmlFor="sign-in-token">{oidcLoginPath ? "Or paste a token" : "Paste a token"}</label>
+        <label htmlFor="sign-in-token">Paste a token</label>
         <input
           id="sign-in-token"
           type="password"
@@ -89,6 +96,7 @@ function CreateWorkspace({
   returnTo,
   siteKey,
   primary,
+  divided,
 }: {
   action: string;
   initialName: string;
@@ -97,6 +105,8 @@ function CreateWorkspace({
   returnTo: string;
   siteKey: string | null;
   primary: boolean;
+  /** A divider above already says "Have an invite?", so the button need not. */
+  divided: boolean;
 }) {
   const [name, setName] = useState(initialName);
   const why = joining ? null : workspaceNameRefusal(name);
@@ -137,7 +147,7 @@ function CreateWorkspace({
       {needsCheck ? <div ref={slot} /> : null}
       {failed ? <p className="err small" role="alert">The check could not load. Refresh the page and try again.</p> : null}
       <button type="submit" className={primary ? "button ink" : "button ghost"} disabled={blocked}>
-        {joining ? "Continue" : primary ? "Create your workspace" : "Have an invite? Create your workspace"}
+        {joining ? "Continue" : primary || divided ? "Create your workspace" : "Have an invite? Create your workspace"}
       </button>
     </form>
   );

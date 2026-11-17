@@ -47,6 +47,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   }, [refused]);
   const reduce = useReducedMotion();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const signedOutRef = useRef(false);
   const [scrolled, setScrolled] = useState(false);
   // The front door's hint is read once and taken off the address bar, so a
   // reload never replays it.
@@ -84,9 +85,15 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   }, [browserSession, session.credentials.base]);
 
   useEffect(() => {
+    signedOutRef.current = session.status === "signed-out";
+  }, [session.status]);
+
+  useEffect(() => {
     let seq: { at: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        // Signed out there is nothing to search: the sign-in card is the page.
+        if (signedOutRef.current) return;
         e.preventDefault();
         setPaletteOpen((o) => !o);
         return;
@@ -186,8 +193,18 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       </nav>
 
       <header className={scrolled ? "top scrolled" : "top"}>
-        <h1>{shellTitle(signedOut, current.title)}</h1>
-        <div className="top-actions">
+        {signedOut ? (
+          // The card names the page ("Sign in to Maidan"), so the header says
+          // whose page it is: the brand on a phone, where there is no rail.
+          <h1 className="top-brand">
+            <Mark className="mark" />
+            <span>Maidan</span>
+            <span className="visually-hidden"> sign in</span>
+          </h1>
+        ) : (
+          <h1>{shellTitle(signedOut, current.title)}</h1>
+        )}
+        {signedOut ? null : <div className="top-actions">
           {modeLabel ? (
             <span className="mode-chip" data-mode={modeLabel} title={MODE_LINE[modeLabel]}>{MODE_WORD[modeLabel]}</span>
           ) : null}
@@ -201,7 +218,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
             <Icon name="search" />
             <span className="btn-label">Search</span>
           </button>
-        </div>
+        </div>}
       </header>
 
       <main className="content" id="main" tabIndex={-1}>
@@ -229,7 +246,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         <Chooser onClose={() => { setHint(null); setChooserOpen(false); }} />
       ) : null}
       <Toasts />
-      <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <Palette open={paletteOpen && !signedOut} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
   );
 }
