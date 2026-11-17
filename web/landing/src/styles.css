@@ -239,7 +239,7 @@ section > *, .hero > * { min-width: 0; }
   /* The words and the board stand on one horizon: both columns sit on the
      hero's floor, and the words end clear above the line the board's foot
      dissolves into (6% up the board, see square.css) */
-  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: end; column-gap: 4vw; min-height: 92svh; padding-top: 6rem; padding-bottom: 3rem; }
+  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: end; column-gap: 4vw; min-height: min(92svh, 860px); padding-top: 6rem; padding-bottom: 3rem; }
   .hero-copy { padding-bottom: calc(2.2vw + 1.75rem); }
   .hero-art__toggle { bottom: calc(6% + 0.75rem); }
   .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }

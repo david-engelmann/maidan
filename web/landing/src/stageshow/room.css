@@ -69,7 +69,7 @@
 }
 .rm-presence__stack { display: inline-flex; }
 .rm-presence__stack .ss-avatar {
-  margin-left: -3px;
+  margin-left: -1px;
   box-shadow: 0 0 0 2px var(--ss-surface);
 }
 /* Two letters in the console's agent avatar */
@@ -356,6 +356,9 @@
 /* The phone: one column. The task's journey in one card, the lane it is in
    on the rail above, the rest of the board as a list below. */
 .rm-body[data-compact] .rm-head { left: 14px; right: 14px; top: 8px; }
+/* Small avatars side by side, so both letters of each read */
+.rm-body[data-compact] .rm-presence__stack .ss-avatar { margin-left: 2px; }
+.rm-body[data-compact] .rm-presence__stack .ss-avatar:first-child { margin-left: 0; }
 .rm-rail {
   position: absolute;
   top: 48px;

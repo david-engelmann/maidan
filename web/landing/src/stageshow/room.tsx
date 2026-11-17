@@ -168,13 +168,15 @@ const COMPACT = {
   rowH: 42,
   rows: ["search", "billing", "sso", "safari"] as CardId[],
   rest: {
-    "Claude Code": { x: 166, y: 248 },
-    Codex: { x: 232, y: 470 },
-    Cursor: { x: 334, y: 252, flip: true },
+    // Hidden while resting on the phone; set beside the card, so a cursor
+    // coming to it or leaving it crosses only the card's empty side
+    "Claude Code": { x: 300, y: 214 },
+    Codex: { x: 318, y: 196 },
+    Cursor: { x: 300, y: 230 },
     Grok: { x: 0, y: 0 },
     Muse: { x: 0, y: 0 },
     Antigravity: { x: 0, y: 0 },
-    Maya: { x: 116, y: 10 },
+    Maya: { x: 310, y: 118 },
     Jun: { x: 0, y: 0 },
   } as Record<Who, Aim>,
 };
