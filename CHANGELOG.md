@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [457.0.0] — 2026-11-17
+
+Every MCP tool answers a valid call and refuses a bad one by name, Postgres health is on /metrics with alerts and a UTF-8 pin, and every reader-filtered store listing requires its reader.
+
+### Every tool refuses a bad call by name, and the Inspector calls them all
+
+- **Fixed:** a tool that declares no arguments now refuses any argument, and names it (`unknown field `x`: whoami takes no arguments`). Every tool with arguments already refused an undeclared one, and so did `rotate_token`. The other 17 dropped it and ran: an agent that passed a `workspace_id` to `list_recipes` or `get_wip_limit` got its own workspace's answer, whatever it named.
+- **Fixed:** a missing argument to `get_thread_context` or `get_workspace_context` is reported once (`invalid params: missing field `thread_id``), not as `invalid params: invalid params: …`.
+- **Added:** `scripts/mcp-tool-sweep.py`, run by `scripts/mcp-inspector.sh`, calls every tool on a running server:
+  - a valid call to every tool on `/mcp/worker`, `/mcp/reviewer` and `/mcp/coordinator`, made on that endpoint, writes included (one task taken from creation through claim, usage, result and review, a plan and its amendment, a cancel, an approval and a notification). The coordinator's calls run on a token holding only the capabilities an OAuth grant can carry, as the ChatGPT listing's connection does;
+  - a valid call to every other write in the full catalog, in an order where each has what it needs, and to every read-only tool. Six answer the error that names a backend the throwaway server does not run: the four multipart upload tools (S3), `top_up_credits` (the credits chain watcher) and `advise_land_gate` (an advisor);
+  - a bad call to every tool, whose error must name the argument at fault.
+
+  A validated version (the release record) needs every tool on a listed surface to answer both. Until now the Inspector called one tool per group.
+
+### Postgres health on /metrics
+
+- **Added:** six gauges, read from the Postgres catalogs on each scrape:
+  - `maidan_postgres_xid_age`, the transactions since the oldest unfrozen id; Postgres refuses writes near 2 billion;
+  - `maidan_postgres_dead_tuples` and `maidan_postgres_live_tuples`, whose ratio is the bloat vacuum has not reclaimed;
+  - `maidan_postgres_wal_bytes`, the WAL write position, whose rate is the WAL written;
+  - `maidan_postgres_replication_slot_retained_bytes` and `maidan_postgres_replication_slots_inactive`, for a slot nobody reads keeping WAL until the disk fills.
+
+  A database that does not grant `pg_replication_slots` reports the other four, and SQLite reports none.
+- **Added:** three alert rules on them, with promtool tests: `MaidanPostgresXidAgeHigh` (past a billion for 15 minutes), `MaidanPostgresDeadTuplesHigh` (a fifth of the rows dead for an hour) and `MaidanPostgresReplicationSlotRetainingWal` (more than 1 GiB held while a slot has no consumer, for 30 minutes).
+- **Added:** a Postgres database whose encoding is not UTF8 is refused before it migrates, naming its encoding. Before, an `SQL_ASCII` or `LATIN1` database booted and failed later, at the first character it could not store.
+
+### Store listings always filter by a reader
+
+- **Security:** every store listing that filters by who may read a thread (workspace thread pages and attribute search, pending approval gates, A2A tasks, queue depth and occupancy, live claims, deferred threads, tombstones, the event census, message backlinks, and the workspace context pack) now takes the reader as a required member id. There is no longer a "no reader" call that returns every row, and the shared SQL filter shows no thread row to an unbound reader.
+
 ## [456.0.0] — 2026-11-16
 
 Agents can count only the work they would be handed, ChatGPT approvers see the review packet, and try.maidan.world runs a demo agent in the browser.

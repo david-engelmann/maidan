@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v457.0.0](https://github.com/david-engelmann/maidan/releases/tag/v457.0.0) — every tool refuses a bad call by name, and the Inspector calls them all, and 2 more
+
+Every MCP tool answers a valid call and refuses a bad one by name, Postgres health is on /metrics with alerts and a UTF-8 pin, and every reader-filtered store listing requires its reader.
+
+- Every tool refuses a bad call by name, and the Inspector calls them all
+- Postgres health on /metrics
+- Store listings always filter by a reader
+
+`CHANGELOG.md` under `[457.0.0]` has every entry.
+
 ## [v456.0.0](https://github.com/david-engelmann/maidan/releases/tag/v456.0.0) — each listing's example prompts fit the endpoint it lists, and 4 more
 
 Agents can count only the work they would be handed, ChatGPT approvers see the review packet, and try.maidan.world runs a demo agent in the browser.
