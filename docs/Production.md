@@ -501,6 +501,29 @@ connections and admin tools: 4 replicas use 64. Raise the pool only on acquire
 timeouts. `MAIDAN_DB_STATEMENT_TIMEOUT_MS` (30 s) caps every query, including
 the in-server reindex; run a large one with `maidan reindex-embeddings`.
 
+**Pool topology.** Each server process opens these connections to Postgres:
+
+| Connection | How many | Notes |
+|---|---|---|
+| The writer pool | up to `MAIDAN_DB_MAX_CONNECTIONS` (16) | every write, and every read when there is no replica or a read carries a consistency token the replica has not reached |
+| The reader pool | up to the same size, against `MAIDAN_DB_REPLICA_URL` | only when a replica is set ([Read replicas](#read-replicas)) |
+| `LISTEN` connections | 3, for the process's whole life | live events across replicas, presence, and MCP resource subscriptions. Each holds a connection of its own outside the pools' count |
+| Boot migrations | 1, briefly | one replica migrates under an advisory lock; the others wait on that lock with a connection each |
+
+So one replica with no read replica needs up to `MAIDAN_DB_MAX_CONNECTIONS + 3`
+connections to the primary, and `N` replicas need `N × (pool + 3)`, plus room
+for backups, `psql` and the migration wait at a rolling deploy. Size the pool
+from the database's limit down, not the other way: with a limit of 100 and
+four replicas, a pool of 16 uses 76 and leaves 24.
+
+Connect to Postgres directly, never through a pooler in transaction mode
+(PgBouncer's transaction pooling, or a managed "pooled" connection string).
+`LISTEN` needs a session that stays open, and each pooled connection sets its
+statement, lock and idle-transaction timeouts once when it connects. A
+transaction-mode pooler hands later queries a different server session that
+has neither. A session-mode pooler works, but it only adds a hop: the server
+already pools.
+
 **Load shedding.** Past `MAIDAN_MAX_CONCURRENT_REQUESTS` (1024) in-flight
 requests, the server answers `503` with `Retry-After: 1` before any database
 work (`maidan_http_shed_total`, alert `MaidanLoadShedding`).
