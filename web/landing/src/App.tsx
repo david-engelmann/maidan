@@ -157,14 +157,21 @@ function WatchClip() {
   );
   return (
     <div className="watch-frame">
-      <img
-        className="watch-clip"
-        src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
-        width={960}
-        height={600}
-        loading="lazy"
-        alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
-      />
+      {/* AVIF where the browser reads it: the moving board at a fifth of the
+          GIF's bytes and sharp on a high-density screen. The GIF and PNG stay
+          for a browser that does not. */}
+      <picture>
+        <source type="image/avif" srcSet={paused ? "/landing/board-live-still.avif" : "/landing/board-live.avif"} />
+        <img
+          className="watch-clip"
+          src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
+          width={960}
+          height={600}
+          loading="lazy"
+          decoding="async"
+          alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
+        />
+      </picture>
       <button type="button" className="watch-toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
         {paused ? "Play the recording" : "Pause the recording"}
       </button>

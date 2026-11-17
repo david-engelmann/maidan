@@ -1415,6 +1415,16 @@ pub fn router(state: AppState) -> Router {
                 "image/png",
                 include_bytes!("../static/landing/dist/board-live.png"),
             ),
+            // The same two as AVIF, which a browser that reads it takes
+            // instead: the clip at a fifth of the GIF's bytes.
+            "board-live.avif" => (
+                "image/avif",
+                include_bytes!("../static/landing/dist/board-live.avif"),
+            ),
+            "board-live-still.avif" => (
+                "image/avif",
+                include_bytes!("../static/landing/dist/board-live-still.avif"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(
