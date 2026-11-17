@@ -23,6 +23,16 @@ reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no
 # No sqlx release allows the fixed 0.39, so revisit by the date or when sqlx
 # allows it.
 [[IgnoredVulns]]
+# web/console and web/landing lockfiles. picomatch (2.3.2 and 4.0.7) is a
+# dev-only dependency of the Vite and Rollup build, matching globs the
+# repository itself writes at build time; nothing it matches comes from a
+# user, and no picomatch release fixes it yet. Revisit by the date, or as
+# soon as a fixed release lands.
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2027-01-31T00:00:00Z
+reason = "web/console and web/landing: picomatch is a dev-only build dependency (Vite/Rollup globbing of repository-written patterns); no fixed release"
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0543"
 ignoreUntil = 2027-02-28T00:00:00Z
 reason = "fuzz/Cargo.lock: chrono 0.4.45 is unmaintained, a maintenance notice with no vulnerability; the root lockfile accepts it in deny.toml until the workspace moves off chrono"
