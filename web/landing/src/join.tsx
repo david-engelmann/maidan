@@ -1,4 +1,4 @@
-import { motion, useDragControls, useReducedMotion, type PanInfo } from "motion/react";
+import { MotionConfig, motion, useDragControls, useReducedMotion, type PanInfo } from "motion/react";
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -257,7 +257,8 @@ export function Join({
   }
 
   return (
-    <>
+    // The sheet is the landing's only motion, so its setting lives with it.
+    <MotionConfig reducedMotion="user">
       {open ? (
         <motion.button
           type="button"
@@ -397,6 +398,6 @@ export function Join({
           </div>
         )}
       </motion.section>
-    </>
+    </MotionConfig>
   );
 }
