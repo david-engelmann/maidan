@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Join } from "./join";
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { HeroBoard } from "./stageshow/HeroBoard";
 import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
 
@@ -8,22 +7,15 @@ const DOCS = "https://docs.maidan.world/";
 const FAQ = "https://docs.maidan.world/docs/FAQ.html";
 const MCP_URL = "https://maidan.world/mcp/streamable";
 
-/** Whether this instance signs up any verified address without an invite. */
-function useSignupOpen(): boolean {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    let gone = false;
-    fetch("/.well-known/maidan.json", { credentials: "omit" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { auth?: { oidc_signup_open?: boolean } } | null) => {
-        if (!gone) setOpen(body?.auth?.oidc_signup_open === true);
-      })
-      .catch(() => undefined);
-    return () => {
-      gone = true;
-    };
-  }, []);
-  return open;
+// The invite sheet, and motion with it, loads only on an instance that signs
+// people up by invite; maidan.world, with open sign-up, never fetches either.
+const Join = lazy(() => import("./join").then((m) => ({ default: m.Join })));
+
+/** Whether this instance signs up any verified address without an invite.
+ * The server writes it into the page (`<meta name="maidan-signup">`), so the
+ * first paint already has the right words and nothing is fetched to learn it. */
+export function signupOpenFromPage(doc: Pick<Document, "querySelector">): boolean {
+  return doc.querySelector<HTMLMetaElement>('meta[name="maidan-signup"]')?.content === "open";
 }
 
 export default function App() {
@@ -35,10 +27,16 @@ export default function App() {
     window.addEventListener("scroll", on, { passive: true });
     return () => window.removeEventListener("scroll", on);
   }, []);
-  const signupOpen = useSignupOpen();
+  const [signupOpen] = useState(() => typeof document !== "undefined" && signupOpenFromPage(document));
   // With open sign-up the console's sign-in page creates the workspace; the
   // waitlist is only for an instance that signs people up by invite.
-  const join = () => (signupOpen ? window.location.assign("/ui/") : setOpen(true));
+  const join = () => {
+    if (signupOpen) {
+      window.location.assign("/ui/");
+      return;
+    }
+    setOpen(true);
+  };
   const joinLabel = signupOpen ? "Create a workspace" : "Join the waitlist";
   return (
     <>
@@ -143,7 +141,11 @@ export default function App() {
         </section>
       </main>
       {/* With open sign-up the CTAs go to the console, and the invite list is not offered. */}
-      {signupOpen ? null : <Join open={open} onOpenChange={setOpen} />}
+      {signupOpen ? null : (
+        <Suspense fallback={null}>
+          <Join open={open} onOpenChange={setOpen} />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -157,14 +159,21 @@ function WatchClip() {
   );
   return (
     <div className="watch-frame">
-      <img
-        className="watch-clip"
-        src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
-        width={960}
-        height={600}
-        loading="lazy"
-        alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
-      />
+      {/* AVIF where the browser reads it: the moving board at a fifth of the
+          GIF's bytes and sharp on a high-density screen. The GIF and PNG stay
+          for a browser that does not. */}
+      <picture>
+        <source type="image/avif" srcSet={paused ? "/landing/board-live-still.avif" : "/landing/board-live.avif"} />
+        <img
+          className="watch-clip"
+          src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
+          width={960}
+          height={600}
+          loading="lazy"
+          decoding="async"
+          alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
+        />
+      </picture>
       <button type="button" className="watch-toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
         {paused ? "Play the recording" : "Pause the recording"}
       </button>

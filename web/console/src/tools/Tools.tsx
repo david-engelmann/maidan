@@ -63,6 +63,7 @@ import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type 
 import { peekPaletteIndex } from "../shell/paletteIndex.ts";
 import { Connect } from "./Connect.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
+import { useScrollFade } from "../hooks/useScrollFade.ts";
 
 export const TOOL_TABS = [
   { id: "inbox", title: "Inbox" },
@@ -94,6 +95,7 @@ export function Tools() {
   const api = useToolsApi();
   const tab = toolTab(useSyncExternalStore(subscribeHash, () => window.location.hash));
   const tabs = useRef<HTMLDivElement>(null);
+  useScrollFade(tabs);
   // Keep the open tab in view when the strip scrolls sideways on a phone.
   useEffect(() => {
     tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });

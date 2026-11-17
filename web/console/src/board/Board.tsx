@@ -220,6 +220,10 @@ export function Board() {
       {/* One toolbar row: where, how, which, who and the next action. Filters,
           health and presence are chips in it, not rows of their own, so the
           first task sits right under it. */}
+      {/* The box is the toolbar's query container (19-launch.css): it lays
+          out by the board's width, an open task sheet included. Only the bar
+          is contained, so the phone's fixed task sheet still sits on the window. */}
+      <div className="board-bar-box">
       <div className="board-bar" role="group" aria-label="Board controls">
         <ChannelPick
           channels={data.channels}
@@ -276,6 +280,7 @@ export function Board() {
           <span>New task</span>
           <kbd aria-hidden="true">C</kbd>
         </button>
+      </div>
       </div>
 
       {composing && data.channelId && (

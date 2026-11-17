@@ -976,12 +976,16 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         "style.css",
         "app.js",
         "vendor.js",
+        "join.js",
+        "motion.js",
         "rolldown-runtime.js",
         "geist.woff2",
         "og.png",
         "icon.png",
         "board-live.gif",
         "board-live.png",
+        "board-live.avif",
+        "board-live-still.avif",
     ] {
         let res = env
             .client
@@ -1129,6 +1133,29 @@ async fn an_origin_matching_the_public_url_is_taken_even_when_the_host_differs()
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
+/// The landing says which sign-up the instance runs before its script runs:
+/// the server writes it into the page, so the first paint never shows "Join
+/// the waitlist" and then swaps it for "Create a workspace".
+#[tokio::test]
+async fn the_landing_page_carries_whether_sign_up_is_open() {
+    for (open, word) in [(true, "open"), (false, "closed")] {
+        let env = spawn_full(true, vec![], None, open, [None, None]).await;
+        let html = env
+            .client
+            .get(format!("{}/", env.base))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let meta = format!(r#"<meta name="maidan-signup" content="{word}" />"#);
+        assert!(html.contains(&meta), "sign-up open {open}: {html}");
+        // The invite list's promise is the sheet's to make, not the footer's.
+        assert!(!html.contains("used only for your invite"), "{html}");
+    }
+}
+
 #[tokio::test]
 async fn landing_asset_paths_outside_the_built_bundle_are_not_found() {
     let env = spawn(true, vec![]).await;
@@ -1158,12 +1185,16 @@ async fn landing_assets_are_not_found_where_sign_up_is_off() {
         "style.css",
         "app.js",
         "vendor.js",
+        "join.js",
+        "motion.js",
         "rolldown-runtime.js",
         "geist.woff2",
         "og.png",
         "icon.png",
         "board-live.gif",
         "board-live.png",
+        "board-live.avif",
+        "board-live-still.avif",
     ] {
         let res = off
             .client

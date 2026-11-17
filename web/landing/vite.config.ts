@@ -38,7 +38,18 @@ export default defineConfig({
         },
         // Dependencies in vendor.js. Rolldown puts the helpers both chunks
         // share in rolldown-runtime.js, which the server embeds beside them.
-        codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] },
+        // motion goes in motion.js, loaded with the invite sheet (join.js),
+        // so the first paint carries React alone.
+        codeSplitting: {
+          // A group takes only the modules its test names: left to pull in
+          // their dependencies too, the motion group took React's JSX runtime
+          // and app.js had to load motion.js to render anything.
+          includeDependenciesRecursively: false,
+          groups: [
+            { name: "motion", test: /node_modules[\\/](motion|motion-dom|motion-utils|framer-motion)[\\/]/, priority: 2 },
+            { name: "vendor", test: /node_modules/, priority: 1 },
+          ],
+        },
       },
     },
   },
