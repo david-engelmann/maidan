@@ -23,6 +23,30 @@ pub struct RewrapPass {
     pub undestroyed: u64,
 }
 
+/// What a Postgres operator watches that the server can read for itself,
+/// from [`MetaStore::database_health`]. Each is a gauge on `/metrics`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DatabaseHealth {
+    /// Transactions since this database's oldest unfrozen transaction id
+    /// (`age(datfrozenxid)`). Postgres stops taking writes near 2 billion to
+    /// avoid wraparound; autovacuum's freezing keeps it far below that.
+    pub xid_age: i64,
+    /// Dead row versions across the user tables, which vacuum has not yet
+    /// reclaimed (`pg_stat_user_tables.n_dead_tup`).
+    pub dead_tuples: i64,
+    /// Live rows across the user tables, the denominator of a bloat ratio.
+    pub live_tuples: i64,
+    /// The WAL write position in bytes. Its rate is the WAL the server writes.
+    pub wal_bytes: i64,
+    /// WAL that the replication slot holding back the most keeps on disk, in
+    /// bytes, or `None` when the slots cannot be read (a managed database
+    /// that does not grant `pg_replication_slots`).
+    pub slot_retained_bytes: Option<i64>,
+    /// Replication slots that no consumer holds. An inactive slot keeps WAL
+    /// until the disk fills.
+    pub inactive_slots: Option<i64>,
+}
+
 /// What one [`EventStore::sweep_stray_custody_keys`] pass did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StraySweep {
@@ -51,6 +75,10 @@ pub trait MetaStore: Send + Sync {
     /// token stamped on a write. `Some` on Postgres (`pg_current_wal_lsn()`),
     /// `None` on SQLite (no streaming replication, so no token).
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
+
+    /// Transaction-id age, dead rows, WAL position and replication slots, read
+    /// from the Postgres catalogs. `None` on SQLite, which has none of them.
+    async fn database_health(&self) -> Result<Option<DatabaseHealth>, StoreError>;
 
     /// Stand the operator alert `key` at `value` (a condition alert holds
     /// one fixed value; the boot notice holds the build). True when it did

@@ -39,6 +39,18 @@ const MIGRATION_LOCK_KEY: i64 = 0x6D69_6772_i64;
 /// first replica holds the lock and migrates; the rest block, then observe the
 /// migrations already applied and no-op.
 pub async fn run_postgres_migrations(pool: &PgPool) -> Result<(), StoreError> {
+    // Messages, bridged Slack and GitHub text and names arrive in any script.
+    // A database in another encoding refuses or mangles them at the first
+    // character it lacks, long after boot, so it is refused here instead.
+    let encoding: String = sqlx::query_scalar("SELECT current_setting('server_encoding')")
+        .fetch_one(pool)
+        .await?;
+    if encoding != "UTF8" {
+        return Err(StoreError::InvalidInput(format!(
+            "the database encoding is {encoding}, and Maidan needs UTF8: \
+             create the database with ENCODING 'UTF8'"
+        )));
+    }
     let mut lock_conn = pool.acquire().await?;
     // Exempt the migration session from the configured statement and lock
     // timeouts: the advisory-lock wait below can legitimately block while

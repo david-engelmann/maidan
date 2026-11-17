@@ -35,6 +35,7 @@ mod github_links;
 mod glossary;
 mod governance_audited;
 mod group_dm;
+mod health;
 mod idempotency;
 mod import;
 mod inbox;
@@ -356,6 +357,13 @@ impl PostgresStore {
     /// has no such position and returns `None`.
     async fn current_wal_lsn(&self) -> Result<Option<Lsn>, StoreError> {
         Ok(Some(replication::current_wal_lsn(&self.pool).await?))
+    }
+
+    /// Read on the primary: the WAL position and the slots are the writer's.
+    async fn read_database_health(
+        &self,
+    ) -> Result<Option<crate::store::DatabaseHealth>, StoreError> {
+        Ok(Some(health::read(&self.pool).await?))
     }
 }
 
