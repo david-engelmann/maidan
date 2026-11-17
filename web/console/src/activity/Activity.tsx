@@ -53,7 +53,7 @@ export function Activity() {
     return (
       <div className="activity">
         <header className="activity-head">
-          <h1 id="activity-title">Activity</h1>
+          <h2 id="activity-title" className="visually-hidden">Activity</h2>
         </header>
         <EmptyState title="Not signed in" body="Sign in to see activity." />
       </div>
@@ -216,7 +216,7 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
   return (
     <div className="activity">
       <header className="activity-head">
-        <h1 id="activity-title">Activity</h1>
+        <h2 id="activity-title" className="visually-hidden">Activity</h2>
         <div className="seg" role="group" aria-label="Show">
           {ACTIVITY_GROUPS.map((g) => (
             <button key={g.id} type="button" className={g.id === filter ? "on" : ""} aria-pressed={g.id === filter} onClick={() => setFilter(g.id)}>

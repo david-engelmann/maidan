@@ -179,8 +179,23 @@ for (const vp of VIEWPORTS) {
       });
       await page.goto("/ui/");
       await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
-      await expect(page.getByLabel("Or paste a token")).toBeVisible();
+      await expect(page.getByLabel("Paste a token")).toBeVisible();
       await shoot(page, `console-signed-out-idp-${vp.tag}`, vp.width, errors);
+    });
+
+    // maidan.world's card: an identity provider and open sign-up, so the
+    // card offers Sign in, then a workspace to create, then a token.
+    test(`console signed out, sign-up open, ${vp.tag}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(fx.now));
+      await page.route("**/.well-known/maidan.json", async (route) => {
+        const res = await route.fetch();
+        const body = (await res.json()) as { auth?: Record<string, unknown> };
+        const auth = { ...(body.auth ?? {}), oidc: true, oidc_login: "/auth/oidc/login", oidc_signup: "/auth/oidc/signup", oidc_signup_open: true, sessions: true };
+        await route.fulfill({ response: res, json: { ...body, auth } });
+      });
+      await page.goto("/ui/");
+      await expect(page.getByRole("button", { name: "Create your workspace" })).toBeVisible();
+      await shoot(page, `console-signed-out-signup-${vp.tag}`, vp.width, errors);
     });
 
     test(`task in review, ${vp.tag}`, async ({ page }) => {

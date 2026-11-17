@@ -82,9 +82,11 @@ test("the page carries no inline script or style, which its CSP would block", ()
   assert.doesNotMatch(page, /\son[a-z]+=/);
 });
 
-test("the page says the sandbox is deleted within 24 hours and points at the waitlist", () => {
+test("the page says the sandbox is deleted within 24 hours and points at creating a workspace", () => {
   assert.match(page, /This sandbox and everything in it are deleted within 24 hours\./);
-  assert.match(page, /Want to keep your work\? <a href="https:\/\/maidan\.world\/#hosting">Join the waitlist at maidan\.world\.<\/a>/);
+  // Sign-up is open, so the way to keep your work is a workspace, not a waitlist.
+  assert.match(page, /Want to keep your work\? <a href="https:\/\/maidan\.world\/ui\/">Create a workspace at maidan\.world\.<\/a>/);
+  assert.doesNotMatch(page, /waitlist/i);
   assert.match(page, /Start a sandbox/);
 });
 
