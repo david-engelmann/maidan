@@ -142,6 +142,51 @@ spec:
               primary. Reads that carry no consistency token have moved to the
               primary until it catches up.
 
+        # Wraparound: Postgres refuses writes near 2 billion transactions since
+        # the oldest unfrozen id. Autovacuum's freezing keeps it to a few
+        # hundred million; past a billion, something is holding it back.
+        - alert: MaidanPostgresXidAgeHigh
+          expr: maidan_postgres_xid_age > 1000000000
+          for: 15m
+          labels:
+            severity: warning
+            slo: postgres_health
+          annotations:
+            summary: Postgres transaction ids aging toward wraparound
+            description: |
+              {{ $value | humanize }} transactions since the oldest unfrozen id;
+              Postgres refuses writes near 2G. Look for a long-running or
+              prepared transaction, or an autovacuum that cannot finish.
+
+        # A slot no consumer holds keeps every WAL segment since its restart
+        # point, until the disk fills.
+        - alert: MaidanPostgresReplicationSlotRetainingWal
+          expr: maidan_postgres_replication_slot_retained_bytes > 1073741824 and on() maidan_postgres_replication_slots_inactive > 0
+          for: 30m
+          labels:
+            severity: warning
+            slo: postgres_health
+          annotations:
+            summary: An inactive replication slot is retaining WAL
+            description: |
+              A replication slot holds {{ $value | humanize1024 }}B of WAL and
+              at least one slot has no consumer. Drop the slot, or restart
+              what reads it, before the disk fills.
+
+        # Vacuum falling behind: a fifth of the rows dead for an hour.
+        - alert: MaidanPostgresDeadTuplesHigh
+          expr: maidan_postgres_dead_tuples / clamp_min(maidan_postgres_live_tuples, 1) > 0.2 and maidan_postgres_dead_tuples > 100000
+          for: 1h
+          labels:
+            severity: warning
+            slo: postgres_health
+          annotations:
+            summary: Postgres vacuum falling behind
+            description: |
+              Dead rows are {{ $value | humanizePercentage }} of the live rows
+              across Maidan's tables. Check autovacuum's progress and any
+              transaction holding back the xmin horizon.
+
         - alert: MaidanOutboxPendingHigh
           expr: maidan_slo:outbox_pending > 100
           for: 5m

@@ -143,6 +143,97 @@ tests:
                 primary. Reads that carry no consistency token have moved to the
                 primary until it catches up.
 
+  # Past a billion transactions since the oldest unfrozen id for 15 minutes.
+  - interval: 5m
+    input_series:
+      - series: maidan_postgres_xid_age
+        values: "200000000 1200000000 1200000000 1200000000 1200000000 1200000000"
+    alert_rule_test:
+      - alertname: MaidanPostgresXidAgeHigh
+        eval_time: 10m
+        exp_alerts: []
+      - alertname: MaidanPostgresXidAgeHigh
+        eval_time: 25m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: postgres_health
+            exp_annotations:
+              summary: Postgres transaction ids aging toward wraparound
+              description: |
+                1.2G transactions since the oldest unfrozen id;
+                Postgres refuses writes near 2G. Look for a long-running or
+                prepared transaction, or an autovacuum that cannot finish.
+
+  # A 2 GiB slot with an inactive slot pages after 30 minutes; with every slot
+  # active it does not.
+  - interval: 10m
+    input_series:
+      - series: maidan_postgres_replication_slot_retained_bytes
+        values: "2147483648+0x6"
+      - series: maidan_postgres_replication_slots_inactive
+        values: "1+0x6"
+    alert_rule_test:
+      - alertname: MaidanPostgresReplicationSlotRetainingWal
+        eval_time: 20m
+        exp_alerts: []
+      - alertname: MaidanPostgresReplicationSlotRetainingWal
+        eval_time: 40m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: postgres_health
+            exp_annotations:
+              summary: An inactive replication slot is retaining WAL
+              description: |
+                A replication slot holds 2GiB of WAL and
+                at least one slot has no consumer. Drop the slot, or restart
+                what reads it, before the disk fills.
+  - interval: 10m
+    input_series:
+      - series: maidan_postgres_replication_slot_retained_bytes
+        values: "2147483648+0x6"
+      - series: maidan_postgres_replication_slots_inactive
+        values: "0+0x6"
+    alert_rule_test:
+      - alertname: MaidanPostgresReplicationSlotRetainingWal
+        eval_time: 40m
+        exp_alerts: []
+
+  # A quarter of the rows dead for an hour; a small table does not page.
+  - interval: 15m
+    input_series:
+      - series: maidan_postgres_dead_tuples
+        values: "250000+0x6"
+      - series: maidan_postgres_live_tuples
+        values: "1000000+0x6"
+    alert_rule_test:
+      - alertname: MaidanPostgresDeadTuplesHigh
+        eval_time: 45m
+        exp_alerts: []
+      - alertname: MaidanPostgresDeadTuplesHigh
+        eval_time: 75m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: postgres_health
+            exp_annotations:
+              summary: Postgres vacuum falling behind
+              description: |
+                Dead rows are 25% of the live rows
+                across Maidan's tables. Check autovacuum's progress and any
+                transaction holding back the xmin horizon.
+  - interval: 15m
+    input_series:
+      - series: maidan_postgres_dead_tuples
+        values: "5000+0x6"
+      - series: maidan_postgres_live_tuples
+        values: "1000+0x6"
+    alert_rule_test:
+      - alertname: MaidanPostgresDeadTuplesHigh
+        eval_time: 75m
+        exp_alerts: []
+
   # Recording rule: queue fill ratio is depth / clamp_min(capacity, 1).
   - interval: 1m
     input_series:

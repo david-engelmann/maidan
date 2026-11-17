@@ -23,6 +23,12 @@ macro_rules! store_delegations {
                 self.current_wal_lsn().await
             }
 
+            async fn database_health(
+                &self,
+            ) -> Result<Option<crate::store::DatabaseHealth>, StoreError> {
+                self.read_database_health().await
+            }
+
             async fn raise_ops_alert(&self, key: &str, value: &str) -> Result<bool, StoreError> {
                 ops_alerts::raise(self.pool(), key, value).await
             }

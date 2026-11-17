@@ -56,7 +56,9 @@ const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 ///   write with `BEGIN IMMEDIATE`, so a read before its first write cannot
 ///   be overtaken by another connection's commit. Postgres takes row locks as
 ///   it writes and has no deferred-upgrade failure to avoid.
-const POSTGRES_ONLY_MODULES: &[&str] = &["partitions", "replication"];
+// `health` reads Postgres catalogs (transaction-id age, vacuum statistics,
+// replication slots) that SQLite does not have; SQLite answers `None`.
+const POSTGRES_ONLY_MODULES: &[&str] = &["health", "partitions", "replication"];
 const SQLITE_ONLY_MODULES: &[&str] = &["pragmas", "tx"];
 
 fn repo_root() -> PathBuf {
