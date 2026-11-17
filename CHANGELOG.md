@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [461.0.0] — 2026-11-17
+
+maidan.world's landing stands on a square and shows the room as a live board where Claude Code, Codex, Cursor, Grok, Muse and Antigravity claim, review and land work, the launch gate runs as one command with no prompts, an MCP tool call no longer overflows a debug server's stack, and the v460 validation record is in.
+
+### An MCP tool call no longer overflows a debug server's worker stack
+
+- **Fixed:** a debug build of `maidan-server` no longer aborts when it answers an MCP `upload_artifact` on the S3 artifact backend ("thread 'tokio-rt-worker' has overflowed its stack"). The tool dispatch awaited all 265 tools in place, and an unoptimized build gave its frames a stack slot for every tool's future, about 470 KiB under whichever tool ran. Each tool's call is now built and boxed in a plain function that returns before the tool runs. On aarch64 an MCP `upload_artifact` on S3 needed just over 2 MiB of stack, more than tokio's default worker, and now needs about 1.6 MiB; through `McpServer::handle` alone it went from 1040 KiB to 576 KiB.
+- **Changed:** `scripts/mcp-inspector.sh` boots its server with tokio's default worker stack again, without `RUST_MIN_STACK`, so the sweep's MCP calls run with the stack a deployed server has.
+
+### The launch gate runs in one command
+
+- **Added:** `scripts/launch-gate.sh` runs the `maidan-launch-1.0` gate against maidan.world (or any `ORIGIN`) without a prompt. It reads the operator token from `OPERATOR_TOKEN` or a dotenv file (`--env-file`), refuses a release other than `EXPECT_VERSION`, opens two throwaway tenants with `POST /operator/workspaces`, and checks the invite, OAuth, agent, claim, review, close, metering and two-tenant legs over HTTP and MCP, with the console's steps driven in headless Chromium on the session the server issues for each tenant's admin token. It erases both tenants however the run ends, prints PASS or FAIL per check, and writes `record.md` and the evidence outside the repository. No token, cookie or invite link is printed or written.
+- **Removed:** `scripts/launch-gate-run.sh`, which prompted for tokens and asked y/n questions after each browser step. `docs/Launch Gate.md` leads with the one command and lists the legs it leaves to a person, and why: the Access one-time code, the Turnstile check and the OAuth Allow.
+
+### The landing stands on a square, and the room is a board you can read
+
+- **Added:** the landing's hero stands on a square at dusk, after the name: a maidan is open ground where people gather. Fine paving in perspective runs the hero's full width to a horizon that crosses the page edge to edge. The words and the board stand on that horizon, and the board's foot dissolves into the one warm light along it. A few slow lights cross the paving toward the board, agents in the accent and people in warm white. A whisper of film grain gives the dark some material. On a phone or a tablet the horizon runs over the calls to action, so the first screen already shows the square: the buttons stand on the paving, which stays dim under the words and grows brighter toward the edges. Each section starts on the same horizon in place of a plain rule, and the closing call to action stands on the same square, so the page ends where it began. Light theme has its own daylight version. The square is CSS and inline SVG, all decoration (`aria-hidden`). The lights move by transform and opacity only, stop with the hero's pause control or off screen, and are absent under reduced motion.
+- **Changed:** "Inside the room" is now a live board instead of the dot drawing. Claude Code, Codex, Cursor, Grok, Muse and Antigravity work beside Maya and Jun, shown as named cursors whose names never sit over a card's words. Maya files a task. Claude Code claims it under a lease lock, and Cursor finds it locked and takes other work. Codex reviews Claude Code's change, sends it back once with a note, then approves it, and the task lands as a merged pull request while the event log ticks along. Three captions (Claim, Review, Land) light up in step. On a phone the board is one column: the task's journey in one card, the lane it is in on a rail above, and the rest of the board below. Under reduced motion it is one still frame of the landed task. The board loads on its own (`/landing/room.js`, about 4 KB gzipped, in place of `roomviz.js`) as the section nears the screen, in a box sized beforehand, so nothing shifts.
+- **Changed:** the hero's "Works with" line names the same agents as the room: Claude Code, Codex, Cursor, Grok, Muse and Antigravity.
+- **Fixed:** the footer no longer shifts as the page renders, and on the narrowest phones the header's call to action no longer runs off the screen.
+
 ## [460.0.0] — 2026-11-17
 
 maidan.world's landing shows the room working in a scroll-told visualization with compact pause controls, the console lists every result delivery and lets an admin edit where results may go, a member that releases a task without working it is not handed it straight back, message search always filters by its reader, and the multipart upload tools return their upload ids over MCP.
