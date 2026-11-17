@@ -11,7 +11,7 @@ const fx = fixtures();
 // in two specs and on none of the eight places, so "accessible" was a hope.
 // Reduced motion keeps the scan off a fade, where text at part opacity reads
 // as a contrast failure no reader ever sees.
-const PLACES = ["board", "needs", "threads", "people", "activity", "tools", "catalog", "artifacts"] as const;
+const PLACES = ["board", "needs", "threads", "people", "activity", "tools", "tools/deliveries", "catalog", "artifacts"] as const;
 const THEMES = ["dark", "light"] as const;
 const WIDTHS = [
   { tag: "desktop", width: 1440, height: 900, mobile: false },

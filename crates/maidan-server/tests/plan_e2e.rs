@@ -119,6 +119,7 @@ async fn room(store: &dyn Store, name: &str) -> Room {
             workspace_id: ws.id,
             surface: EgressSurface::GithubBranch,
             selector: format!("{REPO}@main"),
+            created_by: None,
         })
         .await
         .unwrap();

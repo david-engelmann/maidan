@@ -161,6 +161,9 @@ mod compression_e2e;
 #[path = "../consistency_token_e2e.rs"]
 mod consistency_token_e2e;
 
+#[path = "../console_deliveries_e2e.rs"]
+mod console_deliveries_e2e;
+
 #[path = "../console_fetch_openapi_contract.rs"]
 mod console_fetch_openapi_contract;
 

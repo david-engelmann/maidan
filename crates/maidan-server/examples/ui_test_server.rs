@@ -27,9 +27,9 @@ use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ArtifactKind, BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewArtifact, NewChannel,
-    NewMaidanSession, NewMember, NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription,
-    NewWorkspace, ReviewDecision,
+    ArtifactKind, BlockedReason, EgressSurface, EgressTarget, MemberKind, NewApiToken,
+    NewApprovalGate, NewArtifact, NewChannel, NewEgressTarget, NewMaidanSession, NewMember,
+    NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -1104,6 +1104,65 @@ async fn main() {
         .await
         .expect("quarantine");
 
+    // Where "Deploy v9"'s result went, for the Deliveries tab: one target
+    // delivered, one the transport gave up on, and one skipped because the
+    // workspace never allowed it. Only the GitHub repository is allowed, so
+    // replaying the failure re-queues it and replaying the skip stays skipped
+    // until a spec allows that channel. The harness runs no egress worker, so
+    // a replayed row stays pending.
+    store
+        .allow_egress_target(NewEgressTarget {
+            workspace_id: ws.id,
+            surface: EgressSurface::Github,
+            selector: "acme/widgets".into(),
+            created_by: Some(member.id),
+        })
+        .await
+        .expect("allow acme/widgets");
+    let revision = chrono::Utc::now();
+    let deliver_to = |surface, selector: &str| {
+        EgressTarget::parse(surface, selector).expect("a deliverable target")
+    };
+    let delivered = store
+        .arm_result_delivery(
+            thread.id,
+            &deliver_to(EgressSurface::Github, "acme/widgets#3"),
+            revision,
+        )
+        .await
+        .expect("arm delivered")
+        .expect("armed delivered");
+    store
+        .mark_result_delivered(delivered.id, Some("998877"), revision)
+        .await
+        .expect("delivered");
+    let failed = store
+        .arm_result_delivery(
+            thread.id,
+            &deliver_to(EgressSurface::Github, "acme/widgets#7"),
+            revision,
+        )
+        .await
+        .expect("arm failed")
+        .expect("armed failed");
+    store
+        .mark_result_delivery_failed(failed.id, "GitHub answered 502 Bad Gateway")
+        .await
+        .expect("failed");
+    let skipped = store
+        .arm_result_delivery(
+            thread.id,
+            &deliver_to(EgressSurface::Slack, "C0UNBLESSED1"),
+            revision,
+        )
+        .await
+        .expect("arm skipped")
+        .expect("armed skipped");
+    store
+        .mark_result_delivery_skipped(skipped.id, "target not in the workspace egress allowlist")
+        .await
+        .expect("skipped");
+
     // The operator signed in through the identity provider: the session row
     // an OIDC callback writes, with no token behind it, so a spec can drive the
     // console as a person rather than as a pasted token. Accepting a gate
@@ -1297,6 +1356,10 @@ async fn main() {
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",
+        "result_delivered_selector": "acme/widgets#3",
+        "result_failed_selector": "acme/widgets#7",
+        "result_skipped_selector": "C0UNBLESSED1",
+        "allowed_repo": "acme/widgets",
     });
     std::fs::write(
         &fixtures_path,

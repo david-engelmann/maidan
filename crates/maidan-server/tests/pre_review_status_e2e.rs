@@ -208,6 +208,7 @@ impl Harness {
                 workspace_id: ws.id,
                 surface: EgressSurface::Github,
                 selector: REPO.into(),
+                created_by: None,
             })
             .await
             .unwrap();

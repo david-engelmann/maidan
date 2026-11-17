@@ -228,6 +228,28 @@ pub fn get_workspace_kind_census() {}
 )]
 pub fn list_workspace_results() {}
 
+/// List a workspace's result deliveries
+///
+/// Every `(thread, target)` delivery row in the workspace, most recently
+/// changed first: the per-thread `GET /threads/{id}/deliveries` gathered in
+/// one read. Rows on threads the caller cannot access are omitted.
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/result-deliveries",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ListResultDeliveriesQuery,
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [ResultDelivery], description = "Result deliveries, newest change first; optional exact status filter"),
+        (status = 400, description = "status is not pending, delivered, failed or skipped", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn list_workspace_result_deliveries() {}
+
 /// List a producer run's threads
 #[utoipa::path(
     get,

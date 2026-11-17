@@ -164,6 +164,7 @@ impl Harness {
                 workspace_id: t.workspace_id,
                 surface: EgressSurface::Slack,
                 selector: SLACK_CHANNEL.into(),
+                created_by: None,
             })
             .await
             .unwrap();

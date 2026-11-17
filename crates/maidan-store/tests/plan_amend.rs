@@ -64,6 +64,7 @@ async fn allow_repo(store: &dyn Store, ws: WorkspaceId, repo: &str) {
             workspace_id: ws,
             surface: EgressSurface::GithubBranch,
             selector: format!("{repo}@main"),
+            created_by: None,
         })
         .await
         .unwrap();

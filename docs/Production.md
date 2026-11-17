@@ -408,6 +408,9 @@ curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"slack","selector":"C01
 
 `GET "$URL"` lists the rows and `DELETE "$URL/<id>"` revokes one, which also
 stops a change already queued. `MAIDAN_GITHUB_WRITE_REPOS` stays the ceiling.
+A workspace admin signed in to the console does the same under Tools,
+Deliveries, which also lists every result delivery with Replay on the failed
+and skipped ones.
 
 ### Secret substitution on egress
 

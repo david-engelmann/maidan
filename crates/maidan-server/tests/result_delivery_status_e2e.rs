@@ -295,6 +295,7 @@ async fn list_replay_and_audit_over_http() {
             workspace_id: h.workspace_id,
             surface: EgressSurface::Github,
             selector: "acme/widgets".into(),
+            created_by: None,
         })
         .await
         .unwrap();

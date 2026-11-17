@@ -9,7 +9,7 @@ export type AddChannelMember = { member_id: string; role?: null | ChannelMemberR
 export type AddReviewer = { member_id: string; };
 export type AddSkill = { skill: string; };
 export type AddThreadDependency = { depends_on_thread_id: string; };
-export type AllowedEgressTarget = { created_at: string; dead?: string | null; id: EgressTargetId; selector: string; surface: string; workspace_id: WorkspaceId; };
+export type AllowedEgressTarget = { created_at: string; created_by?: null | MemberId; dead?: string | null; id: EgressTargetId; selector: string; surface: string; workspace_id: WorkspaceId; };
 export type AllowEgressTarget = { selector: string; surface: EgressSurface; };
 export type AllowSecretEgressHost = { host: string; };
 export type AmendPlan = { add?: PlanChild[]; cancel?: string[]; lease_id: ClaimLeaseId; reason?: string | null; rewire?: PlanRewire[]; };
@@ -529,6 +529,7 @@ export type ApiRoute =
   | "DELETE /threads/{id}/unclaimable"
   | "DELETE /threads/{id}/wait"
   | "DELETE /tokens/{id}"
+  | "DELETE /ui/api/workspaces/{wid}/egress-targets/{tid}"
   | "DELETE /ui/api/workspaces/{wid}/invites/{iid}"
   | "DELETE /workspaces/{id}"
   | "DELETE /workspaces/{id}/legal-holds/{hold_id}"
@@ -677,6 +678,7 @@ export type ApiRoute =
   | "GET /ui/api/tools"
   | "GET /ui/api/workspaces/{wid}/audit"
   | "GET /ui/api/workspaces/{wid}/channels"
+  | "GET /ui/api/workspaces/{wid}/egress-targets"
   | "GET /ui/api/workspaces/{wid}/events"
   | "GET /ui/api/workspaces/{wid}/invites"
   | "GET /ui/api/workspaces/{wid}/peers"
@@ -754,6 +756,7 @@ export type ApiRoute =
   | "GET /workspaces/{wid}/queue-depth"
   | "GET /workspaces/{wid}/recipes"
   | "GET /workspaces/{wid}/recipes/{id}"
+  | "GET /workspaces/{wid}/result-deliveries"
   | "GET /workspaces/{wid}/search"
   | "GET /workspaces/{wid}/secret-egress-hosts"
   | "GET /workspaces/{wid}/secrets"
@@ -844,6 +847,7 @@ export type ApiRoute =
   | "POST /ui/api/threads/{tid}/messages"
   | "POST /ui/api/workspaces/{wid}/agents"
   | "POST /ui/api/workspaces/{wid}/channels"
+  | "POST /ui/api/workspaces/{wid}/egress-targets"
   | "POST /ui/api/workspaces/{wid}/invites"
   | "POST /waitlist"
   | "POST /workspaces/export/verify"

@@ -113,6 +113,12 @@ export interface Fixtures {
   /** A dead-lettered webhook delivery the Operator tab can replay. */
   delivery_id: number;
   delivery_url: string;
+  /** "Deploy v9"'s result deliveries: one delivered, one failed (allowed, so a replay re-queues it), one skipped (never allowed). */
+  result_delivered_selector: string;
+  result_failed_selector: string;
+  result_skipped_selector: string;
+  /** The one GitHub repository on the seeded allowlist, allowed by the Operator. */
+  allowed_repo: string;
 }
 
 export function fixtures(): Fixtures {
