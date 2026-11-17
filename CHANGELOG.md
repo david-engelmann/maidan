@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [459.0.0] — 2026-11-17
+
+maidan.world's landing paints the right sign-up words first and loads a third less script, the board recording is an AVIF a fifth the size, the board toolbar follows the board's width, the policy pages describe open sign-up and credits, and a pool topology guide is in Production.
+
+### The landing's first paint is right and lighter
+
+- **Fixed:** the server writes whether anyone may sign up into the landing page (`<meta name="maidan-signup">`), so the first paint already says "Create a workspace" on maidan.world. Before, it said "Join the waitlist" until a discovery request answered. The footer no longer says "Your email is used only for your invite": that is the invite sheet's promise, and the sheet carries it.
+- **Changed:** the invite sheet, and the `motion` library that only it uses, load only on an instance that signs people up by invite (`join.js` and `motion.js`). On maidan.world, with open sign-up, they never load. The landing's first JavaScript is 98 KB gzipped, where it was 139 KB.
+
+### A lighter landing and a steadier board toolbar
+
+- **Changed:** the landing's recording of the board is an animated AVIF, 158 KB at 1280 px where the GIF was 830 KB at 960 px. A browser that cannot read AVIF still gets the GIF, and the paused or reduced-motion still is an AVIF too (18 KB, where the PNG is 132 KB). `scripts/make-motion.sh` writes both from the same take.
+- **Fixed:** the board's toolbar lays out by the board's own width, so a task sheet open beside the board counts. A middling board puts the filters on a row of their own instead of dropping one filter alone onto a second line. A narrow board keeps the phone's single row that scrolls sideways.
+- **Fixed:** a tab strip that scrolls sideways (Tools, Activity's filters) fades the edge with more behind it, instead of cutting a tab off mid-word.
+- **Fixed:** on a phone the sign-in card's padding left the Cloudflare check too little room for its normal size. It now shows at full width instead of as a square.
+
+### A pool topology guide
+
+- **Added:** `docs/Production.md` says which connections each server process opens: the writer pool, the reader pool when a replica is set, three `LISTEN` connections outside the pools, and the boot migration's. It shows how to size `MAIDAN_DB_MAX_CONNECTIONS` against the database's limit across replicas, and why the server connects directly instead of through a transaction-mode pooler.
+
+### The hosted site's policy pages describe the service as it runs
+
+- **Fixed:** maidan.world's terms said sign-up needed an invitation and the service was free "during the invite phase". Sign-up is open, and usage past the free allowance draws on prepaid credits. The terms now describe the monthly allowance and USDC credits: prepaid, never charged past what you bought, no automatic billing, and a pause at zero until the month turns. They keep 30 days' notice before the allowance falls or a price rises.
+- **Fixed:** the privacy policy no longer names the waitlist form as where your email comes from. It now lists the data a credit top-up records: the amount, and the Base transaction with its public sending address. That money record outlives a workspace erase.
+- **Fixed:** the support page's two-business-day answer no longer says "during the invite phase".
+
 ## [458.0.0] — 2026-11-17
 
 Stale reviews no longer hold the front of the queue (a settled pull request or a cancelled change cancels its review children, and a seat can decline a thread it cannot work), and the signed-out console, landing and try pages read cleanly.
