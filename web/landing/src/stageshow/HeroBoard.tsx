@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { Bar, BrandMark, Button, Collapse, Roll, Segmented, Stage, Window, type Act, type Rect } from "./kit";
 import { Agent, Dot, Icon, usePageTheme, usePrefersReducedMotion, type DotState } from "./shared";
+import { MediaToggle } from "../MediaToggle";
 import "./look.css";
 import "./card.css";
 import "./hero.css";
@@ -383,9 +384,7 @@ export function HeroBoard() {
         </Stage>
       </div>
       {reduced ? null : (
-        <button type="button" className="hero-art__toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
-          {paused ? "Play the animation" : "Pause the animation"}
-        </button>
+        <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="animation" className="hero-art__toggle" />
       )}
     </div>
   );

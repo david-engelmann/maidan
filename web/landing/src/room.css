@@ -1,0 +1,99 @@
+/* Inside the room: the drawn run and its captions. The canvas reads its
+   colors from the --rv-* tokens here, so the theme switch repaints it.
+   Dark is the base, light overrides it, as everywhere on the page. */
+.room {
+  --rv-agent: #ff6a2b;
+  --rv-person: #efe5d6;
+  --rv-task: #ffd9b0;
+  --rv-claim: #ff7a3d;
+  --rv-review: #9aa5ff;
+  --rv-back: #ff6f64;
+  --rv-landed: #4fd391;
+  --rv-ink: #ecebe7;
+  --rv-muted: #9fa3ab;
+  --rv-faint: #6c717b;
+  --rv-line: #ecf0f8;
+  --rv-paper: #0c0d0f;
+  --rv-glow: 1;
+  padding-top: 2.5rem;
+  padding-bottom: 2rem;
+}
+:root[data-theme="light"] .room {
+  --rv-agent: #e8501c;
+  --rv-person: #3a362f;
+  --rv-task: #a8784a;
+  --rv-claim: #e8501c;
+  --rv-review: #4a55c9;
+  --rv-back: #b4231a;
+  --rv-landed: #2f7d4f;
+  --rv-ink: #151411;
+  --rv-muted: #5c5850;
+  --rv-faint: #8a867d;
+  --rv-line: #151411;
+  --rv-paper: #f2eee6;
+  --rv-glow: 0;
+}
+
+.room-head { max-width: 36rem; }
+.room-head .lede { font-size: 1rem; }
+
+/* The key: what each color and mark stands for */
+.room-key { list-style: none; margin: 1.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.04em; color: var(--muted); }
+.room-key li { display: inline-flex; align-items: center; gap: 0.5rem; }
+.room-key i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--k); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k) 20%, transparent); }
+.room-key .k-agent, .room-key .k-person { width: 10px; height: 10px; box-shadow: none; }
+.k-agent { --k: var(--rv-agent); }
+.k-person { --k: var(--rv-person); }
+:root[data-theme="light"] .room-key .k-person { background: #fffdf8; box-shadow: inset 0 0 0 1.5px var(--rv-person); }
+.k-task { --k: var(--rv-task); }
+.k-claim { --k: var(--rv-claim); }
+.k-review { --k: var(--rv-review); }
+.k-landed { --k: var(--rv-landed); }
+
+/* On a phone the picture runs edge to edge and sticks under the header,
+   opaque, so the captions pass beneath it and never over it */
+.room-stage {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 3.5rem);
+  z-index: 2;
+  height: min(calc(100vw + 2.5rem), 60svh);
+  margin: 1.6rem calc(-1 * var(--pad)) 0;
+  background: var(--paper);
+}
+.room-stage::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 1.75rem; background: linear-gradient(var(--paper), transparent); pointer-events: none; }
+.room-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* At the end of the event line, like a player's control at the end of its
+   timeline; roomviz.ts stops the line short of it */
+.room-toggle { right: 16px; bottom: 10px; }
+
+.room-steps { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0 0 16svh; }
+.room-step { min-height: 40svh; display: flex; align-items: center; }
+.room-cap { max-width: 30rem; padding: 1.1rem 1.2rem 1.2rem; border-radius: 16px; background: var(--card); box-shadow: 0 0 0 1px var(--line); transition: box-shadow 0.3s ease; }
+.room-cap__n { margin: 0 0 0.5rem; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); transition: color 0.3s ease; }
+.room-cap h3 { font-size: 1.15rem; color: var(--muted); transition: color 0.3s ease; }
+.room-cap p:last-child { margin: 0.45rem 0 0; color: var(--muted); text-wrap: pretty; }
+.room-step[data-active] .room-cap__n { color: var(--signal-ink); }
+.room-step[data-active] .room-cap h3 { color: var(--ink); }
+.room-step[data-active] .room-cap { box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 50%, transparent); }
+
+/* Beside it on a wide screen: the captions scroll down the left while the
+   picture holds still on the right */
+@media (min-width: 1080px) {
+  .room { padding-top: 0.5rem; }
+  .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
+  .room-scrolly { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto 1fr; column-gap: 4vw; }
+  .room-head { grid-column: 1; grid-row: 1; padding-top: 6svh; }
+  .room-stage { grid-column: 2; grid-row: 1 / 3; align-self: start; top: calc(env(safe-area-inset-top) + 4.5rem); height: min(calc(100svh - 6rem), 900px); margin: 0; background: none; }
+  .room-stage::after { display: none; }
+  .room-steps { grid-column: 1; grid-row: 2; padding: 18svh 0 34svh; }
+  .room-step { min-height: 60svh; }
+  .room-cap { padding: 0.2rem 0 0.3rem 1.5rem; border-radius: 0; background: none; box-shadow: inset 1px 0 0 var(--line); }
+  .room-cap h3 { font-size: 1.5rem; letter-spacing: -0.03em; }
+  .room-cap p:last-child { font-size: 1.02rem; }
+  .room-step[data-active] .room-cap { box-shadow: inset 2px 0 0 var(--signal); }
+  .room-step[data-active] .room-cap p:last-child { color: var(--ink); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-cap, .room-cap__n, .room-cap h3 { transition: none; }
+}

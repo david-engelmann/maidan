@@ -1423,6 +1423,11 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/motion.js"),
             ),
+            // The room's drawing, loaded when its section nears the screen.
+            "roomviz.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/roomviz.js"),
+            ),
             "style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../static/landing/dist/style.css"),
