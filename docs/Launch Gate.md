@@ -99,7 +99,7 @@ release's `maidan` and `maidan-server` binaries:
 export DATABASE_URL="sqlite://$HOME/gate-rehearsal.db?mode=rwc" MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 umask 077
 maidan init --workspace gate-root --admin-handle root 2>/dev/null |
-  sed -nE 's/^[[:space:]]+(maid_[A-Za-z0-9_-]+)$/PROD_MAIDAN_ADMIN_TOKEN=\1/p' >"$HOME/gate-rehearsal.env"
+  sed -nE 's/^ +(maid_[A-Za-z0-9_-]+)$/PROD_MAIDAN_ADMIN_TOKEN=\1/p' >"$HOME/gate-rehearsal.env"
 MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BIND=127.0.0.1:18731 \
   MAIDAN_PUBLIC_ORIGIN=http://127.0.0.1:18731 MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1 \
   MAIDAN_COOKIE_SECURE=0 maidan-server &
