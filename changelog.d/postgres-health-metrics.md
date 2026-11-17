@@ -8,3 +8,4 @@
 
   A database that does not grant `pg_replication_slots` reports the other four, and SQLite reports none.
 - **Added:** three alert rules on them, with promtool tests: `MaidanPostgresXidAgeHigh` (past a billion for 15 minutes), `MaidanPostgresDeadTuplesHigh` (a fifth of the rows dead for an hour) and `MaidanPostgresReplicationSlotRetainingWal` (more than 1 GiB held while a slot has no consumer, for 30 minutes).
+- **Added:** a Postgres database whose encoding is not UTF8 is refused before it migrates, naming its encoding. Before, an `SQL_ASCII` or `LATIN1` database booted and failed later, at the first character it could not store.
