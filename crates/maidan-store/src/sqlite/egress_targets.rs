@@ -10,7 +10,7 @@ use maidan_types::{
     NewEgressTarget, WorkspaceId,
 };
 
-const COLS: &str = "id, workspace_id, surface, selector, created_at";
+const COLS: &str = "id, workspace_id, surface, selector, created_at, created_by";
 
 #[cfg(feature = "test-support")]
 pub async fn allow(
@@ -30,8 +30,8 @@ pub(crate) async fn allow_on(
     let id = EgressTargetId::new();
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
-        "INSERT INTO maidan_egress_targets (id, workspace_id, surface, selector, created_at)
-         VALUES (?, ?, ?, ?, ?)
+        "INSERT INTO maidan_egress_targets (id, workspace_id, surface, selector, created_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, surface, selector) DO UPDATE
            SET selector = excluded.selector
          RETURNING {COLS}"
@@ -41,6 +41,7 @@ pub(crate) async fn allow_on(
     .bind(new.surface.as_str())
     .bind(&new.selector)
     .bind(&now)
+    .bind(new.created_by.map(|m| m.0))
     .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_target(&row))
@@ -112,5 +113,8 @@ fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> AllowedEgressTarget {
         surface,
         selector,
         created_at: row.get("created_at"),
+        created_by: row
+            .get::<Option<uuid::Uuid>, _>("created_by")
+            .map(maidan_types::MemberId),
     }
 }

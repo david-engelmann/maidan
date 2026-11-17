@@ -619,6 +619,7 @@ async fn run_replay_suite(store: &dyn Store) {
             workspace_id: ws.id,
             surface: EgressSurface::Github,
             selector: "example/repo".into(),
+            created_by: None,
         })
         .await
         .expect("bless");
@@ -661,6 +662,81 @@ async fn run_replay_suite(store: &dyn Store) {
     }
 }
 
+/// The workspace-wide read behind the console's Deliveries tab: its own
+/// workspace's rows only, the newest change first, narrowed by status.
+async fn run_workspace_list_suite(store: &dyn Store) {
+    let ours = thread(store, "deliveries-ours").await;
+    let theirs = thread(store, "deliveries-theirs").await;
+    let channel = store.get_thread(ours).await.expect("thread").channel_id;
+    let workspace = store
+        .get_channel(channel)
+        .await
+        .expect("channel")
+        .workspace_id;
+    let rev = revision();
+
+    let failed = store
+        .arm_result_delivery(ours, &github(), rev)
+        .await
+        .expect("arm github")
+        .expect("armed github");
+    store
+        .mark_result_delivery_failed(failed.id, "GitHub answered 502")
+        .await
+        .expect("fail");
+    // Apart by more than the clock's grain, so "newest change first" is a
+    // fact of the data rather than of insertion order.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let skipped = store
+        .arm_result_delivery(ours, &slack(), rev)
+        .await
+        .expect("arm slack")
+        .expect("armed slack");
+    store
+        .mark_result_delivery_skipped(skipped.id, "target not in the workspace egress allowlist")
+        .await
+        .expect("skip");
+    let elsewhere = store
+        .arm_result_delivery(theirs, &github(), rev)
+        .await
+        .expect("arm elsewhere")
+        .expect("armed elsewhere");
+    store
+        .mark_result_delivery_failed(elsewhere.id, "GitHub answered 502")
+        .await
+        .expect("fail elsewhere");
+
+    let ids = |rows: Vec<ResultDelivery>| rows.into_iter().map(|d| d.id).collect::<Vec<_>>();
+    let all = store
+        .list_workspace_result_deliveries(workspace, None, 50)
+        .await
+        .expect("list");
+    assert_eq!(
+        ids(all),
+        vec![skipped.id, failed.id],
+        "this workspace's rows only, the newest change first"
+    );
+    let failures = store
+        .list_workspace_result_deliveries(workspace, Some(status::FAILED), 50)
+        .await
+        .expect("list failed");
+    assert_eq!(ids(failures.clone()), vec![failed.id]);
+    assert_eq!(
+        failures[0].last_error.as_deref(),
+        Some("GitHub answered 502")
+    );
+    let newest = store
+        .list_workspace_result_deliveries(workspace, None, 1)
+        .await
+        .expect("list one");
+    assert_eq!(ids(newest), vec![skipped.id], "the limit keeps the newest");
+    let delivered = store
+        .list_workspace_result_deliveries(workspace, Some(status::DELIVERED), 50)
+        .await
+        .expect("list delivered");
+    assert!(delivered.is_empty());
+}
+
 #[tokio::test]
 async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     let store = sqlite().await;
@@ -671,6 +747,7 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_sqlite() {
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;
     run_replay_suite(&store).await;
+    run_workspace_list_suite(&store).await;
 }
 
 #[tokio::test]
@@ -711,4 +788,5 @@ async fn result_deliveries_arm_dedup_and_record_dispositions_postgres() {
     run_unaddressable_suite(&store).await;
     run_unroutable_suite(&store).await;
     run_replay_suite(&store).await;
+    run_workspace_list_suite(&store).await;
 }

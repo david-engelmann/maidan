@@ -1653,6 +1653,16 @@ macro_rules! store_delegations {
                 result_deliveries::list_for_thread(self.pool(), thread_id).await
             }
 
+            async fn list_workspace_result_deliveries(
+                &self,
+                workspace_id: WorkspaceId,
+                status: Option<&str>,
+                limit: i64,
+            ) -> Result<Vec<ResultDelivery>, StoreError> {
+                result_deliveries::list_for_workspace(self.pool(), workspace_id, status, limit)
+                    .await
+            }
+
             async fn delivered_change_head(
                 &self,
                 workspace_id: WorkspaceId,

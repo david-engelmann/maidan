@@ -1026,6 +1026,7 @@ impl Harness {
                 workspace_id: ws,
                 surface,
                 selector: selector.into(),
+                created_by: None,
             })
             .await
             .unwrap();
@@ -1739,6 +1740,7 @@ async fn a_prod_base_is_refused_even_when_an_operator_tries_to_bless_it() {
                 workspace_id: h.a.workspace_id,
                 surface: EgressSurface::GithubBranch,
                 selector: format!("{REPO}@prod"),
+                created_by: None,
             })
             .await
             .is_err(),

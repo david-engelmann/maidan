@@ -3,7 +3,9 @@
 .tools { display: grid; gap: 1rem; }
 .seg-scroll { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .seg-scroll a { flex: none; }
-.tool-grid { display: grid; gap: 1rem; }
+/* One column that never grows past its card: a track sized to its content let
+   a wide row (the five-way status filter) push the page past a phone. */
+.tool-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 @media (min-width: 900px) { .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 .tool-panel h2 { font-size: var(--text-lg); }
 .tool-panel h3 { margin: 1rem 0 0.4rem; font-size: var(--text-md); }
@@ -59,3 +61,14 @@
 .edit-history { margin: var(--space-1) 0; padding: var(--space-2) var(--space-2-5); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper-2); }
 .edit-history ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .edit-history p { margin: 0; overflow-wrap: anywhere; }
+
+/* ---- Deliveries: where results went, and where they may go ---- */
+/* The results list carries the longest rows, so on a wide screen it takes
+   the whole grid instead of half of it. */
+@media (min-width: 900px) { .tool-grid > .wide { grid-column: 1 / -1; } }
+/* A row's actions drop below its text when the card is too narrow for both,
+   instead of squeezing a target or a reason into a sliver. */
+.delivery-row, .egress-row { flex-wrap: wrap; }
+.delivery-row > .grow, .egress-row > .grow { flex-basis: 14rem; }
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--space-1-5); margin-left: auto; }
+.tool-panel > .seg { margin: var(--space-1) 0 var(--space-2); }

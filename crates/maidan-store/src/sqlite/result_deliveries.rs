@@ -11,6 +11,7 @@ use super::events;
 use crate::StoreError;
 use maidan_types::{
     status, EgressTarget, Event, ResultDelivery, ResultDeliveryId, StoredEvent, ThreadId,
+    WorkspaceId,
 };
 
 const COLS: &str = "id, thread_id, surface, selector, status, external_ref, \
@@ -230,6 +231,37 @@ pub async fn list_for_thread(
          ORDER BY surface ASC, selector ASC"
     ))
     .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_delivery).collect())
+}
+
+/// The workspace's rows across its live threads, newest change first; see
+/// `Store::list_workspace_result_deliveries`. A tombstoned thread's rows stay
+/// out, as its result does from the workspace's result list.
+pub async fn list_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    status: Option<&str>,
+    limit: i64,
+) -> Result<Vec<ResultDelivery>, StoreError> {
+    let cols = COLS
+        .split(',')
+        .map(|col| format!("rd.{}", col.trim()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let rows = sqlx::query(&format!(
+        "SELECT {cols} FROM maidan_result_deliveries rd
+         JOIN maidan_threads t ON t.id = rd.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ?1 AND t.tombstoned_at IS NULL
+           AND (?2 IS NULL OR rd.status = ?2)
+         ORDER BY rd.updated_at DESC, rd.id DESC
+         LIMIT ?3"
+    ))
+    .bind(workspace_id.0)
+    .bind(status)
+    .bind(limit.clamp(1, 200))
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_delivery).collect())

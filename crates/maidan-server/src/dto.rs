@@ -1389,6 +1389,17 @@ pub struct ListThreadResultsQuery {
     pub limit: Option<i64>,
 }
 
+/// Query params for `GET /workspaces/:wid/result-deliveries`.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListResultDeliveriesQuery {
+    /// Only rows in this status: `pending`, `delivered`, `failed` or
+    /// `skipped`. Absent = every status.
+    pub status: Option<String>,
+    /// Max rows to return (default 50, clamp 1..=200).
+    pub limit: Option<i64>,
+}
+
 /// Query params for workspace import.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]

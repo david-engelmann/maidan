@@ -309,7 +309,13 @@ blessing does not allow commits), and the Slack channel the replies go to. A ful
 
 `GET` the same path lists what is blessed; `DELETE …/egress-targets/:tid` revokes.
 Blessing is idempotent — a re-bless returns the existing entry with its original
-`created_at`, so the list stays "what may we post to" with nothing to reconcile.
+`created_at` and `created_by` (who blessed it), so the list stays "what may we
+post to" with nothing to reconcile.
+
+A workspace admin can do the same in the console, under Tools, Deliveries: a
+person signed in qualifies when they hold `token:admin` on a live token of their
+own (or may mint the first one), and an agent's own sign-in never does. Anyone
+else reading the workspace sees where results went, but not the allowlist.
 
 **The selector is two fields, not one string.** There is no `github:owner/repo`
 target syntax at this boundary: `surface` is one of `github`, `slack`,
@@ -724,6 +730,7 @@ external surface.
 | Call | Surface | Capability |
 |---|---|---|
 | `GET /threads/:id/deliveries` | REST | `workspace:read` + thread access |
+| `GET /workspaces/:wid/result-deliveries` | REST | `workspace:read`; rows on threads the caller cannot access are left out |
 | `POST /threads/:id/deliveries/:did/replay` | REST | `workspace:write` + thread access |
 | `list_result_deliveries {thread_id}` | MCP | `workspace:read` + thread access |
 | `replay_result_delivery {thread_id, delivery_id}` | MCP | `workspace:write` + thread access |
@@ -763,6 +770,12 @@ One row per `(thread, target)`:
   newer than `armed_revision` — that is the dedup, and it is why a replayed event
   is a no-op while a genuine re-review is an update.
 - **An empty list is `200 []`** — the result was routed nowhere, which is valid.
+- **`GET /workspaces/:wid/result-deliveries`** gathers every thread's rows into
+  one list, the most recently changed first, so an operator sees what failed
+  without opening each thread. `?status=pending|delivered|failed|skipped`
+  narrows it and `limit` (default 50, at most 200) bounds it. It is the
+  console's Deliveries tab. It shows the disposition only: the allowlist stays
+  `token:admin`.
 
 Replay re-enqueues one row and **re-checks the allowlist**: an unblessed target
 stays `skipped` (status is not policy). It does not bump `armed_revision`.

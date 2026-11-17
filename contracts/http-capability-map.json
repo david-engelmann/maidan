@@ -1291,6 +1291,24 @@
   },
   {
     "method": "POST",
+    "path": "/ui/api/workspaces/{wid}/egress-targets",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/egress-targets",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/egress-targets/{tid}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:write",
     "surface": "http"
@@ -2041,6 +2059,12 @@
     "method": "DELETE",
     "path": "/workspaces/{wid}/egress-targets/{tid}",
     "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/result-deliveries",
+    "capability": "workspace:read",
     "surface": "http"
   },
   {
