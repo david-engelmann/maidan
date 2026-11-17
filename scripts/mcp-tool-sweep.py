@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Call every tool a listing exposes, against a running Maidan.
 
-    scripts/mcp-tool-sweep.py BASE_URL ADMIN_TOKEN
+    scripts/mcp-tool-sweep.py BASE_URL ADMIN_TOKEN [--without s3]
 
 `scripts/mcp-inspector.sh` runs this after its own checks, against the
 throwaway server it booted. A validated version (Open Work, Next 14) needs
@@ -12,8 +12,7 @@ per group, so this sweep adds:
 1. a valid call to every tool on `/mcp/worker`, `/mcp/reviewer` and
    `/mcp/coordinator`, made on that endpoint, writes included;
 2. a valid call to every other write in the full catalog, on
-   `/mcp/streamable`. A write that needs a backend this server does not run
-   (S3, the credits chain watcher) must answer the error that names it;
+   `/mcp/streamable`;
 3. a valid call to every read-only tool in the full catalog, on
    `/mcp/streamable`;
 4. a bad call to every tool in the full catalog. A tool with required
@@ -21,12 +20,26 @@ per group, so this sweep adds:
    other tool is called with an argument it does not declare, and its error
    must name that argument. Either call fails before the tool does anything.
 
+Six tools need a backend beyond the store (`BACKENDS`): the four multipart
+artifact tools need S3, `top_up_credits` a credits receiving address, and
+`advise_land_gate` a land-gate advisor. The inspector runs all three (MinIO,
+a test address on Base Sepolia, a stub advisor), and each tool must succeed
+with the answer a real backend gives: the multipart flow stores an artifact
+whose bytes read back and aborts a second upload, the top-up opens an intent,
+the advisor recommends a land. `--without s3` says the server was booted
+without S3 (the inspector passes it when no Docker daemon answers): its tools
+must then answer the error naming S3, and the summary says they were NOT
+exercised. A success there fails, since the flag was wrong.
+
 The calls are plain JSON-RPC over HTTP, not the Inspector, because there are
 several hundred of them and the Inspector starts a process per call. The
 Inspector has already checked the same endpoints' schemas. Exits non-zero
 and names every tool that failed.
 """
 
+import argparse
+import base64
+import hashlib
 import json
 import re
 import sys
@@ -36,8 +49,48 @@ import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 
-BASE, ADMIN = sys.argv[1].rstrip("/"), sys.argv[2]
+# The backends a tool needs beyond the store, the tools that need each, and
+# the error each tool answers when its backend is missing.
+BACKENDS = {
+    "s3": (
+        "S3 artifact backend",
+        [
+            "begin_artifact_multipart",
+            "upload_artifact_multipart_part",
+            "complete_artifact_multipart",
+            "abort_artifact_multipart",
+        ],
+    ),
+    "credits": ("MAIDAN_CREDITS_ADDRESS is not set", ["top_up_credits"]),
+    "land-gate-advisor": ("resource not found", ["advise_land_gate"]),
+}
+NEEDS_BACKEND = {tool: backend for backend, (_, tools) in BACKENDS.items() for tool in tools}
+# What a real backend's answer holds, so a call that succeeds with nothing in
+# it does not pass for one. The multipart flow checks its own answers.
+REAL_ANSWER = {
+    "top_up_credits": lambda v: v.get("status") == "open"
+    and str(v.get("eip681", "")).startswith("ethereum:")
+    and 5_000_000 < v.get("amount_micros", 0) < 5_010_000,
+    "advise_land_gate": lambda v: v.get("provider") == "typesafe"
+    and v.get("recommended_land") in ("green", "amber", "red"),
+}
+
+parser = argparse.ArgumentParser(description="Call every MCP tool on a running Maidan.")
+parser.add_argument("base_url")
+parser.add_argument("admin_token")
+parser.add_argument(
+    "--without",
+    action="append",
+    default=[],
+    choices=["s3"],
+    help="a backend the server was booted without; its tools must answer the error naming it",
+)
+OPTS = parser.parse_args()
+BASE, ADMIN, WITHOUT = OPTS.base_url.rstrip("/"), OPTS.admin_token, set(OPTS.without)
 FAILED = []
+# Each backend tool's outcome: "real" when it succeeded with its backend
+# configured, "not exercised" when its backend was absent and it said so.
+BACKEND_OUTCOME = {}
 _next_id = 0
 
 
@@ -76,6 +129,10 @@ def call(tool, args=None, endpoint="/mcp/streamable", bearer=ADMIN):
     if "error" in resp:
         return False, resp["error"].get("message", ""), None
     result = resp["result"]
+    # A client shows the model only `content`. The multipart tools answered a
+    # bare object, which read here as a success with nothing in it.
+    if not isinstance(result.get("content"), list):
+        return False, f"the result carries no content: {json.dumps(result)[:300]}", None
     text = "".join(c.get("text", "") for c in result.get("content", []))
     try:
         value = json.loads(text)
@@ -98,6 +155,28 @@ def check(label, ok, detail):
     else:
         FAILED.append(label)
         print(f"FAIL: {label}: {detail[:400]}", flush=True)
+
+
+def valid(tool, ok, text, value, label=None):
+    """Judge a valid call. A tool whose backend this run is without must
+    answer the error naming it; any other must succeed, and a backend tool
+    with what a real backend answers."""
+    label = label or f"{tool}: a valid call"
+    backend = NEEDS_BACKEND.get(tool)
+    if backend in WITHOUT:
+        error = BACKENDS[backend][0]
+        held = not ok and error in text
+        check(f"{tool}: no {backend} here, so a valid call answers {error!r}", held, text or "it succeeded")
+        if held:
+            BACKEND_OUTCOME.setdefault(tool, "not exercised")
+        return
+    real = REAL_ANSWER.get(tool)
+    if ok and real and not (isinstance(value, dict) and real(value)):
+        check(f"{label}, {backend} configured, answered as the real one answers", False, text)
+        return
+    check(f"{label}, {backend} configured" if backend else label, ok, text)
+    if backend and ok:
+        BACKEND_OUTCOME.setdefault(tool, "real")
 
 
 def tools_on(endpoint):
@@ -166,7 +245,7 @@ IDS = {
 }
 # Read-only tools whose required arguments are not one of the ids above.
 READ_ARGS = {
-    "advise_land_gate": {"state": {}},
+    "advise_land_gate": {"state": {"title": f"fixture {RUN}", "tests": "pass"}},
     "find_thread": {"repo": "o/r", "pr_number": 1},
     "get_group_dm": {"group_dm_conversation_id": group_dm},
     "list_references": {"src_kind": "thread", "src_id": thread},
@@ -182,9 +261,6 @@ READ_ARGS = {
 }
 
 
-# Tools whose answer needs a backend this throwaway server does not run, and
-# the error that says so.
-UNCONFIGURED = {"advise_land_gate": "resource not found"}
 # verify_workspace_export also takes the envelope's fields at the top level,
 # so an undeclared argument reads as part of the envelope, not as unknown.
 BAD_ARGS = {"verify_workspace_export": ({"envelope": "not-an-envelope"}, ["envelope"])}
@@ -308,11 +384,7 @@ def catalog_flow():
 
     def w(tool, args, bearer=ADMIN):
         ok, text, value = call(tool, args, bearer=bearer)
-        expected = NEEDS_BACKEND.get(tool)
-        if expected and not ok and expected in text:
-            check(f"{tool}: a valid call answers {expected!r}: no backend here", True, text)
-        else:
-            check(f"{tool}: a valid call", ok, text)
+        valid(tool, ok, text, value)
         done[tool] = True
         return value if isinstance(value, (dict, list)) else {}
 
@@ -427,11 +499,34 @@ def catalog_flow():
     w("link_slack_channel", {"thread_id": t, "slack_channel_id": "C0SWEEP"})
     w("unlink_slack_channel", {"slack_channel_id": "C0SWEEP"})
     w("upload_artifact", {"kind": "attachment", "content_base64": "Y2F0YWxvZw=="})
-    w("begin_artifact_multipart", {})
-    upload = {"upload_id": "sweep", "object_key": f"multipart/{ws}/{uuid.uuid4()}"}
-    w("upload_artifact_multipart_part", {**upload, "part_number": 1, "content_base64": "eA=="})
-    w("complete_artifact_multipart", {**upload, "parts": [], "kind": "attachment"})
-    w("abort_artifact_multipart", upload)
+    # One upload taken to a stored artifact, and a second begun and aborted.
+    # Without S3 nothing is begun, so ids in the shape the tools check stand in.
+    def begin():
+        begun = w("begin_artifact_multipart", {})
+        return {
+            "upload_id": begun.get("upload_id", "sweep"),
+            "object_key": begun.get("object_key", f"multipart/{ws}/{uuid.uuid4()}"),
+        }
+
+    content = f"multipart {RUN}".encode()
+    upload = begin()
+    part = {"part_number": 1, "content_base64": base64.b64encode(content).decode()}
+    etag = w("upload_artifact_multipart_part", {**upload, **part}).get("etag", "sweep")
+    parts = [{"part_number": 1, "etag": etag}]
+    stored = w("complete_artifact_multipart", {**upload, "parts": parts, "kind": "attachment"})
+    aborted = begin()
+    w("abort_artifact_multipart", aborted)
+    if "s3" not in WITHOUT:
+        digest = hashlib.sha256(content).hexdigest()
+        ok, text, value = call("get_artifact", {"sha256": stored.get("sha256", "")})
+        got = (value or {}).get("content_base64", "") if ok else ""
+        check(
+            "complete_artifact_multipart: the artifact reads back as the part's bytes",
+            stored.get("sha256") == digest and base64.b64decode(got) == content,
+            f"completed {json.dumps(stored)[:200]}; read {text[:200]}",
+        )
+        ok, text, _ = call("upload_artifact_multipart_part", {**aborted, **part})
+        check("abort_artifact_multipart: the aborted upload takes no part", not ok, text or "it took one")
     w("watch_pull", {"workspace_id": ws, "repo": "o/r", "pull_number": 1})
     w("register_thread_pull", {"thread_id": t, "repo": "o/r", "pull_number": 2})
     delivered = DELIVERED[0] if DELIVERED else t
@@ -467,17 +562,6 @@ def catalog_flow():
     return done
 
 
-# Writes whose valid call needs a backend this throwaway server does not run
-# (S3, GitHub, Slack, a chain watcher), and the error that says so.
-NEEDS_BACKEND = {
-    "begin_artifact_multipart": "S3 artifact backend",
-    "upload_artifact_multipart_part": "S3 artifact backend",
-    "complete_artifact_multipart": "S3 artifact backend",
-    "abort_artifact_multipart": "S3 artifact backend",
-    "top_up_credits": "MAIDAN_CREDITS_ADDRESS is not set",
-}
-
-
 print("=== every profile tool: a valid call on its own endpoint ===")
 written = write_flow()
 profile_tools = {}
@@ -487,8 +571,9 @@ for profile in ("worker", "reviewer", "coordinator"):
         profile_tools.setdefault(tool["name"], tool)
         if read_only(tool):
             bearer = grant_token if profile == "coordinator" else ADMIN
-            ok, text, _ = call(tool["name"], read_args(tool), endpoint, bearer)
-            check(f"{tool['name']} on {endpoint}: a valid call{GRANT_NOTE if bearer == grant_token else ''}", ok, text)
+            ok, text, value = call(tool["name"], read_args(tool), endpoint, bearer)
+            label = f"{tool['name']} on {endpoint}: a valid call{GRANT_NOTE if bearer == grant_token else ''}"
+            valid(tool["name"], ok, text, value, label)
 missing = sorted(n for n, t in profile_tools.items() if not read_only(t) and n not in written)
 check("every profile write has a step in the write flow", not missing, " ".join(missing))
 
@@ -501,12 +586,8 @@ check("every write in the catalog has a step in a write flow", not missing, " ".
 print("=== every read-only tool: a valid call on /mcp/streamable ===")
 for tool in catalog:
     if read_only(tool):
-        ok, text, _ = call(tool["name"], read_args(tool))
-        expected = UNCONFIGURED.get(tool["name"])
-        if expected and not ok and expected in text:
-            check(f"{tool['name']}: a valid call answers {expected!r}: no backend here", True, text)
-        else:
-            check(f"{tool['name']}: a valid call", ok, text)
+        ok, text, value = call(tool["name"], read_args(tool))
+        valid(tool["name"], ok, text, value)
 
 print("=== every tool: a bad call refused by name on /mcp/streamable ===")
 for tool in catalog:
@@ -518,6 +599,27 @@ for tool in catalog:
     good = not ok and any(re.search(rf"\b{re.escape(n)}\b", text) for n in named)
     check(f"{tool['name']}: a bad call refused naming {'/'.join(named[:3])}", good, text or "it succeeded")
 
+# A backend tool the catalog lost, or one no flow called, would otherwise
+# vanish from the summary instead of failing it.
+listed = {t["name"] for t in catalog}
+for tool in NEEDS_BACKEND:
+    check(f"{tool}: listed, and a valid call passed", tool in listed and tool in BACKEND_OUTCOME, "none did")
+
 if FAILED:
     sys.exit(f"FAIL: {len(FAILED)} tool call(s) failed: {' '.join(FAILED[:40])}")
-print(f"=== every tool call passed ({len(catalog)} tools in the catalog) ===")
+print("=== the tools that need a backend beyond the store ===")
+for tool, backend in NEEDS_BACKEND.items():
+    if BACKEND_OUTCOME[tool] == "real":
+        print(f"  ok  {tool}: succeeded, {backend} configured")
+    else:
+        print(f"  NOT EXERCISED  {tool}: no {backend} here; it answered only {BACKENDS[backend][0]!r}")
+if WITHOUT:
+    print(
+        f"=== every tool call passed ({len(catalog)} tools in the catalog), but "
+        f"{', '.join(sorted(WITHOUT))} was NOT exercised ==="
+    )
+else:
+    print(
+        f"=== every tool call passed ({len(catalog)} tools in the catalog), "
+        f"the {len(NEEDS_BACKEND)} that need a backend included ==="
+    )
