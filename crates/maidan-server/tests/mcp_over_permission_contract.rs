@@ -149,18 +149,14 @@ fn declared_capability(name: &str) -> &'static str {
     required_capability(name).unwrap_or_else(|e| panic!("required_capability({name}): {e}"))
 }
 
-/// The `dispatch` and `dispatch_rest` bodies. Arm lookup has to start here,
-/// not at the top of `tools/mod.rs`, because `required_capability` also has
-/// `"tool" =>` arms and those would hide the handler.
+/// The body of `tool`, which holds the dispatch's arms. Arm lookup has to
+/// start here, not at the top of `tools/mod.rs`, because
+/// `required_capability` also has `"tool" =>` arms and those would hide the
+/// handler.
 fn dispatch_source(mod_src: &str) -> String {
-    let mut out = String::new();
-    for fn_name in ["dispatch", "dispatch_rest"] {
-        let body = fn_body(mod_src, fn_name)
-            .unwrap_or_else(|| panic!("tools/mod.rs should define {fn_name}"));
-        out.push_str(body);
-        out.push('\n');
-    }
-    out
+    fn_body(mod_src, "tool")
+        .unwrap_or_else(|| panic!("tools/mod.rs should define tool"))
+        .to_string()
 }
 
 fn dispatch_arms(mod_src: &str) -> BTreeSet<String> {
@@ -263,15 +259,32 @@ fn arm_rhs(mod_src: &str, name: &str) -> Option<String> {
     let at = mod_src.find(&needle)?;
     let start = at + needle.len();
     let first = start + mod_src[start..].find(|c: char| !c.is_whitespace())?;
-    if mod_src.as_bytes()[first] == b'{' {
-        let end = close_of(mod_src.as_bytes(), first);
-        Some(mod_src[first..end].to_string())
-    } else {
-        let rel = mod_src[first..]
-            .find([',', '\n'])
-            .unwrap_or((mod_src.len() - first).min(400));
-        Some(mod_src[first..first + rel].to_string())
+    let bytes = mod_src.as_bytes();
+    if bytes[first] == b'{' {
+        let end = close_of(bytes, first);
+        return Some(mod_src[first..end].to_string());
     }
+    // An expression arm ends at the first comma outside its brackets. A
+    // boxed arm's handler call can start on a later line than the arm, inside
+    // the closure's braces, so the end of the line is not the end of the arm.
+    let mut depth = 0usize;
+    let mut i = first;
+    while i < bytes.len() {
+        let next = skip_non_code(bytes, i);
+        if next != i {
+            i = next;
+            continue;
+        }
+        match bytes[i] {
+            b'{' | b'(' | b'[' => depth += 1,
+            b'}' | b')' | b']' if depth == 0 => break,
+            b'}' | b')' | b']' => depth -= 1,
+            b',' if depth == 0 => break,
+            _ => {}
+        }
+        i += 1;
+    }
+    Some(mod_src[first..i].to_string())
 }
 
 fn callees(src: &str) -> BTreeSet<(String, String)> {
@@ -312,7 +325,9 @@ fn callees(src: &str) -> BTreeSet<(String, String)> {
             }
             if src[after..].starts_with("::") {
                 let (func, after_fn) = read_ident(src, after + 2);
-                if src[after_fn..].trim_start().starts_with('(') && !func.is_empty() {
+                // A call, or a handler passed by name: `boxed(room::f)`.
+                let next = src[after_fn..].trim_start();
+                if (next.starts_with('(') || next.starts_with(')')) && !func.is_empty() {
                     out.insert((ident, func));
                 }
                 i = after_fn;
@@ -327,18 +342,19 @@ fn callees(src: &str) -> BTreeSet<(String, String)> {
 }
 
 fn fn_body<'a>(src: &'a str, name: &str) -> Option<&'a str> {
-    let needle = format!("fn {name}(");
+    let needle = format!("fn {name}");
     let mut from = 0;
     while let Some(rel) = src[from..].find(&needle) {
         let at = from + rel;
-        if at > 0 {
-            let prev = src.as_bytes()[at - 1];
-            if prev.is_ascii_alphanumeric() || prev == b'_' {
-                from = at + 1;
-                continue;
-            }
-        }
         let after_sig = at + needle.len();
+        // `(`, or `<` for a generic function such as `tool<'a>`; anything
+        // else is a longer name that starts with this one.
+        let opens = matches!(src.as_bytes().get(after_sig), Some(b'(' | b'<'));
+        let prev = at.checked_sub(1).map(|p| src.as_bytes()[p]);
+        if !opens || prev.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_') {
+            from = at + 1;
+            continue;
+        }
         let brace = src[after_sig..].find('{')?;
         let open = after_sig + brace;
         let end = close_of(src.as_bytes(), open);

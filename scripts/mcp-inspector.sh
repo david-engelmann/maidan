@@ -206,10 +206,7 @@ if curl -s -o /dev/null "${base}/health" 2>/dev/null; then
 fi
 
 echo "=== booting (auth enabled) ==="
-# A debug build's MCP upload_artifact on S3 overflows tokio's default 2 MiB
-# worker stack and aborts the server (the HTTP route and a release build do
-# not), and CI runs the debug build. 8 MiB is the main thread's own default.
-RUST_MIN_STACK=8388608 MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
+MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
   kill -0 "$server_pid" 2>/dev/null || { cat "${work}/server.log" >&2; exit 1; }
@@ -382,7 +379,10 @@ thread_lookup|find_thread|repo=o/r pr_number=1|find_thread|repo=o/r|pr_number
 whoami|whoami||||
 "
 
-modules="$(sed -nE 's/.*"[a-z_]+" => ([a-z_]+)::.*/\1/p' crates/maidan-mcp/src/tools/mod.rs | sort -u)"
+modules="$(sed -nE 's/.*boxed\((move \|\| (async move \{ )?)?([a-z_]+)::.*/\3/p' crates/maidan-mcp/src/tools/mod.rs | sort -u)"
+# A pattern that stops matching the dispatch's arms finds no module, and then
+# every group would pass as probed.
+[[ -n "$modules" ]] || fail "found no tool module in crates/maidan-mcp/src/tools/mod.rs"
 probed="$(awk -F'|' 'NF > 1 {print $1}' <<<"$probes" | sort -u)"
 missing="$(comm -23 <(echo "$modules") <(echo "$probed"))"
 [[ -z "$missing" ]] || fail "tool groups with no probe row: ${missing//$'\n'/ }"
