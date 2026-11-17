@@ -828,266 +828,333 @@ pub async fn dispatch(
     if crate::parked_waits::parks(name) {
         crate::parked_waits::release_permit();
     }
-    let store = &server.store;
-    match name {
-        "list_channels" => channel::list_channels(store, auth, args).await,
-        "create_channel" => channel::create_channel(server, auth, args).await,
-        "add_channel_member" => channel::add_channel_member(store, auth, args).await,
-        "list_channel_members" => channel::list_channel_members(store, auth, args).await,
-        "remove_channel_member" => channel::remove_channel_member(store, auth, args).await,
-        "open_dm_conversation" => channel::open_dm_conversation(store, auth, args).await,
-        "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
-        "post_dm_message" => message::post_dm_message(server, auth, args).await,
-        "open_group_dm" => channel::open_group_dm(store, auth, args).await,
-        "list_group_dms" => channel::list_group_dms(store, auth, args).await,
-        "get_group_dm" => channel::get_group_dm(store, auth, args).await,
-        "post_group_dm_message" => message::post_group_dm_message(server, auth, args).await,
-        "list_threads" => thread::list_threads(store, args).await,
-        "find_threads" => thread::find_threads(store, auth, args).await,
-        "create_thread" => thread::create_thread(server, auth, args).await,
-        "list_child_threads" => thread::list_child_threads(store, args).await,
-        "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,
-        "mute_thread" => thread::mute_thread(store, auth, args).await,
-        "unmute_thread" => thread::unmute_thread(store, auth, args).await,
-        "mute_channel" => channel::mute_channel(store, auth, args).await,
-        "unmute_channel" => channel::unmute_channel(store, auth, args).await,
-        "set_thread_budget" => budget::set_thread_budget(store, args).await,
-        "update_thread_budget" => budget::update_thread_budget(store, args).await,
-        "get_thread_budget" => budget::get_thread_budget(store, args).await,
-        "report_usage" => budget::report_usage(server, auth, args).await,
-        "usage_rollup" => budget::usage_rollup(server, auth, args).await,
-        "list_dlq" => budget::list_dlq(store, args).await,
-        "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
-        "assign_thread" => thread::assign_thread(server, auth, args).await,
-        "claim_thread" => thread::claim_thread(server, auth, args).await,
-        "unassign_thread" => thread::unassign_thread(server, auth, args).await,
-        "transition_thread" => thread::transition_thread(server, auth, args).await,
-        "close_abandoned_thread" => thread::close_abandoned_thread(server, auth, args).await,
-        "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
-        "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
-        "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
-        "set_spawn_budget" => spawn::set_spawn_budget(store, auth, args).await,
-        "get_spawn_budget" => spawn::get_spawn_budget(store, auth, args).await,
-        "get_member_wip" => thread::get_member_wip(store, auth, args).await,
-        "get_member_occupancy" => member::get_member_occupancy(server, auth, args).await,
-        "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
-        "cancel_thread" => thread::cancel_thread(server, auth, args).await,
-        "mark_claimable" => thread::mark_claimable(store, args).await,
-        "list_unclaimable" => thread::list_unclaimable(store, args).await,
-        "set_thread_block" => thread::set_thread_block(store, auth, args).await,
-        "get_thread_block" => thread::get_thread_block(store, args).await,
-        "clear_thread_block" => thread::clear_thread_block(server, auth, args).await,
-        "list_blocked_threads" => thread::list_blocked_threads(store, args).await,
-        "declare_status" => thread::declare_status(server, auth, args).await,
-        "get_thread_status" => thread::get_thread_status(store, args).await,
-        "get_thread_version" => thread::get_thread_version(store, args).await,
-        "get_review_packet" => thread::get_review_packet(store, args).await,
-        "list_thread_artifacts" => thread::list_thread_artifacts(store, args).await,
-        "link_thread_artifact" => thread::link_thread_artifact(store, auth, args).await,
-        "unlink_thread_artifact" => thread::unlink_thread_artifact(store, args).await,
-        "add_evidence_record" => thread::add_evidence_record(server, auth, args).await,
-        "list_evidence_records" => thread::list_evidence_records(store, args).await,
-        "set_wait" => thread::set_wait(store, auth, args).await,
-        "cancel_wait" => thread::cancel_wait(store, args).await,
-        "get_wait" => thread::get_wait(store, args).await,
-        "set_priority" => thread::set_priority(store, auth, args).await,
-        "get_priority" => thread::get_priority(store, args).await,
-        "claim_next_thread" => thread::claim_next_thread(server, auth, args).await,
-        "claim_next_workspace_thread" => {
-            thread::claim_next_workspace_thread(server, auth, args).await
-        }
-        "renew_claim" => thread::renew_claim(server, auth, args).await,
-        "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
-        "release_claim" => thread::release_claim(server, auth, args).await,
-        "release_own_claims" => thread::release_own_claims(server, auth, args).await,
-        "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
-        "set_thread_attributes" => thread::set_thread_attributes(store, auth, args).await,
-        "submit_plan" => thread::submit_plan(server, auth, args).await,
-        "amend_plan" => thread::amend_plan(server, auth, args).await,
-        "watch_pull" => thread::watch_pull(server, auth, args).await,
-        "list_active_claims" => thread::list_active_claims(store, auth, args).await,
-        "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
-        "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,
-        "remove_thread_dependency" => thread::remove_thread_dependency(store, args).await,
-        "list_thread_dependents" => thread::list_thread_dependents(store, args).await,
-        "list_mentions" => member::list_mentions(store, args).await,
-        "get_inbox" => member::get_inbox(store, args).await,
-        "mark_inbox_read" => member::mark_inbox_read(store, args).await,
-        "wait_for_mention" => member::wait_for_mention(server, auth, args).await,
-        "get_waiting_inbox" => member::get_waiting_inbox(store, auth, args).await,
-        "list_notifications" => member::list_notifications(store, auth, args).await,
-        "get_unread_count" => member::get_unread_count(store, args).await,
-        "list_notifications_grouped" => member::list_notifications_grouped(store, args).await,
-        "list_buried_decisions" => member::list_buried_decisions(store, args).await,
-        "get_manager_digest" => member::get_manager_digest(server, auth, args).await,
-        "mark_notification_read" => member::mark_notification_read(store, args).await,
-        "mark_all_notifications_read" => member::mark_all_notifications_read(store, args).await,
-        "list_members" => member::list_members(store, auth, args).await,
-        "get_member" => member::get_member(store, auth, args).await,
-        "snooze_notification" => member::snooze_notification(store, args).await,
-        "wait_for_notification" => member::wait_for_notification(server, auth, args).await,
-        "set_notification_pref" => member::set_notification_pref(store, args).await,
-        "list_notification_prefs" => member::list_notification_prefs(store, args).await,
-        "set_delivery_mode" => member::set_delivery_mode(store, args).await,
-        "get_delivery_mode" => member::get_delivery_mode(store, args).await,
-        "set_member_email" => member::set_member_email(store, args).await,
-        "get_member_email" => member::get_member_email(store, args).await,
-        "delete_member_email" => member::delete_member_email(store, args).await,
-        "follow_channel" => member::follow_channel(store, args).await,
-        "unfollow_channel" => member::unfollow_channel(store, args).await,
-        "list_channel_follows" => member::list_channel_follows(store, args).await,
-        "follow_thread" => member::follow_thread(store, args).await,
-        "unfollow_thread" => member::unfollow_thread(store, args).await,
-        "list_thread_follows" => member::list_thread_follows(store, args).await,
-        "follow_member" => member::follow_member(server, auth, args).await,
-        "unfollow_member" => member::unfollow_member(store, args).await,
-        "list_member_follows" => member::list_member_follows(store, args).await,
-        "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
-        "wait_for_claim_expired" => thread::wait_for_claim_expired(server, auth, args).await,
-        "wait_for_claim_failed" => thread::wait_for_claim_failed(server, auth, args).await,
-        "wait_for_blocked_resolved" => thread::wait_for_blocked_resolved(server, auth, args).await,
-        "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
-        "wait_for_event" => event_wait::wait_for_event(server, auth, args).await,
-        "get_queue_depth" => thread::get_queue_depth(store, auth, args).await,
-        "get_channel_occupancy" => thread::get_channel_occupancy(store, auth, args).await,
-        "get_workspace_queue_depth" => thread::get_workspace_queue_depth(store, auth, args).await,
-        "get_workspace_occupancy" => thread::get_workspace_occupancy(store, auth, args).await,
-        "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
-        "register_thread_pull" => change_pull::register_thread_pull(server, auth, args).await,
-        "get_swarm_metrics" => change_pull::get_swarm_metrics(server, auth, args).await,
-        "get_credits" => credits::get_credits(server, auth, args).await,
-        "top_up_credits" => credits::top_up_credits(server, auth, args).await,
-        "find_thread" => thread_lookup::find_thread(server, auth, args).await,
-        "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
-        "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
-        "clear_thread_lineage" => thread::clear_thread_lineage(store, args).await,
-        "list_run_threads" => thread::list_run_threads(store, auth, args).await,
-        "set_thread_result" => thread::set_thread_result(server, auth, args).await,
-        "get_thread_result" => thread::get_thread_result(store, args).await,
-        "list_thread_results" => thread::list_thread_results(store, auth, args).await,
-        "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
-        "replay_result_delivery" => delivery::replay_result_delivery_tool(server, auth, args).await,
-        "set_thread_owner" => thread::set_thread_owner(store, args).await,
-        "rename_thread" => thread::rename_thread(store, args).await,
-        "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
-        // The rest are matched in a second function, boxed: an unoptimized
-        // build gives a function a stack slot for every tool future it can
-        // build, and as one function the dispatch outgrew a 2 MiB thread.
-        other => Box::pin(dispatch_rest(server, auth, other, args, call)).await,
-    }
+    tool(server, auth, name, args, call)?.await
 }
 
-async fn dispatch_rest(
-    server: &crate::server::McpServer,
-    auth: &AuthContext,
+/// One tool's call, built but not yet polled.
+type ToolFuture<'a> = futures::future::BoxFuture<'a, Result<Value, McpError>>;
+
+/// The call of the tool `name`, each built in [`boxed`]. This is a plain
+/// function, not an async one, because of how an unoptimized build lays out a
+/// frame: every future a function can build gets a slot of its own, shared
+/// with no other match arm. When the dispatch awaited each tool in place, its
+/// frames held a slot for every tool's future, about 470 KiB on aarch64, under
+/// whichever tool ran, and a debug server's `upload_artifact` on S3 overflowed
+/// tokio's 2 MiB worker stack and aborted. Here the match holds a closure per
+/// tool, and the frame is gone before the tool runs.
+fn tool<'a>(
+    server: &'a crate::server::McpServer,
+    auth: &'a AuthContext,
     name: &str,
-    args: &Value,
-    call: &crate::call_context::CallContext,
-) -> Result<Value, McpError> {
+    args: &'a Value,
+    call: &'a crate::call_context::CallContext,
+) -> Result<ToolFuture<'a>, McpError> {
     let store = &server.store;
     let search = &server.search;
     let embedding_provider = &server.embedding_provider;
-    match name {
-        "get_thread_steer" => thread::get_thread_steer(store, args).await,
-        "wait_for_result" => thread::wait_for_result(server, auth, args).await,
-        "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
-        "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
-        "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
-        "set_task_schedule_active" => schedule::set_task_schedule_active(store, auth, args).await,
-        "delete_task_schedule" => schedule::delete_task_schedule(store, auth, args).await,
-        "create_recipe" => recipe::create_recipe(store, auth, args).await,
-        "list_recipes" => recipe::list_recipes(store, auth, args).await,
-        "delete_recipe" => recipe::delete_recipe(store, auth, args).await,
-        "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
-        "list_secrets" => secret::list_secrets(store, auth, args).await,
-        "resolve_secret" => secret::resolve_secret(server, auth, args).await,
-        "create_secret" => secret::create_secret(server, auth, args).await,
-        "delete_secret" => secret::delete_secret(store, auth, args).await,
-        "list_secret_egress_hosts" => secret::list_secret_egress_hosts(store, auth, args).await,
-        "allow_secret_egress_host" => secret::allow_secret_egress_host(server, auth, args).await,
-        "revoke_secret_egress_host" => secret::revoke_secret_egress_host(store, auth, args).await,
-        "freeze_member" => freeze::freeze_member(server, auth, args).await,
-        "unfreeze_member" => freeze::unfreeze_member(server, auth, args).await,
-        "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
-        "create_share_ticket" => share::create_share_ticket(server, auth, args).await,
-        "list_share_tickets" => share::list_share_tickets(server, auth, args).await,
-        "revoke_share_ticket" => share::revoke_share_ticket(server, auth, args).await,
-        "export_workspace" => export::export_workspace(server, auth, args).await,
-        "verify_workspace_export" => export::verify_workspace_export(server, args),
-        "import_workspace" => export::import_workspace(server, auth, args).await,
-        "get_log_snapshot" => event_log::get_log_snapshot(store, auth, args).await,
-        "catch_up_events" => event_log::catch_up_events(store, auth, args).await,
-        "verify_event_chain" => event_log::verify_event_chain(store, auth, args).await,
-        "list_tombstones" => explorer::list_tombstones(store, auth, args).await,
-        "list_message_backlinks" => explorer::list_message_backlinks(store, auth, args).await,
-        "get_kind_census" => explorer::get_kind_census(store, auth, args).await,
-        "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
-        "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
-        "list_memory_blocks" => memory_block::list_memory_blocks(store, auth, args).await,
-        "set_memory_block_value" => memory_block::set_memory_block_value(server, auth, args).await,
-        "attach_memory_block" => memory_block::attach_memory_block(store, auth, args).await,
-        "detach_memory_block" => memory_block::detach_memory_block(store, auth, args).await,
-        "delete_memory_block" => memory_block::delete_memory_block(store, auth, args).await,
-        "list_thread_memory_blocks" => {
-            memory_block::list_thread_memory_blocks(store, auth, args).await
+    Ok(match name {
+        "list_channels" => boxed(move || channel::list_channels(store, auth, args)),
+        "create_channel" => boxed(move || channel::create_channel(server, auth, args)),
+        "add_channel_member" => boxed(move || channel::add_channel_member(store, auth, args)),
+        "list_channel_members" => boxed(move || channel::list_channel_members(store, auth, args)),
+        "remove_channel_member" => boxed(move || channel::remove_channel_member(store, auth, args)),
+        "open_dm_conversation" => boxed(move || channel::open_dm_conversation(store, auth, args)),
+        "list_dm_conversations" => boxed(move || channel::list_dm_conversations(store, args)),
+        "post_dm_message" => boxed(move || message::post_dm_message(server, auth, args)),
+        "open_group_dm" => boxed(move || channel::open_group_dm(store, auth, args)),
+        "list_group_dms" => boxed(move || channel::list_group_dms(store, auth, args)),
+        "get_group_dm" => boxed(move || channel::get_group_dm(store, auth, args)),
+        "post_group_dm_message" => {
+            boxed(move || message::post_group_dm_message(server, auth, args))
         }
-        "wait_for_memory_block" => memory_block::wait_for_memory_block(server, auth, args).await,
-        "set_review_requirement" => review::set_review_requirement(store, auth, args).await,
-        "add_reviewer" => review::add_reviewer(store, auth, args).await,
-        "submit_review" => review::submit_review(server, auth, args).await,
-        "get_review_status" => review::get_review_status(store, args).await,
-        "list_reviews" => review::list_reviews(store, args).await,
-        "list_review_history" => review::list_review_history(store, args).await,
-        "get_review_requirement" => review::get_review_requirement(store, args).await,
-        "clear_review_requirement" => review::clear_review_requirement(store, auth, args).await,
-        "list_reviewers" => review::list_reviewers(store, args).await,
-        "remove_reviewer" => review::remove_reviewer(store, auth, args).await,
-        "set_land_gate" => land_gate::set_land_gate(store, auth, args).await,
-        "get_land_gate" => land_gate::get_land_gate(store, args).await,
-        "list_land_gate_history" => land_gate::list_land_gate_history(store, args).await,
-        "require_land_gate" => land_gate::require_land_gate(store, args).await,
-        "clear_land_gate" => land_gate::clear_land_gate(store, auth, args).await,
-        "advise_land_gate" => land_gate::advise_land_gate(server, args).await,
-        "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
-        "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
-        "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
-        "delete_glossary_term" => glossary::delete_glossary_term(store, auth, args).await,
-        "add_member_skill" => skill::add_member_skill(store, auth, args).await,
-        "list_member_skills" => skill::list_member_skills(store, args).await,
-        "remove_member_skill" => skill::remove_member_skill(store, auth, args).await,
-        "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,
-        "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,
-        "remove_thread_required_skill" => skill::remove_thread_required_skill(store, args).await,
-        "list_messages" => message::list_messages(store, args).await,
-        "post_message" => message::post_message(server, auth, args).await,
-        "edit_message" => message::edit_message(server, auth, args).await,
-        "tombstone_message" => message::tombstone_message(server, auth, args).await,
-        "list_message_edits" => message::list_message_edits(store, args).await,
-        "seed_from_message" => seed::seed_from_message(server, auth, args).await,
-        "record_mention" => message::record_mention(server, args).await,
-        "cast_vote" => social::cast_vote(server, auth, args).await,
-        "retract_vote" => social::retract_vote(server, auth, args).await,
-        "add_reaction" => social::add_reaction(server, auth, args).await,
-        "remove_reaction" => social::remove_reaction(server, auth, args).await,
-        "list_reactions" => social::list_reactions(store, args).await,
-        "list_votes" => social::list_votes(store, args).await,
-        "pin_message" => social::pin_message(server, auth, args).await,
-        "unpin_message" => social::unpin_message(server, auth, args).await,
-        "list_pins" => social::list_pins(store, args).await,
-        "add_reference" => reference::add_reference(server, args).await,
-        "list_references" => reference::list_references(store, args).await,
-        "upload_artifact" => artifact::upload_artifact(server, auth, args).await,
-        "begin_artifact_multipart" => artifact::begin_artifact_multipart(server, auth).await,
+        "list_threads" => boxed(move || thread::list_threads(store, args)),
+        "find_threads" => boxed(move || thread::find_threads(store, auth, args)),
+        "create_thread" => boxed(move || thread::create_thread(server, auth, args)),
+        "list_child_threads" => boxed(move || thread::list_child_threads(store, args)),
+        "list_recently_active_threads" => {
+            boxed(move || thread::list_recently_active_threads(store, args))
+        }
+        "mute_thread" => boxed(move || thread::mute_thread(store, auth, args)),
+        "unmute_thread" => boxed(move || thread::unmute_thread(store, auth, args)),
+        "mute_channel" => boxed(move || channel::mute_channel(store, auth, args)),
+        "unmute_channel" => boxed(move || channel::unmute_channel(store, auth, args)),
+        "set_thread_budget" => boxed(move || budget::set_thread_budget(store, args)),
+        "update_thread_budget" => boxed(move || budget::update_thread_budget(store, args)),
+        "get_thread_budget" => boxed(move || budget::get_thread_budget(store, args)),
+        "report_usage" => boxed(move || budget::report_usage(server, auth, args)),
+        "usage_rollup" => boxed(move || budget::usage_rollup(server, auth, args)),
+        "list_dlq" => boxed(move || budget::list_dlq(store, args)),
+        "get_tool_transcript" => boxed(move || thread::get_tool_transcript(store, args)),
+        "assign_thread" => boxed(move || thread::assign_thread(server, auth, args)),
+        "claim_thread" => boxed(move || thread::claim_thread(server, auth, args)),
+        "unassign_thread" => boxed(move || thread::unassign_thread(server, auth, args)),
+        "transition_thread" => boxed(move || thread::transition_thread(server, auth, args)),
+        "close_abandoned_thread" => {
+            boxed(move || thread::close_abandoned_thread(server, auth, args))
+        }
+        "list_assigned_threads" => boxed(move || thread::list_assigned_threads(store, auth, args)),
+        "set_wip_limit" => boxed(move || thread::set_wip_limit(store, auth, args)),
+        "get_wip_limit" => boxed(move || thread::get_wip_limit(store, auth, args)),
+        "set_spawn_budget" => boxed(move || spawn::set_spawn_budget(store, auth, args)),
+        "get_spawn_budget" => boxed(move || spawn::get_spawn_budget(store, auth, args)),
+        "get_member_wip" => boxed(move || thread::get_member_wip(store, auth, args)),
+        "get_member_occupancy" => boxed(move || member::get_member_occupancy(server, auth, args)),
+        "mark_unclaimable" => boxed(move || thread::mark_unclaimable(store, auth, args)),
+        "cancel_thread" => boxed(move || thread::cancel_thread(server, auth, args)),
+        "mark_claimable" => boxed(move || thread::mark_claimable(store, args)),
+        "list_unclaimable" => boxed(move || thread::list_unclaimable(store, args)),
+        "set_thread_block" => boxed(move || thread::set_thread_block(store, auth, args)),
+        "get_thread_block" => boxed(move || thread::get_thread_block(store, args)),
+        "clear_thread_block" => boxed(move || thread::clear_thread_block(server, auth, args)),
+        "list_blocked_threads" => boxed(move || thread::list_blocked_threads(store, args)),
+        "declare_status" => boxed(move || thread::declare_status(server, auth, args)),
+        "get_thread_status" => boxed(move || thread::get_thread_status(store, args)),
+        "get_thread_version" => boxed(move || thread::get_thread_version(store, args)),
+        "get_review_packet" => boxed(move || thread::get_review_packet(store, args)),
+        "list_thread_artifacts" => boxed(move || thread::list_thread_artifacts(store, args)),
+        "link_thread_artifact" => boxed(move || thread::link_thread_artifact(store, auth, args)),
+        "unlink_thread_artifact" => boxed(move || thread::unlink_thread_artifact(store, args)),
+        "add_evidence_record" => boxed(move || thread::add_evidence_record(server, auth, args)),
+        "list_evidence_records" => boxed(move || thread::list_evidence_records(store, args)),
+        "set_wait" => boxed(move || thread::set_wait(store, auth, args)),
+        "cancel_wait" => boxed(move || thread::cancel_wait(store, args)),
+        "get_wait" => boxed(move || thread::get_wait(store, args)),
+        "set_priority" => boxed(move || thread::set_priority(store, auth, args)),
+        "get_priority" => boxed(move || thread::get_priority(store, args)),
+        "claim_next_thread" => boxed(move || thread::claim_next_thread(server, auth, args)),
+        "claim_next_workspace_thread" => {
+            boxed(move || thread::claim_next_workspace_thread(server, auth, args))
+        }
+        "renew_claim" => boxed(move || thread::renew_claim(server, auth, args)),
+        "acknowledge_claim" => boxed(move || thread::acknowledge_claim(server, auth, args)),
+        "release_claim" => boxed(move || thread::release_claim(server, auth, args)),
+        "release_own_claims" => boxed(move || thread::release_own_claims(server, auth, args)),
+        "set_thread_footprint" => boxed(move || thread::set_thread_footprint(store, args)),
+        "set_thread_attributes" => boxed(move || thread::set_thread_attributes(store, auth, args)),
+        "submit_plan" => boxed(move || thread::submit_plan(server, auth, args)),
+        "amend_plan" => boxed(move || thread::amend_plan(server, auth, args)),
+        "watch_pull" => boxed(move || thread::watch_pull(server, auth, args)),
+        "list_active_claims" => boxed(move || thread::list_active_claims(store, auth, args)),
+        "add_thread_dependency" => boxed(move || thread::add_thread_dependency(store, auth, args)),
+        "list_thread_dependencies" => boxed(move || thread::list_thread_dependencies(store, args)),
+        "remove_thread_dependency" => boxed(move || thread::remove_thread_dependency(store, args)),
+        "list_thread_dependents" => boxed(move || thread::list_thread_dependents(store, args)),
+        "list_mentions" => boxed(move || member::list_mentions(store, args)),
+        "get_inbox" => boxed(move || member::get_inbox(store, args)),
+        "mark_inbox_read" => boxed(move || member::mark_inbox_read(store, args)),
+        "wait_for_mention" => boxed(move || member::wait_for_mention(server, auth, args)),
+        "get_waiting_inbox" => boxed(move || member::get_waiting_inbox(store, auth, args)),
+        "list_notifications" => boxed(move || member::list_notifications(store, auth, args)),
+        "get_unread_count" => boxed(move || member::get_unread_count(store, args)),
+        "list_notifications_grouped" => {
+            boxed(move || member::list_notifications_grouped(store, args))
+        }
+        "list_buried_decisions" => boxed(move || member::list_buried_decisions(store, args)),
+        "get_manager_digest" => boxed(move || member::get_manager_digest(server, auth, args)),
+        "mark_notification_read" => boxed(move || member::mark_notification_read(store, args)),
+        "mark_all_notifications_read" => {
+            boxed(move || member::mark_all_notifications_read(store, args))
+        }
+        "list_members" => boxed(move || member::list_members(store, auth, args)),
+        "get_member" => boxed(move || member::get_member(store, auth, args)),
+        "snooze_notification" => boxed(move || member::snooze_notification(store, args)),
+        "wait_for_notification" => boxed(move || member::wait_for_notification(server, auth, args)),
+        "set_notification_pref" => boxed(move || member::set_notification_pref(store, args)),
+        "list_notification_prefs" => boxed(move || member::list_notification_prefs(store, args)),
+        "set_delivery_mode" => boxed(move || member::set_delivery_mode(store, args)),
+        "get_delivery_mode" => boxed(move || member::get_delivery_mode(store, args)),
+        "set_member_email" => boxed(move || member::set_member_email(store, args)),
+        "get_member_email" => boxed(move || member::get_member_email(store, args)),
+        "delete_member_email" => boxed(move || member::delete_member_email(store, args)),
+        "follow_channel" => boxed(move || member::follow_channel(store, args)),
+        "unfollow_channel" => boxed(move || member::unfollow_channel(store, args)),
+        "list_channel_follows" => boxed(move || member::list_channel_follows(store, args)),
+        "follow_thread" => boxed(move || member::follow_thread(store, args)),
+        "unfollow_thread" => boxed(move || member::unfollow_thread(store, args)),
+        "list_thread_follows" => boxed(move || member::list_thread_follows(store, args)),
+        "follow_member" => boxed(move || member::follow_member(server, auth, args)),
+        "unfollow_member" => boxed(move || member::unfollow_member(store, args)),
+        "list_member_follows" => boxed(move || member::list_member_follows(store, args)),
+        "wait_for_ready" => boxed(move || thread::wait_for_ready(server, auth, args)),
+        "wait_for_claim_expired" => {
+            boxed(move || thread::wait_for_claim_expired(server, auth, args))
+        }
+        "wait_for_claim_failed" => boxed(move || thread::wait_for_claim_failed(server, auth, args)),
+        "wait_for_blocked_resolved" => {
+            boxed(move || thread::wait_for_blocked_resolved(server, auth, args))
+        }
+        "wait_for_landed" => boxed(move || thread::wait_for_landed(server, auth, args)),
+        "wait_for_event" => boxed(move || event_wait::wait_for_event(server, auth, args)),
+        "get_queue_depth" => boxed(move || thread::get_queue_depth(store, auth, args)),
+        "get_channel_occupancy" => boxed(move || thread::get_channel_occupancy(store, auth, args)),
+        "get_workspace_queue_depth" => {
+            boxed(move || thread::get_workspace_queue_depth(store, auth, args))
+        }
+        "get_workspace_occupancy" => {
+            boxed(move || thread::get_workspace_occupancy(store, auth, args))
+        }
+        "get_run_occupancy" => boxed(move || thread::get_run_occupancy(store, auth, args)),
+        "register_thread_pull" => {
+            boxed(move || change_pull::register_thread_pull(server, auth, args))
+        }
+        "get_swarm_metrics" => boxed(move || change_pull::get_swarm_metrics(server, auth, args)),
+        "get_credits" => boxed(move || credits::get_credits(server, auth, args)),
+        "top_up_credits" => boxed(move || credits::top_up_credits(server, auth, args)),
+        "find_thread" => boxed(move || thread_lookup::find_thread(server, auth, args)),
+        "set_thread_lineage" => boxed(move || thread::set_thread_lineage(store, args)),
+        "get_thread_lineage" => boxed(move || thread::get_thread_lineage(store, args)),
+        "clear_thread_lineage" => boxed(move || thread::clear_thread_lineage(store, args)),
+        "list_run_threads" => boxed(move || thread::list_run_threads(store, auth, args)),
+        "set_thread_result" => boxed(move || thread::set_thread_result(server, auth, args)),
+        "get_thread_result" => boxed(move || thread::get_thread_result(store, args)),
+        "list_thread_results" => boxed(move || thread::list_thread_results(store, auth, args)),
+        "list_result_deliveries" => boxed(move || delivery::list_result_deliveries(store, args)),
+        "replay_result_delivery" => {
+            boxed(move || delivery::replay_result_delivery_tool(server, auth, args))
+        }
+        "set_thread_owner" => boxed(move || thread::set_thread_owner(store, args)),
+        "rename_thread" => boxed(move || thread::rename_thread(store, args)),
+        "set_thread_steer" => boxed(move || thread::set_thread_steer(server, auth, args)),
+        "get_thread_steer" => boxed(move || thread::get_thread_steer(store, args)),
+        "wait_for_result" => boxed(move || thread::wait_for_result(server, auth, args)),
+        "get_dependency_results" => {
+            boxed(move || thread::get_dependency_results(store, auth, args))
+        }
+        "create_task_schedule" => boxed(move || schedule::create_task_schedule(store, auth, args)),
+        "list_task_schedules" => boxed(move || schedule::list_task_schedules(store, auth, args)),
+        "set_task_schedule_active" => {
+            boxed(move || schedule::set_task_schedule_active(store, auth, args))
+        }
+        "delete_task_schedule" => boxed(move || schedule::delete_task_schedule(store, auth, args)),
+        "create_recipe" => boxed(move || recipe::create_recipe(store, auth, args)),
+        "list_recipes" => boxed(move || recipe::list_recipes(store, auth, args)),
+        "delete_recipe" => boxed(move || recipe::delete_recipe(store, auth, args)),
+        "instantiate_recipe" => boxed(move || recipe::instantiate_recipe(server, auth, args)),
+        "list_secrets" => boxed(move || secret::list_secrets(store, auth, args)),
+        "resolve_secret" => boxed(move || secret::resolve_secret(server, auth, args)),
+        "create_secret" => boxed(move || secret::create_secret(server, auth, args)),
+        "delete_secret" => boxed(move || secret::delete_secret(store, auth, args)),
+        "list_secret_egress_hosts" => {
+            boxed(move || secret::list_secret_egress_hosts(store, auth, args))
+        }
+        "allow_secret_egress_host" => {
+            boxed(move || secret::allow_secret_egress_host(server, auth, args))
+        }
+        "revoke_secret_egress_host" => {
+            boxed(move || secret::revoke_secret_egress_host(store, auth, args))
+        }
+        "freeze_member" => boxed(move || freeze::freeze_member(server, auth, args)),
+        "unfreeze_member" => boxed(move || freeze::unfreeze_member(server, auth, args)),
+        "list_frozen_members" => boxed(move || freeze::list_frozen_members(store, auth, args)),
+        "create_share_ticket" => boxed(move || share::create_share_ticket(server, auth, args)),
+        "list_share_tickets" => boxed(move || share::list_share_tickets(server, auth, args)),
+        "revoke_share_ticket" => boxed(move || share::revoke_share_ticket(server, auth, args)),
+        "export_workspace" => boxed(move || export::export_workspace(server, auth, args)),
+        "verify_workspace_export" => {
+            boxed(move || async move { export::verify_workspace_export(server, args) })
+        }
+        "import_workspace" => boxed(move || export::import_workspace(server, auth, args)),
+        "get_log_snapshot" => boxed(move || event_log::get_log_snapshot(store, auth, args)),
+        "catch_up_events" => boxed(move || event_log::catch_up_events(store, auth, args)),
+        "verify_event_chain" => boxed(move || event_log::verify_event_chain(store, auth, args)),
+        "list_tombstones" => boxed(move || explorer::list_tombstones(store, auth, args)),
+        "list_message_backlinks" => {
+            boxed(move || explorer::list_message_backlinks(store, auth, args))
+        }
+        "get_kind_census" => boxed(move || explorer::get_kind_census(store, auth, args)),
+        "create_memory_block" => {
+            boxed(move || memory_block::create_memory_block(store, auth, args))
+        }
+        "get_memory_block" => boxed(move || memory_block::get_memory_block(store, auth, args)),
+        "list_memory_blocks" => boxed(move || memory_block::list_memory_blocks(store, auth, args)),
+        "set_memory_block_value" => {
+            boxed(move || memory_block::set_memory_block_value(server, auth, args))
+        }
+        "attach_memory_block" => {
+            boxed(move || memory_block::attach_memory_block(store, auth, args))
+        }
+        "detach_memory_block" => {
+            boxed(move || memory_block::detach_memory_block(store, auth, args))
+        }
+        "delete_memory_block" => {
+            boxed(move || memory_block::delete_memory_block(store, auth, args))
+        }
+        "list_thread_memory_blocks" => {
+            boxed(move || memory_block::list_thread_memory_blocks(store, auth, args))
+        }
+        "wait_for_memory_block" => {
+            boxed(move || memory_block::wait_for_memory_block(server, auth, args))
+        }
+        "set_review_requirement" => {
+            boxed(move || review::set_review_requirement(store, auth, args))
+        }
+        "add_reviewer" => boxed(move || review::add_reviewer(store, auth, args)),
+        "submit_review" => boxed(move || review::submit_review(server, auth, args)),
+        "get_review_status" => boxed(move || review::get_review_status(store, args)),
+        "list_reviews" => boxed(move || review::list_reviews(store, args)),
+        "list_review_history" => boxed(move || review::list_review_history(store, args)),
+        "get_review_requirement" => boxed(move || review::get_review_requirement(store, args)),
+        "clear_review_requirement" => {
+            boxed(move || review::clear_review_requirement(store, auth, args))
+        }
+        "list_reviewers" => boxed(move || review::list_reviewers(store, args)),
+        "remove_reviewer" => boxed(move || review::remove_reviewer(store, auth, args)),
+        "set_land_gate" => boxed(move || land_gate::set_land_gate(store, auth, args)),
+        "get_land_gate" => boxed(move || land_gate::get_land_gate(store, args)),
+        "list_land_gate_history" => boxed(move || land_gate::list_land_gate_history(store, args)),
+        "require_land_gate" => boxed(move || land_gate::require_land_gate(store, args)),
+        "clear_land_gate" => boxed(move || land_gate::clear_land_gate(store, auth, args)),
+        "advise_land_gate" => boxed(move || land_gate::advise_land_gate(server, args)),
+        "set_glossary_term" => boxed(move || glossary::set_glossary_term(store, auth, args)),
+        "get_glossary_term" => boxed(move || glossary::get_glossary_term(store, auth, args)),
+        "list_glossary_terms" => boxed(move || glossary::list_glossary_terms(store, auth, args)),
+        "delete_glossary_term" => boxed(move || glossary::delete_glossary_term(store, auth, args)),
+        "add_member_skill" => boxed(move || skill::add_member_skill(store, auth, args)),
+        "list_member_skills" => boxed(move || skill::list_member_skills(store, args)),
+        "remove_member_skill" => boxed(move || skill::remove_member_skill(store, auth, args)),
+        "add_thread_required_skill" => boxed(move || skill::add_thread_required_skill(store, args)),
+        "list_thread_required_skills" => {
+            boxed(move || skill::list_thread_required_skills(store, args))
+        }
+        "remove_thread_required_skill" => {
+            boxed(move || skill::remove_thread_required_skill(store, args))
+        }
+        "list_messages" => boxed(move || message::list_messages(store, args)),
+        "post_message" => boxed(move || message::post_message(server, auth, args)),
+        "edit_message" => boxed(move || message::edit_message(server, auth, args)),
+        "tombstone_message" => boxed(move || message::tombstone_message(server, auth, args)),
+        "list_message_edits" => boxed(move || message::list_message_edits(store, args)),
+        "seed_from_message" => boxed(move || seed::seed_from_message(server, auth, args)),
+        "record_mention" => boxed(move || message::record_mention(server, args)),
+        "cast_vote" => boxed(move || social::cast_vote(server, auth, args)),
+        "retract_vote" => boxed(move || social::retract_vote(server, auth, args)),
+        "add_reaction" => boxed(move || social::add_reaction(server, auth, args)),
+        "remove_reaction" => boxed(move || social::remove_reaction(server, auth, args)),
+        "list_reactions" => boxed(move || social::list_reactions(store, args)),
+        "list_votes" => boxed(move || social::list_votes(store, args)),
+        "pin_message" => boxed(move || social::pin_message(server, auth, args)),
+        "unpin_message" => boxed(move || social::unpin_message(server, auth, args)),
+        "list_pins" => boxed(move || social::list_pins(store, args)),
+        "add_reference" => boxed(move || reference::add_reference(server, args)),
+        "list_references" => boxed(move || reference::list_references(store, args)),
+        "upload_artifact" => boxed(move || artifact::upload_artifact(server, auth, args)),
+        "begin_artifact_multipart" => {
+            boxed(move || artifact::begin_artifact_multipart(server, auth))
+        }
         "upload_artifact_multipart_part" => {
-            artifact::upload_artifact_multipart_part(server, auth, args).await
+            boxed(move || artifact::upload_artifact_multipart_part(server, auth, args))
         }
         "complete_artifact_multipart" => {
-            artifact::complete_artifact_multipart(server, auth, args).await
+            boxed(move || artifact::complete_artifact_multipart(server, auth, args))
         }
-        "abort_artifact_multipart" => artifact::abort_artifact_multipart(server, auth, args).await,
-        "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
-        "get_artifact" => artifact::get_artifact(server, auth, args).await,
-        "search_messages" => {
+        "abort_artifact_multipart" => {
+            boxed(move || artifact::abort_artifact_multipart(server, auth, args))
+        }
+        "get_artifact_metadata" => {
+            boxed(move || artifact::get_artifact_metadata(store, auth, args))
+        }
+        "get_artifact" => boxed(move || artifact::get_artifact(server, auth, args)),
+        "search_messages" => boxed(move || {
             search::search_messages(
                 search,
                 embedding_provider,
@@ -1096,26 +1163,37 @@ async fn dispatch_rest(
                 args,
                 server.usage_meters(),
             )
-            .await
+        }),
+        "register_slash_command" => {
+            boxed(move || automation::register_slash_command(store, auth, args))
         }
-        "register_slash_command" => automation::register_slash_command(store, auth, args).await,
-        "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,
-        "register_fsm_hook" => automation::register_fsm_hook(store, auth, args).await,
-        "list_fsm_hooks" => automation::list_fsm_hooks(store, auth, args).await,
-        "revoke_slash_command" => automation::revoke_slash_command(server, auth, args).await,
-        "revoke_fsm_hook" => automation::revoke_fsm_hook(server, auth, args).await,
-        "link_slack_channel" => projector::link_slack_channel(server, auth, args).await,
-        "list_slack_channel_links" => projector::list_slack_channel_links(server, auth, args).await,
-        "unlink_slack_channel" => projector::unlink_slack_channel(server, auth, args).await,
-        "link_github_issue" => projector::link_github_issue(server, auth, args).await,
-        "list_github_issue_links" => projector::list_github_issue_links(server, auth, args).await,
-        "unlink_github_issue" => projector::unlink_github_issue(server, auth, args).await,
-        "get_thread_context" => {
+        "list_slash_commands" => boxed(move || automation::list_slash_commands(store, auth, args)),
+        "register_fsm_hook" => boxed(move || automation::register_fsm_hook(store, auth, args)),
+        "list_fsm_hooks" => boxed(move || automation::list_fsm_hooks(store, auth, args)),
+        "revoke_slash_command" => {
+            boxed(move || automation::revoke_slash_command(server, auth, args))
+        }
+        "revoke_fsm_hook" => boxed(move || automation::revoke_fsm_hook(server, auth, args)),
+        "link_slack_channel" => boxed(move || projector::link_slack_channel(server, auth, args)),
+        "list_slack_channel_links" => {
+            boxed(move || projector::list_slack_channel_links(server, auth, args))
+        }
+        "unlink_slack_channel" => {
+            boxed(move || projector::unlink_slack_channel(server, auth, args))
+        }
+        "link_github_issue" => boxed(move || projector::link_github_issue(server, auth, args)),
+        "list_github_issue_links" => {
+            boxed(move || projector::list_github_issue_links(server, auth, args))
+        }
+        "unlink_github_issue" => boxed(move || projector::unlink_github_issue(server, auth, args)),
+        "get_thread_context" => boxed(move || async move {
             let rendered = crate::context::render_thread_context(store.as_ref(), args).await?;
             Ok(content_parts(&[&rendered.stable, &rendered.tail]))
+        }),
+        "snapshot_thread_context" => {
+            boxed(move || snapshot::snapshot_thread_context(server, auth, args))
         }
-        "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
-        "get_workspace_context" => {
+        "get_workspace_context" => boxed(move || async move {
             // The thread page is filtered by the caller's access in the
             // query, so the pack needs no per-thread access check after it
             // is built. Filter before serialize so the bytes stay the
@@ -1124,27 +1202,41 @@ async fn dispatch_rest(
             let packed =
                 crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
             Ok(content_json(&packed))
+        }),
+        "request_approval" => boxed(move || approval::request_approval(server, auth, args)),
+        "get_approval_gate" => boxed(move || approval::get_approval_gate(server, auth, args, call)),
+        "approval_decide" => boxed(move || approval::approval_decide(server, auth, args, call)),
+        "whoami" => boxed(move || whoami::whoami(auth)),
+        "list_capability_sets" => boxed(room::list_capability_sets),
+        "parse_maidan_uri" => boxed(move || room::parse_maidan_uri(args)),
+        "get_room" => boxed(move || room::get_room(store, auth, args)),
+        "set_workspace_handle" => boxed(move || room::set_workspace_handle(store, auth, args)),
+        "attenuate_token" => boxed(move || room::attenuate_token(store, auth, args)),
+        "rotate_token" => boxed(move || room::rotate_token(store, auth, args)),
+        "delegate_token" => boxed(move || room::delegate_token(store, auth, args)),
+        "create_delegation_grant" => {
+            boxed(move || room::create_delegation_grant(store, auth, args))
         }
-        "request_approval" => approval::request_approval(server, auth, args).await,
-        "get_approval_gate" => approval::get_approval_gate(server, auth, args, call).await,
-        "approval_decide" => approval::approval_decide(server, auth, args, call).await,
-        "whoami" => whoami::whoami(auth).await,
-        "list_capability_sets" => room::list_capability_sets().await,
-        "parse_maidan_uri" => room::parse_maidan_uri(args).await,
-        "get_room" => room::get_room(store, auth, args).await,
-        "set_workspace_handle" => room::set_workspace_handle(store, auth, args).await,
-        "attenuate_token" => room::attenuate_token(store, auth, args).await,
-        "rotate_token" => room::rotate_token(store, auth, args).await,
-        "delegate_token" => room::delegate_token(store, auth, args).await,
-        "create_delegation_grant" => room::create_delegation_grant(store, auth, args).await,
-        "set_delegation_policy" => room::set_delegation_policy(store, auth, args).await,
-        "get_delegation_policy" => room::get_delegation_policy(store, auth, args).await,
-        "set_retention_policy" => room::set_retention_policy(server, auth, args).await,
-        "get_retention_policy" => room::get_retention_policy(server, auth, args).await,
-        "list_delegation_grants" => room::list_delegation_grants(store, auth, args).await,
-        "revoke_delegation_grant" => room::revoke_delegation_grant(store, auth, args).await,
-        other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
-    }
+        "set_delegation_policy" => boxed(move || room::set_delegation_policy(store, auth, args)),
+        "get_delegation_policy" => boxed(move || room::get_delegation_policy(store, auth, args)),
+        "set_retention_policy" => boxed(move || room::set_retention_policy(server, auth, args)),
+        "get_retention_policy" => boxed(move || room::get_retention_policy(server, auth, args)),
+        "list_delegation_grants" => boxed(move || room::list_delegation_grants(store, auth, args)),
+        "revoke_delegation_grant" => {
+            boxed(move || room::revoke_delegation_grant(store, auth, args))
+        }
+        other => return Err(McpError::MethodNotFound(format!("tools/{other}"))),
+    })
+}
+
+/// Build one tool's future in a frame of its own, which [`tool`]'s match
+/// would otherwise have to hold a slot for.
+fn boxed<'a, F, Fut>(build: F) -> ToolFuture<'a>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<Value, McpError>> + Send + 'a,
+{
+    Box::pin(build())
 }
 
 /// The workspace a thread belongs to, which an audit row about it is stamped
