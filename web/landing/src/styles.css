@@ -4,6 +4,8 @@
   --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   --pad: max(1.4rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  /* A section's side padding: the pad on a phone, 6vw on a wide screen */
+  --gutter: var(--pad);
 }
 /* Dark, the default, in the console's palette (web/console/src/styles/00-tokens.css).
    /ui/theme.js puts the console's stored choice on <html> first, so someone
@@ -13,7 +15,9 @@
   --paper: #0c0d0f;
   --paper-2: #16171b;
   --card: #1c1e22;
-  --page-bg: radial-gradient(1100px 560px at 88% -14%, rgba(255, 112, 52, 0.09), transparent 62%), radial-gradient(900px 640px at -8% 108%, rgba(118, 138, 178, 0.07), transparent 60%), #0c0d0f;
+  /* A whisper of film grain, so the dark has material and the light along
+     the horizon never bands: light specks on dark, ink specks on paper */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.22 0 0 0 -0.085'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
   --ink: #ecebe7;
   --muted: #9fa3ab;
   --line: rgba(236, 240, 248, 0.09);
@@ -51,6 +55,11 @@
   --toggle-bg-hover: rgba(40, 42, 48, 0.72);
   --toggle-line: rgba(236, 240, 248, 0.16);
   --toggle-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.7);
+  /* The horizon at each turn of the page, and the far paving under it */
+  --rule-core: rgba(255, 196, 160, 0.3);
+  --rule-edge: rgba(236, 240, 248, 0.08);
+  --rule-glow: rgba(255, 106, 43, 0.07);
+  --rule-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-600 0 1200 120' preserveAspectRatio='xMidYMin slice'%3E%3Cpath d='M0 0L-1080 120M0 0L-1008 120M0 0L-936 120M0 0L-864 120M0 0L-792 120M0 0L-720 120M0 0L-648 120M0 0L-576 120M0 0L-504 120M0 0L-432 120M0 0L-360 120M0 0L-288 120M0 0L-216 120M0 0L-144 120M0 0L-72 120M0 0L0 120M0 0L72 120M0 0L144 120M0 0L216 120M0 0L288 120M0 0L360 120M0 0L432 120M0 0L504 120M0 0L576 120M0 0L648 120M0 0L720 120M0 0L792 120M0 0L864 120M0 0L936 120M0 0L1008 120M0 0L1080 120M-1200 92.3H1200M-1200 75.0H1200M-1200 63.2H1200M-1200 54.5H1200M-1200 48.0H1200' fill='none' stroke='%23ece4d6' stroke-width='1' stroke-opacity='0.08' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
 }
 /* Light: warm paper, ink and one signal orange. */
 :root[data-theme="light"] {
@@ -73,7 +82,7 @@
   --scrim: rgba(40, 36, 30, 0.28);
   --accent: #e8501c;
   --danger: #b4231a;
-  --page-bg: #f2eee6;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.07 0 0 0 0 0.05 0.18 0 0 0 -0.072'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
   --mark-ink: #151411;
   --primary: #151411;
   --primary-ink: #f2eee6;
@@ -95,10 +104,14 @@
   --toggle-bg-hover: rgba(255, 255, 255, 0.86);
   --toggle-line: rgba(21, 20, 17, 0.14);
   --toggle-shadow: 0 4px 14px -8px rgba(40, 32, 20, 0.45);
+  --rule-core: rgba(21, 20, 17, 0.2);
+  --rule-edge: rgba(21, 20, 17, 0.09);
+  --rule-glow: rgba(255, 253, 248, 0.7);
+  --rule-ground: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-600 0 1200 120' preserveAspectRatio='xMidYMin slice'%3E%3Cpath d='M0 0L-1080 120M0 0L-1008 120M0 0L-936 120M0 0L-864 120M0 0L-792 120M0 0L-720 120M0 0L-648 120M0 0L-576 120M0 0L-504 120M0 0L-432 120M0 0L-360 120M0 0L-288 120M0 0L-216 120M0 0L-144 120M0 0L-72 120M0 0L0 120M0 0L72 120M0 0L144 120M0 0L216 120M0 0L288 120M0 0L360 120M0 0L432 120M0 0L504 120M0 0L576 120M0 0L648 120M0 0L720 120M0 0L792 120M0 0L864 120M0 0L936 120M0 0L1008 120M0 0L1080 120M-1200 92.3H1200M-1200 75.0H1200M-1200 63.2H1200M-1200 54.5H1200M-1200 48.0H1200' fill='none' stroke='%23151411' stroke-width='1' stroke-opacity='0.08' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
 }
 * { box-sizing: border-box; }
-html { background: var(--paper); -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
-body { margin: 0; min-height: 100dvh; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--page-bg); background-attachment: fixed; -webkit-font-smoothing: antialiased; }
+html { background: var(--grain) 0 0 / 180px 180px, var(--paper); -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body { margin: 0; min-height: 100dvh; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
@@ -108,6 +121,10 @@ section[id] { scroll-margin-top: calc(env(safe-area-inset-top) + 4rem); }
 .skip:focus { transform: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .copy-buffer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
+/* The first paint is the server's copy of the hero alone; holding the first
+   screen for it keeps the footer below the fold until the page arrives, so
+   its move then is out of sight and nothing on screen shifts */
+#root { min-height: 100svh; }
 
 /* Header */
 .top { position: fixed; inset: 0 0 auto; z-index: 30; display: flex; align-items: center; gap: 0.4rem; padding: calc(env(safe-area-inset-top) + 0.4rem) var(--pad) 0.4rem; color: var(--ink); background: transparent; transition: background-color 0.3s ease, box-shadow 0.3s ease; }
@@ -127,7 +144,9 @@ h2 { font-size: clamp(2.4rem, 9vw, 4.8rem); }
 h3 { margin: 0; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
 .eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lede { margin: 1.3rem 0 0; max-width: 34rem; text-wrap: pretty; color: var(--muted); font-size: 1.08rem; }
-section { padding: 5.5rem var(--pad); }
+section { padding: 5.5rem var(--gutter); }
+/* Sections paint in order, so the square under one never lies over the words of the next */
+main > section, .foot { position: relative; }
 /* Every grid track may shrink below its content, so the board never widens the page. */
 .hero, .steps, .guarantees, .dev, .plans { grid-template-columns: minmax(0, 1fr); }
 section > *, .hero > * { min-width: 0; }
@@ -140,12 +159,12 @@ section > *, .hero > * { min-width: 0; }
 .cta:hover { opacity: 0.88; }
 
 /* Hero */
-.hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; }
+.hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; isolation: isolate; overflow-x: clip; }
 .works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; }
 .works b { color: var(--ink); font-weight: 600; }
 
 /* How it works */
-.how { border-top: 1px solid var(--line); }
+.how { }
 .steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 2.4rem; counter-reset: none; }
 /* Each still's stage is the tile: it fills it edge to edge, on the tile's ground */
 .step-art { border-radius: 16px; background: var(--paper-2); overflow: hidden; }
@@ -158,7 +177,7 @@ section > *, .hero > * { min-width: 0; }
 .guarantee p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Developers */
-.dev { border-top: 1px solid var(--line); display: grid; gap: 2.4rem; }
+.dev { display: grid; gap: 2.4rem; }
 .dev > * { min-width: 0; }
 .run-card { border-radius: 18px; background: var(--run-bg); color: var(--run-ink); overflow: hidden; box-shadow: var(--run-shadow); align-self: center; }
 .tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--run-line); }
@@ -172,7 +191,7 @@ section > *, .hero > * { min-width: 0; }
 .run-card :focus-visible { outline: 2px solid var(--run-focus); outline-offset: -2px; }
 
 /* Hosted or self-hosted */
-.hosting { border-top: 1px solid var(--line); }
+.hosting { }
 .plans { margin-top: 2.6rem; display: grid; gap: 1rem; }
 .plan { padding: 1.6rem; border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; }
 .plan h3 { font-size: 1.35rem; }
@@ -182,11 +201,27 @@ section > *, .hero > * { min-width: 0; }
 .plan .cta-row .cta { margin-top: 0; }
 
 
+/* Each turn of the page stands on the same square: the horizon in place of
+   a rule, lit where the reader stands, with the far paving just under it,
+   gone before the section's first words */
+.how, .dev, .hosting, .close { isolation: isolate; }
+.how::before, .dev::before, .hosting::before, .close::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--rule-edge) 16%, var(--rule-core) 50%, var(--rule-edge) 84%, transparent);
+}
+.how::after, .dev::after, .hosting::after, .close::after {
+  content: ""; position: absolute; top: 1px; left: 0; right: 0; height: 64px; z-index: -1; pointer-events: none;
+  background: var(--rule-ground) center top / 100% 100% no-repeat, radial-gradient(36% 100% at 50% 0%, var(--rule-glow), transparent);
+  -webkit-mask-image: radial-gradient(44% 100% at 50% 0%, #000 20%, transparent);
+  mask-image: radial-gradient(44% 100% at 50% 0%, #000 20%, transparent);
+}
+
 /* Close */
-.close { border-top: 1px solid var(--line); text-align: center; padding: 7rem var(--pad); }
+/* The close stands on the same square as the hero: the horizon under its call to action, the ground fading out before the footer */
+.close { text-align: center; padding: 7rem var(--gutter) 11rem; isolation: isolate; overflow: clip; }
 
 /* Footer */
-.foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.4rem var(--pad) calc(env(safe-area-inset-bottom) + 1.4rem); border-top: 1px solid var(--line); color: var(--muted); font-size: 0.86rem; }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.4rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.4rem); color: var(--muted); font-size: 0.86rem; }
 .legal { display: flex; flex-wrap: wrap; gap: 1rem; }
 .legal a { text-decoration: none; min-height: 44px; min-width: 44px; justify-content: center; display: inline-flex; align-items: center; }
 
@@ -196,7 +231,7 @@ section > *, .hero > * { min-width: 0; }
   .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1080px) {
-  section { padding-left: 6vw; padding-right: 6vw; }
+  :root { --gutter: 6vw; }
   .nav { display: flex; margin-left: 1.6rem; }
   .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; column-gap: 4vw; min-height: 92svh; padding-top: 6rem; }
   .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
@@ -208,14 +243,49 @@ section > *, .hero > * { min-width: 0; }
 @media (max-width: 719px) {
   .join-btn { padding: 0 0.85rem; }
 }
+/* The narrowest phones have room for the mark and the one action; GitHub
+   is still in the closing section and the footer */
+@media (max-width: 359px) {
+  .gh { display: none; }
+  .join-btn { margin-left: auto; }
+}
+/* In one column the square's horizon runs between the words and the board,
+   so the gap makes room for it */
+@media (max-width: 1079px) {
+  .hero { gap: 4.5rem; }
+}
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .top { transition: none; } }
+
+/* Inside the room: the board with everyone on it, and its three beats */
+.room { padding-top: 4rem; }
+.room-head { max-width: 40rem; }
+.room-stage { position: relative; margin-top: 2.6rem; }
+/* The board's box is sized before its code arrives: the one-column design
+   below 1024px, the four lanes above, each at its own proportions */
+.room-stage__art { aspect-ratio: 360 / 620; }
+/* A phone takes the board nearly to its edges, so the words in it stay
+   large; a narrow tablet gets the same one-column board, centred */
+@media (max-width: 639px) { .room-stage { margin-inline: calc(0.6rem - var(--pad)); } }
+@media (min-width: 640px) and (max-width: 1023px) { .room-stage { max-width: 34rem; margin-inline: auto; } }
+@media (min-width: 1024px) { .room-stage { max-width: 1180px; } .room-stage__art { aspect-ratio: 1100 / 640; } }
+/* In the window's title bar, clear of everything the board shows */
+.room-toggle { top: 4px; right: 6px; bottom: auto; }
+.room-steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 1.4rem; }
+.room-step { padding-top: 1rem; border-top: 1.5px solid var(--line); transition: border-color 0.4s ease; }
+.room-step__n { margin: 0 0 0.45rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); transition: color 0.4s ease; }
+.room-step p:last-child { margin: 0.45rem 0 0; color: var(--muted); text-wrap: pretty; }
+.room-step[data-active] { border-color: var(--signal); }
+.room-step[data-active] .room-step__n { color: var(--signal-ink); }
+@media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
+@media (min-width: 1080px) { .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
+@media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
 .watch { padding-top: 2rem; }
 .watch-frame { position: relative; margin-top: 2rem; }
 .watch-clip { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: var(--shadow-approval); background: var(--paper-2); }
 /* Clear of the clip's drop shadow, which would dim the note on paper */
-.watch-note { margin: 1.6rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.watch-note { margin: 2.2rem 0 0; color: var(--muted); font-size: 0.9rem; }
 
 /* Play and pause for every moving picture: a quiet glyph over its corner,
    frosted so it reads over light or dark frames. It draws at 32px; the ring

@@ -39,8 +39,7 @@ export default defineConfig({
         // Dependencies in vendor.js. Rolldown puts the helpers both chunks
         // share in rolldown-runtime.js, which the server embeds beside them.
         // motion goes in motion.js, loaded with the invite sheet (join.js),
-        // so the first paint carries React alone. The room's drawing is its
-        // own chunk too (roomviz.js), loaded as its section nears the screen.
+        // so the first paint carries React alone.
         codeSplitting: {
           // A group takes only the modules its test names: left to pull in
           // their dependencies too, the motion group took React's JSX runtime

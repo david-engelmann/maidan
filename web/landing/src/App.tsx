@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type R
 import { HeroBoard } from "./stageshow/HeroBoard";
 import { MediaToggle } from "./MediaToggle";
 import { RoomSection } from "./RoomSection";
+import { Square } from "./Square";
 import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
 
 const GH = "https://github.com/david-engelmann/maidan";
@@ -142,6 +143,7 @@ export default function App() {
             <button type="button" className="cta" onClick={join}>{joinLabel}</button>
             <a className="cta ghost" href={GH}>Star on GitHub</a>
           </div>
+          <Square variant="close" />
         </section>
       </main>
       {/* With open sign-up the CTAs go to the console, and the invite list is not offered. */}
