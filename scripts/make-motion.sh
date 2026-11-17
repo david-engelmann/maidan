@@ -71,6 +71,18 @@ for clip in "${clips[@]}"; do
     -c:v libx264 -preset veryslow -tune animation -crf 26 -profile:v high -pix_fmt yuv420p \
     -movflags +faststart -an "$out/$clip.mp4"
 
+  # The landing shows board-live as an animated AVIF (a fifth of the GIF's
+  # bytes) with the GIF and a still as fallbacks, from the same take.
+  if [[ "$clip" == board-live ]]; then
+    landing="$root/web/landing/public"
+    "$ffmpeg" -v error -y "${input[@]}" -vf "fps=15,scale=$mp4_width:-2:flags=lanczos,format=yuv420p" \
+      -c:v libsvtav1 -crf 40 -preset 4 -an -f avif "$landing/board-live.avif"
+    cp "$out/$clip.gif" "$landing/board-live.gif"
+    # The still (reduced motion, or paused) is board-live.png; its AVIF twin.
+    "$ffmpeg" -v error -y -i "$landing/board-live.png" -c:v libaom-av1 -still-picture 1 -crf 30 \
+      "$landing/board-live-still.avif"
+  fi
+
   gif_size="$(size "$out/$clip.gif")"
   mp4_size="$(size "$out/$clip.mp4")"
   printf '%-12s gif %5d KB   mp4 %5d KB\n' "$clip" $((gif_size / 1024)) $((mp4_size / 1024))

@@ -28,6 +28,7 @@ import { useSession } from "../hooks/useSession.ts";
 import { EmptyState } from "../shell/EmptyState";
 import { DataState, couldNotLoad, phaseOf } from "../shell/DataState.tsx";
 import "./activity.css";
+import { useScrollFade } from "../hooks/useScrollFade.ts";
 
 const NONE: ActivityRow[] = [];
 
@@ -211,13 +212,15 @@ function ActivityFeed({ ws, store }: { ws: string; store: SessionStore }) {
     setQuery("");
   };
 
+  const groups = useRef<HTMLDivElement>(null);
+  useScrollFade(groups);
   const channels = useMemo(() => activityChannels(rows, named), [rows, named]);
   const shown = useMemo(() => filterActivity(rows, filter, query, channelId, named), [rows, filter, query, channelId, named]);
   return (
     <div className="activity">
       <header className="activity-head">
         <h2 id="activity-title" className="visually-hidden">Activity</h2>
-        <div className="seg" role="group" aria-label="Show">
+        <div ref={groups} className="seg" role="group" aria-label="Show">
           {ACTIVITY_GROUPS.map((g) => (
             <button key={g.id} type="button" className={g.id === filter ? "on" : ""} aria-pressed={g.id === filter} onClick={() => setFilter(g.id)}>
               {g.title}
