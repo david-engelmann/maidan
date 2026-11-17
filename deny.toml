@@ -24,6 +24,10 @@ id = "RUSTSEC-2026-0459"
 reason = "libsqlite3-sys 0.30 (bundled SQLite < 3.54) via sqlx-sqlite and maidan-search's sqlite-vec: uninitialized page-cache memory when a database is opened beside a -wal file a less trusted party wrote. Maidan opens only the operator's DATABASE_URL file and files it creates itself, never a database someone uploads. No sqlx release allows the fixed libsqlite3-sys 0.39 (0.8.6 pins ^0.30.1, 0.9.0 caps it below 0.38). Drop this ignore when sqlx allows 0.39."
 
 [[advisories.ignore]]
+id = "RUSTSEC-2026-0543"
+reason = "chrono is unmaintained (2026-11): a maintenance notice, not a vulnerability; 0.4.45 has no open advisory. Every timestamp in the workspace is a chrono type, through sqlx, serde and the wire types, so moving to jiff or time is a workspace-wide change of its own, in Open Work. Drop this ignore when that lands, or at once if chrono gets a vulnerability advisory."
+
+[[advisories.ignore]]
 id = "RUSTSEC-2023-0071"
 reason = "rsa via openidconnect for RS256 id_token verify; no fixed release; network timing risk accepted for OIDC (v2.0.2)"
 

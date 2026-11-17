@@ -23,6 +23,11 @@ reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no
 # No sqlx release allows the fixed 0.39, so revisit by the date or when sqlx
 # allows it.
 [[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-02-28T00:00:00Z
+reason = "fuzz/Cargo.lock: chrono 0.4.45 is unmaintained, a maintenance notice with no vulnerability; the root lockfile accepts it in deny.toml until the workspace moves off chrono"
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0459"
 ignoreUntil = 2027-01-31T00:00:00Z
 reason = "fuzz/Cargo.lock: libsqlite3-sys 0.30.1 via sqlx-sqlite; no fuzz target opens a SQLite database; no sqlx release allows the fixed 0.39"
