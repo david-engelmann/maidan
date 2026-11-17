@@ -118,7 +118,7 @@ Tools holds the rest, as tabs:
 |---|---|
 | Inbox | Your notifications; Mark all read |
 | Preferences | Your session and Sign out, your name, how you hear about things (and your email), muted kinds, and the channels and tasks you follow |
-| Deliveries | Where results were sent, and whether each arrived |
+| Deliveries | Where each task's result was sent and whether it arrived, with **Replay** on a failed or skipped one; for workspace admins, **Where results may go**, the allowlist of destinations a result may reach (add one, or remove one after a confirmation); and webhook and automation sends |
 | Commands | Slash commands: list and register them |
 | Search | Search messages |
 | Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, and Switch workspace |

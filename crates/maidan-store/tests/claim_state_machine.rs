@@ -6,9 +6,11 @@
 //! fencing token match the model, and so does every member's live-claim
 //! count. A fenced call with a stale token, or from a member that no longer
 //! holds the thread, must change nothing, and a renewal of an expired lease
-//! is refused as lost even before another member takes the thread.
+//! is refused as lost even before another member takes the thread. No hold
+//! here shows progress, so every release is an empty one, and `claim_next`
+//! holds that thread back from that member for longer than a run takes.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
@@ -77,6 +79,9 @@ struct Model {
     stale: HashMap<usize, ClaimLeaseId>,
     /// The member who last took hold of each thread (`last_held_seq`).
     last_holder: HashMap<usize, usize>,
+    /// The (thread, member) pairs an empty release backed off. A lapse
+    /// taken over by `claim_next` leaves them as they are.
+    backed_off: HashSet<(usize, usize)>,
 }
 
 impl Model {
@@ -85,6 +90,11 @@ impl Model {
             None => true,
             Some(h) => h.leased && h.expired,
         }
+    }
+
+    /// What `claim_next` may hand `member`: claimable, and not backed off.
+    fn claimable_by(&self, thread: usize, member: usize) -> bool {
+        self.claimable(thread) && !self.backed_off.contains(&(thread, member))
     }
 
     fn live_claims(&self, member: usize) -> i64 {
@@ -205,8 +215,10 @@ async fn run(ops: Vec<Op>) {
                 // last held comes first (warm affinity, C6; no priorities
                 // here, and the threads are minutes apart at most).
                 let expected = (0..THREADS)
-                    .find(|t| model.claimable(*t) && model.last_holder.get(t) == Some(&member))
-                    .or_else(|| (0..THREADS).find(|t| model.claimable(*t)));
+                    .find(|t| {
+                        model.claimable_by(*t, member) && model.last_holder.get(t) == Some(&member)
+                    })
+                    .or_else(|| (0..THREADS).find(|t| model.claimable_by(*t, member)));
                 match (got, expected) {
                     (None, None) => {}
                     (Some(t), Some(i)) => {
@@ -247,6 +259,7 @@ async fn run(ops: Vec<Op>) {
                     r.expect("the holder may release");
                     let old = model.holders.remove(&thread).unwrap();
                     model.stale.insert(thread, old.lease);
+                    model.backed_off.insert((thread, member));
                 } else {
                     assert!(matches!(r, Err(StoreError::ClaimLost(_))), "{r:?}");
                 }

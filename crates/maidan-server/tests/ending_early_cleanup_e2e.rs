@@ -353,6 +353,7 @@ async fn spawn(pulls: &[(i64, FakePull)]) -> Harness {
             workspace_id: ws.id,
             surface: EgressSurface::GithubBranch,
             selector: format!("{REPO}@dev"),
+            created_by: None,
         })
         .await
         .unwrap();

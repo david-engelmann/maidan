@@ -86,6 +86,7 @@ const TEST_HARNESSES: &[(&str, &[&str])] = &[
     (
         "crates/maidan-server/examples/ui_test_server.rs",
         &[
+            ".allow_egress_target(",
             ".create_api_token(",
             ".create_session(",
             ".set_review_requirement(",

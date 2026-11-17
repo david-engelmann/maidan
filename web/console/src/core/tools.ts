@@ -3,6 +3,7 @@
 // artifact store. Everything here is plain data in, plain data out.
 import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Thread } from "./board.ts";
+import { resultDeliveryQuery, selectorRefusal, type EgressSurface, type EgressTarget, type ResultDelivery, type ResultFilter } from "./deliveries.ts";
 
 export type Notification = { id: string; kind: string; thread_id?: string | null; read_at?: string | null; created_at?: string };
 export type DeliveryMode = "immediate" | "digest" | string;
@@ -490,6 +491,32 @@ export class ToolsApi {
   }
   async replay(workspace: string, d: Pick<Delivery, "id" | "kind">): Promise<void> {
     await this.send("POST", `/workspaces/${workspace}/deliveries/${d.id}/replay?kind=${encodeURIComponent(d.kind)}`);
+  }
+
+  // Result deliveries: where each result went, from every thread at once.
+  resultDeliveries(workspace: string, filter: ResultFilter): Promise<ResultDelivery[]> {
+    return this.get(`/workspaces/${workspace}/result-deliveries?${resultDeliveryQuery(filter)}`);
+  }
+  /** Sends one target again. The server re-checks the allowlist, so an unallowed target comes back still skipped. */
+  async replayResult(thread: string, delivery: string): Promise<ResultDelivery> {
+    const row = await this.send<ResultDelivery>("POST", `/threads/${thread}/deliveries/${delivery}/replay`);
+    if (!row) throw new ToolsError("The server did not say how the replay went.");
+    return row;
+  }
+
+  // The egress allowlist: token:admin, or a signed-in admin through the session route.
+  egressTargets(workspace: string): Promise<Allowed<EgressTarget[]>> {
+    return this.ifAllowed(`/workspaces/${workspace}/egress-targets`);
+  }
+  async allowEgressTarget(workspace: string, surface: EgressSurface, selector: string): Promise<EgressTarget> {
+    const why = selectorRefusal(surface, selector);
+    if (why) throw new ToolsError(why);
+    const target = await this.send<EgressTarget>("POST", `/workspaces/${workspace}/egress-targets`, { surface, selector: selector.trim() });
+    if (!target) throw new ToolsError("The server did not send the new entry back.");
+    return target;
+  }
+  async revokeEgressTarget(workspace: string, id: string): Promise<void> {
+    await this.send("DELETE", `/workspaces/${workspace}/egress-targets/${encodeURIComponent(id)}`);
   }
 
   // Slash commands

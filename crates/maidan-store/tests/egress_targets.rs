@@ -25,6 +25,7 @@ fn target(ws: WorkspaceId, surface: EgressSurface, selector: &str) -> NewEgressT
         workspace_id: ws,
         surface,
         selector: selector.into(),
+        created_by: None,
     }
 }
 

@@ -640,6 +640,59 @@ pub async fn list_workspace_results(
     Ok(Json(visible))
 }
 
+/// The workspace's result deliveries, newest change first, for the console's
+/// Deliveries tab. `workspace:read`, like the per-thread status it gathers:
+/// every row here is one `GET /threads/:id/deliveries` already shows the same
+/// reader, so this is the disposition, never the allowlist policy. Rows on
+/// threads the caller cannot see are dropped.
+pub async fn list_workspace_result_deliveries(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListResultDeliveriesQuery>,
+) -> ApiResult<Json<Vec<ResultDelivery>>> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let status = q.status.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if let Some(status) = status
+        && ![
+            maidan_types::status::PENDING,
+            maidan_types::status::DELIVERED,
+            maidan_types::status::FAILED,
+            maidan_types::status::SKIPPED,
+        ]
+        .contains(&status)
+    {
+        return Err(ApiError::BadRequest(
+            "status must be pending, delivered, failed or skipped".into(),
+        ));
+    }
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let rows = state
+        .store
+        .list_workspace_result_deliveries(workspace_id, status, limit)
+        .await?;
+    let mut seen = std::collections::HashMap::new();
+    let mut visible = Vec::with_capacity(rows.len());
+    for row in rows {
+        let allowed = match seen.get(&row.thread_id) {
+            Some(allowed) => *allowed,
+            None => {
+                let allowed =
+                    maidan_auth::can_access_thread(state.store.as_ref(), &auth, row.thread_id)
+                        .await?;
+                seen.insert(row.thread_id, allowed);
+                allowed
+            }
+        };
+        if allowed {
+            visible.push(row);
+        }
+    }
+    Ok(Json(visible))
+}
+
 /// Threads in this workspace that share a producer `parent_run_id`.
 /// `workspace:read`; private-channel rows the caller cannot access are dropped.
 /// F7 mute is not consulted.

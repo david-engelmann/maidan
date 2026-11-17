@@ -4,9 +4,9 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    CancelThread, CloseAbandonedThread, ConfirmApprovalGate, CreateAgent, CreateChannel,
-    CreateMessage, CreateThread, CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery,
-    ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
+    AllowEgressTarget, CancelThread, CloseAbandonedThread, ConfirmApprovalGate, CreateAgent,
+    CreateChannel, CreateMessage, CreateThread, CreateWorkspaceInvite, CreatedAgentResponse,
+    ListAuditQuery, ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
     OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
     SessionWorkspaces, SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
@@ -14,8 +14,9 @@ use crate::dto::{
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
-    ApprovalGate, AuditEvent, CancelledThread, Channel, Member, Message, MessageEdit, StoredEvent,
-    Thread, ThreadArtifact, ThreadReview, ThreadTransition, Vote, Workspace, WorkspaceInvite,
+    AllowedEgressTarget, ApprovalGate, AuditEvent, CancelledThread, Channel, Member, Message,
+    MessageEdit, StoredEvent, Thread, ThreadArtifact, ThreadReview, ThreadTransition, Vote,
+    Workspace, WorkspaceInvite,
 };
 
 /// Start an OIDC login
@@ -489,6 +490,56 @@ pub fn ui_list_workspace_invites() {}
         (status = 404, description = "No unused invite with this id in this workspace", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn ui_revoke_workspace_invite() {}
+
+/// Allow an egress target (console)
+///
+/// `POST /workspaces/{wid}/egress-targets` for the person signed in to the
+/// console: a human member holding `token:admin` on a live token, or, before
+/// anyone holds an admin token, the person who may mint the first one. A
+/// bearer is held to `token:admin`; a session made from a token is refused.
+#[utoipa::path(post, path = "/ui/api/workspaces/{wid}/egress-targets", tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = AllowEgressTarget,
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, description = "Destination blessed (idempotent: a re-bless returns the existing entry)", body = AllowedEgressTarget),
+        (status = 400, description = "The selector does not name one destination by id", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn ui_allow_egress_target() {}
+
+/// List a workspace's egress targets (console)
+#[utoipa::path(get, path = "/ui/api/workspaces/{wid}/egress-targets", tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, description = "Blessed destinations; empty (the default) means deliver nowhere", body = Vec<AllowedEgressTarget>),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn ui_list_egress_targets() {}
+
+/// Revoke an egress target (console)
+#[utoipa::path(delete, path = "/ui/api/workspaces/{wid}/egress-targets/{tid}", tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("tid" = Uuid, Path, description = "Allowlist entry id"),
+    ),
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 204, description = "Blessing revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "This workspace has no such entry", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn ui_revoke_egress_target() {}
 
 /// Create a thread in a channel (console)
 #[utoipa::path(

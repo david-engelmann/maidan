@@ -251,6 +251,7 @@ async fn bless_github(h: &Harness, repo: &str) {
             workspace_id: h.workspace_id,
             surface: EgressSurface::Github,
             selector: repo.into(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -262,6 +263,7 @@ async fn bless_slack(h: &Harness, channel: &str) {
             workspace_id: h.workspace_id,
             surface: EgressSurface::Slack,
             selector: channel.into(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -273,6 +275,7 @@ async fn bless_linear(h: &Harness) {
             workspace_id: h.workspace_id,
             surface: EgressSurface::Linear,
             selector: TEAM.into(),
+            created_by: None,
         })
         .await
         .unwrap();

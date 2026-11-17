@@ -286,6 +286,7 @@ mod tests {
                 workspace_id: ws.id,
                 surface: EgressSurface::Github,
                 selector: "acme/widgets".into(),
+                created_by: None,
             })
             .await
             .unwrap();

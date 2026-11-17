@@ -15,7 +15,7 @@ use maidan_types::{
     NewEgressTarget, WorkspaceId,
 };
 
-const COLS: &str = "id, workspace_id, surface, selector, created_at";
+const COLS: &str = "id, workspace_id, surface, selector, created_at, created_by";
 
 /// Bless a destination. Idempotent: re-blessing returns the existing entry
 /// (original `created_at` intact) rather than adding a second row, so the list
@@ -34,8 +34,8 @@ pub(crate) async fn allow_on(
         .map_err(|why| StoreError::InvalidInput(why.to_string()))?;
     let id = EgressTargetId::new();
     let row = sqlx::query(&format!(
-        "INSERT INTO maidan_egress_targets (id, workspace_id, surface, selector, created_at)
-         VALUES ($1, $2, $3, $4, now())
+        "INSERT INTO maidan_egress_targets (id, workspace_id, surface, selector, created_at, created_by)
+         VALUES ($1, $2, $3, $4, now(), $5)
          ON CONFLICT (workspace_id, surface, selector) DO UPDATE
            SET selector = maidan_egress_targets.selector
          RETURNING {COLS}"
@@ -44,6 +44,7 @@ pub(crate) async fn allow_on(
     .bind(new.workspace_id.0)
     .bind(new.surface.as_str())
     .bind(&new.selector)
+    .bind(new.created_by.map(|m| m.0))
     .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_target(&row))
@@ -120,5 +121,8 @@ fn row_to_target(row: &sqlx::postgres::PgRow) -> AllowedEgressTarget {
         surface,
         selector,
         created_at: row.get("created_at"),
+        created_by: row
+            .get::<Option<uuid::Uuid>, _>("created_by")
+            .map(maidan_types::MemberId),
     }
 }
