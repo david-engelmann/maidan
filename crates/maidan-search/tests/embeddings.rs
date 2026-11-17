@@ -74,7 +74,7 @@ async fn semantic_search_orders_by_cosine_distance() {
             fx.workspace_id,
             &query,
             3,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(fx.alice_id),
             "test-model",
         )
         .await
@@ -167,7 +167,13 @@ async fn upsert_replaces_existing_embedding() {
         .await
         .unwrap();
     let hits = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
+        .semantic_search(
+            ws.id,
+            &one_hot(0),
+            1,
+            &SearchFilters::for_reader(member.id),
+            "v1",
+        )
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
@@ -180,13 +186,25 @@ async fn upsert_replaces_existing_embedding() {
         .await
         .unwrap();
     let v1_hits = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
+        .semantic_search(
+            ws.id,
+            &one_hot(0),
+            1,
+            &SearchFilters::for_reader(member.id),
+            "v1",
+        )
         .await
         .unwrap();
     assert_eq!(v1_hits.len(), 1, "v1 table still holds the v1 embedding");
 
     let v2_hits = search
-        .semantic_search(ws.id, &one_hot(1), 1, &SearchFilters::default(), "v2")
+        .semantic_search(
+            ws.id,
+            &one_hot(1),
+            1,
+            &SearchFilters::for_reader(member.id),
+            "v2",
+        )
         .await
         .unwrap();
     assert_eq!(v2_hits.len(), 1);
@@ -201,7 +219,13 @@ async fn upsert_replaces_existing_embedding() {
         .await
         .unwrap();
     let replaced = search
-        .semantic_search(ws.id, &one_hot(0), 1, &SearchFilters::default(), "v1")
+        .semantic_search(
+            ws.id,
+            &one_hot(0),
+            1,
+            &SearchFilters::for_reader(member.id),
+            "v1",
+        )
         .await
         .unwrap();
     assert!(
@@ -209,7 +233,13 @@ async fn upsert_replaces_existing_embedding() {
         "v1 embedding should no longer align with axis 0"
     );
     let hits = search
-        .semantic_search(ws.id, &one_hot(2), 1, &SearchFilters::default(), "v1")
+        .semantic_search(
+            ws.id,
+            &one_hot(2),
+            1,
+            &SearchFilters::for_reader(member.id),
+            "v1",
+        )
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
@@ -303,7 +333,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
             fx.workspace_id,
             &axis,
             10,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(fx.alice_id),
             "test-model",
         )
         .await
@@ -317,7 +347,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
             10,
             &SearchFilters {
                 channel_id: Some(fx.general_channel_id),
-                ..SearchFilters::default()
+                ..SearchFilters::for_reader(fx.alice_id)
             },
             "test-model",
         )
@@ -333,7 +363,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
             10,
             &SearchFilters {
                 author_kind: Some(maidan_types::MemberKind::Human),
-                ..SearchFilters::default()
+                ..SearchFilters::for_reader(fx.alice_id)
             },
             "test-model",
         )
@@ -349,7 +379,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
             10,
             &SearchFilters {
                 author_kind: Some(maidan_types::MemberKind::Agent),
-                ..SearchFilters::default()
+                ..SearchFilters::for_reader(fx.alice_id)
             },
             "test-model",
         )

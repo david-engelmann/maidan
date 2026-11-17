@@ -1,7 +1,7 @@
 //! Search filters by thread read access in the query, on both backends: a
 //! reader never gets another workspace's hits, nor a private channel's or a
 //! DM's it is not in, and hidden rows never crowd a full page out, for
-//! lexical and semantic search alike.
+//! lexical, semantic and hybrid search alike.
 
 use std::{sync::Arc, time::Duration};
 
@@ -99,10 +99,7 @@ async fn run_suite(store: &dyn Store, search: &dyn Search) {
     post(store, search, t, alice.id, "alpha unique".into()).await;
     let t = thread_in(store, general_b.id).await;
     post(store, search, t, carol.id, "alpha unique".into()).await;
-    let as_alice = SearchFilters {
-        reader_id: Some(alice.id),
-        ..Default::default()
-    };
+    let as_alice = SearchFilters::for_reader(alice.id);
     let hits = search
         .search_messages(ws_a.id, "alpha", 10, &as_alice)
         .await
@@ -174,8 +171,95 @@ async fn run_suite(store: &dyn Store, search: &dyn Search) {
     );
 }
 
-#[tokio::test]
-async fn search_filters_by_thread_access_in_query_sqlite() {
+/// What `reader` finds for "gamma" in `ws`, as sorted bodies, in each mode:
+/// lexical, semantic and hybrid.
+async fn gamma_bodies(search: &dyn Search, ws: WorkspaceId, reader: MemberId) -> [Vec<String>; 3] {
+    let filters = SearchFilters::for_reader(reader);
+    let lexical = search
+        .search_messages(ws, "gamma", 10, &filters)
+        .await
+        .unwrap();
+    let semantic = search
+        .semantic_search(ws, &vector(), 10, &filters, "test-model")
+        .await
+        .unwrap();
+    let hybrid = search
+        .hybrid_search(
+            ws,
+            "gamma",
+            &vector(),
+            10,
+            &filters,
+            "test-model",
+            maidan_search::DEFAULT_HYBRID_WEIGHT,
+        )
+        .await
+        .unwrap();
+    [lexical, semantic, hybrid].map(|hits| {
+        let mut bodies: Vec<String> = hits.into_iter().map(|h| h.body).collect();
+        bodies.sort();
+        bodies
+    })
+}
+
+/// The reader alone decides what a private channel shows: no `deny_channels`
+/// pre-filter is set, so nothing else could be hiding the rows.
+async fn run_private_channel_suite(store: &dyn Store, search: &dyn Search) {
+    let ws_a = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap();
+    let ws_b = store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap();
+    let alice = member(store, ws_a.id, "alice").await;
+    let bob = member(store, ws_a.id, "bob").await;
+    let carol = member(store, ws_b.id, "carol").await;
+    let lobby = channel(store, ws_a.id, "lobby", false).await;
+    let vault = channel(store, ws_a.id, "vault", true).await;
+    store
+        .add_channel_member(vault.id, alice.id, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let lobby_b = channel(store, ws_b.id, "lobby", false).await;
+    let t = thread_in(store, lobby.id).await;
+    post(store, search, t, bob.id, "gamma lobby".into()).await;
+    let t = thread_in(store, vault.id).await;
+    post(store, search, t, alice.id, "gamma vault".into()).await;
+    let t = thread_in(store, lobby_b.id).await;
+    post(store, search, t, carol.id, "gamma elsewhere".into()).await;
+
+    let vault_member = gamma_bodies(search, ws_a.id, alice.id).await;
+    let not_in_vault = gamma_bodies(search, ws_a.id, bob.id).await;
+    let other_tenant = gamma_bodies(search, ws_a.id, carol.id).await;
+    let other_tenant_home = gamma_bodies(search, ws_b.id, carol.id).await;
+    for (i, mode) in ["lexical", "semantic", "hybrid"].iter().enumerate() {
+        assert_eq!(
+            vault_member[i],
+            ["gamma lobby", "gamma vault"],
+            "{mode}: the vault's member finds its message"
+        );
+        assert_eq!(
+            not_in_vault[i],
+            ["gamma lobby"],
+            "{mode}: a member of the workspace outside the vault does not"
+        );
+        assert!(
+            other_tenant[i].is_empty(),
+            "{mode}: another workspace's member finds nothing in A, not even its public channel: {:?}",
+            other_tenant[i]
+        );
+        assert_eq!(
+            other_tenant_home[i],
+            ["gamma elsewhere"],
+            "{mode}: that member still finds its own workspace's message"
+        );
+    }
+}
+
+/// A SQLite store and search on one in-memory pool.
+async fn sqlite_backend() -> (Arc<dyn Store>, maidan_search::SqliteSearch) {
     // The crate's pool options load sqlite-vec and turn on foreign keys on
     // every connection. A bare pool opened before `SqliteSearch` registers the
     // extension leaves its first connection without `vec_distance_cosine`.
@@ -186,12 +270,16 @@ async fn search_filters_by_thread_access_in_query_sqlite() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search = maidan_search::SqliteSearch::new(pool);
-    run_suite(store.as_ref(), &search).await;
+    (store, maidan_search::SqliteSearch::new(pool))
 }
 
-#[tokio::test]
-async fn search_filters_by_thread_access_in_query_postgres() {
+/// A Postgres store and search on a fresh pgvector container, or `None` when
+/// no Docker daemon answers. The container must outlive the store.
+async fn postgres_backend() -> Option<(
+    testcontainers::ContainerAsync<testcontainers_modules::postgres::Postgres>,
+    Arc<dyn Store>,
+    PostgresSearch,
+)> {
     use testcontainers::{runners::AsyncRunner, ImageExt};
     use testcontainers_modules::postgres::Postgres;
 
@@ -204,7 +292,7 @@ async fn search_filters_by_thread_access_in_query_postgres() {
         Ok(c) => c,
         Err(err) => {
             maidan_store::test_support::docker::skip_start_failure(err).await;
-            return;
+            return None;
         }
     };
     let host = container.get_host().await.expect("host");
@@ -218,6 +306,33 @@ async fn search_filters_by_thread_access_in_query_postgres() {
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
-    let search = PostgresSearch::new(pool);
+    Some((container, store, PostgresSearch::new(pool)))
+}
+
+#[tokio::test]
+async fn search_filters_by_thread_access_in_query_sqlite() {
+    let (store, search) = sqlite_backend().await;
     run_suite(store.as_ref(), &search).await;
+}
+
+#[tokio::test]
+async fn search_filters_by_thread_access_in_query_postgres() {
+    let Some((_container, store, search)) = postgres_backend().await else {
+        return;
+    };
+    run_suite(store.as_ref(), &search).await;
+}
+
+#[tokio::test]
+async fn private_channel_hits_reach_only_its_members_sqlite() {
+    let (store, search) = sqlite_backend().await;
+    run_private_channel_suite(store.as_ref(), &search).await;
+}
+
+#[tokio::test]
+async fn private_channel_hits_reach_only_its_members_postgres() {
+    let Some((_container, store, search)) = postgres_backend().await else {
+        return;
+    };
+    run_private_channel_suite(store.as_ref(), &search).await;
 }

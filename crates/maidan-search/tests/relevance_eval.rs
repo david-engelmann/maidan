@@ -25,7 +25,8 @@ use maidan_search::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, MessageId, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
+    MemberId, MemberKind, MessageId, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
+    WorkspaceId,
 };
 
 const DIM: usize = 5;
@@ -73,6 +74,8 @@ struct Corpus {
     search: SqliteSearch,
     provider: SynonymProvider,
     workspace_id: WorkspaceId,
+    /// The corpus's author, who may read every document in it.
+    reader: MemberId,
     /// message bodies in insertion order; index → MessageId.
     ids: Vec<MessageId>,
 }
@@ -172,6 +175,7 @@ async fn build_corpus(bodies: &[&str]) -> Corpus {
         search,
         provider,
         workspace_id: ws.id,
+        reader: member.id,
         ids,
     }
 }
@@ -179,7 +183,12 @@ async fn build_corpus(bodies: &[&str]) -> Corpus {
 impl Corpus {
     async fn lexical(&self, query: &str, k: i64) -> Vec<maidan_search::SearchHit> {
         self.search
-            .search_messages(self.workspace_id, query, k, &SearchFilters::default())
+            .search_messages(
+                self.workspace_id,
+                query,
+                k,
+                &SearchFilters::for_reader(self.reader),
+            )
             .await
             .unwrap()
     }
@@ -190,7 +199,7 @@ impl Corpus {
                 self.workspace_id,
                 &e,
                 k,
-                &SearchFilters::default(),
+                &SearchFilters::for_reader(self.reader),
                 self.provider.model_name(),
             )
             .await
@@ -204,7 +213,7 @@ impl Corpus {
                 query,
                 &e,
                 k,
-                &SearchFilters::default(),
+                &SearchFilters::for_reader(self.reader),
                 self.provider.model_name(),
                 maidan_search::DEFAULT_HYBRID_WEIGHT,
             )

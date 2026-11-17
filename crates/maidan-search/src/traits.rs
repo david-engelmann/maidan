@@ -13,6 +13,10 @@ use crate::reindex::ReindexReport;
 ///
 /// Both lexical and semantic surfaces live on the same trait; backends
 /// that do not support a method return [`SearchError::Unsupported`].
+///
+/// Every search returns only messages on threads `filters.reader_id` may
+/// read. There is no unrestricted form: a caller with no member to search as
+/// has nothing to search.
 #[async_trait]
 pub trait Search: Send + Sync {
     /// Lexical search over message bodies within a workspace.

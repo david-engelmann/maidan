@@ -53,7 +53,7 @@ async fn semantic_search_orders_by_cosine_distance_on_sqlite() {
             fx.workspace_id,
             &one_hot(1),
             3,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(fx.alice_id),
             "test-model",
         )
         .await
@@ -79,7 +79,7 @@ async fn non_positive_limit_and_a_tombstoned_thread_return_no_hits() {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search = SqliteSearch::new(pool.clone());
     let fx = common::seed(&*store).await;
-    let filters = SearchFilters::default();
+    let filters = SearchFilters::for_reader(fx.alice_id);
     assert!(search
         .search_messages(fx.workspace_id, "", 5, &filters)
         .await

@@ -119,7 +119,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
             tenant.workspace_id,
             &hash_embedding(body),
             5,
-            &maidan_search::SearchFilters::default(),
+            &maidan_search::SearchFilters::for_reader(member.id),
             model_name(),
         )
         .await

@@ -37,7 +37,7 @@ async fn postgres_websearch_operator_pass_through() {
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
     let fx = common::seed(&*store).await;
-    let filters = SearchFilters::default();
+    let filters = SearchFilters::for_reader(fx.alice_id);
 
     let plain = search
         .search_messages(fx.workspace_id, "rust", 10, &filters)
