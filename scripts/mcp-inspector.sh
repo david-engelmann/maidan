@@ -15,7 +15,10 @@
 #      crates/maidan-mcp/src/profiles.rs: listings connect there (ChatGPT's to
 #      the coordinator, which must sell nothing; Cursor's to the worker);
 #   3. makes one valid and one invalid call per tool group, and fails if the
-#      invalid call's error does not name the argument it got wrong.
+#      invalid call's error does not name the argument it got wrong;
+#   4. runs scripts/mcp-tool-sweep.py: a valid call to every tool each profile
+#      endpoint lists and to every read-only tool, and a bad call to every
+#      tool, whose error must name the argument it got wrong.
 # Exits non-zero on the first failed check.
 #
 # A reproducible harness for local use and a report-only CI job, not a
@@ -269,5 +272,7 @@ while IFS='|' read -r group tool valid bad_tool bad named; do
   fi
   pass "${group}: ${tool}${bad_tool:+, and ${bad_tool} refused naming ${named}}"
 done <<<"$probes"
+
+python3 scripts/mcp-tool-sweep.py "$base" "$token" || fail "the tool sweep (above) failed"
 
 echo "=== all MCP external checks passed ==="

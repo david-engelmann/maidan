@@ -81,7 +81,7 @@ fn limits_from(a: &ThreadContextArgs) -> ThreadContextLimits {
 }
 
 fn parse_thread_args(args: &Value) -> Result<ThreadContextArgs, McpError> {
-    crate::tools::parse_args(args).map_err(|e| McpError::InvalidParams(e.to_string()))
+    crate::tools::parse_args(args)
 }
 
 /// The pack as JSON for callers that navigate fields. Key order inside a
@@ -141,8 +141,7 @@ pub async fn load_workspace_context(
     reader_id: Option<MemberId>,
     args: &Value,
 ) -> Result<WorkspaceContext, McpError> {
-    let a: WorkspaceContextArgs =
-        crate::tools::parse_args(args).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    let a: WorkspaceContextArgs = crate::tools::parse_args(args)?;
     let message_limit = if a.message_limit > 0 {
         a.message_limit
     } else {
@@ -969,5 +968,16 @@ mod tests {
         .await
         .unwrap();
         assert!(dm_pack.get("accepted_decisions").is_none());
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use serde_json::json;
+
+    #[test]
+    fn a_missing_context_argument_is_named_once_not_wrapped_twice() {
+        let err = super::parse_thread_args(&json!({})).unwrap_err();
+        assert_eq!(err.to_string(), "invalid params: missing field `thread_id`");
     }
 }

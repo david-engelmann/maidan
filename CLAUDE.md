@@ -202,7 +202,10 @@ Working beside other agents (several PRs are usually open at once):
   `examples/claude-code/` that says how to use it
   (`scripts/check-agent-skills.py`). A new tool *group* (a module in
   `crates/maidan-mcp/src/tools/`) also needs a probe row in
-  `scripts/mcp-inspector.sh`, or the report-only `mcp inspector` job goes red. A new profile in `profiles.rs` also
+  `scripts/mcp-inspector.sh`, or the report-only `mcp inspector` job goes red.
+  So does a write added to a profile without a step in `write_flow` in
+  `scripts/mcp-tool-sweep.py`, and a read-only tool whose required arguments
+  are not ids without a `READ_ARGS` entry there. A new profile in `profiles.rs` also
   regenerates the Guard files.
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
