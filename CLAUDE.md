@@ -401,10 +401,13 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   any server or MCP module that is not a background worker: a plain spawn
   leaves the request's attribution scope and its writes read as nobody's.
   `attribution_scope_contract` scans every module and names the exceptions.
-- **utoipa 4:** an `IntoParams` struct publishes its fields as *path*
-  parameters unless it says `#[into_params(parameter_in = Query)]`; every type
-  a schema names must be listed in `components(schemas(...))`; a field written
-  as `maidan_types::X` becomes the dangling `$ref` `maidan_types.X`.
+- **utoipa 5:** an `IntoParams` struct publishes its fields as *path*
+  parameters unless it says `#[into_params(parameter_in = Query)]`; a type
+  that only an `IntoParams` field names (a query enum) is not registered for
+  you and must be listed in `components(schemas(...))` in
+  `crates/maidan-server/src/openapi/mod.rs`, or `openapi_well_formed` finds a
+  dangling `$ref`; a field written as `maidan_types::X` becomes the dangling
+  `$ref` `maidan_types.X`.
 - **New v4 UUIDs fail `uuid_v7_contract`.** Entity ids use `Uuid::now_v7()`;
   credentials and random ids (tokens, session ids, trace ids) are allowlisted
   with a reason.
