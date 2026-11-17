@@ -1,0 +1,110 @@
+/* The gathering (GatheringField.tsx, gathering.ts): where the mark forms,
+   the poster that holds its place until the scene draws, and the canvas.
+   The hero's geometry lives on .hero, so the server's first paint (the copy
+   in index.html) and the running page put the poster in one place. */
+:root, :root[data-theme="dark"] {
+  /* The mark as the poster draws it: an ember gradient over its own glow */
+  --gather-poster: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 72 72'%3E%3Cdefs%3E%3CradialGradient id='f' cx='32' cy='32' r='28' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23fff3e6'/%3E%3Cstop offset='.55' stop-color='%23ffb184'/%3E%3Cstop offset='1' stop-color='%23ff6a2b'/%3E%3C/radialGradient%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3C/defs%3E%3Cpath d='M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z' fill='%23ff6a2b' opacity='.75' filter='url(%23b)'/%3E%3Cpath d='M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z' fill='url(%23f)'/%3E%3C/svg%3E");
+  --gather-glow: rgba(255, 106, 43, 0.16);
+}
+:root[data-theme="light"] {
+  --gather-poster: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 72 72'%3E%3Cdefs%3E%3CradialGradient id='f' cx='32' cy='32' r='28' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23151411'/%3E%3Cstop offset='.55' stop-color='%232b2722'/%3E%3Cstop offset='1' stop-color='%23a83a0d'/%3E%3C/radialGradient%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3C/defs%3E%3Cpath d='M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z' fill='%23e8501c' opacity='.35' filter='url(%23b)'/%3E%3Cpath d='M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z' fill='url(%23f)'/%3E%3C/svg%3E");
+  --gather-glow: rgba(232, 80, 28, 0.1);
+}
+
+/* --mark-x and --mark-y are the mark's centre in the hero, --mark-d its
+   width from tip to tip. One column: the mark crowns the first screen at
+   about half the phone's width, its floor under it and the words below. */
+.hero {
+  --mark-d: min(52vw, 15rem);
+  --mark-x: 50%;
+  --mark-y: calc(env(safe-area-inset-top) + 4.1rem + var(--mark-d) / 2);
+}
+/* Wide: the words on the left, the mark seven tenths across and halfway
+   down, the rivers running under it to the right */
+@media (min-width: 1080px) {
+  .hero {
+    --mark-d: min(48svh, 30vw, 32rem);
+    --mark-x: 71%;
+    /* 47% of the hero's least height (styles.css), not of its height, so the
+       mark stays put however tall the words make the hero */
+    --mark-y: calc(min(92svh, 860px) * 0.47);
+  }
+}
+
+.gather {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* On one column the picture ends a little below the headline, and the
+   words further down stand on plain paper */
+@media (max-width: 1079px) {
+  .gather--hero { height: min(100%, calc(var(--mark-y) + var(--mark-d) / 2 + 24rem)); }
+}
+.gather__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+}
+/* The mark's box: what the scene measures to place the mark, and until the
+   scene draws, the poster of it */
+.gather__mark {
+  position: absolute;
+  left: calc(var(--mark-x) - var(--mark-d) / 2);
+  top: calc(var(--mark-y) - var(--mark-d) / 2);
+  width: var(--mark-d);
+  height: var(--mark-d);
+  pointer-events: none;
+}
+/* The poster reaches 15% past the mark's box on every side, room for its
+   glow (the drawing's mark spans 77% of its own box) */
+.gather__mark::before,
+#root > .hero::before {
+  content: "";
+  position: absolute;
+  background: var(--gather-poster) center / 100% 100% no-repeat, radial-gradient(closest-side, var(--gather-glow), transparent);
+  pointer-events: none;
+}
+.gather__mark::before {
+  inset: -14.9%;
+  transition: opacity 1.1s ease;
+}
+/* The server's copy of the hero stands outside <main>, so it is the poster's
+   box only once it is positioned like the hero React draws */
+#root > .hero { position: relative; }
+#root > .hero::before {
+  z-index: -1;
+  left: calc(var(--mark-x) - var(--mark-d) * 0.649);
+  top: calc(var(--mark-y) - var(--mark-d) * 0.649);
+  width: calc(var(--mark-d) * 1.298);
+  height: calc(var(--mark-d) * 1.298);
+}
+.gather:is([data-state="running"], [data-state="paused"], [data-state="still"], [data-state="away"]) .gather__canvas { opacity: 1; }
+.gather:is([data-state="running"], [data-state="paused"], [data-state="still"], [data-state="away"]) .gather__mark::before { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .gather__canvas, .gather__mark::before { transition: none; }
+}
+
+/* The close: the same gathering, smaller, under the last call to action
+   (styles.css gives .close the room, --close-d) */
+.gather--close .gather__mark {
+  left: calc(50% - var(--close-d) / 2);
+  top: calc(100% - 6.5rem - var(--close-d));
+  width: var(--close-d);
+  height: var(--close-d);
+}
+
+/* Each picture's pause control, clear of the words: on one column beside
+   the mark's foot, on a wide screen in the hero's lower right corner */
+.media-toggle.hero-toggle { top: calc(var(--mark-y) + var(--mark-d) / 2 - 1rem); right: max(1rem, env(safe-area-inset-right)); bottom: auto; }
+@media (min-width: 1080px) { .media-toggle.hero-toggle { top: auto; bottom: 1.25rem; right: 1.5rem; } }
+.media-toggle.close-toggle { bottom: 1.25rem; right: max(1rem, env(safe-area-inset-right)); }
