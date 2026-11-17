@@ -528,14 +528,24 @@ pub async fn settle(
         })
     };
     let Some((landed_repo, landed_pull)) = merged else {
-        tx.commit().await?;
-        return Ok(if row.get::<bool, _>("merged") {
-            ChangeSettlement::Unchanged
+        if row.get::<bool, _>("merged") {
+            tx.commit().await?;
+            return Ok(ChangeSettlement::Unchanged);
+        }
+        // The change stays open for a person or the planner to decide, but the
+        // pull request its review children were briefed on is closed.
+        let events = if another_open {
+            Vec::new()
         } else {
-            ChangeSettlement::ClosedUnmerged {
-                thread_id,
-                author_id: actor,
-            }
+            let reason =
+                format!("{repo}#{pull_number} closed without merging; nothing is left to review");
+            cancel_review_children_in_tx(&mut tx, keys, thread_id, actor, &reason).await?
+        };
+        tx.commit().await?;
+        return Ok(ChangeSettlement::ClosedUnmerged {
+            thread_id,
+            author_id: actor,
+            events,
         });
     };
     match land_in_tx(
@@ -549,7 +559,11 @@ pub async fn settle(
     )
     .await
     {
-        Ok(stored) => {
+        Ok(mut stored) => {
+            let reason = format!("{landed_repo}#{landed_pull} merged; nothing is left to review");
+            stored.extend(
+                cancel_review_children_in_tx(&mut tx, keys, thread_id, actor, &reason).await?,
+            );
             tx.commit().await?;
             Ok(ChangeSettlement::Landed(stored))
         }
@@ -1685,4 +1699,45 @@ fn pull_from(
             repo: None,
         },
     }
+}
+
+/// Cancel `thread_id`'s open review children once the pull request they
+/// review has merged or closed. A review left open after that has nothing to
+/// review, and the claim queue hands out its oldest work first, so every
+/// such review stood ahead of the live ones; a seat handed it could not even
+/// fetch the head. In the settle's transaction, so the close and the cancels
+/// commit together. Returns the cancels' events, to publish.
+async fn cancel_review_children_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor: MemberId,
+    reason: &str,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let children: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT t.id FROM maidan_threads t
+         JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         WHERE t.parent_thread_id = ?1 AND a.kind = 'review'
+           AND t.tombstoned_at IS NULL AND t.state IN ('open', 'in_review')
+         ORDER BY t.created_at, t.id",
+    )
+    .bind(thread_id.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut stored = Vec::new();
+    for child in children {
+        if let maidan_types::CancelOutcome::Cancelled { events, .. } = super::cancel::cancel_in_tx(
+            tx,
+            keys,
+            ThreadId(child),
+            actor,
+            reason,
+            maidan_types::CancelAuthority::Transition,
+        )
+        .await?
+        {
+            stored.extend(events);
+        }
+    }
+    Ok(stored)
 }

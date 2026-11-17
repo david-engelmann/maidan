@@ -756,6 +756,14 @@ is answered by the claim fence (`claim_lost`) before anything about the
 review's family. A change, or a review that names no `author_family`, takes
 its result under the claim fence alone.
 
+A seat that cannot work a thread at all, because the head will not fetch or
+the thread names nothing to review, releases it with
+`decline: "unworkable"`, and is handed the next thread instead of the same
+one; every other seat is still handed it. A change's review children are
+cancelled when the change sweep settles its pull request, merged or closed
+without merging, so a review of a pull request that is gone never stands at
+the front of the queue (the queue hands out its oldest work first).
+
 Reporting usage before writing the result is recommended, not required:
 then a seat that turns out to be of the author's family is stopped before
 its verdict is posted.

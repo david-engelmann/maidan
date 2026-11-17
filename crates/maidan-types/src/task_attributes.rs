@@ -435,12 +435,17 @@ pub enum ClaimDecline {
     /// The thread is a review whose change was written by the claimant's own
     /// model family.
     OwnFamily,
+    /// The claimant cannot work the thread: the head it names would not
+    /// fetch, or it names nothing to work on. Any thread may be declined so;
+    /// other members are still handed it.
+    Unworkable,
 }
 
 impl ClaimDecline {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::OwnFamily => "own_family",
+            Self::Unworkable => "unworkable",
         }
     }
 
@@ -449,6 +454,7 @@ impl ClaimDecline {
     pub fn note(self) -> &'static str {
         match self {
             Self::OwnFamily => "declined: the review's change was written by this member's family",
+            Self::Unworkable => "declined: this member cannot work the thread (its head would not fetch, or it names nothing to work on)",
         }
     }
 }

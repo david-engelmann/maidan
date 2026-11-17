@@ -3,7 +3,8 @@
 //! `decline: own_family` is not handed that review again, while every other
 //! member still is, and its other work is unaffected. Only the holder of the
 //! live lease can record a decline, and a decline in one workspace touches
-//! nothing in another.
+//! nothing in another. An `unworkable` decline works the same way on any
+//! thread.
 
 use std::time::Duration;
 
@@ -295,6 +296,44 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(held.id, plain, "the oldest thread it did not decline");
 }
 
+/// An `unworkable` decline: any thread, not only a review, and the seat that
+/// could not work it is handed the next one while every other member is
+/// still handed it. A stale review whose head no longer fetched held the
+/// front of the queue for one seat on every pass before.
+async fn run_unworkable(store: &dyn Store) {
+    let w = room(store, "unworkable").await;
+    let stuck = seat(store, w.ws, "stuck").await;
+    let other = seat(store, w.ws, "other").await;
+    let stale = task(store, w.channel, "stale task", false).await;
+    let live = task(store, w.channel, "live task", false).await;
+
+    let held = next(store, w.channel, stuck).await.expect("a task");
+    assert_eq!(held.id, stale);
+    let (released, event) = store
+        .release_claim_with_event(stale, stuck, lease(&held), Some(ClaimDecline::Unworkable))
+        .await
+        .expect("an unworkable decline needs no review");
+    assert_eq!(released.assignee_id, None, "a decline still releases");
+    match event.opened_event().expect("event") {
+        Event::ThreadAssignmentChanged { note, .. } => {
+            assert_eq!(note.as_deref(), Some(ClaimDecline::Unworkable.note()))
+        }
+        unexpected => panic!("expected an assignment change, got {unexpected:?}"),
+    }
+
+    let held = next(store, w.channel, stuck).await.expect("the next task");
+    assert_eq!(
+        held.id, live,
+        "the declined thread is skipped, not the queue"
+    );
+    store
+        .release_claim_with_event(live, stuck, lease(&held), None)
+        .await
+        .expect("plain release");
+    let held = next(store, w.channel, other).await.expect("a task");
+    assert_eq!(held.id, stale, "another member is still handed it");
+}
+
 #[tokio::test]
 async fn claim_next_remembers_an_own_family_decline_on_sqlite() {
     let pool = maidan_search::sqlite_pool_options()
@@ -306,7 +345,9 @@ async fn claim_next_remembers_an_own_family_decline_on_sqlite() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    run_suite(&SqliteStore::for_tests(pool)).await;
+    let store = SqliteStore::for_tests(pool);
+    run_suite(&store).await;
+    run_unworkable(&store).await;
 }
 
 #[tokio::test]
@@ -337,5 +378,7 @@ async fn claim_next_remembers_an_own_family_decline_on_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::for_tests(pool)).await;
+    let store = PostgresStore::for_tests(pool);
+    run_suite(&store).await;
+    run_unworkable(&store).await;
 }
