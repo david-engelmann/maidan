@@ -113,3 +113,7 @@
   color: var(--ss-danger-text);
 }
 
+/* On a one-line card, the state sits at the line's end */
+.ml-card__state--end {
+  margin-left: auto;
+}
