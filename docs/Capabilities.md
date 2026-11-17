@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v459.0.0](https://github.com/david-engelmann/maidan/releases/tag/v459.0.0) — the landing's first paint is right and lighter, and 3 more
+
+maidan.world's landing paints the right sign-up words first and loads a third less script, the board recording is an AVIF a fifth the size, the board toolbar follows the board's width, the policy pages describe open sign-up and credits, and a pool topology guide is in Production.
+
+- The landing's first paint is right and lighter
+- A lighter landing and a steadier board toolbar
+- A pool topology guide
+- The hosted site's policy pages describe the service as it runs
+
+`CHANGELOG.md` under `[459.0.0]` has every entry.
+
 ## [v458.0.0](https://github.com/david-engelmann/maidan/releases/tag/v458.0.0) — stale reviews leave the front of the queue, and 1 more
 
 Stale reviews no longer hold the front of the queue (a settled pull request or a cancelled change cancels its review children, and a seat can decline a thread it cannot work), and the signed-out console, landing and try pages read cleanly.
