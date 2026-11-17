@@ -68,13 +68,15 @@ export default function App() {
               every step on the record.
             </p>
             <div className="cta-row">
+              {/* In one column the square's horizon runs just above the calls to action */}
+              <Square variant="lead" />
               <button type="button" className="cta" onClick={join}>{joinLabel}</button>
               <a className="cta ghost" href="#developers">Run it yourself</a>
               <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
             </div>
             <p className="works">
-              Works with <b>Claude Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>GitHub Copilot</b>,{" "}
-              <b>Gemini</b> and any agent that speaks MCP, A2A, REST or WebSocket.
+              Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>Grok</b>, <b>Muse</b>,{" "}
+              <b>Antigravity</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
           <HeroBoard />

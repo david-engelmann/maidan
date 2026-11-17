@@ -214,9 +214,12 @@ test.describe("with reduced motion", () => {
 test("the square under the hero and the close is decoration only, and its lights stop with the hero's pause", async ({ page }) => {
   await openLanding(page);
   const squares = page.locator(".sq");
-  await expect(squares).toHaveCount(2);
+  // The hero's (wide and one-column, one shown at a time) and the close's
+  await expect(squares).toHaveCount(3);
   for (const sq of await squares.all()) await expect(sq).toHaveAttribute("aria-hidden", "true");
+  // The lights run only while their ground is on screen
   const walker = page.locator(".hero-art .sq-walker").first();
+  await page.evaluate(() => window.scrollBy(0, 240));
   await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("running");
   await page.locator(".hero-art").getByRole("button", { name: "Pause the animation" }).click();
   await expect.poll(() => walker.evaluate((el) => getComputedStyle(el).animationPlayState)).toBe("paused");
@@ -233,6 +236,18 @@ test.describe("on a phone", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     const small = await smallTargets(page, ".join-btn, .cta, .tab, .copy, .sheet-close, .submit");
     expect(small).toEqual([]);
+  });
+
+  test("the square's horizon is on the first screen, above the calls to action", async ({ page }) => {
+    await openLanding(page);
+    await expect(page.locator(".hero-art .sq")).toBeHidden();
+    const horizon = await page.locator(".sq--lead .sq-horizon").boundingBox();
+    const cta = await page.locator(".hero .cta").first().boundingBox();
+    expect(horizon).not.toBeNull();
+    expect(cta).not.toBeNull();
+    expect(horizon!.width).toBeGreaterThanOrEqual(389);
+    expect(horizon!.y).toBeLessThan(cta!.y);
+    expect(horizon!.y).toBeLessThan(844);
   });
 });
 

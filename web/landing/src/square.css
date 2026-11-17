@@ -5,18 +5,21 @@
   /* The low sun: its core on the horizon, the sky it warms, the ground it lights */
   --sq-horizon-core: rgba(255, 214, 184, 0.8);
   --sq-horizon-edge: rgba(255, 140, 84, 0.26);
+  /* The horizon away from the sun, still drawn to the page's edges */
+  --sq-horizon-far: rgba(236, 228, 214, 0.1);
   --sq-sun-core: rgba(255, 150, 96, 0.34);
   --sq-sun-edge: rgba(255, 106, 43, 0.1);
   --sq-sky-core: rgba(255, 106, 43, 0.15);
   --sq-sky-edge: rgba(255, 106, 43, 0.045);
-  /* The taller dusk of the one-column hero, a little warmer at mid-height */
-  --sq-sky-edge-tall: rgba(255, 106, 43, 0.07);
   --sq-floor: rgba(255, 112, 52, 0.085);
   /* The joints between slabs: lit near the horizon, neutral nearer the eye */
   --sq-joint-far: rgba(255, 200, 168, 0);
   --sq-joint-lit: rgba(255, 200, 168, 0.13);
   --sq-joint-near: rgba(236, 228, 214, 0.075);
   --sq-joint-end: rgba(236, 228, 214, 0);
+  /* The one-column square, where the paving must read on a small screen */
+  --sq-lead-joint: 0.95;
+  --sq-lead-floor: rgba(255, 112, 52, 0.13);
   /* Who is arriving: agents in the accent, people in warm white */
   --sq-agent: #ff7a3d;
   --sq-agent-core: #ffd9c4;
@@ -26,16 +29,18 @@
 :root[data-theme="light"] {
   --sq-horizon-core: rgba(255, 255, 255, 0.95);
   --sq-horizon-edge: rgba(168, 58, 13, 0.16);
+  --sq-horizon-far: rgba(21, 20, 17, 0.1);
   --sq-sun-core: rgba(255, 252, 246, 0.9);
   --sq-sun-edge: rgba(255, 214, 178, 0.32);
   --sq-sky-core: rgba(255, 250, 242, 0.85);
   --sq-sky-edge: rgba(255, 222, 192, 0.22);
-  --sq-sky-edge-tall: rgba(255, 222, 192, 0.3);
   --sq-floor: rgba(255, 252, 246, 0.55);
   --sq-joint-far: rgba(21, 20, 17, 0);
   --sq-joint-lit: rgba(21, 20, 17, 0.1);
   --sq-joint-near: rgba(21, 20, 17, 0.06);
   --sq-joint-end: rgba(21, 20, 17, 0);
+  --sq-lead-joint: 0.55;
+  --sq-lead-floor: rgba(255, 252, 246, 0.55);
   --sq-agent: #e8501c;
   --sq-agent-core: #e8501c;
   --sq-person: #3a362f;
@@ -43,16 +48,21 @@
 }
 
 /* The square hangs from its horizon: a zero-height line across its host, at
-   --sq-y. --sq-x is the vanishing point along it, --sq-w how wide the ground
-   runs, --sq-sky and --sq-ground how far the light reaches above and below. */
+   --sq-y. --sq-x is the vanishing point along it, --sq-w how wide the paving
+   runs, --sq-sky-w how wide the sky's light spreads, and --sq-sky and
+   --sq-ground how far the light reaches above and below. The horizon itself
+   always runs the host's full width. */
 .sq {
   --sq-x: 50%;
   --sq-y: 0;
   --sq-w: 100%;
+  --sq-sky-w: var(--sq-w);
   --sq-sun-w: 60%;
   --sq-sun-h: 44px;
   --sq-sky: 260px;
   --sq-ground: 320px;
+  /* Where the paving shows: thinning toward the sides and the foot */
+  --sq-mask: radial-gradient(50% 100% at 50% 0%, #000 30%, rgba(0, 0, 0, 0.45) 62%, transparent 100%);
   position: absolute;
   left: 0;
   right: 0;
@@ -61,17 +71,17 @@
   z-index: -1;
   pointer-events: none;
 }
-.sq > div {
-  position: absolute;
-  left: calc(var(--sq-x) - var(--sq-w) / 2);
-  width: var(--sq-w);
-}
-.sq-sky {
+.sq > div { position: absolute; }
+.sq > .sq-sky {
+  left: calc(var(--sq-x) - var(--sq-sky-w) / 2);
+  width: var(--sq-sky-w);
   bottom: 0;
   height: var(--sq-sky);
   background: radial-gradient(50% 100% at 50% 100%, var(--sq-sky-core), var(--sq-sky-edge) 45%, transparent 100%);
 }
-.sq-ground {
+.sq > .sq-ground {
+  left: calc(var(--sq-x) - var(--sq-w) / 2);
+  width: var(--sq-w);
   top: 0;
   height: var(--sq-ground);
   container-type: size;
@@ -87,9 +97,8 @@
   width: 100%;
   height: 100%;
   fill: none;
-  /* The paving thins out toward the sides and the foot, well before any words */
-  -webkit-mask-image: radial-gradient(50% 100% at 50% 0%, #000 30%, rgba(0, 0, 0, 0.45) 62%, transparent 100%);
-  mask-image: radial-gradient(50% 100% at 50% 0%, #000 30%, rgba(0, 0, 0, 0.45) 62%, transparent 100%);
+  -webkit-mask-image: var(--sq-mask);
+  mask-image: var(--sq-mask);
 }
 .sq-s--far { stop-color: var(--sq-joint-far); }
 .sq-s--lit { stop-color: var(--sq-joint-lit); }
@@ -104,10 +113,12 @@
   height: var(--sq-sun-h);
   background: radial-gradient(closest-side, var(--sq-sun-core), var(--sq-sun-edge) 55%, transparent);
 }
-.sq-horizon {
+.sq > .sq-horizon {
+  left: 0;
+  width: 100%;
   top: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--sq-horizon-edge) 28%, var(--sq-horizon-core) 50%, var(--sq-horizon-edge) 72%, transparent);
+  background: linear-gradient(90deg, transparent, var(--sq-horizon-far) 6%, var(--sq-horizon-edge) calc(var(--sq-x) - 20%), var(--sq-horizon-core) var(--sq-x), var(--sq-horizon-edge) calc(var(--sq-x) + 14%), var(--sq-horizon-far) 94%, transparent);
 }
 
 /* The lights crossing the paving: each sets out from the near ground and
@@ -144,41 +155,62 @@
   .sq-walker { display: none; }
 }
 
-/* The hero: the board stands on the square, its foot dissolving into the
-   horizon's light, the vanishing point under the middle of what shows of it */
-.hero-art .sq {
-  --sq-x: 57%;
-  --sq-y: 89%;
-  --sq-w: 120%;
-  --sq-sun-w: 78%;
-  --sq-sun-h: 56px;
-  --sq-sky: clamp(220px, 26vw, 460px);
-  --sq-ground: clamp(260px, 24vw, 420px);
-}
-/* In one column the board comes after the words and fills the width, so the
-   horizon runs in the gap above it: the low sun behind its top edge, the far
-   paving between, and a tall, dim dusk rising behind the calls to action, so
-   the lower part of the first screen already stands in its light. The lights
-   that cross the paving stay on the wide layout, where there is paving to
-   cross. */
-@media (max-width: 1079px) {
+/* The wide hero: the square runs the hero's full width, its horizon under
+   the last line of words and under the board's foot, which dissolves into
+   the light. The vanishing point is under the middle of what shows of the
+   board; the paving fades as it nears the words' side of the page. The host
+   is the board's column, so the square reaches back to the page's left edge
+   from it. */
+@media (min-width: 1080px) {
   .hero-art .sq {
-    --sq-x: 54%;
-    --sq-y: -44px;
-    --sq-w: 150%;
-    --sq-sun-w: 100%;
-    --sq-sun-h: 44px;
-    --sq-sky: 440px;
-    --sq-ground: 460px;
-    --sq-sky-edge: var(--sq-sky-edge-tall);
+    left: calc(100% - 100vw);
+    --sq-x: 75.75%;
+    --sq-y: 94%;
+    --sq-w: 152%;
+    --sq-sky-w: 64%;
+    --sq-sun-w: 44%;
+    --sq-sun-h: 56px;
+    --sq-sky: clamp(220px, 24vw, 440px);
+    --sq-ground: clamp(200px, 15vw, 280px);
+    --sq-mask: radial-gradient(56% 100% at 50% 0%, #000 22%, rgba(0, 0, 0, 0.5) 44%, rgba(0, 0, 0, 0.2) 70%, rgba(0, 0, 0, 0.08) 100%);
   }
-  .hero-art .sq-walker { display: none; }
 }
-.hero-art:has(.ss-stage[data-layout="compact"]) .sq {
-  --sq-x: 47%;
-  --sq-w: 190%;
-  --sq-sun-w: 120%;
-  --sq-sun-h: 40px;
+@media (max-width: 1079px) {
+  .hero-art .sq { display: none; }
+}
+
+/* One column (phones and tablets): the board comes after the words, so the
+   square starts above the calls to action. The horizon runs edge to edge in
+   the gap over them, its light kept to a thin core clear of the lines above
+   and below; the paving runs under the buttons and down to the board, dim
+   in the middle where the words are and brighter toward the edges. */
+.hero .cta-row { position: relative; }
+.sq.sq--lead {
+  left: calc(-1 * var(--gutter));
+  right: calc(-1 * var(--gutter));
+  top: -1.5rem;
+  --sq-x: 50%;
+  --sq-w: 160%;
+  --sq-sky-w: 130%;
+  --sq-sun-w: 64%;
+  --sq-sun-h: 18px;
+  --sq-sky: 150px;
+  --sq-ground: 340px;
+  --sq-mask: radial-gradient(38% 58% at 50% 0%, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.45) 55%, #000 100%), linear-gradient(#000 45%, transparent);
+}
+.sq--lead .sq-paving {
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+/* On dark the phone's paving needs more presence than paper does to read as ground */
+.sq--lead .sq-joints:not(.sq-joints--major) { stroke-opacity: var(--sq-lead-joint); }
+.sq--lead .sq-floor { background: radial-gradient(50% 100% at 50% 0%, var(--sq-lead-floor), transparent 85%); }
+:root:not([data-theme="light"]) .sq--lead {
+  --sq-joint-lit: rgba(255, 200, 168, 0.19);
+  --sq-joint-near: rgba(236, 228, 214, 0.1);
+}
+@media (min-width: 1080px) {
+  .sq.sq--lead { display: none; }
 }
 
 /* The close: the same ground, under the last call to action */

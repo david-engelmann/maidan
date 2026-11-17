@@ -17,7 +17,7 @@ import "./room.css";
 
 type Lane = "open" | "progress" | "review" | "landed";
 export type Who = "Claude Code" | "Codex" | "Cursor" | "Grok" | "Muse" | "Antigravity" | "Maya" | "Jun";
-type CardId = "main" | "search" | "notes" | "billing" | "sso" | "safari";
+type CardId = "main" | "search" | "notes" | "billing" | "sso" | "audit" | "safari" | "postgres";
 
 const PEOPLE: ReadonlySet<Who> = new Set<Who>(["Maya", "Jun"]);
 const CAST: Who[] = ["Claude Code", "Codex", "Cursor", "Grok", "Muse", "Antigravity", "Maya", "Jun"];
@@ -61,10 +61,12 @@ const TITLES: Record<CardId, string> = {
   notes: "Write the v2.4 release notes",
   billing: "Migrate billing webhooks",
   sso: "Add SSO with Okta",
+  audit: "Paginate the audit log",
   safari: "Fix flaky Safari login test",
+  postgres: "Bump Postgres to 17",
 };
 // Top to bottom within a lane: a new task arrives at the top
-const ORDER: CardId[] = ["main", "search", "notes", "billing", "sso", "safari"];
+const ORDER: CardId[] = ["main", "search", "notes", "billing", "sso", "audit", "safari", "postgres"];
 
 const LANES: { id: Lane; name: string; short: string }[] = [
   { id: "open", name: "Open", short: "Open" },
@@ -100,7 +102,9 @@ const initial: S = {
     notes: { lane: "open", holder: null, chip: open(), evidence: null, note: null, shown: true, bump: 0 },
     billing: { lane: "progress", holder: "Grok", chip: { k: "lease", m: 9 }, evidence: null, note: null, shown: true, bump: 0 },
     sso: { lane: "review", holder: "Antigravity", chip: { k: "reviewing", who: "Muse" }, evidence: null, note: null, shown: true, bump: 0 },
+    audit: { lane: "review", holder: "Jun", chip: { k: "reviewing", who: "Grok" }, evidence: null, note: null, shown: true, bump: 0 },
     safari: { lane: "landed", holder: "Codex", chip: { k: "merged", pr: 479 }, evidence: null, note: null, shown: true, bump: 0 },
+    postgres: { lane: "landed", holder: "Antigravity", chip: { k: "merged", pr: 476 }, evidence: null, note: null, shown: true, bump: 0 },
   },
   cur: {
     "Claude Code": { at: "rest", on: true, press: 0 },
@@ -142,14 +146,15 @@ const WIDE = {
   laneTop: 58,
   cardTop: 100,
   cardW: 238,
-  // Resting in the empty foot of a lane, clear of every card it will hold
+  // Resting in the foot of a lane, below the most cards it ever holds, so a
+  // tag there sits over the gutter and never over a word
   rest: {
-    "Claude Code": { x: 420, y: 402 },
-    Codex: { x: 716, y: 382 },
-    Cursor: { x: 178, y: 414 },
+    "Claude Code": { x: 420, y: 418 },
+    Codex: { x: 716, y: 418 },
+    Cursor: { x: 178, y: 418 },
     Grok: { x: 480, y: 330 },
     Muse: { x: 760, y: 330 },
-    Antigravity: { x: 956, y: 330 },
+    Antigravity: { x: 956, y: 418 },
     Maya: { x: 432, y: 22 },
     Jun: { x: 200, y: 400 },
   } as Record<Who, Aim>,
@@ -211,7 +216,7 @@ function where(s: S, who: Who, layout: "wide" | "compact", slots: Record<CardId,
   if (layout === "wide") {
     const p = slots[id];
     // On a card: its right half, the tag inside it; passing: beside its lock
-    return kind === "card" ? { x: p.x + 142, y: p.y + 48 } : { x: p.x + 112, y: p.y + 58 };
+    return kind === "card" ? { x: p.x + 136, y: p.y + 48 } : { x: p.x + 112, y: p.y + 58 };
   }
   const p = compactSpot(id);
   if (id === "main") return kind === "card" ? { x: p.x + 196, y: p.y + 46 } : { x: p.x + 118, y: p.y + 84 };
@@ -247,8 +252,10 @@ async function script(a: A) {
   press(a, "Maya");
   card(a, "main", { shown: true });
   log(a);
-  await a.wait(1000);
+  // She steps back as it lands, so the lane makes room under no one's name
+  await a.wait(250);
   go(a, "Maya", "rest");
+  await a.wait(750);
   go(a, "Claude Code", "card:main");
   await a.wait(1000);
   press(a, "Claude Code");
@@ -267,19 +274,21 @@ async function script(a: A) {
   card(a, "main", (c) => ({ bump: c.bump + 1 }));
   log(a);
   await a.wait(900);
-  go(a, "Cursor", "card:search");
-  await a.wait(1000);
-  press(a, "Cursor");
+  if (a.layout === "wide") {
+    go(a, "Cursor", "card:search");
+    await a.wait(1000);
+    press(a, "Cursor");
+  } else {
+    // On the phone the claim shows on the task's row; a cursor there would
+    // hang its name over the next row's words
+    go(a, "Cursor", "rest");
+    await a.wait(700);
+  }
   card(a, "search", { holder: "Cursor", chip: { k: "lease", m: 15 } });
   log(a);
   await a.wait(700);
   card(a, "search", { lane: "progress" });
-  // On the phone the row stays put, so Cursor steps off it and the list reads clear
-  if (a.layout === "compact") {
-    await a.wait(700);
-    go(a, "Cursor", "rest");
-    await a.wait(600);
-  } else await a.wait(1300);
+  await a.wait(a.layout === "wide" ? 1300 : 900);
 
   a.mark("review");
   a.put({ beat: 2 });
@@ -453,7 +462,10 @@ function Cursor({ who, at, on, press }: { who: Who; at: Aim; on: boolean; press:
         <svg className="rm-cur__arrow" width="16" height="18" viewBox="0 0 16 18" aria-hidden="true">
           <path d="M1.5 1.5v13.2l3.6-3.4 2.5 5.6 2.6-1.2-2.5-5.5h5z" />
         </svg>
-        <span className="rm-cur__tag">{who}</span>
+        {/* A new spot remounts the tag, which waits out the move before it
+            shows: a name travelling across the board would cover the words
+            it passes over */}
+        <span key={`${Math.round(at.x)}:${Math.round(at.y)}`} className="rm-cur__tag">{who}</span>
       </span>
     </div>
   );

@@ -12,7 +12,7 @@ import "./square.css";
 // the lights, which only move by transform and opacity and stop when the
 // hero's pause control is pressed, under reduced motion, or off screen.
 
-// The paving, drawn once in the ground's own units: x runs -200..200, y 0..100
+// The paving, drawn once in the ground's own units: x runs -1000..1000, y 0..100
 // from the horizon down, and the vanishing point is (0, 0). The SVG slices
 // from its top middle, so a slab keeps its proportions at any width. A row of
 // slabs at depth z sits at y = 100 / z (z = 1 at the foot, one slab deep per
@@ -26,12 +26,12 @@ function paving(): { minor: string; major: string } {
   for (let k = 0; ; k++) {
     const y = 100 / (1 + k * STEP);
     if (y < 11) break;
-    const row = `M-200 ${y.toFixed(2)}H200`;
+    const row = `M-1000 ${y.toFixed(2)}H1000`;
     // Every fourth joint is a band between larger fields of slabs
     if (k % 4 === 0) major += row;
     else minor += row;
   }
-  for (let j = -26; j <= 26; j++) {
+  for (let j = -44; j <= 44; j++) {
     const x = j * JOINT;
     const from = 9;
     const joint = `M${((x * from) / 100).toFixed(2)} ${from}L${x} 100`;
@@ -46,15 +46,16 @@ const PAVING = paving();
 type Walker = { kind: "agent" | "person"; x: number; dur: number; delay: number };
 
 // Where each light sets out across the paving, as a share of the ground's
-// width, and how long it takes to reach the board: slow and staggered, so
-// one or two are on the ground at a time.
+// width (the ground is centred on the board, so these start under and
+// beside it, well right of the words), and how long it takes to reach the
+// board: slow and staggered, so one or two are on the ground at a time.
 const WALKERS: Walker[] = [
-  { kind: "agent", x: 67, dur: 19, delay: -3 },
-  { kind: "person", x: 33, dur: 23, delay: -15 },
-  { kind: "agent", x: 82, dur: 21, delay: -10 },
+  { kind: "agent", x: 46, dur: 19, delay: -3 },
+  { kind: "person", x: 56, dur: 23, delay: -15 },
+  { kind: "agent", x: 64, dur: 21, delay: -10 },
 ];
 
-export function Square({ variant, paused = false }: { variant: "hero" | "close"; paused?: boolean }) {
+export function Square({ variant, paused = false }: { variant: "hero" | "lead" | "close"; paused?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = useId().replace(/:/g, "");
 
@@ -74,7 +75,7 @@ export function Square({ variant, paused = false }: { variant: "hero" | "close";
       <div className="sq-sky" />
       <div className="sq-ground">
         <div className="sq-floor" />
-        <svg className="sq-paving" viewBox="-200 0 400 100" preserveAspectRatio="xMidYMin slice" focusable="false">
+        <svg className="sq-paving" viewBox="-1000 0 2000 100" preserveAspectRatio="xMidYMin slice" focusable="false">
           <defs>
             {/* The joints catch the low light near the horizon, go neutral
                 nearer the viewer, and fade out at both ends */}

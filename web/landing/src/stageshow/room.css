@@ -254,6 +254,12 @@
   line-height: 1.25;
   letter-spacing: -0.005em;
   white-space: nowrap;
+  /* Held back while the cursor travels (0.95s), then in */
+  animation: rm-tag-in 1.2s linear both;
+}
+@keyframes rm-tag-in {
+  0%, 78% { opacity: 0; }
+  100% { opacity: 1; }
 }
 .rm-cur[data-person] .rm-cur__arrow { fill: var(--rm-person); stroke: var(--rm-person-edge); }
 .rm-cur[data-person] .rm-cur__tag {
@@ -434,7 +440,8 @@
 /* A still frame holds still */
 .rm .ss-stage[data-still] .rm-cur__drift,
 .rm .ss-stage[data-still] .rm-log__row,
-.rm .ss-stage[data-still] .rm-cur__press { animation: none; }
+.rm .ss-stage[data-still] .rm-cur__press,
+.rm .ss-stage[data-still] .rm-cur__tag { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .rm-cur__drift, .rm-log__row, .rm-cur__press, .rm-chip-wrap[data-bump] { animation: none; }
+  .rm-cur__drift, .rm-log__row, .rm-cur__press, .rm-cur__tag, .rm-chip-wrap[data-bump] { animation: none; }
 }

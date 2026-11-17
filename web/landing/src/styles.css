@@ -160,7 +160,10 @@ section > *, .hero > * { min-width: 0; }
 
 /* Hero */
 .hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; isolation: isolate; overflow-x: clip; }
-.works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; }
+.works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; text-wrap: pretty; }
+/* The hero's calls to action stand on the square: the outlined ones are
+   solid, so no line of paving runs through their words */
+.hero .cta.ghost { background: var(--paper); }
 .works b { color: var(--ink); font-weight: 600; }
 
 /* How it works */
@@ -233,7 +236,12 @@ section > *, .hero > * { min-width: 0; }
 @media (min-width: 1080px) {
   :root { --gutter: 6vw; }
   .nav { display: flex; margin-left: 1.6rem; }
-  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; column-gap: 4vw; min-height: 92svh; padding-top: 6rem; }
+  /* The words and the board stand on one horizon: both columns sit on the
+     hero's floor, and the words end clear above the line the board's foot
+     dissolves into (6% up the board, see square.css) */
+  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: end; column-gap: 4vw; min-height: 92svh; padding-top: 6rem; padding-bottom: 3rem; }
+  .hero-copy { padding-bottom: calc(2.2vw + 1.75rem); }
+  .hero-art__toggle { bottom: calc(6% + 0.75rem); }
   .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
   .dev h2, .hosting h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -249,15 +257,24 @@ section > *, .hero > * { min-width: 0; }
   .gh { display: none; }
   .join-btn { margin-left: auto; }
 }
-/* In one column the square's horizon runs between the words and the board,
-   so the gap makes room for it */
+/* In one column the square's horizon runs over the calls to action, so they
+   step down to make room for it; the hero starts a little higher so the
+   paving is on the first screen */
 @media (max-width: 1079px) {
-  .hero { gap: 4.5rem; }
+  .hero { gap: 3rem; }
+  .hero .cta-row { margin-top: 3rem; }
+  /* The line under the buttons sits on the square: a soft clearing in the
+     paving keeps its words on plain ground */
+  .hero .works { position: relative; }
+  .hero .works::before { content: ""; position: absolute; inset: -0.6rem -0.9rem; z-index: -1; border-radius: 1rem; background: var(--paper); opacity: 0.88; filter: blur(14px); pointer-events: none; }
+}
+@media (max-width: 719px) {
+  .hero { padding-top: 6.5rem; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .top { transition: none; } }
 
 /* Inside the room: the board with everyone on it, and its three beats */
-.room { padding-top: 4rem; }
+.room { padding-top: 3.5rem; }
 .room-head { max-width: 40rem; }
 .room-stage { position: relative; margin-top: 2.6rem; }
 /* The board's box is sized before its code arrives: the one-column design
@@ -277,7 +294,7 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: 3rem; } .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
