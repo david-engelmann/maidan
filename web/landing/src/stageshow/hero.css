@@ -13,22 +13,13 @@
 
 @media (min-width: 1080px) {
   .hero-art { margin-right: -6vw; }
-  .hero-art__toggle { right: calc(6vw + 0.8rem); }
 }
 
-/* In the stage's faded foot at the visible right edge, where the recording's
-   toggle sits, not floating in the empty band beside the window. */
+/* Inside the window's lower right, where the page's edge cuts it: the
+   recording's control sits the same way in its frame. */
 .hero-art__toggle {
-  position: absolute;
-  right: calc(var(--pad) + 0.8rem);
-  bottom: 0.8rem;
-  min-height: 44px;
-  padding: 0 1rem;
-  border-radius: 99px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  font-size: 0.85rem;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: 1rem;
 }
 
 .hb .ss-stage {
