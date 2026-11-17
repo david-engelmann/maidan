@@ -21,6 +21,18 @@
 #      tool, whose error must name the argument it got wrong.
 # Exits non-zero on the first failed check.
 #
+# Six tools need more than the store, and the server gets each, so the sweep
+# can hold them to a real answer:
+#   - the multipart artifact tools need the S3 backend: a throwaway MinIO, the
+#     image compose.yaml pins, when a Docker daemon answers. Without one they
+#     are held only to the error naming S3, and the run says S3 was NOT
+#     exercised, at the start and in its last line;
+#   - top_up_credits needs a receiving address: a test one on Base Sepolia,
+#     with test overage prices;
+#   - advise_land_gate needs a land-gate advisor: a local stub of the Jev API.
+# The stub also answers the credits watcher's chain RPC, so nothing here
+# reaches a real chain or provider, and no key or address in it is real.
+#
 # A reproducible harness for local use and a report-only CI job, not a
 # required gate.
 #
@@ -45,10 +57,26 @@ if [[ -z "$bin_dir" ]]; then
   bin_dir="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)/debug"
 fi
 
+fail() {
+  echo "FAIL: $*" >&2
+  # The log is removed with the work directory on exit, and only it says why
+  # the server died.
+  if [[ -n "$server_pid" ]] && ! kill -0 "$server_pid" 2>/dev/null; then
+    echo "--- the server exited; the end of its log:" >&2
+    tail -20 "${work}/server.log" >&2
+  fi
+  exit 1
+}
+pass() { echo "  ok  $*"; }
+
 work="$(mktemp -d)"
 server_pid=""
+stub_pid=""
+minio=""
 cleanup() {
   [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null || true
+  [[ -n "$stub_pid" ]] && kill "$stub_pid" 2>/dev/null || true
+  [[ -n "$minio" ]] && docker rm -f "$minio" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -59,6 +87,110 @@ export MAIDAN_SESSION_SECRET="mcp-inspector-session-secret-0123456789abcdef"
 export MAIDAN_EXPORT_SIGNING_KEY="0101010101010101010101010101010101010101010101010101010101010101"
 # A throwaway secrets key, so the secret tools can store and resolve.
 export FEDERATION_ENCRYPTION_KEY="0202020202020202020202020202020202020202020202020202020202020202"
+
+# The stub stands in for TypeSafe's Jev API (the contract
+# crates/maidan-server/src/land_gate_advisor.rs speaks) and for the chain's
+# JSON-RPC. It refuses a request in any other shape, so a server that stopped
+# sending what the real service needs fails here rather than passing on a
+# stub that answers anything.
+jev_key="mcp-inspector-not-a-typesafe-key"
+cat >"${work}/stub.py" <<'PY'
+import http.server, json, os, signal, sys
+
+class Stub(http.server.BaseHTTPRequestHandler):
+    def answer(self, status, value):
+        raw = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        if self.path == "/v1/systemone":
+            if self.headers.get("Authorization") != "Bearer " + sys.argv[2]:
+                return self.answer(401, {"error": "unknown key"})
+            if body.get("questions", {}).get("land", {}).get("type") != "choice" or "state" not in body:
+                return self.answer(400, {"error": "not a land question"})
+            probabilities = {"green": 0.95, "amber": 0.04, "red": 0.01}
+            land = {"type": "choice", "choice": "green", "confidence": 0.95, "probabilities": probabilities}
+            usage = {"input_tokens": 1, "output_tokens": 1}
+            return self.answer(200, {"model": "jev-stub", "answers": {"land": land}, "usage": usage})
+        if self.path == "/rpc":
+            # A chain with a head and no transfers: the watcher ticks, credits nothing.
+            results = {"eth_blockNumber": "0x64", "eth_getLogs": []}
+            if body.get("method") in results:
+                return self.answer(200, {"jsonrpc": "2.0", "id": body.get("id"), "result": results[body["method"]]})
+            return self.answer(200, {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32601, "message": "no such method"}})
+        self.answer(404, {"error": "no such path"})
+
+# A clean exit on the cleanup's kill, or bash reports the job as killed after
+# the run's last line.
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Stub)
+with open(sys.argv[1] + ".tmp", "w") as out:
+    out.write(str(server.server_port))
+# Renamed into place, so the script never reads a half-written port.
+os.replace(sys.argv[1] + ".tmp", sys.argv[1])
+server.serve_forever()
+PY
+python3 "${work}/stub.py" "${work}/stub.port" "$jev_key" >"${work}/stub.log" 2>&1 &
+stub_pid=$!
+for _ in $(seq 1 50); do
+  [[ -s "${work}/stub.port" ]] && break
+  kill -0 "$stub_pid" 2>/dev/null || fail "the backend stub exited: $(cat "${work}/stub.log")"
+  sleep 0.1
+done
+[[ -s "${work}/stub.port" ]] || fail "the backend stub did not start: $(cat "${work}/stub.log")"
+stub="http://127.0.0.1:$(cat "${work}/stub.port")"
+
+# advise_land_gate: the advisor on, pointed at the stub. The egress guard
+# refuses loopback unless it is a listed peer.
+export MAIDAN_JEV_LAND_GATE_ENABLED=1
+export MAIDAN_JEV_BASE_URL="${stub}/"
+export TYPESAFE_API_KEY="$jev_key"
+export MAIDAN_PRIVATE_EGRESS_HOSTS=127.0.0.1
+# top_up_credits: a receiving address on the test chain. It is the burn
+# address, whose key nobody holds, and the sweep only opens an intent.
+export MAIDAN_CREDITS_ADDRESS=0x000000000000000000000000000000000000dEaD
+export MAIDAN_CREDITS_CHAIN=base-sepolia
+export MAIDAN_CREDITS_RPC_URL="${stub}/rpc"
+export MAIDAN_OVERAGE_PRICES="mcp_calls=1000000/100000"
+
+# The multipart tools: a throwaway MinIO, so the S3 store the stack runs is
+# the one tested. Docker running but MinIO failing to start fails the run, as
+# a testcontainers start failure does; only no daemon at all skips S3.
+sweep_without=()
+if docker info >/dev/null 2>&1; then
+  minio_image="$(grep -m1 -oE 'cgr\.dev/chainguard/minio@sha256:[0-9a-f]{64}' compose.yaml)" ||
+    fail "compose.yaml pins no cgr.dev/chainguard/minio digest"
+  echo "=== starting MinIO for the S3 artifact backend (${minio_image}) ==="
+  s3_user=inspector
+  s3_secret="inspector-throwaway-secret"
+  minio="$(docker run -d --rm -p 127.0.0.1::9000 \
+    -e MINIO_ROOT_USER="$s3_user" -e MINIO_ROOT_PASSWORD="$s3_secret" \
+    "$minio_image" server /data)" || fail "could not start MinIO"
+  s3_endpoint="http://$(docker port "$minio" 9000/tcp | head -1)"
+  for _ in $(seq 1 60); do
+    curl -sf "${s3_endpoint}/minio/health/ready" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  curl -sf "${s3_endpoint}/minio/health/ready" >/dev/null 2>&1 ||
+    fail "MinIO did not become ready: $(docker logs "$minio" 2>&1 | tail -20)"
+  docker exec -e "MC_HOST_local=http://${s3_user}:${s3_secret}@127.0.0.1:9000" "$minio" \
+    mc mb local/maidan >/dev/null || fail "could not create the MinIO bucket"
+  export ARTIFACT_BACKEND=s3
+  export S3_ENDPOINT="$s3_endpoint"
+  export S3_BUCKET=maidan
+  export S3_REGION=us-east-1
+  export S3_ACCESS_KEY_ID="$s3_user"
+  export S3_SECRET_ACCESS_KEY="$s3_secret"
+  pass "MinIO at ${s3_endpoint}, bucket maidan"
+else
+  echo "=== S3 NOT EXERCISED: no Docker daemon answers, so the four multipart tools are held only to the error naming the S3 backend ==="
+  sweep_without+=(--without s3)
+fi
 
 # Every log of this run names the source it tested.
 echo "=== server commit $(git rev-parse HEAD 2>/dev/null || echo unknown) ==="
@@ -74,7 +206,10 @@ if curl -s -o /dev/null "${base}/health" 2>/dev/null; then
 fi
 
 echo "=== booting (auth enabled) ==="
-MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
+# A debug build's MCP upload_artifact on S3 overflows tokio's default 2 MiB
+# worker stack and aborts the server (the HTTP route and a release build do
+# not), and CI runs the debug build. 8 MiB is the main thread's own default.
+RUST_MIN_STACK=8388608 MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
   kill -0 "$server_pid" 2>/dev/null || { cat "${work}/server.log" >&2; exit 1; }
@@ -82,12 +217,6 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 curl -sf "${base}/health" >/dev/null || { cat "${work}/server.log" >&2; exit 1; }
-
-fail() {
-  echo "FAIL: $*" >&2
-  exit 1
-}
-pass() { echo "  ok  $*"; }
 
 echo "=== initialize negotiation, every revision ==="
 for version in 2026-07-28 2025-11-25 2025-06-18 2025-03-26; do
@@ -275,6 +404,11 @@ while IFS='|' read -r group tool valid bad_tool bad named; do
   pass "${group}: ${tool}${bad_tool:+, and ${bad_tool} refused naming ${named}}"
 done <<<"$probes"
 
-python3 scripts/mcp-tool-sweep.py "$base" "$token" || fail "the tool sweep (above) failed"
+python3 scripts/mcp-tool-sweep.py "$base" "$token" ${sweep_without[@]+"${sweep_without[@]}"} ||
+  fail "the tool sweep (above) failed"
 
-echo "=== all MCP external checks passed ==="
+if (( ${#sweep_without[@]} )); then
+  echo "=== all MCP external checks passed, but S3 was NOT exercised (no Docker daemon) ==="
+else
+  echo "=== all MCP external checks passed ==="
+fi
