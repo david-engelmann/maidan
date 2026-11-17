@@ -206,10 +206,7 @@ if curl -s -o /dev/null "${base}/health" 2>/dev/null; then
 fi
 
 echo "=== booting (auth enabled) ==="
-# A debug build's MCP upload_artifact on S3 overflows tokio's default 2 MiB
-# worker stack and aborts the server (the HTTP route and a release build do
-# not), and CI runs the debug build. 8 MiB is the main thread's own default.
-RUST_MIN_STACK=8388608 MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
+MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
   kill -0 "$server_pid" 2>/dev/null || { cat "${work}/server.log" >&2; exit 1; }
@@ -358,6 +355,7 @@ event_log|get_log_snapshot|workspace_id=${ws}|get_log_snapshot|workspace_id=not-
 event_wait|wait_for_event|kinds=[\"thread_landed\"] timeout_ms=1|wait_for_event|kinds=[\"no_such_kind\"]|no_such_kind
 explorer|list_tombstones|workspace_id=${ws}|list_tombstones|workspace_id=not-a-uuid|workspace_id
 export|export_workspace|workspace_id=${ws}|export_workspace|workspace_id=not-a-uuid|workspace_id
+context|get_workspace_context|workspace_id=${ws}|get_workspace_context|workspace_id=not-a-uuid|workspace_id
 freeze|list_frozen_members||freeze_member|reason=probe|member_id
 glossary|list_glossary_terms||get_glossary_term||term
 land_gate|get_land_gate|thread_id=${thread}|get_land_gate|thread_id=not-a-uuid|thread_id
@@ -374,6 +372,7 @@ secret|list_secrets||create_secret|value=probe|name
 seed|seed_from_message|message_id=${message} title=seeded|seed_from_message|message_id=not-a-uuid title=seeded|message_id
 share|list_share_tickets||create_share_ticket|expires_at=2030-01-01T00:00:00Z|channel_id
 skill|list_member_skills|member_id=${member}|list_member_skills|member_id=not-a-uuid|member_id
+search|search_messages|workspace_id=${ws} query=maidan|search_messages|workspace_id=not-a-uuid query=maidan|workspace_id
 snapshot|snapshot_thread_context|thread_id=${thread}|snapshot_thread_context|thread_id=not-a-uuid|thread_id
 social|list_pins|thread_id=${thread}|list_pins|thread_id=not-a-uuid|thread_id
 spawn|get_spawn_budget||set_spawn_budget|max_depth=-1|max_depth
@@ -382,7 +381,16 @@ thread_lookup|find_thread|repo=o/r pr_number=1|find_thread|repo=o/r|pr_number
 whoami|whoami||||
 "
 
-modules="$(sed -nE 's/.*"[a-z_]+" => ([a-z_]+)::.*/\1/p' crates/maidan-mcp/src/tools/mod.rs | sort -u)"
+# Every module a tool arm calls into, read across lines: an arm may break its
+# call over several lines or open an async block first, and a line-at-a-time
+# pattern skipped those modules (search, context) without failing.
+modules="$(perl -0777 -ne 'if (/\nfn tool<[^\n]*\n(.*?)\n\}\n/s) { my $b = $1; while ($b =~ /(?<![A-Za-z0-9_:.])(?:crate::)?([a-z_]+)::[a-z_]+/g) { print "$1\n" } }' crates/maidan-mcp/src/tools/mod.rs |
+  while read -r m; do
+    [[ -e crates/maidan-mcp/src/tools/$m.rs || -e crates/maidan-mcp/src/tools/$m/mod.rs || -e crates/maidan-mcp/src/$m.rs ]] && echo "$m"
+  done | sort -u)"
+# A pattern that stops matching the dispatch's arms finds no module, and then
+# every group would pass as probed.
+[[ -n "$modules" ]] || fail "found no tool module in crates/maidan-mcp/src/tools/mod.rs"
 probed="$(awk -F'|' 'NF > 1 {print $1}' <<<"$probes" | sort -u)"
 missing="$(comm -23 <(echo "$modules") <(echo "$probed"))"
 [[ -z "$missing" ]] || fail "tool groups with no probe row: ${missing//$'\n'/ }"

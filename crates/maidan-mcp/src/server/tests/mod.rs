@@ -31,6 +31,8 @@ mod results;
 #[cfg(test)]
 mod reviews;
 #[cfg(test)]
+mod stack;
+#[cfg(test)]
 mod threads;
 #[cfg(test)]
 mod waits;

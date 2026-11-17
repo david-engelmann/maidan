@@ -1,0 +1,4 @@
+### An MCP tool call no longer overflows a debug server's worker stack
+
+- **Fixed:** a debug build of `maidan-server` no longer aborts when it answers an MCP `upload_artifact` on the S3 artifact backend ("thread 'tokio-rt-worker' has overflowed its stack"). The tool dispatch awaited all 265 tools in place, and an unoptimized build gave its frames a stack slot for every tool's future, about 470 KiB under whichever tool ran. Each tool's call is now built and boxed in a plain function that returns before the tool runs. On aarch64 an MCP `upload_artifact` on S3 needed just over 2 MiB of stack, more than tokio's default worker, and now needs about 1.6 MiB; through `McpServer::handle` alone it went from 1040 KiB to 576 KiB.
+- **Changed:** `scripts/mcp-inspector.sh` boots its server with tokio's default worker stack again, without `RUST_MIN_STACK`, so the sweep's MCP calls run with the stack a deployed server has.
