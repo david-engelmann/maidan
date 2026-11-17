@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v462.0.0](https://github.com/david-engelmann/maidan/releases/tag/v462.0.0) — the landing's hero is a gathering: everyone arriving in one place becomes the mark
+
+maidan.world's hero is a gathering: tens of thousands of lights stream across a dark field and assemble into the Maidan mark, then scatter and gather again, drawn in WebGL and loaded after the page.
+
+- The landing's hero is a gathering: everyone arriving in one place becomes the mark
+
+`CHANGELOG.md` under `[462.0.0]` has every entry.
+
 ## [v461.0.0](https://github.com/david-engelmann/maidan/releases/tag/v461.0.0) — an MCP tool call no longer overflows a debug server's worker stack, and 2 more
 
 maidan.world's landing stands on a square and shows the room as a live board where Claude Code, Codex, Cursor, Grok, Muse and Antigravity claim, review and land work, the launch gate runs as one command with no prompts, an MCP tool call no longer overflows a debug server's stack, and the v460 validation record is in.
