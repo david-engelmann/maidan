@@ -539,6 +539,7 @@ async fn allow(h: &Harness, selector: &str) {
             workspace_id: h.workspace_id,
             surface: EgressSurface::GithubBranch,
             selector: selector.into(),
+            created_by: None,
         })
         .await
         .unwrap();
@@ -676,6 +677,7 @@ async fn a_look_alike_app_in_another_workspace_cannot_mark_ready() {
             workspace_id: ws_b.id,
             surface: EgressSurface::GithubBranch,
             selector: "o/repo@dev".into(),
+            created_by: None,
         })
         .await
         .unwrap();

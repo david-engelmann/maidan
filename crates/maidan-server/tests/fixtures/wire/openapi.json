@@ -397,6 +397,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "created_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId",
+                "description": "Who blessed it. `None` for an entry blessed before Maidan recorded\nwho, or whose member has since been deleted; the audit trail still\nholds the `egress_target.allow` row either way."
+              }
+            ]
+          },
           "dead": {
             "description": "Why this entry can no longer authorize anything, when it can't: a row\nwritten before a rule tightened (a non-ASCII branch, a ref spelling) or\nby a newer build stays listable so the operator can revoke it, and this\nsays it is dead. Absent on a live entry.",
             "type": [
@@ -35007,6 +35018,270 @@
         ]
       }
     },
+    "/ui/api/workspaces/{wid}/egress-targets": {
+      "get": {
+        "operationId": "ui_list_egress_targets",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AllowedEgressTarget"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Blessed destinations; empty (the default) means deliver nowhere"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a workspace's egress targets (console)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "`POST /workspaces/{wid}/egress-targets` for the person signed in to the\nconsole: a human member holding `token:admin` on a live token, or, before\nanyone holds an admin token, the person who may mint the first one. A\nbearer is held to `token:admin`; a session made from a token is refused.",
+        "operationId": "ui_allow_egress_target",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowEgressTarget"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedEgressTarget"
+                }
+              }
+            },
+            "description": "Destination blessed (idempotent: a re-bless returns the existing entry)"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The selector does not name one destination by id"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Allow an egress target (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/workspaces/{wid}/egress-targets/{tid}": {
+      "delete": {
+        "operationId": "ui_revoke_egress_target",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allowlist entry id",
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Blessing revoked"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This workspace has no such entry"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revoke an egress target (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/ui/api/workspaces/{wid}/events": {
       "get": {
         "operationId": "ui_list_events",
@@ -46830,6 +47105,95 @@
         "summary": "Instantiate a recipe",
         "tags": [
           "recipes"
+        ]
+      }
+    },
+    "/workspaces/{wid}/result-deliveries": {
+      "get": {
+        "description": "Every `(thread, target)` delivery row in the workspace, most recently\nchanged first: the per-thread `GET /threads/{id}/deliveries` gathered in\none read. Rows on threads the caller cannot access are omitted.",
+        "operationId": "list_workspace_result_deliveries",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows in this status: `pending`, `delivered`, `failed` or\n`skipped`. Absent = every status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows to return (default 50, clamp 1..=200).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResultDelivery"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Result deliveries, newest change first; optional exact status filter"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "status is not pending, delivered, failed or skipped"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a workspace's result deliveries",
+        "tags": [
+          "workspaces"
         ]
       }
     },

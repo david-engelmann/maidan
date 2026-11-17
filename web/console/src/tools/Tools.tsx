@@ -1,6 +1,8 @@
 // Tools: what the classic board kept on its Tools tabs, minus the gates
 // Needs you already answers. Inbox and Preferences are the signed-in
-// member's own; Deliveries and Commands are the workspace's; Explore reads
+// member's own; Deliveries (where results went, the allowlist that lets them
+// go there, and webhook and automation sends) and Commands are the
+// workspace's; Explore reads
 // queues, schedules, events and peers; Operator is the server-wide audit and
 // reindex, listed only for a credential that holds them;
 // Search finds messages; Workspace renames, switches, and adds channels,
@@ -12,6 +14,25 @@ import { liveBus } from "../core/bus.ts";
 import { PeopleApi, type Person } from "../core/people.ts";
 import { convHash, ThreadsApi } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
+import {
+  ALLOWLIST_NEED,
+  EGRESS_SURFACES,
+  RESULT_FILTERS,
+  asksForAllowlist,
+  canReplay,
+  deliveryReason,
+  deliveryTarget,
+  isSurface,
+  replayOutcome,
+  selectorRefusal,
+  statusTone,
+  statusWord,
+  surfaceWord,
+  withRow,
+  type EgressSurface,
+  type ResultDelivery,
+  type ResultFilter,
+} from "../core/deliveries.ts";
 import {
   DELIVERY_KINDS,
   EVENT_KINDS,
@@ -114,7 +135,7 @@ export function Tools() {
       </div>
       {tab === "inbox" ? <Inbox api={api} me={me} ws={ws} /> : null}
       {tab === "prefs" ? <Prefs api={api} me={me} ws={ws} /> : null}
-      {tab === "deliveries" ? <Deliveries api={api} ws={ws} /> : null}
+      {tab === "deliveries" ? <DeliveriesTab api={api} ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
       {tab === "search" ? <Search api={api} ws={ws} /> : null}
       {tab === "workspace" ? <Workspace api={api} ws={ws} /> : null}
@@ -127,9 +148,9 @@ export function Tools() {
   );
 }
 
-function Panel({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+function Panel({ title, children, action, wide = false }: { title: string; children: ReactNode; action?: ReactNode; wide?: boolean }) {
   return (
-    <section className="card tool-panel">
+    <section className={`card tool-panel${wide ? " wide" : ""}`}>
       <div className="panel-head">
         <h2>{title}</h2>
         {action}
@@ -587,13 +608,189 @@ function Prefs({ api, me, ws }: { api: ToolsApi; me: string | null; ws: string |
 
 // ---- Deliveries ----------------------------------------------------------
 
-function Deliveries({ api, ws }: { api: ToolsApi; ws: string | null }) {
+function DeliveriesTab({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  return (
+    <div className="tool-grid">
+      <ResultDeliveries api={api} ws={ws} />
+      <Allowlist api={api} ws={ws} />
+      <HookDeliveries api={api} ws={ws} />
+    </div>
+  );
+}
+
+/**
+ * Where each result went, newest change first, across every task. A target
+ * that was not reached can be sent again; the row takes the server's answer
+ * in place, so a replay that is still skipped says so where it was clicked.
+ */
+function ResultDeliveries({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const { session } = useSession();
+  const [filter, setFilter] = useState<ResultFilter>("all");
+  const list = useLoad(ws ? `${ws}|${filter}` : null, () => api.resultDeliveries(ws ?? "", filter));
+  const [replayed, setReplayed] = useState<{ from: ResultDelivery[] | null; rows: ResultDelivery[] }>({ from: null, rows: [] });
+  const { busy, act } = useAct();
+  const threadIds = (list.value ?? []).map((d) => d.thread_id);
+  const tasks = useWorkspaceTasks(ws, api, threadIds);
+  // A viewer reads where results went but cannot send one again. Until GET /me
+  // answers, the button shows and the server decides.
+  const canWrite = !session.grant || holds(session.grant, "workspace:write");
+  if (!ws) return <Panel title="Results sent out" wide>{SELF_ONLY}</Panel>;
+  const replay = (d: ResultDelivery) =>
+    void act(d.id, async () => {
+      const row = await api.replayResult(d.thread_id, d.id);
+      setReplayed((r) => ({ from: list.value, rows: withRow(r.from === list.value ? r.rows : list.value ?? [], row) }));
+      const out = replayOutcome(row);
+      say(out.text, out.ok ? "ok" : "warn");
+    }, null, "Could not send that again");
+  return (
+    <Panel title="Results sent out" wide action={<button type="button" className="chip-btn" disabled={list.status === "loading"} onClick={() => void list.reload()}>Refresh</button>}>
+      <p className="muted small">Where each task's result was delivered outside Maidan, and whether it arrived.</p>
+      <div className="seg" role="radiogroup" aria-label="Delivery status">
+        {RESULT_FILTERS.map((f) => (
+          <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>{statusWord(f)}</button>
+        ))}
+      </div>
+      <State loaded={list}>
+        {(fetched) => {
+          const rows = replayed.from === fetched ? replayed.rows : fetched;
+          return rows.length ? (
+            <ul className="tool-list" aria-label="Result deliveries">
+              {rows.map((d) => {
+                const reason = deliveryReason(d);
+                return (
+                  <li key={d.id} tabIndex={-1} className="tool-row delivery-row">
+                    <div className="grow">
+                      <div className="token-head"><b className="break">{deliveryTarget(d)}</b><span className={`state-chip ${statusTone(d.status)}`}>{statusWord(d.status)}</span></div>
+                      <p className="small"><a href={convHash({ kind: "task", id: d.thread_id })}>{threadLinkLabel(d.thread_id, tasks.byId, "Open the task")}</a>{d.pr_url ? <> · <a href={d.pr_url} target="_blank" rel="noreferrer">Pull request #{d.pr_number}</a></> : null}</p>
+                      {reason ? <p className={`small break ${d.status === "failed" ? "err" : "muted"}`}>{reason}</p> : null}
+                      <p className="muted small">{d.attempts} attempt{d.attempts === 1 ? "" : "s"} · <time dateTime={d.updated_at} title={new Date(d.updated_at).toLocaleString()}>{ago(d.updated_at, Date.now()) || "just now"}</time></p>
+                    </div>
+                    {canWrite && canReplay(d) ? (
+                      <div className="row-actions">
+                        <button type="button" className="chip-btn" disabled={busy !== null} onClick={() => replay(d)}>{busy === d.id ? "Sending…" : "Replay"}</button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="muted">{filter === "all" ? "No result has gone out yet. A result goes out when its task names a destination this workspace allows." : `No ${statusWord(filter).toLowerCase()} deliveries.`}</p>
+          );
+        }}
+      </State>
+    </Panel>
+  );
+}
+
+/**
+ * The egress allowlist: the only destinations a result may reach. Reads are
+ * admin-only on the server too, so an agent cannot list what to aim at; anyone
+ * else gets a sentence, not a refused request.
+ */
+function Allowlist({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const { session } = useSession();
+  const tokenBacked = session.status === "signed-in" && (Boolean(session.credentials.pastedToken.trim()) || session.credentials.tokenSession);
+  const deciding = tokenBacked && session.grant === null;
+  const asks = ws && !deciding && asksForAllowlist(tokenBacked, session.grant) ? ws : null;
+  const list = useLoad(asks, () => api.egressTargets(asks ?? ""));
+  const people = usePeopleApi();
+  const allowed = list.value?.allowed === true;
+  const members = useLoad(asks && allowed ? `people|${asks}` : null, () => people.people(asks ?? ""));
+  const [surface, setSurface] = useState<EgressSurface>("github");
+  const [selector, setSelector] = useState("");
+  const [why, setWhy] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [dropping, setDropping] = useState<string | null>(null);
+  const { busy, act } = useAct();
+  const title = "Where results may go";
+  if (!ws) return <Panel title={title}>{SELF_ONLY}</Panel>;
+  if (deciding) return <Panel title={title}><p className="muted">Loading…</p></Panel>;
+  if (!asks) return <Panel title={title}><p className="muted">{ALLOWLIST_NEED}</p></Panel>;
+  const shape = EGRESS_SURFACES.find((s) => s.id === surface) ?? EGRESS_SURFACES[0];
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    if (adding) return;
+    // The shape is checked here first, so a typo never reaches the server;
+    // what only the server knows (a forbidden base) comes back in its words.
+    const local = selectorRefusal(surface, selector);
+    if (local) {
+      setWhy(local);
+      return;
+    }
+    setAdding(true);
+    setWhy(null);
+    try {
+      const target = await api.allowEgressTarget(asks, surface, selector);
+      setSelector("");
+      say(`Allowed ${surfaceWord(target.surface)} ${target.selector}`);
+      await list.reload();
+    } catch (err) {
+      setWhy(err instanceof Error && err.message ? err.message : "Could not allow that destination");
+    } finally {
+      setAdding(false);
+    }
+  };
+  return (
+    <Panel title={title}>
+      <p className="muted small">A result reaches only the destinations listed here. With none listed, nothing is delivered.</p>
+      <State loaded={list}>
+        {(read) =>
+          !read.allowed ? (
+            <p className="muted">{ALLOWLIST_NEED}</p>
+          ) : (
+            <>
+              {read.value.length ? (
+                <ul className="tool-list" aria-label="Allowed destinations">
+                  {read.value.map((t) => {
+                    const who = namedMember(members.value, t.created_by);
+                    return (
+                      <li key={t.id} tabIndex={-1} className={`tool-row egress-row${t.dead ? " read" : ""}`}>
+                        <div className="grow">
+                          <div className="token-head"><b className="break">{t.selector}</b><span className="state-chip">{surfaceWord(t.surface)}</span></div>
+                          {t.dead ? <p className="err small">This entry no longer allows anything: {t.dead}. Remove it.</p> : null}
+                          <p className="muted small">Added <time dateTime={t.created_at} title={new Date(t.created_at).toLocaleString()}>{ago(t.created_at, Date.now()) || "just now"}</time>{who ? ` · by ${who}` : ""}</p>
+                        </div>
+                        <div className="row-actions">
+                          {dropping === t.id ? (
+                            <>
+                              <button type="button" className="chip-btn danger confirm" disabled={busy !== null} onClick={() => void act(t.id, async () => { await api.revokeEgressTarget(asks, t.id); setDropping(null); await list.reload(); }, `Removed ${t.selector}`, "Could not remove that destination")}>Remove</button>
+                              <button type="button" className="chip-btn" onClick={() => setDropping(null)}>Keep</button>
+                            </>
+                          ) : (
+                            <button type="button" className="chip-btn" onClick={() => setDropping(t.id)}>Remove…</button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="muted">Nothing is allowed yet, so no result leaves Maidan.</p>
+              )}
+              <form className="row-form" aria-label="Allow a destination" onSubmit={(e) => void add(e)}>
+                <label className="field">Kind<select value={surface} onChange={(e) => { if (isSurface(e.target.value)) setSurface(e.target.value); setWhy(null); }}>{EGRESS_SURFACES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
+                <label className="field grow">{shape.field}<input value={selector} onChange={(e) => { setSelector(e.target.value); setWhy(null); }} placeholder={shape.example} autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-invalid={why !== null} aria-describedby={why ? "allow-why" : undefined} /></label>
+                <button className="button steel" disabled={adding || !selector.trim()}>{adding ? "Allowing…" : "Allow"}</button>
+              </form>
+              {why ? <p className="err small" id="allow-why" role="alert">{why}</p> : null}
+            </>
+          )
+        }
+      </State>
+    </Panel>
+  );
+}
+
+
+/** Webhook and automation sends, with their dead letters. */
+function HookDeliveries({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const [kind, setKind] = useState<string>("all");
   const [status, setStatus] = useState<DeliveryStatus>("quarantined");
   const list = useLoad(ws ? `${ws}|${kind}|${status}` : null, () => api.deliveries(ws ?? "", kind, status));
   const { busy, act } = useAct();
   return (
-    <Panel title="Deliveries">
+    <Panel title="Webhooks and automations">
       <div className="row-form">
         <label className="field">Kind<select value={kind} onChange={(e) => setKind(e.target.value)}>{DELIVERY_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></label>
         <div className="seg" role="radiogroup" aria-label="Status">

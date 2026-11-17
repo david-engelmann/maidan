@@ -183,6 +183,7 @@ where
                 workspace_id: ws.id,
                 surface: EgressSurface::Slack,
                 selector: "C0123ABCDEF".into(),
+                created_by: None,
             },
             audit_for(ws.id, "egress.allow"),
         )

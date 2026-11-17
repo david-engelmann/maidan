@@ -12,17 +12,24 @@
 //! An operator's loop is list → bless → revoke-by-id. The id is a surrogate
 //! precisely so the revoke is routable: a GitHub selector is `owner/name`, and
 //! a `/` in a path segment is not.
+//!
+//! The console's twins under `/ui/api` hold a person signed in to the same
+//! line: an OIDC session carries no `token:admin`, so it is let in only when
+//! that person already holds it on a live token of their own, or may mint the
+//! first one, as the console's agent and invite routes decide.
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::{
-    AllowedEgressTarget, AuditScope, EgressTargetId, NewAuditEvent, NewEgressTarget, WorkspaceId,
+    AllowedEgressTarget, AuditScope, EgressTargetId, MemberKind, NewAuditEvent, NewEgressTarget,
+    WorkspaceId,
 };
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::AllowEgressTarget;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
+use crate::session::SessionContext;
 use crate::state::AppState;
 
 /// `POST /workspaces/:wid/egress-targets` — bless a destination. Idempotent: a
@@ -36,8 +43,141 @@ pub async fn allow_egress_target(
     ApiJson(body): ApiJson<AllowEgressTarget>,
 ) -> ApiResult<(StatusCode, Json<AllowedEgressTarget>)> {
     let workspace_id = WorkspaceId(wid);
-    cap(&auth, TOKEN_ADMIN)?;
-    ensure_workspace(&auth, workspace_id)?;
+    bearer_admin(&auth, workspace_id)?;
+    allow(&state, &auth, workspace_id, body).await
+}
+
+/// `GET /workspaces/:wid/egress-targets` — the workspace's blessed destinations.
+/// An empty list is the default and means **deliver nowhere**.
+pub async fn list_egress_targets(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<AllowedEgressTarget>>> {
+    let workspace_id = WorkspaceId(wid);
+    bearer_admin(&auth, workspace_id)?;
+    list(&state, workspace_id).await
+}
+
+/// `DELETE /workspaces/:wid/egress-targets/:tid` — revoke a blessing. `404` when
+/// this workspace has no such entry; the delete is workspace-scoped, so a
+/// guessed id from another workspace is a `404` rather than a cross-tenant
+/// revoke.
+pub async fn revoke_egress_target(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath((wid, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    let workspace_id = WorkspaceId(wid);
+    bearer_admin(&auth, workspace_id)?;
+    revoke(&state, &auth, workspace_id, tid).await
+}
+
+/// `POST /ui/api/workspaces/:wid/egress-targets` — bless from the console.
+pub async fn ui_allow_egress_target(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<AllowEgressTarget>,
+) -> ApiResult<(StatusCode, Json<AllowedEgressTarget>)> {
+    let workspace_id = WorkspaceId(wid);
+    console_admin(
+        &state,
+        &auth,
+        session.as_ref().map(|Extension(s)| s),
+        workspace_id,
+    )
+    .await?;
+    allow(&state, &auth, workspace_id, body).await
+}
+
+/// `GET /ui/api/workspaces/:wid/egress-targets` — the allowlist in the console.
+pub async fn ui_list_egress_targets(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<AllowedEgressTarget>>> {
+    let workspace_id = WorkspaceId(wid);
+    console_admin(
+        &state,
+        &auth,
+        session.as_ref().map(|Extension(s)| s),
+        workspace_id,
+    )
+    .await?;
+    list(&state, workspace_id).await
+}
+
+/// `DELETE /ui/api/workspaces/:wid/egress-targets/:tid` — revoke from the console.
+pub async fn ui_revoke_egress_target(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath((wid, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<StatusCode> {
+    let workspace_id = WorkspaceId(wid);
+    console_admin(
+        &state,
+        &auth,
+        session.as_ref().map(|Extension(s)| s),
+        workspace_id,
+    )
+    .await?;
+    revoke(&state, &auth, workspace_id, tid).await
+}
+
+fn bearer_admin(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
+    cap(auth, TOKEN_ADMIN)?;
+    ensure_workspace(auth, workspace_id)
+}
+
+/// Whether the caller of a console route may see and change the allowlist. A
+/// bearer is held to `token:admin`, as on the bearer routes. A person signed
+/// in qualifies when they are a human member who holds `token:admin` on a
+/// live token, or who may mint the first admin token: either way they could
+/// make these calls with a token, so the session lends them nothing new. An
+/// agent's own sign-in never qualifies, so an agent cannot list the
+/// destinations worth aiming its `deliver_to` at. A session made from a token
+/// is refused, as on the console's invite routes: that token's holder uses the
+/// bearer routes, where its own grant decides.
+async fn console_admin(
+    state: &AppState,
+    auth: &AuthContext,
+    session: Option<&SessionContext>,
+    workspace_id: WorkspaceId,
+) -> ApiResult<()> {
+    let Some(session) = session else {
+        return bearer_admin(auth, workspace_id);
+    };
+    ensure_workspace(auth, workspace_id)?;
+    if session.token.is_some() {
+        return Err(ApiError::Forbidden(
+            "a session made from a token cannot use the allowlist here; that token's holder uses /workspaces/{wid}/egress-targets".into(),
+        ));
+    }
+    let member = state
+        .store
+        .get_member_in(workspace_id, session.member_id)
+        .await?;
+    if member.kind == MemberKind::Human
+        && super::member::session_holds_or_may_mint(state, session, TOKEN_ADMIN).await?
+    {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(
+            "only a workspace admin can see or change where results may be delivered".into(),
+        ))
+    }
+}
+
+async fn allow(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    body: AllowEgressTarget,
+) -> ApiResult<(StatusCode, Json<AllowedEgressTarget>)> {
     let actor = auth.actor_id();
     let target = state
         .store
@@ -46,6 +186,7 @@ pub async fn allow_egress_target(
                 workspace_id,
                 surface: body.surface,
                 selector: body.selector,
+                created_by: Some(actor),
             },
             Box::new(move |target| egress_target_allowed_event(actor, target)),
         )
@@ -72,16 +213,10 @@ fn egress_target_allowed_event(
     }
 }
 
-/// `GET /workspaces/:wid/egress-targets` — the workspace's blessed destinations.
-/// An empty list is the default and means **deliver nowhere**.
-pub async fn list_egress_targets(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
-    ApiPath(wid): ApiPath<uuid::Uuid>,
+async fn list(
+    state: &AppState,
+    workspace_id: WorkspaceId,
 ) -> ApiResult<Json<Vec<AllowedEgressTarget>>> {
-    let workspace_id = WorkspaceId(wid);
-    cap(&auth, TOKEN_ADMIN)?;
-    ensure_workspace(&auth, workspace_id)?;
     let targets = state.store.list_egress_targets(workspace_id).await?;
     for target in targets.iter().filter(|t| t.dead.is_some()) {
         tracing::warn!(
@@ -95,18 +230,12 @@ pub async fn list_egress_targets(
     Ok(Json(targets))
 }
 
-/// `DELETE /workspaces/:wid/egress-targets/:tid` — revoke a blessing. `404` when
-/// this workspace has no such entry; the delete is workspace-scoped, so a
-/// guessed id from another workspace is a `404` rather than a cross-tenant
-/// revoke.
-pub async fn revoke_egress_target(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
-    ApiPath((wid, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
+async fn revoke(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    tid: uuid::Uuid,
 ) -> ApiResult<StatusCode> {
-    let workspace_id = WorkspaceId(wid);
-    cap(&auth, TOKEN_ADMIN)?;
-    ensure_workspace(&auth, workspace_id)?;
     let revoked = state
         .store
         .revoke_egress_target_audited(

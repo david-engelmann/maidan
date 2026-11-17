@@ -1183,6 +1183,12 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/deliveries/{did}/replay",
             post(delivery_ops::replay_delivery),
         )
+        // Every result delivery in the workspace at once, so the console's
+        // Deliveries tab shows what failed without opening each thread.
+        .route(
+            "/workspaces/{wid}/result-deliveries",
+            get(routes::list_workspace_result_deliveries),
+        )
         .route(
             "/operator/reindex-embeddings",
             post(reindex_ops::start_reindex_embeddings),
@@ -1703,6 +1709,10 @@ pub fn router(state: AppState) -> Router {
             get(delivery_ops::list_deliveries),
         )
         .route(
+            "/ui/api/workspaces/{wid}/result-deliveries",
+            get(routes::list_workspace_result_deliveries),
+        )
+        .route(
             "/ui/api/workspaces/{wid}/members",
             get(routes::list_members),
         )
@@ -1875,6 +1885,22 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/workspaces/{wid}/deliveries/{did}/replay",
             post(delivery_ops::replay_delivery),
+        )
+        // A result delivery's replay: the bearer handler, so a session meets
+        // the same workspace:write and thread checks a token does.
+        .route(
+            "/ui/api/threads/{tid}/deliveries/{did}/replay",
+            post(routes::replay_thread_delivery),
+        )
+        // The egress allowlist in the console: a signed-in admin blesses and
+        // revokes destinations without holding an admin token.
+        .route(
+            "/ui/api/workspaces/{wid}/egress-targets",
+            post(routes::ui_allow_egress_target).merge(get(routes::ui_list_egress_targets)),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/egress-targets/{tid}",
+            delete(routes::ui_revoke_egress_target),
         )
         .route(
             "/ui/api/operator/reindex-embeddings",

@@ -16,7 +16,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{EgressOutboxId, EgressTargetId, ThreadId, WorkspaceId};
+use crate::ids::{EgressOutboxId, EgressTargetId, MemberId, ThreadId, WorkspaceId};
 
 /// An external surface a projector can deliver to. Lowercase identifiers, as in
 /// the `deliver_to` grammar pinned in `docs/Result Delivery.md`.
@@ -435,6 +435,10 @@ pub struct AllowedEgressTarget {
     pub surface: String,
     pub selector: String,
     pub created_at: DateTime<Utc>,
+    /// Who blessed it. `None` for an entry blessed before Maidan recorded
+    /// who, or whose member has since been deleted; the audit trail still
+    /// holds the `egress_target.allow` row either way.
+    pub created_by: Option<MemberId>,
     /// Why this entry can no longer authorize anything, when it can't: a row
     /// written before a rule tightened (a non-ASCII branch, a ref spelling) or
     /// by a newer build stays listable so the operator can revoke it, and this
@@ -462,6 +466,9 @@ pub struct NewEgressTarget {
     pub workspace_id: WorkspaceId,
     pub surface: EgressSurface,
     pub selector: String,
+    /// The actor blessing it. A re-bless keeps the first blesser, as it keeps
+    /// the first `created_at`.
+    pub created_by: Option<MemberId>,
 }
 
 /// Validate an operator-supplied allowlist selector, returning why it was

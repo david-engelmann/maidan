@@ -1645,6 +1645,17 @@ pub trait EgressStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ResultDelivery>, StoreError>;
+    /// The workspace's result deliveries across its live threads, most
+    /// recently changed first, so an operator sees what just failed without
+    /// opening each thread. `status`, when given, keeps only rows in it. The
+    /// caller drops rows on threads the reader cannot see: this read does not
+    /// know who is asking. `limit` is clamped `1..=200`.
+    async fn list_workspace_result_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        status: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<ResultDelivery>, StoreError>;
     /// The commit the change flow last delivered to pull request
     /// `pull_number` of `repo` (`owner/name`, any case), from a thread in
     /// `workspace_id`: the newest delivered `github_branch` result whose
