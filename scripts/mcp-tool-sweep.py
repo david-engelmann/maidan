@@ -117,6 +117,24 @@ handle = f"sweep-reviewer-{RUN}"
 reviewer = http("POST", f"/workspaces/{ws}/agents", {"handle": handle})
 rev_member, rev_token = reviewer["member"]["id"], reviewer["token"]["secret"]
 third = http("POST", f"/workspaces/{ws}/agents", {"handle": f"sweep-third-{RUN}"})["member"]["id"]
+# The ChatGPT listing reaches /mcp/coordinator through an OAuth grant, which
+# carries only the delegatable capabilities. The coordinator's calls run on a
+# token of the bearer's holding exactly those, so a tool that works for an
+# admin but not for a grant fails here, not in a directory's review.
+OAUTH_GRANT_CAPABILITIES = [
+    "workspace:read",
+    "workspace:write",
+    "member:self",
+    "message:post",
+    "thread:transition",
+    "artifact:upload",
+    "search:query",
+    "event:subscribe",
+]
+GRANT_NOTE = ", with only an OAuth grant's capabilities"
+grant_token = http(
+    "POST", f"/workspaces/{ws}/members/{member}/tokens", {"capabilities": OAUTH_GRANT_CAPABILITIES}
+)["secret"]
 
 fixtures = must("create_channel", {"workspace_id": ws, "name": f"sweep-fixtures-{RUN}"})["id"]
 # Titles carry the run: a task created with the same text as an open one is
@@ -199,14 +217,15 @@ DELIVERED = []
 # its tool, and a reviewer's step runs as the second member.
 def write_flow():
     done = {}
+    co, wk, rv = "/mcp/coordinator", "/mcp/worker", "/mcp/reviewer"
 
-    def step(tool, args, endpoint, bearer=ADMIN):
+    def step(tool, args, endpoint, bearer=None):
+        bearer = bearer or (grant_token if endpoint == co else ADMIN)
         ok, text, value = call(tool, args, endpoint, bearer)
-        check(f"{tool} on {endpoint}: a valid call", ok, text)
+        check(f"{tool} on {endpoint}: a valid call{GRANT_NOTE if bearer == grant_token else ''}", ok, text)
         done[tool] = True
         return value
 
-    co, wk, rv = "/mcp/coordinator", "/mcp/worker", "/mcp/reviewer"
     task = step("create_thread", {"channel_id": work, "title": f"sweep task {RUN}"}, co)["id"]
     step("set_thread_attributes", {"thread_id": task, "kind": "change"}, co)
     step("set_priority", {"thread_id": task, "priority": 1}, co)
@@ -467,8 +486,9 @@ for profile in ("worker", "reviewer", "coordinator"):
     for tool in tools_on(endpoint):
         profile_tools.setdefault(tool["name"], tool)
         if read_only(tool):
-            ok, text, _ = call(tool["name"], read_args(tool), endpoint)
-            check(f"{tool['name']} on {endpoint}: a valid call", ok, text)
+            bearer = grant_token if profile == "coordinator" else ADMIN
+            ok, text, _ = call(tool["name"], read_args(tool), endpoint, bearer)
+            check(f"{tool['name']} on {endpoint}: a valid call{GRANT_NOTE if bearer == grant_token else ''}", ok, text)
 missing = sorted(n for n, t in profile_tools.items() if not read_only(t) and n not in written)
 check("every profile write has a step in the write flow", not missing, " ".join(missing))
 
