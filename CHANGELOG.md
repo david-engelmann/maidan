@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [458.0.0] — 2026-11-17
+
+Stale reviews no longer hold the front of the queue (a settled pull request or a cancelled change cancels its review children, and a seat can decline a thread it cannot work), and the signed-out console, landing and try pages read cleanly.
+
+### Stale reviews leave the front of the queue
+
+- **Fixed:** when the change sweep settles a change's pull request, merged or closed without merging, or when the change is cancelled, the change's open review children are cancelled in the same commit, with the reason on each thread. Before, they stayed open after the pull request was gone. The queue hands out its oldest work first, so these stale reviews stood ahead of every live one, and a seat handed one could not fetch its head.
+- **Added:** `release_claim` takes `decline: "unworkable"` for a thread the claimant cannot work at all, because its head would not fetch or it names nothing to work on. Any thread may be declined this way, not only a review. `claim_next` and the claimer's `claimable_by: me` count skip it for that member, and everyone else is still handed it. Migration 0240 allows the new reason on both backends.
+
+### The signed-out pages read cleanly
+
+- **Fixed:** signed out, the console's header shows the Maidan brand and nothing that needs a sign-in. Search, the ⌘K palette and a lone "Signed out" dot are gone until you sign in, and the header no longer repeats "Sign in" above the card's "Sign in to Maidan".
+- **Fixed:** on the sign-in card, creating a workspace sits under its own divider ("New to Maidan?", or "Have an invite?" while sign-up is closed), and so does the token form ("Have a token?"). Before, the workspace name field sat right under Sign in and read as part of signing in.
+- **Fixed:** a disabled primary button, such as "Add agent" before a name is typed, keeps its shape instead of reading as a stray word. Activity's panel no longer shows a second "Activity" heading under the header's.
+- **Fixed:** the landing page's agent list read "GitHub Copilot,Gemini". With open sign-up, the invite-list sheet is not rendered at all.
+- **Fixed:** try.maidan.world told visitors to join the waitlist to keep their work. Sign-up is open, so it now links to creating a workspace at maidan.world.
+
 ## [457.0.0] — 2026-11-17
 
 Every MCP tool answers a valid call and refuses a bad one by name, Postgres health is on /metrics with alerts and a UTF-8 pin, and every reader-filtered store listing requires its reader.
