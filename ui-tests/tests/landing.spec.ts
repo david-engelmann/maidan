@@ -126,6 +126,85 @@ test("the example tabs move with the keyboard and wrap", async ({ page }) => {
   await expect(claude).toBeFocused();
 });
 
+// Each moving picture can be stopped (WCAG 2.2.2). The control is a small
+// glyph over the picture's corner; its name says what a press will do, and
+// the ring around it still takes a 44px tap.
+const MOVING = [
+  ["animation", ".hero-art"],
+  ["visualization", ".room-stage"],
+  ["recording", ".watch-frame"],
+] as const;
+
+test("each moving picture has a small pause control that names what a press will do", async ({ page }) => {
+  await openLanding(page);
+  for (const [noun, frame] of MOVING) {
+    const pause = page.locator(frame).getByRole("button", { name: `Pause the ${noun}` });
+    await pause.scrollIntoViewIfNeeded();
+    await expect(pause).toBeVisible();
+    await expect(pause).not.toHaveAttribute("aria-pressed");
+    const box = await pause.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeLessThanOrEqual(36);
+    expect(box!.height).toBeLessThanOrEqual(36);
+    const taps = await pause.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      return [[-22, 0], [22, 0], [0, -22], [0, 22]].map(([dx, dy]) => {
+        const at = document.elementFromPoint(x + dx, y + dy);
+        return !!at && (at === el || el.contains(at));
+      });
+    });
+    expect(taps, `${noun}: a tap 22px from the glyph's middle reaches it`).toEqual([true, true, true, true]);
+    await pause.click();
+    await expect(page.locator(frame).getByRole("button", { name: `Play the ${noun}` })).toBeVisible();
+  }
+});
+
+test("the room's drawing loads near its section, paints, and each caption picks out its part as it passes", async ({ page }) => {
+  const fetched: string[] = [];
+  page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
+  await openLanding(page);
+  const stage = page.locator(".room-stage");
+  await stage.scrollIntoViewIfNeeded();
+  await expect.poll(() => fetched.includes("/landing/roomviz.js")).toBe(true);
+  const canvas = page.locator(".room-canvas");
+  await expect(canvas).toHaveAttribute("aria-hidden", "true");
+  await expect(stage.locator(".sr-only")).toContainText("tasks are posted into the middle");
+  await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => {
+    const data = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data ?? [];
+    let painted = 0;
+    for (let i = 3; i < data.length; i += 4 * 97) if (data[i] > 0) painted++;
+    return painted;
+  })).toBeGreaterThan(100);
+  for (const [i, phase] of [[1, "2"], [2, "3"]] as const) {
+    await page.locator(".room-step").nth(i).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      window.scrollTo(0, window.scrollY + r.top + r.height / 2 - window.innerHeight * 0.5);
+    });
+    await expect(page.locator(".room-step").nth(i)).toHaveAttribute("data-active");
+    await expect(stage).toHaveAttribute("data-phase", phase);
+  }
+});
+
+test.describe("with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("the room is one still frame of the finished run, with nothing to pause", async ({ page }) => {
+    await openLanding(page);
+    await page.locator(".room-stage").scrollIntoViewIfNeeded();
+    await expect(page.locator(".hero-art .media-toggle")).toHaveCount(0);
+    await expect(page.locator(".room-stage .media-toggle")).toHaveCount(0);
+    await expect(page.locator(".watch-frame").getByRole("button", { name: "Play the recording" })).toBeVisible();
+    await expect.poll(() => page.locator(".room-canvas").evaluate((c: HTMLCanvasElement) => {
+      const data = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data ?? [];
+      let painted = 0;
+      for (let i = 3; i < data.length; i += 4 * 97) if (data[i] > 0) painted++;
+      return painted;
+    })).toBeGreaterThan(100);
+  });
+});
+
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

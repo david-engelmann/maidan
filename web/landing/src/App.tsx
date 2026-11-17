@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { HeroBoard } from "./stageshow/HeroBoard";
+import { MediaToggle } from "./MediaToggle";
+import { RoomSection } from "./RoomSection";
 import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
 
 const GH = "https://github.com/david-engelmann/maidan";
@@ -76,6 +78,8 @@ export default function App() {
           </div>
           <HeroBoard />
         </section>
+
+        <RoomSection />
 
         <section className="watch" aria-labelledby="watch-title">
           <p className="eyebrow">See it work</p>
@@ -174,9 +178,7 @@ function WatchClip() {
           alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
         />
       </picture>
-      <button type="button" className="watch-toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
-        {paused ? "Play the recording" : "Pause the recording"}
-      </button>
+      <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="recording" />
     </div>
   );
 }
