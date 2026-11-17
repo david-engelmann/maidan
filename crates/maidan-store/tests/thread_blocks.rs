@@ -212,7 +212,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
         .expect("block");
 
     let depth = store
-        .channel_queue_depth(channel.id, None)
+        .channel_queue_depth(channel.id, member.id)
         .await
         .expect("depth");
     assert_eq!(depth.open, 3);

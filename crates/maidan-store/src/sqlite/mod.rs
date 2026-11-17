@@ -184,6 +184,13 @@ impl SqliteStore {
     async fn current_wal_lsn(&self) -> Result<Option<Lsn>, StoreError> {
         Ok(None)
     }
+
+    /// SQLite has no transaction-id age, vacuum statistics or slots to read.
+    async fn read_database_health(
+        &self,
+    ) -> Result<Option<crate::store::DatabaseHealth>, StoreError> {
+        Ok(None)
+    }
 }
 
 store_delegations!(SqliteStore, MetaStore);

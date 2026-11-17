@@ -187,7 +187,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
 
     // The queue-depth bucket counts the parked thread; it is not `ready`.
     let depth = store
-        .channel_queue_depth(channel.id, None)
+        .channel_queue_depth(channel.id, member.id)
         .await
         .expect("depth");
     assert_eq!(depth.open, 2);

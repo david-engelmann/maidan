@@ -280,6 +280,30 @@ pub fn init() {
             "maidan_replica_lag_bytes",
             "Read-replica lag in WAL bytes (primary write LSN minus replica replay LSN)"
         );
+        describe_gauge!(
+            "maidan_postgres_xid_age",
+            "Transactions since the database's oldest unfrozen transaction id (age(datfrozenxid)); Postgres stops writes near 2 billion"
+        );
+        describe_gauge!(
+            "maidan_postgres_dead_tuples",
+            "Dead row versions across the user tables that vacuum has not reclaimed"
+        );
+        describe_gauge!(
+            "maidan_postgres_live_tuples",
+            "Live rows across the user tables (the denominator of a bloat ratio)"
+        );
+        describe_gauge!(
+            "maidan_postgres_wal_bytes",
+            "The primary's WAL write position in bytes; its rate is the WAL written"
+        );
+        describe_gauge!(
+            "maidan_postgres_replication_slot_retained_bytes",
+            "WAL kept on disk by the replication slot that holds back the most, in bytes"
+        );
+        describe_gauge!(
+            "maidan_postgres_replication_slots_inactive",
+            "Replication slots no consumer holds; each keeps WAL until it is dropped"
+        );
         describe_counter!(
             "maidan_notifications_created_total",
             "Per-recipient notifications written by the notification router, by kind"
@@ -732,6 +756,29 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
     if let Ok(dead) = state.store.count_dead_mail().await {
         gauge!("maidan_mail_dead").set(dead as f64);
+    }
+
+    // Postgres health, read from its catalogs on each scrape. A failed read
+    // leaves the gauges as they were, so a slow catalog never reads as a
+    // healthy database; SQLite reports none.
+    match state.store.database_health().await {
+        Ok(Some(db)) => {
+            gauge!("maidan_postgres_xid_age").set(db.xid_age as f64);
+            gauge!("maidan_postgres_dead_tuples").set(db.dead_tuples as f64);
+            gauge!("maidan_postgres_live_tuples").set(db.live_tuples as f64);
+            gauge!("maidan_postgres_wal_bytes").set(db.wal_bytes as f64);
+            if let Some(retained) = db.slot_retained_bytes {
+                gauge!("maidan_postgres_replication_slot_retained_bytes").set(retained as f64);
+            }
+            if let Some(inactive) = db.inactive_slots {
+                gauge!("maidan_postgres_replication_slots_inactive").set(inactive as f64);
+            }
+        }
+        Ok(None) => {}
+        Err(err) => tracing::warn!(
+            error = %err,
+            "metrics: database health read failed; gauges left as they were"
+        ),
     }
 
     // A claim that only renews: the board marks such a thread stalled at

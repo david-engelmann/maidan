@@ -388,7 +388,7 @@ pub async fn build_workspace_context(
     thread_limit: i64,
     thread_cursor: Option<ThreadId>,
     limits: ThreadContextLimits,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<WorkspaceContext, StoreError> {
     let workspace = store.get_workspace(workspace_id).await?;
     let mut channels = store.list_channels(workspace_id).await?;

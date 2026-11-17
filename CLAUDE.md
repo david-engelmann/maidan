@@ -364,6 +364,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Repo gotchas
 
+- **A new integration test file is not compiled until it is registered.**
+  Each crate builds its `tests/*.rs` as one binary, `tests/it/main.rs`; run
+  `python3 scripts/gen-integration-main.py` after adding one, or the lint job
+  fails with `tests/it/main.rs is out of date`.
 - **A new migration is a new file.** `crates/maidan-store/build.rs` registers
   every `migrations/{postgres,sqlite}/NNNN_<slug>.sql` by its version; add the
   file on both backends and nothing else. `schema_parity` then checks both

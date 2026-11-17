@@ -124,7 +124,7 @@ pub async fn get(pool: &PgPool, id: ApprovalGateId) -> Result<Option<ApprovalGat
 pub async fn list_pending(
     pool: &PgPool,
     workspace_id: WorkspaceId,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
     limit: i64,
 ) -> Result<Vec<ApprovalGate>, StoreError> {
     let readable = readable_row("maidan_approval_gates.thread_id", "$1", "$3::uuid", "$4");
@@ -136,7 +136,7 @@ pub async fn list_pending(
     ))
     .bind(workspace_id.0)
     .bind(limit)
-    .bind(readable_by.map(|m| m.0))
+    .bind(readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
@@ -177,7 +177,7 @@ pub async fn page_pending(
     .bind(workspace_id.0)
     .bind(query.thread_id.map(|t| t.0))
     .bind(query.created_since)
-    .bind(query.readable_by.map(|m| m.0))
+    .bind(query.readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .bind(before_at)
     .bind(before_id)
@@ -200,7 +200,7 @@ pub async fn count_pending(
     .bind(workspace_id.0)
     .bind(query.thread_id.map(|t| t.0))
     .bind(query.created_since)
-    .bind(query.readable_by.map(|m| m.0))
+    .bind(query.readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .fetch_one(pool)
     .await?)

@@ -1125,7 +1125,7 @@ pub async fn queue_depth(
     pool: &PgPool,
     grace: &ClaimGrace,
     scope: QueueScope,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
     kind: Option<maidan_types::TaskKind>,
@@ -1135,7 +1135,7 @@ pub async fn queue_depth(
         scope, &QUEUE_SQL, as_claimer,
     ))
     .bind(scope.id())
-    .bind(readable_by.map(|m| m.0))
+    .bind(readable_by.0)
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
     .bind(engine.map(|engine| engine.as_str()))
@@ -1161,11 +1161,11 @@ pub async fn occupancy(
     pool: &PgPool,
     grace: &ClaimGrace,
     scope: QueueScope,
-    readable_by: Option<MemberId>,
+    readable_by: MemberId,
 ) -> Result<ChannelOccupancy, StoreError> {
     let row = sqlx::query(&queue_counts::occupancy_select(scope, &QUEUE_SQL))
         .bind(scope.id())
-        .bind(readable_by.map(|m| m.0))
+        .bind(readable_by.0)
         .bind(DM_CHANNEL_NAME)
         .bind(None::<&str>)
         .bind(None::<&str>)
@@ -1749,11 +1749,11 @@ pub async fn page_for_workspace(
     workspace_id: WorkspaceId,
     after: Option<ThreadId>,
     limit: i64,
-    reader_id: Option<MemberId>,
+    reader_id: MemberId,
 ) -> Result<Vec<Thread>, StoreError> {
     // Read access is filtered in the query, so a thread the reader cannot
-    // read never crowds out the page limit. `readable_row` keeps every row
-    // when the reader bind is NULL (no reader: the unrestricted view).
+    // read never crowds out the page limit. `readable_row` has no
+    // reader-less form: the reader is required.
     let readable = readable_row("t.id", "$1", "$4::uuid", "$5");
     let sql = format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
@@ -1773,7 +1773,7 @@ pub async fn page_for_workspace(
         .bind(workspace_id.0)
         .bind(after.map(|t| t.0))
         .bind(limit.max(0))
-        .bind(reader_id.map(|id| id.0))
+        .bind(reader_id.0)
         .bind(DM_CHANNEL_NAME)
         .fetch_all(pool)
         .await?;
@@ -1807,7 +1807,7 @@ pub async fn find_for_workspace(
         let known = sqlx::query(&sql)
             .bind(workspace_id.0)
             .bind(after.0)
-            .bind(search.reader_id.map(|id| id.0))
+            .bind(search.reader_id.0)
             .bind(DM_CHANNEL_NAME)
             .fetch_optional(pool)
             .await?;
@@ -1865,7 +1865,7 @@ pub async fn find_for_workspace(
     let rows = sqlx::query(&sql)
         .bind(workspace_id.0)
         .bind(cursor)
-        .bind(search.reader_id.map(|id| id.0))
+        .bind(search.reader_id.0)
         .bind(DM_CHANNEL_NAME)
         .bind(filter.kind.map(|kind| kind.as_str()))
         .bind(filter.engine.map(|engine| engine.as_str()))

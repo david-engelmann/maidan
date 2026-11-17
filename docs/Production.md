@@ -720,6 +720,16 @@ stalls or keeps failing.
 | `maidan_outbox_pending`, `maidan_outbox_quarantined` | Event publishing stuck |
 | `maidan_bus_listener_ok`, `maidan_bus_lag_total` | The `LISTEN` bus down; slow subscribers |
 | `maidan_claims_reaped_total`, `maidan_claims_stalled_total` | Agents dying or stalling |
+| `maidan_postgres_xid_age` | Transaction ids aging toward wraparound (writes stop near 2 billion) |
+| `maidan_postgres_dead_tuples` over `maidan_postgres_live_tuples` | Vacuum falling behind (bloat) |
+| `rate(maidan_postgres_wal_bytes[5m])` | WAL written per second |
+| `maidan_postgres_replication_slot_retained_bytes`, `maidan_postgres_replication_slots_inactive` | A slot nobody reads keeping WAL until the disk fills |
+
+The `maidan_postgres_*` gauges are read from the Postgres catalogs on each
+scrape, and a SQLite deployment has none. A database that does not let the
+application's role read `pg_replication_slots` reports the other four.
+The alert rules page at a billion transactions, at a fifth of the rows dead
+for an hour, and when an inactive slot holds more than 1 GiB.
 
 ### Traces and logs
 

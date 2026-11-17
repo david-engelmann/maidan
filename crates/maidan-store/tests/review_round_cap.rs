@@ -193,7 +193,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap()
         .is_none());
-    let depth = store.channel_queue_depth(channel, None).await.unwrap();
+    let depth = store.channel_queue_depth(channel, worker).await.unwrap();
     assert_eq!(depth.ready, 0);
     assert_eq!(depth.blocked, 1);
     let standing = store.review_status(thread).await.unwrap();
@@ -490,7 +490,7 @@ async fn held_lease_and_direct_send_back(store: &dyn Store) {
         .await
         .unwrap();
     let gates = store
-        .list_pending_approval_gates(ws, None, 20)
+        .list_pending_approval_gates(ws, worker, 20)
         .await
         .unwrap();
     let gate = gates
