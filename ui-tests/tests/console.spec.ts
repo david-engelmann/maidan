@@ -31,6 +31,36 @@ test("signed out, the console offers its own sign-in", async ({ page }) => {
   await expect(page.getByLabel(/paste a token/i)).toBeVisible();
 });
 
+test("signed out, the header offers nothing that needs a sign-in", async ({ page }) => {
+  await page.goto("/ui/#/board");
+  await expect(page.getByRole("heading", { name: "Sign in to Maidan" })).toBeVisible();
+  // Nothing to search and no live status before a sign-in: the card is the page.
+  await expect(page.getByRole("button", { name: /search and commands/i })).toHaveCount(0);
+  await expect(page.locator("header.top .live")).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The page has one level-one heading, and it is not a second "Sign in".
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Maidan/);
+});
+
+test("with open sign-up, creating a workspace and a token each have a section of their own", async ({ page }) => {
+  await page.route("**/.well-known/maidan.json", async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as { auth?: Record<string, unknown> };
+    const auth = { ...(body.auth ?? {}), oidc: true, oidc_login: "/auth/oidc/login", oidc_signup: "/auth/oidc/signup", oidc_signup_open: true, sessions: true };
+    await route.fulfill({ response: res, json: { ...body, auth } });
+  });
+  await page.goto("/ui/#/board");
+  const card = page.locator(".sign-in");
+  await expect(card.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  // Each path under its own divider, in this order: sign in, create, token.
+  const order = await card.evaluate((el) =>
+    [...el.querySelectorAll(".sign-in-divider, #workspace-name, #sign-in-token")].map((n) => n.textContent?.trim() || n.id),
+  );
+  expect(order).toEqual(["New to Maidan?", "workspace-name", "Have a token?", "sign-in-token"]);
+  await expect(card.getByRole("button", { name: "Create your workspace" })).toBeVisible();
+});
+
 test("a bad token is refused in plain words", async ({ page }) => {
   await page.goto("/ui/#/board");
   await page.getByLabel(/paste a token/i).fill("not-a-real-token");

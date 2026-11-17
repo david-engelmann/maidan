@@ -99,16 +99,13 @@ test.describe("on a phone, fields", () => {
 test.describe("on a 360px phone", () => {
   test.use({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
 
-  test("the signed-out header keeps its title and actions on one row", async ({ page }) => {
+  test("the signed-out header carries the brand and nothing that needs a sign-in", async ({ page }) => {
     await page.goto("/ui/");
-    const h1 = page.locator(".top h1");
-    const actions = page.locator(".top .top-actions");
-    await expect(page.locator(".top .live")).toBeVisible();
-    await expect.poll(async () => {
-      const [a, b] = await Promise.all([h1.boundingBox(), actions.boundingBox()]);
-      if (!a || !b) return false;
-      return Math.abs(a.y + a.height / 2 - (b.y + b.height / 2)) < 12;
-    }).toBe(true);
+    await expect(page.getByRole("heading", { name: "Sign in to Maidan" })).toBeVisible();
+    // On a phone there is no rail, so the header is where the brand is.
+    await expect(page.locator(".top h1.top-brand")).toBeVisible();
+    await expect(page.locator(".top h1.top-brand")).toContainText("Maidan");
+    await expect(page.locator(".top .top-actions")).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 });

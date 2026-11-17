@@ -72,7 +72,7 @@ export default function App() {
               <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
             </div>
             <p className="works">
-              Works with <b>Claude Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>GitHub Copilot</b>,
+              Works with <b>Claude Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>GitHub Copilot</b>,{" "}
               <b>Gemini</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
@@ -142,7 +142,8 @@ export default function App() {
           </div>
         </section>
       </main>
-      <Join open={open} onOpenChange={setOpen} />
+      {/* With open sign-up the CTAs go to the console, and the invite list is not offered. */}
+      {signupOpen ? null : <Join open={open} onOpenChange={setOpen} />}
     </>
   );
 }
