@@ -202,7 +202,10 @@ Working beside other agents (several PRs are usually open at once):
   `examples/claude-code/` that says how to use it
   (`scripts/check-agent-skills.py`). A new tool *group* (a module in
   `crates/maidan-mcp/src/tools/`) also needs a probe row in
-  `scripts/mcp-inspector.sh`, or the report-only `mcp inspector` job goes red. A new profile in `profiles.rs` also
+  `scripts/mcp-inspector.sh`, or the report-only `mcp inspector` job goes red.
+  So does a new write tool without a step in `write_flow` (a profile's) or
+  `catalog_flow` in `scripts/mcp-tool-sweep.py`, and a read-only tool whose
+  required arguments are not ids without a `READ_ARGS` entry there. A new profile in `profiles.rs` also
   regenerates the Guard files.
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
@@ -398,10 +401,13 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   any server or MCP module that is not a background worker: a plain spawn
   leaves the request's attribution scope and its writes read as nobody's.
   `attribution_scope_contract` scans every module and names the exceptions.
-- **utoipa 4:** an `IntoParams` struct publishes its fields as *path*
-  parameters unless it says `#[into_params(parameter_in = Query)]`; every type
-  a schema names must be listed in `components(schemas(...))`; a field written
-  as `maidan_types::X` becomes the dangling `$ref` `maidan_types.X`.
+- **utoipa 5:** an `IntoParams` struct publishes its fields as *path*
+  parameters unless it says `#[into_params(parameter_in = Query)]`; a type
+  that only an `IntoParams` field names (a query enum) is not registered for
+  you and must be listed in `components(schemas(...))` in
+  `crates/maidan-server/src/openapi/mod.rs`, or `openapi_well_formed` finds a
+  dangling `$ref`; a field written as `maidan_types::X` becomes the dangling
+  `$ref` `maidan_types.X`.
 - **New v4 UUIDs fail `uuid_v7_contract`.** Entity ids use `Uuid::now_v7()`;
   credentials and random ids (tokens, session ids, trace ids) are allowlisted
   with a reason.

@@ -253,11 +253,25 @@ pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(args: &Value) -> Result
     })
 }
 
+/// A tool that declares no arguments refuses any, as every argument struct
+/// refuses an unknown field. Without this, an argument the caller believed
+/// scoped the call, such as a `workspace_id` passed to `list_recipes`, was
+/// dropped and the call answered for the caller's own workspace instead.
+fn refuse_arguments_to_a_tool_that_takes_none(name: &str, args: &Value) -> Result<(), McpError> {
+    let takes_none = declared_arguments(name).is_some_and(|declared| declared.is_empty());
+    match args.as_object().and_then(|given| given.keys().next()) {
+        Some(key) if takes_none => Err(McpError::InvalidParams(format!(
+            "unknown field `{key}`: {name} takes no arguments"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod parse_args_tests {
     use serde_json::json;
 
-    use super::parse_args;
+    use super::{parse_args, refuse_arguments_to_a_tool_that_takes_none};
 
     #[derive(Debug, serde::Deserialize)]
     struct Args {
@@ -271,6 +285,39 @@ mod parse_args_tests {
             let err = parse_args::<Args>(&args).unwrap_err();
             assert!(err.to_string().contains("workspace_id"), "{err}");
         }
+    }
+
+    #[test]
+    fn every_tool_that_declares_no_arguments_refuses_one_by_name() {
+        let mut checked = 0;
+        for tool in super::catalog() {
+            let name = tool["name"].as_str().expect("a tool name");
+            let takes_none = tool["inputSchema"]["properties"]
+                .as_object()
+                .is_none_or(|properties| properties.is_empty());
+            let refused =
+                refuse_arguments_to_a_tool_that_takes_none(name, &json!({ "token_id": "x" }));
+            if takes_none {
+                let err = refused.expect_err(name).to_string();
+                assert!(err.contains("`token_id`") && err.contains(name), "{err}");
+                for none in [json!({}), serde_json::Value::Null] {
+                    assert!(
+                        refuse_arguments_to_a_tool_that_takes_none(name, &none).is_ok(),
+                        "{name}"
+                    );
+                }
+                checked += 1;
+            } else {
+                assert!(
+                    refused.is_ok(),
+                    "{name} declares arguments; its own struct judges them"
+                );
+            }
+        }
+        assert!(
+            checked >= 10,
+            "only {checked} tools take no arguments; the catalog moved"
+        );
     }
 }
 
@@ -771,6 +818,7 @@ pub async fn dispatch(
     args: &Value,
     call: &crate::call_context::CallContext,
 ) -> Result<Value, McpError> {
+    refuse_arguments_to_a_tool_that_takes_none(name, args)?;
     check_argument_scope(auth, name, args)?;
     id_scope::enforce(server, auth, name, args).await?;
     // Admitted: the capability, the workspace's parking place and the
