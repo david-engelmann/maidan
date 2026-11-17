@@ -1318,10 +1318,25 @@ pub fn router(state: AppState) -> Router {
         if crate::routes::require_signup(&state).is_err() {
             return route_index(&headers);
         }
-        let page = include_str!("../static/landing/dist/index.html").replace(
-            "<!-- policy-links -->",
-            &crate::routes::policy_links_html(&state),
-        );
+        let signup_open = state
+            .oidc
+            .as_ref()
+            .is_some_and(|runtime| runtime.settings.signup && runtime.settings.signup_open);
+        let page = include_str!("../static/landing/dist/index.html")
+            .replace(
+                "<!-- policy-links -->",
+                &crate::routes::policy_links_html(&state),
+            )
+            // Read before the first paint, so the page never shows "Join the
+            // waitlist" and then swaps it once discovery answers.
+            .replace(
+                r#"<meta name="maidan-signup" content="closed" />"#,
+                if signup_open {
+                    r#"<meta name="maidan-signup" content="open" />"#
+                } else {
+                    r#"<meta name="maidan-signup" content="closed" />"#
+                },
+            );
         landing_body(
             &headers,
             landing_csp(&state),
@@ -1391,6 +1406,16 @@ pub fn router(state: AppState) -> Router {
             "rolldown-runtime.js" => (
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/rolldown-runtime.js"),
+            ),
+            // The invite sheet and motion, loaded only when the sheet opens on
+            // an instance that signs people up by invite.
+            "join.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/join.js"),
+            ),
+            "motion.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/motion.js"),
             ),
             "style.css" => (
                 "text/css; charset=utf-8",

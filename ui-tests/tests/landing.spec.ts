@@ -46,6 +46,27 @@ async function openLanding(page: Page): Promise<void> {
   await page.goto(`${fx.base_url}/`);
 }
 
+test("with open sign-up the first paint says Create a workspace, and the invite sheet's code never loads", async ({ page }) => {
+  const fetched: string[] = [];
+  page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
+  await page.route((url) => url.pathname === "/", async (route) => {
+    const { readFileSync } = await import("node:fs");
+    const html = readFileSync(resolve(DIST, "index.html"), "utf8").replace(
+      '<meta name="maidan-signup" content="closed" />',
+      '<meta name="maidan-signup" content="open" />',
+    );
+    return route.fulfill({ body: html, contentType: "text/html; charset=utf-8" });
+  });
+  await page.route((url) => url.pathname.startsWith("/landing/"), (route) =>
+    route.fulfill({ path: resolve(DIST, basename(new URL(route.request().url()).pathname)) }),
+  );
+  await page.goto(`${fx.base_url}/`);
+  await expect(page.getByRole("button", { name: "Create a workspace" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Join the waitlist" })).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  expect(fetched.filter((p) => p.endsWith("/motion.js") || p.endsWith("/join.js"))).toEqual([]);
+});
+
 async function smallTargets(page: Page, selector: string): Promise<string[]> {
   return page.locator(selector).evaluateAll((els) =>
     els
