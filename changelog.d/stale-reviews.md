@@ -1,4 +1,0 @@
-### Stale reviews leave the front of the queue
-
-- **Fixed:** when the change sweep settles a change's pull request, merged or closed without merging, or when the change is cancelled, the change's open review children are cancelled in the same commit, with the reason on each thread. Before, they stayed open after the pull request was gone. The queue hands out its oldest work first, so these stale reviews stood ahead of every live one, and a seat handed one could not fetch its head.
-- **Added:** `release_claim` takes `decline: "unworkable"` for a thread the claimant cannot work at all, because its head would not fetch or it names nothing to work on. Any thread may be declined this way, not only a review. `claim_next` and the claimer's `claimable_by: me` count skip it for that member, and everyone else is still handed it. Migration 0240 allows the new reason on both backends.

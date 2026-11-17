@@ -42,6 +42,15 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v458.0.0](https://github.com/david-engelmann/maidan/releases/tag/v458.0.0) — stale reviews leave the front of the queue, and 1 more
+
+Stale reviews no longer hold the front of the queue (a settled pull request or a cancelled change cancels its review children, and a seat can decline a thread it cannot work), and the signed-out console, landing and try pages read cleanly.
+
+- Stale reviews leave the front of the queue
+- The signed-out pages read cleanly
+
+`CHANGELOG.md` under `[458.0.0]` has every entry.
+
 ## [v457.0.0](https://github.com/david-engelmann/maidan/releases/tag/v457.0.0) — every tool refuses a bad call by name, and the Inspector calls them all, and 2 more
 
 Every MCP tool answers a valid call and refuses a bad one by name, Postgres health is on /metrics with alerts and a UTF-8 pin, and every reader-filtered store listing requires its reader.
