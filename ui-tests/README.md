@@ -31,6 +31,14 @@ npm run test:headed   # watch it in a real browser
 npm run report        # open the HTML report after a run
 ```
 
+## The launch gate's console leg
+
+`gate/launch-gate-console.mjs` is not a spec. `scripts/launch-gate.sh`
+(`docs/Launch Gate.md`) runs it with Node, one phase at a time, to drive the
+console of a live instance in headless Chromium as each test tenant's person,
+on the session the server issued for that tenant's admin token. It prints one
+PASS or FAIL line per check and keeps its screens in the run's evidence.
+
 ## Screenshots
 
 `npm run capture` writes the README and docs screenshots into
