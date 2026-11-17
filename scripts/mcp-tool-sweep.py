@@ -11,9 +11,12 @@ per group, so this sweep adds:
 
 1. a valid call to every tool on `/mcp/worker`, `/mcp/reviewer` and
    `/mcp/coordinator`, made on that endpoint, writes included;
-2. a valid call to every read-only tool in the full catalog, on
+2. a valid call to every other write in the full catalog, on
+   `/mcp/streamable`. A write that needs a backend this server does not run
+   (S3, the credits chain watcher) must answer the error that names it;
+3. a valid call to every read-only tool in the full catalog, on
    `/mcp/streamable`;
-3. a bad call to every tool in the full catalog. A tool with required
+4. a bad call to every tool in the full catalog. A tool with required
    arguments is called with none, and its error must name one of them. Any
    other tool is called with an argument it does not declare, and its error
    must name that argument. Either call fails before the tool does anything.
@@ -31,7 +34,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 BASE, ADMIN = sys.argv[1].rstrip("/"), sys.argv[2]
 FAILED = []
@@ -188,6 +191,9 @@ def child(key):
     }
 
 
+DELIVERED = []
+
+
 # The write flow: one task taken from creation through review, with a call
 # to every write a profile lists. Each step names the endpoint that lists
 # its tool, and a reviewer's step runs as the second member.
@@ -231,7 +237,17 @@ def write_flow():
         },
         wk,
     )
-    step("set_thread_result", {"thread_id": claimed, "result": {"summary": "swept"}, "claim_lease_id": lease}, wk)
+    # A result routed to a Slack channel arms a delivery, which the catalog
+    # flow replays.
+    result = {
+        "schema": "maidan.waiter.result/1",
+        "result_kind": "example.sweep/1",
+        "status": "reviewed",
+        "summary": "swept",
+        "deliver_to": [{"surface": "slack", "channel": "C0SWEEP"}],
+    }
+    step("set_thread_result", {"thread_id": claimed, "result": result, "claim_lease_id": lease}, wk)
+    DELIVERED.append(claimed)
     # The mention gives the reviewer a notification to mark read below.
     step("post_message", {"thread_id": claimed, "body": f"@{handle} ready for review"}, wk)
     step("transition_thread", {"thread_id": claimed, "action": "start_review"}, wk)
@@ -264,6 +280,185 @@ def write_flow():
     return done
 
 
+# Every other write in the full catalog, on /mcp/streamable, in an order where
+# each call has what it needs: a write and the one that undoes it sit side by
+# side, and the calls that spend a token or a member come last.
+def catalog_flow():
+    done = {}
+    later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    def w(tool, args, bearer=ADMIN):
+        ok, text, value = call(tool, args, bearer=bearer)
+        expected = NEEDS_BACKEND.get(tool)
+        if expected and not ok and expected in text:
+            check(f"{tool}: a valid call answers {expected!r}: no backend here", True, text)
+        else:
+            check(f"{tool}: a valid call", ok, text)
+        done[tool] = True
+        return value if isinstance(value, (dict, list)) else {}
+
+    new = lambda title: must("create_thread", {"channel_id": work, "title": f"{title} {RUN}"})["id"]
+    t, other = new("catalog"), new("catalog other")
+    m = must("post_message", {"thread_id": t, "body": "catalog"})["id"]
+
+    w("set_workspace_handle", {"workspace_id": ws, "handle": f"sweep-{RUN}"})
+    ch = w("create_channel", {"workspace_id": ws, "name": f"sweep-catalog-{RUN}"})["id"]
+    w("add_channel_member", {"channel_id": ch, "member_id": third})
+    w("remove_channel_member", {"channel_id": ch, "member_id": third})
+    for kind, key, value in (("thread", "thread_id", t), ("channel", "channel_id", ch)):
+        w(f"mute_{kind}", {key: value})
+        w(f"unmute_{kind}", {key: value})
+    budget = {"max_tokens": 1000, "max_usd_micros": 1000, "max_turns": 10, "max_wall_secs": 600}
+    w("set_thread_budget", {"thread_id": t, **budget})
+    w("update_thread_budget", {"thread_id": t, "max_turns": 20})
+    w("rename_thread", {"thread_id": t, "title": f"catalog renamed {RUN}"})
+    w("set_thread_owner", {"thread_id": t, "owner_id": member})
+    w("set_wait", {"thread_id": t, "wait_until": later})
+    w("cancel_wait", {"thread_id": t})
+    w("mark_unclaimable", {"thread_id": t, "reason": "sweep"})
+    w("mark_claimable", {"thread_id": t})
+    w("set_thread_block", {"thread_id": t, "reason": "human"})
+    w("clear_thread_block", {"thread_id": t})
+    w("add_thread_dependency", {"thread_id": t, "depends_on_thread_id": other})
+    w("remove_thread_dependency", {"thread_id": t, "depends_on_thread_id": other})
+    w("set_thread_lineage", {"thread_id": t, "parent_run_id": str(uuid.uuid4())})
+    w("clear_thread_lineage", {"thread_id": t})
+    w("add_thread_required_skill", {"thread_id": t, "skill": "rust"})
+    w("remove_thread_required_skill", {"thread_id": t, "skill": "rust"})
+    # Recording a land gate needs the land_gate skill.
+    w("add_member_skill", {"member_id": member, "skill": "land_gate"})
+    w("set_review_requirement", {"thread_id": t, "required_count": 1})
+    w("add_reviewer", {"thread_id": t, "member_id": rev_member})
+    w("remove_reviewer", {"thread_id": t, "member_id": rev_member})
+    w("clear_review_requirement", {"thread_id": t})
+    w("require_land_gate", {"thread_id": t})
+    w("set_land_gate", {"thread_id": t, "status": "pass"})
+    w("clear_land_gate", {"thread_id": t})
+    w("remove_member_skill", {"member_id": member, "skill": "land_gate"})
+    w("add_evidence_record", {"thread_id": t, "kind": "note", "source": "sweep", "note": "swept"})
+    w("link_thread_artifact", {"thread_id": t, "sha256": sha})
+    w("unlink_thread_artifact", {"thread_id": t, "sha256": sha})
+    w("snapshot_thread_context", {"thread_id": t})
+    w("claim_thread", {"thread_id": t})
+    w("unassign_thread", {"thread_id": t})
+    w("close_abandoned_thread", {"thread_id": other, "reason": "abandoned"})
+
+    w("edit_message", {"message_id": m, "body": "catalog, edited"})
+    w("record_mention", {"message_id": m, "member_id": member})
+    for vote in ("cast_vote", "retract_vote"):
+        w(vote, {"message_id": m, "kind": "ack"})
+    w("add_reaction", {"message_id": m, "emoji": "eyes"})
+    w("remove_reaction", {"message_id": m, "emoji": "eyes"})
+    w("pin_message", {"thread_id": t, "message_id": m})
+    w("unpin_message", {"thread_id": t, "message_id": m})
+    w("add_reference", {"src_kind": "thread", "src_id": t, "dst_kind": "message", "dst_id": m, "relation": "cites"})
+    w("seed_from_message", {"message_id": m, "title": f"seeded {RUN}"})
+    w("tombstone_message", {"message_id": must("post_message", {"thread_id": t, "body": "gone"})["id"]})
+
+    dm = w("open_dm_conversation", {"workspace_id": ws, "other_member_id": rev_member})["id"]
+    w("post_dm_message", {"dm_conversation_id": dm, "body": "hello"})
+    gdm = w("open_group_dm", {"workspace_id": ws, "member_ids": [member, rev_member, third]})["id"]
+    w("post_group_dm_message", {"group_dm_conversation_id": gdm, "body": "hello"})
+
+    notes = must("list_notifications", {"member_id": member})
+    notes = notes.get("notifications", notes) if isinstance(notes, dict) else notes
+    note = notes[0]["id"] if notes else str(uuid.uuid4())
+    w("snooze_notification", {"member_id": member, "notification_id": note, "until": later})
+    w("mark_all_notifications_read", {"member_id": member})
+    w("set_notification_pref", {"member_id": member, "kind": "mention_recorded", "muted": False})
+    w("set_delivery_mode", {"member_id": member, "mode": "immediate"})
+    w("set_member_email", {"member_id": member, "email": f"sweep-{RUN}@example.com"})
+    w("delete_member_email", {"member_id": member})
+    for kind, key, value in (("channel", "channel_id", ch), ("thread", "thread_id", t), ("member", "followed_member_id", rev_member)):
+        w(f"follow_{kind}", {"member_id": member, key: value})
+        w(f"unfollow_{kind}", {"member_id": member, key: value})
+
+    w("set_wip_limit", {"limit": 5})
+    w("set_delegation_policy", {"max_grant_days": 30})
+    w("set_retention_policy", {"messages_days": 3650})
+    w("set_spawn_budget", {"max_depth": 3})
+    block_id = w("create_memory_block", {"label": f"catalog-{RUN}", "value": "one"})["id"]
+    w("set_memory_block_value", {"label": f"catalog-{RUN}", "value": "two", "expected_revision": 1})
+    w("attach_memory_block", {"thread_id": t, "label": f"catalog-{RUN}"})
+    w("detach_memory_block", {"thread_id": t, "block_id": block_id})
+    w("delete_memory_block", {"block_id": block_id})
+    w("set_glossary_term", {"term": f"catalog-{RUN}", "definition": "a fixture"})
+    w("delete_glossary_term", {"term": f"catalog-{RUN}"})
+    w("create_secret", {"name": f"SWEEP_{RUN.upper()}", "value": "s3cret"})
+    w("resolve_secret", {"name": f"SWEEP_{RUN.upper()}"})
+    w("delete_secret", {"name": f"SWEEP_{RUN.upper()}"})
+    w("allow_secret_egress_host", {"host": "hooks.example.com"})
+    w("revoke_secret_egress_host", {"host": "hooks.example.com"})
+    ticket = w("create_share_ticket", {"channel_id": ch, "expires_at": later})
+    w("revoke_share_ticket", {"ticket_id": ticket.get("ticket", {}).get("id")})
+    spec = {"children": [{"key": "a", "title": "child"}]}
+    recipe = w("create_recipe", {"channel_id": ch, "name": f"recipe-{RUN}", "spec": spec})["id"]
+    w("instantiate_recipe", {"recipe_id": recipe})
+    schedule = w("create_task_schedule", {"channel_id": ch, "title": f"scheduled {RUN}"})["id"]
+    w("set_task_schedule_active", {"schedule_id": schedule, "active": False})
+    w("delete_task_schedule", {"schedule_id": schedule})
+    w("delete_recipe", {"recipe_id": recipe})
+    target = {"handler_kind": "mcp_tool", "handler_target": "whoami"}
+    command = w("register_slash_command", {"workspace_id": ws, "name": f"sweep{RUN}", **target})
+    w("revoke_slash_command", {"workspace_id": ws, "command_id": command.get("id") or command.get("command_id")})
+    hook = w("register_fsm_hook", {"workspace_id": ws, **target})
+    w("revoke_fsm_hook", {"workspace_id": ws, "hook_id": hook.get("id") or hook.get("hook_id")})
+    w("link_github_issue", {"thread_id": t, "repo": "o/r", "issue_number": 1})
+    w("unlink_github_issue", {"repo": "o/r", "issue_number": 1})
+    w("link_slack_channel", {"thread_id": t, "slack_channel_id": "C0SWEEP"})
+    w("unlink_slack_channel", {"slack_channel_id": "C0SWEEP"})
+    w("upload_artifact", {"kind": "attachment", "content_base64": "Y2F0YWxvZw=="})
+    w("begin_artifact_multipart", {})
+    upload = {"upload_id": "sweep", "object_key": f"multipart/{ws}/{uuid.uuid4()}"}
+    w("upload_artifact_multipart_part", {**upload, "part_number": 1, "content_base64": "eA=="})
+    w("complete_artifact_multipart", {**upload, "parts": [], "kind": "attachment"})
+    w("abort_artifact_multipart", upload)
+    w("watch_pull", {"workspace_id": ws, "repo": "o/r", "pull_number": 1})
+    w("register_thread_pull", {"thread_id": t, "repo": "o/r", "pull_number": 2})
+    delivered = DELIVERED[0] if DELIVERED else t
+    deliveries = must("list_result_deliveries", {"thread_id": delivered})
+    deliveries = deliveries.get("deliveries", deliveries) if isinstance(deliveries, dict) else deliveries
+    delivery = deliveries[0]["id"] if deliveries else str(uuid.uuid4())
+    w("replay_result_delivery", {"thread_id": delivered, "delivery_id": delivery})
+    w("top_up_credits", {"workspace_id": ws, "usd": 5})
+    w("export_workspace", {"workspace_id": ws})
+    w("import_workspace", {"envelope": envelope})
+
+    grant = w(
+        "create_delegation_grant",
+        {
+            "workspace_id": ws,
+            "subject_id": member,
+            "delegate_id": rev_member,
+            "capabilities": ["workspace:read"],
+            "purpose": "sweep",
+            "expires_at": later,
+        },
+    )
+    grant_id = grant.get("id") or grant.get("grant_id")
+    w("delegate_token", {"grant_id": grant_id}, rev_token)
+    w("revoke_delegation_grant", {"workspace_id": ws, "grant_id": grant_id})
+    w("attenuate_token", {"capabilities": ["workspace:read"]})
+    w("freeze_member", {"member_id": third, "reason": "sweep"})
+    w("unfreeze_member", {"member_id": third})
+    # rotate_token retires the token that calls it, so it spends a token of
+    # the third member's, minted for it.
+    spare = http("POST", f"/workspaces/{ws}/members/{third}/tokens", {"capabilities": ["workspace:read"]})
+    w("rotate_token", {}, spare["secret"])
+    return done
+
+
+# Writes whose valid call needs a backend this throwaway server does not run
+# (S3, GitHub, Slack, a chain watcher), and the error that says so.
+NEEDS_BACKEND = {
+    "begin_artifact_multipart": "S3 artifact backend",
+    "upload_artifact_multipart_part": "S3 artifact backend",
+    "complete_artifact_multipart": "S3 artifact backend",
+    "abort_artifact_multipart": "S3 artifact backend",
+    "top_up_credits": "MAIDAN_CREDITS_ADDRESS is not set",
+}
+
+
 print("=== every profile tool: a valid call on its own endpoint ===")
 written = write_flow()
 profile_tools = {}
@@ -277,8 +472,13 @@ for profile in ("worker", "reviewer", "coordinator"):
 missing = sorted(n for n, t in profile_tools.items() if not read_only(t) and n not in written)
 check("every profile write has a step in the write flow", not missing, " ".join(missing))
 
-print("=== every read-only tool: a valid call on /mcp/streamable ===")
+print("=== every other write: a valid call on /mcp/streamable ===")
 catalog = tools_on("/mcp/streamable")
+written.update(catalog_flow())
+missing = sorted(t["name"] for t in catalog if not read_only(t) and t["name"] not in written)
+check("every write in the catalog has a step in a write flow", not missing, " ".join(missing))
+
+print("=== every read-only tool: a valid call on /mcp/streamable ===")
 for tool in catalog:
     if read_only(tool):
         ok, text, _ = call(tool["name"], read_args(tool))

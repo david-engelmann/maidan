@@ -57,6 +57,8 @@ export DATABASE_URL="sqlite://${work}/maidan.db?mode=rwc"
 export MAIDAN_SESSION_SECRET="mcp-inspector-session-secret-0123456789abcdef"
 # A throwaway export signing seed, so the export group's probe can export.
 export MAIDAN_EXPORT_SIGNING_KEY="0101010101010101010101010101010101010101010101010101010101010101"
+# A throwaway secrets key, so the secret tools can store and resolve.
+export FEDERATION_ENCRYPTION_KEY="0202020202020202020202020202020202020202020202020202020202020202"
 
 # Every log of this run names the source it tested.
 echo "=== server commit $(git rev-parse HEAD 2>/dev/null || echo unknown) ==="

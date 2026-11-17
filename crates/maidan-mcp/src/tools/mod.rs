@@ -255,8 +255,8 @@ pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(args: &Value) -> Result
 
 /// A tool that declares no arguments refuses any, as every argument struct
 /// refuses an unknown field. Without this, an argument the caller believed
-/// scoped the call, such as a token id passed to `rotate_token`, was dropped
-/// and the call ran unscoped.
+/// scoped the call, such as a `workspace_id` passed to `list_recipes`, was
+/// dropped and the call answered for the caller's own workspace instead.
 fn refuse_arguments_to_a_tool_that_takes_none(name: &str, args: &Value) -> Result<(), McpError> {
     let takes_none = declared_arguments(name).is_some_and(|declared| declared.is_empty());
     match args.as_object().and_then(|given| given.keys().next()) {
