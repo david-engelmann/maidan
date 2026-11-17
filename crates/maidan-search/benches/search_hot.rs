@@ -10,7 +10,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use maidan_search::{hash_embedding, model_name, Search, SearchFilters, SqliteSearch};
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
+    MemberId, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -19,6 +19,7 @@ const N_MESSAGES: usize = 200;
 struct BenchCtx {
     search: SqliteSearch,
     workspace_id: WorkspaceId,
+    reader: MemberId,
 }
 
 fn body_for(i: usize) -> String {
@@ -94,6 +95,7 @@ fn sqlite_ctx() -> BenchCtx {
         BenchCtx {
             search,
             workspace_id: ws.id,
+            reader: member.id,
         }
     })
 }
@@ -113,7 +115,7 @@ fn bench_search(c: &mut Criterion) {
                     ctx.workspace_id,
                     "brown fox",
                     25,
-                    &SearchFilters::default(),
+                    &SearchFilters::for_reader(ctx.reader),
                 ))
                 .unwrap();
             black_box(hits.len());
@@ -127,7 +129,7 @@ fn bench_search(c: &mut Criterion) {
                     ctx.workspace_id,
                     &query_vec,
                     25,
-                    &SearchFilters::default(),
+                    &SearchFilters::for_reader(ctx.reader),
                     model_name(),
                 ))
                 .unwrap();

@@ -119,7 +119,15 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
     run_sqlite_migrations(&pool).await.unwrap();
     let store = SqliteStore::for_tests(pool.clone());
     let search = SqliteSearch::new(pool);
-    let (ws, _alice, th, msg) = seed_workspace(&store, &search).await;
+    let (ws, alice, th, msg) = seed_workspace(&store, &search).await;
+    let as_alice = maidan_search::SearchFilters::for_reader(alice.id);
+    // Without this, the empty search after the purge could mean the reader
+    // was never able to see the message.
+    let before = search
+        .search_messages(ws.id, "secret", 10, &as_alice)
+        .await
+        .unwrap();
+    assert_eq!(before.len(), 1, "alice finds the message before the purge");
 
     let result = store.purge_workspace_messages(ws.id).await.unwrap();
     assert_eq!(result.messages_tombstoned, 1);
@@ -133,7 +141,7 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
     assert!(store.list_messages(th.id, 10).await.unwrap().is_empty());
     assert!(store.get_artifact_by_sha(&"aa".repeat(32)).await.is_err());
     let hits = search
-        .search_messages(ws.id, "secret", 10, &Default::default())
+        .search_messages(ws.id, "secret", 10, &as_alice)
         .await
         .unwrap();
     assert!(hits.is_empty());

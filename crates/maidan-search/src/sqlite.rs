@@ -55,15 +55,10 @@ impl Search for SqliteSearch {
         // RBAC pre-filter: drop hits in denied channels at the query level.
         // SQLite has no array binding — expand `NOT IN (?, …)`.
         let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
-        let reader_id = filters.reader_id.map(|id| id.0);
-        let thread_clause = if reader_id.is_some() {
-            // ?1 refers to the first bind param (workspace_id); the member
-            // id uses a positional `?` bound after the deny list.
-            let f = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
-            format!("AND ({f})")
-        } else {
-            String::new()
-        };
+        // The thread's own workspace stands in for the workspace placeholder,
+        // which `c.workspace_id = ?` already pins, so the reader is the one
+        // positional `?` it adds, bound after the deny list.
+        let readable = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
         let sql = format!(
             r#"
             SELECT
@@ -92,7 +87,7 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.posted_at >= ?)
               AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
-              {thread_clause}
+              AND ({readable})
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT ?
             "#
@@ -113,11 +108,11 @@ impl Search for SqliteSearch {
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
         }
-        if let Some(rid) = reader_id {
-            // readable_thread names the member placeholder once
-            q = q.bind(rid);
-        }
-        let rows = q.bind(limit).fetch_all(&self.pool).await?;
+        let rows = q
+            .bind(filters.reader_id.0)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut hits: Vec<SearchHit> = rows.iter().map(row_to_hit).collect();
         normalize_lexical_scores(&mut hits);
@@ -184,13 +179,8 @@ impl Search for SqliteSearch {
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
         let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
-        let reader_id = filters.reader_id.map(|id| id.0);
-        let thread_clause = if reader_id.is_some() {
-            let f = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
-            format!("AND ({f})")
-        } else {
-            String::new()
-        };
+        let readable = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
+        let reader_id = filters.reader_id.0;
         let mut conn = self.pool.acquire().await?;
         if sqlite_vec::vec_ready(&mut conn).await {
             let query_bytes = embedding_bytes(embedding);
@@ -219,7 +209,7 @@ impl Search for SqliteSearch {
                   AND (? IS NULL OR m.posted_at >= ?)
                   AND (? IS NULL OR m.posted_at < ?)
                   {deny_clause}
-                  {thread_clause}
+                  AND ({readable})
                 ORDER BY vec_distance_cosine(e.embedding, ?)
                 LIMIT ?
                 "#
@@ -240,10 +230,8 @@ impl Search for SqliteSearch {
             for cid in &filters.deny_channels {
                 q = q.bind(cid.0);
             }
-            if let Some(rid) = reader_id {
-                q = q.bind(rid);
-            }
             let rows = q
+                .bind(reader_id)
                 .bind(&query_bytes)
                 .bind(limit)
                 .fetch_all(&mut *conn)
@@ -282,7 +270,7 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.posted_at >= ?)
               AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
-              {thread_clause}
+              AND ({readable})
             "#
         );
         let mut q = sqlx::query(&sql)
@@ -300,10 +288,7 @@ impl Search for SqliteSearch {
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
         }
-        if let Some(rid) = reader_id {
-            q = q.bind(rid);
-        }
-        let rows = q.fetch_all(&mut *conn).await?;
+        let rows = q.bind(reader_id).fetch_all(&mut *conn).await?;
 
         let mut hits: Vec<SearchHit> = rows
             .iter()

@@ -145,7 +145,13 @@ async fn configured_hnsw_build_params_and_ef_search() {
 
     // Semantic query exercises the `SET LOCAL hnsw.ef_search` transaction path.
     let hits = search
-        .semantic_search(ws.id, &embedding, 5, &SearchFilters::default(), "tuned-v1")
+        .semantic_search(
+            ws.id,
+            &embedding,
+            5,
+            &SearchFilters::for_reader(member.id),
+            "tuned-v1",
+        )
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);

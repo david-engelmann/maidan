@@ -157,7 +157,7 @@ async fn sqlite_mixed_dimension_models_coexist() {
             ws.id,
             &vec_dim(512, 1),
             5,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(member.id),
             "compact-v1",
         )
         .await

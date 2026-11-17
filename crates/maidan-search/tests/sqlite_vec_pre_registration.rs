@@ -72,7 +72,7 @@ async fn semantic_search_succeeds_on_a_pool_whose_connection_predates_registrati
                 fx.workspace_id,
                 &one_hot(1),
                 3,
-                &SearchFilters::default(),
+                &SearchFilters::for_reader(fx.alice_id),
                 "test-model",
             )
             .await

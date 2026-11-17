@@ -99,7 +99,12 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
     // replica is behind the token.
     let hits = with_read_consistency(
         Some(token),
-        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+        search.search_messages(
+            ws.id,
+            "peregrine",
+            10,
+            &SearchFilters::for_reader(member.id),
+        ),
     )
     .await
     .expect("read-your-write search");
@@ -126,7 +131,12 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
 
     let from_replica = with_read_consistency(
         None,
-        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+        search.search_messages(
+            ws.id,
+            "peregrine",
+            10,
+            &SearchFilters::for_reader(member.id),
+        ),
     )
     .await
     .expect("replica search");
@@ -152,13 +162,23 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
     let (p0, r0) = search.read_routing_metrics().snapshot();
     let _ = with_read_consistency(
         Some(maidan_types::Lsn(u64::MAX)),
-        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+        search.search_messages(
+            ws.id,
+            "peregrine",
+            10,
+            &SearchFilters::for_reader(member.id),
+        ),
     )
     .await
     .expect("forced-primary search");
     let _ = with_read_consistency(
         None,
-        search.search_messages(ws.id, "peregrine", 10, &SearchFilters::default()),
+        search.search_messages(
+            ws.id,
+            "peregrine",
+            10,
+            &SearchFilters::for_reader(member.id),
+        ),
     )
     .await
     .expect("forced-replica search");

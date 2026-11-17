@@ -116,7 +116,7 @@ async fn embedding_handler_upserts_on_message_posted() {
             ws.id,
             &query,
             5,
-            &maidan_search::SearchFilters::default(),
+            &maidan_search::SearchFilters::for_reader(author.id),
             maidan_search::model_name(),
         )
         .await
@@ -265,7 +265,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
             ws.id,
             &query,
             5,
-            &maidan_search::SearchFilters::default(),
+            &maidan_search::SearchFilters::for_reader(author.id),
             maidan_search::model_name(),
         )
         .await

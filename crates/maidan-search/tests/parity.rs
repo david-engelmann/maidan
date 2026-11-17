@@ -55,7 +55,12 @@ async fn rust_query_returns_same_ids() {
     let sqlite_fx = common::seed(&*sqlite_store).await;
 
     let pg_hits = pg_search
-        .search_messages(pg_fx.workspace_id, "rust", 10, &SearchFilters::default())
+        .search_messages(
+            pg_fx.workspace_id,
+            "rust",
+            10,
+            &SearchFilters::for_reader(pg_fx.alice_id),
+        )
         .await
         .unwrap();
     let sqlite_hits = sqlite_search
@@ -63,7 +68,7 @@ async fn rust_query_returns_same_ids() {
             sqlite_fx.workspace_id,
             "rust",
             10,
-            &SearchFilters::default(),
+            &SearchFilters::for_reader(sqlite_fx.alice_id),
         )
         .await
         .unwrap();
