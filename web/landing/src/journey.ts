@@ -56,14 +56,14 @@ const BANDS = 8;
 // Quality steps, best first. The loop measures its own frame time and steps
 // down when it misses frames; it tries one step back up after a long calm.
 const LEVELS = [
-  { dpr: 2, sim: 160, dye: 640, steps: 140 },
-  { dpr: 1.5, sim: 144, dye: 520, steps: 120 },
-  { dpr: 1.25, sim: 128, dye: 420, steps: 104 },
-  { dpr: 1, sim: 112, dye: 360, steps: 88 },
+  { dpr: 2, sim: 160, dye: 640, steps: 160 },
+  { dpr: 1.5, sim: 144, dye: 520, steps: 136 },
+  { dpr: 1.25, sim: 128, dye: 420, steps: 116 },
+  { dpr: 1, sim: 112, dye: 360, steps: 100 },
 ];
 // While the camera moves the city is marched at one of these fractions of the
 // frame, the largest the GPU keeps up with; at 1 there is no small city at all.
-const MOVING = [0.5, 0.6, 0.75, 1];
+const MOVING = [0.4, 0.5, 0.6, 0.75, 1];
 
 const ease = (x: number) => {
   x = Math.max(0, Math.min(1, x));
@@ -127,28 +127,45 @@ function software(gl: GL): boolean {
   return /swiftshader|llvmpipe|softpipe|software|basic render driver/i.test(name);
 }
 
-// People: walks across the paving that never cross the basin, and a few who
-// stand at its rim. Where each is depends only on the clock.
+// People: walks across the plaza that never cross the basin, a few who stand
+// at its rim, and some down the park's paths. Where each is depends only on
+// the clock.
 type Walker = { a: number[]; b: number[]; len: number; sp: number; ph: number; bri: number };
 function cast(): Walker[] {
   const out: Walker[] = [];
   const rnd = mulberry32(11);
-  while (out.length < NW - 7) {
-    const a = [(rnd() * 2 - 1) * 25, -30 + rnd() * 70];
-    const b = [(rnd() * 2 - 1) * 25, -30 + rnd() * 70];
+  const inPlaza = () => {
+    const ang = rnd() * Math.PI * 2;
+    const r = 13 + rnd() * 18;
+    return [Math.cos(ang) * r, Math.sin(ang) * r];
+  };
+  while (out.length < 22) {
+    const a = inPlaza();
+    const b = inPlaza();
     const dx = b[0] - a[0];
     const dy = b[1] - a[1];
     const len = Math.hypot(dx, dy);
-    if (len < 16) continue;
+    if (len < 14) continue;
     const k = clamp(-(a[0] * dx + a[1] * dy) / (len * len), 0, 1);
     if (Math.hypot(a[0] + dx * k, a[1] + dy * k) < 12.5) continue;
     out.push({ a, b, len, sp: 0.85 + rnd() * 0.6, ph: rnd() * 2, bri: 0.55 + rnd() * 0.6 });
   }
-  while (out.length < NW) {
-    const ang = -Math.PI / 2 + (rnd() * 2 - 1) * 2.4;
+  while (out.length < 28) {
+    const ang = rnd() * Math.PI * 2;
     const r = 10.6 + rnd() * 3.4;
     const a = [Math.cos(ang) * r, Math.sin(ang) * r];
     out.push({ a, b: [a[0] + rnd() - 0.5, a[1] + rnd() - 0.5], len: 1, sp: 0.05 + rnd() * 0.05, ph: rnd() * 2, bri: 0.5 + rnd() * 0.5 });
+  }
+  while (out.length < NW) {
+    // down one of the eight paths, keeping to one side of it
+    const k = Math.floor(rnd() * 8);
+    const d = [Math.cos((k * Math.PI) / 4), Math.sin((k * Math.PI) / 4)];
+    const side = (rnd() - 0.5) * 2.4;
+    const r0 = 38 + rnd() * 20;
+    const r1 = r0 + 25 + rnd() * 30;
+    const a = [d[0] * r0 - d[1] * side, d[1] * r0 + d[0] * side];
+    const b = [d[0] * r1 - d[1] * side, d[1] * r1 + d[0] * side];
+    out.push({ a, b, len: r1 - r0, sp: 0.9 + rnd() * 0.5, ph: rnd() * 2, bri: 0.6 + rnd() * 0.5 });
   }
   return out;
 }
@@ -452,6 +469,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   /** The pitch that puts a point at height `z`, `dist` away, at `ndc` up the frame. */
   const pitchFor = (camZ: number, z: number, dist: number, ndc: number, tanf: number) => Math.atan2(z - camZ, dist) - Math.atan(ndc * tanf);
 
+  /** A shot from `p` that puts the fountain's foot `fx` across and `ndc` up the frame. */
+  const aim = (p: number[], fx: number, ndc: number, tanf: number): Shot => ({ p, fx, pitch: pitchFor(p[2], 1.0, Math.hypot(p[0], p[1]), ndc, tanf), tanf });
+
+  // The establishing view: from a rooftop south of the park, some 260 m back
+  // and 46 m up, the fountain a small bright point in the city's heart. The
+  // close comes back to it.
   function camera(j: Journey): Cam {
     const a = size.aspect;
     const wide = size.w >= 1080;
@@ -460,23 +483,26 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     if (wide) {
       // the fountain stands right of centre, clear of the words; the copy has the left
       const copy = page.heroCopy?.getBoundingClientRect();
-      const fx = copy ? clamp((copy.right + size.w * 0.17) / size.w, 0.63, 0.76) : 0.63;
-      hero = { p: [-5, -45, 3.3], fx, pitch: 0.145, tanf: 0.47 };
-      // the close: square on, pulled back and a little raised, so the eight rills read
-      end = { p: [0, -64, 14.5], fx: 0.5, pitch: -0.062, tanf: 0.47 };
+      const fx = copy ? clamp((copy.right + size.w * 0.15) / size.w, 0.6, 0.74) : 0.64;
+      const p = [-34, -258, 46];
+      hero = aim(p, fx, -0.42, 0.34);
+      end = aim(p, 0.5, -0.46, 0.34);
     } else {
       // One column: the fountain crowns the first screen and the words start
-      // under its basin; at the close it stands under the words, over the footer.
+      // under it; at the close it stands under the words, over the footer.
       const copyTop = page.heroCopy ? page.heroCopy.getBoundingClientRect().top + j.y : size.h * 0.46;
-      const tanf = 0.62;
-      const dist = a > 0.9 ? 54 : 47;
-      hero = { p: [0, -dist, 3.1], fx: 0.5, pitch: pitchFor(3.1, 0.3, dist, 1 - (2 * (copyTop - size.h * 0.035)) / size.h, tanf), tanf };
       const footTop = size.h - (page.foot?.getBoundingClientRect().height ?? 80);
-      end = { p: [0, -dist - 4, 4.6], fx: 0.5, pitch: pitchFor(4.6, 0.3, dist + 4, 1 - (2 * (footTop - size.h * 0.05)) / size.h, tanf), tanf };
+      // lower and nearer than on a wide screen, so a narrow frame still has
+      // sky over the roofs and the fountain is not lost
+      const tanf = a > 0.9 ? 0.42 : 0.55;
+      const p = a > 0.9 ? [-22, -220, 34] : [-8, -170, 22];
+      hero = aim(p, 0.5, 1 - (2 * (copyTop - size.h * 0.045)) / size.h, tanf);
+      end = aim(p, 0.5, 1 - (2 * (footTop - size.h * 0.07)) / size.h, tanf);
     }
-    // lifted: up the plume, looking into it
-    const up: Shot = { p: [hero.p[0] * 0.5, hero.p[1] + 13, hero.p[2] + 24], fx: lerp(hero.fx, 0.5, 0.5), pitch: hero.pitch + 0.52, tanf: hero.tanf };
-    const up2: Shot = { p: [end.p[0], end.p[1] + 10, end.p[2] + 26], fx: 0.5, pitch: end.pitch + 0.5, tanf: end.tanf };
+    // lifted: toward the fountain and up its plume, looking into it
+    const lift = (s: Shot): Shot => ({ p: [s.p[0] * 0.55, s.p[1] * 0.55, s.p[2] + 30], fx: lerp(s.fx, 0.5, 0.5), pitch: s.pitch + 0.5, tanf: s.tanf });
+    const up = lift(hero);
+    const up2 = lift(end);
     const mix = (x: Shot, y: Shot, k: number): Shot => ({ p: x.p.map((v, i) => lerp(v, y.p[i], k)), fx: lerp(x.fx, y.fx, k), pitch: lerp(x.pitch, y.pitch, k), tanf: lerp(x.tanf, y.tanf, k) });
     const k = j.down > 0 ? mix(up2, end, j.down) : mix(hero, up, j.lift);
     const head = Math.atan2(-k.p[1], -k.p[0]) + Math.atan((2 * k.fx - 1) * k.tanf * a);
@@ -549,14 +575,14 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   }
 
   /** Marches the city for `cam` into `out`: all of it, or the rows from `y0` up for `rows`. */
-  function march(out: Target, w: number, h: number, cam: Cam, quiet: number, y0 = 0, rows = h) {
+  function march(out: Target, w: number, h: number, cam: Cam, quiet: number[], y0 = 0, rows = h) {
     if (rows < h) {
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(0, y0, w, rows);
     }
     pass(prog.stat, { fb: out.fb, w, h }, (a) => {
       a.f("u_cam", cam.pos[0], cam.pos[1], cam.pos[2]); a.f("u_fwd", cam.fwd[0], cam.fwd[1], cam.fwd[2]); a.f("u_right", cam.right[0], cam.right[1], cam.right[2]); a.f("u_up", cam.up[0], cam.up[1], cam.up[2]);
-      a.f("u_tanf", cam.tanf); a.f("u_res", size.W, size.H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / h); a.f("u_quiet", quiet); a.i("u_steps", LEVELS[level].steps);
+      a.f("u_tanf", cam.tanf); a.f("u_res", size.W, size.H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / h); a.f("u_quiet", quiet[0]); a.f("u_qx", quiet[1]); a.i("u_steps", LEVELS[level].steps);
     });
     gl.disable(gl.SCISSOR_TEST);
   }
@@ -571,8 +597,10 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const cam = camera(j);
     const sceneOn = j.cov < 0.999;
     const surge = surgeAt(t);
-    // the copy's side of the wide hero is kept quiet; the close is symmetrical
-    const quiet = size.w >= 1080 && j.down <= 0 ? 1 : 0;
+    // the copy's side of the wide hero is kept quiet, up to the copy's right
+    // edge; the close is symmetrical
+    const copyR = page.heroCopy?.getBoundingClientRect().right ?? size.w * 0.4;
+    const quiet = size.w >= 1080 && j.down <= 0 ? [1, Math.round(((copyR + 24) / size.w) * 100) / 100] : [0, 0];
     let sharpness = 1;
     if (sceneOn) {
       const key = [cam.pos, cam.fwd, cam.tanf, opts.light ? 1 : 0, quiet, level].flat().map((v) => v.toFixed(4)).join(",");
@@ -636,7 +664,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const fastScale = MOVING[moving];
     pass(prog.scene, r.scene, (a) => {
       a.f("u_cam", cam.pos[0], cam.pos[1], cam.pos[2]); a.f("u_fwd", cam.fwd[0], cam.fwd[1], cam.fwd[2]); a.f("u_right", cam.right[0], cam.right[1], cam.right[2]); a.f("u_up", cam.up[0], cam.up[1], cam.up[2]);
-      a.f("u_tanf", cam.tanf); a.f("u_res", W, H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / H); a.f("u_quiet", quiet);
+      a.f("u_tanf", cam.tanf); a.f("u_res", W, H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / H); a.f("u_quiet", quiet[0]); a.f("u_qx", quiet[1]);
       a.tex("u_s0", r.sharp.texs[0]); a.tex("u_s1", r.sharp.texs[1]); a.tex("u_s2", r.sharp.texs[2]);
       a.tex("u_f0", r.fast.texs[0]); a.tex("u_f1", r.fast.texs[1]); a.tex("u_f2", r.fast.texs[2]);
       a.tex("u_l0", r.liq.texs[0]); a.tex("u_l1", r.liq.texs[1]); a.tex("u_ln", r.liqn.texs[0]);
@@ -644,13 +672,15 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       // the liquid's relief, by the size of its own grid
       a.f("u_rel", (r.liq.h / 900) * (opts.light ? 160 : 260) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
       a.f("u_t", t); a.f("u_surge", surge); a.f("u_scene", sceneOn ? 1 : 0); a.f("u_breath", j.breath);
-      a.f("u_fh", 9.4 + 4.4 * surge + 0.2 * Math.sin(t * 2.3)); a.f("u_fr", 5.3 + 0.9 * surge); a.f("u_dpr", size.dpr);
+      a.f("u_fh", 12.0 + 4.6 * surge + 0.25 * Math.sin(t * 2.3)); a.f("u_fr", 6.4 + 0.8 * surge); a.f("u_dpr", size.dpr);
       a.fv("u_walk", 4, walkArr); a.fv("u_walkScr", 4, walkScr);
     });
-    if (!opts.light) {
+    // At night the bright pass feeds the bloom; by day all of the picture goes
+    // through, and the blur is a diffusion filter over it (FINAL).
+    {
       let src: Target = r.scene;
       [r.b1, r.b2, r.b3].forEach((b, i) => {
-        if (i === 0) pass(prog.bright, b.write, (a) => { a.tex("uTex", src.texs[0]); a.f("thresh", 0.5); });
+        if (i === 0) pass(prog.bright, b.write, (a) => { a.tex("uTex", src.texs[0]); a.f("thresh", opts.light ? -0.7 : 0.5); });
         else pass(prog.blur, b.write, (a) => { a.tex("uTex", src.texs[0]); a.f("dir", 0, 0); });
         swap(b);
         pass(prog.blur, b.write, (a) => { a.tex("uTex", b.read.texs[0]); a.f("dir", 1 / b.read.w, 0); });
@@ -694,10 +724,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     // the moving city's size: the largest that keeps the frame
     if (wasMoving) {
       movingTimes.push(ms);
-      if (movingTimes.length >= 24) {
-        const median = [...movingTimes].sort((a, b) => a - b)[12];
-        if (median > 18.5 && moving > 0) moving--;
-        else if (median < 12 && moving < MOVING.length - 1) moving++;
+      if (movingTimes.length >= 20) {
+        // a scroll is short, so a few missed frames in it are already a stutter:
+        // step down on the slow fifth, not the middle
+        const sorted = [...movingTimes].sort((a, b) => a - b);
+        if (sorted[15] > 18.5 && moving > 0) moving--;
+        else if (sorted[15] < 11 && moving < MOVING.length - 1) moving++;
         movingTimes.length = 0;
       }
       return;

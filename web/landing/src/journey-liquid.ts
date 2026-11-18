@@ -221,6 +221,10 @@ void main() {
     c = pow(lin, vec3(1.0 / 2.2));
     c += (hash(p + uSeed) - 0.5) * 0.022;
   } else {
+    // a hazy photograph, not a model: the picture seen through a diffusion
+    // filter, its shadows lifted into the warm air
+    c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.4);
+    c = mix(c, vec3(0.96, 0.9, 0.8), 0.1 * (1.0 - smoothstep(0.2, 0.9, dot(c, vec3(0.33)))));
     c = clamp(c, 0.0, 1.0);
     // the copy sits on clean paper: the picture is washed out toward it
     vec3 paper = vec3(0.949, 0.933, 0.902);
