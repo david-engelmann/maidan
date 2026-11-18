@@ -383,10 +383,10 @@ A value that is not a positive whole number turns that knob off. For
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OTLP_ENDPOINT` | unset | A gRPC OTLP collector for traces, and for metrics when `OTLP_METRICS=1`. Request spans carry the method, the path (never the query) and the headers, with credentials and signatures printed as `Sensitive`. |
+| `OTLP_ENDPOINT` | unset | A gRPC OTLP collector for traces, and for metrics when `OTLP_METRICS=1`. Request spans carry the method, the path (never the query) and the headers, with credentials and signatures printed as `Sensitive`. Write the scheme, as in `http://collector:4317`: the exporter has no TLS, so an `https://` endpoint, or one without a scheme (read as `https://`), stops the server at startup. A failed export is not retried; the next batch goes out as usual. |
 | `OTLP_SERVICE_NAME` | `maidan-server` | The `service.name` resource attribute. |
 | `OTLP_METRICS` | unset | `1` also pushes metrics over OTLP, beside the `/metrics` scrape. |
-| `OTLP_METRICS_ENDPOINT` | `OTLP_ENDPOINT` | A separate collector for metrics. |
+| `OTLP_METRICS_ENDPOINT` | `OTLP_ENDPOINT` | A separate collector for metrics, written with its scheme as for `OTLP_ENDPOINT`. One the exporter refuses is logged, and metrics stay on the `/metrics` scrape alone. |
 | `OTLP_METRICS_INTERVAL_SECS` | `15` | Metrics push interval. |
 | `MAIDAN_METRICS_TOKEN` | unset | The bearer a scraper sends to `GET /metrics`, 32 bytes or more (`openssl rand -hex 32`); set, the scrape answers `401` to any other request. Unset, `/metrics` is open to whoever reaches the port, except under `MAIDAN_ENV=production`, where it answers `404`. Has a `_FILE` form. |
 

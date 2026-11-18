@@ -802,8 +802,9 @@ version = "0.24.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.metrics-exporter-opentelemetry]]
-version = "0.2.1"
+version = "0.2.2"
 criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.metrics-exporter-prometheus]]
 version = "0.16.2"
@@ -871,24 +872,24 @@ version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.opentelemetry]]
-version = "0.31.0"
+version = "0.33.1"
 criteria = "safe-to-deploy"
-
-[[exemptions.opentelemetry-http]]
-version = "0.31.0"
-criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.opentelemetry-otlp]]
-version = "0.31.1"
+version = "0.33.1"
 criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.opentelemetry-proto]]
-version = "0.31.0"
+version = "0.33.1"
 criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.opentelemetry_sdk]]
-version = "0.31.0"
+version = "0.33.1"
 criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.ordered-float]]
 version = "2.10.1"
@@ -1484,6 +1485,11 @@ version = "0.14.9"
 criteria = "safe-to-deploy"
 notes = "Patch bump from the weekly Dependabot cargo group; no imported audit covers this version yet."
 
+[[exemptions.tonic-types]]
+version = "0.14.9"
+criteria = "safe-to-deploy"
+notes = "New with opentelemetry-otlp 0.33, whose grpc-tonic feature reads gRPC status details with it; published with tonic and tonic-prost, which are already here; no imported audit covers it yet."
+
 [[exemptions.tower]]
 version = "0.5.3"
 criteria = "safe-to-deploy"
@@ -1509,8 +1515,9 @@ version = "0.1.31"
 criteria = "safe-to-deploy"
 
 [[exemptions.tracing-opentelemetry]]
-version = "0.32.1"
+version = "0.34.0"
 criteria = "safe-to-deploy"
+notes = "Moved with the OpenTelemetry stack, 0.31 to 0.33 in one PR (in place of Dependabot's opentelemetry_sdk-only #2360); no imported audit covers this version yet."
 
 [[exemptions.tracing-serde]]
 version = "0.2.0"
