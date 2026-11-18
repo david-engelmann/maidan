@@ -34,6 +34,17 @@
   --run-bg: #08090b;
   --run-ink: #ecebe7;
   --run-line: rgba(236, 240, 248, 0.09);
+  /* The gathering's poster: an ember mark over its own haze and glow */
+  --poster-0: #fff3e6;
+  --poster-1: #ffb184;
+  --poster-2: #ff6a2b;
+  --poster-haze: #ff6a2b;
+  --poster-haze-k: 0.75;
+  --poster-glow: rgba(255, 106, 43, 0.16);
+  --poster-k: 0.64;
+  --toggle-bg: rgba(22, 23, 27, 0.6);
+  --toggle-bg-hover: rgba(40, 42, 48, 0.72);
+  --toggle-line: rgba(236, 240, 248, 0.16);
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -58,10 +69,21 @@
   --run-bg: #1a1916;
   --run-ink: #f2eee6;
   --run-line: rgba(255, 255, 255, 0.1);
+  /* On paper the mark is ink, its haze the signal orange */
+  --poster-0: #151411;
+  --poster-1: #2b2722;
+  --poster-2: #a83a0d;
+  --poster-haze: #a83a0d;
+  --poster-haze-k: 0.75;
+  --poster-glow: rgba(168, 58, 13, 0.4);
+  --poster-k: 1;
+  --toggle-bg: rgba(250, 248, 243, 0.68);
+  --toggle-bg-hover: rgba(255, 255, 255, 0.86);
+  --toggle-line: rgba(21, 20, 17, 0.14);
 }
 * { box-sizing: border-box; }
 html { background: var(--paper); -webkit-text-size-adjust: 100%; }
-body { margin: 0; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--page-bg); background-attachment: fixed; -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100dvh; isolation: isolate; display: flex; flex-direction: column; overflow-x: clip; font-family: var(--sans); font-size: 17px; line-height: 1.5; color: var(--ink); background: var(--page-bg); background-attachment: fixed; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:disabled { cursor: progress; opacity: 0.6; }
 a { color: inherit; }
@@ -132,6 +154,71 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }
 .foot a { text-decoration: none; min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; }
 .foot a:hover { color: var(--ink); }
+
+/* The gathering (backdrop.js, gathering.js): the picture behind the hero,
+   where its mark forms, the poster that holds the mark's place until the
+   scene draws (and wherever it cannot), and the control that stops it.
+   --mark-x and --mark-y are the mark's centre on the page, --mark-d its
+   width from tip to tip, --gather-h how far down the picture reaches.
+   One column: the mark crowns the hero, the words below it on plain ground
+   (the scene clears its light behind every block of words). */
+:root {
+  --mark-d: min(44vw, 13rem);
+  --mark-x: 50%;
+  --mark-y: calc(env(safe-area-inset-top) + 3.6rem + var(--mark-d) / 2);
+  --gather-h: calc(var(--mark-y) + var(--mark-d) / 2 + 20rem);
+}
+/* A short phone keeps the start button on its first screen */
+@media (max-width: 1079px) and (max-height: 700px) {
+  :root { --mark-d: min(30vw, 7.5rem); }
+}
+/* Wide: the mark stands beside the words, clear of their column (which
+   ends 11rem right of centre) and of the window's edge */
+@media (min-width: 1080px) {
+  :root {
+    --mark-d: min(28vw, 25rem, 50svh);
+    --mark-x: min(50% + 12.5rem + var(--mark-d) / 2, 100% - var(--mark-d) / 2 - 2rem);
+    --mark-y: calc(env(safe-area-inset-top) + 18.75rem);
+    --gather-h: min(100svh, 54rem);
+  }
+}
+@media (max-width: 1079px) {
+  .hero { padding-top: calc(var(--mark-d) + 1.75rem); }
+}
+/* Every block of the hero keeps to the words' column (36rem, as the lede
+   and the notice already do), whatever font draws it: a wider fallback
+   (DejaVu Sans on Linux, or any font while Geist swaps in) wraps the
+   headline instead of running it into the mark beside it */
+.hero > * { max-width: 36rem; }
+.gather { position: absolute; top: 0; left: 0; right: 0; height: var(--gather-h); z-index: -1; pointer-events: none; overflow: hidden; }
+.gather__canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.9s ease-out; }
+.gather__mark { position: absolute; left: calc(var(--mark-x) - var(--mark-d) / 2); top: calc(var(--mark-y) - var(--mark-d) / 2); width: var(--mark-d); height: var(--mark-d); }
+/* The drawing's mark spans 77% of its box, so the box reaches 14.9% past
+   the mark's on every side; the glow reaches further. --poster-k sets the
+   drawing as bright as the scene's own mark, so neither one flashes nor
+   sags when they cross. */
+.gather__poster { position: absolute; left: -14.9%; top: -14.9%; width: 129.8%; height: 129.8%; overflow: visible; opacity: var(--poster-k); }
+.gather__mark::before { content: ""; position: absolute; inset: -30%; background: radial-gradient(closest-side, var(--poster-glow), transparent); }
+.gather__stop-0 { stop-color: var(--poster-0); }
+.gather__stop-1 { stop-color: var(--poster-1); }
+.gather__stop-2 { stop-color: var(--poster-2); }
+.gather__haze { fill: var(--poster-haze); opacity: var(--poster-haze-k); }
+/* One crossing, both at once and at one pace: the poster is as bright as
+   the scene's mark, so the light over the mark holds steady through it */
+.gather__poster, .gather__mark::before { transition: opacity 0.9s ease-out; }
+.gather:is([data-state="running"], [data-state="paused"], [data-state="still"], [data-state="away"]) .gather__canvas { opacity: 1; }
+.gather:is([data-state="running"], [data-state="paused"], [data-state="still"], [data-state="away"]) .gather__poster,
+.gather:is([data-state="running"], [data-state="paused"], [data-state="still"], [data-state="away"]) .gather__mark::before { opacity: 0; }
+/* The control: one column, at the right edge beside the mark's foot; wide,
+   under the mark's lower right. Outside the mark's box, which its blades
+   reach to every corner of. */
+.gather-toggle { position: absolute; z-index: 2; top: calc(var(--mark-y) + var(--mark-d) / 2 - 44px); right: var(--pad); width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--ink); background: var(--toggle-bg); box-shadow: inset 0 0 0 1px var(--toggle-line); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); }
+@media (min-width: 1080px) {
+  .gather-toggle { top: calc(var(--mark-y) + var(--mark-d) / 2 + 0.5rem); right: auto; left: calc(var(--mark-x) + var(--mark-d) / 2 - 44px); }
+}
+.gather-toggle:hover { background: var(--toggle-bg-hover); }
+.gather-toggle svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gather-toggle[data-paused="true"] .gather-toggle__pause, .gather-toggle:not([data-paused="true"]) .gather-toggle__play { display: none; }
 
 @media (max-width: 30rem) {
   .secret, .snippet { flex-direction: column; align-items: stretch; }

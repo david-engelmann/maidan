@@ -56,8 +56,20 @@ function tryFiles(): Record<string, { body: string; type: string }> {
     "/try.js": { body: text(resolve(TRY, "try.js")), type: "text/javascript; charset=utf-8" },
     "/clients.js": { body: text(resolve(TRY, "clients.js")), type: "text/javascript; charset=utf-8" },
     "/demo-agent.js": { body: text(resolve(TRY, "demo-agent.js")), type: "text/javascript; charset=utf-8" },
+    "/backdrop.js": { body: text(resolve(TRY, "backdrop.js")), type: "text/javascript; charset=utf-8" },
+    "/gathering.js": { body: text(resolve(TRY, "gathering.js")), type: "text/javascript; charset=utf-8" },
     "/theme.js": { body: text(THEME), type: "text/javascript; charset=utf-8" },
   };
+}
+
+// A browser with no WebGL: every other context still answers.
+function withoutWebGL(): void {
+  const get = HTMLCanvasElement.prototype.getContext as (this: HTMLCanvasElement, ...args: unknown[]) => unknown;
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    value(this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+      return type === "webgl2" || type === "webgl" ? null : get.call(this, type, ...rest);
+    },
+  });
 }
 
 test("the try page and the demo's unavailable page are dark by default and take the console's stored Light", async ({ page }) => {
@@ -125,6 +137,90 @@ test("a sandbox mint reaches the ready state once, and both states pass axe", as
   expect(posted.headers().authorization).toBe("Bearer mdn_admin_try");
 });
 
+test("the try page's gathering is decoration that loads after the page, and its control stops it", async ({ page }) => {
+  const fetched: string[] = [];
+  page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
+  const errors: string[] = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await serve(page, tryFiles());
+  await page.goto(`${fx.base_url}/`);
+  const picture = page.locator("#gather");
+  await expect(picture).toHaveAttribute("aria-hidden", "true");
+  // The scene is its own file, asked for once the page has loaded
+  await expect.poll(() => fetched.includes("/gathering.js")).toBe(true);
+  await expect(picture).toHaveAttribute("data-state", /^(running|software|fallback)$/);
+  const webgl = await page.evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
+  if (webgl) await expect(picture).not.toHaveAttribute("data-state", "fallback");
+  expect(errors).toEqual([]);
+  const toggle = page.getByRole("button", { name: "Pause the animation" });
+  test.skip((await picture.getAttribute("data-state")) !== "running", "no GPU here: the poster stands in for the scene");
+  await toggle.click();
+  await expect(picture).toHaveAttribute("data-state", "paused");
+  await page.getByRole("button", { name: "Play the animation" }).click();
+  await expect(picture).toHaveAttribute("data-state", "running");
+  const scan = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze();
+  expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+});
+
+test("without WebGL the try page keeps the poster of the mark, offers no control, and nothing errs", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await page.addInitScript(withoutWebGL);
+  await serve(page, tryFiles());
+  await page.goto(`${fx.base_url}/`);
+  const picture = page.locator("#gather");
+  await expect(picture).toHaveAttribute("data-state", "fallback");
+  await expect(picture.locator(".gather__canvas")).toHaveCSS("opacity", "0");
+  await expect(picture.locator(".gather__poster")).toBeVisible();
+  await expect(page.locator("#gather-toggle")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test.describe("under reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("the try page's gathering is one still frame, with nothing to stop", async ({ page }) => {
+    await serve(page, tryFiles());
+    await page.goto(`${fx.base_url}/`);
+    // A still where a GPU draws it; the poster where WebGL is missing or on the CPU
+    await expect(page.locator("#gather")).toHaveAttribute("data-state", /^(still|software|fallback)$/);
+    await expect(page.locator("#gather-toggle")).toBeHidden();
+  });
+});
+
+// The mark stands clear of the words: beside them on a wide screen, over them
+// on a phone, with the start button still on a short phone's first screen.
+for (const vp of [{ width: 1440, height: 900 }, { width: 1080, height: 800 }, { width: 390, height: 844 }, { width: 375, height: 667 }]) {
+  test.describe(`at ${vp.width}x${vp.height}`, () => {
+    test.use({ viewport: vp, isMobile: vp.width < 600, hasTouch: vp.width < 600 });
+
+    test("the try page's mark stands clear of its words and the start button is on the first screen", async ({ page }) => {
+      await page.addInitScript(withoutWebGL);
+      await serve(page, tryFiles());
+      await page.goto(`${fx.base_url}/`);
+      await expect(page.locator("#gather")).toHaveAttribute("data-state", "fallback");
+      const mark = (await page.locator(".gather__mark").boundingBox())!;
+      const words = await page.locator(".top .brand, .top .top-link, .hero > *").evaluateAll((els) =>
+        els.map((e) => {
+          const range = document.createRange();
+          range.selectNodeContents(e);
+          const r = range.getBoundingClientRect();
+          return { x: r.left, y: r.top, right: r.right, bottom: r.bottom, w: r.width };
+        }).filter((r) => r.w > 0),
+      );
+      for (const r of words) {
+        const apart = r.right <= mark.x || r.x >= mark.x + mark.width || r.bottom <= mark.y || r.y >= mark.y + mark.height;
+        expect(apart, `words at ${Math.round(r.x)},${Math.round(r.y)} overlap the mark`).toBe(true);
+      }
+      expect(mark.x).toBeGreaterThanOrEqual(0);
+      expect(mark.x + mark.width).toBeLessThanOrEqual(vp.width);
+      const start = (await page.locator("#start").boundingBox())!;
+      expect(start.y + start.height).toBeLessThanOrEqual(vp.height);
+      expect(await sideways(page)).toBeLessThanOrEqual(1);
+    });
+  });
+}
+
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -132,8 +228,10 @@ test.describe("on a phone", () => {
     await serve(page, tryFiles());
     await page.goto(`${fx.base_url}/`);
     await expect(page.locator("#start")).toBeVisible();
+    // Once the scene runs, its control is one of them
+    await expect(page.locator("#gather")).toHaveAttribute("data-state", /^(running|software|fallback)$/);
     expect(await sideways(page)).toBeLessThanOrEqual(1);
-    expect(await smallTargets(page, ".brand, .top-link, .cta, .copy, .foot a, .skip")).toEqual([]);
+    expect(await smallTargets(page, ".brand, .top-link, .cta, .copy, .foot a, .skip, .gather-toggle")).toEqual([]);
   });
 });
 

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:try": "node try-src/build.mjs",
     "deploy": "wrangler deploy",
     "test": "node --test test/*.test.js"
   },
