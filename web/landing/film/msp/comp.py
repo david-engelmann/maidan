@@ -1,6 +1,6 @@
-"""The grade: depth haze, bloom, a vignette and a colour balance, over the
-raw render. It runs from the saved EXR, so a grade can be changed without
-rendering again."""
+"""The finish: a lens's bloom on the points of light, a little vignette,
+fine grain, a touch of colour balance. It runs from the saved EXR, so the
+finish can be changed without rendering again."""
 
 import bpy
 
@@ -43,35 +43,29 @@ def build(scene, g, exr_path):
     src = ng.nodes.new("CompositorNodeImage")
     src.image = img
     outs = {o.name: o for o in src.outputs}
-    image = outs.get("Combined") or outs.get("Image") or src.outputs[0]
-    mist = outs.get("Mist")
-    depth = outs.get("Depth")
-    cur = image
+    cur = outs.get("Combined") or outs.get("Image") or src.outputs[0]
 
-    # haze: the air between here and there takes the colour of the horizon
-    if mist is not None and g.get("haze_amt", 0) > 0:
-        fac = _math(ng, "POWER", mist, 0.85)
-        fac = _math(ng, "MULTIPLY", fac, g["haze_amt"], clamp=True)
-        if depth is not None:
-            # not the sky itself
-            fac = _math(ng, "MULTIPLY", fac, _math(ng, "LESS_THAN", depth, 20000.0))
-        cur = _mix(ng, cur, g["haze"], fac)
-
-    # bloom on the lamps, the windows and the water's highlights
     if g.get("bloom", 0) > 0:
         gl = ng.nodes.new("CompositorNodeGlare")
         gl.inputs["Type"].default_value = "Bloom"
         gl.inputs["Quality"].default_value = "High"
-        gl.inputs["Threshold"].default_value = g.get("bloom_threshold", 1.6)
-        gl.inputs["Smoothness"].default_value = 0.4
+        gl.inputs["Threshold"].default_value = g.get("bloom_threshold", 2.0)
+        gl.inputs["Smoothness"].default_value = 0.5
         gl.inputs["Strength"].default_value = g["bloom"]
-        gl.inputs["Size"].default_value = g.get("bloom_size", 0.55)
+        gl.inputs["Size"].default_value = g.get("bloom_size", 0.5)
         gl.inputs["Clamp"].default_value = True
-        gl.inputs["Maximum"].default_value = 30.0
+        gl.inputs["Maximum"].default_value = 40.0
         ng.links.new(cur, gl.inputs["Image"])
         cur = gl.outputs["Image"]
 
-    # a vignette: the corners a little down
+    # the lens: a hair of colour fringing toward the corners
+    if g.get("fringe", 0.004) > 0:
+        ld = ng.nodes.new("CompositorNodeLensdist")
+        ld.inputs["Dispersion"].default_value = g.get("fringe", 0.004)
+        ld.inputs["Distortion"].default_value = 0.0
+        ng.links.new(cur, ld.inputs["Image"])
+        cur = ld.outputs["Image"]
+
     co = ng.nodes.new("CompositorNodeImageCoordinates")
     ng.links.new(cur, co.inputs[0])
     off = ng.nodes.new("ShaderNodeVectorMath")
@@ -84,11 +78,22 @@ def build(scene, g, exr_path):
     rng_ = ng.nodes.new("ShaderNodeMapRange")
     rng_.interpolation_type = "SMOOTHSTEP"
     ng.links.new(ln.outputs["Value"], rng_.inputs[0])
-    rng_.inputs[1].default_value = 0.32
-    rng_.inputs[2].default_value = 0.78
+    rng_.inputs[1].default_value = 0.3
+    rng_.inputs[2].default_value = 0.8
     rng_.inputs[3].default_value = 0.0
     rng_.inputs[4].default_value = g.get("vignette", 0.3)
     cur = _mix(ng, cur, (0.0, 0.0, 0.0), rng_.outputs[0])
+
+    # grain: finer than a pixel is not possible, so it is kept faint, and
+    # stronger in the mid-tones, as film's is
+    if g.get("grain", 0) > 0:
+        wn = ng.nodes.new("ShaderNodeTexWhiteNoise")
+        wn.noise_dimensions = "2D"
+        ng.links.new(co.outputs["Pixel"], wn.inputs["Vector"])
+        centred = _math(ng, "SUBTRACT", wn.outputs["Value"], 0.5)
+        amount = _math(ng, "MULTIPLY", centred, g["grain"] * 2.0)
+        gain = _math(ng, "ADD", amount, 1.0)
+        cur = _mix(ng, cur, gain, 1.0, blend="MULTIPLY")
 
     cb = ng.nodes.new("CompositorNodeColorBalance")
     cb.inputs["Type"].default_value = "Lift/Gamma/Gain"

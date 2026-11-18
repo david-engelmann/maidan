@@ -1,6 +1,6 @@
 """Builds the scene and saves it as a .blend.
 
-    Blender -b --factory-startup -P build.py -- --blend /path/scene.blend [--parts fountain,trees]
+    Blender -b --factory-startup -P build.py -- --blend /path/scene.blend --assets /path/assets [--parts square]
 
 With --parts and an existing .blend, only those parts are rebuilt.
 """
@@ -14,14 +14,14 @@ import bpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-PARTS = ["ground", "fountain", "furniture", "trees", "buildings", "people", "traffic"]
+PARTS = ["model", "square", "studio"]
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--blend", required=True)
     ap.add_argument("--parts", default="all")
-    ap.add_argument("--quality", type=float, default=1.0, help="scales tree and crowd counts, for quick looks")
+    ap.add_argument("--assets", default=os.environ.get("FILM_ASSETS", ""), help="where fetch_assets.py put the skies and textures")
     args = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
     parts = PARTS if args.parts == "all" else [p for p in args.parts.split(",") if p]
     fresh = args.parts == "all" or not os.path.exists(args.blend)
@@ -37,7 +37,8 @@ def main():
     from msp import common
 
     common.grade_group()
-    os.environ["FILM_QUALITY"] = str(args.quality)
+    if args.assets:
+        os.environ["FILM_ASSETS"] = os.path.abspath(args.assets)
     for part in parts:
         t0 = time.time()
         try:
