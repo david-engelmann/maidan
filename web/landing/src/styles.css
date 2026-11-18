@@ -38,6 +38,11 @@
   --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
   --primary-ink: #1b0b03;
   --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
+  /* Hover lifts a button where it stands: the lit one brightens, an outlined
+     one takes a wash (solid where it stands on the square) */
+  --cta-hover: brightness(1.1);
+  --ghost-hover: rgba(236, 240, 248, 0.08);
+  --ghost-hover-solid: #1e1f21;
   --top-scrolled: rgba(12, 13, 15, 0.82);
   --top-line: rgba(236, 240, 248, 0.08);
   --shadow-approval: 0 0 0 1px rgba(255, 106, 43, 0.55), 0 0 32px -10px rgba(255, 106, 43, 0.45), 0 30px 60px -28px rgba(0, 0, 0, 0.9);
@@ -47,6 +52,7 @@
   --run-tab: #b3b7be;
   --run-tab-on: rgba(236, 240, 248, 0.1);
   --run-tab-on-ink: #fff;
+  --run-tab-hover: rgba(236, 240, 248, 0.05);
   --run-copy-line: rgba(236, 240, 248, 0.22);
   --run-code: #e4e2dc;
   --run-focus: #ff7847;
@@ -85,6 +91,9 @@
   --primary: #151411;
   --primary-ink: #f2eee6;
   --primary-shadow: none;
+  --cta-hover: brightness(1.9);
+  --ghost-hover: rgba(21, 20, 17, 0.06);
+  --ghost-hover-solid: #e5e1d9;
   --top-scrolled: rgba(242, 238, 230, 0.9);
   --top-line: rgba(21, 20, 17, 0.08);
   --shadow-approval: 0 0 0 1px rgba(232, 80, 28, 0.45), 0 30px 60px -28px rgba(40, 32, 20, 0.55);
@@ -94,6 +103,7 @@
   --run-tab: #c9c3b6;
   --run-tab-on: rgba(255, 255, 255, 0.1);
   --run-tab-on-ink: #fff;
+  --run-tab-hover: rgba(255, 255, 255, 0.05);
   --run-copy-line: rgba(255, 255, 255, 0.25);
   --run-code: #ece6d8;
   --run-focus: #ff7847; /* above 3:1 on --run-bg */
@@ -123,15 +133,18 @@ section[id] { scroll-margin-top: calc(env(safe-area-inset-top) + 4rem); }
 #root { min-height: 100svh; }
 
 /* Header */
-.top { position: fixed; inset: 0 0 auto; z-index: 30; display: flex; align-items: center; gap: 0.4rem; padding: calc(env(safe-area-inset-top) + 0.4rem) var(--pad) 0.4rem; color: var(--ink); background: transparent; transition: background-color 0.3s ease, box-shadow 0.3s ease; }
+/* On the sections' gutter, so the mark and the last button line up with the
+   words under them */
+.top { position: fixed; inset: 0 0 auto; z-index: 30; display: flex; align-items: center; gap: 0.4rem; padding: calc(env(safe-area-inset-top) + 0.4rem) var(--gutter) 0.4rem; color: var(--ink); background: transparent; transition: background-color 0.3s ease, box-shadow 0.3s ease; }
 .top.scrolled { background: var(--top-scrolled); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8); box-shadow: 0 1px 0 var(--top-line); }
 .brand { font-weight: 640; letter-spacing: -0.04em; font-size: 1.1rem; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; gap: 0.5rem; color: var(--ink); }
 .brand .mark { width: 1.45rem; height: 1.45rem; flex: none; color: var(--mark-ink); }
 .nav { display: none; }
-.nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); }
-.nav a:hover, .gh:hover { color: var(--ink); }
-.gh { margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); }
-.join-btn { min-height: 44px; padding: 0 1rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-size: 0.92rem; font-weight: 560; white-space: nowrap; }
+.nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); transition: color 0.15s ease; }
+.nav a:hover, .gh:hover, .legal a:hover { color: var(--ink); }
+.gh { margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); transition: color 0.15s ease; }
+.join-btn { min-height: 44px; padding: 0 1rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-size: 0.92rem; font-weight: 560; white-space: nowrap; transition: filter 0.15s ease; }
+.join-btn:hover { filter: var(--cta-hover); }
 
 /* Type */
 h1, h2 { margin: 0; font-weight: 560; letter-spacing: -0.06em; line-height: 0.92; text-wrap: balance; }
@@ -150,9 +163,17 @@ section > *, .hero > * { min-width: 0; }
 /* Calls to action */
 .cta-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 2rem; }
 .cta-row.center { justify-content: center; }
-.cta { min-height: 52px; padding: 0 1.3rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-weight: 560; text-decoration: none; display: inline-flex; align-items: center; }
+.cta { min-height: 52px; padding: 0 1.3rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-weight: 560; text-decoration: none; display: inline-flex; align-items: center; transition: filter 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.1s ease; }
 .cta.ghost { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
-.cta:hover { opacity: 0.88; }
+.cta:hover { filter: var(--cta-hover); }
+.cta.ghost:hover { filter: none; background-color: var(--ghost-hover); }
+.cta:active { transform: translateY(1px); }
+/* The lightest step: a link with an arrow, not a third button. Its padding
+   gives the focus ring room, and the margin keeps the words on the edge. */
+.cta.text { min-height: 44px; padding: 0 0.7rem; margin-inline: -0.7rem; gap: 0.45rem; background: none; color: var(--ink); box-shadow: none; }
+.cta.text:hover { filter: none; color: var(--signal-ink); }
+.cta.text .arrow { transition: transform 0.15s ease; }
+.cta.text:hover .arrow { transform: translateX(3px); }
 
 /* Hero */
 .hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; isolation: isolate; overflow-x: clip; }
@@ -160,6 +181,13 @@ section > *, .hero > * { min-width: 0; }
 /* The hero's calls to action stand on the square: the outlined ones are
    solid, so no light runs through their words */
 .hero .cta.ghost { background: var(--paper); }
+.hero .cta.ghost:hover { background: var(--ghost-hover-solid); }
+/* Two buttons hold one row beside the square, and the demo link sits under
+   them, at every width the row would otherwise break unevenly */
+@media (min-width: 720px) {
+  .hero .cta-row { display: grid; grid-template-columns: repeat(2, max-content); justify-content: start; }
+  .hero .cta.text { grid-column: 1 / -1; justify-self: start; }
+}
 .works b { color: var(--ink); font-weight: 600; }
 
 /* How it works */
@@ -178,23 +206,36 @@ section > *, .hero > * { min-width: 0; }
 /* Developers */
 .dev { display: grid; gap: 2.4rem; }
 .dev > * { min-width: 0; }
-.run-card { border-radius: 18px; background: var(--run-bg); color: var(--run-ink); overflow: hidden; box-shadow: var(--run-shadow); align-self: center; }
-.tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--run-line); }
+/* The tabs, then Copy, on one bar over the example */
+.run-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-radius: 16px; background: var(--run-bg); color: var(--run-ink); overflow: hidden; box-shadow: var(--run-shadow); align-self: center; }
+.tabs { grid-area: 1 / 1; display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--run-line); }
 .tablist { display: flex; flex-wrap: wrap; gap: 0.2rem; min-width: 0; }
-.tab { min-height: 44px; padding: 0 0.9rem; border-radius: 10px; font-family: var(--mono); font-size: 0.78rem; color: var(--run-tab); }
+.tab { min-height: 44px; padding: 0 0.9rem; border-radius: 10px; font-family: var(--mono); font-size: 0.78rem; color: var(--run-tab); transition: background-color 0.15s ease, color 0.15s ease; }
+.tab:not(.on):hover { background: var(--run-tab-hover); color: var(--run-tab-on-ink); }
 .tab.on { background: var(--run-tab-on); color: var(--run-tab-on-ink); }
-.copy { margin-left: auto; min-height: 44px; min-width: 64px; padding: 0 0.9rem; border-radius: 10px; font-size: 0.8rem; box-shadow: inset 0 0 0 1px var(--run-copy-line); }
+.copy-cell { grid-area: 1 / 2; display: flex; align-items: center; padding: 0.4rem; border-bottom: 1px solid var(--run-line); }
+.copy { min-height: 44px; min-width: 64px; padding: 0 0.9rem; white-space: nowrap; border-radius: 10px; font-size: 0.8rem; box-shadow: inset 0 0 0 1px var(--run-copy-line); transition: background-color 0.15s ease; }
+.copy:hover { background: var(--run-tab-hover); }
 .copy.failed { min-width: 9rem; }
-.code { margin: 0; padding: 1.1rem 1.2rem 1.3rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.65; overflow-x: auto; color: var(--run-code); min-height: 12rem; }
+.code-stack { grid-area: 2 / 1 / 3 / 3; display: grid; }
+.code-stack > .code { grid-area: 1 / 1; }
+/* In one column the card's top stays put as its height changes, so the
+   others are only there to size it beside the words (below) */
+.code-sizer { display: none; }
+.code { margin: 0; padding: 1.1rem 1.2rem 1.3rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--run-code); }
+.code code { font: inherit; }
+/* A line that wraps hangs under its own start, past any indent it has */
+.code .ln { display: block; min-height: 1lh; padding-left: 2ch; text-indent: -2ch; }
+.code .ln[data-in="4"] { padding-left: 6ch; text-indent: -6ch; }
 /* The card clips anything outside it, so the ring sits inside. */
 .run-card :focus-visible { outline: 2px solid var(--run-focus); outline-offset: -2px; }
 
 /* Hosted or self-hosted */
 .hosting { }
 .plans { margin-top: 2.6rem; display: grid; gap: 1rem; }
-.plan { padding: 1.6rem; border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+.plan { padding: 1.6rem; border-radius: 16px; background: var(--card); box-shadow: 0 0 0 1px var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; }
 .plan h3 { font-size: 1.35rem; }
-.plan p { margin: 0 0 0.8rem; color: var(--muted); text-wrap: pretty; }
+.plan p { margin: 0 0 0.8rem; max-width: 34rem; color: var(--muted); text-wrap: pretty; }
 .plan .cta { margin-top: auto; }
 .plan .cta-row { margin-top: auto; }
 .plan .cta-row .cta { margin-top: 0; }
@@ -241,13 +282,46 @@ section > *, .hero > * { min-width: 0; }
      headline where the page then keeps it */
   .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: 100svh; padding-top: max(7rem, 17svh); padding-bottom: 3rem; }
   .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
-  .dev h2, .hosting h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
+  /* One size for every section's heading, a step under the headline's */
+  h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dev { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; align-items: center; }
+  /* Centred beside the words, the card would move its tabs as it changed
+     height: it takes the tallest example's height for every one */
+  .code-sizer { display: block; visibility: hidden; }
 }
 @media (max-width: 719px) {
   .join-btn { padding: 0 0.85rem; }
+}
+/* A plan card narrower than its pair of buttons stacks them, full width,
+   rather than leave two widths hanging from its left edge */
+@media (max-width: 1079px) {
+  .plan { align-items: stretch; }
+  .plan .cta-row { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .plan .cta { justify-content: center; }
+}
+/* On a phone every row of calls to action stacks, full width, so no row
+   breaks one way at 390px and another at 375px */
+@media (max-width: 559px) {
+  .cta-row { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .cta-row .cta { justify-content: center; }
+  /* The eyebrow's two halves take a line each, rather than leave the dot
+     hanging at the end of the first */
+  .eyebrow-sep { display: block; height: 0; overflow: hidden; }
+}
+/* Where the tabs and Copy no longer share a bar, the tabs fill it and Copy
+   sits in the example's corner, the first lines wrapping clear of it */
+@media (max-width: 479px) {
+  .run-card { grid-template-columns: minmax(0, 1fr); }
+  .tablist { flex: 1; flex-wrap: nowrap; }
+  .tab { flex: 1 1 auto; padding: 0 0.6rem; }
+  .copy-cell { grid-area: 2 / 1; justify-self: end; align-self: start; z-index: 1; padding: 0.5rem; border-bottom: 0; }
+  .code-stack { grid-area: 2 / 1; }
+  .code::before { content: ""; float: right; width: 4.6rem; height: 2.5rem; }
+  /* "Select and copy" is twice as wide as "Copy" or "Copied": the first lines
+     make room for it while it shows, so it never covers the example */
+  .run-card:has(.copy.failed) .code::before { width: 9.6rem; }
 }
 /* The narrowest phones have room for the mark and the one action; GitHub
    is still in the closing section and the footer */
@@ -272,14 +346,23 @@ section > *, .hero > * { min-width: 0; }
   .hero-copy > .works { order: 4; }
   .hero .cta-row { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 1.6rem; }
   .hero .cta-row .cta { justify-content: center; }
-  .cta-hold { height: calc(3 * 52px + 2 * 0.6rem); margin-top: 1.6rem; }
+  .hero .cta.text { justify-self: center; }
+  /* two buttons and the demo link under them */
+  .cta-hold { height: calc(2 * 52px + 44px + 2 * 0.6rem); margin-top: 1.6rem; }
 }
 .cta-hold { display: none; }
 @media (max-width: 719px) { .cta-hold { display: block; } }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .top { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .top, .nav a, .gh, .join-btn, .cta, .cta.text .arrow, .tab, .copy { transition: none; }
+  .cta:active { transform: none; }
+  .cta.text:hover .arrow { transform: none; }
+}
 
 /* Inside the room: the board with everyone on it, and its three beats */
-.room-head { max-width: 40rem; }
+/* Room for its heading's two lines at the widest heading size; the lede
+   keeps its own measure */
+.room-head { max-width: 48rem; }
 .room-stage { position: relative; margin-top: 2.6rem; }
 /* The board's box is sized before its code arrives: the one-column design
    below 1024px, the four lanes above, each at its own proportions */
@@ -298,7 +381,7 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room { padding-top: clamp(9rem, 34svh, 21rem); } .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: clamp(9rem, 34svh, 21rem); } .room-steps { max-width: 1180px; } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
@@ -306,7 +389,7 @@ section > *, .hero > * { min-width: 0; }
 .watch-frame { position: relative; margin-top: 2rem; }
 .watch-clip { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: var(--shadow-approval); background: var(--paper-2); }
 /* Clear of the clip's drop shadow, which would dim the note on paper */
-.watch-note { margin: 2.2rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.watch-note { margin: 2.2rem 0 0; max-width: 34rem; color: var(--muted); font-size: 0.9rem; text-wrap: pretty; }
 
 /* Play and pause for every moving picture: a quiet glyph over its corner,
    frosted so it reads over light or dark frames. It draws at 32px; the ring

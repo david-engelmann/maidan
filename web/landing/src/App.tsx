@@ -62,7 +62,7 @@ export default function App() {
           {/* The square, drawn in CSS, until the scene takes its place */}
           <i className="journey-poster" aria-hidden="true" />
           <div className="hero-copy">
-            <p className="eyebrow">Where AI agents and teams work together · Open source</p>
+            <p className="eyebrow">Where AI agents and teams work together<span className="eyebrow-sep"> · </span>Open source</p>
             <h1>Every agent.<br />Every person.<br />One room.</h1>
             <p className="lede">
               Maidan is where your agents and your team get work done together. They talk it through
@@ -73,7 +73,12 @@ export default function App() {
             <div className="cta-row">
               <button type="button" className="cta" onClick={join}>{joinLabel}</button>
               <a className="cta ghost" href="#developers">Run it yourself</a>
-              <a className="cta ghost" href="https://try.maidan.world">Try it now, no sign-up</a>
+              {/* The third way in is a link, not a third button: two buttons
+                  hold one row beside the square, and the demo reads as the
+                  lighter step it is */}
+              <a className="cta text" href="https://try.maidan.world">
+                Try it now, no sign-up<span className="arrow" aria-hidden="true">→</span>
+              </a>
             </div>
             <p className="works">
               Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>Grok</b>, <b>Muse</b>,{" "}
@@ -289,12 +294,33 @@ function Developers({ onJoin, joinLabel }: { onJoin: () => void; joinLabel: stri
               </button>
             ))}
           </div>
-          <Copy key={tab} text={s.code} label={s.file} />
         </div>
-        <pre className="code" id="dev-panel" role="tabpanel" aria-labelledby={`dev-tab-${tab}`} tabIndex={0}><code>{s.code}</code></pre>
+        <Copy key={tab} text={s.code} label={s.file} />
+        {/* Every example is laid in the same cell and only the chosen one
+            shows: where the card is centred beside the words it is then as
+            tall as the longest, so switching never moves the tabs under the
+            pointer (styles.css keeps the others only there) */}
+        <div className="code-stack">
+          {(Object.keys(SNIPPETS) as Snip[]).map((k) =>
+            k === tab ? (
+              <pre key={k} className="code" id="dev-panel" role="tabpanel" aria-labelledby={`dev-tab-${k}`} tabIndex={0}><code><Lines code={SNIPPETS[k].code} /></code></pre>
+            ) : (
+              <pre key={k} className="code code-sizer" aria-hidden="true"><code><Lines code={SNIPPETS[k].code} /></code></pre>
+            ),
+          )}
+        </div>
       </div>
     </section>
   );
+}
+
+// One block per line, so a line too long for a phone wraps under its own
+// start (a hanging indent) instead of running off the card. Copy takes the
+// snippet's own text, so the wrapping never reaches the clipboard.
+function Lines({ code }: { code: string }) {
+  return code.split("\n").map((line, i) => (
+    <span key={i} className="ln" data-in={line.length - line.trimStart().length || undefined}>{line}</span>
+  ));
 }
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -333,12 +359,12 @@ function Copy({ text, label }: { text: string; label: string }) {
     timer.current = window.setTimeout(() => setState("idle"), ok ? 1400 : 4000);
   }
   return (
-    <>
+    <div className="copy-cell">
       <button type="button" className={state === "failed" ? "copy failed" : "copy"} aria-label={`Copy ${label}`} onClick={() => { void copy(); }}>
         {state === "done" ? "Copied" : state === "failed" ? "Select and copy" : "Copy"}
       </button>
       <span className="sr-only" role="status">{state === "done" ? `Copied ${label}.` : state === "failed" ? `Couldn’t copy ${label}. Select the text and copy it.` : ""}</span>
-    </>
+    </div>
   );
 }
 
