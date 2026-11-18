@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { basename, resolve } from "node:path";
 import { fixtures } from "./_fixtures";
@@ -128,13 +128,31 @@ test("the example tabs move with the keyboard and wrap", async ({ page }) => {
 
 // Each moving picture can be stopped (WCAG 2.2.2). The control is a small
 // glyph over the picture's corner; its name says what a press will do, and
-// the ring around it still takes a 44px tap.
+// the ring around it still takes a 44px tap. The journey behind the page has
+// one too, which travels with the screen (it is checked with the journey,
+// below, since it is there only where a GPU draws the scene).
 const MOVING = [
-  ["animation", ".hero"],
   ["room animation", ".room-stage"],
   ["recording", ".watch-frame"],
-  ["closing animation", ".close"],
 ] as const;
+
+/** The control's box is at most 36px, and a tap 22px from its middle reaches it. */
+async function expectSmallControlWithATapRing(pause: Locator, noun: string): Promise<void> {
+  const box = await pause.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeLessThanOrEqual(36);
+  expect(box!.height).toBeLessThanOrEqual(36);
+  const taps = await pause.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    return [[-22, 0], [22, 0], [0, -22], [0, 22]].map(([dx, dy]) => {
+      const at = document.elementFromPoint(x + dx, y + dy);
+      return !!at && (at === el || el.contains(at));
+    });
+  });
+  expect(taps, `${noun}: a tap 22px from the glyph's middle reaches it`).toEqual([true, true, true, true]);
+}
 
 test("each moving picture has a small pause control that names what a press will do", async ({ page }) => {
   await openLanding(page);
@@ -143,20 +161,7 @@ test("each moving picture has a small pause control that names what a press will
     await pause.scrollIntoViewIfNeeded();
     await expect(pause).toBeVisible();
     await expect(pause).not.toHaveAttribute("aria-pressed");
-    const box = await pause.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeLessThanOrEqual(36);
-    expect(box!.height).toBeLessThanOrEqual(36);
-    const taps = await pause.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const x = r.left + r.width / 2;
-      const y = r.top + r.height / 2;
-      return [[-22, 0], [22, 0], [0, -22], [0, 22]].map(([dx, dy]) => {
-        const at = document.elementFromPoint(x + dx, y + dy);
-        return !!at && (at === el || el.contains(at));
-      });
-    });
-    expect(taps, `${noun}: a tap 22px from the glyph's middle reaches it`).toEqual([true, true, true, true]);
+    await expectSmallControlWithATapRing(pause, noun);
     await pause.click();
     await expect(page.locator(frame).getByRole("button", { name: `Play the ${noun}` })).toBeVisible();
   }
@@ -200,8 +205,7 @@ test.describe("with reduced motion", () => {
   test("the room is one still frame of the landed task, with nothing to pause", async ({ page }) => {
     await openLanding(page);
     await page.locator(".room-stage").scrollIntoViewIfNeeded();
-    await expect(page.locator(".hero .media-toggle")).toHaveCount(0);
-    await expect(page.locator(".close .media-toggle")).toHaveCount(0);
+    await expect(page.locator(".journey-toggle")).toHaveCount(0);
     await expect(page.locator(".room-stage .media-toggle")).toHaveCount(0);
     await expect(page.locator(".watch-frame").getByRole("button", { name: "Play the recording" })).toBeVisible();
     const stage = page.locator(".room-stage");
@@ -210,38 +214,57 @@ test.describe("with reduced motion", () => {
     await expect(page.locator(".room-step[data-active]")).toHaveCount(0);
   });
 
-  test("the gathering is one composed still of the whole mark", async ({ page }) => {
+  test("the journey is a composed still, redrawn as the page scrolls, with nothing to pause", async ({ page }) => {
     await openLanding(page);
-    // A still where a GPU draws it; the poster of the mark where WebGL is
+    // A still where a GPU draws it; the poster of the square where WebGL is
     // missing or drawn on the CPU
-    await expect(page.locator(".gather--hero")).toHaveAttribute("data-state", /^(still|software|fallback)$/);
+    const journey = page.locator(".journey");
+    await expect(journey).toHaveAttribute("data-state", /^(still|software|fallback)$/);
+    await page.locator(".how").scrollIntoViewIfNeeded();
+    await expect(journey).toHaveAttribute("data-state", /^(still|software|fallback)$/);
+    await expect(page.locator(".journey-toggle")).toHaveCount(0);
   });
 });
 
-test("the gathering under the hero and the close is decoration, and the hero's control stops it", async ({ page }) => {
+test("the journey behind the page is decoration in its own chunk, and its control stops it", async ({ page }) => {
   const fetched: string[] = [];
   page.on("request", (req) => fetched.push(new URL(req.url()).pathname));
   await openLanding(page);
-  const pictures = page.locator(".gather");
-  // The hero's and the close's
-  await expect(pictures).toHaveCount(2);
-  for (const picture of await pictures.all()) await expect(picture).toHaveAttribute("aria-hidden", "true");
+  // One picture, fixed behind the whole page
+  const journey = page.locator(".journey");
+  await expect(journey).toHaveCount(1);
+  await expect(journey).toHaveAttribute("aria-hidden", "true");
+  await expect(journey).toHaveCSS("position", "fixed");
+  await expect(journey).toHaveCSS("pointer-events", "none");
   // Its code is its own chunk, asked for once the page has loaded
-  await expect.poll(() => fetched.includes("/landing/gathering.js")).toBe(true);
-  const hero = page.locator(".gather--hero");
-  await expect(hero).toHaveAttribute("data-state", /^(running|software|fallback)$/);
+  await expect.poll(() => fetched.includes("/landing/journey.js")).toBe(true);
+  expect(fetched).not.toContain("/landing/gathering.js");
+  await expect(journey).toHaveAttribute("data-state", /^(running|software|fallback)$/);
   // Where WebGL2 exists the scene compiles and draws, even on a software
   // renderer that then leaves the poster up
   const webgl = await page.evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
-  if (webgl) await expect(hero).not.toHaveAttribute("data-state", "fallback");
-  test.skip((await hero.getAttribute("data-state")) !== "running", "no GPU here: the poster stands in for the scene");
-  await page.locator(".hero").getByRole("button", { name: "Pause the animation" }).click();
-  await expect(hero).toHaveAttribute("data-state", "paused");
-  await page.locator(".hero").getByRole("button", { name: "Play the animation" }).click();
-  await expect(hero).toHaveAttribute("data-state", "running");
+  if (webgl) await expect(journey).not.toHaveAttribute("data-state", "fallback");
+  const running = (await journey.getAttribute("data-state")) === "running";
+  // The poster holds the hero until the scene draws, and wherever it cannot
+  if (running) await expect(page.locator("html")).toHaveAttribute("data-journey", "on");
+  else await expect(page.locator("html")).not.toHaveAttribute("data-journey", "on");
+  await expect(page.locator(".journey-poster")).toHaveCSS("opacity", running ? "0" : "1");
+  test.skip(!running, "no GPU here: the poster stands in for the scene");
+  // It travels with the screen: there at the top of the page and at its end
+  const pause = page.getByRole("button", { name: "Pause the animation" });
+  await expect(pause).toBeVisible();
+  await expect(pause).not.toHaveAttribute("aria-pressed");
+  await expectSmallControlWithATapRing(pause, "animation");
+  await pause.click();
+  await expect(journey).toHaveAttribute("data-state", "paused");
+  await page.locator(".close").scrollIntoViewIfNeeded();
+  const play = page.getByRole("button", { name: "Play the animation" });
+  await expect(play).toBeInViewport();
+  await play.click();
+  await expect(journey).toHaveAttribute("data-state", "running");
 });
 
-test("without WebGL the poster of the mark stays, and nothing errs", async ({ page }) => {
+test("without WebGL the poster of the square stays, and nothing errs", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await page.addInitScript(() => {
@@ -254,13 +277,30 @@ test("without WebGL the poster of the mark stays, and nothing errs", async ({ pa
     });
   });
   await openLanding(page);
-  const hero = page.locator(".gather--hero");
-  await expect(hero).toHaveAttribute("data-state", "fallback");
-  await expect(hero.locator(".gather__canvas")).toHaveCSS("opacity", "0");
-  const poster = await hero.locator(".gather__mark").evaluate((el) => getComputedStyle(el, "::before").backgroundImage);
-  expect(poster).toContain("data:image/svg+xml");
+  const journey = page.locator(".journey");
+  await expect(journey).toHaveAttribute("data-state", "fallback");
+  await expect(journey.locator(".journey__canvas")).toHaveCSS("opacity", "0");
+  await expect(page.locator("html")).not.toHaveAttribute("data-journey", "on");
+  const poster = page.locator(".journey-poster");
+  await expect(poster).toHaveCSS("opacity", "1");
+  expect(await poster.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain("data:image/svg+xml");
+  // Nothing to pause, and the close ends after its words
+  await expect(page.locator(".journey-toggle")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+// The picture must never widen the page, from the narrowest phone to a wide desktop.
+for (const width of [320, 768, 1024, 1920]) {
+  test(`at ${width}px the page stays within the screen`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 700 ? 640 : 900 });
+    await openLanding(page);
+    await expect(page.locator(".journey")).toHaveAttribute("data-state", /^(running|software|fallback)$/);
+    for (const stop of [".hero", ".how", ".close"]) {
+      await page.locator(stop).scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${stop} at ${width}px`).toBeLessThanOrEqual(0);
+    }
+  });
+}
 
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -276,24 +316,26 @@ test.describe("on a phone", () => {
   });
 });
 
-// A phone's first screen holds the mark, the headline and the first call to
-// action, the short phone included.
+// A phone's first screen holds the fountain, the headline and the first call
+// to action, the short phone included.
 for (const vp of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
   test.describe(`on a ${vp.width}x${vp.height} phone`, () => {
     test.use({ viewport: vp, isMobile: true, hasTouch: true });
 
-    test("the mark, the headline and the first call to action are on the first screen", async ({ page }) => {
+    test("the fountain's room, the headline and the first call to action are on the first screen", async ({ page }) => {
       await openLanding(page);
       const header = await page.locator(".top").boundingBox();
-      const mark = await page.locator(".gather--hero .gather__mark").boundingBox();
+      const eyebrow = await page.locator(".hero .eyebrow").boundingBox();
       const h1 = await page.locator(".hero h1").boundingBox();
       const cta = await page.locator(".hero .cta").first().boundingBox();
-      for (const box of [header, mark, h1, cta]) expect(box).not.toBeNull();
-      // About half the screen's width, under the header and over the words
-      expect(mark!.width).toBeGreaterThanOrEqual(vp.width * 0.45);
-      expect(mark!.width).toBeLessThanOrEqual(vp.width * 0.55);
-      expect(mark!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
-      expect(mark!.y + mark!.height).toBeLessThanOrEqual(h1!.y);
+      for (const box of [header, eyebrow, h1, cta]) expect(box).not.toBeNull();
+      // The fountain has at least a third of the screen, under the header and over the words
+      expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(vp.height * 0.33);
+      // and the poster that stands in for it is the first screen's
+      const poster = await page.locator(".journey-poster").boundingBox();
+      expect(poster).not.toBeNull();
+      expect(poster!.y).toBe(0);
+      expect(Math.round(poster!.height)).toBe(vp.height);
       expect(h1!.y + h1!.height).toBeLessThanOrEqual(cta!.y);
       expect(cta!.y + cta!.height).toBeLessThanOrEqual(vp.height);
       await expect(page.locator(".hero .cta").first()).toHaveText(/Join the waitlist|Create a workspace/);
