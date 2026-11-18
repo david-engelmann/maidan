@@ -42,6 +42,15 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v463.0.0](https://github.com/david-engelmann/maidan/releases/tag/v463.0.0) — the gathering moves to try.maidan.world, without its glitches, and 1 more
+
+maidan.world's landing is a night square with a fountain of liquid light, and scrolling lifts through liquid into silk behind the product sections and returns to the square at the close; try.maidan.world carries the particle gathering with its glitches fixed.
+
+- The gathering moves to try.maidan.world, without its glitches
+- The landing is a journey: a night square, a lift through liquid light, and the square again
+
+`CHANGELOG.md` under `[463.0.0]` has every entry.
+
 ## [v462.0.0](https://github.com/david-engelmann/maidan/releases/tag/v462.0.0) — the landing's hero is a gathering: everyone arriving in one place becomes the mark
 
 maidan.world's hero is a gathering: tens of thousands of lights stream across a dark field and assemble into the Maidan mark, then scatter and gather again, drawn in WebGL and loaded after the page.
