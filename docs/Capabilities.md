@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v464.0.0](https://github.com/david-engelmann/maidan/releases/tag/v464.0.0) — lettre 0.11.24, and 2 more
+
+maidan.world's landing opens on a wide view of a city at night with a fountain of liquid light at its heart, the OpenTelemetry stack moves to 0.33, and lettre moves to 0.11.24 for six advisories.
+
+- lettre 0.11.24
+- The landing's square is a wide view of a city at night, lightly drawn
+- The OpenTelemetry stack moves to 0.33 together
+
+`CHANGELOG.md` under `[464.0.0]` has every entry.
+
 ## [v463.0.0](https://github.com/david-engelmann/maidan/releases/tag/v463.0.0) — the gathering moves to try.maidan.world, without its glitches, and 1 more
 
 maidan.world's landing is a night square with a fountain of liquid light, and scrolling lifts through liquid into silk behind the product sections and returns to the square at the close; try.maidan.world carries the particle gathering with its glitches fixed.

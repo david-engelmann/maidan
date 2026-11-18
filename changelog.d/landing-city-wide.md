@@ -1,7 +1,0 @@
-### The landing's square is a wide view of a city at night, lightly drawn
-
-- **Changed:** the journey's square (the hero and the closing call to action) is now an establishing view from a rooftop some 260 m back and 46 m up, in place of the close view of a flat-iron wedge and a clock tower. It is no one place: low masonry blocks with water tanks and setbacks, a few slim towers far off, a park of tree crowns with eight lamp-lit paths and an open lawn toward the viewer, and wet avenues with street lights. The fountain of liquid light is a small, bright point in the park's heart, with warm air pooling round it and the lamps, and at the close its eight rills breathe as soft rays. On a phone the camera is lower and nearer, so the fountain crowns the headline under a strip of sky. The lift into the liquid, the silk behind the sections and the ribbons are unchanged.
-- **Changed:** by day the same city is a hazy golden afternoon: a low western sun, warm air in which the far blocks dissolve, soft shadows, and the picture seen through a diffusion filter.
-- **Changed:** the poster that holds the hero until the scene draws, and wherever it cannot, is redrawn to the wide view in both themes, its copy side kept calm.
-- **Fixed:** thin dark streaks across the night sky: a ray ending just at a block's edge could take a guard step for a hit and draw a fogged wall.
-- **Fixed:** the moving camera's city now steps to a smaller march as soon as a fifth of its frames run long, so scrolling the lift no longer drops frames.
