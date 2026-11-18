@@ -357,7 +357,7 @@ void main() {
   float d = dot(c, c);
   if (d > 1.0) discard;
   float g = exp(-d * 4.5);
-  float disc = smoothstep(1.0, 0.7, d) * (0.65 + 0.35 * smoothstep(0.2, 0.92, d));
+  float disc = (1.0 - smoothstep(0.7, 1.0, d)) * (0.65 + 0.35 * smoothstep(0.2, 0.92, d));
   o = vec4(vCol * mix(disc, g, vSharp), 1.0);
 #endif
 }`;
