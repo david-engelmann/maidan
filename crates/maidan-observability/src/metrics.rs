@@ -7,7 +7,7 @@ use metrics_exporter_opentelemetry::Recorder;
 #[cfg(feature = "otel")]
 use opentelemetry::KeyValue;
 #[cfg(feature = "otel")]
-use opentelemetry_otlp::{MetricExporter, WithExportConfig};
+use opentelemetry_otlp::{MetricExporter, RetryPolicy, WithExportConfig, WithTonicConfig};
 #[cfg(feature = "otel")]
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 #[cfg(feature = "otel")]
@@ -99,6 +99,9 @@ pub fn build_otlp_metrics_recorder(
         .with_tonic()
         .with_endpoint(config.endpoint.clone())
         .with_timeout(Duration::from_secs(3))
+        // One attempt per push, as before 0.33 made retries the default; the
+        // next interval sends the cumulative values again anyway.
+        .with_retry_policy(RetryPolicy::disabled())
         .build()
         .map_err(|e| InitError::Otlp(e.to_string()))?;
 

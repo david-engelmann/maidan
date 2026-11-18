@@ -17,7 +17,7 @@ use opentelemetry::trace::TracerProvider as OtelTracerProvider;
 #[cfg(feature = "otel")]
 use opentelemetry::KeyValue;
 #[cfg(feature = "otel")]
-use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{RetryPolicy, SpanExporter, WithExportConfig, WithTonicConfig};
 #[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
 #[cfg(feature = "otel")]
@@ -151,6 +151,10 @@ pub fn init_with(
                 .with_tonic()
                 .with_endpoint(endpoint)
                 .with_timeout(Duration::from_secs(3))
+                // OpenTelemetry 0.33 retries a failed export up to three times
+                // by default; 0.31 sent each batch once. One attempt keeps a
+                // shutdown against an unreachable collector inside its timeout.
+                .with_retry_policy(RetryPolicy::disabled())
                 .build()
                 .map_err(|e| InitError::Otlp(e.to_string()))?;
 
