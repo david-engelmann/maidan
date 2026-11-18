@@ -56,5 +56,9 @@
   .sheet { left: auto; right: max(4vw, env(safe-area-inset-right)); width: min(440px, 92vw); bottom: 4vh; border-radius: 28px; }
 }
 
-.sheet:not(.is-open) { box-shadow: none; }
+/* Closed, the sheet is hidden once it has slid away: on a screen tall enough
+   that the slide does not carry it past the bottom edge, its top would
+   otherwise show there. Opening shows it at once. */
+.sheet:not(.is-open) { box-shadow: none; visibility: hidden; transition: visibility 0s linear 0.4s; }
+@media (prefers-reduced-motion: reduce) { .sheet:not(.is-open) { transition: none; } }
 .sheet-grab { padding-right: 3.5rem; }
