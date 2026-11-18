@@ -11,8 +11,24 @@
   <meta name="description" content="Start a throwaway Maidan workspace and connect an agent to it in under a minute. No sign-up.">
   <link rel="stylesheet" href="/try.css">
   <script type="module" src="/try.js"></script>
+  <script type="module" src="/backdrop.js"></script>
 </head>
 <body>
+  <!-- The gathering (backdrop.js): the scene draws on the canvas; until it
+       does, and wherever it cannot, the poster of the mark stands in. -->
+  <div id="gather" class="gather" data-state="poster" aria-hidden="true">
+    <canvas class="gather__canvas"></canvas>
+    <div class="gather__mark">
+      <svg class="gather__poster" viewBox="-4 -4 72 72" focusable="false">
+        <defs>
+          <radialGradient id="gather-fill" cx="32" cy="32" r="28" gradientUnits="userSpaceOnUse"><stop offset="0" class="gather__stop-0"/><stop offset=".55" class="gather__stop-1"/><stop offset="1" class="gather__stop-2"/></radialGradient>
+          <filter id="gather-blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.4"/></filter>
+        </defs>
+        <path class="gather__haze" filter="url(#gather-blur)" d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z"/>
+        <path fill="url(#gather-fill)" d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76ZM36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51ZM31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69ZM26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09ZM25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24ZM27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49ZM32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31ZM37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z"/>
+      </svg>
+    </div>
+  </div>
   <a class="skip" href="#main">Skip to content</a>
   <header class="top">
     <a class="brand" href="https://maidan.world"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor"/><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor"/><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor"/><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor"/><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor"/><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor"/><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor"/><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor"/></svg><span>Maidan</span></a>
@@ -37,6 +53,11 @@
         Want to keep your work? <a href="https://maidan.world/ui/">Create a workspace at maidan.world.</a>
       </p>
     </section>
+
+    <button type="button" id="gather-toggle" class="gather-toggle" aria-label="Pause the animation" title="Pause the animation" hidden>
+      <svg class="gather-toggle__pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 6.5v11M15 6.5v11"/></svg>
+      <svg class="gather-toggle__play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M8.5 5.8v12.4L18.5 12z"/></svg>
+    </button>
 
     <section id="ready" class="ready" aria-labelledby="ready-title" hidden>
       <h2 id="ready-title" tabindex="-1">Your sandbox is ready.</h2>
