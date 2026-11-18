@@ -1,0 +1,80 @@
+/* The journey (JourneyField.tsx, journey.ts): one canvas fixed behind the
+   whole page, and the poster of the square that holds the hero's place until
+   the scene draws, and wherever it cannot (no WebGL, or WebGL on the CPU). */
+:root, :root[data-theme="dark"] {
+  /* The square as the scene's first frame draws it: the wedge, the tower, the
+     fountain and its light on the paving. 3000 by 1200, the fountain centred. */
+  --journey-poster: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3000 1200' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='s' x2='0' y2='1'%3E%3Cstop stop-color='%23080a14'/%3E%3Cstop offset='.7' stop-color='%2315121c'/%3E%3Cstop offset='.72' stop-color='%230b0a0d'/%3E%3Cstop offset='1' stop-color='%23050506'/%3E%3C/linearGradient%3E%3ClinearGradient id='w' x2='0' y2='1'%3E%3Cstop stop-color='%231a1410'/%3E%3Cstop offset='1' stop-color='%233a2413'/%3E%3C/linearGradient%3E%3ClinearGradient id='a' x2='0' y2='1'%3E%3Cstop stop-color='%23fff0cf'/%3E%3Cstop offset='1' stop-color='%23ff9440'/%3E%3C/linearGradient%3E%3CradialGradient id='g'%3E%3Cstop stop-color='%23ff9a4a' stop-opacity='.34'/%3E%3Cstop offset='1' stop-color='%23ff9a4a' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cfilter id='b'%3E%3CfeGaussianBlur stdDeviation='7'/%3E%3C/filter%3E%3C/defs%3E%3Cpath d='M0 0h3000v1200H0z' fill='url(%23s)'/%3E%3Cpath d='M900 852V760h60v-40h50v70h70v-110h46v90h80v-50h60v132zM1740 852V700h50v-70h44v120h70v-60h60v162z' fill='%230d0e16'/%3E%3Cpath d='M1395 96l105-36 105 36 62 756h-334z' fill='url(%23w)'/%3E%3Cpath d='M1845 852V330l34-96 34 96v522z' fill='%23141017'/%3E%3Ccircle cx='1879' cy='392' r='21' fill='%23f1dfb8'/%3E%3Cpath d='M1930 852V560h1070v292zM0 852V600h1150v252z' fill='%230e0c0f'/%3E%3Cpath d='M1420 225h7v10h-7zM1420 240h7v10h-7zM1420 375h7v10h-7zM1420 465h7v10h-7zM1420 525h7v10h-7zM1420 705h7v10h-7zM1420 720h7v10h-7zM1432 465h7v10h-7zM1432 510h7v10h-7zM1432 555h7v10h-7zM1432 615h7v10h-7zM1432 645h7v10h-7zM1432 765h7v10h-7zM1432 795h7v10h-7zM1444 195h7v10h-7zM1444 210h7v10h-7zM1444 525h7v10h-7zM1444 570h7v10h-7zM1444 615h7v10h-7zM1444 720h7v10h-7zM1444 735h7v10h-7zM1456 285h7v10h-7zM1456 435h7v10h-7zM1456 615h7v10h-7zM1456 780h7v10h-7zM1468 255h7v10h-7zM1468 270h7v10h-7zM1468 495h7v10h-7zM1468 555h7v10h-7zM1468 660h7v10h-7zM1480 345h7v10h-7zM1480 390h7v10h-7zM1480 495h7v10h-7zM1480 510h7v10h-7zM1480 525h7v10h-7zM1480 540h7v10h-7zM1480 555h7v10h-7zM1480 600h7v10h-7zM1480 750h7v10h-7zM1492 150h7v10h-7zM1492 420h7v10h-7zM1492 570h7v10h-7zM1492 690h7v10h-7zM1492 720h7v10h-7zM1492 735h7v10h-7zM1492 765h7v10h-7zM1492 780h7v10h-7zM1492 795h7v10h-7zM1504 180h7v10h-7zM1504 210h7v10h-7zM1504 315h7v10h-7zM1504 375h7v10h-7zM1504 420h7v10h-7zM1504 630h7v10h-7zM1516 165h7v10h-7zM1516 180h7v10h-7zM1516 495h7v10h-7zM1516 600h7v10h-7zM1528 435h7v10h-7zM1528 450h7v10h-7zM1528 540h7v10h-7zM1528 675h7v10h-7zM1528 720h7v10h-7zM1528 765h7v10h-7zM1540 315h7v10h-7zM1540 495h7v10h-7zM1540 525h7v10h-7zM1540 660h7v10h-7zM1540 795h7v10h-7zM1552 300h7v10h-7zM1552 330h7v10h-7zM1552 345h7v10h-7zM1552 495h7v10h-7zM1552 615h7v10h-7zM1564 180h7v10h-7zM1564 300h7v10h-7zM1564 405h7v10h-7zM1564 450h7v10h-7zM1564 495h7v10h-7zM1564 585h7v10h-7zM1564 780h7v10h-7zM1564 795h7v10h-7z' fill='%23ffc27a' opacity='0.8'/%3E%3Cpath d='M1960 746h7v10h-7zM1977 642h7v10h-7zM1977 772h7v10h-7zM1994 668h7v10h-7zM1994 720h7v10h-7zM1994 772h7v10h-7zM1994 798h7v10h-7zM2028 798h7v10h-7zM2045 590h7v10h-7zM2045 668h7v10h-7zM2062 668h7v10h-7zM2062 720h7v10h-7zM2062 798h7v10h-7zM2079 668h7v10h-7zM2079 694h7v10h-7zM2096 746h7v10h-7zM2113 616h7v10h-7zM2113 668h7v10h-7zM2130 694h7v10h-7zM2130 720h7v10h-7zM2147 590h7v10h-7zM2164 590h7v10h-7zM2164 642h7v10h-7zM2164 720h7v10h-7zM2181 616h7v10h-7zM2181 668h7v10h-7zM2198 772h7v10h-7zM2215 720h7v10h-7zM2249 772h7v10h-7zM2317 772h7v10h-7zM2334 720h7v10h-7zM2334 798h7v10h-7zM2351 590h7v10h-7zM2351 694h7v10h-7zM2368 642h7v10h-7zM2368 746h7v10h-7zM2385 590h7v10h-7zM2385 642h7v10h-7zM2402 668h7v10h-7zM2419 642h7v10h-7zM2419 668h7v10h-7zM2419 746h7v10h-7zM2470 590h7v10h-7zM2470 746h7v10h-7zM2487 694h7v10h-7zM2504 668h7v10h-7zM2521 720h7v10h-7zM2538 642h7v10h-7zM2555 772h7v10h-7zM2572 720h7v10h-7zM2589 616h7v10h-7zM2589 694h7v10h-7zM2606 590h7v10h-7zM2606 720h7v10h-7zM2623 642h7v10h-7zM2623 720h7v10h-7zM2640 616h7v10h-7zM2640 642h7v10h-7zM2640 694h7v10h-7zM2640 720h7v10h-7zM2657 590h7v10h-7zM2657 772h7v10h-7zM2674 590h7v10h-7zM2691 642h7v10h-7zM2708 590h7v10h-7zM2708 642h7v10h-7zM2708 668h7v10h-7zM2725 616h7v10h-7zM2725 668h7v10h-7zM2725 694h7v10h-7zM2725 798h7v10h-7zM2742 668h7v10h-7zM2759 642h7v10h-7zM2776 694h7v10h-7zM2776 720h7v10h-7zM2776 772h7v10h-7zM2793 642h7v10h-7zM2793 798h7v10h-7zM2810 590h7v10h-7zM2810 616h7v10h-7zM2810 720h7v10h-7zM2827 668h7v10h-7zM2844 642h7v10h-7zM2861 590h7v10h-7zM2861 642h7v10h-7zM2895 590h7v10h-7zM2895 616h7v10h-7zM2895 694h7v10h-7zM2912 590h7v10h-7zM2912 616h7v10h-7zM2912 720h7v10h-7zM2912 772h7v10h-7zM2929 590h7v10h-7zM2929 694h7v10h-7zM2929 720h7v10h-7zM2946 642h7v10h-7zM2946 694h7v10h-7zM2963 616h7v10h-7z' fill='%23ffb268' opacity='0.7'/%3E%3Cpath d='M1960 852v-48a14 14 0 0 1 28 0v48zM2010 852v-48a14 14 0 0 1 28 0v48zM2060 852v-48a14 14 0 0 1 28 0v48zM2110 852v-48a14 14 0 0 1 28 0v48zM2160 852v-48a14 14 0 0 1 28 0v48zM2210 852v-48a14 14 0 0 1 28 0v48z' fill='%23ffa857' opacity='.8'/%3E%3Ccircle cx='1500' cy='720' r='470' fill='url(%23g)'/%3E%3Cg transform='matrix(1 0 0 -.9 0 1612)' opacity='.3' filter='url(%23b)'%3E%3Cpath d='M1500 566Q1350 470 1295 842M1500 566Q1650 470 1705 842M1500 566Q1405 470 1350 842M1500 566Q1595 470 1650 842M1500 566Q1445 470 1405 842M1500 566Q1555 470 1595 842M1500 566Q1480 470 1460 842M1500 566Q1520 470 1540 842' fill='none' stroke='url(%23a)' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M1500 842V560' stroke='%23ffe6b8' stroke-width='20'/%3E%3C/g%3E%3Cellipse cx='1500' cy='846' rx='250' ry='22' fill='%232a160b'/%3E%3Cellipse cx='1500' cy='842' rx='226' ry='15' fill='%23ffb869'/%3E%3Cpath d='M1500 566Q1350 470 1295 842M1500 566Q1650 470 1705 842M1500 566Q1405 470 1350 842M1500 566Q1595 470 1650 842M1500 566Q1445 470 1405 842M1500 566Q1555 470 1595 842M1500 566Q1480 470 1460 842M1500 566Q1520 470 1540 842' fill='none' stroke='url(%23a)' stroke-width='9' stroke-linecap='round'/%3E%3Cpath d='M1500 842V556' stroke='%23fff0cf' stroke-width='16' stroke-linecap='round'/%3E%3Cpath d='M1440 816h120l-32 22h-56z' fill='%231c0f08'/%3E%3C/svg%3E");
+  --journey-ground: #050506;
+}
+:root[data-theme="light"] {
+  --journey-poster: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3000 1200' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='s' x2='0' y2='1'%3E%3Cstop stop-color='%23e9ecec'/%3E%3Cstop offset='.7' stop-color='%23f4efe5'/%3E%3Cstop offset='.72' stop-color='%23efe4cf'/%3E%3Cstop offset='1' stop-color='%23f3e9d6'/%3E%3C/linearGradient%3E%3ClinearGradient id='w' x2='0' y2='1'%3E%3Cstop stop-color='%23e2d8c8'/%3E%3Cstop offset='1' stop-color='%23d3c4ad'/%3E%3C/linearGradient%3E%3ClinearGradient id='a' x2='0' y2='1'%3E%3Cstop stop-color='%23dfeef0'/%3E%3Cstop offset='1' stop-color='%239cbfc8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 0h3000v1200H0z' fill='url(%23s)'/%3E%3Cpath d='M900 852V760h60v-40h50v70h70v-110h46v90h80v-50h60v132zM1740 852V700h50v-70h44v120h70v-60h60v162z' fill='%23e2ddd6'/%3E%3Cpath d='M1395 96l105-36 105 36 62 756h-334z' fill='url(%23w)'/%3E%3Cpath d='M1845 852V330h68v522z' fill='%23e6dccb'/%3E%3Cpath d='M1845 330l34-96 34 96z' fill='%23c06a48'/%3E%3Cpath d='M1930 852V560h1070v292z' fill='%23e9dcc6'/%3E%3Cpath d='M1930 560l30-26h1040v26z' fill='%23c97450'/%3E%3Cpath d='M0 852V600h1150v252z' fill='%23ece4d6'/%3E%3Cpath d='M1420 225h7v10h-7zM1420 240h7v10h-7zM1420 375h7v10h-7zM1420 465h7v10h-7zM1420 525h7v10h-7zM1420 705h7v10h-7zM1420 720h7v10h-7zM1432 465h7v10h-7zM1432 510h7v10h-7zM1432 555h7v10h-7zM1432 615h7v10h-7zM1432 645h7v10h-7zM1432 765h7v10h-7zM1432 795h7v10h-7zM1444 195h7v10h-7zM1444 210h7v10h-7zM1444 525h7v10h-7zM1444 570h7v10h-7zM1444 615h7v10h-7zM1444 720h7v10h-7zM1444 735h7v10h-7zM1456 285h7v10h-7zM1456 435h7v10h-7zM1456 615h7v10h-7zM1456 780h7v10h-7zM1468 255h7v10h-7zM1468 270h7v10h-7zM1468 495h7v10h-7zM1468 555h7v10h-7zM1468 660h7v10h-7zM1480 345h7v10h-7zM1480 390h7v10h-7zM1480 495h7v10h-7zM1480 510h7v10h-7zM1480 525h7v10h-7zM1480 540h7v10h-7zM1480 555h7v10h-7zM1480 600h7v10h-7zM1480 750h7v10h-7zM1492 150h7v10h-7zM1492 420h7v10h-7zM1492 570h7v10h-7zM1492 690h7v10h-7zM1492 720h7v10h-7zM1492 735h7v10h-7zM1492 765h7v10h-7zM1492 780h7v10h-7zM1492 795h7v10h-7zM1504 180h7v10h-7zM1504 210h7v10h-7zM1504 315h7v10h-7zM1504 375h7v10h-7zM1504 420h7v10h-7zM1504 630h7v10h-7zM1516 165h7v10h-7zM1516 180h7v10h-7zM1516 495h7v10h-7zM1516 600h7v10h-7zM1528 435h7v10h-7zM1528 450h7v10h-7zM1528 540h7v10h-7zM1528 675h7v10h-7zM1528 720h7v10h-7zM1528 765h7v10h-7zM1540 315h7v10h-7zM1540 495h7v10h-7zM1540 525h7v10h-7zM1540 660h7v10h-7zM1540 795h7v10h-7zM1552 300h7v10h-7zM1552 330h7v10h-7zM1552 345h7v10h-7zM1552 495h7v10h-7zM1552 615h7v10h-7zM1564 180h7v10h-7zM1564 300h7v10h-7zM1564 405h7v10h-7zM1564 450h7v10h-7zM1564 495h7v10h-7zM1564 585h7v10h-7zM1564 780h7v10h-7zM1564 795h7v10h-7z' fill='%239b8f7f' opacity='0.5'/%3E%3Cpath d='M1960 746h7v10h-7zM1977 642h7v10h-7zM1977 772h7v10h-7zM1994 668h7v10h-7zM1994 720h7v10h-7zM1994 772h7v10h-7zM1994 798h7v10h-7zM2028 798h7v10h-7zM2045 590h7v10h-7zM2045 668h7v10h-7zM2062 668h7v10h-7zM2062 720h7v10h-7zM2062 798h7v10h-7zM2079 668h7v10h-7zM2079 694h7v10h-7zM2096 746h7v10h-7zM2113 616h7v10h-7zM2113 668h7v10h-7zM2130 694h7v10h-7zM2130 720h7v10h-7zM2147 590h7v10h-7zM2164 590h7v10h-7zM2164 642h7v10h-7zM2164 720h7v10h-7zM2181 616h7v10h-7zM2181 668h7v10h-7zM2198 772h7v10h-7zM2215 720h7v10h-7zM2249 772h7v10h-7zM2317 772h7v10h-7zM2334 720h7v10h-7zM2334 798h7v10h-7zM2351 590h7v10h-7zM2351 694h7v10h-7zM2368 642h7v10h-7zM2368 746h7v10h-7zM2385 590h7v10h-7zM2385 642h7v10h-7zM2402 668h7v10h-7zM2419 642h7v10h-7zM2419 668h7v10h-7zM2419 746h7v10h-7zM2470 590h7v10h-7zM2470 746h7v10h-7zM2487 694h7v10h-7zM2504 668h7v10h-7zM2521 720h7v10h-7zM2538 642h7v10h-7zM2555 772h7v10h-7zM2572 720h7v10h-7zM2589 616h7v10h-7zM2589 694h7v10h-7zM2606 590h7v10h-7zM2606 720h7v10h-7zM2623 642h7v10h-7zM2623 720h7v10h-7zM2640 616h7v10h-7zM2640 642h7v10h-7zM2640 694h7v10h-7zM2640 720h7v10h-7zM2657 590h7v10h-7zM2657 772h7v10h-7zM2674 590h7v10h-7zM2691 642h7v10h-7zM2708 590h7v10h-7zM2708 642h7v10h-7zM2708 668h7v10h-7zM2725 616h7v10h-7zM2725 668h7v10h-7zM2725 694h7v10h-7zM2725 798h7v10h-7zM2742 668h7v10h-7zM2759 642h7v10h-7zM2776 694h7v10h-7zM2776 720h7v10h-7zM2776 772h7v10h-7zM2793 642h7v10h-7zM2793 798h7v10h-7zM2810 590h7v10h-7zM2810 616h7v10h-7zM2810 720h7v10h-7zM2827 668h7v10h-7zM2844 642h7v10h-7zM2861 590h7v10h-7zM2861 642h7v10h-7zM2895 590h7v10h-7zM2895 616h7v10h-7zM2895 694h7v10h-7zM2912 590h7v10h-7zM2912 616h7v10h-7zM2912 720h7v10h-7zM2912 772h7v10h-7zM2929 590h7v10h-7zM2929 694h7v10h-7zM2929 720h7v10h-7zM2946 642h7v10h-7zM2946 694h7v10h-7zM2963 616h7v10h-7z' fill='%23b8866c' opacity='0.6'/%3E%3Cpath d='M1040 1200l210-348h500l-420 348z' fill='%23d9cdb8' opacity='.55'/%3E%3Cellipse cx='1500' cy='846' rx='250' ry='22' fill='%23c9b99f'/%3E%3Cellipse cx='1500' cy='842' rx='226' ry='15' fill='%23cfe3e6'/%3E%3Cpath d='M1500 566Q1350 470 1295 842M1500 566Q1650 470 1705 842M1500 566Q1405 470 1350 842M1500 566Q1595 470 1650 842M1500 566Q1445 470 1405 842M1500 566Q1555 470 1595 842M1500 566Q1480 470 1460 842M1500 566Q1520 470 1540 842' fill='none' stroke='url(%23a)' stroke-width='9' stroke-linecap='round'/%3E%3Cpath d='M1500 842V556' stroke='%23dfeef0' stroke-width='16' stroke-linecap='round'/%3E%3Cpath d='M1500 566Q1650 470 1705 842M1500 566Q1405 470 1350 842' fill='none' stroke='%23c96a42' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M1440 816h120l-32 22h-56z' fill='%23bfae93'/%3E%3C/svg%3E");
+  --journey-ground: #f3e9d6;
+}
+
+/* --stage is the room the fountain has over the words on one column; --poster-h
+   is the poster's height, set so its basin (70% down it) lands where the
+   scene puts the fountain's. */
+.hero {
+  --stage: min(46svh, 23rem);
+  --poster-h: calc((var(--stage) - 3.5svh) / 0.702);
+  --poster-x: 50vw;
+}
+/* Wide: the words on the left, the fountain 63% across and the full height */
+@media (min-width: 1080px) {
+  .hero {
+    --poster-h: 100svh;
+    --poster-x: 63vw;
+  }
+}
+
+.journey {
+  position: fixed;
+  inset: 0 0 auto;
+  /* the tallest the screen gets, so a phone's address bar coming and going
+     never resizes the picture */
+  height: 100lvh;
+  z-index: -1;
+  pointer-events: none;
+}
+.journey__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+:root[data-journey="on"] .journey__canvas { opacity: 1; }
+
+/* The poster fills the first screen behind the hero. The server's copy of
+   the hero stands outside <main>, so it carries the poster itself. */
+.journey-poster,
+#root > .hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100svh;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--journey-poster) calc(var(--poster-x) - var(--poster-h) * 1.25) 0 / calc(var(--poster-h) * 2.5) var(--poster-h) no-repeat, var(--journey-ground);
+  /* it lets go into the page's paper at its foot */
+  -webkit-mask-image: linear-gradient(#000 74%, transparent);
+  mask-image: linear-gradient(#000 74%, transparent);
+  transition: opacity 1.2s ease;
+}
+#root > .hero { position: relative; }
+:root[data-journey="on"] .journey-poster { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .journey__canvas, .journey-poster { transition: none; }
+}
+
+/* The picture's pause control: it travels with the screen, since the picture
+   is behind every section. On a wide screen it stands in the gutter, clear of
+   the words; on one column the gutter is narrower than the glyph, so it hugs
+   the edge, where a ragged line rarely reaches. */
+.media-toggle.journey-toggle { position: fixed; right: max(0.25rem, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 0.75rem); z-index: 20; }
+@media (min-width: 1080px) { .media-toggle.journey-toggle { right: 1.5rem; bottom: 1.25rem; } }

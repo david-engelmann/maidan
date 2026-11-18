@@ -141,7 +141,7 @@ h3 { margin: 0; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
 .eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lede { margin: 1.3rem 0 0; max-width: 34rem; text-wrap: pretty; color: var(--muted); font-size: 1.08rem; }
 section { padding: 5.5rem var(--gutter); }
-/* Sections paint in order, so the square under one never lies over the words of the next */
+/* Sections stand over the journey, the one picture fixed behind the page (journey.css) */
 main > section, .foot { position: relative; }
 /* Every grid track may shrink below its content, so the board never widens the page. */
 .hero, .steps, .guarantees, .dev, .plans { grid-template-columns: minmax(0, 1fr); }
@@ -157,7 +157,7 @@ section > *, .hero > * { min-width: 0; }
 /* Hero */
 .hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; isolation: isolate; overflow-x: clip; }
 .works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; text-wrap: pretty; }
-/* The hero's calls to action stand on the gathering: the outlined ones are
+/* The hero's calls to action stand on the square: the outlined ones are
    solid, so no light runs through their words */
 .hero .cta.ghost { background: var(--paper); }
 .works b { color: var(--ink); font-weight: 600; }
@@ -209,9 +209,18 @@ section > *, .hero > * { min-width: 0; }
 }
 
 /* Close */
-/* The page ends where it began: the gathering again, smaller, under the
-   last call to action (gathering.css) */
-.close { --close-d: min(42vw, 12.5rem); text-align: center; padding: 7rem var(--gutter) calc(var(--close-d) + 8.5rem); isolation: isolate; overflow: clip; }
+/* The page ends where it began: the journey comes back down to the square
+   under the last call to action. Where the scene is drawing, the section
+   takes the whole screen, so the square has the room under the words; where
+   it is not, it ends after them. */
+.close { text-align: center; padding: calc(17svh + 4.5rem) var(--gutter) 6rem; isolation: isolate; }
+:root[data-journey="on"] .close { min-height: 100svh; }
+
+/* The journey's beats fall in the gaps between sections: the plume the
+   camera rises through under the hero, and a ribbon of light over "How it
+   works" and over "Hosted or self-hosted". Each gets the room. */
+.room { padding-top: clamp(6rem, 22svh, 12rem); }
+.how, .hosting { padding-top: clamp(7.5rem, 19svh, 12rem); }
 
 /* Footer */
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.4rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.4rem); color: var(--muted); font-size: 0.86rem; }
@@ -226,11 +235,11 @@ section > *, .hero > * { min-width: 0; }
 @media (min-width: 1080px) {
   :root { --gutter: 6vw; }
   .nav { display: flex; margin-left: 1.6rem; }
-  /* The words hold the left column; the right is the gathering's
-     (gathering.css). They hang from the top rather than centre, so the
-     server's first paint, which has no calls to action yet, puts the
+  /* The words hold the left column; the right is the square's, the fountain
+     63% across (journey.css). They hang from the top rather than centre, so
+     the server's first paint, which has no calls to action yet, puts the
      headline where the page then keeps it */
-  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: min(92svh, 860px); padding-top: 7rem; padding-bottom: 3rem; }
+  .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: 100svh; padding-top: max(7rem, 17svh); padding-bottom: 3rem; }
   .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
   .dev h2, .hosting h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -246,13 +255,13 @@ section > *, .hero > * { min-width: 0; }
   .gh { display: none; }
   .join-btn { margin-left: auto; }
 }
-/* In one column the gathering crowns the first screen and the words start
-   under its floor (gathering.css sets --mark-y and --mark-d) */
+/* In one column the fountain crowns the first screen and the words start
+   under its basin (journey.css sets --stage) */
 @media (max-width: 1079px) {
-  .hero { padding-top: calc(var(--mark-y) + var(--mark-d) / 2 + max(2.4rem, var(--mark-d) * 0.28)); }
+  .hero { padding-top: calc(env(safe-area-inset-top) + var(--stage)); }
 }
-/* A phone's first screen holds the mark, the headline and the first call to
-   action: the calls to action come straight after the headline, stacked, and
+/* A phone's first screen holds the fountain, the headline and the first call
+   to action: the calls to action come straight after the headline, stacked, and
    the lede follows them. index.html holds their room (.cta-hold) in the
    first paint, so the lede does not move when they arrive. */
 @media (max-width: 719px) {
@@ -270,7 +279,6 @@ section > *, .hero > * { min-width: 0; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .top { transition: none; } }
 
 /* Inside the room: the board with everyone on it, and its three beats */
-.room { padding-top: 3.5rem; }
 .room-head { max-width: 40rem; }
 .room-stage { position: relative; margin-top: 2.6rem; }
 /* The board's box is sized before its code arrives: the one-column design
@@ -290,7 +298,7 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room { padding-top: 3rem; } .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: clamp(9rem, 34svh, 21rem); } .room h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); } .room-steps { max-width: 1180px; } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */

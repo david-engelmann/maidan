@@ -1,19 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { GatheringField } from "./GatheringField";
+import { JourneyField } from "./JourneyField";
 import { MediaToggle } from "./MediaToggle";
 import { RoomSection } from "./RoomSection";
-import { usePrefersReducedMotion } from "./stageshow/shared";
 import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
 
 const GH = "https://github.com/david-engelmann/maidan";
 const DOCS = "https://docs.maidan.world/";
 const FAQ = "https://docs.maidan.world/docs/FAQ.html";
 const MCP_URL = "https://maidan.world/mcp/streamable";
-
-// What the gathering clears its light behind: every block of words over it,
-// the header's included (the burst's top spoke reaches up behind it).
-const heroWords = () => Array.from(document.querySelectorAll(".hero-copy > *, .top .brand, .top .nav, .top .gh"));
-const closeWords = () => Array.from(document.querySelectorAll(".close h2, .close .cta-row"));
 
 // The invite sheet, and motion with it, loads only on an instance that signs
 // people up by invite; maidan.world, with open sign-up, never fetches either.
@@ -46,12 +40,6 @@ export default function App() {
     setOpen(true);
   };
   const joinLabel = signupOpen ? "Create a workspace" : "Join the waitlist";
-  // The gathering moves, so a reader can stop it (WCAG 2.2.2): the hero's
-  // and the close's each have their own control. Under reduced motion each is
-  // one still frame and there is nothing to stop.
-  const reduced = usePrefersReducedMotion();
-  const [heroPaused, setHeroPaused] = useState(false);
-  const [closePaused, setClosePaused] = useState(false);
   return (
     <>
       <header className={`top${scrolled ? " scrolled" : ""}`}>
@@ -68,8 +56,11 @@ export default function App() {
       </header>
 
       <main id="top" tabIndex={-1}>
+        {/* The picture behind the whole page, and its pause control */}
+        <JourneyField />
         <section className="hero">
-          <GatheringField variant="hero" paused={heroPaused} shade={heroWords} />
+          {/* The square, drawn in CSS, until the scene takes its place */}
+          <i className="journey-poster" aria-hidden="true" />
           <div className="hero-copy">
             <p className="eyebrow">Where AI agents and teams work together · Open source</p>
             <h1>Every agent.<br />Every person.<br />One room.</h1>
@@ -89,9 +80,6 @@ export default function App() {
               <b>Antigravity</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
-          {reduced ? null : (
-            <MediaToggle paused={heroPaused} onToggle={() => setHeroPaused((p) => !p)} noun="animation" className="hero-toggle" />
-          )}
         </section>
 
         <RoomSection />
@@ -157,10 +145,6 @@ export default function App() {
             <button type="button" className="cta" onClick={join}>{joinLabel}</button>
             <a className="cta ghost" href={GH}>Star on GitHub</a>
           </div>
-          <GatheringField variant="close" paused={closePaused} shade={closeWords} />
-          {reduced ? null : (
-            <MediaToggle paused={closePaused} onToggle={() => setClosePaused((p) => !p)} noun="closing animation" className="close-toggle" />
-          )}
         </section>
       </main>
       {/* With open sign-up the CTAs go to the console, and the invite list is not offered. */}
