@@ -1,205 +1,179 @@
-"""The model's city: a charcoal baseplate on a plinth, a pale plate for
-every block, and on the plates the buildings, each cut from its own piece
-of stock with its windows laser-etched. A share of the windows are cut
-right through and backed with paper, with a lamp inside. The glass towers
-are acrylic; the clock tower's cupola and the pyramid are turned brass.
+"""The model's city: a polished black base, a low plate with a brass kerb
+for every block, and on the plates the buildings: satin black and graphite
+blocks with chamfered arrises, their windows etched as hairlines and a few
+of them lit. One tower is smoked glass over a lit core; the clock tower's
+cupola and the pyramid are brass.
 
-The massing is the real ring of buildings round Madison Square, from
-memory: the clock tower and its annex, the great stepped block north of it,
-the dark slab, the tower with the gold pyramid, the lofts along the west,
-the wedge at the south-west corner, the slim glass tower at the south.
+The ring round the square is the real ring of buildings round Madison
+Square, from memory: the clock tower and its annex, the great stepped block
+north of it, the dark slab, the tower with the gold pyramid, the lofts
+along the west, the wedge at the south-west corner, the slim tower at the
+south. Beyond the ring the grid runs on, so the model has no edge in frame.
 """
 
 import math
 
-import bpy
 import numpy as np
 
 from . import craft, site
-from .common import MB, TAU, add_object, collection, revolve, rng
+from .common import MB, add_object, box, collection, revolve, rng
 from .site import MM, SCALE, rect
 
 PLATE = 0.8 * MM  # a block's plate stands this far above the street
 KERB = 5.0  # city metres of pavement outside the building line
+CH = 0.55 * MM  # the width of a chamfer's face
 Z = np.array([0.0, 0.0, 1.0])
+CITY = (-585.0, -440.0, 550.0, 560.0)  # what the base covers, in city metres
 
-# window rhythms, in city metres: bay, floor, and the opening as fractions of them
-LOFT = dict(bay=4.3, floor=4.1, ow=0.56, oh=0.56, sill=0.22, base=1.25)
-OFFICE = dict(bay=3.4, floor=3.8, ow=0.42, oh=0.52, sill=0.26, base=1.4)
-TOWER = dict(bay=3.7, floor=3.9, ow=0.38, oh=0.56, sill=0.24, base=1.5)
-HOTEL = dict(bay=3.0, floor=3.5, ow=0.42, oh=0.5, sill=0.28, base=1.3)
-GRAND = dict(bay=4.9, floor=4.5, ow=0.42, oh=0.6, sill=0.22, base=1.6)
-FINE = dict(bay=2.6, floor=3.7, ow=0.4, oh=0.54, sill=0.26, base=1.4)
+# window rhythms, in city metres. st: 0 a grid, 1 ribbons, 2 piers
+LOFT = dict(bay=2.3, floor=3.5, st=0, base=1.5)
+OFFICE = dict(bay=1.6, floor=3.3, st=1, base=1.5)
+TOWER = dict(bay=1.45, floor=3.1, st=2, base=1.7)
+HOTEL = dict(bay=1.8, floor=2.9, st=0, base=1.6)
+GRAND = dict(bay=2.1, floor=3.6, st=2, base=1.6)
+FINE = dict(bay=1.35, floor=3.0, st=2, base=1.8)
+GLASS = dict(bay=1.2, floor=3.0, st=1, base=1.2)
 
-WOOD, POCKET = 0, 1
+# finishes: value, roughness, metal
+FINISH = {
+    "obsidian": (0.013, 0.3, 0.0),
+    "resin": (0.02, 0.21, 0.0),
+    "piano": (0.008, 0.09, 0.0),
+    "graphite": (0.042, 0.36, 1.0),
+    "gunmetal": (0.07, 0.42, 1.0),
+}
+DARK = ["obsidian", "obsidian", "obsidian", "resin", "resin", "piano"]
+GREY = ["graphite", "graphite", "graphite", "gunmetal"]
+
+# the hero camera's bearing from the fountain and its height angle: the
+# blocks it looks over are kept under its sight line
+HERO_AZ, HERO_EL = math.radians(190.0), math.radians(18.0)
 
 
 def to_model(poly):
     return [(x * SCALE, y * SCALE) for x, y in poly]
 
 
-class Lamps:
-    """The lamps inside one building: where they are decides which windows
-    were cut through and how brightly each glows."""
-
-    def __init__(self, r, poly, z0, z1, share, n=None):
-        xs = [p[0] for p in poly]
-        ys = [p[1] for p in poly]
-        self.r = r
-        self.share = share
-        count = n or max(2, int(((max(xs) - min(xs)) * (max(ys) - min(ys)) * (z1 - z0)) ** (1 / 3) / 0.035))
-        self.p = np.stack([r.uniform(min(xs), max(xs), count), r.uniform(min(ys), max(ys), count), z0 + (z1 - z0) * r.uniform(0.02, 0.95, count) ** 1.3], axis=-1)
-        self.s = r.uniform(0.028, 0.06, count)
-        self.gain = r.uniform(0.6, 1.3, count)
-
-    def at(self, c, boost=0.0, gain=1.0):
-        d2 = ((c[:, None, :] - self.p[None]) ** 2).sum(-1)
-        g = (self.gain[None] * np.exp(-d2 / (2 * self.s[None] ** 2))).sum(-1)
-        r = self.r
-        n = len(c)
-        cut = r.random(n) < np.clip(self.share * gain * (0.1 + 1.5 * g) + self.share * boost, 0.0, 0.9)
-        glow = np.where(cut, (0.1 + 1.1 * np.clip(g, 0, 1.4) ** 1.3) * r.uniform(0.6, 1.4, n), 0.0)
-        lit = np.clip(r.random(n) * (1.0 - 0.55 * np.clip(g, 0, 1)), 0.0, 1.0)
-        return glow, lit
-
-
-def prism(mb, poly, z0, z1, stock, win=None, lamps=None, r=None, cap=True, face_boost=None, crown=False):
-    """One piece of stock: a prism over a convex footprint (model metres,
-    counter-clockwise). With `win`, its sides are etched with a grid of
-    window pockets."""
+def chamfer_w(poly, w):
+    """Cuts every corner of a convex polygon so that the cut face is w wide.
+    Returns the polygon and, for each of its edges, whether it is a cut."""
     n = len(poly)
-    st = np.asarray(stock, np.float32)
+    P = [np.array(p, float) for p in poly]
+    out, cut = [], []
     for i in range(n):
-        a = np.array([poly[i][0], poly[i][1], 0.0])
-        b = np.array([poly[(i + 1) % n][0], poly[(i + 1) % n][1], 0.0])
-        L = float(np.linalg.norm(b - a))
-        if L < 1e-6:
+        p, a, b = P[i], P[i - 1], P[(i + 1) % n]
+        da, db = a - p, b - p
+        la, lb = np.linalg.norm(da), np.linalg.norm(db)
+        da, db = da / (la + 1e-12), db / (lb + 1e-12)
+        ang = math.acos(float(np.clip(np.dot(da, db), -1, 1)))
+        if ang > math.radians(152) or min(la, lb) < 2.5 * w:
+            out.append(tuple(p))
+            cut.append(False)
             continue
-        U = (b - a) / L
-        N = np.array([U[1], -U[0], 0.0])
-
-        def world(uvd):
-            uvd = np.asarray(uvd, float).reshape(-1, 3)
-            return a[None] + uvd[:, 0:1] * U[None] + uvd[:, 1:2] * Z[None] + uvd[:, 2:3] * N[None]
-
-        def plain(u0, u1, v0, v1):
-            if u1 - u0 < 1e-6 or v1 - v0 < 1e-6:
-                return
-            mb.add(world([(u0, v0, 0), (u1, v0, 0), (u1, v1, 0), (u0, v1, 0)]), [[0, 1, 2, 3]], mat=WOOD, fattr={"stock": st[None], "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(4)})
-
-        grid = None
-        if win is not None:
-            bay = win["bay"] * SCALE
-            fl = win["floor"] * SCALE
-            base = win["base"] * fl
-            mx_min = max(1.4 * MM, 0.22 * bay)
-            nb = int((L - 2 * mx_min) / bay)
-            nf = int((z1 - z0 - base - 0.35 * fl) / fl)
-            if nb >= 1 and nf >= 1:
-                grid = (bay, fl, base, nb, nf, (L - nb * bay) / 2)
-        if grid is None:
-            plain(0.0, L, z0, z1)
-            continue
-        bay, fl, base, nb, nf, mx = grid
-        vt = z0 + base + nf * fl
-        plain(0.0, mx, z0, z1)
-        plain(L - mx, L, z0, z1)
-        plain(mx, L - mx, vt, z1)
-        depth = 0.55 * MM
-        boost, gain = 0.0, 1.0
-        if face_boost is not None:
-            boost, gain = face_boost(a, b, N)
-
-        def cells(u0, v0, cw, ch, ni, nj, ow, oh, sill, extra=0.0):
-            ii, jj = np.meshgrid(np.arange(ni), np.arange(nj), indexing="ij")
-            m = ni * nj
-            off = np.stack([u0 + ii.ravel() * cw, v0 + jj.ravel() * ch, np.zeros(m)], axis=-1)
-            a0 = (cw - ow) / 2
-            a1 = a0 + ow
-            b0 = sill
-            b1 = sill + oh
-            tv = np.array([(0, 0, 0), (cw, 0, 0), (cw, ch, 0), (0, ch, 0), (a0, b0, 0), (a1, b0, 0), (a1, b1, 0), (a0, b1, 0), (a0, b0, -depth), (a1, b0, -depth), (a1, b1, -depth), (a0, b1, -depth)], float)
-            tuv = np.array([(0, 0), (1, 0), (1, 1), (0, 1), (a0 / cw, b0 / ch), (a1 / cw, b0 / ch), (a1 / cw, b1 / ch), (a0 / cw, b1 / ch), (0, 0), (1, 0), (1, 1), (0, 1)], float)
-            vv = world((tv[None] + off[:, None, :]).reshape(-1, 3))
-            base_i = (np.arange(m) * 12)[:, None, None]
-            wall = np.array([[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]])
-            rev = np.array([[4, 5, 9, 8], [5, 6, 10, 9], [6, 7, 11, 10], [7, 4, 8, 11]])
-            back = np.array([[8, 9, 10, 11]])
-            scorch = np.tile(np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1], float), m)
-            uv = np.tile(tuv, (m, 1))
-            stock_f = np.tile(st[None], (m * 4, 1))
-            mb.add(vv, (wall[None] + base_i).reshape(-1, 4), mat=WOOD, uv=uv, vattr={"scorch": scorch}, fattr={"stock": stock_f, "cell": 1.0, "burn": 0.0})
-            mb.add(vv, (rev[None] + base_i).reshape(-1, 4), mat=WOOD, uv=uv, vattr={"scorch": scorch}, fattr={"stock": stock_f, "cell": 0.0, "burn": 1.0})
-            centre = world(off + np.array([cw / 2, sill + oh / 2, 0.0]))
-            if lamps is not None:
-                glow, lit = lamps.at(centre, boost + extra * gain, gain)
-            else:
-                glow, lit = np.zeros(m), np.ones(m)
-            mb.add(vv, (back[None] + base_i).reshape(-1, 4), mat=POCKET, uv=uv, fattr={"glow": glow, "lit": lit})
-
-        # the street floor: wider, taller openings, more of them lit
-        cells(mx, z0, bay, base, nb, 1, bay * 0.72, base * 0.6, base * 0.14, extra=0.35)
-        cells(mx, z0 + base, bay, fl, nb, nf, bay * win["ow"], fl * win["oh"], fl * win["sill"])
-    if cap:
-        top = np.array([(p[0], p[1], z1) for p in poly])
-        mb.add(top, [list(range(n))], mat=WOOD, fattr={"stock": st[None], "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(n)})
-    if crown and z1 - z0 > 3.0 * MM and abs(site.area(poly)) > (9 * MM) ** 2:
-        # a thin plate laid on the block, a hair wider than it: the cornice. Its
-        # middle is routed out, which leaves a parapet round a sunk roof.
-        st2 = np.clip(st + (r.random(3) - 0.5) * 0.25 if r is not None else st, 0, 1).astype(np.float32)
-        over = site.outset(poly, 0.32 * MM)
-        inner = site.outset(poly, -0.95 * MM)
-        zb, zt = z1 - 0.55 * MM, z1 + 0.42 * MM
-        ring_ob = np.array([(p[0], p[1], zb) for p in over])
-        ring_ot = np.array([(p[0], p[1], zt) for p in over])
-        ring_it = np.array([(p[0], p[1], zt) for p in inner])
-        ring_if = np.array([(p[0], p[1], z1 + 0.02 * MM) for p in inner])
-        ring_bb = np.array([(p[0], p[1], zb) for p in poly])
-        vv = np.concatenate([ring_ob, ring_ot, ring_it, ring_if, ring_bb])
-        faces = []
-        for i in range(n):
-            j = (i + 1) % n
-            faces.append([i, j, n + j, n + i])  # the cornice's face
-            faces.append([n + i, n + j, 2 * n + j, 2 * n + i])  # the parapet's top
-            faces.append([2 * n + i, 2 * n + j, 3 * n + j, 3 * n + i])  # its inner face
-            faces.append([4 * n + i, 4 * n + j, j, i])  # the soffit
-        m = len(faces)
-        mb.add(vv, np.array(faces), mat=WOOD, fattr={"stock": np.tile(st2[None], (m, 1)), "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(len(vv))})
+        t = min(w / (2 * math.sin(ang / 2)), 0.3 * la, 0.3 * lb)
+        out.append(tuple(p + da * t))
+        cut.append(True)
+        out.append(tuple(p + db * t))
+        cut.append(False)
+    return out, cut
 
 
-def acrylic_prism(mb, poly, z0, z1, c=0.7 * MM, floor_h=0.0, mat=0):
-    """A block of acrylic with real arrises: frosted faces, polished chamfers."""
-    cut = site.chamfer(poly, c)
-    n = len(cut)
-    top_in = site.inset(cut, c)
-    if len(top_in) != n:
-        top_in = [((p[0] + q[0]) / 2, (p[1] + q[1]) / 2) for p, q in zip(cut, np.roll(np.array(cut), -1, axis=0))]
-        top_in = cut
-    ring0 = np.array([(p[0], p[1], z0) for p in cut])
-    ring1 = np.array([(p[0], p[1], z1 - c) for p in cut])
-    ring2 = np.array([(p[0], p[1], z1) for p in top_in])
-    v = np.concatenate([ring0, ring1, ring2])
-    faces = []
-    frost = []
+def mitre(poly, d):
+    """A convex polygon moved in by d, every corner along its bisector. None
+    if a side would turn inside out."""
+    n = len(poly)
+    P = np.array(poly, float)
+    out = []
+    for i in range(n):
+        p, a, b = P[i], P[i - 1], P[(i + 1) % n]
+        e0, e1 = p - a, b - p
+        e0, e1 = e0 / (np.linalg.norm(e0) + 1e-12), e1 / (np.linalg.norm(e1) + 1e-12)
+        n0, n1 = np.array([-e0[1], e0[0]]), np.array([-e1[1], e1[0]])
+        out.append(p + (n0 + n1) * (d / max(1.0 + float(np.dot(n0, n1)), 0.25)))
+    out = np.array(out)
     for i in range(n):
         j = (i + 1) % n
-        edge = math.hypot(cut[j][0] - cut[i][0], cut[j][1] - cut[i][1])
-        faces.append([i, j, n + j, n + i])
-        frost.append(0.0 if edge < 2.5 * c else 1.0)
-        faces.append([n + i, n + j, 2 * n + j, 2 * n + i])
-        frost.append(0.0)
-    mb.add(v, np.array(faces), mat=mat, fattr={"frost": np.array(frost), "floor_h": floor_h})
-    mb.add(ring2, [list(range(n))], mat=mat, fattr={"frost": 1.0, "floor_h": 0.0})
-    mb.add(ring0, [list(range(n))[::-1]], mat=mat, fattr={"frost": 1.0, "floor_h": 0.0})
+        if np.dot(out[j] - out[i], P[j] - P[i]) <= 0 and np.linalg.norm(P[j] - P[i]) > 1e-7:
+            return None
+    return [tuple(q) for q in out]
 
 
-def _tank(mb, x, y, z, stock, r):
-    """A water tank on a roof: a dowel on a short stand, a turned cap."""
-    s = r.uniform(0.85, 1.1)
-    prof = [(0.0001, z), (1.6 * MM * s, z), (1.6 * MM * s, z + 2.2 * MM * s), (2.4 * MM * s, z + 2.2 * MM * s), (2.4 * MM * s, z + 6.4 * MM * s), (2.6 * MM * s, z + 6.5 * MM * s), (0.0001, z + 7.6 * MM * s)]
-    v, q, uv = revolve(prof, 20)
-    v = v + np.array([x, y, 0], np.float32)
-    mb.add(v, q, mat=WOOD, smooth=True, fattr={"stock": np.asarray(stock, np.float32)[None], "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(len(v))})
+def _attrs(m, tone, gridp=(0, 0, 0), dims=(0, 0, 0), litp=(0, 0, 0)):
+    def f(t):
+        return np.tile(np.asarray(t, np.float32)[None], (m, 1))
+
+    return {"tone": f(tone), "gridp": f(gridp), "dims": f(dims), "litp": f(litp)}
+
+
+def block(mb, poly, z0, z1, tone, style=None, share=0.0, seed=0.0, face_gain=None, roof=True, w=CH, ground=True):
+    """One piece of the model: a prism over a convex footprint (model metres,
+    counter-clockwise), its upright arrises and the edge of its roof
+    chamfered and polished, a parapet round a sunk deck on top. With `style`
+    its faces carry an etched grid of windows. Returns the roof's outline."""
+    Q, cut = chamfer_w(poly, w)
+    n = len(Q)
+    ct = 0.45 * w
+    T = mitre(Q, ct)
+    if T is None:
+        T, ct = Q, 0.0
+    zc = z1 - ct
+    H = zc - z0
+    edge = (min(tone[0] * 1.7 + 0.014, 0.22), tone[1] * 0.45, tone[2])
+    for k in range(n):
+        a = np.array([Q[k][0], Q[k][1], 0.0])
+        b = np.array([Q[(k + 1) % n][0], Q[(k + 1) % n][1], 0.0])
+        L = float(np.linalg.norm(b - a))
+        if L < 1e-7:
+            continue
+        v = np.array([[a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], zc], [a[0], a[1], zc]])
+        at = _attrs(1, edge if cut[k] else tone)
+        if not cut[k] and style is not None:
+            bay, fl = style["bay"] * SCALE, style["floor"] * SCALE
+            base = style["base"] * fl if ground else 0.3 * fl
+            mx = max(0.7 * MM, 0.3 * bay)
+            nb = int((L - 2 * mx) / bay)
+            nf = int((H - base - 0.4 * fl) / fl)
+            if nb >= 2 and nf >= 1:
+                sh, gain = share, 1.0
+                if face_gain is not None:
+                    U = (b - a) / L
+                    sh, gain = face_gain((a + b) / 2, np.array([U[1], -U[0], 0.0]), share)
+                at = _attrs(1, tone, (bay, fl, style["st"]), (nb * bay / 2, base, base + nf * fl), (sh, seed + k * 3.7, gain))
+        mb.add(v, [[0, 1, 2, 3]], uv=[(-L / 2, 0.0), (L / 2, 0.0), (L / 2, H), (-L / 2, H)], fattr=at)
+    if ct > 0:
+        for k in range(n):
+            j = (k + 1) % n
+            mb.add([(*Q[k], zc), (*Q[j], zc), (*T[j], z1), (*T[k], z1)], [[0, 1, 2, 3]], fattr=_attrs(1, edge))
+    deck = (tone[0] * 0.8, min(tone[1] * 1.3, 0.62), tone[2])
+    pw, pd = 0.7 * MM, 0.5 * MM
+    inner = mitre(T, pw) if roof else None
+    if inner is not None and abs(site.area(inner)) > (5 * MM) ** 2:
+        vv = np.array([(*p, z1) for p in T] + [(*p, z1) for p in inner] + [(*p, z1 - pd) for p in inner])
+        faces = []
+        for k in range(n):
+            j = (k + 1) % n
+            faces.append([k, j, n + j, n + k])
+            faces.append([n + k, n + j, 2 * n + j, 2 * n + k])
+        mb.add(vv, np.array(faces), fattr=_attrs(len(faces), tone))
+        mb.add(vv[2 * n:], [list(range(n))], fattr=_attrs(1, deck))
+    else:
+        mb.add(np.array([(*p, z1) for p in T]), [list(range(n))], fattr=_attrs(1, deck))
+    return T
+
+
+def glass_block(mb, poly, z0, z1, floor_h=0.0, w=0.9 * MM):
+    """A solid block of glass, closed all round, its arrises cut and polished."""
+    Q, cut = chamfer_w(poly, w)
+    n = len(Q)
+    ct = 0.6 * w
+    T = mitre(Q, ct) or Q
+    zc = z1 - ct
+    for k in range(n):
+        j = (k + 1) % n
+        mb.add([(*Q[k], z0), (*Q[j], z0), (*Q[j], zc), (*Q[k], zc)], [[0, 1, 2, 3]], fattr={"floor_h": np.array([0.0 if cut[k] else floor_h])})
+        mb.add([(*Q[k], zc), (*Q[j], zc), (*T[j], z1), (*T[k], z1)], [[0, 1, 2, 3]], fattr={"floor_h": np.array([0.0])})
+    mb.add(np.array([(*p, z1) for p in T]), [list(range(n))], fattr={"floor_h": np.array([0.0])})
+    mb.add(np.array([(*p, z0) for p in Q])[::-1], [list(range(n))], fattr={"floor_h": np.array([0.0])})
 
 
 def _inside(poly, margin, r, tries=40):
@@ -215,13 +189,43 @@ def _inside(poly, margin, r, tries=40):
     return None
 
 
+def hcap(x, y):
+    """How tall a block at (x, y), city metres, may stand without rising into
+    the hero's view of the square."""
+    cx, cy = math.sin(HERO_AZ), math.cos(HERO_AZ)
+    s = x * cx + y * cy
+    t = x * cy - y * cx
+    if s < 30 or abs(t - 6) > 62 + 0.14 * s:
+        return 1e9
+    return max(9.0, s * math.tan(HERO_EL) * 0.78 - 8.0)
+
+
 # ------------------------------------------------------------------ the plan
+
+# the grid beyond the ring: streets as bands of y, avenues as bands of x
+Y_RING = [(-133, -72), (-42, 26), (44, 112), (130, 198), (220, 281)]
+Y_SOUTH = [(-224, -155), (-315, -246), (-406, -337)]
+Y_NORTH = [(303, 364), (386, 447), (469, 530)]
+X_WEST = [(-400, -266), (-562, -428)]
+X_EAST = [(254, 376), (404, 526)]
+X_RING = [(-238, -104), (-75, 75), (104, 226)]
+
+
+def outer_blocks():
+    out = []
+    for yb in Y_RING:
+        out += [(xb, yb) for xb in X_WEST + X_EAST]
+    for yb in Y_SOUTH:
+        out += [(xb, yb) for xb in X_WEST + [(-238, -104), (-75, 226)] + X_EAST]
+    for yb in Y_NORTH:
+        out += [(xb, yb) for xb in X_WEST + X_RING + X_EAST]
+    return out
 
 
 def plan():
-    """Every building on the baseplate: (name, kind, share of windows lit,
-    tiers, extras). A tier is (footprint, from, to, window rhythm) in city
-    metres. Kinds: maple and ash are wood; smoke and frost are acrylic."""
+    """Every building on the base: (name, kind, share of windows lit, tiers,
+    extras). A tier is (footprint, from, to, window rhythm) in city metres.
+    Kinds: dark and grey are the two families of finish; smoke is glass."""
     B = []
 
     def add(name, kind, share, tiers, extras=()):
@@ -241,39 +245,41 @@ def plan():
     # ---- east of the park, south to north
     # the clock tower, at the corner of its block, and the annex that wraps it
     tower = rect(104, 0, 130, 26)
-    add("clock_tower", "maple", 0.34, [
-        (tower, 0, 128, FINE),
-        (site.inset(tower, 1.2), 128, 142, dict(bay=4.4, floor=9.0, ow=0.5, oh=0.74, sill=0.12, base=0.08)),
+    add("clock_tower", "dark", 0.1, [
+        (tower, 0, 150, FINE),
+        (site.inset(tower, 1.4), 150, 167, dict(bay=2.2, floor=6.5, st=2, base=0.3)),
     ], extras=[("clock",), ("spire",)])
-    add("annex_east", "ash", 0.3, stepped(rect(132, -42, 226, 26), [(52, 0), (60, 5.0), (66, 11.0)], OFFICE), extras=[("bulk", 2)])
-    add("annex_south", "maple", 0.28, stepped(rect(104, -42, 130, -2), [(52, 0), (58, 4.0)], OFFICE))
+    add("annex_east", "grey", 0.07, stepped(rect(132, -42, 226, 26), [(52, 0), (60, 5.0), (66, 11.0)], OFFICE), extras=[("bulk", 2)])
+    add("annex_south", "dark", 0.07, stepped(rect(104, -42, 130, -2), [(52, 0), (58, 4.0)], OFFICE))
     # the great stepped block: it was meant to be a hundred storeys
     nb = rect(104, 44, 226, 112)
-    add("north_building", "maple", 0.38, [
+    add("north_building", "dark", 0.1, [
         (site.chamfer(nb, 7.0), 0, 60, GRAND),
         (site.chamfer(site.inset(nb, 8.0), 8.0), 60, 84, OFFICE),
-        (site.chamfer(site.inset(nb, [14.0, 20.0, 14.0, 20.0]), 7.0), 84, 108, OFFICE),
-        (site.chamfer(site.inset(nb, [20.0, 34.0, 20.0, 34.0]), 5.0), 108, 137, OFFICE),
-    ], extras=[("bulk", 3)])
+        (site.chamfer(site.inset(nb, [14.0, 20.0, 14.0, 20.0]), 7.0), 84, 110, OFFICE),
+        (site.chamfer(site.inset(nb, [20.0, 34.0, 20.0, 34.0]), 5.0), 110, 142, TOWER),
+        (site.chamfer(site.inset(nb, [25.0, 42.0, 25.0, 42.0]), 3.0), 142, 150, None),
+    ], extras=[("bulk", 2)])
     # the courthouse, the dark slab and its neighbours
-    add("courthouse", "maple", 0.5, [(rect(104, 130, 128, 156), 0, 17, dict(bay=3.4, floor=10.0, ow=0.36, oh=0.8, sill=0.1, base=0.2)), (site.inset(rect(104, 130, 128, 156), 2.5), 17, 20, None)])
-    add("slab_podium", "ash", 0.4, [(rect(104, 160, 148, 198), 0, 9, None)])
-    add("slab", "smoke", 0.0, [(site.inset(rect(104, 160, 148, 198), 2.0), 9, 170, None)])
-    add("east_loft_a", "ash", 0.3, stepped(rect(132, 130, 226, 157), [(50, 0)], LOFT), extras=[("tank", 1), ("bulk", 2)])
-    add("east_loft_b", "maple", 0.32, stepped(rect(152, 160, 226, 198), [(58, 0), (68, 4.5)], OFFICE), extras=[("bulk", 2)])
+    add("courthouse", "grey", 0.16, [(rect(104, 130, 128, 156), 0, 17, dict(bay=2.6, floor=5.0, st=2, base=0.25)), (site.inset(rect(104, 130, 128, 156), 2.5), 17, 20, None)])
+    add("slab_podium", "grey", 0.12, [(rect(104, 160, 148, 198), 0, 9, None)])
+    add("slab", "smoke", 0.22, [(site.inset(rect(104, 160, 148, 198), 3.0), 9, 196, None)])
+    add("east_loft_a", "grey", 0.07, stepped(rect(132, 130, 226, 157), [(50, 0)], LOFT), extras=[("bulk", 2)])
+    add("east_loft_b", "dark", 0.08, stepped(rect(152, 160, 226, 198), [(58, 0), (68, 4.5)], OFFICE), extras=[("bulk", 2)])
     # the tower with the gold pyramid
     nyl = rect(104, 220, 226, 281)
-    add("pyramid_tower", "maple", 0.36, [
+    add("pyramid_tower", "dark", 0.1, [
         (nyl, 0, 54, GRAND),
         (site.inset(nyl, [6.0, 10.0, 6.0, 10.0]), 54, 76, OFFICE),
-        (site.chamfer(rect(138, 231, 192, 270), 4.0), 76, 132, TOWER),
-        (site.chamfer(rect(142, 234, 188, 267), 4.0), 132, 158, TOWER),
+        (site.chamfer(rect(140, 232, 190, 269), 4.0), 76, 142, TOWER),
+        (site.chamfer(rect(144, 235, 186, 266), 4.0), 142, 168, TOWER),
     ], extras=[("pyramid",)])
-    # ---- north of the park, west to east
-    add("north_a", "ash", 0.3, stepped(rect(-75, 220, -28, 281), [(46, 0), (50, 3.0)], LOFT), extras=[("tank", 1), ("bulk", 1)])
-    add("north_b", "maple", 0.34, stepped(rect(-26, 220, 8, 272), [(66, 0), (76, 3.5), (82, 7.0)], FINE), extras=[("bulk", 1)])
-    add("north_c", "ash", 0.3, stepped(rect(10, 220, 36, 268), [(62, 0)], HOTEL), extras=[("tank", 1)])
-    add("north_d", "maple", 0.32, stepped(rect(38, 220, 75, 281), [(40, 0), (46, 5.0)], LOFT), extras=[("bulk", 2)])
+    # ---- north of the park, west to east: the far wall of the room, and two tall, slender ones
+    add("north_a", "grey", 0.07, stepped(rect(-75, 220, -28, 281), [(46, 0), (50, 3.0)], LOFT), extras=[("bulk", 1)])
+    add("north_b", "dark", 0.11, stepped(rect(-26, 220, 8, 272), [(58, 0), (176, 5.0), (214, 8.0), (236, 10.5)], FINE), extras=[("needle",)])
+    add("north_c", "grey", 0.08, stepped(rect(10, 220, 36, 268), [(74, 0), (98, 4.0)], HOTEL))
+    add("north_d", "dark", 0.07, stepped(rect(38, 220, 75, 281), [(40, 0), (46, 5.0)], LOFT), extras=[("bulk", 2)])
+
     # ---- west of the park: lofts, cut on the diagonal where Broadway passes
     def west(name, y0, y1, pieces):
         """Pieces across a block west of Fifth Avenue: (x0, x1, kind, share, steps, style, extras)."""
@@ -284,37 +290,71 @@ def plan():
                 if len(pc) >= 3 and site.area(pc) > 250:
                     add(f"{name}_{k}{side}", kind, share, stepped(pc, steps, style), extras)
 
-    west("w22", -133, -72, [(-160, -104, "maple", 0.3, [(52, 0), (58, 4.0)], LOFT, [("tank", 1)]), (-200, -162, "ash", 0.28, [(40, 0)], LOFT, [("bulk", 1)]), (-238, -202, "maple", 0.3, [(88, 0), (96, 3.0)], HOTEL, [("bulk", 1)])])
-    west("w23", -42, 26, [(-166, -104, "maple", 0.34, [(56, 0), (62, 4.0)], GRAND, [("bulk", 2)]), (-202, -168, "ash", 0.3, [(54, 0)], LOFT, [("tank", 1)]), (-238, -204, "maple", 0.28, [(42, 0)], LOFT, [("bulk", 1)])])
-    west("w24", 44, 112, [(-190, -104, "ash", 0.34, [(58, 0), (64, 3.5)], LOFT, [("tank", 1), ("bulk", 1)]), (-238, -192, "maple", 0.28, [(46, 0)], LOFT, [("bulk", 1)])])
-    west("w25", 130, 198, [(-136, -104, "maple", 0.32, [(44, 0)], LOFT, [("tank", 1)]), (-196, -138, "ash", 0.3, [(60, 0), (66, 4.0)], OFFICE, [("bulk", 2)]), (-238, -198, "maple", 0.3, [(50, 0)], LOFT, [("tank", 1)])])
-    west("w26", 220, 281, [(-150, -104, "ash", 0.3, [(56, 0)], LOFT, [("bulk", 1)]), (-200, -152, "maple", 0.28, [(40, 0)], LOFT, [("tank", 1)]), (-238, -202, "ash", 0.3, [(52, 0)], OFFICE, [("bulk", 1)])])
+    west("w22", -133, -72, [(-160, -104, "dark", 0.06, [(52, 0), (58, 4.0)], LOFT, []), (-200, -162, "grey", 0.05, [(40, 0)], LOFT, [("bulk", 1)]), (-238, -202, "dark", 0.05, [(88, 0), (96, 3.0)], HOTEL, [("bulk", 1)])])
+    west("w23", -42, 26, [(-166, -104, "dark", 0.07, [(56, 0), (62, 4.0)], GRAND, [("bulk", 2)]), (-202, -168, "grey", 0.05, [(54, 0)], LOFT, []), (-238, -204, "dark", 0.05, [(42, 0)], LOFT, [("bulk", 1)])])
+    west("w24", 44, 112, [(-190, -104, "grey", 0.07, [(58, 0), (64, 3.5)], LOFT, [("bulk", 1)]), (-238, -192, "dark", 0.05, [(46, 0)], LOFT, [("bulk", 1)])])
+    west("w25", 130, 198, [(-136, -104, "dark", 0.07, [(44, 0)], LOFT, []), (-196, -138, "grey", 0.05, [(60, 0), (66, 4.0)], OFFICE, [("bulk", 2)]), (-238, -198, "dark", 0.05, [(50, 0)], LOFT, [])])
+    west("w26", 220, 281, [(-150, -104, "grey", 0.06, [(56, 0)], LOFT, [("bulk", 1)]), (-200, -152, "dark", 0.05, [(40, 0)], LOFT, []), (-238, -202, "grey", 0.05, [(52, 0)], OFFICE, [("bulk", 1)])])
     # ---- south of 23rd Street
-    block = rect(-75, -133, 226, -72)
-    wedge, rest = site.broadway_sides(block)
+    blk = rect(-75, -133, 226, -72)
+    wedge, rest = site.broadway_sides(blk)
     if len(wedge) >= 3:
-        add("wedge", "maple", 0.3, [(wedge, 0, 82, FINE), (site.inset(wedge, 0.8), 82, 87, None)])
+        add("wedge", "dark", 0.06, [(wedge, 0, 82, FINE), (site.inset(wedge, 0.8), 82, 87, None)])
     for k, (x0, x1, y0, y1, kind, share, steps, style, extras) in enumerate([
         # the row on the square's axis is kept low: the way in passes over it
-        (-52, -8, -104, -72, "ash", 0.3, [(20, 0)], LOFT, [("tank", 1)]),
-        (-6, 24, -104, -72, "maple", 0.3, [(16, 0)], LOFT, []),
-        (26, 52, -104, -72, "ash", 0.28, [(24, 0)], LOFT, [("bulk", 1)]),
-        (54, 80, -100, -72, "maple", 0.3, [(38, 0)], LOFT, [("tank", 1)]),
-        (-30, 8, -133, -106, "ash", 0.34, [(20, 0)], HOTEL, []),
-        (10, 50, -133, -106, "maple", 0.28, [(22, 0)], LOFT, [("bulk", 1)]),
-        (52, 80, -133, -102, "ash", 0.3, [(42, 0)], LOFT, []),
-        (84, 128, -133, -72, "maple", 0.3, [(46, 0), (52, 4.0)], OFFICE, [("tank", 1), ("bulk", 1)]),
-        (130, 164, -133, -72, "ash", 0.32, [(58, 0), (66, 5.0)], OFFICE, [("bulk", 2)]),
-        (190, 226, -133, -104, "maple", 0.3, [(30, 0)], LOFT, [("bulk", 1)]),
+        (-52, -8, -104, -72, "grey", 0.06, [(20, 0)], LOFT, []),
+        (-6, 24, -104, -72, "dark", 0.06, [(16, 0)], LOFT, []),
+        (26, 52, -104, -72, "grey", 0.06, [(24, 0)], LOFT, [("bulk", 1)]),
+        (54, 80, -100, -72, "dark", 0.06, [(38, 0)], LOFT, []),
+        (-30, 8, -133, -106, "grey", 0.06, [(20, 0)], HOTEL, []),
+        (10, 50, -133, -106, "dark", 0.06, [(22, 0)], LOFT, [("bulk", 1)]),
+        (52, 80, -133, -102, "grey", 0.06, [(42, 0)], LOFT, []),
+        (84, 128, -133, -72, "dark", 0.07, [(46, 0), (52, 4.0)], OFFICE, [("bulk", 1)]),
+        (130, 164, -133, -72, "grey", 0.07, [(58, 0), (66, 5.0)], OFFICE, [("bulk", 2)]),
+        (190, 226, -133, -104, "dark", 0.06, [(30, 0)], LOFT, [("bulk", 1)]),
     ]):
         poly = rect(x0, y0, x1, y1)
         w, e = site.broadway_sides(poly)
         pc = e if x0 > -60 else w
         if len(pc) >= 3 and site.area(pc) > 200:
             add(f"s22_{k}", kind, share, stepped(pc, steps, style), extras)
-    # the slim glass tower: a frosted shaft with boxes cantilevered off it
-    add("slim_base", "ash", 0.4, [(rect(168, -102, 226, -72), 0, 7, None)])
-    add("slim_tower", "frost", 0.0, [(rect(189, -95, 201, -81), 7, 188, None)], extras=[("pods",)])
+    # the slim tower: a shaft with glass rooms cantilevered off it
+    add("slim_base", "grey", 0.1, [(rect(168, -102, 226, -72), 0, 7, None)])
+    add("slim_tower", "dark", 0.1, [(rect(189, -95, 201, -81), 7, 196, GLASS)], extras=[("pods",)])
+
+    # ---- beyond the ring: the grid runs on
+    r = rng(2026)
+    for (bx0, bx1), (by0, by1) in outer_blocks():
+        x = bx0
+        k = 0
+        while x < bx1 - 1:
+            wd = float(r.choice([26, 30, 34, 40, 46, 54, 62]))
+            x1 = bx1 if bx1 - (x + wd) < 22 else x + wd
+            halves = [(by0, by1)] if r.random() < 0.45 else [(by0, (by0 + by1) / 2 + r.uniform(-6, 6)), None]
+            if halves[-1] is None:
+                halves[-1] = (halves[0][1], by1)
+            for (y0, y1) in halves:
+                lot = rect(x + 1.0, y0, x1 - 1.0, y1)
+                for pc in site.broadway_sides(lot):
+                    if len(pc) < 3 or site.area(pc) < 420:
+                        continue
+                    cx = sum(p[0] for p in pc) / len(pc)
+                    cy = sum(p[1] for p in pc) / len(pc)
+                    h = float(r.choice([22, 28, 34, 40, 46, 54, 62, 74, 90], p=[0.08, 0.12, 0.16, 0.18, 0.16, 0.12, 0.09, 0.06, 0.03])) * r.uniform(0.92, 1.08)
+                    tall = r.random() < 0.07 and site.area(pc) > 900
+                    if tall:
+                        h = r.uniform(120, 200)
+                    h = min(h, hcap(cx, cy))
+                    style = [LOFT, LOFT, OFFICE, HOTEL, GRAND][int(r.integers(0, 5))] if h < 70 else [OFFICE, TOWER, FINE, GLASS][int(r.integers(0, 4))]
+                    if tall:
+                        steps = [(h * 0.3, 0), (h * 0.82, 5.0), (h, 8.5)]
+                    elif h > 30 and r.random() < 0.45:
+                        steps = [(h * r.uniform(0.82, 0.92), 0), (h, r.uniform(3.0, 5.0))]
+                    else:
+                        steps = [(h, 0)]
+                    add(f"o_{int(bx0)}_{int(by0)}_{k}", "dark" if r.random() < 0.55 else "grey", r.uniform(0.03, 0.07), stepped(pc, steps, style), [("bulk", 1)] if r.random() < 0.5 else [])
+                    k += 1
+            x = x1
     return B
 
 
@@ -323,32 +363,25 @@ def plates():
     out = []
     for poly in (rect(104, -42, 226, 26), rect(104, 44, 226, 112), rect(104, 130, 226, 198), rect(104, 220, 226, 281), rect(-75, 220, 75, 281)):
         out.append(poly)
-    for y0, y1 in ((-133, -72), (-42, 26), (44, 112), (130, 198), (220, 281)):
+    for y0, y1 in Y_RING:
         w, e = site.broadway_sides(rect(-238, y0, -104, y1))
         out += [p for p in (w, e) if len(p) >= 3]
     w, e = site.broadway_sides(rect(-75, -133, 226, -72))
     out += [p for p in (w, e) if len(p) >= 3]
-    x0, y0, x1, y1 = site.EXTENT
-    res = []
-    for p in out:
-        grown = site.outset(p, KERB)
-        # nothing overhangs the baseplate
-        for pt, nrm in (((x0 + 3, 0), (-1, 0)), ((x1 - 3, 0), (1, 0)), ((0, y0 + 3), (0, -1)), ((0, y1 - 3), (0, 1))):
-            grown = site.clip(grown, pt, nrm)
-        if len(grown) >= 3:
-            res.append(grown)
-    return res
+    for (bx0, bx1), (by0, by1) in outer_blocks():
+        out += [p for p in site.broadway_sides(rect(bx0, by0, bx1, by1)) if len(p) >= 3]
+    return [site.outset(p, KERB) for p in out]
 
 
 # ------------------------------------------------------------------ building
 
 
-def _crown_pieces(col, b, r, mats, to_model):
-    """The brass: clock faces, the tower's roof and cupola, the pyramid.
+def _crown_pieces(col, b, r, mats, to_model, tone):
+    """The brass: clock faces, the tower's cupola, the pyramid, a needle.
     Turned parts are their own objects, so the lathe's rings run round each
     one's own axis."""
     brass = MB()
-    wood = MB()
+    roof = MB()
     name = b["name"]
 
     def turned(tag, prof, cx, cy, segs=40):
@@ -360,8 +393,8 @@ def _crown_pieces(col, b, r, mats, to_model):
     for ex in b["extras"]:
         if ex[0] == "clock":
             poly = to_model(b["tiers"][0][0])
-            zc = PLATE + 104.0 * SCALE
-            rad = 4.4 * SCALE
+            zc = PLATE + 124.0 * SCALE
+            rad = 4.2 * SCALE
             n = len(poly)
             for i in range(n):
                 a = np.array([poly[i][0], poly[i][1], 0.0])
@@ -369,36 +402,37 @@ def _crown_pieces(col, b, r, mats, to_model):
                 U = (bb - a) / np.linalg.norm(bb - a)
                 N = np.array([U[1], -U[0], 0.0])
                 c = (a + bb) / 2 + Z * zc
-                # a dial: a brass disc with a raised rim, proud of the wood
-                prof = [(0.0001, 0.5 * MM), (rad * 0.86, 0.5 * MM), (rad * 0.9, 0.75 * MM), (rad, 0.75 * MM), (rad, 0.0)]
+                # a dial: a brass ring proud of the face, a dark disc inside it
+                prof = [(rad * 0.8, 0.0), (rad * 0.8, 0.45 * MM), (rad, 0.45 * MM), (rad, 0.0)]
                 v, q, uv = revolve(prof, 48)
                 vv = c[None] + v[:, 0:1] * U[None] + v[:, 1:2] * Z[None] + v[:, 2:3] * N[None]
-                brass.add(vv, q, mat=1, smooth=True)
+                brass.add(vv, q, mat=0, smooth=True)
         if ex[0] == "spire":
-            poly = to_model(site.inset(b["tiers"][0][0], 1.2))
-            z0 = PLATE + 142.0 * SCALE
+            poly = to_model(b["tiers"][-1][0])
+            z0 = PLATE + b["tiers"][-1][2] * SCALE
             cx = sum(p[0] for p in poly) / 4
             cy = sum(p[1] for p in poly) / 4
             hw = abs(poly[1][0] - poly[0][0]) / 2
             hd = abs(poly[2][1] - poly[1][1]) / 2
-            # a cornice slab, then the steep roof in wood, its faces a little hollow
-            stock = r.random(3)
-            prism(wood, [(cx - hw - 1.0 * MM, cy - hd - 1.0 * MM), (cx + hw + 1.0 * MM, cy - hd - 1.0 * MM), (cx + hw + 1.0 * MM, cy + hd + 1.0 * MM), (cx - hw - 1.0 * MM, cy + hd + 1.0 * MM)], z0, z0 + 1.6 * MM, stock)
+            # a cornice slab, then the steep roof, its faces a little hollow
+            e = 0.8 * MM
+            block(roof, [(cx - hw - e, cy - hd - e), (cx + hw + e, cy - hd - e), (cx + hw + e, cy + hd + e), (cx - hw - e, cy + hd + e)], z0, z0 + 1.4 * MM, tone, roof=False, w=0.3 * MM)
             steps = 10
             rings = []
-            top = 3.1 * SCALE
-            zt = z0 + 1.6 * MM + 34.0 * SCALE
+            top = 2.6 * SCALE
+            zb = z0 + 1.4 * MM
+            zt = zb + 36.0 * SCALE
             for k in range(steps + 1):
                 s = k / steps
                 f = 1 - (1 - top / hw) * s ** 0.85
-                rings.append([(cx - hw * f, cy - hd * f, z0 + 1.6 * MM + (zt - z0 - 1.6 * MM) * s), (cx + hw * f, cy - hd * f, z0 + 1.6 * MM + (zt - z0 - 1.6 * MM) * s), (cx + hw * f, cy + hd * f, z0 + 1.6 * MM + (zt - z0 - 1.6 * MM) * s), (cx - hw * f, cy + hd * f, z0 + 1.6 * MM + (zt - z0 - 1.6 * MM) * s)])
+                zz = zb + (zt - zb) * s
+                rings.append([(cx - hw * f, cy - hd * f, zz), (cx + hw * f, cy - hd * f, zz), (cx + hw * f, cy + hd * f, zz), (cx - hw * f, cy + hd * f, zz)])
             rv = np.array(rings).reshape(-1, 3)
             rq = [[k * 4 + j, k * 4 + (j + 1) % 4, (k + 1) * 4 + (j + 1) % 4, (k + 1) * 4 + j] for k in range(steps) for j in range(4)]
-            wood.add(rv, rq, mat=WOOD, fattr={"stock": np.tile(stock[None].astype(np.float32), (len(rq), 1)), "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(len(rv))})
-            wood.add(rv[-4:], [[0, 1, 2, 3]], mat=WOOD, fattr={"stock": stock[None].astype(np.float32), "cell": 0.0, "burn": 0.0}, vattr={"scorch": np.zeros(4)})
+            roof.add(rv, rq, fattr=_attrs(len(rq), (tone[0], tone[1] * 0.8, tone[2])))
             # the cupola: a turned brass lantern, a dome, a finial
             m = MM
-            prof = [(3.6 * m, zt), (3.6 * m, zt + 0.5 * m), (3.0 * m, zt + 0.7 * m), (2.7 * m, zt + 1.1 * m), (2.7 * m, zt + 4.6 * m), (3.1 * m, zt + 4.9 * m), (3.1 * m, zt + 5.3 * m), (2.8 * m, zt + 5.6 * m), (2.5 * m, zt + 6.9 * m), (1.7 * m, zt + 8.0 * m), (0.7 * m, zt + 8.7 * m), (0.45 * m, zt + 9.2 * m), (0.6 * m, zt + 9.8 * m), (0.3 * m, zt + 10.3 * m), (0.22 * m, zt + 14.5 * m), (0.0001, zt + 15.2 * m)]
+            prof = [(3.0 * m, zt), (3.0 * m, zt + 0.45 * m), (2.5 * m, zt + 0.6 * m), (2.2 * m, zt + 1.0 * m), (2.2 * m, zt + 4.2 * m), (2.6 * m, zt + 4.5 * m), (2.6 * m, zt + 4.8 * m), (2.3 * m, zt + 5.1 * m), (2.0 * m, zt + 6.2 * m), (1.4 * m, zt + 7.2 * m), (0.6 * m, zt + 7.9 * m), (0.38 * m, zt + 8.4 * m), (0.5 * m, zt + 8.9 * m), (0.26 * m, zt + 9.4 * m), (0.16 * m, zt + 15.0 * m), (0.0001, zt + 15.6 * m)]
             turned("cupola", prof, cx, cy)
         if ex[0] == "pyramid":
             poly = to_model(b["tiers"][-1][0])
@@ -407,103 +441,100 @@ def _crown_pieces(col, b, r, mats, to_model):
             cy = sum(p[1] for p in poly) / len(poly)
             xs = [p[0] for p in poly]
             ys = [p[1] for p in poly]
-            hw, hd = (max(xs) - min(xs)) / 2 - 0.4 * MM, (max(ys) - min(ys)) / 2 - 0.4 * MM
-            zt = z0 + 27.0 * SCALE
+            hw, hd = (max(xs) - min(xs)) / 2 - 0.5 * MM, (max(ys) - min(ys)) / 2 - 0.5 * MM
+            zt = z0 + 30.0 * SCALE
             # a stepped foot, then the pyramid itself, then a lantern
             rings = []
-            for f, zz in ((1.0, z0), (1.0, z0 + 0.8 * MM), (0.96, z0 + 0.8 * MM), (0.1, zt)):
+            for f, zz in ((1.0, z0), (1.0, z0 + 0.7 * MM), (0.965, z0 + 0.7 * MM), (0.07, zt)):
                 rings.append([(cx - hw * f, cy - hd * f, zz), (cx + hw * f, cy - hd * f, zz), (cx + hw * f, cy + hd * f, zz), (cx - hw * f, cy + hd * f, zz)])
             rv = np.array(rings).reshape(-1, 3)
             rq = [[k * 4 + j, k * 4 + (j + 1) % 4, (k + 1) * 4 + (j + 1) % 4, (k + 1) * 4 + j] for k in range(3) for j in range(4)]
             brass.add(rv, rq, mat=1)
-            prof = [(1.3 * MM, zt - 0.4 * MM), (1.3 * MM, zt + 1.6 * MM), (1.6 * MM, zt + 1.8 * MM), (0.9 * MM, zt + 3.0 * MM), (0.25 * MM, zt + 3.6 * MM), (0.2 * MM, zt + 7.0 * MM), (0.0001, zt + 7.5 * MM)]
+            prof = [(1.0 * MM, zt - 0.4 * MM), (1.0 * MM, zt + 1.3 * MM), (1.25 * MM, zt + 1.5 * MM), (0.7 * MM, zt + 2.5 * MM), (0.2 * MM, zt + 3.0 * MM), (0.14 * MM, zt + 7.5 * MM), (0.0001, zt + 8.0 * MM)]
             turned("lantern", prof, cx, cy, 24)
+        if ex[0] == "needle":
+            poly = to_model(b["tiers"][-1][0])
+            z0 = PLATE + b["tiers"][-1][2] * SCALE
+            cx = sum(p[0] for p in poly) / len(poly)
+            cy = sum(p[1] for p in poly) / len(poly)
+            prof = [(1.5 * MM, z0), (1.5 * MM, z0 + 0.5 * MM), (0.5 * MM, z0 + 0.9 * MM), (0.22 * MM, z0 + 9.0 * MM), (0.12 * MM, z0 + 26.0 * MM), (0.0001, z0 + 27.0 * MM)]
+            turned("needle", prof, cx, cy, 20)
     if brass.nv:
         add_object(f"{name}_brass", brass.build(f"{name}_brass", [mats["brass"], mats["brass_flat"]]), col)
-    if wood.nv:
-        add_object(f"{name}_roof", wood.build(f"{name}_roof", [mats["maple"], mats["pocket"]]), col)
+    if roof.nv:
+        add_object(f"{name}_roof", roof.build(f"{name}_roof", [mats["obs"]]), col)
 
 
 def build(col=None):
     col = col or collection("Model")
     r = rng(400)
     mats = {
-        "maple": craft.wood("wood_maple", "white_maple_veneer", value=0.84),
-        "ash": craft.wood("wood_ash", "ash_veneer", value=1.12, sat=0.62),
-        "plate": craft.wood("wood_plate", "white_maple_veneer", value=0.92, sat=0.8, etch=False),
-        "pocket": craft.pocket(),
-        "brass": craft.brass("brass_turned", turned=True),
-        "brass_flat": craft.brass("brass_sheet", turned=False, rough=0.24),
-        "smoke": craft.acrylic("acrylic_smoked", "smoked"),
-        "frost": craft.acrylic("acrylic_frosted", "frosted"),
-        "board": craft.board(),
-        "plinth": craft.board("plinth_board", tone=(0.016, 0.016, 0.018), rough=0.42, dust=0.5),
+        "obs": craft.facade(),
+        "pave": craft.satin("pavement", (0.014, 0.014, 0.016), rough=0.34),
+        "kerb": craft.brass("brass_kerb", turned=False, rough=0.24, bevel=False),
+        "brass": craft.brass("brass_turned", turned=True, rough=0.16),
+        "brass_flat": craft.brass("brass_sheet", turned=False, rough=0.2),
+        "smoke": craft.smoked(),
+        "base": craft.gloss(),
     }
-    x0, y0, x1, y1 = [v * SCALE for v in site.EXTENT]
-    m = 6 * MM
+    x0, y0, x1, y1 = [v * SCALE for v in CITY]
 
-    # ---- the baseplate and its plinth
+    # ---- the base: one sheet of polished black, far wider than any frame
     mb = MB()
-    base_t = 12 * MM
-    lo = np.array([x0 - m, y0 - m, -base_t])
-    hi = np.array([x1 + m, y1 + m, 0.0])
-    from .common import box
-
-    v, q = box(lo, hi)
+    v, q = box((x0, y0, -12 * MM), (x1, y1, 0.0))
     mb.add(v, q, mat=0)
-    # a shadow gap, then the plinth, a hand narrower all round
-    gap = 4 * MM
-    v, q = box((lo[0] + 9 * MM, lo[1] + 9 * MM, -base_t - gap), (hi[0] - 9 * MM, hi[1] - 9 * MM, -base_t))
-    mb.add(v, q, mat=1)
-    v, q = box((lo[0] + 3 * MM, lo[1] + 3 * MM, -base_t - gap - 46 * MM), (hi[0] - 3 * MM, hi[1] - 3 * MM, -base_t - gap))
-    mb.add(v, q, mat=1)
-    add_object("Baseplate", mb.build("Baseplate", [mats["board"], mats["plinth"]]), col)
-    # a brass line let into the plate's edge, all the way round
-    mb = MB()
-    t = 1.2 * MM
-    e = 2.6 * MM
-    for a, b in (((lo[0] + e, lo[1] + e), (hi[0] - e, lo[1] + e + t)), ((lo[0] + e, hi[1] - e - t), (hi[0] - e, hi[1] - e)), ((lo[0] + e, lo[1] + e), (lo[0] + e + t, hi[1] - e)), ((hi[0] - e - t, lo[1] + e), (hi[0] - e, hi[1] - e))):
-        v, q = box((a[0], a[1], -0.2 * MM), (b[0], b[1], 0.06 * MM))
-        mb.add(v, q, mat=0)
-    add_object("Inlay", mb.build("Inlay", [mats["brass_flat"]]), col)
+    add_object("Baseplate", mb.build("Baseplate", [mats["base"]]), col)
 
-    # ---- the plates
+    # ---- the plates: satin tops, and a kerb of brass let in all the way round
     mb = MB()
+    lip = 0.22 * MM
+
+    def plate(poly, z1=PLATE):
+        pm = to_model(poly)
+        n = len(pm)
+        inner = mitre(pm, lip) or pm
+        ring0 = [(*p, 0.0) for p in pm]
+        ring1 = [(*p, z1) for p in pm]
+        ring2 = [(*p, z1) for p in inner]
+        vv = np.array(ring0 + ring1 + ring2)
+        faces = []
+        for k in range(n):
+            j = (k + 1) % n
+            faces.append([k, j, n + j, n + k])
+            faces.append([n + k, n + j, 2 * n + j, 2 * n + k])
+        mb.add(vv, np.array(faces), mat=1)
+        mb.add(vv[2 * n:], [list(range(n))], mat=0)
+
     for poly in plates():
-        stock = r.random(3)
-        prism(mb, to_model(poly), 0.0, PLATE, stock)
-    # the park's own pavement: a frame round the sunk panel
-    px0, py0, px1, py1 = site.PARK
-    f = 4.0
-    for poly in (rect(px0 - f, py0 - f, px1 + f, py0), rect(px0 - f, py1, px1 + f, py1 + f), rect(px0 - f, py0, px0, py1), rect(px1, py0, px1 + f, py1)):
-        prism(mb, to_model(poly), 0.0, PLATE, r.random(3))
-    add_object("Plates", mb.build("Plates", [mats["plate"], mats["pocket"]]), col)
+        plate(poly)
+    add_object("Plates", mb.build("Plates", [mats["pave"], mats["kerb"]]), col)
 
     # ---- the buildings
-    park_c = np.array([0.0, 78.0 * SCALE, 0.0])
+    park_c = np.array([0.0, 60.0 * SCALE, 0.0])
 
-    def boost(a, b, n):
-        """The square is the lit room: the fronts that face it carry most of
-        the light, the model's outer faces little."""
-        mid = (a + b) / 2
+    def face_gain(mid, n, share):
+        """The square is the lit room: the fronts that wall it carry the most
+        light. The model's west, where the page's headline sits, is quiet."""
         to = park_c - mid
-        d = np.linalg.norm(to[:2])
-        facing = np.dot(n[:2], to[:2]) / (d + 1e-9)
-        if facing > 0.35 and d < 0.5:
-            return 0.12, 1.15
+        d = float(np.linalg.norm(to[:2]))
+        facing = float(np.dot(n[:2], to[:2])) / (d + 1e-9)
+        quiet = 0.45 if mid[0] < -80 * SCALE else 1.0
+        if facing > 0.35 and d < 0.62:
+            return share * 1.7 * quiet, 1.2
         if facing < -0.2:
-            return 0.0, 0.13
-        return 0.0, 0.62
+            return share * 0.5 * quiet, 0.75
+        return share * quiet, 0.9
 
     count = 0
     for b in plan():
         kind = b["kind"]
+        name = b["name"]
         # a hand places every block: none is quite square to the grid
         allp = [p for tier in b["tiers"] for p in tier[0]]
         cx = sum(p[0] for p in allp) / len(allp) * SCALE
         cy = sum(p[1] for p in allp) / len(allp) * SCALE
-        ang = r.normal(0, 0.0022)
-        dx, dy = r.normal(0, 0.1 * MM, 2)
+        ang = r.normal(0, 0.0016)
+        dx, dy = r.normal(0, 0.06 * MM, 2)
 
         def place(poly):
             out = []
@@ -512,46 +543,46 @@ def build(col=None):
                 out.append((cx + ox * math.cos(ang) - oy * math.sin(ang) + dx, cy + ox * math.sin(ang) + oy * math.cos(ang) + dy))
             return out
 
-        if kind in ("smoke", "frost"):
+        if kind == "smoke":
             mb = MB()
+            core = MB()
             for poly, z0, z1, style in b["tiers"]:
-                acrylic_prism(mb, place(poly), PLATE + z0 * SCALE, PLATE + z1 * SCALE, floor_h=3.75 * SCALE * (1.0 if kind == "smoke" else 3.0))
-            for ex in b["extras"]:
-                if ex[0] == "pods":
-                    # glass rooms hung on the north and south faces at their own heights
-                    for (px, py, w, d, za, zb) in ((187, -81.5, 16, 5.0, 52, 70), (187, -99.5, 16, 5.0, 84, 100), (187, -81.5, 16, 5.0, 114, 130), (187, -99.5, 16, 5.0, 142, 160), (190, -81.5, 10, 4.0, 24, 36)):
-                        acrylic_prism(mb, place(rect(px, py, px + w, py + d)), PLATE + za * SCALE, PLATE + zb * SCALE, floor_h=0.0)
-            add_object(b["name"], mb.build(b["name"], [mats[kind]]), col)
+                glass_block(mb, place(poly), PLATE + z0 * SCALE, PLATE + z1 * SCALE, floor_h=3.4 * SCALE)
+                # the core the glass is cast round: graphite, with its own lit floors
+                block(core, place(site.inset(poly, 9.5)), PLATE + z0 * SCALE + 0.2 * MM, PLATE + (z1 - 5.0) * SCALE, FINISH["graphite"], style=GLASS, share=b["share"], seed=float(r.uniform(0, 90)), roof=False, ground=False)
+            add_object(name, mb.build(name, [mats["smoke"]]), col)
+            add_object(name + "_core", core.build(name + "_core", [mats["obs"]]), col)
             count += 1
             continue
+        fin = FINISH[(DARK if kind == "dark" else GREY)[int(r.integers(0, 6 if kind == "dark" else 4))]]
+        tone = (fin[0] * r.uniform(0.85, 1.2), fin[1] * r.uniform(0.9, 1.12), fin[2])
+        seed = float(r.uniform(0, 90))
         mb = MB()
-        first = b["tiers"][0]
-        lamps = Lamps(r, place(first[0]), PLATE, PLATE + b["tiers"][-1][2] * SCALE, b["share"])
         tops = []
-        for poly, z0, z1, style in b["tiers"]:
+        for i, (poly, z0, z1, style) in enumerate(b["tiers"]):
             pm = place(poly)
-            prism(mb, pm, PLATE + z0 * SCALE, PLATE + z1 * SCALE, r.random(3), win=style, lamps=lamps, r=r, face_boost=boost, crown=True)
-            tops.append((pm, PLATE + z1 * SCALE))
-        # what stands on the roof
+            T = block(mb, pm, PLATE + z0 * SCALE - (0.6 * MM if i else 0.0), PLATE + z1 * SCALE, tone, style=style, share=b["share"], seed=seed + i * 11.0, face_gain=face_gain, ground=(i == 0))
+            tops.append((T, PLATE + z1 * SCALE))
+        # what stands on the roof: small, and really small
         pm, zt = tops[-1]
         for ex in b["extras"]:
-            if ex[0] == "tank":
-                p = _inside(pm, 4.5 * MM, r)
-                if p:
-                    _tank(mb, p[0], p[1], zt, r.random(3), r)
             if ex[0] == "bulk":
                 for _ in range(ex[1]):
-                    p = _inside(pm, 5.0 * MM, r)
+                    p = _inside(pm, 3.2 * MM, r)
                     if p:
-                        w, d, h = r.uniform(5, 11) * MM, r.uniform(4, 9) * MM, r.uniform(3.0, 7.5) * MM
-                        prism(mb, [(p[0] - w / 2, p[1] - d / 2), (p[0] + w / 2, p[1] - d / 2), (p[0] + w / 2, p[1] + d / 2), (p[0] - w / 2, p[1] + d / 2)], zt, zt + h, r.random(3))
-        add_object(b["name"], mb.build(b["name"], [mats[kind], mats["pocket"]]), col)
-        _crown_pieces(col, b, r, mats, place)
+                        w, d, h = r.uniform(2.6, 6.5) * MM, r.uniform(2.4, 5.0) * MM, r.uniform(1.4, 4.2) * MM
+                        block(mb, [(p[0] - w / 2, p[1] - d / 2), (p[0] + w / 2, p[1] - d / 2), (p[0] + w / 2, p[1] + d / 2), (p[0] - w / 2, p[1] + d / 2)], zt - 0.5 * MM, zt + h, tone, roof=False, w=0.3 * MM)
+            if ex[0] == "pods":
+                # glass rooms hung on the north and south faces at their own heights
+                for (px, py, w, d, za, zb) in ((187, -81.5, 16, 5.0, 52, 70), (187, -99.5, 16, 5.0, 84, 100), (187, -81.5, 16, 5.0, 114, 130), (187, -99.5, 16, 5.0, 142, 160), (190, -81.5, 10, 4.0, 24, 36)):
+                    block(mb, place(rect(px, py, px + w, py + d)), PLATE + za * SCALE, PLATE + zb * SCALE, FINISH["piano"], style=GLASS, share=0.2, seed=seed + za, roof=False, ground=False)
+        add_object(name, mb.build(name, [mats["obs"]]), col)
+        _crown_pieces(col, b, r, mats, place, tone)
         count += 1
     # the obelisk on its triangle west of the park
     mb = MB()
     ox, oy = -111.0 * SCALE, 92.0 * SCALE
-    prof = [(1.5 * MM, PLATE), (1.5 * MM, PLATE + 1.2 * MM), (0.9 * MM, PLATE + 1.5 * MM), (0.55 * MM, PLATE + 14.0 * MM), (0.0001, PLATE + 15.2 * MM)]
+    prof = [(1.2 * MM, PLATE), (1.2 * MM, PLATE + 1.0 * MM), (0.7 * MM, PLATE + 1.2 * MM), (0.42 * MM, PLATE + 13.0 * MM), (0.0001, PLATE + 14.0 * MM)]
     v, q, uv = revolve(prof, 4)
     mb.add(v + np.array([ox, oy, 0], np.float32), q)
     add_object("Obelisk", mb.build("Obelisk", [mats["brass_flat"]]), col)

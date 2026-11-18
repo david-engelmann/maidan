@@ -29,7 +29,7 @@ EXTENT = (-238.0, -137.0, 230.0, 285.0)
 # Broadway runs on the diagonal: its centre line, south to north. South of
 # 23rd Street it lies east of Fifth Avenue, with the wedge block between
 # them; it crosses Fifth between 23rd and 25th and goes on north-west.
-BROADWAY = [(-22.0, -172.0), (-37.0, -136.0), (-62.0, -76.0), (-97.0, 35.0), (-148.6, 198.0), (-186.0, 316.0)]
+BROADWAY = [(82.0, -420.0), (15.0, -260.0), (-22.0, -172.0), (-37.0, -136.0), (-62.0, -76.0), (-97.0, 35.0), (-148.6, 198.0), (-186.0, 316.0), (-257.0, 540.0)]
 BROADWAY_HW = 11.5
 
 
@@ -267,6 +267,49 @@ def tree_sites(seed=7):
         if not plantable([p], 2.4 + size * 0.12)[0] or near(p, 6.2 + size * 0.42):
             continue
         put(p[0], p[1], size)
+    return out
+
+
+def bead_sites(seed=7):
+    """Where the beads stand: (x, y, diameter in city metres). Never a grid:
+    clusters at uneven stations either side of the curving walks, and groves
+    between them."""
+    r = rng(seed)
+    out = []
+
+    def free(p, d):
+        if not plantable([p], d / 2 + 0.7)[0]:
+            return False
+        return all(math.hypot(p[0] - q[0], p[1] - q[1]) > (d + q[2]) * 0.5 + 0.35 for q in out)
+
+    def size():
+        return float(r.choice([2.2, 2.8, 3.4, 4.2, 5.2, 6.4], p=[0.18, 0.26, 0.24, 0.17, 0.1, 0.05])) * r.uniform(0.93, 1.07)
+
+    def cluster(c, n, spread):
+        for _ in range(n):
+            for _try in range(8):
+                p = (c[0] + r.normal(0, spread), c[1] + r.normal(0, spread))
+                d = size()
+                if free(p, d):
+                    out.append((p[0], p[1], d))
+                    break
+
+    for pts, hw in all_paths():
+        d = np.concatenate(([0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
+        s = r.uniform(2.0, 8.0)
+        while s < d[-1] - 2.0:
+            i = min(max(int(np.searchsorted(d, s)), 1), len(pts) - 2)
+            t = pts[i + 1] - pts[i - 1]
+            t = t / (np.linalg.norm(t) + 1e-9)
+            nrm = np.array([-t[1], t[0]])
+            side = 1 if r.random() < 0.5 else -1
+            cluster(pts[i] + side * nrm * (hw + r.uniform(2.0, 6.5)), int(r.choice([1, 2, 2, 3, 4])), 2.6)
+            if r.random() < 0.45:
+                cluster(pts[i] - side * nrm * (hw + r.uniform(2.0, 7.0)), int(r.choice([1, 2, 3])), 2.4)
+            s += r.uniform(5.0, 16.0)
+    for _ in range(46):
+        c = (r.uniform(PARK[0] + 8, PARK[2] - 8), r.uniform(PARK[1] + 8, PARK[3] - 8))
+        cluster(c, int(r.integers(2, 7)), 4.2)
     return out
 
 

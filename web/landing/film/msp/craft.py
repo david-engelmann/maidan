@@ -1,9 +1,10 @@
-"""The model's materials: what a model-maker's bench holds. Pale wood with
-its grain, end grain and laser etching; brushed brass; smoked, frosted and
-opal acrylic; sage felt; charcoal board; resin; paint.
+"""The model's materials: obsidian, brass and light. Satin black and graphite
+blocks with their windows etched as hairlines and a few of them lit; brass
+for the crowns, the kerbs and the court; smoked glass; frosted beads that
+carry light; a polished black base that mirrors all of it.
 
-Everything is at true model size (metres), so a millimetre of grain is a
-millimetre of grain.
+Everything is at true model size (metres): a hairline is a sixth of a
+millimetre wide.
 """
 
 import os
@@ -13,19 +14,13 @@ import bpy
 from .common import grade, material
 
 ORANGE = (1.0, 0.144, 0.024)  # #ff6a2b in scene-linear
-SCORCH = (0.13, 0.068, 0.03)
-WARM = (1.0, 0.52, 0.2)  # a warm white LED behind paper
+WARM = (1.0, 0.56, 0.24)  # a warm lamp
+PEARL = (1.0, 0.7, 0.42)  # the beads' light
+HAIRLINE = 0.00017  # an etched line's width
 
 
 def assets():
     return os.environ.get("FILM_ASSETS", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets"))
-
-
-def image(name, colour=False):
-    path = os.path.join(assets(), "tex", name)
-    img = bpy.data.images.load(path, check_existing=True)
-    img.colorspace_settings.name = "sRGB" if colour else "Non-Color"
-    return img
 
 
 def _tex(nt, img, vec, interp="Cubic"):
@@ -35,125 +30,122 @@ def _tex(nt, img, vec, interp="Cubic"):
     return nt.v(n.outputs["Color"])
 
 
-def _bevel(nt, radius=0.00028, samples=6):
-    """Every cut edge is eased a quarter of a millimetre, as sanding does."""
+def _bevel(nt, radius=0.00012, samples=4):
     n = nt.node("ShaderNodeBevel", samples=samples)
     n.inputs["Radius"].default_value = radius
     return nt.v(n.outputs["Normal"])
 
 
-def wood(name, tex="white_maple_veneer", value=0.86, sat=0.92, etch=True, engraving=None):
-    """Solid pale wood. Up the sides, the scanned long grain; on the cut
-    tops, end grain drawn from the same log: growth rings and pores. Each
-    piece of stock sits in a different part of the board, a shade apart.
-    Etched lines are scorched brown, with a faint halo."""
-    mat, nt = material(name)
-    p = nt.coord("Object")
-    n = nt.geom("True Normal")
-    x, y, z = nt.xyz(p)
-    nx, ny, nz = nt.xyz(n)
-    stock = nt.attr("stock", out="Color")
-    sx, sy, sz = nt.xyz(stock)
-    top = nt.smoothstep(0.55, 0.8, nt.abs(nz))
-    # along the wall, and up it: the grain runs up
-    h = y * nx - x * ny
-    tile = 0.46
-    vec = nt.vec((z + sx * 0.41) / tile, (h + sy * 0.37) / tile, 0.0)
-    flat = nt.vec((x + sx * 0.41) / tile, (y + sy * 0.37) / tile, 0.0)
-    col_long = _tex(nt, image(f"{tex}_diff.jpg", True), vec)
-    col_flat = _tex(nt, image(f"{tex}_diff.jpg", True), flat)
-    # the scan is a finished veneer; raw sanded stock shows its figure more
-    col_long = nt.mixc(col_long, nt.mixc(col_long, col_long, 1.0, blend="MULTIPLY"), 0.55)
-    col_flat = nt.mixc(col_flat, nt.mixc(col_flat, col_flat, 1.0, blend="MULTIPLY"), 0.55)
-    fibre = nt.noise(nt.vec(z * 60.0, h * 2600.0, (x + y) * 1300.0), scale=1.0, detail=2.0, rough=0.6)
-    col_long = nt.mixc(col_long, nt.mixc(col_long, nt.rgb((0.3, 0.19, 0.1)), 0.5), nt.smoothstep(0.52, 0.8, fibre) * 0.28)
-    rough_long = _tex(nt, image(f"{tex}_rough.jpg"), vec)
-    disp_long = _tex(nt, image(f"{tex}_disp.jpg"), vec)
-    # end grain: rings about a pith well off to one side, and the pores between
-    cx = x + (sx - 0.5) * 0.5 + 0.21
-    cy = y + (sy - 0.5) * 0.5 - 0.17
-    rr = nt.sqrt(cx * cx + cy * cy)
-    wav = nt.noise(p, scale=55.0, detail=2.0)
-    ring = nt.fract(rr / 0.0017 + wav * 0.9)
-    late = nt.smoothstep(0.62, 0.97, ring) * (1.0 - nt.smoothstep(0.97, 1.0, ring))
-    pores = nt.noise(p, scale=7000.0, detail=1.0)
-    col_end = nt.mixc(col_flat, nt.mixc(col_flat, nt.rgb((0.32, 0.2, 0.1)), 0.42), late * 0.55 + nt.smoothstep(0.62, 0.8, pores) * 0.3)
-    col_end = nt.hsv(col_end, v=0.9, s=1.08)
-    col = nt.mixc(col_long, col_end, top)
-    # this piece's own tone
-    col = nt.hsv(col, h=0.5 + (sz - 0.5) * 0.014, s=sat * (0.92 + sy * 0.2), v=value * (0.9 + sz * 0.2))
-    height = disp_long * 0.4 + pores * 0.15 * top + fibre * 0.5 * (1.0 - top)
-    rough = nt.mix(nt.remap(rough_long, 0.0, 1.0, 0.46, 0.68), 0.72, top)
-    if etch:
-        uv = nt.coord("UV")
-        cu, cv, _ = nt.xyz(uv)
-        cell = nt.attr("cell")
-        line_v = 1.0 - nt.smoothstep(0.009, 0.02, nt.min(cv, 1.0 - cv))
-        line_u = 1.0 - nt.smoothstep(0.01, 0.024, nt.min(cu, 1.0 - cu))
-        lines = nt.max(line_v, line_u * 0.6) * cell
-        halo = nt.pow(nt.sat(nt.attr("scorch")), 2.6)
-        burn = nt.attr("burn")
-        # a laser's line is not even: it bites deeper where the grain is soft
-        bite = 0.7 + 0.5 * nt.noise(p, scale=900.0, detail=1.0)
-        mark = nt.sat(lines * 0.82 * bite + halo * 0.4 + burn)
-        col = nt.mixc(col, nt.rgb(SCORCH), mark * 0.86)
-        rough = nt.mix(rough, 0.82, mark)
-        height = height - lines * 1.6
-    if engraving is not None:
-        uv = nt.coord("UV")
-        eng = _tex(nt, engraving, uv, interp="Cubic")
-        er, eg, eb = nt.xyz(eng)
-        raster = nt.fract((x + y) / 0.00022)
-        tone = nt.mixc(col, nt.rgb((0.36, 0.23, 0.12)), er * (0.4 + 0.1 * nt.smoothstep(0.3, 0.7, raster)))
-        col = nt.mixc(tone, nt.rgb(SCORCH), nt.sat(eg * 0.9 + eb * 0.25))
-        rough = nt.mix(rough, 0.8, nt.sat(er + eg))
-        height = height - er * 1.2 - eg * 2.2
-    nrm = nt.bump(height, strength=0.35, distance=0.00012, normal=_bevel(nt))
-    nt.out_surface(nt.principled(Base_Color=col, Roughness=rough, Normal=nrm, Specular_IOR_Level=0.35, Sheen_Weight=0.08))
-    return mat
+def _pick(nt, s1, s2, a, b, c):
+    """a, b or c by style: grid, ribbon or pier."""
+    return nt.mix(nt.mix(a, b, s1), c, s2)
 
 
-def pocket(name="window_pocket"):
-    """The floor of an etched window. Most are only engraved: scorched, with
-    the raster of the laser in them. Some are cut through and backed with
-    paper, and those have light behind."""
+def facade(name="obsidian"):
+    """Every block is this one material; the mesh says which finish a piece
+    has and what is etched on each face.
+
+    `tone` is the finish (value, roughness, metal). `gridp` is the etched
+    grid (bay, floor, style), `dims` where it sits on the face (half its
+    width, where it starts above the foot, where it stops), `litp` how many
+    of its windows are lit (share, seed, how brightly). A face's UV is in
+    metres: across from its middle, and up from its foot."""
     mat, nt = material(name)
     g = grade(nt)
-    p = nt.coord("Object")
-    x, y, z = nt.xyz(p)
-    glow = nt.attr("glow")
-    lit = nt.attr("lit")
-    through = nt.gt(glow, 0.001)
-    raster = nt.smoothstep(0.25, 0.75, nt.fract(z / 0.00016))
-    burnt = nt.mixc(nt.rgb((0.2, 0.115, 0.055)), nt.rgb((0.1, 0.055, 0.026)), raster)
-    fibre = nt.noise(p, scale=2600.0, detail=2.0, rough=0.7)
-    # the paper is a dark amber tracing film: unlit, it sits back with the engraved ones
-    paper = nt.mixc(nt.rgb((0.23, 0.14, 0.075)), nt.rgb((0.17, 0.1, 0.05)), fibre)
-    col = nt.mixc(burnt, paper, through)
-    on = nt.smoothstep(0.0, 0.03, g["windows"] - lit) * through
-    # the lamp is somewhere behind the paper: no window glows evenly
-    blotch = nt.noise(p, scale=140.0, detail=2.0)
-    uv = nt.coord("UV")
-    pu, pv, _ = nt.xyz(uv)
-    du = pu - 0.5
-    dv = pv - 0.42
-    pane = nt.sat(1.0 - (du * du + dv * dv) * 2.6)
-    strength = on * glow * g["lamps"] * (0.5 + 0.9 * blotch) * (0.75 + 0.5 * fibre) * (0.35 + 0.9 * pane) * 7.0
-    tint = nt.mixc(nt.rgb(WARM), nt.rgb((1.0, 0.66, 0.36)), nt.fract(lit * 13.7))
+    u, v, _ = nt.xyz(nt.coord("UV"))
+    val, rough0, metal = nt.xyz(nt.attr("tone", out="Color"))
+    bay, fl, style = nt.xyz(nt.attr("gridp", out="Color"))
+    half, base, vtop = nt.xyz(nt.attr("dims", out="Color"))
+    share, seed, gain = nt.xyz(nt.attr("litp", out="Color"))
+    p = nt.geom("Position")
+    bay = nt.max(bay, 1e-5)
+    fl = nt.max(fl, 1e-5)
+    cu = (u + half) / bay
+    cv = (v - base) / fl
+    inside = nt.gt(half, 0.0) * nt.gt(cu, 0.0) * nt.lt(u, half) * nt.gt(cv, 0.0) * nt.lt(v, vtop)
+    fu, fv = nt.fract(cu), nt.fract(cv)
+    iu, iv = nt.floor(cu), nt.floor(cv)
+    s1 = nt.gt(style, 0.5) * nt.lt(style, 1.5)
+    s2 = nt.gt(style, 1.5)
+    # the etching: floor lines and mullions, a hair wide
+    dv = nt.min(fv, 1.0 - fv) * fl
+    du = nt.min(fu, 1.0 - fu) * bay
+    lw = HAIRLINE / 2
+    line_h = (1.0 - nt.smoothstep(lw * 0.6, lw * 1.3, dv)) * _pick(nt, s1, s2, 0.85, 1.0, 0.3)
+    line_v = (1.0 - nt.smoothstep(lw * 0.5, lw * 1.1, du)) * _pick(nt, s1, s2, 0.7, 0.16, 1.0)
+    # a belt course where the street floor ends
+    belt = (1.0 - nt.smoothstep(lw * 0.8, lw * 1.8, nt.abs(v - base))) * nt.gt(half, 0.0) * nt.gt(base, 0.0008)
+    lines = nt.max(line_h, line_v) * inside
+    # the pane inside each cell
+    mu = _pick(nt, s1, s2, 0.2, 0.06, 0.27)
+    v0 = _pick(nt, s1, s2, 0.24, 0.3, 0.14)
+    v1 = _pick(nt, s1, s2, 0.76, 0.7, 0.86)
+    pane = nt.gt(fu, mu) * nt.lt(fu, 1.0 - mu) * nt.gt(fv, v0) * nt.lt(fv, v1) * inside
+    # which are lit: few, in clusters, and now and then a run along a floor
+    rnd = nt.white(nt.vec(iu, iv, seed))
+    rnd2 = nt.white(nt.vec(iu + 31.7, iv + 11.3, seed))
+    rnd3 = nt.white(nt.vec(iu + 5.1, iv + 77.7, seed))
+    cluster = nt.noise(p, scale=17.0, detail=1.0, rough=0.5)
+    run = nt.noise(nt.vec(iu * 0.11, iv * 1.9, seed * 9.0), scale=1.0, detail=0.0)
+    dens = share * (0.2 + 3.4 * nt.smoothstep(0.52, 0.74, cluster) + 2.6 * nt.smoothstep(0.64, 0.8, run))
+    on = nt.lt(rnd, dens * g["windows"]) * pane
+    warm = nt.mixc(nt.rgb((1.0, 0.47, 0.17)), nt.rgb((1.0, 0.7, 0.4)), rnd2)
+    tint = nt.mixc(warm, nt.rgb((0.72, 0.84, 1.0)), nt.gt(rnd3, 0.93))
+    # a blind half drawn, a lamp at one side: no window glows evenly
+    shade = 0.55 + 0.45 * nt.smoothstep(0.0, 1.0, nt.fract(fu * 0.5 + rnd3))
+    strength = on * (0.18 + 1.5 * rnd2 * rnd2) * shade * gain * g["lamps"] * 14.0
+    # the finish: this piece's tone, a hand's faint clouding, the grain of the satin
+    cloud = nt.noise(p, scale=31.0, detail=2.0, rough=0.55)
+    fine = nt.noise(p, scale=5200.0, detail=1.0)
+    rough = rough0 * (0.86 + 0.3 * nt.smoothstep(0.35, 0.75, cloud)) + (fine - 0.5) * 0.05
+    col = nt.vec(val * 0.95, val, val * 1.1)
+    col = nt.mixc(col, nt.rgb((0.004, 0.004, 0.005)), pane * 0.8)
+    rough = nt.mix(rough, 0.07, pane * 0.9)
+    metal = nt.mix(metal, 0.0, pane)
+    etched = nt.sat(lines + belt)
+    col = nt.mixc(col, nt.rgb((0.2, 0.185, 0.165)), etched * 0.9)
+    rough = nt.mix(rough, 0.42, etched)
+    metal = nt.mix(metal, 1.0, etched)
     em = nt.shader("ShaderNodeEmission", Color=tint, Strength=strength)
-    nt.out_surface(nt.add_shader(nt.principled(Base_Color=col, Roughness=0.85, Normal=_bevel(nt, 0.0002, 4)), em))
+    nt.out_surface(nt.add_shader(nt.principled(Base_Color=col, Roughness=rough, Metallic=metal, Specular_IOR_Level=0.5), em))
+    # the windows are for the eye; the square's own lamps light the model
+    mat.cycles.emission_sampling = "NONE"
     return mat
 
 
-def brass(name="brass", turned=True, rough=0.2):
+def satin(name, tone=(0.016, 0.016, 0.018), rough=0.4, metal=0.0):
+    """A plain dark finish: pavements, frames."""
+    mat, nt = material(name)
+    p = nt.geom("Position")
+    cloud = nt.noise(p, scale=24.0, detail=2.0)
+    fine = nt.noise(p, scale=4200.0, detail=1.0)
+    nt.out_surface(nt.principled(Base_Color=(*tone, 1.0), Metallic=metal, Roughness=rough + nt.smoothstep(0.35, 0.8, cloud) * 0.08 + (fine - 0.5) * 0.05, Specular_IOR_Level=0.5))
+    return mat
+
+
+def gloss(name="gloss_black", tone=(0.0035, 0.0035, 0.004), rough=0.045):
+    """The base: polished black, a mirror for the glow. A cloth has been over
+    it: the polish is not quite even."""
+    mat, nt = material(name)
+    p = nt.geom("Position")
+    x, y, z = nt.xyz(p)
+    wipe = nt.noise(nt.vec(x * 3.0, y * 14.0, 0.0), scale=1.0, detail=3.0, rough=0.6)
+    fine = nt.noise(p, scale=2400.0, detail=1.0)
+    nt.out_surface(nt.principled(Base_Color=(*tone, 1.0), Roughness=rough + nt.smoothstep(0.4, 0.85, wipe) * 0.03 + fine * 0.012, Specular_IOR_Level=0.5))
+    return mat
+
+
+def brass(name="brass", turned=True, rough=0.2, tone=(0.86, 0.56, 0.2), bevel=True):
     """Brushed brass: the lathe's fine rings on turned parts, and the faint
     clouding a hand leaves."""
     mat, nt = material(name)
     p = nt.coord("Object")
     smudge = nt.noise(p, scale=38.0, detail=3.0, rough=0.6)
     fine = nt.noise(p, scale=5000.0, detail=1.0)
-    col = nt.mixc(nt.rgb((0.86, 0.54, 0.16)), nt.rgb((0.74, 0.43, 0.12)), nt.smoothstep(0.45, 0.75, smudge) * 0.5)
-    args = dict(Base_Color=col, Metallic=1.0, Roughness=rough + nt.smoothstep(0.4, 0.8, smudge) * 0.12 + fine * 0.04, Anisotropic=0.72, Normal=_bevel(nt, 0.00012, 4))
+    col = nt.mixc(nt.rgb(tone), nt.rgb((tone[0] * 0.88, tone[1] * 0.8, tone[2] * 0.7)), nt.smoothstep(0.45, 0.75, smudge) * 0.5)
+    args = dict(Base_Color=col, Metallic=1.0, Roughness=rough + nt.smoothstep(0.4, 0.8, smudge) * 0.1 + fine * 0.04, Anisotropic=0.7)
+    if bevel:
+        args["Normal"] = _bevel(nt)
     if turned:
         tan = nt.node("ShaderNodeTangent", direction_type="RADIAL", axis="Z")
         args["Tangent"] = nt.v(tan.outputs[0])
@@ -161,153 +153,109 @@ def brass(name="brass", turned=True, rough=0.2):
     return mat
 
 
-def acrylic(name, kind="smoked"):
-    """Cast acrylic with real thickness. Smoked: a bronze that deepens with
-    the depth looked through, satin faces and polished arrises that catch the
-    light. Frosted: a clear block sanded matt. Both carry etched floor lines
-    that light up when the block is lit from its foot."""
+def court(engraving, name="court_brass"):
+    """The square's floor: a plate of brass, blasted satin so that it glows
+    under the beads, with the walks and the plaza polished into it and their
+    edges cut as hairlines."""
+    mat, nt = material(name)
+    p = nt.coord("Object")
+    x, y, z = nt.xyz(p)
+    eng = _tex(nt, engraving, nt.coord("UV"))
+    er, eg, eb = nt.xyz(eng)
+    brush = nt.noise(nt.vec(x * 30.0, y * 5200.0, 0.0), scale=1.0, detail=2.0, rough=0.6)
+    cloud = nt.noise(p, scale=14.0, detail=3.0, rough=0.6)
+    field = nt.mixc(nt.rgb((0.74, 0.47, 0.17)), nt.rgb((0.82, 0.55, 0.22)), brush)
+    walk = nt.rgb((0.93, 0.7, 0.36))
+    col = nt.mixc(field, walk, er)
+    col = nt.mixc(col, nt.rgb((0.05, 0.03, 0.012)), nt.sat(eg * 0.92))
+    rough = nt.mix(0.5 + (brush - 0.5) * 0.12 + nt.smoothstep(0.4, 0.8, cloud) * 0.05, 0.3, er)
+    rough = nt.mix(rough, 0.6, nt.sat(eg))
+    nt.out_surface(nt.principled(Base_Color=col, Metallic=1.0, Roughness=rough, Normal=nt.bump(-eg - er * 0.3, strength=0.4, distance=0.00008)))
+    return mat
+
+
+def smoked(name="glass_smoked"):
+    """Cast glass with real thickness: a bronze smoke that deepens with the
+    depth looked through, and its floors etched round it."""
     mat, nt = material(name)
     g = grade(nt)
     p = nt.coord("Object")
     x, y, z = nt.xyz(p)
-    frost = nt.attr("frost")
     floor_h = nt.attr("floor_h")
-    line = (1.0 - nt.smoothstep(0.018, 0.04, nt.fract(z / nt.max(floor_h, 0.001)))) * nt.gt(floor_h, 0.0005) * frost
-    if kind == "smoked":
-        rough = nt.mix(0.015, 0.2, frost)
-        col = (1.0, 1.0, 1.0, 1.0)
-    else:
-        rough = nt.mix(0.02, 0.16, frost)
-        col = (0.97, 0.985, 1.0, 1.0)
-    rough = nt.mix(rough, 0.85, line)
-    smear = nt.noise(p, scale=60.0, detail=2.0)
-    rough = rough + nt.smoothstep(0.5, 0.8, smear) * 0.03
-    glass = nt.principled(Base_Color=col, Roughness=rough, Transmission_Weight=1.0, IOR=1.49, Normal=_bevel(nt, 0.00015, 4))
-    # etched lines scatter the light piped up the block
-    glow = nt.shader("ShaderNodeEmission", Color=(1.0, 0.72, 0.42, 1.0), Strength=line * g["lamps"] * (0.7 if kind == "smoked" else 0.5))
+    line = (1.0 - nt.smoothstep(0.03, 0.06, nt.fract(z / nt.max(floor_h, 0.001)))) * nt.gt(floor_h, 0.0005)
+    rough = nt.mix(0.035, 0.5, line)
+    glass = nt.principled(Base_Color=(1.0, 1.0, 1.0, 1.0), Roughness=rough, Transmission_Weight=1.0, IOR=1.5)
+    glow = nt.shader("ShaderNodeEmission", Color=(1.0, 0.7, 0.4, 1.0), Strength=line * g["lamps"] * 0.12)
     surf = nt.add_shader(glass, glow)
-    # a shadow through acrylic is tinted, not black
-    clear = nt.shader("ShaderNodeBsdfTransparent", Color=(0.45, 0.4, 0.36, 1.0) if kind == "smoked" else (0.8, 0.82, 0.84, 1.0))
+    clear = nt.shader("ShaderNodeBsdfTransparent", Color=(0.3, 0.26, 0.22, 1.0))
     surf = nt.mix_shader(surf, clear, nt.lightpath("Is Shadow Ray"))
-    if kind == "smoked":
-        vol = nt.shader("ShaderNodeVolumeAbsorption", Color=(0.3, 0.25, 0.21, 1.0), Density=70.0)
-    else:
-        vol = nt.shader("ShaderNodeVolumeAbsorption", Color=(0.86, 0.93, 0.95, 1.0), Density=6.0)
+    vol = nt.shader("ShaderNodeVolumeAbsorption", Color=(0.5, 0.42, 0.34, 1.0), Density=30.0)
     nt.out_surface(surf, volume=vol)
+    mat.cycles.emission_sampling = "NONE"
     return mat
 
 
-def opal(name="opal"):
-    """Frosted acrylic beads, for the trees' crowns: clear inside, sanded
-    matt outside, so light goes into them and comes out soft."""
-    mat, nt = material(name)
-    p = nt.coord("Object")
-    fine = nt.noise(p, scale=2500.0, detail=1.0)
-    bead = nt.principled(Base_Color=(0.96, 0.975, 0.98, 1.0), Roughness=0.34 + fine * 0.08, Transmission_Weight=1.0, IOR=1.49, Specular_IOR_Level=0.5)
-    # its shadow is a soft lens of light, not a black disc
-    clear = nt.shader("ShaderNodeBsdfTransparent", Color=(0.72, 0.74, 0.76, 1.0))
-    surf = nt.mix_shader(bead, clear, nt.lightpath("Is Shadow Ray"))
-    vol = nt.shader("ShaderNodeVolumeScatter", Color=(0.97, 0.98, 1.0, 1.0), Density=38.0, Anisotropy=0.55)
-    nt.out_surface(surf, volume=vol)
-    return mat
-
-
-def resin(name="resin_water"):
-    """The fountain's pool: a disc of frosted resin over a lamp."""
+def pearl(name="pearl"):
+    """A frosted glass bead on a pin that carries light up into it: brightest
+    where the pin enters, and soft at its edge. `glow` is how bright this
+    bead is, `h` runs from its foot to its top."""
     mat, nt = material(name)
     g = grade(nt)
-    p = nt.coord("Object")
-    x, y, z = nt.xyz(p)
-    r = nt.sqrt(x * x + y * y)
-    hot = nt.exp(-(r * r) / (0.0085 * 0.0085))
-    ripple = nt.sin(r * 3400.0) * 0.5 + 0.5
-    em = nt.shader("ShaderNodeEmission", Color=(1.0, 0.74, 0.46, 1.0), Strength=g["lamps"] * (0.7 + 3.2 * hot) * (0.7 + 0.5 * ripple))
-    body = nt.principled(Base_Color=(0.86, 0.9, 0.9, 1.0), Roughness=0.35, Subsurface_Weight=0.8, Subsurface_Radius=(0.004, 0.004, 0.004), Subsurface_Scale=1.0, Normal=nt.bump(ripple, strength=0.25, distance=0.00008))
-    nt.out_surface(nt.add_shader(body, em))
+    glow = nt.attr("glow")
+    h = nt.attr("h")
+    facing = 1.0 - nt.layer(0.5, "Facing")
+    tint = nt.mixc(nt.rgb((1.0, 0.62, 0.33)), nt.rgb((1.0, 0.78, 0.55)), nt.attr("hue"))
+    body = (0.42 + 0.58 * nt.pow(facing, 1.4)) * nt.mix(1.9, 0.5, nt.smoothstep(0.0, 0.9, h))
+    em = nt.shader("ShaderNodeEmission", Color=tint, Strength=glow * body * g["lamps"] * 5.2)
+    fine = nt.noise(nt.coord("Object"), scale=3000.0, detail=1.0)
+    bead = nt.principled(Base_Color=(0.82, 0.8, 0.77, 1.0), Roughness=0.3 + fine * 0.08, Coat_Weight=0.35, Coat_Roughness=0.12, Specular_IOR_Level=0.5)
+    nt.out_surface(nt.add_shader(bead, em))
     return mat
 
 
-def rod(name="acrylic_rod"):
-    """The jet: a frosted rod that carries the lamp's light up its length."""
+def black_glass(name="black_glass", tone=(0.004, 0.006, 0.005), rough=0.03, ripple=0.0):
+    """An inlay of black glass: the lawn, the fountain's pool."""
     mat, nt = material(name)
-    g = grade(nt)
-    z = nt.xyz(nt.coord("Object"))[2]
-    up = nt.sat(z / 0.016)
-    em = nt.shader("ShaderNodeEmission", Color=(1.0, 0.8, 0.56, 1.0), Strength=g["lamps"] * (2.4 * nt.pow(1.0 - up, 2.0) + 1.0 * nt.smoothstep(0.86, 1.0, up) + 0.25))
-    body = nt.principled(Base_Color=(0.95, 0.97, 1.0, 1.0), Roughness=0.4, Transmission_Weight=0.85, IOR=1.49, Subsurface_Weight=0.2, Subsurface_Radius=(0.002, 0.002, 0.002))
-    nt.out_surface(nt.add_shader(body, em))
-    return mat
-
-
-def felt(name="felt_sage", tone=(0.27, 0.33, 0.23)):
-    """Wool felt: matted fibres, a soft sheen at grazing angles."""
-    mat, nt = material(name)
-    p = nt.coord("Object")
-    fibre = nt.noise(p, scale=5200.0, detail=3.0, rough=0.7, dist=1.6)
-    clump = nt.noise(p, scale=420.0, detail=2.0)
-    col = nt.mixc(nt.rgb(tone), nt.rgb((tone[0] * 1.35, tone[1] * 1.3, tone[2] * 1.3)), nt.smoothstep(0.35, 0.75, fibre) * 0.6)
-    col = nt.mixc(col, nt.rgb((tone[0] * 0.72, tone[1] * 0.74, tone[2] * 0.74)), nt.smoothstep(0.5, 0.8, clump) * 0.5)
-    nrm = nt.bump(fibre * 0.7 + clump * 0.3, strength=0.9, distance=0.00025)
-    nt.out_surface(nt.principled(Base_Color=col, Roughness=0.95, Sheen_Weight=1.0, Sheen_Roughness=0.42, Sheen_Tint=(0.8, 0.9, 0.75, 1.0), Specular_IOR_Level=0.1, Normal=nrm))
-    return mat
-
-
-def board(name="charcoal_board", tone=(0.022, 0.022, 0.024), rough=0.58, dust=1.0):
-    """The baseplate: through-dyed charcoal fibreboard, with the dust any
-    dark model collects."""
-    mat, nt = material(name)
-    p = nt.coord("Object")
-    fibre = nt.noise(p, scale=3200.0, detail=2.0, rough=0.7)
-    cloud = nt.noise(p, scale=26.0, detail=3.0)
-    col = nt.mixc(nt.rgb(tone), nt.rgb((tone[0] * 2.2, tone[1] * 2.2, tone[2] * 2.2)), nt.smoothstep(0.6, 0.85, fibre) * 0.5)
-    specks = nt.voronoi(p, scale=900.0, out="Distance")
-    speck = (1.0 - nt.smoothstep(0.02, 0.05, specks)) * nt.smoothstep(0.5, 0.75, nt.noise(p, scale=12.0, detail=2.0)) * dust
-    col = nt.mixc(col, nt.rgb((0.35, 0.34, 0.32)), speck * 0.5)
-    nrm = nt.bump(fibre, strength=0.12, distance=0.0001, normal=_bevel(nt, 0.0004, 4))
-    nt.out_surface(nt.principled(Base_Color=col, Roughness=rough + nt.smoothstep(0.4, 0.8, cloud) * 0.12, Normal=nrm, Specular_IOR_Level=0.4))
-    return mat
-
-
-def paint(name, tone, rough=0.5, sss=0.0):
-    """Sprayed resin: the figures."""
-    mat, nt = material(name)
-    p = nt.coord("Object")
-    peel = nt.noise(p, scale=4200.0, detail=1.0)
-    args = dict(Base_Color=(*tone, 1.0), Roughness=rough + peel * 0.08, Normal=nt.bump(peel, strength=0.05, distance=0.00005), Specular_IOR_Level=0.4)
-    if sss > 0:
-        args.update(Subsurface_Weight=sss, Subsurface_Radius=(0.0012, 0.0011, 0.001), Subsurface_Scale=1.0)
+    args = dict(Base_Color=(*tone, 1.0), Roughness=rough, Specular_IOR_Level=0.6, Coat_Weight=0.4, Coat_Roughness=0.02)
+    if ripple > 0:
+        x, y, z = nt.xyz(nt.coord("Object"))
+        r = nt.sqrt(x * x + y * y)
+        args["Normal"] = nt.bump(nt.sin(r * 5200.0), strength=ripple, distance=0.00005)
     nt.out_surface(nt.principled(**args))
     return mat
 
 
-def led(name="led", power=1.0, tint=(1.0, 0.6, 0.28)):
-    """A point of light: a fibre's end, a micro lamp."""
+def light(name="ring_light", power=30.0, tint=(1.0, 0.8, 0.6)):
+    """Light itself: the fountain's ring, the tip of a lamp."""
     mat, nt = material(name)
     g = grade(nt)
-    em = nt.shader("ShaderNodeEmission", Color=(*tint, 1.0), Strength=g["lamps"] * power)
-    nt.out_surface(nt.add_shader(nt.principled(Base_Color=(0.8, 0.8, 0.78, 1.0), Roughness=0.3, Transmission_Weight=0.5), em))
+    nt.out_surface(nt.shader("ShaderNodeEmission", Color=(*tint, 1.0), Strength=g["lamps"] * power))
     return mat
 
 
-def table(name="table", tone=(0.012, 0.012, 0.014), rough=0.16):
-    """The studio table: satin, with the faint wipe marks of a cloth."""
+def plume(name="plume", power=26.0):
+    """The fountain's jet: a rod of frosted glass with light piped up it,
+    fading as it rises and soft at its edge. `h` runs up its length."""
     mat, nt = material(name)
-    p = nt.coord("Object")
-    x, y, z = nt.xyz(p)
-    wipe = nt.noise(nt.vec(x * 2.0, y * 9.0, 0.0), scale=1.0, detail=4.0, rough=0.6)
-    fine = nt.noise(p, scale=900.0, detail=2.0)
-    specks = nt.voronoi(p, scale=420.0, out="Distance")
-    speck = (1.0 - nt.smoothstep(0.015, 0.04, specks)) * nt.smoothstep(0.55, 0.8, nt.noise(p, scale=5.0, detail=2.0))
-    col = nt.mixc(nt.rgb(tone), nt.rgb((0.3, 0.3, 0.29)), speck * 0.35)
-    nt.out_surface(nt.principled(Base_Color=col, Roughness=rough + nt.smoothstep(0.35, 0.8, wipe) * 0.14 + fine * 0.03 + speck * 0.4, Specular_IOR_Level=0.5, Coat_Weight=0.0))
+    g = grade(nt)
+    h = nt.attr("h")
+    facing = 1.0 - nt.layer(0.5, "Facing")
+    fade = nt.pow(1.0 - nt.sat(h), 1.6)
+    alpha = nt.sat(nt.pow(facing, 1.5) * (0.12 + 0.88 * fade))
+    em = nt.shader("ShaderNodeEmission", Color=(1.0, 0.82, 0.62, 1.0), Strength=g["lamps"] * power * (0.1 + fade))
+    clear = nt.shader("ShaderNodeBsdfTransparent", Color=(1.0, 1.0, 1.0, 1.0))
+    nt.out_surface(nt.mix_shader(clear, em, alpha))
     return mat
 
 
-def paper(name="sweep", tone=(0.03, 0.032, 0.036)):
-    """The backdrop: a roll of seamless paper."""
+def paint(name, tone, rough=0.5, glow=0.0):
+    """Sprayed resin: the figures."""
     mat, nt = material(name)
     p = nt.coord("Object")
-    grain = nt.noise(p, scale=1400.0, detail=2.0)
-    col = nt.mixc(nt.rgb(tone), nt.rgb((tone[0] * 0.86, tone[1] * 0.86, tone[2] * 0.86)), grain)
-    nt.out_surface(nt.principled(Base_Color=col, Roughness=0.92, Specular_IOR_Level=0.2))
+    peel = nt.noise(p, scale=4200.0, detail=1.0)
+    args = dict(Base_Color=(*tone, 1.0), Roughness=rough + peel * 0.08, Specular_IOR_Level=0.4)
+    if glow > 0:
+        args.update(Emission_Color=(*tone, 1.0), Emission_Strength=glow)
+    nt.out_surface(nt.principled(**args))
+    mat.cycles.emission_sampling = "NONE"
     return mat

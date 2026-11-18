@@ -1,10 +1,10 @@
-"""The square itself, the room the model is built round: a maple panel sunk
-between the blocks, its curving walks and the plaza's rosette engraved by
-laser, the oval lawn a piece of sage felt, the trees opal beads on brass
-pins, the fountain a brass ring over a lit disc of resin with a rod of
-frosted acrylic for its jet, lamp posts that are brass pins tipped with
-light, a wire of tiny lamps strung round the plaza, and the people: small
-turned figures, white, and some of them orange.
+"""The square itself, the room the model is built round, and its light: a
+shallow court of satin brass sunk in a black frame, its curving walks and
+the plaza's rosette polished and cut into it, the oval lawn an inlay of
+black glass, the trees frosted beads on fine brass pins with light piped up
+into each, the fountain a brass ring round a ring of light with a plume
+rising from it, lamp posts that are pins tipped with light, and the people:
+tiny turned figures, white, and a few of them orange.
 """
 
 import math
@@ -13,10 +13,11 @@ import bpy
 import numpy as np
 
 from . import craft, site
-from .common import MB, TAU, add_object, capsule, collection, ellipsoid, revolve, rng, tube
+from .common import MB, TAU, add_object, box, capsule, collection, ellipsoid, revolve, rng, tube
 from .site import MM, SCALE
 
-PANEL_Z = 0.22 * MM  # the park's floor: below the plates round it
+PANEL_Z = 0.3 * MM  # the court's floor
+FRAME_Z = 2.0 * MM  # the top of the frame round it
 
 
 # ------------------------------------------------------------------ engraving
@@ -205,180 +206,134 @@ def cast(seed=11):
 def build(col=None):
     col = col or collection("Square")
     r = rng(77)
-    maple = craft.wood("wood_park", "white_maple_veneer", value=0.9, sat=0.86, etch=False, engraving=engraving())
-    bead_wood = craft.wood("wood_bead", "white_maple_veneer", value=0.8, sat=1.0, etch=False)
-    brass = craft.brass("brass_fountain", turned=True)
-    wire = craft.brass("brass_wire", turned=False, rough=0.22)
-    opal = craft.opal()
-    felt = craft.felt()
-    white = craft.paint("figure_white", (0.86, 0.86, 0.83), rough=0.5, sss=0.35)
-    orange = craft.paint("figure_orange", craft.ORANGE, rough=0.46)
-    lamp_tip = craft.led("lamp_tip", power=34.0)
-    micro = craft.led("micro_lamp", power=13.0, tint=(1.0, 0.5, 0.2))
+    floor = craft.court(engraving())
+    frame = craft.satin("park_frame", (0.012, 0.012, 0.014), rough=0.28)
+    brass = craft.brass("brass_fountain", turned=True, rough=0.14)
+    liner = craft.brass("brass_liner", turned=False, rough=0.2, bevel=False)
+    wire = craft.brass("brass_wire", turned=False, rough=0.2, bevel=False)
+    pearl = craft.pearl()
+    lawn = craft.black_glass("lawn_glass", tone=(0.003, 0.009, 0.006), rough=0.05)
+    pool = craft.black_glass("pool_glass", ripple=0.3)
+    ring = craft.light("ring_light", power=70.0, tint=(1.0, 0.8, 0.58))
+    tip = craft.light("lamp_tip", power=220.0, tint=(1.0, 0.64, 0.32))
+    jet = craft.plume()
+    white = craft.paint("figure_white", (0.88, 0.88, 0.86), rough=0.45)
+    orange = craft.paint("figure_orange", craft.ORANGE, rough=0.42, glow=0.3)
     x0, y0, x1, y1 = [v * SCALE for v in site.PARK]
+    m = MM
 
-    # ---- the panel
+    # ---- the court's floor
     mb = MB()
-    v = [(x0, y0, PANEL_Z), (x1, y0, PANEL_Z), (x1, y1, PANEL_Z), (x0, y1, PANEL_Z)]
-    mb.add(v, [[0, 1, 2, 3]], uv=[(0, 0), (1, 0), (1, 1), (0, 1)], fattr={"stock": np.array([[0.31, 0.62, 0.55]], np.float32)})
-    add_object("ParkPanel", mb.build("ParkPanel", [maple]), col)
+    mb.add([(x0, y0, PANEL_Z), (x1, y0, PANEL_Z), (x1, y1, PANEL_Z), (x0, y1, PANEL_Z)], [[0, 1, 2, 3]], uv=[(0, 0), (1, 0), (1, 1), (0, 1)])
+    add_object("ParkPanel", mb.build("ParkPanel", [floor]), col)
+    # ---- its frame: satin black, lined with brass on the inside
+    mb = MB()
+    f = 4.0 * SCALE
+    t = 0.5 * m
+    for (ax, ay, bx, by) in ((x0 - f, y0 - f, x1 + f, y0), (x0 - f, y1, x1 + f, y1 + f), (x0 - f, y0, x0, y1), (x1, y0, x1 + f, y1)):
+        v, q = box((ax, ay, 0.0), (bx, by, FRAME_Z))
+        mb.add(v, q, mat=0)
+    for (ax, ay, bx, by) in ((x0, y0, x1, y0 + t), (x0, y1 - t, x1, y1), (x0, y0 + t, x0 + t, y1 - t), (x1 - t, y0 + t, x1, y1 - t)):
+        v, q = box((ax, ay, 0.0), (bx, by, FRAME_Z + 0.05 * m))
+        mb.add(v, q, mat=1)
+    add_object("ParkFrame", mb.build("ParkFrame", [frame, liner]), col)
 
-    # ---- the lawn: felt, a millimetre proud, its edge rolled over
-    mb = MB()
+    # ---- the lawn: black glass in a brass rim
     lx, ly = site.LAWN_C[0] * SCALE, site.LAWN_C[1] * SCALE
     rx, ry = site.LAWN_R[0] * SCALE, site.LAWN_R[1] * SCALE
-    zt = PANEL_Z + 0.9 * MM
-    segs = 128
+    segs = 160
     a = np.arange(segs) * TAU / segs
-    rings = [(0.0005, zt), (0.5, zt + 0.05 * MM), (0.93, zt), (0.975, zt - 0.1 * MM), (0.995, zt - 0.32 * MM), (1.0, zt - 0.6 * MM), (1.0, PANEL_Z)]
-    vv = []
-    for f, zz in rings:
-        vv.append(np.stack([lx + rx * f * np.cos(a), ly + ry * f * np.sin(a), np.full(segs, zz)], axis=-1))
-    vv = np.concatenate(vv)
-    i = np.arange(len(rings) - 1)[:, None]
+
+    def oval(fx, zz):
+        return np.stack([lx + (rx + fx) * np.cos(a), ly + (ry + fx) * np.sin(a), np.full(segs, zz)], axis=-1)
+
+    zt = PANEL_Z + 0.35 * m
+    mb = MB()
+    mb.add(oval(0.0, zt), [list(range(segs))], mat=0)
+    rim = np.concatenate([oval(0.0, zt), oval(0.0, zt + 0.25 * m), oval(0.6 * m, zt + 0.25 * m), oval(0.6 * m, PANEL_Z)])
+    i = np.arange(3)[:, None]
     j = np.arange(segs)[None, :]
     j2 = (j + 1) % segs
-    q = np.stack([i * segs + j, (i + 1) * segs + j, (i + 1) * segs + j2, i * segs + j2], axis=-1).reshape(-1, 4)
-    mb.add(vv, q, smooth=True)
-    mb.add(vv[:segs], [list(range(segs))])
-    add_object("Lawn", mb.build("Lawn", [felt]), col)
+    q = np.stack([i * segs + j, i * segs + j2, (i + 1) * segs + j2, (i + 1) * segs + j], axis=-1).reshape(-1, 4)
+    mb.add(rim, q[:, ::-1], mat=1, smooth=True)
+    add_object("Lawn", mb.build("Lawn", [lawn, liner], smooth_angle=math.radians(40)), col)
 
-    # ---- the fountain: brass over light
-    m = MM
+    # ---- the fountain: a brass ring, a ring of light inside it, a dark pool, a plume
     z = PANEL_Z
     fb = MB()
-    ring = [(12.3 * m, z), (12.3 * m, z + 1.15 * m), (12.6 * m, z + 1.55 * m), (13.3 * m, z + 1.75 * m), (14.0 * m, z + 1.55 * m), (14.25 * m, z + 1.15 * m), (14.25 * m, z)]
-    v, q, uv = revolve(ring, 128)
+    prof = [(12.3 * m, z), (12.3 * m, z + 1.15 * m), (12.6 * m, z + 1.55 * m), (13.3 * m, z + 1.75 * m), (14.0 * m, z + 1.55 * m), (14.25 * m, z + 1.15 * m), (14.25 * m, z)]
+    v, q, uv = revolve(prof, 128)
     fb.add(v, q, smooth=True)
-    # the pedestal's sleeve and the upper bowl, a turned saucer
-    sleeve = [(1.25 * m, z + 0.9 * m), (1.25 * m, z + 1.3 * m), (0.95 * m, z + 1.6 * m), (0.85 * m, z + 4.9 * m), (1.1 * m, z + 5.3 * m), (3.5 * m, z + 6.05 * m), (4.35 * m, z + 6.45 * m), (4.4 * m, z + 6.7 * m), (4.1 * m, z + 6.72 * m), (3.4 * m, z + 6.45 * m), (0.62 * m, z + 6.2 * m), (0.62 * m, z + 6.9 * m)]
-    v, q, uv = revolve(sleeve, 64)
+    v, q, uv = revolve([(1.5 * m, z + 0.9 * m), (1.5 * m, z + 1.5 * m), (1.1 * m, z + 1.8 * m), (0.75 * m, z + 2.6 * m), (0.0001, z + 2.6 * m)], 48)
     fb.add(v, q, smooth=True)
     add_object("FountainBrass", fb.build("FountainBrass", [brass], smooth_angle=math.radians(50)), col)
     fb = MB()
-    disc = [(0.0001, z + 0.95 * m), (4.0 * m, z + 0.97 * m), (9.0 * m, z + 0.93 * m), (12.4 * m, z + 0.88 * m)]
-    v, q, uv = revolve(disc, 96)
-    fb.add(v, q, smooth=True)
-    add_object("FountainWater", fb.build("FountainWater", [craft.resin()]), col)
+    v, q, uv = revolve([(0.0001, z + 0.95 * m), (10.9 * m, z + 0.95 * m)], 96)
+    fb.add(v, q, mat=0, smooth=True)
+    v, q, uv = revolve([(10.9 * m, z + 1.0 * m), (12.3 * m, z + 1.0 * m)], 128)
+    fb.add(v, q, mat=1)
+    add_object("FountainPool", fb.build("FountainPool", [pool, ring]), col)
     fb = MB()
-    jet = [(0.0001, z + 0.9 * m), (0.52 * m, z + 0.9 * m), (0.52 * m, z + 14.6 * m), (0.4 * m, z + 15.0 * m), (0.0001, z + 15.15 * m)]
-    v, q, uv = revolve(jet, 24)
-    fb.add(v, q, smooth=True)
-    jet_ob = add_object("FountainJet", fb.build("FountainJet", [craft.rod()]), col)
+    hj = 17.0 * m
+    prof = [(0.75 * m, 0.0), (0.62 * m, 0.25 * hj), (0.42 * m, 0.6 * hj), (0.2 * m, 0.9 * hj), (0.0001, hj)]
+    v, q, uv = revolve(prof, 20)
+    fb.add(v + np.array([0, 0, z + 2.6 * m], np.float32), q, smooth=True, vattr={"h": v[:, 2] / hj})
+    jet_ob = add_object("FountainJet", fb.build("FountainJet", [jet]), col)
     jet_ob.visible_shadow = False
     ld = bpy.data.lights.new("FountainLamp", "POINT")
-    ld.energy = 0.07
-    ld.color = (1.0, 0.72, 0.42)
-    ld.shadow_soft_size = 0.004
-    lo = add_object("FountainLamp", ld, col, loc=(0.0, 0.0, z + 3.2 * m))
-    lo["film_lamp"] = 0.07
+    ld.energy = 0.05
+    ld.color = (1.0, 0.76, 0.5)
+    ld.shadow_soft_size = 0.003
+    lo = add_object("FountainLamp", ld, col, loc=(0.0, 0.0, z + 5.0 * m))
+    lo["film_lamp"] = 0.05
 
-    # ---- the trees: an opal bead (or now and then a wooden one) on a brass pin
-    crowns = MB()
+    # ---- the trees: frosted beads on fine brass pins, light piped up each
     beads = MB()
     pins = MB()
-    for k, (x, y, size) in enumerate(site.tree_sites()):
-        d = size * SCALE * r.uniform(0.96, 1.04)
-        hb = (4.2 + size * 0.24) * SCALE
+    sites = site.bead_sites()
+    for (x, y, size) in sites:
+        d = size * SCALE
+        hb = (3.2 + size * 0.55 + r.uniform(-0.8, 2.6)) * SCALE
         px, py = x * SCALE, y * SCALE
-        lean = r.normal(0, 0.016, 2)
-        cz = PANEL_Z + hb + d * 0.46
-        cx, cy = px + lean[0] * (hb + d * 0.5), py + lean[1] * (hb + d * 0.5)
-        squash = r.uniform(0.86, 0.98)
-        v, q, uv = ellipsoid((cx, cy, cz), (d / 2, d / 2, d / 2 * squash), sides=36, rings=20)
-        if r.random() < 0.16:
-            beads.add(v, q, smooth=True, fattr={"stock": np.tile(r.random(3).astype(np.float32)[None], (len(q), 1))})
-        else:
-            crowns.add(v, q, smooth=True)
-        v, q, uv = tube(np.array([(px, py, PANEL_Z - 0.1 * m), (cx, cy, cz)]), 0.3 * m, 8)
+        lean = r.normal(0, 0.012, 2)
+        cz = PANEL_Z + hb + d * 0.5
+        cx, cy = px + lean[0] * cz, py + lean[1] * cz
+        v, q, uv = ellipsoid((cx, cy, cz), (d / 2, d / 2, d / 2), sides=28, rings=14)
+        dist = math.hypot(x, y)
+        glow = r.uniform(0.55, 1.25) * (0.3 + 0.7 * math.exp(-(dist / 120.0) ** 2))
+        if r.random() < 0.07:
+            glow *= 0.12
+        beads.add(v, q, smooth=True, vattr={"h": (v[:, 2] - (cz - d / 2)) / d}, fattr={"glow": np.full(len(q), glow), "hue": np.full(len(q), r.random())})
+        v, q, uv = tube(np.array([(px, py, PANEL_Z - 0.1 * m), (cx, cy, cz - d * 0.42)]), 0.11 * m, 5)
         pins.add(v, q, smooth=True)
-        # a turned collar where the pin enters the bead
-        coll = [(0.3 * m, -0.9 * m), (0.62 * m, -0.7 * m), (0.62 * m, -0.2 * m), (0.3 * m, 0.0)]
-        v, q, uv = revolve(coll, 12)
-        pins.add(v + np.array([cx, cy, cz - d / 2 * squash + 0.25 * m], np.float32), q, smooth=True)
-    add_object("TreeCrowns", crowns.build("TreeCrowns", [opal]), col)
-    add_object("TreeBeads", beads.build("TreeBeads", [bead_wood]), col)
-    add_object("TreePins", pins.build("TreePins", [wire]), col)
+    add_object("Beads", beads.build("Beads", [pearl]), col)
 
-    # ---- lamp posts: brass pins with a point of light
-    posts = MB()
+    # ---- lamp posts: pins with a point of light
     tips = MB()
     lamps = [(x * SCALE, y * SCALE) for x, y in site.lamp_sites()]
-    for k, (x, y) in enumerate(lamps):
-        h = 9.4 * m * r.uniform(0.97, 1.03)
-        lean = r.normal(0, 0.012, 2)
-        top = (x + lean[0] * h, y + lean[1] * h, PANEL_Z + h)
-        v, q, uv = tube(np.array([(x, y, PANEL_Z - 0.1 * m), top]), 0.19 * m, 6)
-        posts.add(v, q, smooth=True)
-        v, q, uv = ellipsoid((top[0], top[1], top[2] + 0.3 * m), (0.4 * m, 0.4 * m, 0.42 * m), sides=10, rings=6)
+    for (x, y) in lamps:
+        h = 8.6 * m * r.uniform(0.94, 1.06)
+        v, q, uv = tube(np.array([(x, y, PANEL_Z - 0.1 * m), (x, y, PANEL_Z + h)]), 0.085 * m, 4)
+        pins.add(v, q, smooth=True)
+        v, q, uv = ellipsoid((x, y, PANEL_Z + h + 0.2 * m), (0.3 * m, 0.3 * m, 0.3 * m), sides=8, rings=5)
         tips.add(v, q, smooth=True)
-        ld = bpy.data.lights.new(f"LampLight{k:03d}", "POINT")
-        ld.energy = 0.013
-        ld.color = (1.0, 0.62, 0.3)
-        ld.shadow_soft_size = 0.0006
-        lo = add_object(f"LampLight{k:03d}", ld, col, loc=(top[0], top[1], top[2] + 0.3 * m))
-        lo["film_lamp"] = 0.013
-    # the flagpole, and a ball on its top
-    fx, fy = 17.0 * SCALE, 27.5 * SCALE
-    v, q, uv = tube(np.array([(fx, fy, PANEL_Z), (fx + 0.3 * m, fy, PANEL_Z + 52 * m)]), 0.32 * m, 8)
-    posts.add(v, q, smooth=True)
-    v, q, uv = ellipsoid((fx + 0.3 * m, fy, PANEL_Z + 52.4 * m), (0.6 * m, 0.6 * m, 0.6 * m), sides=12, rings=8)
-    posts.add(v, q, smooth=True)
-
-    # ---- the wire of tiny lamps round the plaza
-    n = 14
-    rad = (site.PLAZA_R - 1.9) * SCALE
-    h = 13.5 * m
-    tops = []
-    for k in range(n):
-        ang = (k + 0.5) / n * TAU
-        x, y = rad * math.cos(ang), rad * math.sin(ang)
-        v, q, uv = tube(np.array([(x, y, PANEL_Z - 0.1 * m), (x, y, PANEL_Z + h)]), 0.2 * m, 6)
-        posts.add(v, q, smooth=True)
-        v, q, uv = ellipsoid((x, y, PANEL_Z + h + 0.15 * m), (0.3 * m, 0.3 * m, 0.3 * m), sides=8, rings=5)
-        posts.add(v, q, smooth=True)
-        tops.append(np.array([x, y, PANEL_Z + h]))
-    bulbs = MB()
-    count = 0
-    for k in range(n):
-        a_, b_ = tops[k], tops[(k + 1) % n]
-        span = np.linalg.norm(b_ - a_)
-        sag = 0.085 * span * r.uniform(0.85, 1.15)
-        steps = int(span / (1.75 * m))
-        s = np.linspace(0, 1, steps + 1)
-        pts = a_[None] + (b_ - a_)[None] * s[:, None]
-        pts[:, 2] -= sag * 4 * s * (1 - s)
-        v, q, uv = tube(pts, 0.06 * m, 4)
-        posts.add(v, q, smooth=True)
-        for p in pts[1:-1]:
-            v, q, uv = ellipsoid((p[0], p[1], p[2] - 0.32 * m), (0.24 * m, 0.24 * m, 0.3 * m), sides=8, rings=5)
-            bulbs.add(v, q, smooth=True)
-            count += 1
-        mid = pts[len(pts) // 2]
-        ld = bpy.data.lights.new(f"WireLight{k:02d}", "POINT")
-        ld.energy = 0.011
-        ld.color = (1.0, 0.6, 0.28)
-        ld.shadow_soft_size = 0.004
-        lo = add_object(f"WireLight{k:02d}", ld, col, loc=(mid[0], mid[1], mid[2] - 0.3 * m))
-        lo["film_lamp"] = 0.011
-    add_object("Posts", posts.build("Posts", [wire]), col).visible_shadow = True
-    add_object("LampTips", tips.build("LampTips", [lamp_tip]), col).visible_shadow = False
-    add_object("MicroLamps", bulbs.build("MicroLamps", [micro]), col).visible_shadow = False
+    add_object("Pins", pins.build("Pins", [wire]), col)
+    add_object("LampTips", tips.build("LampTips", [tip]), col).visible_shadow = False
 
     # ---- the people
     fig = MB()
     people = cast()
     n_orange = 0
     for k, (x, y, turn, kind, scale) in enumerate(people):
-        is_orange = r.random() < 0.38
+        if kind == "rest":
+            continue
+        is_orange = r.random() < 0.16
         n_orange += is_orange
         px, py = x * SCALE, y * SCALE
         if kind == "sit":
-            _figure(fig, r, px, py, PANEL_Z + 1.72 * m, turn, scale * 1.1, seated=True, orange=is_orange)
-        elif kind == "rest":
-            _figure(fig, r, px, py, PANEL_Z + 0.88 * m, turn, scale * 0.78, lean=r.normal(0, 0.05), orange=is_orange)
+            _figure(fig, r, px, py, PANEL_Z + 1.72 * m, turn, scale, seated=True, orange=is_orange)
         else:
-            _figure(fig, r, px, py, PANEL_Z, turn, scale * 1.1, lean=(0.1 if kind == "walk" else 0.0) + r.normal(0, 0.03), orange=is_orange)
+            _figure(fig, r, px, py, PANEL_Z, turn, scale, lean=(0.1 if kind == "walk" else 0.0) + r.normal(0, 0.03), orange=is_orange)
     add_object("Figures", fig.build("Figures", [white, orange]), col)
-    print(f"[square] {len(site.tree_sites())} trees, {len(lamps)} lamps, {count} micro lamps, {len(people)} figures ({n_orange} orange)")
+    print(f"[square] {len(sites)} beads, {len(lamps)} lamps, {len(people)} figures ({n_orange} orange)")
     return col
