@@ -191,7 +191,8 @@ void main() {
 // held under (or, in daylight, over) the luminance that keeps body text at 4.5:1.
 export const FINAL = HEAD + `out vec4 o; uniform sampler2D uScene; uniform sampler2D uB1; uniform sampler2D uB2; uniform sampler2D uB3;
 uniform int uLight; uniform vec2 uPx; uniform float uSeed; uniform vec4 uCalm[8]; uniform float uFeather[8]; uniform float uBloom;
-float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+// grain with no weave in it: hashed on whole pixels
+float hash(vec2 p) { vec3 p3 = fract(vec3(floor(p).xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 void main() {
   vec3 c = texture(uScene, v_uv).rgb;
@@ -223,8 +224,8 @@ void main() {
   } else {
     // a hazy photograph, not a model: the picture seen through a diffusion
     // filter, its shadows lifted into the warm air
-    c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.4);
-    c = mix(c, vec3(0.96, 0.9, 0.8), 0.1 * (1.0 - smoothstep(0.2, 0.9, dot(c, vec3(0.33)))));
+    c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.24);
+    c = mix(c, vec3(0.96, 0.92, 0.85), 0.06 * (1.0 - smoothstep(0.2, 0.9, dot(c, vec3(0.33)))));
     c = clamp(c, 0.0, 1.0);
     // the copy sits on clean paper: the picture is washed out toward it
     vec3 paper = vec3(0.949, 0.933, 0.902);

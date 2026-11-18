@@ -450,7 +450,9 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       feather[nc] = soft * size.dpr;
       nc++;
     };
-    const soft = opts.light ? 170 : 150;
+    // a wide page lets the picture go slowly under the words; on a narrow one the
+    // fountain stands right over them and must keep its light
+    const soft = size.w >= 1080 ? (opts.light ? 250 : 190) : opts.light ? 100 : 90;
     hold(page.top?.getBoundingClientRect(), 36, 0);
     hold(page.heroCopy?.getBoundingClientRect(), soft, 10);
     for (const s of page.mid) {
@@ -496,7 +498,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       // sky over the roofs and the fountain is not lost
       const tanf = a > 0.9 ? 0.42 : 0.55;
       const p = a > 0.9 ? [-22, -220, 34] : [-8, -170, 22];
-      hero = aim(p, 0.5, 1 - (2 * (copyTop - size.h * 0.045)) / size.h, tanf);
+      hero = aim(p, 0.5, 1 - (2 * (copyTop - size.h * 0.105)) / size.h, tanf);
       end = aim(p, 0.5, 1 - (2 * (footTop - size.h * 0.07)) / size.h, tanf);
     }
     // lifted: toward the fountain and up its plume, looking into it
@@ -596,7 +598,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     seen = j;
     const cam = camera(j);
     const sceneOn = j.cov < 0.999;
-    const surge = surgeAt(t);
+    const surge = Math.max(surgeAt(t), j.down > 0 ? 0 : ease(j.lift / 0.16));
     // the copy's side of the wide hero is kept quiet, up to the copy's right
     // edge; the close is symmetrical
     const copyR = page.heroCopy?.getBoundingClientRect().right ?? size.w * 0.4;
@@ -672,7 +674,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       // the liquid's relief, by the size of its own grid
       a.f("u_rel", (r.liq.h / 900) * (opts.light ? 160 : 260) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
       a.f("u_t", t); a.f("u_surge", surge); a.f("u_scene", sceneOn ? 1 : 0); a.f("u_breath", j.breath);
-      a.f("u_fh", 12.0 + 4.6 * surge + 0.25 * Math.sin(t * 2.3)); a.f("u_fr", 6.4 + 0.8 * surge); a.f("u_dpr", size.dpr);
+      a.f("u_fh", 13.4 + 4.4 * surge + 0.25 * Math.sin(t * 2.3)); a.f("u_dpr", size.dpr);
       a.fv("u_walk", 4, walkArr); a.fv("u_walkScr", 4, walkScr);
     });
     // At night the bright pass feeds the bloom; by day all of the picture goes

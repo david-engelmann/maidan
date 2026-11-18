@@ -283,7 +283,7 @@ test("without WebGL the poster of the square stays, and nothing errs", async ({ 
   await expect(page.locator("html")).not.toHaveAttribute("data-journey", "on");
   const poster = page.locator(".journey-poster");
   await expect(poster).toHaveCSS("opacity", "1");
-  expect(await poster.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain("data:image/svg+xml");
+  expect(await poster.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain("data:image/webp");
   // Nothing to pause, and the close ends after its words
   await expect(page.locator(".journey-toggle")).toHaveCount(0);
   expect(errors).toEqual([]);
