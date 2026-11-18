@@ -423,6 +423,11 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **Two strings in this file are read by CI:** `Workspace with 15 member
   crates.` (`docs_numbers_contract`) and the `latest` release line
   (`check-release-records.sh`). Keep them when editing.
+- **The try page's scene is built.** try.maidan.world has no bundler: edit
+  `deploy/cloudflare/try-src/gathering.ts`, then `npm run build:try` in
+  `deploy/cloudflare` writes `try/gathering.js` (Node strips the types, so
+  the source keeps to types that erase). Commit both;
+  `test/try-gathering.test.js` fails while they differ.
 - **A dependency bump or a new crate needs `cargo vet`.** Every crate in the
   root `Cargo.lock` must be audited or exempted in `supply-chain/`, or the
   `cargo vet (root lockfile)` job goes red. Run `cargo vet`, then certify or

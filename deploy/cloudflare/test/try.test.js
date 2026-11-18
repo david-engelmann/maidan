@@ -37,7 +37,12 @@ test("every file the page loads is served by the Worker, not the container", () 
   for (const ref of [...page.matchAll(/(?:href|src)="(\/[^"]*)"/g)].map((m) => m[1])) {
     assert.ok(TRY_PATHS.has(ref), `${ref} is not in TRY_PATHS`);
   }
-  for (const ref of [...script.matchAll(/from "([^"]+)"/g)].map((m) => m[1])) {
+  // What the page's own scripts import, the backdrop's scene (loaded later,
+  // with import()) included
+  const backdrop = readFileSync(new URL("../try/backdrop.js", import.meta.url), "utf8");
+  const imports = [script, backdrop].flatMap((src) => [...src.matchAll(/from "([^"]+)"|import\("([^"]+)"\)/g)].map((m) => m[1] ?? m[2]));
+  assert.ok(imports.includes("./gathering.js"), "the backdrop's scene is among them");
+  for (const ref of imports) {
     const path = ref.startsWith("/") ? ref : `/${ref.replace(/^\.\//, "")}`;
     assert.ok(TRY_PATHS.has(path), `${ref} is not in TRY_PATHS`);
   }
