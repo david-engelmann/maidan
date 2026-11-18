@@ -587,9 +587,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       } else {
         // The camera has moved. March the small city for where it is now; once
         // it rests, march the sharp one a band a frame, then fade over to it.
-        if (key !== city.fast) {
+        // The scale is part of the key: a buffer marched at another scale
+        // holds the picture in a different corner of the target.
+        const fastKey = `${key}@${scale}`;
+        if (fastKey !== city.fast) {
           march(r.fast, Math.round(W * scale), Math.round(H * scale), cam, quiet);
-          city.fast = key;
+          city.fast = fastKey;
           city.rest = 0;
         } else city.rest++;
         city.fade = 0;
@@ -599,6 +602,9 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
             city.band = 0;
           }
           const rows = Math.ceil(H / BANDS);
+          // From the first band on, the sharp buffer is a mix of two cameras,
+          // so it stands for neither until every band is in.
+          city.sharp = "";
           march(r.sharp, W, H, cam, quiet, city.band * rows, Math.min(rows, H - city.band * rows));
           city.band++;
           if (city.band >= BANDS) {
@@ -777,6 +783,9 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     try {
       live.length = 0;
       R = null;
+      // A restored context comes back with its extensions off.
+      if (!gl.getExtension("EXT_color_buffer_float") && !gl.getExtension("EXT_color_buffer_half_float")) throw new Error("no float targets");
+      if (float32 && !gl.getExtension("OES_texture_float_linear")) throw new Error("no float filtering");
       build();
       lost = false;
       state = null;

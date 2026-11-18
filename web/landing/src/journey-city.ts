@@ -43,7 +43,7 @@ float sdWedge2(vec2 p) {
 }
 // The copy's side of the wide hero is kept quiet (u_quiet): no lamps, no lit
 // arcade, the block behind the words left to the haze. 1 where a point is on it.
-float quietAt(float x) { return u_quiet * smoothstep(-16.0, -26.0, x); }
+float quietAt(float x) { return u_quiet * (1.0 - smoothstep(-26.0, -16.0, x)); }
 // the park's lamps: two rows a side, every sixteen metres
 vec3 nearLamp(vec2 w) {
   if (w.x < 0.0 && u_quiet > 0.5) return vec3(-9000.0, 0.0, 4.55);
@@ -250,7 +250,7 @@ vec3 sky(vec3 rd) {
       vec2 wg = vec2(fx * (5.0 + floor(4.0 * h11(id + 2.0))), el * sc * 3.4);
       vec2 wi = floor(wg), wf = fract(wg);
       float lit = step(0.8 + 0.07 * fi, h21(wi + id * 3.1 + fi)) * step(0.22, wf.x) * step(wf.x, 0.78) * step(0.3, wf.y) * step(wf.y, 0.8);
-      if (!day) b += mix(vec3(1.0, 0.62, 0.3), vec3(0.8, 0.86, 1.0), step(0.95, h21(wi + 4.4))) * lit * (0.42 - 0.1 * fi) * (0.35 + 0.65 * h21(wi + 1.7)) * (1.0 - 0.7 * u_quiet * smoothstep(-0.02, -0.2, az));
+      if (!day) b += mix(vec3(1.0, 0.62, 0.3), vec3(0.8, 0.86, 1.0), step(0.95, h21(wi + 4.4))) * lit * (0.42 - 0.1 * fi) * (0.35 + 0.65 * h21(wi + 1.7)) * (1.0 - 0.7 * u_quiet * (1.0 - smoothstep(-0.2, -0.02, az)));
       else b = mix(b, b * 0.93, lit);
       return b;
     }
@@ -273,7 +273,7 @@ vec3 facade(float s, float z, float top, vec2 seed, float bw, float fh, float ba
     float open = (1.0 - smoothstep(-fw, fw, dA)) * step(0.1, z);
     float on = step(h21(vec2(bid, 3.0) + seed), arcade > 0.5 ? 0.94 : 0.62);
     float var = 0.5 + 0.7 * h21(vec2(bid, 7.0) + seed);
-    float mull = 1.0 - 0.6 * detail * max(smoothstep(0.08, 0.03, abs(fract(ax / 0.85 + 0.5) - 0.5) * 0.85), smoothstep(0.1, 0.04, abs(z - spring)));
+    float mull = 1.0 - 0.6 * detail * max((1.0 - smoothstep(0.03, 0.08, abs(fract(ax / 0.85 + 0.5) - 0.5) * 0.85)), (1.0 - smoothstep(0.04, 0.1, abs(z - spring))));
     em = mix(vec3(1.0, 0.5, 0.2), vec3(1.0, 0.68, 0.38), h21(vec2(bid, 9.0) + seed)) * (0.66 - 0.3 * z / base) * var * on * open * mull;
     // the pier between two openings, and the course above them
     alb *= 1.0 + 0.16 * smoothstep(bay * 0.4, bay * 0.47, abs(ax)) * detail;
@@ -281,7 +281,7 @@ vec3 facade(float s, float z, float top, vec2 seed, float bw, float fh, float ba
     glass = open;
   } else if (z > top - 1.3) {
     // the cornice line
-    alb *= 1.0 + 0.3 * smoothstep(1.3, 0.9, top - z) - 0.35 * smoothstep(0.5, 0.2, abs(top - z - 1.5));
+    alb *= 1.0 + 0.3 * (1.0 - smoothstep(0.9, 1.3, top - z)) - 0.35 * (1.0 - smoothstep(0.2, 0.5, abs(top - z - 1.5)));
   } else if (z > base) {
     vec2 g = vec2(s / bw, (z - base) / fh);
     vec2 id = floor(g), f = fract(g);
@@ -298,7 +298,7 @@ vec3 facade(float s, float z, float top, vec2 seed, float bw, float fh, float ba
     float inner = (0.45 + 0.55 * smoothstep(0.25, 0.78, f.y)) * (h21(id + 2.2 + seed) < 0.32 ? 0.4 + 0.6 * step(f.x, 0.5) : 1.0);
     em = mix(vec3(1.0, 0.68, 0.38) * litP * 0.22, wc * bri * lit * inner * w, detail) * 1.1;
     // sills and piers: a little relief between the windows
-    float pier = smoothstep(0.14, 0.04, min(f.x, 1.0 - f.x)), sill = smoothstep(0.035, 0.0, abs(f.y - 0.15)), head = smoothstep(0.06, 0.0, abs(f.y - 0.87));
+    float pier = (1.0 - smoothstep(0.04, 0.14, min(f.x, 1.0 - f.x))), sill = (1.0 - smoothstep(0.0, 0.035, abs(f.y - 0.15))), head = (1.0 - smoothstep(0.0, 0.06, abs(f.y - 0.87)));
     alb *= 1.0 + detail * (0.13 * pier + 0.2 * sill - 0.22 * head);
     alb *= 1.0 - 0.78 * w * detail;
     glass = w * detail;
@@ -349,7 +349,7 @@ void shade(vec3 p, vec3 n, float m, float t, vec3 rd, out vec3 col, out vec3 war
       float fh = mix(3.3, 3.9, h21(L.id + 2.0));
       em = facade(s, p.z, top, L.id, mix(2.9, 4.4, k2), fh, p.z > corn && p.z < L.H2 + 0.3 ? corn + 0.7 : 5.4, mix(0.1, 0.17, k2), step(0.6, h21(L.id + 6.1)), 1.0, fw, alb, glass);
       // the cornice: a lit lip and the shadow under it
-      alb *= 1.0 + 0.35 * smoothstep(0.5, 0.2, abs(p.z - corn + 0.15)) - 0.4 * smoothstep(0.9, 0.3, abs(p.z - corn + 1.2));
+      alb *= 1.0 + 0.35 * (1.0 - smoothstep(0.2, 0.5, abs(p.z - corn + 0.15))) - 0.4 * (1.0 - smoothstep(0.3, 0.9, abs(p.z - corn + 1.2)));
       // the block behind the hero's words stays out of it
       float qz = quietAt(p.x);
       em *= 1.0 - 0.96 * qz;
@@ -365,9 +365,9 @@ void shade(vec3 p, vec3 n, float m, float t, vec3 rd, out vec3 col, out vec3 war
       // the clock: a lit face on each side
       float cd = length(vec2(dot(p.xy - TOWER.xy, tg), p.z - (TOWER.z - 15.0)));
       float face = 1.0 - smoothstep(4.6 - fw, 4.6 + fw, cd);
-      float ring = smoothstep(0.5, 0.2, abs(cd - 4.1));
+      float ring = (1.0 - smoothstep(0.2, 0.5, abs(cd - 4.1)));
       float ang = atan(dot(p.xy - TOWER.xy, tg), p.z - (TOWER.z - 15.0));
-      float hands = max(smoothstep(0.34, 0.1, abs(sin(0.5 * (ang - 0.9))) * cd) * step(cd, 3.6), smoothstep(0.3, 0.1, abs(sin(0.5 * (ang + 2.2))) * cd) * step(cd, 2.5));
+      float hands = max((1.0 - smoothstep(0.1, 0.34, abs(sin(0.5 * (ang - 0.9))) * cd)) * step(cd, 3.6), (1.0 - smoothstep(0.1, 0.3, abs(sin(0.5 * (ang + 2.2))) * cd)) * step(cd, 2.5));
       em = mix(em, vec3(1.0, 0.86, 0.62) * (1.5 - 0.9 * max(ring * 0.6, hands)), face);
       extra = vec3(1.0, 0.72, 0.42) * 0.16 * smoothstep(TOWER.z - 34.0, TOWER.z, p.z);
     } else if (zt >= 0.0 && zt < 9.0) {
@@ -620,8 +620,8 @@ float fountainRefl(vec3 w, vec3 r, float rough) {
   float zc = w.z + r.z / max(l, 1e-4) * along;
   float sp = rough * along;
   float s1 = 0.42 + 0.05 * sp, s2 = 2.4 + 0.06 * sp;
-  float colm = exp(-perp * perp / (2.0 * s1 * s1)) * smoothstep(u_fh + 1.0 + 0.5 * sp, u_fh - 1.5, zc) * (0.42 / s1);
-  float umb = exp(-perp * perp / (2.0 * s2 * s2)) * smoothstep(u_fh + 1.0 + 0.5 * sp, u_fh - 4.0, zc) * 0.3;
+  float colm = exp(-perp * perp / (2.0 * s1 * s1)) * (1.0 - smoothstep(u_fh - 1.5, u_fh + 1.0 + 0.5 * sp, zc)) * (0.42 / s1);
+  float umb = exp(-perp * perp / (2.0 * s2 * s2)) * (1.0 - smoothstep(u_fh - 4.0, u_fh + 1.0 + 0.5 * sp, zc)) * 0.3;
   return (colm + umb) * smoothstep(-0.5, 1.2, zc);
 }
 float lobe(vec3 r, vec3 l, float rough) {
@@ -727,7 +727,7 @@ void main() {
         // travertine's bedding, or the grain of wet granite
         alb *= 0.93 + 0.14 * vnoise(vec2(w.x * 0.9, w.y * 7.0) + sid * 3.0) * fadeX;
         // a darker collar of stone round the basin
-        float collar = smoothstep(12.4, 12.0, r);
+        float collar = (1.0 - smoothstep(12.0, 12.4, r));
         alb = mix(alb, (day ? vec3(0.8, 0.74, 0.66) : vec3(0.1, 0.1, 0.106)) * (0.85 + 0.3 * hv), collar);
         // the kerb
         float kb = max(smoothstep(PLAZA - 0.7, PLAZA - 0.5, abs(w.x)), smoothstep(KERB - 0.7, KERB - 0.5, w.y));
