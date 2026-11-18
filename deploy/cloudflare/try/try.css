@@ -185,6 +185,11 @@ code { font-family: var(--mono); font-size: 0.9em; }
 @media (max-width: 1079px) {
   .hero { padding-top: calc(var(--mark-d) + 1.75rem); }
 }
+/* Every block of the hero keeps to the words' column (36rem, as the lede
+   and the notice already do), whatever font draws it: a wider fallback
+   (DejaVu Sans on Linux, or any font while Geist swaps in) wraps the
+   headline instead of running it into the mark beside it */
+.hero > * { max-width: 36rem; }
 .gather { position: absolute; top: 0; left: 0; right: 0; height: var(--gather-h); z-index: -1; pointer-events: none; overflow: hidden; }
 .gather__canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.9s ease-out; }
 .gather__mark { position: absolute; left: calc(var(--mark-x) - var(--mark-d) / 2); top: calc(var(--mark-y) - var(--mark-d) / 2); width: var(--mark-d); height: var(--mark-d); }
