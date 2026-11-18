@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [464.0.0] — 2026-11-18
+
+maidan.world's landing opens on a wide view of a city at night with a fountain of liquid light at its heart, the OpenTelemetry stack moves to 0.33, and lettre moves to 0.11.24 for six advisories.
+
+### lettre 0.11.24
+
+- **Security:** lettre moves to 0.11.24, the release that fixes RUSTSEC-2026-0560 to RUSTSEC-2026-0565, with email-encoding to 0.4.3.
+
+### The landing's square is a wide view of a city at night, lightly drawn
+
+- **Changed:** the journey's square (the hero and the closing call to action) is now an establishing view from a rooftop some 260 m back and 46 m up, in place of the close view of a flat-iron wedge and a clock tower. It is no one place: low masonry blocks with water tanks and setbacks, a few slim towers far off, a park of tree crowns with eight lamp-lit paths and an open lawn toward the viewer, and wet avenues with street lights. The fountain of liquid light is a small, bright point in the park's heart, with warm air pooling round it and the lamps, and at the close its eight rills breathe as soft rays. On a phone the camera is lower and nearer, so the fountain crowns the headline under a strip of sky. The lift into the liquid, the silk behind the sections and the ribbons are unchanged.
+- **Changed:** by day the same city is a hazy golden afternoon: a low western sun, warm air in which the far blocks dissolve, soft shadows, and the picture seen through a diffusion filter.
+- **Changed:** the poster that holds the hero until the scene draws, and wherever it cannot, is redrawn to the wide view in both themes, its copy side kept calm.
+- **Fixed:** thin dark streaks across the night sky: a ray ending just at a block's edge could take a guard step for a hit and draw a fogged wall.
+- **Fixed:** the moving camera's city now steps to a smaller march as soon as a fifth of its frames run long, so scrolling the lift no longer drops frames.
+
+### The OpenTelemetry stack moves to 0.33 together
+
+- **Changed:** `maidan-observability` moves `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` and `opentelemetry-proto` from 0.31 to 0.33.1, `tracing-opentelemetry` from 0.32 to 0.34 and `metrics-exporter-opentelemetry` from 0.2.1 to 0.2.2 in one step, since each must match the others (in place of Dependabot's `opentelemetry_sdk`-only bump, #2360). Exports are unchanged: the same gRPC exporters, `service.name` resource and span and metric names, and each export is still sent once, because 0.33's new default retry policy is turned off. `opentelemetry-otlp` now builds only its gRPC exporter, which keeps a second `reqwest` out of the tree. An `https://` or scheme-less `OTLP_ENDPOINT` now stops the server at startup, since the exporter has no TLS; write it as `http://…`. A metrics push the collector does not take is now logged at `ERROR`, where 0.31 logged it at `DEBUG`.
+
 ## [463.0.0] — 2026-11-18
 
 maidan.world's landing is a night square with a fountain of liquid light, and scrolling lifts through liquid into silk behind the product sections and returns to the square at the close; try.maidan.world carries the particle gathering with its glitches fixed.
