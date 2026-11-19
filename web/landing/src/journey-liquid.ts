@@ -1,11 +1,12 @@
 // The liquid, for the journey. Two things make it:
 //  - a field of slow folds (noise warped through itself), which is the silk
-//    of Act 2 at rest and, heated, the plume the camera rises through;
+//    behind the page at rest and, heated, the molten light in the hero and
+//    under the closing call to action;
 //  - a stable-fluids simulation that the cursor and the scroll stir. Its dye
 //    is light poured into the field, and the flow it remembers bends the
 //    folds, so the silk moves like something with weight.
-// The field is written at half resolution (height, light, temperature,
-// cover) and lit as a surface where the frame is composed (journey-city.ts).
+// The field is written at half resolution (height, light, temperature) and
+// lit as a surface where the frame is composed (COMPOSE).
 
 const HEAD = `#version 300 es
 precision highp float;
@@ -18,11 +19,11 @@ float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a
 float fbm3(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * vnoise(p); p = mat2(1.6, 1.2, -1.2, 1.6) * p; a *= 0.5; } return s; }
 `;
 
-// o0: height, light, temperature, cover.  o1: tone (indigo to umber), vein,
+// o0: height, light, temperature.  o1: tone (indigo to umber), vein,
 // hairline.  o2: the height's slope, taken here at full precision.
 export const LIQ_FS = HEAD + `layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1; layout(location = 2) out vec4 o2;
-uniform sampler2D u_dye; uniform float u_t; uniform float u_scroll; uniform float u_aspect; uniform float u_cov; uniform float u_hot;
-uniform vec2 u_focus; uniform vec2 u_hotBand; uniform vec4 u_bands[4]; uniform vec2 u_dTexel;` + NOISE + `
+uniform sampler2D u_dye; uniform float u_t; uniform float u_scroll; uniform float u_aspect; uniform float u_hot;
+uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec4 u_bands[4]; uniform vec2 u_dTexel;` + NOISE + `
 void main() {
   vec4 dy = texture(u_dye, v_uv);
   vec2 sp = vec2(v_uv.x * u_aspect, v_uv.y);
@@ -57,8 +58,9 @@ void main() {
   float dp2 = abs(mod(ph2 + 1.5 * 3.14159265, 6.2831853) - 3.14159265);
   float hair = exp(-dp2 * dp2 / (2.0 * 0.07 * 0.07)) * smoothstep(0.4, 0.7, q1.y) * smoothstep(0.45, 0.6, fbm3(vec2(u * 1.3, (P.x * 0.78 + P.y * 0.62) * 3.0) + 41.0));
 
-  // the plume: the same liquid, hot, where the camera passes through it
-  float zone = exp(-pow((v_uv.y - u_hotBand.x) / u_hotBand.y, 2.0)) * u_hot;
+  // the same liquid, hot: a place on the page, with a middle and a reach
+  // up the frame (u_hotBand) and across it (u_hotSpan)
+  float zone = exp(-pow((v_uv.y - u_hotBand.x) / u_hotBand.y, 2.0) - pow((v_uv.x - u_hotSpan.x) / u_hotSpan.y, 2.0)) * u_hot;
   float fine = fbm(P * 2.1 + 4.0 * r + 3.0 * q);
   float fil = fbm(P * 4.6 + 7.0 * r + 2.0 * q + vec2(0.0, tt * 3.0));
   float ridge = pow(1.0 - abs(2.0 * fbm(P * 2.9 + 5.0 * r + vec2(tt * 2.0, 0.0)) - 1.0), 3.0);
@@ -67,11 +69,6 @@ void main() {
   float E = zone * body * 1.2;
   float heat = E * tH;
 
-  // how far the liquid has closed over the square: it swells out from the fountain
-  float dF = length(sp - vec2(u_focus.x * u_aspect, u_focus.y));
-  float cov = smoothstep(0.0, 0.26, u_cov * 2.35 - 0.3 - dF * (0.62 + 0.85 * f));
-  float rim = cov * (1.0 - cov) * 4.0 * (0.4 + fine);
-  E += rim * 1.0; heat += rim * 0.75;
 
   // a ribbon of molten light across a gap between two sections
   for (int i = 0; i < 4; i++) {
@@ -96,13 +93,58 @@ void main() {
     E += rb * 1.5 + rb2 * 0.9; heat += rb * 1.5 * (0.4 + 0.5 * tw) + rb2 * 0.6;
   }
 
-  // light poured in by the cursor and the plume's own flow
+  // light poured in by the cursor and the heat's own flow
   E += max(dy.x, 0.0); heat += max(dy.y, 0.0);
   float temp = clamp(heat / (E + 0.06), 0.0, 1.0);
   float height = silkH * (1.0 - 0.6 * min(E, 1.0)) + 0.07 * E;
-  o0 = vec4(height, E, temp, cov);
+  o0 = vec4(height, E, temp, 1.0);
   o1 = vec4(tone, vein * (1.0 - min(zone, 1.0)), hair * (1.0 - min(zone, 1.0)), 1.0);
   o2 = vec4(dFdx(height), dFdy(height), 0.0, 1.0);
+}`;
+
+// The frame: the liquid lit as a surface. Silk at rest, molten where it is
+// hot. By night indigo and umber with ember in it; by day pearl with gold.
+export const COMPOSE = HEAD + `out vec4 o; uniform sampler2D u_l0; uniform sampler2D u_l1; uniform sampler2D u_ln; uniform float u_rel; uniform int u_light;
+vec3 ember(float x) {
+  vec3 c0 = vec3(0.07, 0.02, 0.009), c1 = vec3(0.32, 0.065, 0.018), c2 = vec3(1.0, 0.415, 0.17), c3 = vec3(1.0, 0.64, 0.28), c4 = vec3(1.0, 0.85, 0.56);
+  x = clamp(x, 0.0, 1.0);
+  if (x < 0.22) return mix(c0, c1, x / 0.22);
+  if (x < 0.5) return mix(c1, c2, (x - 0.22) / 0.28);
+  if (x < 0.78) return mix(c2, c3, (x - 0.5) / 0.28);
+  return mix(c3, c4, (x - 0.78) / 0.22);
+}
+void main() {
+  vec4 lq = texture(u_l0, v_uv);
+  vec4 l1 = texture(u_l1, v_uv);
+  vec3 n = normalize(vec3(texture(u_ln, v_uv).xy * u_rel, 1.0));
+  vec3 Ld = normalize(vec3(-0.5, 0.6, 0.62));
+  float diff = max(dot(n, Ld), 0.0);
+  float rv = max(dot(reflect(-Ld, n), vec3(0.0, 0.0, 1.0)), 0.0);
+  float spec = pow(rv, 24.0), sheen = pow(rv, 5.0);
+  float E = max(lq.y, 0.0), temp = clamp(lq.z, 0.0, 1.0), tone = l1.x, vein = l1.y;
+  vec3 liquid;
+  if (u_light == 0) {
+    vec3 base = mix(vec3(0.026, 0.035, 0.094), vec3(0.078, 0.036, 0.02), tone);
+    vec3 silk = base * (0.2 + 1.55 * diff * diff) + mix(vec3(0.13, 0.17, 0.33), vec3(0.36, 0.2, 0.105), tone) * (0.22 * sheen + 0.34 * spec);
+    silk += vec3(1.0, 0.36, 0.1) * (vein * 0.8 + l1.z * 0.07);
+    float I = 1.0 - exp(-E * 1.3);
+    vec3 hot = ember(temp * 0.85 + I * 0.15) * I * (0.3 + 0.85 * diff) * (0.34 + 1.3 * pow(temp, 1.3)) + vec3(1.0, 0.76, 0.5) * spec * I * (0.12 + 0.55 * temp);
+    liquid = silk * (1.0 - 0.9 * I) + hot;
+  } else {
+    vec3 cream = mix(vec3(0.957, 0.94, 0.908), vec3(0.93, 0.9, 0.86), tone * 0.6);
+    liquid = mix(vec3(0.76, 0.72, 0.725), cream, 0.15 + 0.85 * smoothstep(0.15, 0.9, diff)) + vec3(1.0) * spec * 0.04;
+    // a blush of champagne where the silk is warm
+    liquid = mix(liquid, vec3(0.96, 0.88, 0.72), tone * 0.3 * smoothstep(0.3, 0.8, diff));
+    liquid = mix(liquid, mix(vec3(0.72, 0.64, 0.52), vec3(0.88, 0.7, 0.38), tone), clamp(l1.z, 0.0, 1.0) * 0.6);
+    liquid = mix(liquid, mix(vec3(0.93, 0.7, 0.3), vec3(0.7, 0.47, 0.15), tone), clamp(vein * 2.6, 0.0, 0.92));
+    float A = 1.0 - exp(-E * 1.25);
+    // by day the light is gold: honey in its depth, bronze where it cools, champagne where it turns to the sun
+    vec3 ink = temp > 0.45 ? mix(vec3(0.8, 0.55, 0.18), vec3(0.98, 0.76, 0.34), (temp - 0.45) / 0.55) : mix(vec3(0.42, 0.28, 0.11), vec3(0.8, 0.55, 0.18), temp / 0.45);
+    ink = mix(vec3(0.98, 0.8, 0.42), ink, smoothstep(0.25, 0.9, A));
+    ink = mix(ink, vec3(1.0, 0.94, 0.76), smoothstep(0.62, 1.0, diff) * 0.55);
+    liquid = mix(liquid, ink * (0.9 + 0.14 * diff), A * 0.92) + vec3(1.0, 0.97, 0.88) * spec * A * 0.5;
+  }
+  o = vec4(liquid, 1.0);
 }`;
 
 // ---- the simulation (stable fluids)

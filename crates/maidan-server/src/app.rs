@@ -1428,8 +1428,8 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/room.js"),
             ),
-            // The journey behind the whole page (raw WebGL2): the square
-            // under the hero, liquid light behind the sections. Loaded once
+            // The journey behind the whole page (raw WebGL2): liquid light,
+            // hot in the hero and at rest behind the sections. Loaded once
             // the hero's words have painted.
             "journey.js" => (
                 "text/javascript; charset=utf-8",

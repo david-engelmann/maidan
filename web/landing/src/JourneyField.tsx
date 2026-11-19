@@ -8,10 +8,10 @@ import "./journey.css";
 const DRAWING: readonly string[] = ["running", "paused", "still", "away"];
 
 /**
- * The journey behind the page: a night square under the hero, liquid light
- * behind the sections, the square again at the close. Decoration only:
- * aria-hidden, under the words, and without a GPU the hero's poster of the
- * square simply stays.
+ * The journey behind the page: liquid light, hot beside the hero's words,
+ * at rest behind the sections, hot again under the closing call to action.
+ * Decoration only: aria-hidden, under the words, and without a GPU the
+ * hero's poster of it simply stays.
  *
  * The scene is its own chunk (journey.js), loaded once the page has loaded
  * and gone idle, so the words paint first. The canvas is fixed behind the
