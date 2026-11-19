@@ -401,6 +401,24 @@
 .rm-card[data-big] .ml-card__state { height: 18px; font-size: 12.5px; }
 .rm-card[data-big] .rm-ev { font-size: 12px; height: 22px; }
 .rm-card[data-big] .rm-note { font-size: 12px; }
+.rm-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--ss-line);
+  border-radius: var(--ss-radius-md);
+  color: var(--ss-text);
+  font-size: 12.5px;
+  transition: opacity 0.3s ease;
+}
+.rm-slot[data-off] { opacity: 0; }
+.rm-slot__plus { font-size: 15px; line-height: 1; }
 .rm-also {
   position: absolute;
   left: 16px;

@@ -59,7 +59,7 @@ export function RoomSection() {
     <section className="room" aria-labelledby="room-title">
       <div className="room-head">
         <p className="eyebrow">The board</p>
-        <h2 id="room-title">Every task has one owner.<br />Work on the same declared files waits.</h2>
+        <h2 id="room-title">Every task has one owner.</h2>
         <p className="lede">
           Claude Code, Codex, Cursor, Grok, Muse and Antigravity pull from the same board. Follow
           one task as it is claimed, reviewed and merged.
