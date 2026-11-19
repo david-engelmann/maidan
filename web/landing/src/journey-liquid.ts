@@ -115,8 +115,8 @@ void main() {
     body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
     col = body * (0.5 + 1.25 * soft) * relief;
     // in shade the net comes and goes across the page, as light does through deep water: one even net is wallpaper
-    float patchy = mix(0.22, 1.25, smoothstep(0.36, 0.62, tone));
-    col += mix(vec3(0.2, 0.55, 0.85) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.5, lit) * caus;
+    float patchy = mix(0.4, 1.25, smoothstep(0.36, 0.62, tone));
+    col += mix(vec3(0.2, 0.55, 0.85) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
     col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
     sun = lit;
   } else {
@@ -124,13 +124,15 @@ void main() {
     // shallows, and a deeper blue where the page holds its light. The shore
     // wanders, so the water never ends on a straight line.
     float h = clamp(heat + (tone - 0.5) * 0.9 * smoothstep(0.0, 0.3, heat), 0.0, 1.0);
-    // a waterline, not a haze: the water ends within a few pixels, on a
-    // pale wet edge, and deepens away from its shore
-    float lit = smoothstep(0.244, 0.258, h);
-    float rim = lit * (1.0 - smoothstep(0.258, 0.3, h));
-    vec3 water = mix(vec3(0.72, 0.89, 0.92), vec3(0.39, 0.72, 0.85), smoothstep(0.26, 0.9, h));
-    col = mix(vec3(0.949, 0.933, 0.902), water * (0.86 + 0.3 * soft) * relief, lit);
-    col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit + rim * 0.45, 0.0, 0.95));
+    // A waterline, not a haze: the water ends within a few pixels, on a
+    // thin bright edge, with the paper a shade darker where it is wet, and
+    // it is already the pool's colour at its shore.
+    float lit = smoothstep(0.247, 0.255, h);
+    float rim = lit * (1.0 - smoothstep(0.255, 0.27, h));
+    float wet = smoothstep(0.212, 0.247, h) * (1.0 - lit);
+    vec3 water = mix(vec3(0.6, 0.85, 0.91), vec3(0.39, 0.72, 0.85), smoothstep(0.26, 0.8, h));
+    col = mix(vec3(0.949, 0.933, 0.902) * (1.0 - 0.07 * wet), water * (0.86 + 0.3 * soft) * relief, lit);
+    col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit + rim * 0.7, 0.0, 0.95));
     sun = lit;
     col = mix(col, vec3(1.0), clamp(pour * 0.25, 0.0, 0.9));
   }
@@ -273,8 +275,8 @@ void main() {
     c = pow(max(lin, 0.0), vec3(1.0 / 2.2));
     c += (hash(p + uSeed) - 0.5) * 0.013;
   } else {
-    // a hazy photograph, not a model: the picture seen through a diffusion filter
-    c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.24);
+    // a little bloom only: more, and the pool's shore is a smear
+    c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.08);
     c = clamp(c, 0.0, 1.0);
     // the header's bar stands on lightened water
     c = mix(c, vec3(0.949, 0.933, 0.902), bar * 0.4);

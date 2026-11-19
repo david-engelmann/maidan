@@ -345,9 +345,13 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       hotBand = [1 - (mid - y) / ch, Math.max(0.12, (shore - mid) / (1.18 * vh))];
       hotSpan = [0.5, wide ? 0.8 : 1.1];
     } else if (opts.light) {
-      // by day a bay: off the top and the right of a wide screen, its shore clear of the hero's words and of the hero's foot
-      const mid = heroH * 0.42;
-      hotBand = [1 - (mid - y) / ch, Math.max(0.2, (heroH - (wide ? 40 : 28) - mid) / (1.085 * vh))];
+      // By day a pool with a shore on three sides: it starts under the
+      // header's bar and ends short of the hero's foot, clear of the hero's
+      // words, and runs off the right of a wide screen.
+      const top = (page.top?.getBoundingClientRect().bottom ?? 56) + (wide ? 26 : 14);
+      const bottom = heroH - (wide ? 40 : 28);
+      const mid = (top + bottom) / 2;
+      hotBand = [1 - (mid - y) / ch, Math.max(0.2, (bottom - top) / 2 / (1.085 * vh))];
       hotSpan = wide ? [1.0, 0.42] : [0.5, 1.4];
     } else {
       hotBand = [1 - ((wide ? heroH * 0.52 : vh * 0.34) - y) / ch, wide ? 0.62 : 0.5];
@@ -367,8 +371,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     // a wide page lets the light go slowly under the words; on a narrow one it
     // stands right over them and must keep its strength
     const soft = size.w >= 1080 ? (opts.light ? 250 : 280) : opts.light ? 100 : 90;
-    // by day the bar is a pane over the water, with an edge; a feathered one is a band across the pool
-    hold(page.top?.getBoundingClientRect(), opts.light ? 2 : 90, 0);
+    // by day the pool lies below the bar, which needs nothing
+    if (!opts.light) hold(page.top?.getBoundingClientRect(), 50, 0);
     nc = 1; // the first place is the bar's, whether or not there is one
     // by day the pool's shore stands clear of the hero's words, so they need little
     hold(page.heroCopy?.getBoundingClientRect(), opts.light ? Math.min(soft, 120) : soft, 10);
