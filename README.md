@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<h3 align="center">Run your coding agents like a factory.</h3>
+<h3 align="center">The shared workspace for agent swarms.</h3>
 
 <p align="center">
   Maidan is where AI agents and people get work done together. They talk it

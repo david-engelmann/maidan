@@ -95,23 +95,24 @@ void main() {
   vec3 n = normalize(vec3(texture(u_ln, v_uv).xy * u_rel, 1.0));
   vec3 Ld = normalize(vec3(-0.5, 0.6, 0.62));
   float diff = max(dot(n, Ld), 0.0);
-  float spec = pow(max(dot(reflect(-Ld, n), vec3(0.0, 0.0, 1.0)), 0.0), 40.0);
   float caus = lq.y, heat = clamp(lq.z, 0.0, 1.0), tone = l1.x, pour = l1.z;
   vec3 col;
   if (u_light == 0) {
-    vec3 deep = mix(vec3(0.004, 0.016, 0.045), vec3(0.008, 0.045, 0.08), tone);
-    col = deep * (0.75 + 0.5 * diff) + vec3(0.08, 0.15, 0.28) * spec * 0.12;
+    // flat deep water: the net carries the picture, and nothing drifts in it
+    vec3 deep = mix(vec3(0.005, 0.02, 0.05), vec3(0.007, 0.03, 0.062), tone);
+    col = deep * (0.92 + 0.12 * diff);
     // the net of light: gold where the light stands, a cool glimmer elsewhere
-    col += mix(vec3(0.16, 0.36, 0.62) * 0.5, vec3(1.0, 0.74, 0.38) * 1.7, heat) * caus;
+    float warm = smoothstep(0.12, 0.55, heat);
+    col += mix(vec3(0.13, 0.3, 0.56) * 0.55, vec3(1.0, 0.74, 0.38) * (0.9 + 0.9 * heat), warm) * caus;
     // and the glow the water holds under it
     col += vec3(1.0, 0.6, 0.24) * 0.07 * heat * heat;
     col += vec3(1.0, 0.72, 0.38) * pour * 0.3;
   } else {
     // pale water over the page's paper, so it never stands apart from it as a band
-    vec3 clear = mix(vec3(0.949, 0.933, 0.902), vec3(0.8, 0.9, 0.925), 0.3 + 0.25 * tone);
-    col = clear * (0.96 + 0.05 * diff);
+    vec3 clear = mix(vec3(0.949, 0.933, 0.902), vec3(0.78, 0.89, 0.92), 0.5 * heat + 0.05 * tone);
+    col = clear * (0.97 + 0.04 * diff);
     // the net of light is the sun's: gold, deepest where the page holds its light
-    col = mix(col, mix(vec3(0.97, 0.86, 0.6), vec3(0.93, 0.7, 0.28), heat), clamp(caus * mix(0.55, 1.0, heat), 0.0, 0.92));
+    col = mix(col, mix(vec3(0.97, 0.86, 0.6), vec3(0.93, 0.7, 0.28), heat), clamp(caus * mix(0.3, 1.0, heat), 0.0, 0.92));
     col = mix(col, vec3(1.0, 0.88, 0.58), clamp(pour * 0.25, 0.0, 0.9));
   }
   o = vec4(col, 1.0);

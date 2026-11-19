@@ -151,7 +151,7 @@ section[id] { scroll-margin-top: calc(env(safe-area-inset-top) + 4rem); }
 
 /* Type */
 h1, h2 { margin: 0; font-weight: 560; letter-spacing: -0.06em; line-height: 0.92; text-wrap: balance; }
-h1 { font-size: clamp(3.2rem, 13vw, 7.6rem); }
+h1 { font-size: clamp(2.5rem, 10.4vw, 5rem); }
 h2 { font-size: clamp(2.4rem, 9vw, 4.8rem); }
 h3 { margin: 0; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
 .eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -203,9 +203,9 @@ section > *, .hero > * { min-width: 0; }
 .step p:last-child { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Guarantees */
-.guarantees { display: grid; gap: 1.6rem; padding-top: clamp(3.5rem, 9svh, 6rem); }
+.guarantees { display: grid; gap: 1.6rem; padding-top: clamp(3rem, 7svh, 4.5rem); }
 .guarantees > .eyebrow { grid-column: 1 / -1; margin: 0; }
-.guarantee { padding-top: 1.1rem; border-top: 1.5px solid var(--ink); }
+.guarantee { padding-top: 1.1rem; border-top: 1px solid var(--line); }
 .guarantee p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Developers */
@@ -265,7 +265,9 @@ section > *, .hero > * { min-width: 0; }
    cooling as it leaves, and a ribbon of light over "How it works" and over
    "Hosted or self-hosted". Each gets the room. */
 .room { padding-top: clamp(3.5rem, 9svh, 6rem); }
-.how, .hosting, .watch { padding-top: clamp(5rem, 13svh, 8rem); }
+.how, .hosting, .watch { padding-top: clamp(4rem, 10svh, 6rem); }
+/* The recording is the whole console: too small to read on a phone, where the board above already shows the product */
+@media (max-width: 719px) { .watch { display: none; } }
 
 /* Footer: the page's floor. It stands on the paper itself, not over the
    square, so its small words keep their contrast, under the same horizon as
@@ -305,7 +307,8 @@ section > *, .hero > * { min-width: 0; }
      the server's first paint, which has no calls to action yet, puts the
      headline where the page then keeps it */
   .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: 100svh; padding-top: max(7rem, 17svh); padding-bottom: 3rem; }
-  .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
+  /* two lines: the headline may run past the words' column, over the water */
+  .hero h1 { font-size: clamp(3.2rem, 4.6vw, 5.4rem); width: max-content; max-width: 62vw; }
   /* One size for every section's heading, a step under the headline's */
   h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -335,17 +338,14 @@ section > *, .hero > * { min-width: 0; }
   .eyebrow-sep { display: block; height: 0; overflow: hidden; }
 }
 /* Where the tabs and Copy no longer share a bar, the tabs fill it and Copy
-   sits in the example's corner, the first lines wrapping clear of it */
+   takes a row of its own under the example */
 @media (max-width: 479px) {
   .run-card { grid-template-columns: minmax(0, 1fr); }
   .tablist { flex: 1; flex-wrap: nowrap; }
   .tab { flex: 1 1 auto; padding: 0 0.6rem; }
-  .copy-cell { grid-area: 2 / 1; justify-self: end; align-self: start; z-index: 1; padding: 0.5rem; border-bottom: 0; }
+  .copy-cell { grid-area: 3 / 1; padding: 0.5rem; border-bottom: 0; border-top: 1px solid var(--run-line); }
+  .copy { width: 100%; }
   .code-stack { grid-area: 2 / 1; }
-  .code::before { content: ""; float: right; width: 4.6rem; height: 2.5rem; }
-  /* "Select and copy" is twice as wide as "Copy" or "Copied": the first lines
-     make room for it while it shows, so it never covers the example */
-  .run-card:has(.copy.failed) .code::before { width: 9.6rem; }
 }
 /* A phone's bar has room for the mark, the picture's pause control and the
    one action, so GitHub gives way to the control (it is in the closing
@@ -408,14 +408,12 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room { padding-top: clamp(5rem, 13svh, 8rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: clamp(4rem, 10svh, 6rem); } .room-steps { max-width: 1180px; } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
 .watch-frame { position: relative; margin-top: 2rem; }
 .watch-clip { display: block; width: 100%; height: auto; aspect-ratio: 960 / 500; object-fit: cover; object-position: top; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); background: var(--paper-2); }
-/* On a phone the whole board would be too small to read: show its left half, larger */
-@media (max-width: 719px) { .watch-clip { aspect-ratio: 1 / 1; object-position: 22% top; } }
 /* Clear of the clip's drop shadow, which would dim the note on paper */
 
 /* Play and pause for every moving picture: a quiet glyph over its corner,
