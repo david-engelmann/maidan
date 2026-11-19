@@ -988,6 +988,10 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         "board-live.png",
         "board-live.avif",
         "board-live-still.avif",
+        "board-live-light.gif",
+        "board-live-light.png",
+        "board-live-light.avif",
+        "board-live-light-still.avif",
     ] {
         let res = env
             .client
@@ -1199,6 +1203,10 @@ async fn landing_assets_are_not_found_where_sign_up_is_off() {
         "board-live.png",
         "board-live.avif",
         "board-live-still.avif",
+        "board-live-light.gif",
+        "board-live-light.png",
+        "board-live-light.avif",
+        "board-live-light-still.avif",
     ] {
         let res = off
             .client

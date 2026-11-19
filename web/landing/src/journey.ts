@@ -321,8 +321,9 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const stage = page.heroCopy ? page.heroCopy.getBoundingClientRect().top + y : vh * 0.46;
     const upC = wide ? heroH * 0.52 : stage * 0.5;
     const hotUp = 1 - ease((y - vh * 0.25) / (vh * 0.95));
-    // (low on the last screen, so the closing headline stands on quiet silk and the light comes up under it)
-    const downC = max + vh * 0.78;
+    // (low on the last screen, over the footer, so the closing headline stands on quiet silk and the light comes up under it)
+    const foot = page.foot?.getBoundingClientRect();
+    const downC = (foot ? foot.top + y : max + vh) - vh * 0.2;
     const hotDown = ease((1 - (max - y) / (vh * 0.95)) / 0.6);
     const atClose = hotDown > hotUp;
     // (a little under full at the close: it fills the screen's width there)

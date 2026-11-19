@@ -6,6 +6,12 @@
 #
 #   scripts/make-motion.sh                record, then encode
 #   scripts/make-motion.sh --encode-only  encode the frames of the last take
+#   MOTION_THEME=light scripts/make-motion.sh
+#                                         the landing's light board clip
+#
+# The docs show the console in its dark theme, so a light take encodes only
+# the landing's board-live-light.* (the landing shows the clip in the page's
+# own theme); every other output comes from the dark take.
 #
 # Recording runs ui-tests/capture/motion.capture.ts with its own config. It
 # needs `npm ci` in ui-tests/, Playwright's Chromium, and ffmpeg. It starts a
@@ -21,7 +27,15 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/docs/assets/motion"
-frames="${MOTION_FRAMES:-${TMPDIR:-/tmp}/maidan-motion-frames}"
+theme="${MOTION_THEME:-dark}"
+case "$theme" in
+  dark) suffix="" ;;
+  light) suffix="-light" ;;
+  *) echo "MOTION_THEME is dark or light, not $theme" >&2; exit 2 ;;
+esac
+# The spec reads it too: the console's stored theme and the browser's scheme.
+export MOTION_THEME="$theme"
+frames="${MOTION_FRAMES:-${TMPDIR:-/tmp}/maidan-motion-frames$suffix}"
 ffmpeg="${FFMPEG:-ffmpeg}"
 # 960 px keeps a GIF of a full console screen legible inside a docs column.
 gif_width="${MOTION_GIF_WIDTH:-960}"
@@ -31,15 +45,19 @@ mp4_width="${MOTION_MP4_WIDTH:-1280}"
 gif_max=$((4 * 1024 * 1024))
 mp4_max=$((1536 * 1024))
 # MOTION_CLIPS="board-live thread" encodes only those.
-read -r -a clips <<<"${MOTION_CLIPS:-board-live needs-you thread activity catalog}"
+default_clips="board-live needs-you thread activity catalog"
+[[ "$theme" == light ]] && default_clips="board-live"
+read -r -a clips <<<"${MOTION_CLIPS:-$default_clips}"
 
 if [[ "${1:-}" != "--encode-only" ]]; then
   (cd "$root/ui-tests" && MOTION_FRAMES="$frames" npx playwright test --config capture/motion.config.ts)
 fi
 
+# A light take's GIF and MP4 are only steps towards the landing's files.
+[[ "$theme" == light ]] && out="$(mktemp -d)"
 mkdir -p "$out"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work"; [[ "$theme" == light ]] && rm -rf "$out"' EXIT
 
 size() { wc -c <"$1" | tr -d ' '; }
 
@@ -72,15 +90,20 @@ for clip in "${clips[@]}"; do
     -movflags +faststart -an "$out/$clip.mp4"
 
   # The landing shows board-live as an animated AVIF (a fifth of the GIF's
-  # bytes) with the GIF and a still as fallbacks, from the same take.
+  # bytes) with the GIF and a still as fallbacks, from the same take, one set
+  # per theme (board-live.* dark, board-live-light.* light).
   if [[ "$clip" == board-live ]]; then
     landing="$root/web/landing/public"
     "$ffmpeg" -v error -y "${input[@]}" -vf "fps=15,scale=$mp4_width:-2:flags=lanczos,format=yuv420p" \
-      -c:v libsvtav1 -crf 40 -preset 4 -an -f avif "$landing/board-live.avif"
-    cp "$out/$clip.gif" "$landing/board-live.gif"
-    # The still (reduced motion, or paused) is board-live.png; its AVIF twin.
-    "$ffmpeg" -v error -y -i "$landing/board-live.png" -c:v libaom-av1 -still-picture 1 -crf 30 \
-      "$landing/board-live-still.avif"
+      -c:v libsvtav1 -crf 40 -preset 4 -an -f avif "$landing/board-live$suffix.avif"
+    cp "$out/$clip.gif" "$landing/board-live$suffix.gif"
+    # The still (reduced motion, or paused) is the take's last frame, the
+    # board once everything has landed, at the GIF's size; and its AVIF twin.
+    last="$(grep "^file " "$list" | tail -1 | sed "s/^file '\(.*\)'$/\1/")"
+    "$ffmpeg" -v error -y -i "$frames/$clip/$last" -vf "scale=$gif_width:-2:flags=lanczos" \
+      "$landing/board-live$suffix.png"
+    "$ffmpeg" -v error -y -i "$landing/board-live$suffix.png" -c:v libaom-av1 -still-picture 1 -crf 30 \
+      "$landing/board-live$suffix-still.avif"
   fi
 
   gif_size="$(size "$out/$clip.gif")"
