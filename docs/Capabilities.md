@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v465.0.0](https://github.com/david-engelmann/maidan/releases/tag/v465.0.0) — the landing's sections line up, size alike and hold still, and 3 more
+
+The landing page is liquid light from top to bottom, with a light and a dark recording, a full footer and a theme switch; dev deploys follow changes under web/.
+
+- The landing's sections line up, size alike and hold still
+- The landing page is liquid light from top to bottom
+- dev.maidan.world follows changes to the landing page and the console
+- The landing's recording, footer and pause control in both themes
+
+`CHANGELOG.md` under `[465.0.0]` has every entry.
+
 ## [v464.0.0](https://github.com/david-engelmann/maidan/releases/tag/v464.0.0) — lettre 0.11.24, and 2 more
 
 maidan.world's landing opens on a wide view of a city at night with a fountain of liquid light at its heart, the OpenTelemetry stack moves to 0.33, and lettre moves to 0.11.24 for six advisories.

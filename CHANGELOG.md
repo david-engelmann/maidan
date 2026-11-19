@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [465.0.0] — 2026-11-19
+
+The landing page is liquid light from top to bottom, with a light and a dark recording, a full footer and a theme switch; dev deploys follow changes under web/.
+
+### The landing's sections line up, size alike and hold still
+
+- **Fixed:** the developer example card no longer changes height when a tab is picked. Beside the words on a wide screen it moved its tabs 21 to 37px under the pointer; it now takes the tallest example's height for all three. On a phone each line of an example wraps under its own start instead of running off the card (the `claude mcp add` command was cut mid-URL), the tabs fill their bar and Copy sits in the example's corner instead of on a row of its own.
+- **Fixed:** every section heading is one size on a wide screen, a step under the headline. "See it work", "How it works" and the closing heading were 77px at 1440px wide, larger than the 75px headline and the other sections' 63px.
+- **Changed:** the hero has two buttons and a link: Join the waitlist (or Create a workspace) and Run it yourself, then "Try it now, no sign-up" with an arrow. Three buttons broke two and one at every laptop width.
+- **Changed:** the header's mark and its last button stand on the sections' gutter on a wide screen, in line with the words under them, instead of 22px from the window's edges.
+- **Changed:** on a phone every row of calls to action stacks, full width, and a plan card narrower than its pair of buttons stacks them too, so no row breaks one way at 390px and another at 375px. The hero's eyebrow takes a line per half instead of leaving its dot at the end of the first.
+- **Changed:** buttons, tabs, Copy and the footer's links have hover states (the lit button brightens, an outlined one takes a wash, the demo link's arrow steps forward), with no movement under reduced motion; the recording's note and the plan cards keep a measure of about 70 characters; the code card and plan cards share the 16px corner of the page's other frames; and the closed invite sheet is hidden once it has slid away, so a tall screen never shows its top edge.
+
+### The landing page is liquid light from top to bottom
+
+- **Changed:** the hero no longer draws a city. The liquid light that ran behind the sections is now the whole picture: hot and molten beside the hero's words on a wide screen and over them on a phone, cooling into silk as the page scrolls, with the ribbons across the section gaps as before, and hot again under the closing call to action. By day it is gold on pearl.
+- **Changed:** the poster that holds the hero's place before the liquid draws, and where WebGL is missing, is a still of the liquid's own hot hero.
+- **Removed:** the ray-marched square (`journey-city.ts`), its camera, its people and the two full-size buffers it was marched into. The journey's chunk is under a third of its size, and nothing is drawn at reduced resolution while the page moves.
+
+### dev.maidan.world follows changes to the landing page and the console
+
+- **Fixed:** the `deploy dev` workflow ran only when `crates/`, the migrations, the lockfile or the deploy itself changed. The landing page and the console under `web/` are built into the server, so a change to either merged to `dev` and was not deployed until some later server change (two landing changes sat undeployed on 2026-11-18). The workflow now runs on `web/**` too.
+
+### The landing's recording, footer and pause control in both themes
+
+- **Added:** a light recording of the board for the light page (`/landing/board-live-light.avif`, with its GIF, PNG and still AVIF), recorded from the public demo with the same framing and scripted moves as the dark one. The page picks the recording by its own theme (`<html data-theme>`), so a stored Light or Dark outranks the system's, and the paused or reduced-motion still follows it. `MOTION_THEME=light scripts/make-motion.sh` records it and writes only the landing's light files. Either take now makes its still from its last frame.
+- **Added:** a theme switch (Dark, Light, System) in the landing's footer. It writes the console's own stored choice, so it themes the console too, and everything drawn on the page follows it at once. Dark stays the default.
+- **Changed:** the dark recording was taken again from the current console, whose board toolbar has changed since it was first recorded, so the two themes match. The docs' and README's board clip comes from the same take.
+- **Changed:** the landing's footer is a full one: the mark and tagline; columns for the page's sections, Try it now and Sign in; Docs, the Quickstart, the FAQ and the source; Support and the instance's Privacy and Terms; then the copyright and licence line. It stands on the paper under the page's horizon rule, follows the section gutter and the developer section's columns, and stacks to two columns on a phone.
+- **Fixed:** the landing picture's pause control no longer covers text. It was fixed to the bottom right of a phone screen, over the end of any full-width line that scrolled by. It now sits in the header bar beside GitHub at every width, with its 44px tap ring and name. Below 430px, where the bar cannot hold all four, GitHub gives way to it; GitHub is still in the closing section and the footer.
+
 ## [464.0.0] — 2026-11-18
 
 maidan.world's landing opens on a wide view of a city at night with a fountain of liquid light at its heart, the OpenTelemetry stack moves to 0.33, and lettre moves to 0.11.24 for six advisories.
