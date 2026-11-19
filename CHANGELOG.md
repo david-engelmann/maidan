@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [466.0.0] — 2026-11-19
+
+The landing page speaks to teams running agent swarms, over clear blue water: the headline is "The shared workspace for agent swarms.", and the background is pool water with a white net of light, still behind the copy.
+
+### The landing page speaks to teams running coding agents, over water instead of smoke
+
+- **Changed:** the headline is "The shared workspace for agent swarms." Maidan is the place a swarm or a software factory runs in, not another factory: the page says who it is for, and that people are brought in only at the approval gates they set. The review step says the reviewer is any second agent, on the same model or another provider, so it no longer reads as needing two vendors.
+- **Changed:** the picture behind the page is water seen from above with a net of light on it, worked out from the surface itself. The folds that read as smoke, the plumes of light and the ribbons across the gaps are gone.
+- **Changed:** "How it works" is four plain steps without the mock stills, the rules the server enforces have a heading, the recording of the real console sits below them with its empty lower part cropped (it is left out on a phone, where it is too small to read), and the sections are spaced alike. The page is about a sixth shorter.
+- **Changed:** the hero has two calls to action (join, and the live demo). On a phone the headline, both buttons and the first lines of the description are on the first screen.
+- **Changed:** the footer is one compact band: the name, eight links, the licence line and the theme switch.
+- **Removed:** the recording's "scripted for the recording" note, and `stageshow/Steps.tsx`.
+
+### The landing's background is clear blue water
+
+- **Changed:** the landing page's background is water in its own colours, drawn as the light on its floor: a blue body under a white net of light. The wave trains face every way, so the net has no grain, and scrolling no longer smears it. The gold net on navy read as smoke, and a surface shaded like a solid read as foil.
+- **Changed:** by night the water is sunlit beside the hero and under the closing call to action. Behind the sections of copy it is deep and still, held at its own dark blue with the net all but gone, so no line of light crosses small copy; the hero's words stand on dim water, and on a phone its headline stands on lit water. The closing headline holds the water round it less hard than body copy does.
+- **Changed:** by day the page is paper and the water is a pool set into it, a rounded panel with a pale coping: beside the hero's words on a wide screen, and round the closing call to action. A phone's first screen is plain paper.
+- **Fixed:** the closing call to action held a full-width band of the picture calm, since its heading is a full-width block; only the words are held now. The footer stands on the picture too, so the page ends in water and not on a cut across it. The outlined button at the close is solid, like the hero's.
+- **Changed:** the still shown before the picture draws is the right-hand square of the first screen, so it stands where the live water does, veiled on a phone where the words stand on it. The light theme has no still: its first screen is paper until the pool draws.
+
 ## [465.0.0] — 2026-11-19
 
 The landing page is liquid light from top to bottom, with a light and a dark recording, a full footer and a theme switch; dev deploys follow changes under web/.
