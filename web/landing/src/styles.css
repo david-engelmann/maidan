@@ -141,8 +141,11 @@ section[id] { scroll-margin-top: calc(env(safe-area-inset-top) + 4rem); }
 .brand .mark { width: 1.45rem; height: 1.45rem; flex: none; color: var(--mark-ink); }
 .nav { display: none; }
 .nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); transition: color 0.15s ease; }
-.nav a:hover, .gh:hover, .legal a:hover { color: var(--ink); }
-.gh { margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); transition: color 0.15s ease; }
+.nav a:hover, .gh:hover { color: var(--ink); }
+/* The slot for the picture's pause control takes the bar's free space, so
+   GitHub and the last button never move when the control arrives */
+.top-control { margin-left: auto; display: flex; align-items: center; }
+.gh { min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.7rem; text-decoration: none; font-size: 0.92rem; color: var(--muted); transition: color 0.15s ease; }
 .join-btn { min-height: 44px; padding: 0 1rem; border-radius: 99px; background: var(--primary); color: var(--primary-ink); box-shadow: var(--primary-shadow); font-size: 0.92rem; font-weight: 560; white-space: nowrap; transition: filter 0.15s ease; }
 .join-btn:hover { filter: var(--cta-hover); }
 
@@ -263,12 +266,38 @@ section > *, .hero > * { min-width: 0; }
 .room { padding-top: clamp(6rem, 22svh, 12rem); }
 .how, .hosting { padding-top: clamp(7.5rem, 19svh, 12rem); }
 
-/* Footer */
-.foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.4rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.4rem); color: var(--muted); font-size: 0.86rem; }
-.legal { display: flex; flex-wrap: wrap; gap: 1rem; }
-.legal a { text-decoration: none; min-height: 44px; min-width: 44px; justify-content: center; display: inline-flex; align-items: center; }
+/* Footer: the page's floor. It stands on the paper itself, not over the
+   square, so its small words keep their contrast, under the same horizon as
+   every other turn of the page. The mark and the tagline, then the page's
+   destinations in three columns, then the licence. */
+.foot { padding: 4rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.6rem); color: var(--muted); font-size: 0.92rem; background: var(--grain) 0 0 / 180px 180px, var(--paper); }
+.foot::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--rule-edge) 16%, var(--rule-core) 50%, var(--rule-edge) 84%, transparent);
+}
+.foot-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.6rem; }
+.foot-name { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; font-size: 1.1rem; font-weight: 640; letter-spacing: -0.04em; color: var(--ink); text-decoration: none; }
+.foot-name .mark { width: 1.45rem; height: 1.45rem; flex: none; color: var(--mark-ink); }
+.foot-brand p { margin: 0.3rem 0 0; max-width: 20rem; text-wrap: pretty; }
+.foot-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.2rem 1.6rem; }
+.foot-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.foot-head { margin: 0 0 0.45rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+/* 36px rows clear the 24px target on a mouse; a touch screen gets 44 */
+.foot-col a { display: inline-flex; align-items: center; min-height: 36px; text-decoration: none; color: var(--muted); transition: color 0.15s ease; }
+@media (pointer: coarse) { .foot-col a { min-height: 44px; } }
+.foot-col a:hover, .foot-base a:hover { color: var(--ink); }
+.foot-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 2rem; margin: 3rem 0 0; padding-top: 1.4rem; border-top: 1px solid var(--line); font-size: 0.86rem; }
+.foot-base p { margin: 0; text-wrap: pretty; }
+.foot-base a { color: inherit; text-underline-offset: 0.2em; transition: color 0.15s ease; }
+/* Dark, Light or System: a quiet segmented control, the chosen one raised */
+.theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--line); }
+.theme-switch button { min-height: 32px; padding: 0 0.85rem; border-radius: 99px; font-size: 0.82rem; color: var(--muted); transition: background-color 0.15s ease, color 0.15s ease; }
+.theme-switch button:hover { color: var(--ink); }
+.theme-switch button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+@media (pointer: coarse) { .theme-switch button { min-height: 44px; } }
 
 @media (min-width: 720px) {
+  .foot-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6rem; }
   .guarantees { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 2.4rem; }
   .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -287,6 +316,7 @@ section > *, .hero > * { min-width: 0; }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dev { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; align-items: center; }
+  .foot-top { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; }
   /* Centred beside the words, the card would move its tabs as it changed
      height: it takes the tallest example's height for every one */
   .code-sizer { display: block; visibility: hidden; }
@@ -323,11 +353,14 @@ section > *, .hero > * { min-width: 0; }
      make room for it while it shows, so it never covers the example */
   .run-card:has(.copy.failed) .code::before { width: 9.6rem; }
 }
-/* The narrowest phones have room for the mark and the one action; GitHub
-   is still in the closing section and the footer */
+/* A phone's bar has room for the mark, the picture's pause control and the
+   one action, so GitHub gives way to the control (it is in the closing
+   section and the footer); the narrowest phones drop it in any case */
+@media (max-width: 429px) {
+  .top:has(.journey-toggle) .gh { display: none; }
+}
 @media (max-width: 359px) {
   .gh { display: none; }
-  .join-btn { margin-left: auto; }
 }
 /* In one column the light crowns the first screen and the words start
    under it (journey.css sets --stage) */
@@ -354,7 +387,7 @@ section > *, .hero > * { min-width: 0; }
 @media (max-width: 719px) { .cta-hold { display: block; } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .top, .nav a, .gh, .join-btn, .cta, .cta.text .arrow, .tab, .copy { transition: none; }
+  .top, .nav a, .gh, .join-btn, .cta, .cta.text .arrow, .tab, .copy, .foot-col a, .foot-base a, .theme-switch button { transition: none; }
   .cta:active { transform: none; }
   .cta.text:hover .arrow { transform: none; }
 }

@@ -75,9 +75,10 @@
   .journey__canvas, .journey-poster { transition: none; }
 }
 
-/* The picture's pause control: it travels with the screen, since the picture
-   is behind every section. On a wide screen it stands in the gutter, clear of
-   the words; on one column the gutter is narrower than the glyph, so it hugs
-   the edge, where a ragged line rarely reaches. */
+/* The picture's pause control travels with the screen, since the picture is
+   behind every section: it sits in the header's bar, beside GitHub, where no
+   line of copy ever runs under it. The ring around its glyph still takes a
+   44px tap, and stands over its neighbours' gaps, not their words. Should the
+   bar be missing, it stands fixed in the corner instead. */
+.top .media-toggle.journey-toggle { position: relative; inset: auto; z-index: 1; flex: none; margin-right: 0.25rem; }
 .media-toggle.journey-toggle { position: fixed; right: max(0.25rem, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 0.75rem); z-index: 20; }
-@media (min-width: 1080px) { .media-toggle.journey-toggle { right: 1.5rem; bottom: 1.25rem; } }

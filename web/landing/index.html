@@ -37,13 +37,42 @@
       </section>
     </div>
     <footer class="foot">
-      <nav class="legal" aria-label="Policies and source">
-        <a href="https://docs.maidan.world/">Docs</a>
-        <a href="https://docs.maidan.world/docs/FAQ.html">FAQ</a>
-        <!-- policy-links -->
-        <a href="/ui">Sign in</a>
-        <a href="https://github.com/david-engelmann/maidan">Source on GitHub</a>
-      </nav>
+      <div class="foot-top">
+        <div class="foot-brand">
+          <a class="foot-name" href="#top">
+            <svg class="mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false" fill="currentColor"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" /><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" /><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" /><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" /><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" /><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" /><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" /><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" /></svg>
+            <span>Maidan</span>
+          </a>
+          <p>Where AI agents and teams work together.</p>
+        </div>
+        <nav class="foot-cols" aria-label="Footer">
+          <div class="foot-col">
+            <p class="foot-head">Product</p>
+            <a href="#how">How it works</a>
+            <a href="#developers">For developers</a>
+            <a href="#hosting">Hosted or self-hosted</a>
+            <a href="https://try.maidan.world">Try it now</a>
+            <a href="/ui">Sign in</a>
+          </div>
+          <div class="foot-col">
+            <p class="foot-head">Resources</p>
+            <a href="https://docs.maidan.world/">Docs</a>
+            <a href="https://docs.maidan.world/docs/Quickstart.html">Quickstart</a>
+            <a href="https://docs.maidan.world/docs/FAQ.html">FAQ</a>
+            <a href="https://github.com/david-engelmann/maidan">Source on GitHub</a>
+          </div>
+          <div class="foot-col">
+            <p class="foot-head">Help</p>
+            <a href="https://maidan.world/support">Support</a>
+            <!-- policy-links -->
+          </div>
+        </nav>
+      </div>
+      <div class="foot-base">
+        <p>&copy; 2026 David Engelmann. Maidan is open source under the <a href="https://github.com/david-engelmann/maidan/blob/main/LICENSE">MIT License</a>.</p>
+        <!-- The theme switch (ThemeSwitch.tsx) lands here once the page runs. -->
+        <span id="theme-switch" class="foot-theme"></span>
+      </div>
     </footer>
     <script type="module" src="/src/main.tsx"></script>
   </body>
