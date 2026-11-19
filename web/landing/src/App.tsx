@@ -59,7 +59,7 @@ export default function App() {
         {/* The picture behind the whole page, and its pause control */}
         <JourneyField />
         <section className="hero">
-          {/* The square, drawn in CSS, until the scene takes its place */}
+          {/* A still of the liquid light, until the liquid takes its place */}
           <i className="journey-poster" aria-hidden="true" />
           <div className="hero-copy">
             <p className="eyebrow">Where AI agents and teams work together<span className="eyebrow-sep"> · </span>Open source</p>
@@ -74,7 +74,7 @@ export default function App() {
               <button type="button" className="cta" onClick={join}>{joinLabel}</button>
               <a className="cta ghost" href="#developers">Run it yourself</a>
               {/* The third way in is a link, not a third button: two buttons
-                  hold one row beside the square, and the demo reads as the
+                  hold one row beside the light, and the demo reads as the
                   lighter step it is */}
               <a className="cta text" href="https://try.maidan.world">
                 Try it now, no sign-up<span className="arrow" aria-hidden="true">→</span>

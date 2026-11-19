@@ -39,7 +39,7 @@
   --primary-ink: #1b0b03;
   --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
   /* Hover lifts a button where it stands: the lit one brightens, an outlined
-     one takes a wash (solid where it stands on the square) */
+     one takes a wash (solid where it stands on the light) */
   --cta-hover: brightness(1.1);
   --ghost-hover: rgba(236, 240, 248, 0.08);
   --ghost-hover-solid: #1e1f21;
@@ -178,11 +178,11 @@ section > *, .hero > * { min-width: 0; }
 /* Hero */
 .hero { padding-top: 7.5rem; display: grid; gap: 3.5rem; isolation: isolate; overflow-x: clip; }
 .works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; text-wrap: pretty; }
-/* The hero's calls to action stand on the square: the outlined ones are
+/* The hero's calls to action stand on the light: the outlined ones are
    solid, so no light runs through their words */
 .hero .cta.ghost { background: var(--paper); }
 .hero .cta.ghost:hover { background: var(--ghost-hover-solid); }
-/* Two buttons hold one row beside the square, and the demo link sits under
+/* Two buttons hold one row beside the light, and the demo link sits under
    them, at every width the row would otherwise break unevenly */
 @media (min-width: 720px) {
   .hero .cta-row { display: grid; grid-template-columns: repeat(2, max-content); justify-content: start; }
@@ -250,16 +250,16 @@ section > *, .hero > * { min-width: 0; }
 }
 
 /* Close */
-/* The page ends where it began: the journey comes back down to the square
-   under the last call to action. Where the scene is drawing, the section
-   takes the whole screen, so the square has the room under the words; where
-   it is not, it ends after them. */
+/* The page ends where it began: the light comes up again under the last
+   call to action. Where the liquid is drawing, the section takes the whole
+   screen, so the light has the room under the words; where it is not, it
+   ends after them. */
 .close { text-align: center; padding: calc(17svh + 4.5rem) var(--gutter) 6rem; isolation: isolate; }
 :root[data-journey="on"] .close { min-height: 100svh; }
 
-/* The journey's beats fall in the gaps between sections: the plume the
-   camera rises through under the hero, and a ribbon of light over "How it
-   works" and over "Hosted or self-hosted". Each gets the room. */
+/* The journey's beats fall in the gaps between sections: the hero's light
+   cooling as it leaves, and a ribbon of light over "How it works" and over
+   "Hosted or self-hosted". Each gets the room. */
 .room { padding-top: clamp(6rem, 22svh, 12rem); }
 .how, .hosting { padding-top: clamp(7.5rem, 19svh, 12rem); }
 
@@ -276,8 +276,8 @@ section > *, .hero > * { min-width: 0; }
 @media (min-width: 1080px) {
   :root { --gutter: 6vw; }
   .nav { display: flex; margin-left: 1.6rem; }
-  /* The words hold the left column; the right is the square's, the fountain
-     63% across (journey.css). They hang from the top rather than centre, so
+  /* The words hold the left column; the right is the light's, its middle
+     72% across (journey.css). They hang from the top rather than centre, so
      the server's first paint, which has no calls to action yet, puts the
      headline where the page then keeps it */
   .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: 100svh; padding-top: max(7rem, 17svh); padding-bottom: 3rem; }
@@ -329,12 +329,12 @@ section > *, .hero > * { min-width: 0; }
   .gh { display: none; }
   .join-btn { margin-left: auto; }
 }
-/* In one column the fountain crowns the first screen and the words start
-   under its basin (journey.css sets --stage) */
+/* In one column the light crowns the first screen and the words start
+   under it (journey.css sets --stage) */
 @media (max-width: 1079px) {
   .hero { padding-top: calc(env(safe-area-inset-top) + var(--stage)); }
 }
-/* A phone's first screen holds the fountain, the headline and the first call
+/* A phone's first screen holds the light, the headline and the first call
    to action: the calls to action come straight after the headline, stacked, and
    the lede follows them. index.html holds their room (.cta-hold) in the
    first paint, so the lede does not move when they arrive. */

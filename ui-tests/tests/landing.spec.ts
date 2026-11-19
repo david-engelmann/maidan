@@ -216,7 +216,7 @@ test.describe("with reduced motion", () => {
 
   test("the journey is a composed still, redrawn as the page scrolls, with nothing to pause", async ({ page }) => {
     await openLanding(page);
-    // A still where a GPU draws it; the poster of the square where WebGL is
+    // A still where a GPU draws it; the poster of the light where WebGL is
     // missing or drawn on the CPU
     const journey = page.locator(".journey");
     await expect(journey).toHaveAttribute("data-state", /^(still|software|fallback)$/);
@@ -264,7 +264,7 @@ test("the journey behind the page is decoration in its own chunk, and its contro
   await expect(journey).toHaveAttribute("data-state", "running");
 });
 
-test("without WebGL the poster of the square stays, and nothing errs", async ({ page }) => {
+test("without WebGL the poster of the light stays, and nothing errs", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await page.addInitScript(() => {
@@ -316,20 +316,20 @@ test.describe("on a phone", () => {
   });
 });
 
-// A phone's first screen holds the fountain, the headline and the first call
+// A phone's first screen holds the light, the headline and the first call
 // to action, the short phone included.
 for (const vp of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
   test.describe(`on a ${vp.width}x${vp.height} phone`, () => {
     test.use({ viewport: vp, isMobile: true, hasTouch: true });
 
-    test("the fountain's room, the headline and the first call to action are on the first screen", async ({ page }) => {
+    test("the light's room, the headline and the first call to action are on the first screen", async ({ page }) => {
       await openLanding(page);
       const header = await page.locator(".top").boundingBox();
       const eyebrow = await page.locator(".hero .eyebrow").boundingBox();
       const h1 = await page.locator(".hero h1").boundingBox();
       const cta = await page.locator(".hero .cta").first().boundingBox();
       for (const box of [header, eyebrow, h1, cta]) expect(box).not.toBeNull();
-      // The fountain has at least a third of the screen, under the header and over the words
+      // The light has at least a third of the screen, under the header and over the words
       expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(vp.height * 0.33);
       // and the poster that stands in for it is the first screen's
       const poster = await page.locator(".journey-poster").boundingBox();
