@@ -111,10 +111,11 @@ void main() {
     float lit = smoothstep(0.08, 0.6, heat);
     vec3 body = mix(vec3(0.01, 0.052, 0.14), vec3(0.013, 0.064, 0.17), tone);
     body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
-    col = body * (0.4 + 1.7 * soft) * relief;
+    col = body * (0.4 + mix(2.5, 1.7, lit) * soft) * relief;
     // in shade the net comes and goes across the page, as light does through deep water: one even net is wallpaper
+    // and it is mostly the broad glow there, the fine lines faint: an even net of thin lines on navy is wire mesh
     float patchy = mix(0.4, 1.25, smoothstep(0.36, 0.62, tone));
-    col += mix(vec3(0.13, 0.45, 0.95) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
+    col += mix(vec3(0.13, 0.45, 0.95) * 0.2 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
     col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
     sun = lit;
   } else {
@@ -273,9 +274,9 @@ void main() {
     float Ld = L * mix(1.0, 0.09, sun * calm);
     float Lc = cap * tanh(Ld / cap);
     float held = mix(L, Lc, calm);
-    // large words need only 3:1: the water round them is shaded a little, and its brightest lines taken down
-    float capB = 0.12;
-    float Lb = capB * (1.0 - exp(-held * mix(1.0, 0.8, sun) / capB));
+    // large words need only 3:1, but a bright line through a letter still reads as a flaw: the water round them is shaded, and its brightest lines taken well down
+    float capB = 0.045;
+    float Lb = capB * (1.0 - exp(-held * mix(1.0, 0.5, sun) / capB));
     held = mix(held, Lb, big * (1.0 - calm));
     lin *= held / max(L, 1e-5);
     // a held highlight is a grey, and grey on navy reads as brown: keep it the water's blue
