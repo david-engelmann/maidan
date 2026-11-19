@@ -1,14 +1,13 @@
 // The journey: one fixed canvas behind the whole page, driven by scroll. It
-// is liquid light and nothing else.
+// is water seen from above, and the net of light on it.
 //
-//  At the top   the liquid is hot: molten folds beside the hero's words on a
-//               wide screen, over them on a narrow one. The light is a place
+//  At the top   the net of light is gold: beside the hero's words on a
+//               wide screen, behind them on a narrow one. The light is a place
 //               on the page, so it scrolls away with the hero.
-//  Through it   the same liquid at rest: indigo and umber silk behind the
-//               sections (pearl by day), stopped down behind every block of
-//               copy, with a ribbon of light crossing two of the gaps between
-//               them. The scroll and the cursor stir it.
-//  At the end   it is hot again, under the closing call to action.
+//  Through it   the same water at rest behind the sections, its net of
+//               light cool and faint, stopped down behind every block of
+//               copy. The scroll and the cursor stir it.
+//  At the end   it is gold again, under the closing call to action.
 //
 // The liquid is a warped field and a fluid simulation (journey-liquid.ts).
 // Raw WebGL2 with no dependency, in its own chunk, loaded after the hero's
@@ -318,8 +317,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const wide = size.w >= 1080;
     const max = Math.max(0, document.documentElement.scrollHeight - vh);
     const heroH = page.hero?.getBoundingClientRect().height ?? vh;
-    const stage = page.heroCopy ? page.heroCopy.getBoundingClientRect().top + y : vh * 0.46;
-    const upC = wide ? heroH * 0.52 : stage * 0.5;
+    const upC = wide ? heroH * 0.52 : vh * 0.34;
     const hotUp = 1 - ease((y - vh * 0.25) / (vh * 0.95));
     // (low on the last screen, over the footer, so the closing headline stands on quiet silk and the light comes up under it)
     const foot = page.foot?.getBoundingClientRect();
@@ -329,22 +327,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     // (a little under full at the close: it fills the screen's width there)
     const hot = Math.max(hotUp, hotDown * 0.86);
     // its middle up the frame and its reach, then its middle across and its reach
-    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? 0.62 : Math.max(0.3, (stage / ch) * 0.62)];
+    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? 0.62 : 0.5];
     const hotSpan = atClose ? [0.5, wide ? 0.8 : 1.1] : wide ? [0.72, 0.42] : [0.5, 0.95];
-    // ribbons: across the gap over "How it works" and over "Hosted or
-    // self-hosted", drawn on by the scroll
-    const bands = new Float32Array(16);
-    let nb = 0;
-    [page.how, page.hosting].forEach((el, i) => {
-      const prev = el?.previousElementSibling;
-      if (!el || !prev) return;
-      const g1 = content(el)?.top;
-      const g0 = content(prev)?.bottom;
-      if (g0 === undefined || g1 === undefined || g1 < -vh * 0.25 || g0 > vh * 1.25) return;
-      const prg = clamp((vh * 1.1 - g0) / (vh * 1.2 + (g1 - g0)), 0, 1);
-      bands.set([1 - (g0 + g1) / 2 / ch, clamp(((g1 - g0) / ch) * 0.26, 0.03, 0.14), prg, i + 1], nb * 4);
-      nb++;
-    });
     // calm: the header, and every block of copy on screen
     const calm = new Float32Array(CALM * 4).fill(-9999);
     const feather = new Float32Array(CALM).fill(1);
@@ -367,11 +351,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     hold(page.closeH?.getBoundingClientRect(), soft, 26);
     hold(page.closeCta?.getBoundingClientRect(), soft, 14);
     hold(page.foot?.getBoundingClientRect(), 110, 0);
-    return { y, hot, hotBand, hotSpan, bands, calm, feather };
+    return { y, hot, hotBand, hotSpan, calm, feather };
   }
-  type Journey = ReturnType<typeof journey>;
-  // What the last frame read of the page, so the fluid's step does not read it again
-  let seen: Journey | null = null;
 
   function splat(x: number, y: number, vx: number, vy: number, dens: number, heat: number, radius: number) {
     if (!R) return;
@@ -388,18 +369,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   function step(dt: number) {
     if (!R) return;
     const r = R;
-    const j = seen ?? journey();
-    // where it is hot, light wells up from under the middle of the heat
-    if (j.hot > 0.04) {
-      const fx = j.hotSpan[0];
-      for (let k = 0; k < 2; k++) {
-        const x = fx + 0.2 * Math.sin(t * 0.5 + k * 2.6) + 0.07 * Math.sin(t * 1.3 + k);
-        const on = j.hot * (0.5 + 0.5 * Math.sin(t * 1.1 + k * 3.1) ** 2);
-        splat(x, j.hotBand[0] - j.hotBand[1] * 0.7, 0.5 * Math.sin(t * 0.4 + k * 1.7) * dt * on, 1.6 * dt * on, 0.5 * dt * on, 0.6 * dt * on, 0.0012);
-      }
-    }
     if (ptr.moved) {
-      // the cursor stirs the liquid and leaves a little light in it
+      // the cursor stirs the water and leaves a little light in it
       splat(ptr.x / size.w, 1 - ptr.y / size.h, (ptr.dx / size.w) * 9, (-ptr.dy / size.h) * 9, 0.05, 0.045, 0.0011);
       ptr.dx = 0;
       ptr.dy = 0;
@@ -433,16 +404,15 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const r = R;
     const { W, H } = size;
     const j = journey();
-    seen = j;
     pass(prog.liq, r.liq, (a) => {
       a.tex("u_dye", r.dye.read.texs[0]); a.f("u_dTexel", 1 / r.dye.read.w, 1 / r.dye.read.h); a.f("u_t", t); a.f("u_scroll", j.y / size.h); a.f("u_aspect", size.aspect); a.f("u_hot", j.hot);
-      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]); a.fv("u_bands", 4, j.bands);
+      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]);
     });
     pass(prog.liqn, r.liqn, (a) => { a.tex("u_l0", r.liq.texs[0]); a.tex("u_l2", r.liq.texs[2]); a.f("u_tx", 1 / r.liq.w, 1 / r.liq.h); a.i("uMode", float32 ? 0 : 1); });
     pass(prog.compose, r.scene, (a) => {
       a.tex("u_l0", r.liq.texs[0]); a.tex("u_l1", r.liq.texs[1]); a.tex("u_ln", r.liqn.texs[0]); a.i("u_light", opts.light ? 1 : 0);
       // the liquid's relief, by the size of its own grid
-      a.f("u_rel", (r.liq.h / 900) * (opts.light ? 160 : 260) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
+      a.f("u_rel", (r.liq.h / 900) * (opts.light ? 70 : 120) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
     });
     // At night the bright pass feeds the bloom; by day all of the picture goes
     // through, and the blur is a diffusion filter over it (FINAL).
