@@ -344,7 +344,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       const bottom = (page.closeCta?.getBoundingClientRect().bottom ?? foot?.top ?? vh) + y;
       const shore = footTop - (footTop - bottom) * 0.45;
       const mid = (top + bottom) / 2 - vh * 0.04;
-      hotBand = [1 - (mid - y) / ch, Math.max(0.12, (shore - mid) / (1.18 * vh))];
+      hotBand = [1 - (mid - y) / ch, Math.max(0.12, (shore - mid) / (1.18 * ch))];
       hotSpan = [0.5, wide ? 0.8 : 1.1];
     } else {
       hotBand = [1 - ((wide ? heroH * 0.52 : vh * 0.34) - y) / ch, 0.5];
