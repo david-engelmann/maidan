@@ -1,25 +1,20 @@
-// The journey: one fixed canvas behind the whole page, driven by scroll.
+// The journey: one fixed canvas behind the whole page, driven by scroll. It
+// is liquid light and nothing else.
 //
-//  Act 1  a low view across a night square, in the spirit of Madison Square
-//         Park: a fountain of liquid light on the axis, the flat-iron wedge
-//         lit behind it, wet paving that mirrors both, people carrying small
-//         lights about.
-//  Act 2  scrolling lifts the camera through the fountain's plume, molten
-//         folds closing round the frame, and out into the same liquid at
-//         rest: indigo and umber silk behind the sections, stopped down
-//         behind every block of copy, with a ribbon of light crossing two of
-//         the gaps between them. The scroll and the cursor stir it.
-//  Act 3  at the closing call to action the liquid drains back to the
-//         fountain and the camera pulls back, so the square's eight rills
-//         read as rays: the mark is in the plan, not laid on it.
+//  At the top   the liquid is hot: molten folds beside the hero's words on a
+//               wide screen, over them on a narrow one. The light is a place
+//               on the page, so it scrolls away with the hero.
+//  Through it   the same liquid at rest: indigo and umber silk behind the
+//               sections (pearl by day), stopped down behind every block of
+//               copy, with a ribbon of light crossing two of the gaps between
+//               them. The scroll and the cursor stir it.
+//  At the end   it is hot again, under the closing call to action.
 //
-// The city is ray-marched once per camera move (journey-city.ts); the liquid
-// is a warped field and a fluid simulation (journey-liquid.ts). Raw WebGL2
-// with no dependency, in its own chunk, loaded after the hero's words have
-// painted; until it draws, and wherever it cannot, the page shows a CSS
-// poster of the square in the same place (journey.css).
-import { NW, STATIC_FS, SCENE_FS } from "./journey-city";
-import { LIQ_FS, LIQN_FS, SIM_VS, SIM, BRIGHT, BLUR, FINAL } from "./journey-liquid";
+// The liquid is a warped field and a fluid simulation (journey-liquid.ts).
+// Raw WebGL2 with no dependency, in its own chunk, loaded after the hero's
+// words have painted; until it draws, and wherever it cannot, the page shows
+// a still of it in the same place (journey.css).
+import { LIQ_FS, LIQN_FS, COMPOSE, SIM_VS, SIM, BRIGHT, BLUR, FINAL } from "./journey-liquid";
 
 export type Options = { light: boolean; still: boolean; paused: boolean };
 export type State = "running" | "paused" | "still" | "away" | "fallback" | "software";
@@ -41,54 +36,27 @@ in vec2 a_pos;
 out vec2 v_uv;
 void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
 
-/** The fixed step of the fluid and of the scene's clock. */
+/** The fixed step of the fluid and of the liquid's clock. */
 const DT = 1 / 60;
-/** The composed still: the fountain at the height of its surge. */
+/** The moment of the liquid that the composed still holds. */
 const STILL_T = 8.5;
 /** A ceiling on drawn pixels, so a 5K screen costs what a 1440p one does. */
 const MAX_PIXELS = 5.4e6;
 /** How many copy blocks the frame can hold calm at once. */
 const CALM = 8;
-/** The sharp city is marched in this many bands, one a frame, so no frame
- * pays for all of it. */
-const BANDS = 8;
-
 // Quality steps, best first. The loop measures its own frame time and steps
 // down when it misses frames; it tries one step back up after a long calm.
 const LEVELS = [
-  { dpr: 2, sim: 160, dye: 640, steps: 160 },
-  { dpr: 1.5, sim: 144, dye: 520, steps: 136 },
-  { dpr: 1.25, sim: 128, dye: 420, steps: 116 },
-  { dpr: 1, sim: 112, dye: 360, steps: 100 },
+  { dpr: 2, sim: 160, dye: 640 },
+  { dpr: 1.5, sim: 144, dye: 520 },
+  { dpr: 1.25, sim: 128, dye: 420 },
+  { dpr: 1, sim: 112, dye: 360 },
 ];
-// While the camera moves the city is marched at one of these fractions of the
-// frame, the largest the GPU keeps up with; at 1 there is no small city at all.
-const MOVING = [0.4, 0.5, 0.6, 0.75, 1];
-
 const ease = (x: number) => {
   x = Math.max(0, Math.min(1, x));
   return x * x * (3 - 2 * x);
 };
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
-const norm = (v: number[]) => {
-  const l = Math.hypot(...v);
-  return v.map((x) => x / l);
-};
-const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const surgeAt = (t: number) => {
-  const s = t % 10;
-  return ease((s - 7.4) / 0.9) * (1 - ease((s - 8.9) / 1.1));
-};
-function mulberry32(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function program(gl: GL, vs: string, fs: string): Prog {
   const sh = (type: number, src: string) => {
     const s = gl.createShader(type);
@@ -115,7 +83,7 @@ function program(gl: GL, vs: string, fs: string): Prog {
 }
 
 /** True when WebGL is drawn on the CPU (SwiftShader, llvmpipe): it would
- * march the city slowly enough to drag the whole page with it. Chrome hides
+ * draw the liquid slowly enough to drag the whole page with it. Chrome hides
  * the renderer behind the debug extension; Firefox and Safari name it in
  * RENDERER. */
 function software(gl: GL): boolean {
@@ -127,59 +95,13 @@ function software(gl: GL): boolean {
   return /swiftshader|llvmpipe|softpipe|software|basic render driver/i.test(name);
 }
 
-// People: walks across the plaza that never cross the basin, a few who stand
-// at its rim, and some down the park's paths. Where each is depends only on
-// the clock.
-type Walker = { a: number[]; b: number[]; len: number; sp: number; ph: number; bri: number };
-function cast(): Walker[] {
-  const out: Walker[] = [];
-  const rnd = mulberry32(11);
-  const inPlaza = () => {
-    const ang = rnd() * Math.PI * 2;
-    const r = 13 + rnd() * 18;
-    return [Math.cos(ang) * r, Math.sin(ang) * r];
-  };
-  while (out.length < 22) {
-    const a = inPlaza();
-    const b = inPlaza();
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    if (len < 14) continue;
-    const k = clamp(-(a[0] * dx + a[1] * dy) / (len * len), 0, 1);
-    if (Math.hypot(a[0] + dx * k, a[1] + dy * k) < 12.5) continue;
-    out.push({ a, b, len, sp: 0.85 + rnd() * 0.6, ph: rnd() * 2, bri: 0.55 + rnd() * 0.6 });
-  }
-  while (out.length < 28) {
-    const ang = rnd() * Math.PI * 2;
-    const r = 10.6 + rnd() * 3.4;
-    const a = [Math.cos(ang) * r, Math.sin(ang) * r];
-    out.push({ a, b: [a[0] + rnd() - 0.5, a[1] + rnd() - 0.5], len: 1, sp: 0.05 + rnd() * 0.05, ph: rnd() * 2, bri: 0.5 + rnd() * 0.5 });
-  }
-  while (out.length < NW) {
-    // down one of the eight paths, keeping to one side of it
-    const k = Math.floor(rnd() * 8);
-    const d = [Math.cos((k * Math.PI) / 4), Math.sin((k * Math.PI) / 4)];
-    const side = (rnd() - 0.5) * 2.4;
-    const r0 = 38 + rnd() * 20;
-    const r1 = r0 + 25 + rnd() * 30;
-    const a = [d[0] * r0 - d[1] * side, d[1] * r0 + d[0] * side];
-    const b = [d[0] * r1 - d[1] * side, d[1] * r1 + d[0] * side];
-    out.push({ a, b, len: r1 - r0, sp: 0.9 + rnd() * 0.5, ph: rnd() * 2, bri: 0.6 + rnd() * 0.5 });
-  }
-  return out;
-}
-
-type Cam = { pos: number[]; fwd: number[]; right: number[]; up: number[]; tanf: number };
-type Shot = { p: number[]; fx: number; pitch: number; tanf: number };
-
 /**
  * Starts the journey on `canvas`, which fills `host`. It reads the page
  * itself: the header (.top), the hero's words (.hero-copy), the sections of
  * <main>, the closing headline and the footer, for where the acts fall and
  * what to hold calm.
  *
- * Returns null where WebGL2 is missing or the scene fails to build, and the
+ * Returns null where WebGL2 is missing or the liquid fails to build, and the
  * poster stays.
  */
 export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Options, onState: (s: State) => void): Handle | null {
@@ -195,14 +117,14 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   const float32 = forced !== "half" && !!gl.getExtension("OES_texture_float_linear") && !!gl.getExtension("EXT_color_buffer_float");
 
   let opts = { ...initial };
-  type Progs = Record<"stat" | "scene" | "liq" | "liqn" | "bright" | "blur" | "final" | keyof typeof SIM, Prog>;
+  type Progs = Record<"liq" | "liqn" | "compose" | "bright" | "blur" | "final" | keyof typeof SIM, Prog>;
   let prog!: Progs;
   let vao: WebGLVertexArrayObject | null = null;
   function build() {
     const P = (fs: string) => program(gl, FULLSCREEN_VS, fs);
     const S = (fs: string) => program(gl, SIM_VS, fs);
     prog = {
-      stat: P(STATIC_FS), scene: P(SCENE_FS), liq: P(LIQ_FS), liqn: P(LIQN_FS), bright: P(BRIGHT), blur: P(BLUR), final: P(FINAL),
+      liq: P(LIQ_FS), liqn: P(LIQN_FS), compose: P(COMPOSE), bright: P(BRIGHT), blur: P(BLUR), final: P(FINAL),
       splat: S(SIM.splat), advect: S(SIM.advect), forces: S(SIM.forces), curl: S(SIM.curl), vort: S(SIM.vort), div: S(SIM.div), clear: S(SIM.clear), press: S(SIM.press), grad: S(SIM.grad),
     };
     vao = gl.createVertexArray();
@@ -296,11 +218,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
 
   // ---- state
   const cpu = software(gl);
-  const walkers = cast();
-  const walkArr = new Float32Array(NW * 4);
-  const walkScr = new Float32Array(NW * 4);
   let level = cpu ? LEVELS.length - 1 : matchMedia("(pointer: coarse)").matches ? 1 : 0;
-  let moving = 1;
   let t = opts.still ? STILL_T : 0;
   let raf = 0;
   let last = 0;
@@ -313,16 +231,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   let lastScroll = window.scrollY;
   const size = { w: 0, h: 0, dpr: 1, W: 0, H: 0, aspect: 1 };
   const ptr = { x: 0, y: 0, dx: 0, dy: 0, moved: false };
-  // The city: the sharp one and the camera it was marched for, how many of its
-  // bands are done, the small one, and the cross-fade from small to sharp.
-  const city = { sharp: "", pending: "", band: 0, fast: "", rest: 0, fade: 1, first: true };
-  // Frame times, for stepping the quality and the moving city's size
+  // Frame times, for stepping the quality
   const times: number[] = [];
-  const movingTimes: number[] = [];
   let changed = performance.now();
   const failed = new Set<number>();
   let R: {
-    sharp: Target; fast: Target; scene: Target; liq: Target; liqn: Target;
+    scene: Target; liq: Target; liqn: Target;
     b1: Pair; b2: Pair; b3: Pair; vel: Pair; dye: Pair; pres: Pair; div: Target; curl: Target;
   } | null = null;
 
@@ -365,7 +279,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     if (w < 2 || h < 2) return;
     let dpr = Math.min(window.devicePixelRatio || 1, lv.dpr);
     if (w * h * dpr * dpr > MAX_PIXELS) dpr = Math.sqrt(MAX_PIXELS / (w * h));
-    // on the CPU one small frame proves the scene works, and no more is drawn
+    // on the CPU one small frame proves the liquid draws, and no more is drawn
     if (cpu) dpr = Math.min(dpr, 120 / w);
     const W = Math.max(2, Math.round(w * dpr));
     const H = Math.max(2, Math.round(h * dpr));
@@ -383,15 +297,11 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     // the liquid field: half the frame on a wide screen, all of it on a phone
     const lq = q(w < 720 || dpr < 1.4 ? 1 : 2);
     R = {
-      sharp: target(W, H, 3), fast: target(Math.ceil(W * 0.75), Math.ceil(H * 0.75), 3), scene: target(W, H),
+      scene: target(W, H),
       liq: target(lq[0], lq[1], 3, float32), liqn: target(lq[0], lq[1]),
       b1: pair(...q(4)), b2: pair(...q(8)), b3: pair(...q(16)),
       vel: pair(sw, sh), dye: pair(dw, dh), pres: pair(sw, sh), div: target(sw, sh), curl: target(sw, sh),
     };
-    city.sharp = "";
-    city.fast = "";
-    city.pending = "";
-    city.first = true;
     findPage();
     dirty = true;
   }
@@ -401,31 +311,25 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const vh = window.innerHeight;
     const ch = size.h;
     const y = window.scrollY;
-    const lift = ease(y / (vh * 0.95));
-    // the close: its headline travels the last screen of the page
-    let down = 0;
-    let headAtEnd = vh * 0.17;
-    const head = page.closeH?.getBoundingClientRect();
-    if (head) {
-      const max = Math.max(0, document.documentElement.scrollHeight - vh);
-      headAtEnd = Math.max(vh * 0.08, head.top + y - max);
-      down = ease(1 - (head.top - headAtEnd) / (vh * 0.95));
-    }
-    // how far the liquid has closed over the square
-    const cov = Math.min(ease((lift - 0.16) / 0.6), 1 - ease((down - 0.2) / 0.62));
-    // The plume is a place on the page: the gap under the hero, and the gap
-    // over the closing headline. It is hot while the camera is in it.
-    const heroBottom = (page.hero?.getBoundingClientRect().bottom ?? vh - y) + y;
-    const first = page.mid[0] ? content(page.mid[0]) : null;
-    const upC = Math.min((heroBottom + (first ? first.top + y : heroBottom + vh * 0.3)) / 2, vh * 1.25);
-    const upH = first ? Math.max(0, first.top + y - heroBottom) : vh * 0.3;
-    const lastMid = page.mid.length ? content(page.mid[page.mid.length - 1]) : null;
-    const downTop = lastMid ? lastMid.bottom : head ? head.top - vh * 0.4 : vh;
-    const downC = ((head ? head.top : vh) + downTop) / 2 + y;
-    const downH = Math.max(0, (head ? head.top : vh) - downTop);
-    const hotUp = ease((lift - 0.1) / 0.36) * (1 - ease((y - (upC - vh * 0.41)) / (vh * 0.5)));
-    const hotDown = ease(down / 0.3) * (1 - ease((down - 0.62) / 0.36));
-    const hotBand = down > 0 ? [1 - (downC - y) / ch, Math.max(0.42, (downH / ch) * 1.05)] : [1 - (upC - y) / ch, Math.max(0.42, (upH / ch) * 1.05)];
+    // The light is a place on the page. It stands in the hero, beside the
+    // words on a wide screen and over them on a narrow one, and scrolls away
+    // with the hero. It stands again at the foot of the page, under the
+    // closing call to action, and comes up over the last screen of the scroll.
+    const wide = size.w >= 1080;
+    const max = Math.max(0, document.documentElement.scrollHeight - vh);
+    const heroH = page.hero?.getBoundingClientRect().height ?? vh;
+    const stage = page.heroCopy ? page.heroCopy.getBoundingClientRect().top + y : vh * 0.46;
+    const upC = wide ? heroH * 0.52 : stage * 0.5;
+    const hotUp = 1 - ease((y - vh * 0.25) / (vh * 0.95));
+    // (low on the last screen, so the closing headline stands on quiet silk and the light comes up under it)
+    const downC = max + vh * 0.78;
+    const hotDown = ease((1 - (max - y) / (vh * 0.95)) / 0.6);
+    const atClose = hotDown > hotUp;
+    // (a little under full at the close: it fills the screen's width there)
+    const hot = Math.max(hotUp, hotDown * 0.86);
+    // its middle up the frame and its reach, then its middle across and its reach
+    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? 0.62 : Math.max(0.3, (stage / ch) * 0.62)];
+    const hotSpan = atClose ? [0.5, wide ? 0.8 : 1.1] : wide ? [0.72, 0.42] : [0.5, 0.95];
     // ribbons: across the gap over "How it works" and over "Hosted or
     // self-hosted", drawn on by the scroll
     const bands = new Float32Array(16);
@@ -450,8 +354,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       feather[nc] = soft * size.dpr;
       nc++;
     };
-    // a wide page lets the picture go slowly under the words; on a narrow one the
-    // fountain stands right over them and must keep its light
+    // a wide page lets the light go slowly under the words; on a narrow one it
+    // stands right over them and must keep its strength
     const soft = size.w >= 1080 ? (opts.light ? 250 : 190) : opts.light ? 100 : 90;
     hold(page.top?.getBoundingClientRect(), 36, 0);
     hold(page.heroCopy?.getBoundingClientRect(), soft, 10);
@@ -459,67 +363,14 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       const box = s.getBoundingClientRect();
       if (box.bottom > 0 && box.top < ch) hold(content(s), soft, 10);
     }
-    hold(head, soft, 26);
+    hold(page.closeH?.getBoundingClientRect(), soft, 26);
     hold(page.closeCta?.getBoundingClientRect(), soft, 14);
-    hold(page.foot?.getBoundingClientRect(), 60, 0);
-    return { y, vh, lift, down, cov, hot: Math.max(hotUp, down > 0 ? hotDown : 0), hotBand, bands, calm, feather, breath: ease((down - 0.55) / 0.45), headAtEnd };
+    hold(page.foot?.getBoundingClientRect(), 110, 0);
+    return { y, hot, hotBand, hotSpan, bands, calm, feather };
   }
   type Journey = ReturnType<typeof journey>;
   // What the last frame read of the page, so the fluid's step does not read it again
   let seen: Journey | null = null;
-
-  /** The pitch that puts a point at height `z`, `dist` away, at `ndc` up the frame. */
-  const pitchFor = (camZ: number, z: number, dist: number, ndc: number, tanf: number) => Math.atan2(z - camZ, dist) - Math.atan(ndc * tanf);
-
-  /** A shot from `p` that puts the fountain's foot `fx` across and `ndc` up the frame. */
-  const aim = (p: number[], fx: number, ndc: number, tanf: number): Shot => ({ p, fx, pitch: pitchFor(p[2], 1.0, Math.hypot(p[0], p[1]), ndc, tanf), tanf });
-
-  // The establishing view: from a rooftop south of the park, some 260 m back
-  // and 46 m up, the fountain a small bright point in the city's heart. The
-  // close comes back to it.
-  function camera(j: Journey): Cam {
-    const a = size.aspect;
-    const wide = size.w >= 1080;
-    let hero: Shot;
-    let end: Shot;
-    if (wide) {
-      // the fountain stands right of centre, clear of the words; the copy has the left
-      const copy = page.heroCopy?.getBoundingClientRect();
-      const fx = copy ? clamp((copy.right + size.w * 0.15) / size.w, 0.6, 0.74) : 0.64;
-      const p = [-34, -258, 46];
-      hero = aim(p, fx, -0.42, 0.34);
-      end = aim(p, 0.5, -0.46, 0.34);
-    } else {
-      // One column: the fountain crowns the first screen and the words start
-      // under it; at the close it stands under the words, over the footer.
-      const copyTop = page.heroCopy ? page.heroCopy.getBoundingClientRect().top + j.y : size.h * 0.46;
-      const footTop = size.h - (page.foot?.getBoundingClientRect().height ?? 80);
-      // lower and nearer than on a wide screen, so a narrow frame still has
-      // sky over the roofs and the fountain is not lost
-      const tanf = a > 0.9 ? 0.42 : 0.55;
-      const p = a > 0.9 ? [-22, -220, 34] : [-8, -170, 22];
-      hero = aim(p, 0.5, 1 - (2 * (copyTop - size.h * 0.105)) / size.h, tanf);
-      end = aim(p, 0.5, 1 - (2 * (footTop - size.h * 0.07)) / size.h, tanf);
-    }
-    // lifted: toward the fountain and up its plume, looking into it
-    const lift = (s: Shot): Shot => ({ p: [s.p[0] * 0.55, s.p[1] * 0.55, s.p[2] + 30], fx: lerp(s.fx, 0.5, 0.5), pitch: s.pitch + 0.5, tanf: s.tanf });
-    const up = lift(hero);
-    const up2 = lift(end);
-    const mix = (x: Shot, y: Shot, k: number): Shot => ({ p: x.p.map((v, i) => lerp(v, y.p[i], k)), fx: lerp(x.fx, y.fx, k), pitch: lerp(x.pitch, y.pitch, k), tanf: lerp(x.tanf, y.tanf, k) });
-    const k = j.down > 0 ? mix(up2, end, j.down) : mix(hero, up, j.lift);
-    const head = Math.atan2(-k.p[1], -k.p[0]) + Math.atan((2 * k.fx - 1) * k.tanf * a);
-    const fwd = norm([Math.cos(head) * Math.cos(k.pitch), Math.sin(head) * Math.cos(k.pitch), Math.sin(k.pitch)]);
-    const right = norm(cross(fwd, [0, 0, 1]));
-    return { pos: k.p, fwd, right, up: cross(right, fwd), tanf: k.tanf };
-  }
-  function project(cam: Cam, p: number[]) {
-    const d = [p[0] - cam.pos[0], p[1] - cam.pos[1], p[2] - cam.pos[2]];
-    const z = d[0] * cam.fwd[0] + d[1] * cam.fwd[1] + d[2] * cam.fwd[2];
-    if (z <= 0.5) return null;
-    const x = (d[0] * cam.right[0] + d[1] * cam.right[1] + d[2] * cam.right[2]) / (z * cam.tanf * size.aspect);
-    const y = (d[0] * cam.up[0] + d[1] * cam.up[1] + d[2] * cam.up[2]) / (z * cam.tanf);
-    return { u: x * 0.5 + 0.5, v: y * 0.5 + 0.5, dist: Math.hypot(...d), ppm: size.H / (2 * cam.tanf * z) };
-  }
 
   function splat(x: number, y: number, vx: number, vy: number, dens: number, heat: number, radius: number) {
     if (!R) return;
@@ -537,10 +388,9 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     if (!R) return;
     const r = R;
     const j = seen ?? journey();
-    // in the plume, light wells up from the fountain's side of the frame
+    // where it is hot, light wells up from under the middle of the heat
     if (j.hot > 0.04) {
-      const f = project(camera(j), [0, 0, 6]);
-      const fx = f ? clamp(f.u, 0.15, 0.85) : 0.6;
+      const fx = j.hotSpan[0];
       for (let k = 0; k < 2; k++) {
         const x = fx + 0.2 * Math.sin(t * 0.5 + k * 2.6) + 0.07 * Math.sin(t * 1.3 + k);
         const on = j.hot * (0.5 + 0.5 * Math.sin(t * 1.1 + k * 3.1) ** 2);
@@ -549,7 +399,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     }
     if (ptr.moved) {
       // the cursor stirs the liquid and leaves a little light in it
-      splat(ptr.x / size.w, 1 - ptr.y / size.h, (ptr.dx / size.w) * 9, (-ptr.dy / size.h) * 9, 0.05 * j.cov, 0.045 * j.cov, 0.0011);
+      splat(ptr.x / size.w, 1 - ptr.y / size.h, (ptr.dx / size.w) * 9, (-ptr.dy / size.h) * 9, 0.05, 0.045, 0.0011);
       ptr.dx = 0;
       ptr.dy = 0;
       ptr.moved = false;
@@ -576,106 +426,22 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     t += dt;
   }
 
-  /** Marches the city for `cam` into `out`: all of it, or the rows from `y0` up for `rows`. */
-  function march(out: Target, w: number, h: number, cam: Cam, quiet: number[], y0 = 0, rows = h) {
-    if (rows < h) {
-      gl.enable(gl.SCISSOR_TEST);
-      gl.scissor(0, y0, w, rows);
-    }
-    pass(prog.stat, { fb: out.fb, w, h }, (a) => {
-      a.f("u_cam", cam.pos[0], cam.pos[1], cam.pos[2]); a.f("u_fwd", cam.fwd[0], cam.fwd[1], cam.fwd[2]); a.f("u_right", cam.right[0], cam.right[1], cam.right[2]); a.f("u_up", cam.up[0], cam.up[1], cam.up[2]);
-      a.f("u_tanf", cam.tanf); a.f("u_res", size.W, size.H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / h); a.f("u_quiet", quiet[0]); a.f("u_qx", quiet[1]); a.i("u_steps", LEVELS[level].steps);
-    });
-    gl.disable(gl.SCISSOR_TEST);
-  }
-
-  /** Draws a frame. `whole` marches the sharp city at once (the first frame, and a proof on the CPU). */
-  function draw(whole = false) {
+  /** Draws a frame. */
+  function draw() {
     if (!R || lost) return;
     const r = R;
     const { W, H } = size;
     const j = journey();
     seen = j;
-    const cam = camera(j);
-    const sceneOn = j.cov < 0.999;
-    const surge = Math.max(surgeAt(t), j.down > 0 ? 0 : ease(j.lift / 0.16));
-    // the copy's side of the wide hero is kept quiet, up to the copy's right
-    // edge; the close is symmetrical
-    const copyR = page.heroCopy?.getBoundingClientRect().right ?? size.w * 0.4;
-    const quiet = size.w >= 1080 && j.down <= 0 ? [1, Math.round(((copyR + 24) / size.w) * 100) / 100] : [0, 0];
-    let sharpness = 1;
-    if (sceneOn) {
-      const key = [cam.pos, cam.fwd, cam.tanf, opts.light ? 1 : 0, quiet, level].flat().map((v) => v.toFixed(4)).join(",");
-      const scale = MOVING[moving];
-      if (key === city.sharp) {
-        city.fade = Math.min(1, city.fade + 0.1);
-      } else if (whole || city.first || scale >= 1) {
-        march(r.sharp, W, H, cam, quiet);
-        city.sharp = key;
-        city.fade = 1;
-        city.first = false;
-      } else {
-        // The camera has moved. March the small city for where it is now; once
-        // it rests, march the sharp one a band a frame, then fade over to it.
-        // The scale is part of the key: a buffer marched at another scale
-        // holds the picture in a different corner of the target.
-        const fastKey = `${key}@${scale}`;
-        if (fastKey !== city.fast) {
-          march(r.fast, Math.round(W * scale), Math.round(H * scale), cam, quiet);
-          city.fast = fastKey;
-          city.rest = 0;
-        } else city.rest++;
-        city.fade = 0;
-        if (city.rest >= 2) {
-          if (city.pending !== key) {
-            city.pending = key;
-            city.band = 0;
-          }
-          const rows = Math.ceil(H / BANDS);
-          // From the first band on, the sharp buffer is a mix of two cameras,
-          // so it stands for neither until every band is in.
-          city.sharp = "";
-          march(r.sharp, W, H, cam, quiet, city.band * rows, Math.min(rows, H - city.band * rows));
-          city.band++;
-          if (city.band >= BANDS) {
-            city.sharp = key;
-            city.pending = "";
-          }
-        }
-      }
-      sharpness = city.sharp === key ? city.fade : 0;
-    }
-    const focus = project(cam, [0, 0, 6]);
     pass(prog.liq, r.liq, (a) => {
-      a.tex("u_dye", r.dye.read.texs[0]); a.f("u_dTexel", 1 / r.dye.read.w, 1 / r.dye.read.h); a.f("u_t", t); a.f("u_scroll", j.y / size.h); a.f("u_aspect", size.aspect); a.f("u_cov", j.cov); a.f("u_hot", j.hot);
-      a.f("u_focus", clamp(focus?.u ?? 0.6, 0.1, 0.9), clamp(focus?.v ?? 0.4, 0.1, 0.9)); a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.fv("u_bands", 4, j.bands);
+      a.tex("u_dye", r.dye.read.texs[0]); a.f("u_dTexel", 1 / r.dye.read.w, 1 / r.dye.read.h); a.f("u_t", t); a.f("u_scroll", j.y / size.h); a.f("u_aspect", size.aspect); a.f("u_hot", j.hot);
+      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]); a.fv("u_bands", 4, j.bands);
     });
     pass(prog.liqn, r.liqn, (a) => { a.tex("u_l0", r.liq.texs[0]); a.tex("u_l2", r.liq.texs[2]); a.f("u_tx", 1 / r.liq.w, 1 / r.liq.h); a.i("uMode", float32 ? 0 : 1); });
-    if (sceneOn) {
-      walkers.forEach((w, i) => {
-        const u = ((t * w.sp) / w.len + w.ph) % 2;
-        const k = u < 1 ? u : 2 - u;
-        walkArr.set([w.a[0] + (w.b[0] - w.a[0]) * k, w.a[1] + (w.b[1] - w.a[1]) * k, w.bri * (0.9 + 0.1 * Math.sin(t * 2.1 + i)), 0], i * 4);
-      });
-      walkScr.fill(0);
-      for (let i = 0; i < NW; i++) {
-        const q = project(cam, [walkArr[i * 4], walkArr[i * 4 + 1], 0.8]);
-        if (q && q.dist > 5) walkScr.set([q.u * W, q.v * H, q.ppm, q.dist], i * 4);
-      }
-    }
-    const fastScale = MOVING[moving];
-    pass(prog.scene, r.scene, (a) => {
-      a.f("u_cam", cam.pos[0], cam.pos[1], cam.pos[2]); a.f("u_fwd", cam.fwd[0], cam.fwd[1], cam.fwd[2]); a.f("u_right", cam.right[0], cam.right[1], cam.right[2]); a.f("u_up", cam.up[0], cam.up[1], cam.up[2]);
-      a.f("u_tanf", cam.tanf); a.f("u_res", W, H); a.i("u_light", opts.light ? 1 : 0); a.f("u_pix", (2 * cam.tanf) / H); a.f("u_quiet", quiet[0]); a.f("u_qx", quiet[1]);
-      a.tex("u_s0", r.sharp.texs[0]); a.tex("u_s1", r.sharp.texs[1]); a.tex("u_s2", r.sharp.texs[2]);
-      a.tex("u_f0", r.fast.texs[0]); a.tex("u_f1", r.fast.texs[1]); a.tex("u_f2", r.fast.texs[2]);
-      a.tex("u_l0", r.liq.texs[0]); a.tex("u_l1", r.liq.texs[1]); a.tex("u_ln", r.liqn.texs[0]);
-      a.f("u_fScale", Math.round(W * fastScale) / r.fast.w, Math.round(H * fastScale) / r.fast.h); a.f("u_sharp", sharpness);
+    pass(prog.compose, r.scene, (a) => {
+      a.tex("u_l0", r.liq.texs[0]); a.tex("u_l1", r.liq.texs[1]); a.tex("u_ln", r.liqn.texs[0]); a.i("u_light", opts.light ? 1 : 0);
       // the liquid's relief, by the size of its own grid
       a.f("u_rel", (r.liq.h / 900) * (opts.light ? 160 : 260) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
-      a.f("u_t", t); a.f("u_surge", surge); a.f("u_scene", sceneOn ? 1 : 0); a.f("u_breath", j.breath);
-      a.f("u_fh", 13.4 + 4.4 * surge + 0.25 * Math.sin(t * 2.3)); a.f("u_dpr", size.dpr);
-      a.fv("u_walk", 4, walkArr); a.fv("u_walkScr", 4, walkScr);
     });
     // At night the bright pass feeds the bloom; by day all of the picture goes
     // through, and the blur is a diffusion filter over it (FINAL).
@@ -696,8 +462,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       a.tex("uScene", r.scene.texs[0]); a.tex("uB1", r.b1.read.texs[0]); a.tex("uB2", r.b2.read.texs[0]); a.tex("uB3", r.b3.read.texs[0]);
       a.i("uLight", opts.light ? 1 : 0); a.f("uPx", W, H); a.f("uSeed", running() ? (t * 7.31) % 1 : 0.37); a.fv("uCalm", 4, j.calm); a.fv("uFeather", 1, j.feather); a.f("uBloom", 0.62);
     });
-    // more to do without the clock: the sharp city is still on its way
-    dirty = sceneOn && sharpness < 1;
+    dirty = false;
   }
 
   // ---- driving it
@@ -721,21 +486,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     schedule();
   }
 
-  function adapt(ms: number, wasMoving: boolean) {
+  function adapt(ms: number) {
     const now = performance.now();
-    // the moving city's size: the largest that keeps the frame
-    if (wasMoving) {
-      movingTimes.push(ms);
-      if (movingTimes.length >= 20) {
-        // a scroll is short, so a few missed frames in it are already a stutter:
-        // step down on the slow fifth, not the middle
-        const sorted = [...movingTimes].sort((a, b) => a - b);
-        if (sorted[15] > 18.5 && moving > 0) moving--;
-        else if (sorted[15] < 11 && moving < MOVING.length - 1) moving++;
-        movingTimes.length = 0;
-      }
-      return;
-    }
     times.push(ms);
     if (times.length > 90) times.shift();
     if (now - changed < 1500 || times.length < 45) return;
@@ -769,9 +521,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       }
       if (acc > DT) acc = 0;
     }
-    const before = city.fast;
     draw();
-    if (on && ++frames > 30) adapt(ms, city.fast !== before);
+    if (on && ++frames > 30) adapt(ms);
     if (running() || dirty) raf = requestAnimationFrame(tick);
   }
 
@@ -850,12 +601,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   try {
     findPage();
     resize();
-    draw(true);
+    draw();
   } catch {
     destroy();
     return null;
   }
-  // On a software renderer the one small frame above proves the scene works;
+  // On a software renderer the one small frame above proves the liquid draws;
   // the poster stays up rather than the page paying for every frame after it
   if (cpu) {
     destroy();
