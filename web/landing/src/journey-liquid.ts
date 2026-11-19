@@ -1,10 +1,9 @@
 // The liquid, for the journey. Two things make it:
 //  - water seen from above: wave trains crossing, and the net of light they
-//    throw (cool at rest, gold where the page holds its light, in the hero
-//    and under the closing call to action);
+//    throw (in shade at rest, sunlit where the page holds its light, in the
+//    hero and under the closing call to action);
 //  - a stable-fluids simulation that the cursor and the scroll stir. Its dye
-//    is light poured into the field, and the flow it remembers bends the
-//    folds, so the silk moves like something with weight.
+//    is light poured into the water.
 // The field is written at half resolution (height, light, temperature) and
 // lit as a surface where the frame is composed (COMPOSE).
 
@@ -20,7 +19,7 @@ float fbm3(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += 
 `;
 
 // o0: height, the net of light, how much the page's light stands here.
-// o1: tone, nothing, light poured in by the cursor.  o2: the height's slope, taken here at full precision.
+// o1: tone, the light between the net's lines, light poured in by the cursor.  o2: the height's slope, taken here at full precision.
 export const LIQ_FS = HEAD + `layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1; layout(location = 2) out vec4 o2;
 uniform sampler2D u_dye; uniform float u_t; uniform float u_scroll; uniform float u_aspect; uniform float u_hot;
 uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec2 u_dTexel;` + NOISE + `
@@ -56,7 +55,7 @@ void main() {
     hgt = 0.0; hs = vec3(0.0);
     for (int i = 0; i < 7; i++) {
       float fi = float(i);
-      float ang = 0.6 + fi * 2.399;                     // the golden angle: no two trains agree
+      float ang = 0.6 + fi * 1.9416;                    // a half turn over the golden ratio: the crests face every way, so the net has no grain
       vec2 d = vec2(cos(ang), sin(ang));
       float k = 30.0 * pow(1.3, fi);
       float w = 1.0 / (1.0 + 0.3 * fi);
@@ -69,8 +68,11 @@ void main() {
     if (it < 2) src = W - reach * g;
   }
   float det = (1.0 + reach * hs.x) * (1.0 + reach * hs.z) - reach * reach * hs.y * hs.y;
-  float caus = 0.16 / (abs(det) + 0.16);
-  caus = caus * caus;
+  // thin and bright along the folds, as light through water is, with a soft fall-off either side
+  float caus = 0.085 / (abs(det) + 0.085);
+  caus = caus * caus * 0.75 + 0.25 * pow(0.3 / (abs(det) + 0.3), 2.0);
+  // and the light between the lines: bright near a fold, dim where the surface spreads it
+  float soft = 0.5 / (abs(det) + 0.5);
   float tone = fbm3(P * 0.9 + vec2(3.1, tt * 0.03));
   // where the light stands on the page: a middle and a reach up the frame
   // (u_hotBand) and across it (u_hotSpan). Squared by hand: pow() of a
@@ -81,13 +83,13 @@ void main() {
   float pour = max(dy.x, 0.0);
   float height = hgt * 90.0 + 0.03 * pour;
   o0 = vec4(height, caus, zone, 1.0);
-  o1 = vec4(tone, 0.0, pour, 1.0);
+  o1 = vec4(tone, soft, pour, 1.0);
   o2 = vec4(dFdx(height), dFdy(height), 0.0, 1.0);
 }`;
 
-// The frame: the water lit from above. By night it is deep blue, and the
-// light in it is gold where the page holds its light and a cool glimmer
-// elsewhere. By day it is pale and clear, and the net of light is the sun's.
+// The frame: the water lit from above. By night it is deep blue, lighter and
+// clearer where the page holds its light, with a white net of light on it.
+// By day it is a pale pool there, and the page's paper elsewhere.
 export const COMPOSE = HEAD + `out vec4 o; uniform sampler2D u_l0; uniform sampler2D u_l1; uniform sampler2D u_ln; uniform float u_rel; uniform int u_light;
 void main() {
   vec4 lq = texture(u_l0, v_uv);
@@ -95,25 +97,34 @@ void main() {
   vec3 n = normalize(vec3(texture(u_ln, v_uv).xy * u_rel, 1.0));
   vec3 Ld = normalize(vec3(-0.5, 0.6, 0.62));
   float diff = max(dot(n, Ld), 0.0);
-  float caus = lq.y, heat = clamp(lq.z, 0.0, 1.0), tone = l1.x, pour = l1.z;
+  float caus = lq.y, heat = clamp(lq.z, 0.0, 1.0), tone = l1.x, soft = l1.y, pour = l1.z;
+  // What is seen is the light on the floor of the water: bright along the
+  // net, dimmer inside each cell. The surface's own relief is all but left
+  // out; shaded like a solid, water reads as foil or cloth.
+  float relief = 0.96 + 0.08 * diff;
   vec3 col;
   if (u_light == 0) {
-    // flat deep water: the net carries the picture, and nothing drifts in it
-    vec3 deep = mix(vec3(0.005, 0.02, 0.05), vec3(0.007, 0.03, 0.062), tone);
-    col = deep * (0.92 + 0.12 * diff);
-    // the net of light: gold where the light stands, a cool glimmer elsewhere
-    float warm = smoothstep(0.12, 0.55, heat);
-    col += mix(vec3(0.13, 0.3, 0.56) * 0.16, vec3(1.0, 0.74, 0.38) * (0.9 + 0.9 * heat), warm) * caus;
-    // and the glow the water holds under it
-    col += vec3(1.0, 0.6, 0.24) * 0.07 * heat * heat;
-    col += vec3(1.0, 0.72, 0.38) * pour * 0.3;
+    // By night a deep blue in shade, with the net a dim cyan on it; where
+    // the page holds its light the water is sunlit, a clear bright blue
+    // under a white net. Never amber: warm light on dark water reads as smoke.
+    float lit = smoothstep(0.08, 0.6, heat);
+    vec3 body = mix(vec3(0.018, 0.075, 0.135), vec3(0.024, 0.092, 0.16), tone);
+    body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
+    col = body * (0.5 + 1.25 * soft) * relief;
+    col += mix(vec3(0.2, 0.55, 0.85) * 0.42, vec3(0.78, 0.95, 1.0) * 1.5, lit) * caus;
+    col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
   } else {
-    // pale water over the page's paper, so it never stands apart from it as a band
-    vec3 clear = mix(vec3(0.949, 0.933, 0.902), vec3(0.8, 0.9, 0.92), 0.16 * heat);
-    col = clear * (0.97 + 0.04 * diff);
-    // the net of light is the sun's: gold, deepest where the page holds its light
-    col = mix(col, mix(vec3(0.97, 0.86, 0.6), vec3(0.93, 0.7, 0.28), heat), clamp(caus * mix(0.12, 1.25, smoothstep(0.05, 0.6, heat)), 0.0, 0.92));
-    col = mix(col, vec3(1.0, 0.88, 0.58), clamp(pour * 0.25, 0.0, 0.9));
+    // By day a pool seen from above: the page's paper for a shore, pale
+    // shallows, and a deeper blue where the page holds its light. The shore
+    // wanders, so the water never ends on a straight line.
+    float h = clamp(heat + (tone - 0.5) * 0.5 * smoothstep(0.0, 0.3, heat), 0.0, 1.0);
+    // a shore, not a haze: the water ends within a hand's width
+    float lit = smoothstep(0.2, 0.3, h);
+    vec3 water = mix(vec3(0.7, 0.9, 0.93), vec3(0.33, 0.73, 0.87), smoothstep(0.24, 0.95, h));
+    vec3 clear = mix(vec3(0.949, 0.933, 0.902), water, 0.9 * lit);
+    col = clear * mix(1.0, (0.86 + 0.3 * soft) * relief, lit);
+    col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit, 0.0, 0.95));
+    col = mix(col, vec3(1.0), clamp(pour * 0.25, 0.0, 0.9));
   }
   o = vec4(col, 1.0);
 }`;
@@ -203,37 +214,46 @@ void main() {
 // Tone, and the promise to the text: inside any block of copy the picture is
 // held under (or, in daylight, over) the luminance that keeps body text at 4.5:1.
 export const FINAL = HEAD + `out vec4 o; uniform sampler2D uScene; uniform sampler2D uB1; uniform sampler2D uB2; uniform sampler2D uB3;
-uniform int uLight; uniform vec2 uPx; uniform float uSeed; uniform vec4 uCalm[8]; uniform float uFeather[8]; uniform float uBloom;
+uniform int uLight; uniform vec2 uPx; uniform float uSeed; uniform vec4 uCalm[8]; uniform float uFeather[8]; uniform float uBloom; uniform float uWash;
 // grain with no weave in it: hashed on whole pixels
 float hash(vec2 p) { vec3 p3 = fract(vec3(floor(p).xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 void main() {
   vec3 c = texture(uScene, v_uv).rgb;
   vec2 p = v_uv * uPx;
-  float calm = 0.0;
+  // the first is the header's bar: the picture runs on under it, held only
+  // as far as its links need; the rest are blocks of copy
+  float calm = 0.0, bar = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 r = uCalm[i];
     vec2 d = max(r.xy - p, p - r.zw);
     float outside = length(max(d, 0.0));
-    calm = max(calm, 1.0 - smoothstep(0.0, uFeather[i], outside));
+    float k = 1.0 - smoothstep(0.0, uFeather[i], outside);
+    if (i == 0) bar = k; else calm = max(calm, k);
   }
   vec2 vq = v_uv - 0.5;
   float vig = 1.0 - dot(vq, vq) * 0.55;
   if (uLight == 0) {
     c += (texture(uB1, v_uv).rgb * 0.5 + texture(uB2, v_uv).rgb * 0.55 + texture(uB3, v_uv).rgb * 0.7) * uBloom;
     c = aces(c * 1.08 * vig);
-    // a colourist's split: the shadows lean to blue, the lights stay warm
+    // a colourist's split: the shadows lean to blue
     float lm = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c *= mix(vec3(0.9, 0.98, 1.14), vec3(1.0), smoothstep(0.0, 0.3, lm));
     vec3 lin = pow(c, vec3(2.2));
     float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
-    // behind copy the picture is stopped down, like a graduated filter, and then held under the cap
-    float Ld = L * mix(1.0, 0.3, calm);
-    float cap = 0.027;
-    float Lc = cap * (1.0 - exp(-Ld / cap));
+    // Behind copy the water is in deeper shade, under the cap that keeps
+    // body text at 4.5:1. Water already in shade is left as it is; sunlit
+    // water is rolled off steeply, so its cells fall to that same dark blue
+    // while its net stays near the cap. A gentle curve leaves a murk, and a
+    // floor above the shade's own level would light the shade up.
+    calm = max(calm, bar);
+    float cap = 0.042, mid = 0.25;
+    float Lc = max(cap * L * L / (L * L + mid * mid), min(L, 0.008));
     lin *= mix(1.0, Lc / max(L, 1e-5), calm);
+    // a held highlight is a grey, and grey on navy reads as brown: keep it the water's blue
+    lin = mix(lin, vec3(0.15, 1.0, 3.3) * dot(lin, vec3(0.2126, 0.7152, 0.0722)), smoothstep(0.0, 0.3, calm) * smoothstep(0.1, 0.6, L));
     c = pow(max(lin, 0.0), vec3(1.0 / 2.2));
-    c += (hash(p + uSeed) - 0.5) * 0.022;
+    c += (hash(p + uSeed) - 0.5) * 0.013;
   } else {
     // a hazy photograph, not a model: the picture seen through a diffusion
     // filter, its shadows lifted into the warm air
@@ -242,7 +262,8 @@ void main() {
     c = clamp(c, 0.0, 1.0);
     // the copy sits on clean paper: the picture is washed out toward it
     vec3 paper = vec3(0.949, 0.933, 0.902);
-    c = mix(c, paper, calm * 0.9);
+    c = mix(c, paper, max(calm * uWash, bar * 0.4));
+    calm = max(calm, bar);
     vec3 lin = pow(c, vec3(2.2));
     float L = dot(lin, vec3(0.2126, 0.7152, 0.0722));
     float D = 1.0 - L, Dmax = 0.32;
