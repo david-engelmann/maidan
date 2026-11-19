@@ -109,12 +109,12 @@ void main() {
     // the page holds its light the water is sunlit, a clear bright blue
     // under a white net. Never amber: warm light on dark water reads as smoke.
     float lit = smoothstep(0.08, 0.6, heat);
-    vec3 body = mix(vec3(0.012, 0.062, 0.135), vec3(0.016, 0.08, 0.165), tone);
+    vec3 body = mix(vec3(0.01, 0.052, 0.14), vec3(0.013, 0.064, 0.17), tone);
     body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
     col = body * (0.4 + 1.7 * soft) * relief;
     // in shade the net comes and goes across the page, as light does through deep water: one even net is wallpaper
     float patchy = mix(0.4, 1.25, smoothstep(0.36, 0.62, tone));
-    col += mix(vec3(0.2, 0.55, 0.85) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
+    col += mix(vec3(0.13, 0.45, 0.95) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
     col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
     sun = lit;
   } else {
@@ -134,7 +134,7 @@ void main() {
       line = clamp(1.0 - abs(sd - cw), 0.0, 1.0);
       wall = smoothstep(-0.7 * u_cardR, 0.0, sd);
     }
-    vec3 water = mix(vec3(0.5, 0.8, 0.9), vec3(0.38, 0.71, 0.85), tone) * (0.86 + 0.3 * soft) * relief * (1.0 - 0.2 * wall);
+    vec3 water = mix(vec3(0.5, 0.8, 0.9), vec3(0.38, 0.71, 0.85), tone) * (0.86 + 0.3 * soft) * relief * (1.0 - 0.1 * wall);
     col = mix(vec3(0.949, 0.933, 0.902), vec3(0.985, 0.978, 0.962), coping);
     col *= 1.0 - 0.1 * line;
     col = mix(col, water, lit);
@@ -269,7 +269,7 @@ void main() {
     // dark blue with the net all but gone, since any net behind small copy
     // is read as either murk or wire. The net goes on in the gaps.
     calm = max(calm, bar);
-    float cap = mix(0.006, uCap, sun);
+    float cap = mix(0.005, uCap, sun);
     float Ld = L * mix(1.0, 0.09, sun * calm);
     float Lc = cap * tanh(Ld / cap);
     float held = mix(L, Lc, calm);

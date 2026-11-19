@@ -365,8 +365,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
         // beside the hero's words and as tall as they are, so it is set with them and does not float
         const copy = page.heroCopy?.getBoundingClientRect();
         const words = Math.max(copy?.right ?? 0, ink(page.heroH)?.right ?? 0);
-        const top = (copy?.top ?? heroBox.top + 150) - 6;
-        box = [Math.max(words + 56, size.w * 0.5), top, size.w - gutter, Math.max((copy?.bottom ?? top) + 6, top + 380)];
+        const top = (copy?.top ?? heroBox.top + 150) + 6;
+        box = [Math.max(words + 56, size.w * 0.5), top, size.w - gutter, Math.max((copy?.bottom ?? top) - 4, top + 380)];
       }
       if (box && box[2] - box[0] > 200 && box[3] - box[1] > 120) {
         card[0] = ((box[0] + box[2]) / 2) * size.dpr; card[1] = (ch - (box[1] + box[3]) / 2) * size.dpr;
@@ -407,6 +407,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       // the close stands in the water: the water round its words is shaded
       hold(ink(page.closeH), 150, 20, true);
       hold(ink(page.closeCta), 150, 10, true);
+      // the footer stands on the water too, which is stilled under its small print
+      hold(page.foot?.getBoundingClientRect(), 70, 0);
     }
     return { y, hot, hotBand, hotSpan, card, cardR, calm, feather };
   }
