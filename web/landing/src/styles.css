@@ -183,8 +183,8 @@ section > *, .hero > * { min-width: 0; }
 .works { margin: 1.6rem 0 0; font-size: 0.92rem; color: var(--muted); max-width: 34rem; text-wrap: pretty; }
 /* The hero's calls to action stand on the light: the outlined ones are
    solid, so no light runs through their words */
-.hero .cta.ghost { background: var(--paper); }
-.hero .cta.ghost:hover { background: var(--ghost-hover-solid); }
+.hero .cta.ghost, .close .cta.ghost { background: var(--paper); }
+.hero .cta.ghost:hover, .close .cta.ghost:hover { background: var(--ghost-hover-solid); }
 /* Two buttons hold one row beside the light, and the demo link sits under
    them, at every width the row would otherwise break unevenly */
 @media (min-width: 720px) {

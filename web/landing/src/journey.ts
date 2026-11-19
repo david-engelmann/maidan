@@ -302,7 +302,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const dh = size.aspect >= 1 ? dyeS : Math.round(dyeS / size.aspect);
     const q = (n: number): [number, number] => [Math.ceil(W / n), Math.ceil(H / n)];
     // the liquid field: half the frame on a wide screen, all of it on a phone
-    const lq = q(w < 720 || dpr < 1.4 || level === 0 ? 1 : 2);
+    const lq = q(w < 720 || dpr < 1.4 ? 1 : 2);
     R = {
       scene: target(W, H),
       liq: target(lq[0], lq[1], 3, float32), liqn: target(lq[0], lq[1]),
@@ -335,16 +335,17 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const hot = Math.max(hotUp, hotDown);
     // its middle up the frame and its reach, then its middle across and its reach
     // by day the pool lies inside the hero, clear of the header's bar
-    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? (opts.light ? 0.34 : 0.62) : 0.5];
-    const hotSpan = atClose ? [0.5, wide ? 0.8 : 1.1] : wide ? (opts.light ? [0.82, 0.3] : [0.72, 0.42]) : [0.5, 0.95];
+    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? (opts.light ? 0.4 : 0.62) : 0.5];
+    const hotSpan = atClose ? [0.5, wide ? 0.8 : 1.1] : wide ? (opts.light ? [0.9, 0.32] : [0.72, 0.42]) : [0.5, 0.95];
     // calm: the header, and every block of copy on screen
     const calm = new Float32Array(CALM * 4).fill(-9999);
     const feather = new Float32Array(CALM).fill(1);
     let nc = 0;
-    const hold = (r: DOMRect | null | undefined, soft: number, pad: number) => {
+    // big: large words, which the last pass holds less hard (a negative feather tells it so)
+    const hold = (r: DOMRect | null | undefined, soft: number, pad: number, big = false) => {
       if (!r || nc >= CALM || r.bottom < 0 || r.top > ch || r.width <= 0) return;
       calm.set([(r.left - pad) * size.dpr, (ch - r.bottom - pad) * size.dpr, (r.right + pad) * size.dpr, (ch - r.top + pad) * size.dpr], nc * 4);
-      feather[nc] = soft * size.dpr;
+      feather[nc] = soft * size.dpr * (big ? -1 : 1);
       nc++;
     };
     // a wide page lets the light go slowly under the words; on a narrow one it
@@ -358,13 +359,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       const box = s.getBoundingClientRect();
       if (box.bottom > 0 && box.top < ch) hold(content(s), soft * (1 - (opts.light ? 0.9 : 0.6) * hotDown), 10);
     }
-    // The close stands in the water. By night its words are held calm, and
-    // closely; by day they are dark on a pale pool and need nothing. The
+    // The close stands in the water. By night the water round its words is
+    // shaded; by day they are dark on a pale pool and need nothing. The
     // footer has its own ground.
     if (!opts.light) {
-      const near = Math.min(soft, 120);
-      hold(ink(page.closeH), near, 26);
-      hold(ink(page.closeCta), near, 14);
+      hold(ink(page.closeH), 150, 20, true);
+      hold(ink(page.closeCta), 150, 10, true);
     }
     return { y, hot, hotBand, hotSpan, calm, feather };
   }
@@ -446,7 +446,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     }
     pass(prog.final, { fb: null, w: W, h: H }, (a) => {
       a.tex("uScene", r.scene.texs[0]); a.tex("uB1", r.b1.read.texs[0]); a.tex("uB2", r.b2.read.texs[0]); a.tex("uB3", r.b3.read.texs[0]);
-      a.i("uLight", opts.light ? 1 : 0); a.f("uPx", W, H); a.f("uSeed", running() ? (t * 7.31) % 1 : 0.37); a.fv("uCalm", 4, j.calm); a.fv("uFeather", 1, j.feather); a.f("uBloom", 0.62); a.f("uWash", size.w >= 1080 ? 0.9 : 0.25);
+      a.i("uLight", opts.light ? 1 : 0); a.f("uPx", W, H); a.f("uSeed", running() ? (t * 7.31) % 1 : 0.37); a.fv("uCalm", 4, j.calm); a.fv("uFeather", 1, j.feather); a.f("uBloom", 0.62);
     });
     dirty = false;
   }
