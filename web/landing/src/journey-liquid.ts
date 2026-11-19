@@ -60,7 +60,9 @@ void main() {
 
   // the same liquid, hot: a place on the page, with a middle and a reach
   // up the frame (u_hotBand) and across it (u_hotSpan)
-  float zone = exp(-pow((v_uv.y - u_hotBand.x) / u_hotBand.y, 2.0) - pow((v_uv.x - u_hotSpan.x) / u_hotSpan.y, 2.0)) * u_hot;
+  // (squared by hand: pow() of a negative base is undefined)
+  vec2 hz = (v_uv - vec2(u_hotSpan.x, u_hotBand.x)) / vec2(u_hotSpan.y, u_hotBand.y);
+  float zone = exp(-dot(hz, hz)) * u_hot;
   float fine = fbm(P * 2.1 + 4.0 * r + 3.0 * q);
   float fil = fbm(P * 4.6 + 7.0 * r + 2.0 * q + vec2(0.0, tt * 3.0));
   float ridge = pow(1.0 - abs(2.0 * fbm(P * 2.9 + 5.0 * r + vec2(tt * 2.0, 0.0)) - 1.0), 3.0);
@@ -89,7 +91,7 @@ void main() {
     float rb = exp(-e * e) * span * stri;
     // a second, finer strand wound round it
     float d2 = dist - wd * 2.1 * sin(x * 3.4 + ph + u_t * 0.2);
-    float rb2 = exp(-pow(d2 / 0.0045, 2.0)) * span * 0.7;
+    float rb2 = exp(-(d2 * d2) / (0.0045 * 0.0045)) * span * 0.7;
     E += rb * 1.5 + rb2 * 0.9; heat += rb * 1.5 * (0.4 + 0.5 * tw) + rb2 * 0.6;
   }
 
@@ -261,7 +263,7 @@ void main() {
     float cap = 0.027;
     float Lc = cap * (1.0 - exp(-Ld / cap));
     lin *= mix(1.0, Lc / max(L, 1e-5), calm);
-    c = pow(lin, vec3(1.0 / 2.2));
+    c = pow(max(lin, 0.0), vec3(1.0 / 2.2));
     c += (hash(p + uSeed) - 0.5) * 0.022;
   } else {
     // a hazy photograph, not a model: the picture seen through a diffusion
@@ -277,7 +279,7 @@ void main() {
     float D = 1.0 - L, Dmax = 0.32;
     float Dc = Dmax * (1.0 - exp(-D / Dmax));
     lin = 1.0 - (1.0 - lin) * mix(1.0, Dc / max(D, 1e-5), calm);
-    c = pow(lin, vec3(1.0 / 2.2));
+    c = pow(max(lin, 0.0), vec3(1.0 / 2.2));
     c += (hash(p + uSeed) - 0.5) * 0.014;
   }
   o = vec4(c, 1.0);
