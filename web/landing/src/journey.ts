@@ -325,18 +325,34 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const wide = size.w >= 1080;
     const max = Math.max(0, document.documentElement.scrollHeight - vh);
     const heroH = page.hero?.getBoundingClientRect().height ?? vh;
-    const upC = wide ? heroH * 0.52 : vh * 0.34;
     const hotUp = 1 - ease((y - vh * 0.25) / (vh * 0.95));
-    // (low on the last screen, over the footer, so the closing headline stands on quiet silk and the light comes up under it)
     const foot = page.foot?.getBoundingClientRect();
-    const downC = (foot ? foot.top + y : max + vh) - vh * 0.2;
+    const footTop = foot ? foot.top + y : max + vh;
     const hotDown = ease((1 - (max - y) / (vh * 0.95)) / 0.6);
     const atClose = hotDown > hotUp;
     const hot = Math.max(hotUp, hotDown);
-    // its middle up the frame and its reach, then its middle across and its reach
-    // by day the pool lies inside the hero, clear of the header's bar
-    const hotBand = atClose ? [1 - (downC - y) / ch, 0.34] : [1 - (upC - y) / ch, wide ? (opts.light ? 0.4 : 0.62) : 0.5];
-    const hotSpan = atClose ? [0.5, wide ? 0.8 : 1.1] : wide ? (opts.light ? [0.9, 0.32] : [0.72, 0.42]) : [0.5, 0.95];
+    // Its middle up the frame and its reach, then its middle across and its
+    // reach. A shore falls a little over one reach from the middle: 1.18
+    // reaches where the light is round, 1.085 where it is square.
+    let hotBand: number[];
+    let hotSpan: number[];
+    if (atClose) {
+      // the pool closes round the closing words and ends short of the footer, on its own shore
+      const top = (page.closeH?.getBoundingClientRect().top ?? foot?.top ?? vh) + y;
+      const bottom = (page.closeCta?.getBoundingClientRect().bottom ?? foot?.top ?? vh) + y;
+      const shore = footTop - (footTop - bottom) * 0.45;
+      const mid = (top + bottom) / 2 - vh * 0.04;
+      hotBand = [1 - (mid - y) / ch, Math.max(0.12, (shore - mid) / (1.18 * vh))];
+      hotSpan = [0.5, wide ? 0.8 : 1.1];
+    } else if (opts.light) {
+      // by day a bay: off the top and the right of a wide screen, its shore clear of the hero's words and of the hero's foot
+      const mid = heroH * 0.42;
+      hotBand = [1 - (mid - y) / ch, Math.max(0.2, (heroH - (wide ? 40 : 28) - mid) / (1.085 * vh))];
+      hotSpan = wide ? [1.0, 0.42] : [0.5, 1.4];
+    } else {
+      hotBand = [1 - ((wide ? heroH * 0.52 : vh * 0.34) - y) / ch, wide ? 0.62 : 0.5];
+      hotSpan = wide ? [0.72, 0.42] : [0.5, 0.95];
+    }
     // calm: the header, and every block of copy on screen
     const calm = new Float32Array(CALM * 4).fill(-9999);
     const feather = new Float32Array(CALM).fill(1);
@@ -351,7 +367,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     // a wide page lets the light go slowly under the words; on a narrow one it
     // stands right over them and must keep its strength
     const soft = size.w >= 1080 ? (opts.light ? 250 : 280) : opts.light ? 100 : 90;
-    hold(page.top?.getBoundingClientRect(), opts.light ? 40 : 90, 0);
+    // by day the bar is a pane over the water, with an edge; a feathered one is a band across the pool
+    hold(page.top?.getBoundingClientRect(), opts.light ? 2 : 90, 0);
     nc = 1; // the first place is the bar's, whether or not there is one
     // by day the pool's shore stands clear of the hero's words, so they need little
     hold(page.heroCopy?.getBoundingClientRect(), opts.light ? Math.min(soft, 120) : soft, 10);
@@ -366,7 +383,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       hold(ink(page.closeH), 150, 20, true);
       hold(ink(page.closeCta), 150, 10, true);
     }
-    return { y, hot, hotBand, hotSpan, calm, feather };
+    return { y, hot, hotBand, hotSpan, hotSquare: opts.light && !atClose ? 1 : 0, calm, feather };
   }
 
   function splat(x: number, y: number, vx: number, vy: number, dens: number, heat: number, radius: number) {
@@ -421,7 +438,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const j = journey();
     pass(prog.liq, r.liq, (a) => {
       a.tex("u_dye", r.dye.read.texs[0]); a.f("u_dTexel", 1 / r.dye.read.w, 1 / r.dye.read.h); a.f("u_t", t); a.f("u_scroll", j.y / size.h); a.f("u_aspect", size.aspect); a.f("u_hot", j.hot);
-      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]);
+      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]); a.f("u_hotSquare", j.hotSquare);
     });
     pass(prog.liqn, r.liqn, (a) => { a.tex("u_l0", r.liq.texs[0]); a.tex("u_l2", r.liq.texs[2]); a.f("u_tx", 1 / r.liq.w, 1 / r.liq.h); a.i("uMode", float32 ? 0 : 1); });
     pass(prog.compose, r.scene, (a) => {

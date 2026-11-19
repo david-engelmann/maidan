@@ -22,7 +22,7 @@ float fbm3(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += 
 // o1: tone, the light between the net's lines, light poured in by the cursor.  o2: the height's slope, taken here at full precision.
 export const LIQ_FS = HEAD + `layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1; layout(location = 2) out vec4 o2;
 uniform sampler2D u_dye; uniform float u_t; uniform float u_scroll; uniform float u_aspect; uniform float u_hot;
-uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec2 u_dTexel;` + NOISE + `
+uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec2 u_dTexel; uniform float u_hotSquare;` + NOISE + `
 void main() {
   vec4 dy = texture(u_dye, v_uv);
   vec2 sp = vec2(v_uv.x * u_aspect, v_uv.y);
@@ -78,7 +78,9 @@ void main() {
   // (u_hotBand) and across it (u_hotSpan). Squared by hand: pow() of a
   // negative base is undefined.
   vec2 hz = (v_uv - vec2(u_hotSpan.x, u_hotBand.x)) / vec2(u_hotSpan.y, u_hotBand.y);
-  float zone = exp(-dot(hz, hz)) * u_hot;
+  vec2 hz2 = hz * hz;
+  // round by night; by day squarer, so the pool has straight shores and a round corner
+  float zone = exp(-mix(hz2.x + hz2.y, hz2.x * hz2.x + hz2.y * hz2.y, u_hotSquare)) * u_hot;
   // light poured in by the cursor, and the swell it leaves
   float pour = max(dy.x, 0.0);
   float height = hgt * 90.0 + 0.03 * pour;
@@ -112,7 +114,9 @@ void main() {
     vec3 body = mix(vec3(0.012, 0.062, 0.135), vec3(0.016, 0.08, 0.165), tone);
     body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
     col = body * (0.5 + 1.25 * soft) * relief;
-    col += mix(vec3(0.2, 0.55, 0.85) * 0.42, vec3(0.78, 0.95, 1.0) * 1.5, lit) * caus;
+    // in shade the net comes and goes across the page, as light does through deep water: one even net is wallpaper
+    float patchy = mix(0.22, 1.25, smoothstep(0.36, 0.62, tone));
+    col += mix(vec3(0.2, 0.55, 0.85) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.5, lit) * caus;
     col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
     sun = lit;
   } else {
@@ -124,7 +128,7 @@ void main() {
     // pale wet edge, and deepens away from its shore
     float lit = smoothstep(0.244, 0.258, h);
     float rim = lit * (1.0 - smoothstep(0.258, 0.3, h));
-    vec3 water = mix(vec3(0.7, 0.9, 0.93), vec3(0.33, 0.73, 0.87), smoothstep(0.26, 0.9, h));
+    vec3 water = mix(vec3(0.72, 0.89, 0.92), vec3(0.39, 0.72, 0.85), smoothstep(0.26, 0.9, h));
     col = mix(vec3(0.949, 0.933, 0.902), water * (0.86 + 0.3 * soft) * relief, lit);
     col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit + rim * 0.45, 0.0, 0.95));
     sun = lit;
@@ -255,7 +259,7 @@ void main() {
     // at 4.5:1. Water in shade is all but untouched, so it is the same
     // water behind the words as beside them: a veil over it reads as murk.
     calm = max(calm, bar);
-    float cap = 0.042;
+    float cap = 0.032;
     float Ld = L * mix(1.0, 0.09, sun * calm);
     float Lc = cap * (1.0 - exp(-Ld / cap));
     float held = mix(L, Lc, calm);
@@ -280,8 +284,11 @@ void main() {
     // frosted haze. The page's paper is already over the line and is left alone.
     vec3 lin = pow(c, vec3(2.2));
     float L = dot(lin, lumW);
-    float Lc = max(L, 0.7 + (L - 0.4) * 0.35);
-    lin = min(lin * mix(1.0, Lc / max(L, 1e-5), calm), vec3(1.0));
+    float Lc = max(L, 0.74 + (L - 0.4) * 0.26);
+    float up = Lc / max(L, 1e-5);
+    // mostly by scaling, a little toward white, or the lifted water is a pool-side blue too loud for words
+    vec3 lifted = mix(min(lin * up, vec3(1.0)), 1.0 - (1.0 - lin) * (1.0 - Lc) / max(1.0 - L, 1e-5), 0.4);
+    lin = mix(lin, lifted, calm);
     c = pow(max(lin, 0.0), vec3(1.0 / 2.2));
     c += (hash(p + uSeed) - 0.5) * 0.014;
   }

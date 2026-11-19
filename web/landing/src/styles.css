@@ -428,3 +428,6 @@ section > *, .hero > * { min-width: 0; }
 
 /* The close stands on the water itself: no rule across it */
 .close::before { display: none; }
+/* and the water lets go into the footer's ground, so the footer is not a cut across it */
+.close { position: relative; }
+.close::after { content: ""; position: absolute; inset: auto 0 0; height: 5rem; z-index: -1; pointer-events: none; background: linear-gradient(transparent, var(--paper)); }
