@@ -390,6 +390,8 @@ section > *, .hero > * { min-width: 0; }
 /* Room for its heading's two lines at the widest heading size; the lede
    keeps its own measure */
 .room-head { max-width: 48rem; }
+/* each sentence wraps on its own, so neither leaves a word alone on a line */
+.room-head h2 span { display: block; }
 .room-stage { position: relative; margin-top: 2.6rem; }
 /* The board's box is sized before its code arrives: the one-column design
    below 1024px, the four lanes above, each at its own proportions */

@@ -155,7 +155,8 @@ const WIDE = {
     Grok: { x: 480, y: 330 },
     Muse: { x: 760, y: 330 },
     Antigravity: { x: 956, y: 418 },
-    Maya: { x: 432, y: 22 },
+    // beside the channel, so her way to the Open lane and back crosses no lane's name
+    Maya: { x: 150, y: 22 },
     Jun: { x: 200, y: 400 },
   } as Record<Who, Aim>,
 };
@@ -221,6 +222,8 @@ function where(s: S, who: Who, layout: "wide" | "compact", slots: Record<CardId,
     return kind === "card" ? { x: p.x + 136, y: p.y + 48 } : { x: p.x + 112, y: p.y + 58 };
   }
   const p = compactSpot(id);
+  // On an unfiled task: beside the empty slot's label, not on it
+  if (id === "main" && !s.cards.main.shown) return { x: p.x + 250, y: p.y + 62 };
   if (id === "main") return kind === "card" ? { x: p.x + 196, y: p.y + 46 } : { x: p.x + 118, y: p.y + 84 };
   // A list row: on its chip, the tag hanging back over the row's own title
   return { x: p.x + 236, y: p.y + 22, flip: true };
@@ -580,6 +583,12 @@ function Compact({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
           ))}
         </div>
         <div className="rm-cards" data-fade={s.fade || undefined}>
+          {/* Where the next task is filed. Without it the phone's board opens
+              on a blank panel until Maya files one. */}
+          <div className="rm-slot" data-off={main.shown || undefined} style={{ width: COMPACT.cardW, transform: `translate(${COMPACT.cardX}px, ${COMPACT.cardY}px)` }}>
+            <span className="rm-slot__plus" aria-hidden="true">+</span>
+            New task
+          </div>
           <TaskCard id="main" c={main} big style={{ width: COMPACT.cardW, transform: `translate(${COMPACT.cardX}px, ${COMPACT.cardY}px)` }} />
           <div className="rm-also" style={{ top: COMPACT.rowTop - 24 }}>
             Also on the board
