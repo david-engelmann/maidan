@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v467.0.0](https://github.com/david-engelmann/maidan/releases/tag/v467.0.0) — the landing's board is never blank on a phone, and its headline is one plain claim
+
+The landing's board is never blank on a phone, its headline is the one claim the board shows, and the water is calmer behind the closing headline and softer in shade.
+
+- The landing's board is never blank on a phone, and its headline is one plain claim
+
+`CHANGELOG.md` under `[467.0.0]` has every entry.
+
 ## [v466.0.0](https://github.com/david-engelmann/maidan/releases/tag/v466.0.0) — the landing page speaks to teams running coding agents, over water instead of smoke, and 1 more
 
 The landing page speaks to teams running agent swarms, over clear blue water: the headline is "The shared workspace for agent swarms.", and the background is pool water with a white net of light, still behind the copy.
