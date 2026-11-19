@@ -22,7 +22,7 @@ float fbm3(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += 
 // o1: tone, the light between the net's lines, light poured in by the cursor.  o2: the height's slope, taken here at full precision.
 export const LIQ_FS = HEAD + `layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1; layout(location = 2) out vec4 o2;
 uniform sampler2D u_dye; uniform float u_t; uniform float u_scroll; uniform float u_aspect; uniform float u_hot;
-uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec2 u_dTexel; uniform float u_hotSquare;` + NOISE + `
+uniform vec2 u_hotBand; uniform vec2 u_hotSpan; uniform vec2 u_dTexel;` + NOISE + `
 void main() {
   vec4 dy = texture(u_dye, v_uv);
   vec2 sp = vec2(v_uv.x * u_aspect, v_uv.y);
@@ -78,9 +78,7 @@ void main() {
   // (u_hotBand) and across it (u_hotSpan). Squared by hand: pow() of a
   // negative base is undefined.
   vec2 hz = (v_uv - vec2(u_hotSpan.x, u_hotBand.x)) / vec2(u_hotSpan.y, u_hotBand.y);
-  vec2 hz2 = hz * hz;
-  // round by night; by day squarer, so the pool has straight shores and a round corner
-  float zone = exp(-mix(hz2.x + hz2.y, hz2.x * hz2.x + hz2.y * hz2.y, u_hotSquare)) * u_hot;
+  float zone = exp(-dot(hz, hz)) * u_hot;
   // light poured in by the cursor, and the swell it leaves
   float pour = max(dy.x, 0.0);
   float height = hgt * 90.0 + 0.03 * pour;
@@ -92,7 +90,7 @@ void main() {
 // The frame: the water lit from above. By night it is deep blue, lighter and
 // clearer where the page holds its light, with a white net of light on it.
 // By day it is a pale pool there, and the page's paper elsewhere.
-export const COMPOSE = HEAD + `out vec4 o; uniform sampler2D u_l0; uniform sampler2D u_l1; uniform sampler2D u_ln; uniform float u_rel; uniform int u_light;
+export const COMPOSE = HEAD + `out vec4 o; uniform sampler2D u_l0; uniform sampler2D u_l1; uniform sampler2D u_ln; uniform float u_rel; uniform int u_light; uniform vec2 u_px; uniform vec4 u_card; uniform float u_cardR;
 void main() {
   vec4 lq = texture(u_l0, v_uv);
   vec4 l1 = texture(u_l1, v_uv);
@@ -113,26 +111,35 @@ void main() {
     float lit = smoothstep(0.08, 0.6, heat);
     vec3 body = mix(vec3(0.012, 0.062, 0.135), vec3(0.016, 0.08, 0.165), tone);
     body = mix(body, vec3(0.01, 0.17, 0.3), lit * 0.85);
-    col = body * (0.5 + 1.25 * soft) * relief;
+    col = body * (0.4 + 1.7 * soft) * relief;
     // in shade the net comes and goes across the page, as light does through deep water: one even net is wallpaper
     float patchy = mix(0.4, 1.25, smoothstep(0.36, 0.62, tone));
     col += mix(vec3(0.2, 0.55, 0.85) * 0.42 * patchy, vec3(0.78, 0.95, 1.0) * 1.35, lit) * caus;
     col += vec3(0.8, 0.95, 1.0) * pour * 0.3;
     sun = lit;
   } else {
-    // By day a pool seen from above: the page's paper for a shore, pale
-    // shallows, and a deeper blue where the page holds its light. The shore
-    // wanders, so the water never ends on a straight line.
-    float h = clamp(heat + (tone - 0.5) * 0.9 * smoothstep(0.0, 0.3, heat), 0.0, 1.0);
-    // A waterline, not a haze: the water ends within a few pixels, on a
-    // thin bright edge, with the paper a shade darker where it is wet, and
-    // it is already the pool's colour at its shore.
-    float lit = smoothstep(0.247, 0.255, h);
-    float rim = lit * (1.0 - smoothstep(0.255, 0.27, h));
-    float wet = smoothstep(0.212, 0.247, h) * (1.0 - lit);
-    vec3 water = mix(vec3(0.6, 0.85, 0.91), vec3(0.39, 0.72, 0.85), smoothstep(0.26, 0.8, h));
-    col = mix(vec3(0.949, 0.933, 0.902) * (1.0 - 0.07 * wet), water * (0.86 + 0.3 * soft) * relief, lit);
-    col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit + rim * 0.7, 0.0, 0.95));
+    // By day the page is paper, and the water is a pool set into it: a
+    // rounded rectangle (u_card: its middle and half its size, in pixels)
+    // with a clean edge, a made thing. A pool with a wandering shore read
+    // as a blob pasted on the page.
+    float lit = 0.0, wall = 0.0, coping = 0.0, line = 0.0;
+    if (u_card.z > 0.0) {
+      vec2 q = abs(v_uv * u_px - u_card.xy) - u_card.zw + u_cardR;
+      float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - u_cardR;
+      float cw = 0.2 * u_cardR;
+      lit = clamp(0.5 - sd, 0.0, 1.0);
+      // a pale coping round it, a hairline where the coping meets the paper,
+      // and the wall's shade on the water along its edge
+      coping = clamp(0.5 + sd, 0.0, 1.0) * clamp(0.5 - (sd - cw), 0.0, 1.0);
+      line = clamp(1.0 - abs(sd - cw), 0.0, 1.0);
+      wall = smoothstep(-0.7 * u_cardR, 0.0, sd);
+    }
+    vec3 water = mix(vec3(0.5, 0.8, 0.9), vec3(0.38, 0.71, 0.85), tone) * (0.86 + 0.3 * soft) * relief * (1.0 - 0.2 * wall);
+    col = mix(vec3(0.949, 0.933, 0.902), vec3(0.985, 0.978, 0.962), coping);
+    col *= 1.0 - 0.1 * line;
+    col = mix(col, water, lit);
+    col = mix(col, vec3(1.0), clamp(caus * 1.15 * lit * (1.0 - 0.5 * wall), 0.0, 0.95));
+    pour *= lit;
     sun = lit;
     col = mix(col, vec3(1.0), clamp(pour * 0.25, 0.0, 0.9));
   }
@@ -225,7 +232,7 @@ void main() {
 // Tone, and the promise to the text: inside any block of copy the picture is
 // held under (or, in daylight, over) the luminance that keeps body text at 4.5:1.
 export const FINAL = HEAD + `out vec4 o; uniform sampler2D uScene; uniform sampler2D uB1; uniform sampler2D uB2; uniform sampler2D uB3;
-uniform int uLight; uniform vec2 uPx; uniform float uSeed; uniform vec4 uCalm[8]; uniform float uFeather[8]; uniform float uBloom;
+uniform int uLight; uniform vec2 uPx; uniform float uSeed; uniform vec4 uCalm[8]; uniform float uFeather[8]; uniform float uBloom; uniform float uCap;
 // grain with no weave in it: hashed on whole pixels
 float hash(vec2 p) { vec3 p3 = fract(vec3(floor(p).xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
@@ -256,18 +263,19 @@ void main() {
     c *= mix(vec3(0.9, 0.98, 1.14), vec3(1.0), smoothstep(0.0, 0.3, lm));
     vec3 lin = pow(c, vec3(2.2));
     float L = dot(lin, lumW);
-    // Behind copy, sunlit water is stopped down until it is the water in
-    // shade, and the whole is rolled off under the cap that keeps body text
-    // at 4.5:1. Water in shade is all but untouched, so it is the same
-    // water behind the words as beside them: a veil over it reads as murk.
+    // Behind copy, sunlit water is stopped down and rolled off under the
+    // cap that keeps body text at 4.5:1 (uCap), so the hero's words stand on
+    // dim water. Water in shade is stilled there instead: held at its own
+    // dark blue with the net all but gone, since any net behind small copy
+    // is read as either murk or wire. The net goes on in the gaps.
     calm = max(calm, bar);
-    float cap = 0.032;
+    float cap = mix(0.006, uCap, sun);
     float Ld = L * mix(1.0, 0.09, sun * calm);
-    float Lc = cap * (1.0 - exp(-Ld / cap));
+    float Lc = cap * tanh(Ld / cap);
     float held = mix(L, Lc, calm);
-    // large words need only 3:1: the water round them is shaded, not put out
-    float capB = 0.16;
-    float Lb = capB * (1.0 - exp(-held * mix(1.0, 0.45, sun) / capB));
+    // large words need only 3:1: the water round them is shaded a little, and its brightest lines taken down
+    float capB = 0.12;
+    float Lb = capB * (1.0 - exp(-held * mix(1.0, 0.8, sun) / capB));
     held = mix(held, Lb, big * (1.0 - calm));
     lin *= held / max(L, 1e-5);
     // a held highlight is a grey, and grey on navy reads as brown: keep it the water's blue
@@ -278,8 +286,6 @@ void main() {
     // a little bloom only: more, and the pool's shore is a smear
     c = mix(clamp(c, 0.0, 1.0), texture(uB1, v_uv).rgb, 0.08);
     c = clamp(c, 0.0, 1.0);
-    // the header's bar stands on lightened water
-    c = mix(c, vec3(0.949, 0.933, 0.902), bar * 0.4);
     calm = max(calm, bar);
     // Behind copy the water is lifted until body text keeps 4.5:1 on it,
     // by scaling, which keeps its colour: lifted toward white it is a

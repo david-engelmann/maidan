@@ -241,12 +241,15 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   } | null = null;
 
   // ---- the page: where the acts fall, and what must stay calm
-  const page = { top: null as Element | null, heroCopy: null as Element | null, hero: null as Element | null, closeH: null as Element | null, closeCta: null as Element | null, foot: null as Element | null, mid: [] as Element[], how: null as Element | null, hosting: null as Element | null };
+  const page = { top: null as Element | null, heroCopy: null as Element | null, hero: null as Element | null, close: null as Element | null, heroH: null as Element | null, heroBits: [] as Element[], closeH: null as Element | null, closeCta: null as Element | null, foot: null as Element | null, mid: [] as Element[], how: null as Element | null, hosting: null as Element | null };
   function findPage() {
     const q = (s: string) => document.querySelector(s);
     page.top = q(".top");
     page.hero = q("main > .hero");
     page.heroCopy = q("main .hero-copy");
+    page.close = q("main > .close");
+    page.heroH = q("main .hero-copy h1");
+    page.heroBits = Array.from(document.querySelectorAll("main .hero-copy > .eyebrow, main .hero-copy > .lede, main .hero-copy > .works"));
     page.closeH = q(".close h2");
     page.closeCta = q(".close .cta-row");
     page.foot = q(".foot");
@@ -332,30 +335,44 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const atClose = hotDown > hotUp;
     const hot = Math.max(hotUp, hotDown);
     // Its middle up the frame and its reach, then its middle across and its
-    // reach. A shore falls a little over one reach from the middle: 1.18
-    // reaches where the light is round, 1.085 where it is square.
+    // reach. Its edge falls about 1.18 reaches from its middle.
     let hotBand: number[];
     let hotSpan: number[];
     if (atClose) {
-      // the pool closes round the closing words and ends short of the footer, on its own shore
+      // the light closes round the closing words and ends short of the footer
       const top = (page.closeH?.getBoundingClientRect().top ?? foot?.top ?? vh) + y;
       const bottom = (page.closeCta?.getBoundingClientRect().bottom ?? foot?.top ?? vh) + y;
       const shore = footTop - (footTop - bottom) * 0.45;
       const mid = (top + bottom) / 2 - vh * 0.04;
       hotBand = [1 - (mid - y) / ch, Math.max(0.12, (shore - mid) / (1.18 * vh))];
       hotSpan = [0.5, wide ? 0.8 : 1.1];
-    } else if (opts.light) {
-      // By day a pool with a shore on three sides: it starts under the
-      // header's bar and ends short of the hero's foot, clear of the hero's
-      // words, and runs off the right of a wide screen.
-      const top = (page.top?.getBoundingClientRect().bottom ?? 56) + (wide ? 26 : 14);
-      const bottom = heroH - (wide ? 40 : 28);
-      const mid = (top + bottom) / 2;
-      hotBand = [1 - (mid - y) / ch, Math.max(0.2, (bottom - top) / 2 / (1.085 * vh))];
-      hotSpan = wide ? [1.0, 0.42] : [0.5, 1.4];
     } else {
-      hotBand = [1 - ((wide ? heroH * 0.52 : vh * 0.34) - y) / ch, wide ? 0.62 : 0.5];
+      hotBand = [1 - ((wide ? heroH * 0.52 : vh * 0.34) - y) / ch, 0.5];
       hotSpan = wide ? [0.72, 0.42] : [0.5, 0.95];
+    }
+    // By day the water is a pool set into the paper: beside the hero's words
+    // on a wide screen, and round the closing call to action. Its middle and
+    // half its size, in the canvas's pixels (from the bottom), and its corner.
+    const card = [0, 0, 0, 0];
+    let cardR = 0;
+    if (opts.light) {
+      const gutter = page.heroCopy?.getBoundingClientRect().left ?? 24;
+      const closeBox = page.close?.getBoundingClientRect();
+      const heroBox = page.hero?.getBoundingClientRect();
+      let box: number[] | null = null;
+      if (closeBox && closeBox.top < ch) box = [gutter, closeBox.top + (wide ? 40 : 24), size.w - gutter, closeBox.bottom - (wide ? 44 : 30)];
+      else if (wide && heroBox) {
+        // beside the hero's words and as tall as they are, so it is set with them and does not float
+        const copy = page.heroCopy?.getBoundingClientRect();
+        const words = Math.max(copy?.right ?? 0, ink(page.heroH)?.right ?? 0);
+        const top = (copy?.top ?? heroBox.top + 150) - 6;
+        box = [Math.max(words + 56, size.w * 0.5), top, size.w - gutter, Math.max((copy?.bottom ?? top) + 6, top + 380)];
+      }
+      if (box && box[2] - box[0] > 200 && box[3] - box[1] > 120) {
+        card[0] = ((box[0] + box[2]) / 2) * size.dpr; card[1] = (ch - (box[1] + box[3]) / 2) * size.dpr;
+        card[2] = ((box[2] - box[0]) / 2) * size.dpr; card[3] = ((box[3] - box[1]) / 2) * size.dpr;
+        cardR = (wide ? 28 : 22) * size.dpr;
+      }
     }
     // calm: the header, and every block of copy on screen
     const calm = new Float32Array(CALM * 4).fill(-9999);
@@ -368,26 +385,30 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       feather[nc] = soft * size.dpr * (big ? -1 : 1);
       nc++;
     };
-    // a wide page lets the light go slowly under the words; on a narrow one it
-    // stands right over them and must keep its strength
-    const soft = size.w >= 1080 ? (opts.light ? 250 : 280) : opts.light ? 100 : 90;
-    // by day the pool lies below the bar, which needs nothing
-    if (!opts.light) hold(page.top?.getBoundingClientRect(), 50, 0);
-    nc = 1; // the first place is the bar's, whether or not there is one
-    // by day the pool's shore stands clear of the hero's words, so they need little
-    hold(page.heroCopy?.getBoundingClientRect(), opts.light ? Math.min(soft, 120) : soft, 10);
-    for (const s of page.mid) {
-      const box = s.getBoundingClientRect();
-      if (box.bottom > 0 && box.top < ch) hold(content(s), soft * (1 - (opts.light ? 0.9 : 0.6) * hotDown), 10);
-    }
-    // The close stands in the water. By night the water round its words is
-    // shaded; by day they are dark on a pale pool and need nothing. The
-    // footer has its own ground.
+    // By day no words stand on the water but the closing headline, dark on
+    // a pale pool, so nothing is held. By night: a wide page lets the light
+    // go slowly under the words; on a narrow one it stands right over them.
     if (!opts.light) {
+      const soft = wide ? 280 : 90;
+      hold(page.top?.getBoundingClientRect(), 70, 0);
+      nc = 1; // the first place is the bar's, whether or not there is one
+      if (wide) hold(page.heroCopy?.getBoundingClientRect(), soft, 10);
+      else {
+        // on one column the hero's words stand on the sunlit water: its small
+        // print is held as copy, its headline only as large words, and its
+        // buttons have their own ground, so the water stays lit round them
+        hold(ink(page.heroH), 60, 8, true);
+        for (const bit of page.heroBits) hold(bit.getBoundingClientRect(), 44, 6);
+      }
+      for (const s of page.mid) {
+        const box = s.getBoundingClientRect();
+        if (box.bottom > 0 && box.top < ch) hold(content(s), soft * (1 - 0.6 * hotDown), 10);
+      }
+      // the close stands in the water: the water round its words is shaded
       hold(ink(page.closeH), 150, 20, true);
       hold(ink(page.closeCta), 150, 10, true);
     }
-    return { y, hot, hotBand, hotSpan, hotSquare: opts.light && !atClose ? 1 : 0, calm, feather };
+    return { y, hot, hotBand, hotSpan, card, cardR, calm, feather };
   }
 
   function splat(x: number, y: number, vx: number, vy: number, dens: number, heat: number, radius: number) {
@@ -442,11 +463,12 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     const j = journey();
     pass(prog.liq, r.liq, (a) => {
       a.tex("u_dye", r.dye.read.texs[0]); a.f("u_dTexel", 1 / r.dye.read.w, 1 / r.dye.read.h); a.f("u_t", t); a.f("u_scroll", j.y / size.h); a.f("u_aspect", size.aspect); a.f("u_hot", j.hot);
-      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]); a.f("u_hotSquare", j.hotSquare);
+      a.f("u_hotBand", j.hotBand[0], j.hotBand[1]); a.f("u_hotSpan", j.hotSpan[0], j.hotSpan[1]);
     });
     pass(prog.liqn, r.liqn, (a) => { a.tex("u_l0", r.liq.texs[0]); a.tex("u_l2", r.liq.texs[2]); a.f("u_tx", 1 / r.liq.w, 1 / r.liq.h); a.i("uMode", float32 ? 0 : 1); });
     pass(prog.compose, r.scene, (a) => {
       a.tex("u_l0", r.liq.texs[0]); a.tex("u_l1", r.liq.texs[1]); a.tex("u_ln", r.liqn.texs[0]); a.i("u_light", opts.light ? 1 : 0);
+      a.f("u_px", r.scene.w, r.scene.h); a.f("u_card", j.card[0] * (r.scene.w / (size.w * size.dpr)), j.card[1] * (r.scene.h / (size.h * size.dpr)), j.card[2] * (r.scene.w / (size.w * size.dpr)), j.card[3] * (r.scene.h / (size.h * size.dpr))); a.f("u_cardR", j.cardR * (r.scene.w / (size.w * size.dpr)));
       // the liquid's relief, by the size of its own grid
       a.f("u_rel", (r.liq.h / 900) * (opts.light ? 90 : 200) * (r.liq.h > size.h * 1.2 ? 0.6 : 1));
     });
@@ -467,7 +489,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
     }
     pass(prog.final, { fb: null, w: W, h: H }, (a) => {
       a.tex("uScene", r.scene.texs[0]); a.tex("uB1", r.b1.read.texs[0]); a.tex("uB2", r.b2.read.texs[0]); a.tex("uB3", r.b3.read.texs[0]);
-      a.i("uLight", opts.light ? 1 : 0); a.f("uPx", W, H); a.f("uSeed", running() ? (t * 7.31) % 1 : 0.37); a.fv("uCalm", 4, j.calm); a.fv("uFeather", 1, j.feather); a.f("uBloom", 0.62);
+      a.i("uLight", opts.light ? 1 : 0); a.f("uPx", W, H); a.f("uSeed", running() ? (t * 7.31) % 1 : 0.37); a.fv("uCalm", 4, j.calm); a.fv("uFeather", 1, j.feather); a.f("uBloom", 0.62); a.f("uCap", size.w >= 1080 ? 0.026 : 0.034);
     });
     dirty = false;
   }
