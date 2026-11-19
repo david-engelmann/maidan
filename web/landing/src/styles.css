@@ -19,7 +19,7 @@
      the horizon never bands: light specks on dark, ink specks on paper */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.22 0 0 0 -0.085'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
   --ink: #ecebe7;
-  --muted: #9fa3ab;
+  --muted: #afb3bb;
   --line: rgba(236, 240, 248, 0.09);
   --signal: #ff6a2b;
   --signal-ink: #ff9b6e;
@@ -37,7 +37,7 @@
   --mark-ink: #ff6a2b;
   --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
   --primary-ink: #1b0b03;
-  --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -8px rgba(255, 106, 43, 0.65);
+  --primary-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 106, 43, 0.5), 0 6px 18px -10px rgba(255, 106, 43, 0.3);
   /* Hover lifts a button where it stands: the lit one brightens, an outlined
      one takes a wash (solid where it stands on the light) */
   --cta-hover: brightness(1.1);
@@ -151,7 +151,7 @@ section[id] { scroll-margin-top: calc(env(safe-area-inset-top) + 4rem); }
 
 /* Type */
 h1, h2 { margin: 0; font-weight: 560; letter-spacing: -0.06em; line-height: 0.92; text-wrap: balance; }
-h1 { font-size: clamp(3.2rem, 13vw, 7.6rem); }
+h1 { font-size: clamp(2.5rem, 10.4vw, 5rem); }
 h2 { font-size: clamp(2.4rem, 9vw, 4.8rem); }
 h3 { margin: 0; font-size: 1.08rem; font-weight: 620; letter-spacing: -0.02em; }
 .eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -192,18 +192,20 @@ section > *, .hero > * { min-width: 0; }
   .hero .cta.text { grid-column: 1 / -1; justify-self: start; }
 }
 .works b { color: var(--ink); font-weight: 600; }
+.works a { color: var(--ink); text-underline-offset: 0.2em; }
 
 /* How it works */
 .how { }
 .steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 2.4rem; counter-reset: none; }
 /* Each still's stage is the tile: it fills it edge to edge, on the tile's ground */
-.step-art { border-radius: 16px; background: var(--paper-2); overflow: hidden; }
-.step-n { margin: 1.2rem 0 0.4rem; font-family: var(--mono); font-size: 0.74rem; color: var(--signal-ink); }
-.step p:last-child { margin: 0.5rem 0 0; color: var(--muted); text-wrap: pretty; }
+.step { padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.step-n { margin: 0 0 0.4rem; font-family: var(--mono); font-size: 0.74rem; color: var(--signal-ink); }
+.step p:last-child { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Guarantees */
-.guarantees { display: grid; gap: 1.6rem; padding-top: 1rem; }
-.guarantee { padding-top: 1.1rem; border-top: 1.5px solid var(--ink); }
+.guarantees { display: grid; gap: 1.6rem; padding-top: clamp(2.5rem, 6svh, 3.5rem); }
+.guarantees > .rules-title { grid-column: 1 / -1; font-size: 1.5rem; letter-spacing: -0.04em; line-height: 1.1; }
+.guarantee { padding-top: 1.1rem; border-top: 1px solid var(--line); }
 .guarantee p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Developers */
@@ -257,39 +259,35 @@ section > *, .hero > * { min-width: 0; }
    call to action. Where the liquid is drawing, the section takes the whole
    screen, so the light has the room under the words; where it is not, it
    ends after them. */
-.close { text-align: center; padding: calc(17svh + 4.5rem) var(--gutter) 6rem; isolation: isolate; }
-:root[data-journey="on"] .close { min-height: 100svh; }
+.close { text-align: center; padding: clamp(5rem, 14svh, 9rem) var(--gutter) clamp(5rem, 16svh, 10rem); isolation: isolate; }
 
 /* The journey's beats fall in the gaps between sections: the hero's light
    cooling as it leaves, and a ribbon of light over "How it works" and over
    "Hosted or self-hosted". Each gets the room. */
-.room { padding-top: clamp(6rem, 22svh, 12rem); }
-.how, .hosting { padding-top: clamp(7.5rem, 19svh, 12rem); }
+.room { padding-top: clamp(3.5rem, 9svh, 6rem); }
+.how, .hosting, .watch { padding-top: clamp(4rem, 10svh, 6rem); }
+/* The recording is the whole console: too small to read on a phone, where the board above already shows the product */
+@media (max-width: 719px) { .watch { display: none; } }
 
 /* Footer: the page's floor. It stands on the paper itself, not over the
    square, so its small words keep their contrast, under the same horizon as
    every other turn of the page. The mark and the tagline, then the page's
    destinations in three columns, then the licence. */
-.foot { padding: 4rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.6rem); color: var(--muted); font-size: 0.92rem; background: var(--grain) 0 0 / 180px 180px, var(--paper); }
+.foot { padding: 1.6rem var(--gutter) calc(env(safe-area-inset-bottom) + 1.2rem); color: var(--muted); font-size: 0.88rem; background: var(--grain) 0 0 / 180px 180px, var(--paper); }
 .foot::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--rule-edge) 16%, var(--rule-core) 50%, var(--rule-edge) 84%, transparent);
 }
-.foot-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.6rem; }
-.foot-name { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; font-size: 1.1rem; font-weight: 640; letter-spacing: -0.04em; color: var(--ink); text-decoration: none; }
-.foot-name .mark { width: 1.45rem; height: 1.45rem; flex: none; color: var(--mark-ink); }
-.foot-brand p { margin: 0.3rem 0 0; max-width: 20rem; text-wrap: pretty; }
-.foot-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.2rem 1.6rem; }
-.foot-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.foot-head { margin: 0 0 0.45rem; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
-/* 36px rows clear the 24px target on a mouse; a touch screen gets 44 */
-.foot-col a { display: inline-flex; align-items: center; min-height: 36px; text-decoration: none; color: var(--muted); transition: color 0.15s ease; }
-@media (pointer: coarse) { .foot-col a { min-height: 44px; } }
-.foot-col a:hover, .foot-base a:hover { color: var(--ink); }
-.foot-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 2rem; margin: 3rem 0 0; padding-top: 1.4rem; border-top: 1px solid var(--line); font-size: 0.86rem; }
+.foot-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.2rem 2rem; }
+.foot-name { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; font-size: 1.02rem; font-weight: 640; letter-spacing: -0.04em; color: var(--ink); text-decoration: none; }
+.foot-name .mark { width: 1.3rem; height: 1.3rem; flex: none; color: var(--mark-ink); }
+.foot-links { display: flex; flex-wrap: wrap; gap: 0 1.5rem; }
+.foot-links a { display: inline-flex; align-items: center; min-height: 36px; text-decoration: none; color: var(--muted); transition: color 0.15s ease; }
+@media (pointer: coarse) { .foot-links a { min-height: 44px; } }
+.foot-links a:hover, .foot-base a:hover { color: var(--ink); }
+.foot-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 2rem; margin: 0.8rem 0 0; padding-top: 0.9rem; border-top: 1px solid var(--line); font-size: 0.82rem; }
 .foot-base p { margin: 0; text-wrap: pretty; }
 .foot-base a { color: inherit; text-underline-offset: 0.2em; transition: color 0.15s ease; }
-/* Dark, Light or System: a quiet segmented control, the chosen one raised */
 .theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--line); }
 .theme-switch button { min-height: 32px; padding: 0 0.85rem; border-radius: 99px; font-size: 0.82rem; color: var(--muted); transition: background-color 0.15s ease, color 0.15s ease; }
 .theme-switch button:hover { color: var(--ink); }
@@ -297,8 +295,7 @@ section > *, .hero > * { min-width: 0; }
 @media (pointer: coarse) { .theme-switch button { min-height: 44px; } }
 
 @media (min-width: 720px) {
-  .foot-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6rem; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6rem 2.4rem; }
   .guarantees { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 2.4rem; }
   .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -310,13 +307,13 @@ section > *, .hero > * { min-width: 0; }
      the server's first paint, which has no calls to action yet, puts the
      headline where the page then keeps it */
   .hero { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; column-gap: 4vw; min-height: 100svh; padding-top: max(7rem, 17svh); padding-bottom: 3rem; }
-  .hero h1 { font-size: clamp(3.6rem, 5.2vw, 6rem); }
+  /* two lines: the headline may run past the words' column, over the water */
+  .hero h1 { font-size: clamp(3.2rem, 4.6vw, 5.4rem); width: max-content; max-width: 62vw; }
   /* One size for every section's heading, a step under the headline's */
   h2 { font-size: clamp(2.8rem, 4.4vw, 4.6rem); }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dev { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; align-items: center; }
-  .foot-top { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; }
   /* Centred beside the words, the card would move its tabs as it changed
      height: it takes the tallest example's height for every one */
   .code-sizer { display: block; visibility: hidden; }
@@ -341,17 +338,14 @@ section > *, .hero > * { min-width: 0; }
   .eyebrow-sep { display: block; height: 0; overflow: hidden; }
 }
 /* Where the tabs and Copy no longer share a bar, the tabs fill it and Copy
-   sits in the example's corner, the first lines wrapping clear of it */
+   takes a row of its own under the example */
 @media (max-width: 479px) {
   .run-card { grid-template-columns: minmax(0, 1fr); }
   .tablist { flex: 1; flex-wrap: nowrap; }
   .tab { flex: 1 1 auto; padding: 0 0.6rem; }
-  .copy-cell { grid-area: 2 / 1; justify-self: end; align-self: start; z-index: 1; padding: 0.5rem; border-bottom: 0; }
+  .copy-cell { grid-area: 3 / 1; padding: 0.5rem; border-bottom: 0; border-top: 1px solid var(--run-line); }
+  .copy { width: 100%; }
   .code-stack { grid-area: 2 / 1; }
-  .code::before { content: ""; float: right; width: 4.6rem; height: 2.5rem; }
-  /* "Select and copy" is twice as wide as "Copy" or "Copied": the first lines
-     make room for it while it shows, so it never covers the example */
-  .run-card:has(.copy.failed) .code::before { width: 9.6rem; }
 }
 /* A phone's bar has room for the mark, the picture's pause control and the
    one action, so GitHub gives way to the control (it is in the closing
@@ -387,7 +381,7 @@ section > *, .hero > * { min-width: 0; }
 @media (max-width: 719px) { .cta-hold { display: block; } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .top, .nav a, .gh, .join-btn, .cta, .cta.text .arrow, .tab, .copy, .foot-col a, .foot-base a, .theme-switch button { transition: none; }
+  .top, .nav a, .gh, .join-btn, .cta, .cta.text .arrow, .tab, .copy, .foot-links a, .foot-base a, .theme-switch button { transition: none; }
   .cta:active { transform: none; }
   .cta.text:hover .arrow { transform: none; }
 }
@@ -404,7 +398,7 @@ section > *, .hero > * { min-width: 0; }
    large; a narrow tablet gets the same one-column board, centred */
 @media (max-width: 639px) { .room-stage { margin-inline: calc(0.6rem - var(--pad)); } }
 @media (min-width: 640px) and (max-width: 1023px) { .room-stage { max-width: 34rem; margin-inline: auto; } }
-@media (min-width: 1024px) { .room-stage { max-width: 1180px; } .room-stage__art { aspect-ratio: 1100 / 640; } }
+@media (min-width: 1024px) { .room-stage__art { aspect-ratio: 1100 / 560; } }
 /* In the window's title bar, clear of everything the board shows */
 .room-toggle { top: 4px; right: 6px; bottom: auto; }
 .room-steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 1.4rem; }
@@ -414,15 +408,13 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room { padding-top: clamp(9rem, 34svh, 21rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: clamp(4rem, 10svh, 6rem); } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
-.watch { padding-top: 2rem; }
 .watch-frame { position: relative; margin-top: 2rem; }
-.watch-clip { display: block; width: 100%; height: auto; border-radius: 16px; box-shadow: var(--shadow-approval); background: var(--paper-2); }
+.watch-clip { display: block; width: 100%; height: auto; aspect-ratio: 960 / 450; object-fit: cover; object-position: top; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); background: var(--paper-2); }
 /* Clear of the clip's drop shadow, which would dim the note on paper */
-.watch-note { margin: 2.2rem 0 0; max-width: 34rem; color: var(--muted); font-size: 0.9rem; text-wrap: pretty; }
 
 /* Play and pause for every moving picture: a quiet glyph over its corner,
    frosted so it reads over light or dark frames. It draws at 32px; the ring
@@ -433,3 +425,6 @@ section > *, .hero > * { min-width: 0; }
 .media-toggle:hover { background: var(--toggle-bg-hover); }
 .media-toggle:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .media-toggle { transition: none; } }
+
+/* The close stands on the water itself: no rule across it */
+.close::before { display: none; }

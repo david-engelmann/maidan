@@ -81,7 +81,7 @@ async function smallTargets(page: Page, selector: string): Promise<string[]> {
 
 test("the page loads without the check script and has no serious accessibility gaps", async ({ page }) => {
   await openLanding(page);
-  await expect(page.getByRole("heading", { name: /One room/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /shared workspace/ })).toBeVisible();
   expect(await page.locator("script[src*='challenges.cloudflare.com']").count()).toBe(0);
   const scan = await axe(page).withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(scan.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
@@ -350,15 +350,15 @@ for (const vp of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
   test.describe(`on a ${vp.width}x${vp.height} phone`, () => {
     test.use({ viewport: vp, isMobile: true, hasTouch: true });
 
-    test("the light's room, the headline and the first call to action are on the first screen", async ({ page }) => {
+    test("the headline and the first call to action are on the first screen", async ({ page }) => {
       await openLanding(page);
       const header = await page.locator(".top").boundingBox();
       const eyebrow = await page.locator(".hero .eyebrow").boundingBox();
       const h1 = await page.locator(".hero h1").boundingBox();
       const cta = await page.locator(".hero .cta").first().boundingBox();
       for (const box of [header, eyebrow, h1, cta]) expect(box).not.toBeNull();
-      // The light has at least a third of the screen, under the header and over the words
-      expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(vp.height * 0.33);
+      // The words start a little under the header, with air over them
+      expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(24);
       // and the poster that stands in for it is the first screen's
       const poster = await page.locator(".journey-poster").boundingBox();
       expect(poster).not.toBeNull();
@@ -429,7 +429,7 @@ for (const vp of VIEWPORTS) {
 
     test("stays on the screen with no accessibility violations", async ({ page }) => {
       await openLanding(page);
-      await expect(page.getByRole("heading", { name: /One room/ })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /shared workspace/ })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(0);
       expect(errors).toEqual([]);
