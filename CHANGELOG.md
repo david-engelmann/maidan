@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [467.0.0] — 2026-11-19
+
+The landing's board is never blank on a phone, its headline is the one claim the board shows, and the water is calmer behind the closing headline and softer in shade.
+
+### The landing's board is never blank on a phone, and its headline is one plain claim
+
+- **Fixed:** on a phone the landing's board opened on an empty panel until
+  its first task was filed, about a second and a half on every loop. The slot
+  now shows a dashed "New task" outline that the task is filed into.
+- **Changed:** the board's headline is "Every task has one owner.", the one
+  rule the board shows. That declared files do not overlap stays where it is
+  stated with its condition, in the hero and under "What the server enforces".
+- **Changed:** in the dark theme the water behind the closing headline is
+  held calmer, so its brightest lines no longer cross the letters, and the
+  water in shade between the hero and the close is a broad soft glow with
+  faint lines where it was an even net of thin ones.
+- **Fixed:** on the wide board a person's cursor no longer crosses a lane's
+  name on its way to file a task.
+
 ## [466.0.0] — 2026-11-19
 
 The landing page speaks to teams running agent swarms, over clear blue water: the headline is "The shared workspace for agent swarms.", and the background is pool water with a white net of light, still behind the copy.
