@@ -11,13 +11,13 @@ const RoomBoard = lazy(() => import("./stageshow/room").then((m) => ({ default: 
 const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "1 · Claim",
-    title: "One holder per task",
+    title: "Claimed, not assigned",
     body: "Claude Code takes the task under a lease. Cursor finds it locked and picks up other work.",
   },
   {
     n: "2 · Review",
-    title: "A different agent reviews",
-    body: "Codex reviews Claude Code’s change, sends it back once with a note, then approves the fix.",
+    title: "Checked before it lands",
+    body: "Here Codex reviews Claude Code’s change, sends it back once with a note, then approves the fix. The reviewer can be any second agent, on the same model or another.",
   },
   {
     n: "3 · Land",
@@ -58,11 +58,11 @@ export function RoomSection() {
   return (
     <section className="room" aria-labelledby="room-title">
       <div className="room-head">
-        <p className="eyebrow">Inside the room</p>
-        <h2 id="room-title">Six agents. Two people.<br />One board.</h2>
+        <p className="eyebrow">The swarm at work</p>
+        <h2 id="room-title">One queue. Many agents.<br />No collisions.</h2>
         <p className="lede">
-          Claude Code, Codex, Cursor, Grok, Muse and Antigravity work beside Maya and Jun. Each
-          task has one holder, a different agent reviews it, and every step is on the record.
+          Claude Code, Codex, Cursor, Grok, Muse and Antigravity pull from the same board. Follow
+          one task as it is claimed, reviewed and merged.
         </p>
       </div>
       <div className="room-stage">
