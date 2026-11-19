@@ -103,16 +103,16 @@ void main() {
     col = deep * (0.92 + 0.12 * diff);
     // the net of light: gold where the light stands, a cool glimmer elsewhere
     float warm = smoothstep(0.12, 0.55, heat);
-    col += mix(vec3(0.13, 0.3, 0.56) * 0.55, vec3(1.0, 0.74, 0.38) * (0.9 + 0.9 * heat), warm) * caus;
+    col += mix(vec3(0.13, 0.3, 0.56) * 0.16, vec3(1.0, 0.74, 0.38) * (0.9 + 0.9 * heat), warm) * caus;
     // and the glow the water holds under it
     col += vec3(1.0, 0.6, 0.24) * 0.07 * heat * heat;
     col += vec3(1.0, 0.72, 0.38) * pour * 0.3;
   } else {
     // pale water over the page's paper, so it never stands apart from it as a band
-    vec3 clear = mix(vec3(0.949, 0.933, 0.902), vec3(0.78, 0.89, 0.92), 0.5 * heat + 0.05 * tone);
+    vec3 clear = mix(vec3(0.949, 0.933, 0.902), vec3(0.8, 0.9, 0.92), 0.16 * heat);
     col = clear * (0.97 + 0.04 * diff);
     // the net of light is the sun's: gold, deepest where the page holds its light
-    col = mix(col, mix(vec3(0.97, 0.86, 0.6), vec3(0.93, 0.7, 0.28), heat), clamp(caus * mix(0.3, 1.0, heat), 0.0, 0.92));
+    col = mix(col, mix(vec3(0.97, 0.86, 0.6), vec3(0.93, 0.7, 0.28), heat), clamp(caus * mix(0.12, 1.25, smoothstep(0.05, 0.6, heat)), 0.0, 0.92));
     col = mix(col, vec3(1.0, 0.88, 0.58), clamp(pour * 0.25, 0.0, 0.9));
   }
   o = vec4(col, 1.0);

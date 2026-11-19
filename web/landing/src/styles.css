@@ -203,8 +203,8 @@ section > *, .hero > * { min-width: 0; }
 .step p:last-child { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
 /* Guarantees */
-.guarantees { display: grid; gap: 1.6rem; padding-top: clamp(3rem, 7svh, 4.5rem); }
-.guarantees > .eyebrow { grid-column: 1 / -1; margin: 0; }
+.guarantees { display: grid; gap: 1.6rem; padding-top: clamp(2.5rem, 6svh, 3.5rem); }
+.guarantees > .rules-title { grid-column: 1 / -1; font-size: 1.5rem; letter-spacing: -0.04em; line-height: 1.1; }
 .guarantee { padding-top: 1.1rem; border-top: 1px solid var(--line); }
 .guarantee p { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.95rem; text-wrap: pretty; }
 
@@ -398,7 +398,7 @@ section > *, .hero > * { min-width: 0; }
    large; a narrow tablet gets the same one-column board, centred */
 @media (max-width: 639px) { .room-stage { margin-inline: calc(0.6rem - var(--pad)); } }
 @media (min-width: 640px) and (max-width: 1023px) { .room-stage { max-width: 34rem; margin-inline: auto; } }
-@media (min-width: 1024px) { .room-stage { max-width: 1180px; } .room-stage__art { aspect-ratio: 1100 / 640; } }
+@media (min-width: 1024px) { .room-stage__art { aspect-ratio: 1100 / 560; } }
 /* In the window's title bar, clear of everything the board shows */
 .room-toggle { top: 4px; right: 6px; bottom: auto; }
 .room-steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 1.4rem; }
@@ -408,12 +408,12 @@ section > *, .hero > * { min-width: 0; }
 .room-step[data-active] { border-color: var(--signal); }
 .room-step[data-active] .room-step__n { color: var(--signal-ink); }
 @media (min-width: 720px) { .room-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 2rem; } }
-@media (min-width: 1080px) { .room { padding-top: clamp(4rem, 10svh, 6rem); } .room-steps { max-width: 1180px; } }
+@media (min-width: 1080px) { .room { padding-top: clamp(4rem, 10svh, 6rem); } }
 @media (prefers-reduced-motion: reduce) { .room-step, .room-step__n { transition: none; } }
 
 /* The recorded board: the product moving, not a drawing of it. */
 .watch-frame { position: relative; margin-top: 2rem; }
-.watch-clip { display: block; width: 100%; height: auto; aspect-ratio: 960 / 500; object-fit: cover; object-position: top; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); background: var(--paper-2); }
+.watch-clip { display: block; width: 100%; height: auto; aspect-ratio: 960 / 450; object-fit: cover; object-position: top; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); background: var(--paper-2); }
 /* Clear of the clip's drop shadow, which would dim the note on paper */
 
 /* Play and pause for every moving picture: a quiet glyph over its corner,
@@ -425,3 +425,6 @@ section > *, .hero > * { min-width: 0; }
 .media-toggle:hover { background: var(--toggle-bg-hover); }
 .media-toggle:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .media-toggle { transition: none; } }
+
+/* The close stands on the water itself: no rule across it */
+.close::before { display: none; }
