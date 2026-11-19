@@ -103,6 +103,32 @@ test("the landing is dark by default and takes the console's stored Light", asyn
   await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
 });
 
+// The footer's switch writes the console's own choice, so it themes both,
+// and the recording is the console filmed in the page's theme.
+test("the footer's theme switch themes the page and its recording, and the choice is kept", async ({ page }) => {
+  await openLanding(page);
+  const html = page.locator("html");
+  const clip = page.locator(".watch-frame source");
+  const theme = page.getByRole("group", { name: "Theme" });
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(theme.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+  await expect(clip).toHaveAttribute("srcset", "/landing/board-live.avif");
+
+  await theme.getByRole("button", { name: "Light" }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f2eee6");
+  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light.avif");
+  // Paused, the still is the light one too
+  await page.locator(".watch-frame").getByRole("button", { name: "Pause the recording" }).click();
+  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light-still.avif");
+  await expect(page.locator(".watch-clip")).toHaveAttribute("src", "/landing/board-live-light.png");
+
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await expect(theme.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
+});
+
 test("the example tabs move with the keyboard and wrap", async ({ page }) => {
   await openLanding(page);
   const claude = page.locator("#dev-tab-claude");
@@ -253,6 +279,8 @@ test("the journey behind the page is decoration in its own chunk, and its contro
   // It travels with the screen: there at the top of the page and at its end
   const pause = page.getByRole("button", { name: "Pause the animation" });
   await expect(pause).toBeVisible();
+  // in the header's bar, where no line of copy runs under it
+  await expect(page.locator(".top .journey-toggle")).toHaveCount(1);
   await expect(pause).not.toHaveAttribute("aria-pressed");
   await expectSmallControlWithATapRing(pause, "animation");
   await pause.click();

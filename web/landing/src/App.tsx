@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type R
 import { JourneyField } from "./JourneyField";
 import { MediaToggle } from "./MediaToggle";
 import { RoomSection } from "./RoomSection";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { ChatStill, ClaimStill, ReviewStill, ShipStill } from "./stageshow/Steps";
+import { usePageTheme } from "./stageshow/shared";
 
 const GH = "https://github.com/david-engelmann/maidan";
 const DOCS = "https://docs.maidan.world/";
@@ -51,6 +53,9 @@ export default function App() {
           <a href={FAQ}>FAQ</a>
           <a href={DOCS}>Docs</a>
         </nav>
+        {/* The picture's pause control lands here (JourneyField), in the
+            bar, where it covers no words at any width */}
+        <span id="journey-control" className="top-control" />
         <a className="gh" href={GH}>GitHub</a>
         <button type="button" className="join-btn" onClick={join}>{joinLabel}</button>
       </header>
@@ -152,6 +157,7 @@ export default function App() {
           </div>
         </section>
       </main>
+      <ThemeSwitch />
       {/* With open sign-up the CTAs go to the console, and the invite list is not offered. */}
       {signupOpen ? null : (
         <Suspense fallback={null}>
@@ -169,16 +175,20 @@ function WatchClip() {
   const [paused, setPaused] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  // One recording per theme, picked by the page's theme on <html data-theme>.
+  // A prefers-color-scheme source would pick wrong: the console's stored
+  // Light or Dark outranks the system's (theme.js).
+  const clip = usePageTheme() === "light" ? "/landing/board-live-light" : "/landing/board-live";
   return (
     <div className="watch-frame">
       {/* AVIF where the browser reads it: the moving board at a fifth of the
           GIF's bytes and sharp on a high-density screen. The GIF and PNG stay
           for a browser that does not. */}
       <picture>
-        <source type="image/avif" srcSet={paused ? "/landing/board-live-still.avif" : "/landing/board-live.avif"} />
+        <source type="image/avif" srcSet={paused ? `${clip}-still.avif` : `${clip}.avif`} />
         <img
           className="watch-clip"
-          src={paused ? "/landing/board-live.png" : "/landing/board-live.gif"}
+          src={paused ? `${clip}.png` : `${clip}.gif`}
           width={960}
           height={600}
           loading="lazy"

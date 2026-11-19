@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Handle, State } from "./journey";
 import { MediaToggle } from "./MediaToggle";
 import { usePageTheme, usePrefersReducedMotion } from "./stageshow/shared";
@@ -74,14 +75,20 @@ export function JourneyField() {
     };
   }, []);
 
+  // The control lives in the page's header bar (App's #journey-control):
+  // fixed over the page, it covered the end of a line of copy as it scrolled
+  // by on a phone. The bar is there long before the scene draws; without it
+  // the control stands fixed in the corner (journey.css).
+  const toggle = drawing && !still ? (
+    <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="animation" className="journey-toggle" />
+  ) : null;
+  const bar = toggle ? document.getElementById("journey-control") : null;
   return (
     <>
       <div ref={host} className="journey" data-state={state} aria-hidden="true">
         <canvas ref={canvas} className="journey__canvas" />
       </div>
-      {drawing && !still ? (
-        <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="animation" className="journey-toggle" />
-      ) : null}
+      {bar && toggle ? createPortal(toggle, bar) : toggle}
     </>
   );
 }

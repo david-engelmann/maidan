@@ -1468,6 +1468,24 @@ pub fn router(state: AppState) -> Router {
                 "image/avif",
                 include_bytes!("../static/landing/dist/board-live-still.avif"),
             ),
+            // The same four recorded in the console's light theme, for the
+            // light page.
+            "board-live-light.gif" => (
+                "image/gif",
+                include_bytes!("../static/landing/dist/board-live-light.gif"),
+            ),
+            "board-live-light.png" => (
+                "image/png",
+                include_bytes!("../static/landing/dist/board-live-light.png"),
+            ),
+            "board-live-light.avif" => (
+                "image/avif",
+                include_bytes!("../static/landing/dist/board-live-light.avif"),
+            ),
+            "board-live-light-still.avif" => (
+                "image/avif",
+                include_bytes!("../static/landing/dist/board-live-light-still.avif"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(
