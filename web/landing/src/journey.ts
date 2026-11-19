@@ -398,7 +398,7 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
         // print is held as copy, its headline only as large words, and its
         // buttons have their own ground, so the water stays lit round them
         hold(ink(page.heroH), 60, 8, true);
-        for (const bit of page.heroBits) hold(bit.getBoundingClientRect(), 44, 6);
+        for (const bit of page.heroBits) hold(bit.getBoundingClientRect(), 84, 4);
       }
       for (const s of page.mid) {
         const box = s.getBoundingClientRect();
