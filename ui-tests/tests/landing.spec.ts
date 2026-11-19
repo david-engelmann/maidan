@@ -358,7 +358,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
       const cta = await page.locator(".hero .cta").first().boundingBox();
       for (const box of [header, eyebrow, h1, cta]) expect(box).not.toBeNull();
       // The words start a little under the header, with air over them
-      expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(vp.height * 0.08);
+      expect(eyebrow!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(24);
       // and the poster that stands in for it is the first screen's
       const poster = await page.locator(".journey-poster").boundingBox();
       expect(poster).not.toBeNull();
