@@ -17,7 +17,7 @@ and is not published on the docs site.
 One command, from the repository on the maintainer's Mac. It asks nothing:
 
 ```sh
-EXPECT_VERSION=v467.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
+EXPECT_VERSION=v468.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
 ```
 
 It prints one line per check, ends in **PASS** or **FAIL** (exit status 0 or
@@ -92,11 +92,15 @@ To see those legs on maidan.world itself, run steps 1a to 1e and 3a of
 
 ### Rehearse it locally
 
-The command runs against a local server, which is how it was tested. With the
+The command runs against a local server, which is how it was tested. Rehearse
+on Postgres, the database maidan.world runs: the first run against maidan.world
+failed on a workspace erase that only Postgres refused. With Docker and the
 release's `maidan` and `maidan-server` binaries:
 
 ```sh
-export DATABASE_URL="sqlite://$HOME/gate-rehearsal.db?mode=rwc" MAIDAN_ALLOW_INSECURE_DEV_KEK=1
+docker run -d --name gate-rehearsal-pg -e POSTGRES_PASSWORD=dev -p 127.0.0.1:55467:5432 pgvector/pgvector:pg17
+until docker exec gate-rehearsal-pg pg_isready -h 127.0.0.1 -U postgres -q; do sleep 1; done
+export DATABASE_URL="postgres://postgres:dev@127.0.0.1:55467/postgres" MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 umask 077
 maidan init --workspace gate-root --admin-handle root 2>/dev/null |
   sed -nE 's/^ +(maid_[A-Za-z0-9_-]+)$/PROD_MAIDAN_ADMIN_TOKEN=\1/p' >"$HOME/gate-rehearsal.env"
@@ -104,10 +108,13 @@ MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BIND=127.0.
   MAIDAN_PUBLIC_ORIGIN=http://127.0.0.1:18731 MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1 \
   MAIDAN_COOKIE_SECURE=0 maidan-server &
 ORIGIN=http://127.0.0.1:18731 scripts/launch-gate.sh --env-file "$HOME/gate-rehearsal.env"
+kill $! && docker rm -f gate-rehearsal-pg
 ```
 
 A local server has no identity provider and no `/status` page (the Worker
-serves that on maidan.world), so those checks are skipped, and say so.
+serves that on maidan.world), so those three checks are skipped, and say so.
+The last line stops the server before it removes the database: a server left
+running keeps the port, and the next rehearsal would run against it.
 
 ## The path by hand
 
