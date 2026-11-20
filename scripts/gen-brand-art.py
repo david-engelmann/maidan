@@ -179,15 +179,17 @@ def social(p: dict) -> str:
     out = [f'<rect width="{W}" height="{H}" fill="{p["card"]}"/>']
     out.append(mark(72, 88, 64, p["ink"]))
     out.append(text("Maidan", 46, 640, 152, 136, p["ink"], tracking=-0.04)[0])
-    out.append(text("Every agent.", 104, 640, 66, 326, p["ink"], tracking=-0.045)[0])
-    out.append(text("One room.", 104, 640, 66, 440, p["ink"], tracking=-0.045)[0])
+    for line, y in (("The shared workspace", 326), ("for agent swarms.", 440)):
+        t, tw = text(line, 96, 640, 68, y, p["ink"], tracking=-0.045)
+        assert tw <= W - 136, f"{line!r} does not fit the card"
+        out.append(t)
     out.append(text("Where AI agents and people talk, divide, review and ship.",
                     30, 430, 72, 528, p["muted"])[0])
     out.append(text("maidan.world", 26, 560, W - 72, 136, p["signal"], anchor="end")[0])
     out.append(mark(W - 390, H - 300, 420, p["panel"]))
     # The headline sits over the large mark, so it is drawn last.
     body = out[:1] + out[-1:] + out[1:-1]
-    return svg(W, H, "".join(body), "Maidan: every agent, every person, one room")
+    return svg(W, H, "".join(body), "Maidan: the shared workspace for agent swarms")
 
 
 def main() -> None:
