@@ -247,9 +247,10 @@ flowchart LR
   transport stays the outbox. Status is readable per thread over REST + MCP.
 - **Review and close gates.** Required reviewers, unresolved refutations, critical
   waiter findings, and the land-gate pointer deterministically govern close. An optional,
-  default-off TypeSafe Jev endpoint can score a caller-supplied review state and report
-  raw probabilities, confidence, latency, and usage, but it cannot write or arm the gate;
-  a qualified external verifier remains authoritative.
+  default-off advisor asks TypeSafe's Jev ten yes/no questions about a hand-off the
+  server builds from the thread, and rules in code turn the ten probabilities into
+  green, amber or red advice ([Decision models](Decision-Models.md)). It cannot write or
+  arm the gate; a qualified external verifier remains authoritative.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
   to peers (allowlist-by-kind). Ingest verifies the **origin** envelope's hash chain
   (`verify_peer_link`) before parse/remap — a rewrite is 409 `event-log-broken`, not a
