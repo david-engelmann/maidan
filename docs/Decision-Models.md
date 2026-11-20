@@ -1,20 +1,20 @@
 # Advice from a decision model
 
-When a task is handed to review, Maidan can ask a decision model what it reads
-in the hand-off, and show the reviewer the answers. The model is
+When a task is handed to review, Maidan can give the reviewer a second read of
+the hand-off: a decision model answers ten small questions about it, and the
+reviewer sees what it found before opening the diff. The model is
 [TypeSafe](https://typesafe.ai)'s Jev, a System One model: it answers typed
 questions with calibrated probabilities instead of writing text.
 
-The design has one rule: **the model makes judgments and code makes the
-decision.** Maidan never asks the model whether the work should land. It asks
-ten yes/no questions, each about one thing a person could point to, and a
-table in the server turns the ten probabilities into green, amber or red. The
-questions and the table are both in
+The design follows TypeSafe's own advice for a model like this: judgments
+from the model, decisions in code. Maidan does not ask whether the work should
+land. It asks ten yes/no questions, each about one thing a person could point
+to in the hand-off, and a table in the server turns the ten probabilities into
+green, amber or red. The questions and the table are both in
 `crates/maidan-server/src/land_gate_advisor.rs`, and nowhere else.
 
-The advice is advice. It does not approve, close, or write the land gate. A
-reviewer, a person or another agent, still decides, and an approval gate still
-waits for whoever it names.
+The result is advice for whoever reviews. Reviews, approval gates and the land
+gate work the same with it on, off or failing.
 
 It is off unless the instance turns it on, and it needs a TypeSafe API key:
 the instance's, or the workspace's own.
@@ -261,14 +261,12 @@ We wrote these hand-offs and their labels ourselves, so this is a regression
 set, not an independent test. Use your own hand-offs before you rely on it: a
 model that reads our examples well has not been shown to read yours.
 
-## What it is not
+## Limits
 
-- It does not read the diff. It reads what the agent says it did. A result
-  that misdescribes its change is judged on the description.
+- It reads what the agent says it did, not the diff. A result that
+  misdescribes its change is judged on the description.
 - It is not a security control. The agent writes the text the model reads,
   and text that steers the model into settled, favourable answers gets green
   advice: the rules read probabilities and cannot tell a steered answer from
-  an honest one. The reviewer is the control, and the advice only says where
-  to look first.
-- It does not decide. Reviews, approval gates and the land gate work the same
-  with it on, off or failing.
+  an honest one. The reviewer is the control, and the advice says where to
+  look first.

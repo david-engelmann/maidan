@@ -47,11 +47,11 @@ test("a clear hand-off says nothing was flagged, that it is advice only, and kee
   const panel = await screen.findByRole("region", { name: "Advice" });
   await within(panel).findByText("Nothing flagged");
   expect(panel.getAttribute("data-land")).toBe("green");
-  within(panel).getByText("None of the ten judgments raised a concern.");
+  within(panel).getByText("All ten readings are clear.");
   within(panel).getByText("Jev 1.14.0 by TypeSafe");
-  within(panel).getByText(/Advice only: it approves and blocks nothing\. You decide\./);
+  within(panel).getByText(/Advice only\./);
   expect(panel.querySelector("details")?.open).toBe(false);
-  await user.click(within(panel).getByText("The ten judgments"));
+  await user.click(within(panel).getByText("All ten readings"));
   // Each judgment is a statement with how sure the model is of it: 2% yes
   // reads as 98% sure of the no.
   expect(within(panel).getByLabelText("Does what the task asks, 95% sure")).toBeTruthy();
@@ -69,7 +69,7 @@ test("what kept the advice from green is said in words, and its rows are marked 
   // The server's order is kept, so a row is where it was the last time.
   expect(rows.map((li) => [li.getAttribute("aria-label"), li.getAttribute("data-mark")])).toEqual([
     ["Does what the task asks, 95% sure", "clear"],
-    ["Concern: Reports no passing tests, 98% sure", "concern"],
+    ["Flagged: Reports no passing tests, 98% sure", "concern"],
     ["The task asks for a code change, 98% sure", "clear"],
     ["Unsure: Unclear whether the agent flags a risk, unsure", "unsure"],
   ]);

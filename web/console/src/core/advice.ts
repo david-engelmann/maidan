@@ -61,7 +61,7 @@ export const LAND_TITLE: Record<Land, string> = {
 };
 
 /** One line under the title when nothing kept the advice from green. */
-export const ALL_CLEAR = "None of the ten judgments raised a concern.";
+export const ALL_CLEAR = "All ten readings are clear.";
 
 /** Why the advice is not green, one sentence a reason. */
 const REASON: Record<string, string> = {

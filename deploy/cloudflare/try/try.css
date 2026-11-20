@@ -161,14 +161,23 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice[data-land="green"] { --advice-tone: var(--ok); }
 .advice[data-land="amber"] { --advice-tone: var(--warn); }
 .advice[data-land="red"] { --advice-tone: var(--danger); }
-.advice-head, .advice-legend { display: flex; justify-content: space-between; gap: 0.3rem 1rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.advice-head { display: flex; justify-content: space-between; gap: 0.3rem 1rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .advice-head span:last-child { letter-spacing: 0.02em; text-transform: none; }
 .advice .advice-land { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; font-size: 1.4rem; letter-spacing: -0.03em; line-height: 1.15; }
 .advice-land strong { font-weight: 600; }
 .advice-land i { flex: none; inline-size: 12px; block-size: 12px; border-radius: 99px; background: var(--advice-tone); box-shadow: 0 0 0 4px color-mix(in srgb, var(--advice-tone) 22%, transparent); }
 .advice .advice-why { margin-top: 0.4rem; color: var(--muted); font-size: 0.94rem; }
-.advice .advice-legend { margin-top: 0.9rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--line); }
-.advice-rows { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; }
+.advice-flagged { margin-top: 0.8rem; }
+.advice-flagged[hidden] { display: none; }
+.advice-all { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px solid var(--line); }
+.advice-all summary { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 32px; cursor: pointer; list-style: none; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-radius: 6px; }
+.advice-all summary::-webkit-details-marker { display: none; }
+/* The chevron is drawn: two borders of a small square, turned */
+.advice-all summary::before { content: ""; inline-size: 6px; block-size: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.15s ease; }
+.advice-all[open] summary::before { transform: rotate(45deg); }
+.advice-all summary:hover { color: var(--ink); }
+.advice-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.advice-all .advice-rows { margin-top: 0.3rem; }
 .advice-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; column-gap: 0.65rem; padding: 0.28rem 0; font-size: 0.9rem; line-height: 1.45; color: var(--muted); }
 .advice-sure { padding-left: 0.5rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .advice-row:not([data-mark="clear"]) .advice-reading { color: var(--ink); }
@@ -179,7 +188,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice-row:not([data-mark="clear"]) .advice-mark { display: grid; place-items: center; background: var(--advice-tone); box-shadow: none; color: var(--paper-2); font-size: 0.74rem; font-weight: 800; line-height: 1; }
 .advice-row[data-mark="concern"] .advice-mark::after { content: "!"; }
 .advice-row[data-mark="unsure"] .advice-mark::after { content: "?"; }
-.advice .advice-foot { margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+.advice .advice-foot { margin-top: 0.8rem; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 .advice-foot a { color: var(--signal-ink); font-weight: 560; white-space: nowrap; }
 
 .foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }

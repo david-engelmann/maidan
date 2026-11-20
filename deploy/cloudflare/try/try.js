@@ -307,8 +307,10 @@ export function createTryPage(
     $(doc, "advice-model").textContent = advice.model;
     $(doc, "advice-title").textContent = advice.title;
     $(doc, "advice-why").textContent = advice.why;
-    const list = $(doc, "advice-rows");
-    for (const row of advice.rows) {
+    // What was flagged shows at once; all ten readings wait behind one press.
+    const all = $(doc, "advice-rows");
+    const flagged = $(doc, "advice-flagged");
+    const line = (row) => {
       const li = doc.createElement("li");
       li.className = "advice-row";
       li.dataset.mark = row.mark;
@@ -318,7 +320,7 @@ export function createTryPage(
       // The mark is a shape; a reader that cannot see it hears the word.
       const word = doc.createElement("span");
       word.className = "sr-only";
-      word.textContent = row.mark === "concern" ? "Concern: " : row.mark === "unsure" ? "Unsure: " : "";
+      word.textContent = row.mark === "concern" ? "Flagged: " : row.mark === "unsure" ? "Unsure: " : "";
       const reading = doc.createElement("span");
       reading.className = "advice-reading";
       reading.textContent = row.reading;
@@ -329,8 +331,13 @@ export function createTryPage(
       li.appendChild(word);
       li.appendChild(reading);
       li.appendChild(sure);
-      list.appendChild(li);
+      return li;
+    };
+    for (const row of advice.rows) {
+      all.appendChild(line(row));
+      if (row.mark !== "clear") flagged.appendChild(line(row));
     }
+    flagged.hidden = !advice.rows.some((row) => row.mark !== "clear");
     box.hidden = false;
     say(status, `The agent sent Say hello to review. A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
   }

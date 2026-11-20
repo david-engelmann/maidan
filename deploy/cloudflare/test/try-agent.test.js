@@ -318,7 +318,7 @@ const PAGE_IDS = [
 ];
 
 // The advice block's elements, which a page from before it does not have.
-const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-rows"];
+const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-flagged", "advice-rows"];
 
 function page(tools, ids = PAGE_IDS) {
   const elements = new Map(ids.map((id) => [id, element(id)]));
@@ -472,10 +472,10 @@ test("a concern and an unsettled judgment are marked, counted, and never shown a
   assert.equal(advice.title, "Worth a look");
   assert.deepEqual(advice.rows[0], { reading: "Unclear whether it does what the task asks", sure: "unsure", mark: "unsure" });
   assert.deepEqual(advice.rows[1], { reading: "Reports no passing tests", sure: "99% sure", mark: "concern" });
-  assert.equal(advice.why, "2 of the 10 judgments kept this from “Nothing flagged”. They are marked below.");
+  assert.equal(advice.why, "Two of the ten readings need a look.");
   const one = helloAdvice({ land: "red" });
   one.judgments[3] = judgment("unresolved_failure", "Reports something still failing", 0.99, { concern: true });
-  assert.match(readAdvice(one).why, /^1 of the 10 judgments .* It is marked below\.$/);
+  assert.equal(readAdvice(one).why, "One of the ten readings needs a look.");
   assert.equal(readAdvice(one).title, "Problem reported");
 });
 
@@ -545,6 +545,9 @@ test("the page shows the advice with the next step, each judgment a row, and say
   assert.equal(reading.textContent, "Does what the task asks");
   assert.equal(sure.textContent, "93% sure");
   assert.equal(ui.el("agent-status").textContent, "The agent sent Say hello to review. A decision model read the hand-off: nothing flagged.");
+  // Nothing was flagged, so only the ten readings are there, behind their press.
+  assert.equal(ui.el("advice-flagged").hidden, true);
+  assert.equal(ui.el("advice-flagged").children.length, 0);
   assert.equal(ui.el("agent-done").hidden, false);
   assert.equal(ui.el("agent-console").focused, true);
   assert.equal(ui.srv.tools().filter((t) => t === "advise_land_gate").length, 1);
@@ -561,13 +564,20 @@ test("a marked row carries the word a reader cannot see in its shape", async () 
   await ui.app.watchAgent();
   const rows = ui.el("advice-rows").children;
   assert.equal(rows[1].dataset.mark, "concern");
-  assert.equal(rows[1].children[1].textContent, "Concern: ");
+  assert.equal(rows[1].children[1].textContent, "Flagged: ");
   assert.equal(rows[0].dataset.mark, "unsure");
   assert.equal(rows[0].children[1].textContent, "Unsure: ");
   assert.equal(rows[2].dataset.mark, "clear");
   assert.equal(rows[2].children[1].textContent, "");
   assert.equal(rows[2].children[3].textContent, "unsure");
-  assert.equal(ui.el("advice-why").textContent, "2 of the 10 judgments kept this from “Nothing flagged”. They are marked below.");
+  assert.equal(ui.el("advice-why").textContent, "Two of the ten readings need a look.");
+  // What was flagged shows at once, above the ten readings.
+  const flagged = ui.el("advice-flagged");
+  assert.equal(flagged.hidden, false);
+  assert.deepEqual(flagged.children.map((li) => [li.dataset.mark, li.children[2].textContent]), [
+    ["unsure", "Unclear whether it does what the task asks"],
+    ["concern", "Reports no passing tests"],
+  ]);
   assert.equal(ui.el("agent-advice").dataset.land, "amber");
 });
 
@@ -587,5 +597,7 @@ test("the try page has the advice block, hidden, inside the step that follows th
   const done = html.slice(html.indexOf('id="agent-done"'), html.indexOf('id="agent-console"'));
   assert.match(done, /<div id="agent-advice" class="advice" role="group" aria-labelledby="advice-label" hidden>/);
   for (const id of ADVICE_IDS) assert.ok(done.includes(`id="${id}"`), id);
-  assert.match(done, /It approves nothing/);
+  assert.match(done, /It is advice, and it is on the task in the console too\./);
+  // The ten readings wait behind one press; what was flagged does not.
+  assert.match(done, /<ul id="advice-flagged"[^>]*><\/ul>\s*<details class="advice-all">\s*<summary>All ten readings<\/summary>\s*<ul id="advice-rows"/);
 });

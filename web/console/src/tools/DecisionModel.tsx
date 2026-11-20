@@ -66,7 +66,7 @@ export function DecisionModel({ ws }: { ws: string }) {
         <span className="state-chip">{current.key_source ? "On" : "Off"}</span>
       </div>
       <p className="muted small">
-        {current.model?.startsWith("jev") ? "TypeSafe’s Jev" : "A decision model"} reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice. It approves and blocks nothing: reviewers still decide.
+        {current.model?.startsWith("jev") ? "TypeSafe’s Jev" : "A decision model"} reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice for whoever reviews it.
       </p>
       <p className="small">{advisorLine(current)} Only this workspace’s admin can set or remove the key.</p>
       {status.error ? <p className="small" role="alert">This may be out of date. The last read failed: {status.error} {retry}</p> : null}
