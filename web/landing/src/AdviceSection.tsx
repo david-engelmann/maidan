@@ -150,7 +150,7 @@ export function AdviceSection() {
             <p className="advise-head"><span>Advice</span><span>Jev 1.14.0 by TypeSafe</span></p>
             <p className="advise-land"><i aria-hidden="true" /><strong>{TITLE[ex.land]}</strong></p>
             {ex.why.map((w) => <p className="advise-why" key={w}>{w}</p>)}
-            <p className="advise-legend" aria-hidden="true"><span>What Jev read</span><span>How sure of it</span></p>
+            <p className="advise-legend" aria-hidden="true"><span>What Jev read</span><span>How sure it is</span></p>
             <ul className="advise-rows">
               {READS.map(([key, yes, no]) => {
                 const p = ex.p[key];

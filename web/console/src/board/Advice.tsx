@@ -91,7 +91,7 @@ export function Advice({ tid }: { tid: string }) {
           <svg className="advice-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
           The ten judgments
         </summary>
-        <p className="advice-legend" aria-hidden="true"><span>What the model read</span><span>How sure of it</span></p>
+        <p className="advice-legend" aria-hidden="true"><span>What the model read</span><span>How sure it is</span></p>
         <ul className="advice-rows">
           {advice.judgments.map((j) => <Row key={j.id} j={j} />)}
         </ul>
