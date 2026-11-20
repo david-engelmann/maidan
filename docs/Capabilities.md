@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v469.0.0](https://github.com/david-engelmann/maidan/releases/tag/v469.0.0) — the public pages agree with each other, and 3 more
+
+An operator can erase a workspace nobody can sign in to; the listing copy, the social card and the docs site carry the tagline "The shared workspace for agent swarms."; try.maidan.world has a link preview and its colours match the landing again; and the launch gate's record from the runs on v468.0.0.
+
+- The public pages agree with each other
+- The listing copy leads with the shared workspace
+- The social card carries the current tagline
+- An operator can erase a workspace nobody can sign in to
+
+`CHANGELOG.md` under `[469.0.0]` has every entry.
+
 ## [v468.0.0](https://github.com/david-engelmann/maidan/releases/tag/v468.0.0) — a workspace that has done work can be erased on Postgres
 
 A workspace that has done work can be erased on Postgres, and the console's task sheet keeps its focus when the board refreshes: the two bugs the launch gate found on v467.

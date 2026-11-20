@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [469.0.0] — 2026-11-20
+
+An operator can erase a workspace nobody can sign in to; the listing copy, the social card and the docs site carry the tagline "The shared workspace for agent swarms."; try.maidan.world has a link preview and its colours match the landing again; and the launch gate's record from the runs on v468.0.0.
+
+### The public pages agree with each other
+
+- **Fixed:** the try page's muted text and button shadow had drifted from the landing's; they match again, and the hosted Worker's tests now run on every pull request.
+- **Changed:** the docs site's description leads with "the shared workspace for agent swarms"; try.maidan.world has a link preview and an icon; the landing offers its three ways in as plain links when scripts are off.
+
+### The listing copy leads with the shared workspace
+
+- **Changed:** the listing pack (`docs/Listing.md`) and the registry, Docker and ToolHive entries carry the 2026-11-19 tagline: the title is "Maidan: the shared workspace for agent swarms", and the short descriptions say "workspace" where they said "room". Nothing is submitted by this change.
+
+### The social card carries the current tagline
+
+- **Changed:** the link-preview card (`og.png`, `docs/assets/maidan-social.png`) reads "The shared workspace for agent swarms." in place of the 2026-11-10 tagline.
+
+### An operator can erase a workspace nobody can sign in to
+
+- **Added:** `DELETE /operator/workspaces/{id}` (`operator:global`), with `{confirm_workspace_id, reason}`: the erase of `DELETE /workspaces/{id}` for a workspace whose own admin cannot run it. A legal hold refuses it with a 409, the operator's own workspace is refused, and the audit row names the operator and the reason.
+- **Changed:** when the launch gate cannot erase a test workspace, it names the operator route to erase it with.
+
 ## [468.0.0] — 2026-11-20
 
 A workspace that has done work can be erased on Postgres, and the console's task sheet keeps its focus when the board refreshes: the two bugs the launch gate found on v467.
