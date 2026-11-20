@@ -127,12 +127,20 @@ async fn authorized_agent_creates_a_channel_and_a_thread() {
             .call_tool(
                 &writer,
                 "create_thread",
-                &json!({ "channel_id": channel_id, "title": "do the work" }),
+                &json!({
+                    "channel_id": channel_id,
+                    "title": "do the work",
+                    "description": "Rename the billing module to invoicing."
+                }),
             )
             .await
             .expect("workspace:write creates a thread"),
     );
     assert_eq!(thread["title"], "do the work");
+    assert_eq!(
+        thread["description"], "Rename the billing module to invoicing.",
+        "a task made over MCP says what it asks for, as one made over HTTP does"
+    );
     assert_eq!(thread["channel_id"], channel_id.to_string());
     let thread_id = thread["id"].as_str().unwrap();
     let stored = store

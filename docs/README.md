@@ -28,6 +28,7 @@ as the [docs site](https://docs.maidan.world/) (mdBook).
 | [Clients](Clients.md) | Connecting each MCP client, the release check by hand, and what counts as an attributed connect |
 | [Client Contract](Client%20Contract.md) | What the SDKs promise, operation by operation |
 | [Swarms](Swarms.md) | Running a swarm of coding agents on one queue: claims, leases, footprints, review and delivery |
+| [Decision models](Decision-Models.md) | Advice at review from TypeSafe's Jev: ten yes/no judgments, the decision in code, bring your own key |
 | [Framework Integrations](Framework%20Integrations.md) | Wiring Maidan into agent frameworks over MCP |
 | [Harness Caching](Harness%20Caching.md) | Keeping Maidan's bytes in a provider's prompt cache, per harness; cache keys; the thread id as a gateway session |
 | [Result Delivery](Result%20Delivery.md) | How a waiter's result reaches GitHub and Slack |

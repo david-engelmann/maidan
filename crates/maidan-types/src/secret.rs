@@ -112,6 +112,20 @@ pub fn within_secret_egress_ceiling(host: &str, ceiling: Option<&[String]>) -> b
 /// The `secret://` scheme that marks a reference in otherwise-plain text.
 pub const SECRET_REF_SCHEME: &str = "secret://";
 
+/// A workspace secret the server keeps for itself is named with this prefix:
+/// a credential one feature stores and only that feature may use, such as a
+/// workspace's key for a decision model. A colon is outside
+/// [`is_valid_secret_name`], so a member can never create a secret of that
+/// name and a `secret://` reference ends at the colon; the generic secret
+/// routes and tools answer a reserved name as one that does not exist, and
+/// leave it out of their lists.
+pub const RESERVED_SECRET_PREFIX: &str = "maidan:";
+
+/// Whether `name` is one the server keeps for itself.
+pub fn is_reserved_secret_name(name: &str) -> bool {
+    name.starts_with(RESERVED_SECRET_PREFIX)
+}
+
 /// Whether `name` is a valid secret name (the chars allowed after `secret://`):
 /// letters, digits, `_`, `-`, `.`. Keeping the set tight means a ref ends at the
 /// first other character, so `secret://key,` or `secret://key"` parse cleanly.

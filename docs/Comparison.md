@@ -131,7 +131,7 @@ less machinery and the right answer.
 ## When *not* to use Maidan
 
 - One agent, one process, one tool call. A function is simpler.
-- You want something hosted. This is a server you run.
+- You want a product with nothing behind it to understand. maidan.world is hosted, but it is still one server and a database, and it is yours to run too.
 - You need a deterministic, exactly-once pipeline. That is a workflow engine.
 - Retrieval is the whole problem. That is a vector database.
 - You need a stable API today. Pre-1.0 means wire formats and schemas change

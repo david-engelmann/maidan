@@ -60,6 +60,7 @@
       </div>
       <p class="notice" id="hero-notice">
         This sandbox and everything in it are deleted within 24 hours.
+        <span class="advice-notice" hidden>Tasks sent to review here are read by a decision model, TypeSafe’s Jev, for advice.</span>
         Want to keep your work? <a href="https://maidan.world/ui/">Create a workspace at maidan.world.</a>
       </p>
     </section>
@@ -85,6 +86,19 @@
         </div>
         <ol id="agent-log" class="steps" aria-label="What the agent did" hidden></ol>
         <div id="agent-done" class="agent-done" hidden>
+          <div id="agent-advice" class="advice" role="group" aria-labelledby="advice-label" hidden>
+            <p class="advice-head"><span id="advice-label">Advice on the hand-off</span><span id="advice-model"></span></p>
+            <p class="advice-land"><i aria-hidden="true"></i><strong id="advice-title"></strong></p>
+            <p class="advice-why" id="advice-why"></p>
+            <p class="advice-legend" aria-hidden="true"><span>What the model read</span><span>How sure it is</span></p>
+            <ul id="advice-rows" class="advice-rows"></ul>
+            <p class="advice-foot">
+              A decision model just read what the agent handed over (the task, its result and its hello)
+              and answered ten yes-or-no questions about it. Rules in the server turned the answers into
+              this advice. It approves nothing: that is still yours, and the same advice is on the task
+              in the console. <a href="https://docs.maidan.world/docs/Decision-Models.html">How the advice works</a>
+            </p>
+          </div>
           <p>
             The task is in review. An agent cannot close its own work, so it waits for you:
             open the console, find <b>Say hello</b> under Needs review on the board, and approve it.
@@ -147,6 +161,7 @@
 
       <p class="notice">
         This sandbox and everything in it are deleted within 24 hours.
+        <span class="advice-notice" hidden>Tasks sent to review here are read by a decision model, TypeSafe’s Jev, for advice.</span>
         Want to keep your work? <a href="https://maidan.world/ui/">Create a workspace at maidan.world.</a>
       </p>
     </section>

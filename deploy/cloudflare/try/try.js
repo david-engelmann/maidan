@@ -19,6 +19,10 @@ export const START_RETRY_SECS = 20;
 // lands, short enough that the whole run takes a few seconds.
 export const AGENT_PAUSE_MS = 700;
 
+// How long the page waits for advice on the hand-off before it goes on
+// without it. The server gives the model a second and a half.
+export const ADVICE_WAIT_MS = 4000;
+
 const OVERLOADED = "https://maidan.world/problems/overloaded";
 // POST /sandbox when the daily cap is hit (crates/maidan-server sandbox.rs).
 // The Worker's container-starting 503 is the same status and problem type,
@@ -93,7 +97,13 @@ export function createTryPage(
     let siteKey = null;
     try {
       const res = await fetch("/try-config.json", { cache: "no-store" });
-      siteKey = (await res.json())?.turnstile_site_key ?? null;
+      const config = await res.json();
+      siteKey = config?.turnstile_site_key ?? null;
+      // Said before a sandbox exists: where this demo offers advice, a task
+      // sent to review is read by a decision model outside it.
+      if (config?.advice === true) {
+        for (const note of doc.querySelectorAll?.(".advice-notice") ?? []) note.hidden = false;
+      }
     } catch {
       siteKey = null;
     }
@@ -280,6 +290,51 @@ export function createTryPage(
     item.note.textContent = detail;
   }
 
+  // What a decision model read in the hand-off the agent just made, when
+  // this demo offers advice. Without it, or when the model is slow or does
+  // not answer, nothing is shown: the review is the same either way.
+  async function showAdvice(status) {
+    const box = $(doc, "agent-advice");
+    if (!box) return;
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), ADVICE_WAIT_MS);
+    });
+    const advice = await Promise.race([agent.advice(), late]);
+    clearTimeout(timer);
+    if (!advice) return;
+    box.dataset.land = advice.land;
+    $(doc, "advice-model").textContent = advice.model;
+    $(doc, "advice-title").textContent = advice.title;
+    $(doc, "advice-why").textContent = advice.why;
+    const list = $(doc, "advice-rows");
+    for (const row of advice.rows) {
+      const li = doc.createElement("li");
+      li.className = "advice-row";
+      li.dataset.mark = row.mark;
+      const mark = doc.createElement("span");
+      mark.className = "advice-mark";
+      mark.ariaHidden = "true";
+      // The mark is a shape; a reader that cannot see it hears the word.
+      const word = doc.createElement("span");
+      word.className = "sr-only";
+      word.textContent = row.mark === "concern" ? "Concern: " : row.mark === "unsure" ? "Unsure: " : "";
+      const reading = doc.createElement("span");
+      reading.className = "advice-reading";
+      reading.textContent = row.reading;
+      const sure = doc.createElement("span");
+      sure.className = "advice-sure";
+      sure.textContent = row.sure;
+      li.appendChild(mark);
+      li.appendChild(word);
+      li.appendChild(reading);
+      li.appendChild(sure);
+      list.appendChild(li);
+    }
+    box.hidden = false;
+    say(status, `The agent sent Say hello to review. A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
+  }
+
   async function watchAgent() {
     const button = $(doc, "agent-run");
     const status = $(doc, "agent-status");
@@ -292,6 +347,9 @@ export function createTryPage(
     if (outcome.ok) {
       say(status, "The agent sent Say hello to review.");
       button.hidden = true;
+      // Asked before the next step is shown, so the advice is in place when
+      // it appears and nothing moves under the person's pointer.
+      await showAdvice(status);
       $(doc, "agent-done").hidden = false;
       // The button that had focus is gone; the next thing to do is here.
       $(doc, "agent-console").focus();

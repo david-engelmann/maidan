@@ -31,6 +31,54 @@ export const STEPS = [
   { tool: "transition_thread", label: "Send it to review" },
 ];
 
+// Advice on the hand-off, in the console's own words for it
+// (web/console/src/core/advice.ts): each says what a decision model read,
+// not what to do.
+export const ADVICE_TITLE = { green: "Nothing flagged", amber: "Worth a look", red: "Problem reported" };
+export const ADVICE_ALL_CLEAR = "None of the ten judgments raised a concern.";
+
+// A probability as a whole percentage, never "100%" for less than certain.
+function percent(p) {
+  const whole = Math.round(p * 100);
+  if (whole === 100 && p < 1) return "99%";
+  if (whole === 0 && p > 0) return "1%";
+  return `${whole}%`;
+}
+
+function modelLine(provider, model) {
+  const jev = /^jev-(.+)$/.exec(model);
+  const name = jev ? `Jev ${jev[1]}` : model;
+  return provider === "typesafe" ? `${name} by TypeSafe` : `${name} by ${provider}`;
+}
+
+// What the page shows of the server's answer to `advise_land_gate`, or `null`
+// when the answer is not advice. Each row's words are the server's; the
+// title, and how sure the model is of each statement (the probability of the
+// answer it reads as), are worked out the way the console does.
+export function readAdvice(answer) {
+  if (!answer || typeof answer !== "object" || !Object.hasOwn(ADVICE_TITLE, answer.land)) return null;
+  if (typeof answer.model !== "string" || typeof answer.provider !== "string") return null;
+  if (!Array.isArray(answer.judgments) || answer.judgments.length === 0) return null;
+  const rows = [];
+  for (const j of answer.judgments) {
+    if (typeof j?.reading !== "string" || !j.reading || !Number.isFinite(j.probability)) return null;
+    const p = Math.min(1, Math.max(0, j.probability));
+    const settled = j.answer === "yes" || j.answer === "no";
+    rows.push({
+      reading: j.reading,
+      sure: settled ? `${percent(j.answer === "yes" ? p : 1 - p)} sure` : "unsure",
+      // Only what kept the advice from "nothing flagged" is marked.
+      mark: j.concern !== true ? "clear" : settled ? "concern" : "unsure",
+    });
+  }
+  const marked = rows.filter((row) => row.mark !== "clear").length;
+  const why =
+    answer.land === "green" && marked === 0
+      ? ADVICE_ALL_CLEAR
+      : `${marked} of the ${rows.length} judgments kept this from “${ADVICE_TITLE.green}”. ${marked === 1 ? "It is" : "They are"} marked below.`;
+  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: modelLine(answer.provider, answer.model), why, rows };
+}
+
 export class AgentError extends Error {}
 
 async function problemDetail(res) {
@@ -195,5 +243,18 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
     }
   }
 
-  return { run, finished: () => next >= work.length };
+  // What a decision model reads in the hand-off, for the person about to
+  // review it: asked with the sandbox's own token, once the task is in
+  // review. `null` when this demo offers no advice or the model did not
+  // answer; the review is the same either way, so no failure is shown.
+  async function advice() {
+    if (next < work.length) return null;
+    try {
+      return readAdvice(await call("advise_land_gate", { thread_id: taskId }));
+    } catch {
+      return null;
+    }
+  }
+
+  return { run, advice, finished: () => next >= work.length };
 }

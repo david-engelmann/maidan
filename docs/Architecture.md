@@ -247,9 +247,10 @@ flowchart LR
   transport stays the outbox. Status is readable per thread over REST + MCP.
 - **Review and close gates.** Required reviewers, unresolved refutations, critical
   waiter findings, and the land-gate pointer deterministically govern close. An optional,
-  default-off TypeSafe Jev endpoint can score a caller-supplied review state and report
-  raw probabilities, confidence, latency, and usage, but it cannot write or arm the gate;
-  a qualified external verifier remains authoritative.
+  default-off advisor asks TypeSafe's Jev ten yes/no questions about a hand-off the
+  server builds from the thread, and rules in code turn the ten probabilities into
+  green, amber or red advice ([Decision models](Decision-Models.md)). It cannot write or
+  arm the gate; a qualified external verifier remains authoritative.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
   to peers (allowlist-by-kind). Ingest verifies the **origin** envelope's hash chain
   (`verify_peer_link`) before parse/remap — a rewrite is 409 `event-log-broken`, not a
@@ -298,7 +299,9 @@ See [Open Work](Open%20Work.md) (the single backlog) and
 Currently out of scope:
 
 - Slack-grade human UX: native clients, huddles, org hierarchy.
-- Hosted SaaS, a hosted playground, and a rich SPA. The four client SDKs (TypeScript,
+- Native desktop and mobile apps. The hosted service ([maidan.world](https://maidan.world)),
+  the demo ([try.maidan.world](https://try.maidan.world)) and the console are
+  in scope and shipped. The four client SDKs (TypeScript,
   Python, Go, Rust) are published at 0.1.0; see [`sdk/README.md`](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md).
 - Postgres sharding / storage-engine change (vertical + read-replica scaling assumed
   sufficient).

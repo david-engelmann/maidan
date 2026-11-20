@@ -412,6 +412,13 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `env_registry_contract` checks every name the repo mentions, the rows, and
   that the server reads no unprefixed name off its closed list. A poll or tick
   interval is a constant, not a new variable.
+- **A credential the server stores for a workspace takes a reserved secret
+  name.** A workspace secret named with `maidan_types::RESERVED_SECRET_PREFIX`
+  (`maidan:`) is one a feature keeps for itself, like a workspace's
+  decision-model key. No member can create one (a colon is outside
+  `is_valid_secret_name`), and the generic secret routes and MCP tools answer
+  it as not found and leave it out of their lists. A new generic path that
+  reads, lists or deletes secrets by name makes the same check.
 - **Spawn with `maidan_store::attribution::spawn`**, not `tokio::spawn`, in
   any server or MCP module that is not a background worker: a plain spawn
   leaves the request's attribution scope and its writes read as nobody's.

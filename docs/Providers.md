@@ -93,9 +93,14 @@ Env: `MAIDAN_EMBEDDING_ENDPOINT`, `MAIDAN_EMBEDDING_MODEL`, optional
 `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_EMBEDDING_DIM`. Per-model tables
 and reindex: [Embeddings.md](Embeddings.md).
 
-**Chat / completion models are not a Maidan provider.** Agents bring
-Claude, GPT, local llama, etc. Maidan stores threads and tools. MCP
-`summarize_thread` / `request_approval` sample the *connected client*.
+**Chat / completion models are not a Maidan provider.** Agents bring their
+own, hosted or local. Maidan stores threads and tools.
+
+**A decision model is, optionally.** With `MAIDAN_JEV_LAND_GATE_ENABLED=1`
+and a TypeSafe key (the instance's or a workspace's own), Maidan asks
+TypeSafe's Jev ten yes-or-no questions about a task handed to review and
+shows the reviewer advice. It decides nothing:
+[Decision models](Decision-Models.md).
 
 **Will not add:** a second embeddings HTTP protocol, native Voyage /
 Bedrock / Anthropic SDKs, or Pinecone/Qdrant as the primary vector

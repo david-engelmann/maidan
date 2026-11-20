@@ -1,8 +1,9 @@
 # Harness caching
 
 How to keep Maidan's bytes in a model provider's prompt cache, and how to make
-a gateway's spend line up with Maidan's threads. Maidan makes no model calls
-and cannot set a breakpoint, a cache key or a session header itself; the
+a gateway's spend line up with Maidan's threads. Maidan makes none of your
+agents' model calls and cannot set a breakpoint, a cache key or a session
+header itself; the
 harness or your own client has to. The four SDKs give the same helpers for
 that, and this page says where each harness puts Maidan's bytes.
 
@@ -106,8 +107,8 @@ Anthropic's Messages API has a beta, message threads (beta header
 `message-threads-2026-08-12`), in which a request sends only the new turns and
 the API holds the rest of the conversation in memory for a short time
 (https://platform.claude.com/docs/en/build-with-claude/message-threads).
-Maidan makes no model calls, so it never creates or continues one; the harness
-or your own client owns the thread. This section says how a threaded harness
+Maidan makes none of your agents' model calls, so it never creates or
+continues one; the harness or your own client owns the thread. This section says how a threaded harness
 should treat Maidan's bytes while it works a task. Every fact about threads
 below was checked against that page on 2026-11-08; where a line is our
 reading and not the page's, it says so.

@@ -362,6 +362,14 @@
         ],
         "type": "object"
       },
+      "AdvisorKeySource": {
+        "description": "Whose key paid for the question.",
+        "enum": [
+          "workspace",
+          "instance"
+        ],
+        "type": "string"
+      },
       "AllowEgressTarget": {
         "description": "Bless an external destination for egress. `selector` must be an **id**: a\nSlack channel id (`C…`/`G…`), or a GitHub repository `owner/name` — not a\n`#channel-name`, and not `owner/name#123`. A name is mutable, so an\nallowlist keyed on one is not an allowlist; and on GitHub the operator\nblesses the repository, since per-issue blessing would mean a ticket per PR.",
         "properties": {
@@ -4838,6 +4846,15 @@
         ],
         "type": "object"
       },
+      "JudgmentAnswer": {
+        "description": "How a judgment's probability reads against the two thresholds.",
+        "enum": [
+          "yes",
+          "no",
+          "unsettled"
+        ],
+        "type": "string"
+      },
       "KindCensus": {
         "description": "EventKind distribution for a workspace (optionally narrowed to a channel\nor thread). Zero-count kinds are omitted; [`KindCensus::total`] is the\ndenominator.",
         "properties": {
@@ -4910,9 +4927,22 @@
       },
       "LandGateAdvice": {
         "properties": {
-          "confidence": {
-            "format": "double",
-            "type": "number"
+          "cached": {
+            "description": "True when this answer was held from an earlier call for the same\nhand-off and the model was not asked again.",
+            "type": "boolean"
+          },
+          "judgments": {
+            "items": {
+              "$ref": "#/components/schemas/LandGateJudgment"
+            },
+            "type": "array"
+          },
+          "key_source": {
+            "$ref": "#/components/schemas/AdvisorKeySource"
+          },
+          "land": {
+            "$ref": "#/components/schemas/LandColor",
+            "description": "The advice: green when every judgment is settled and clear, red when\nthe hand-off reports a failure or is about other work, amber otherwise."
           },
           "latency_ms": {
             "format": "int64",
@@ -4922,26 +4952,15 @@
           "model": {
             "type": "string"
           },
-          "probabilities": {
-            "additionalProperties": {
-              "format": "double",
-              "type": "number"
-            },
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
           "provider": {
             "type": "string"
           },
-          "raw_land": {
-            "$ref": "#/components/schemas/LandColor",
-            "description": "The model's top choice before Maidan applies confidence policy."
-          },
-          "recommended_land": {
-            "$ref": "#/components/schemas/LandColor",
-            "description": "Low-confidence green/red choices become amber (human review)."
+          "reasons": {
+            "description": "Why the advice is not green, as stable names. Empty when it is green.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "thresholds": {
             "$ref": "#/components/schemas/LandGateAdviceThresholds"
@@ -4953,11 +4972,12 @@
         "required": [
           "provider",
           "model",
-          "raw_land",
-          "recommended_land",
-          "confidence",
-          "probabilities",
+          "land",
+          "reasons",
+          "judgments",
           "thresholds",
+          "key_source",
+          "cached",
           "usage",
           "latency_ms"
         ],
@@ -4965,47 +4985,30 @@
       },
       "LandGateAdviceRequest": {
         "additionalProperties": false,
-        "description": "A caller-supplied evaluation case. `state` is sent to TypeSafe only when\nthe feature is enabled and this endpoint is explicitly called.",
+        "description": "The body of `POST /threads/{id}/land-gate/advice`. Nothing in it changes\nwhat is sent: the packet is built from the thread.",
         "properties": {
-          "instructions": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "state": {},
-          "thresholds": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LandGateAdviceThresholds",
-                "description": "Per-evaluation override. This cannot authorize a land: the response is\nadvisory and the existing qualified-verifier write remains mandatory."
-              }
-            ]
+          "refresh": {
+            "description": "Ask the model again even when an answer for this exact hand-off is held.",
+            "type": "boolean"
           }
         },
-        "required": [
-          "state"
-        ],
         "type": "object"
       },
       "LandGateAdviceThresholds": {
-        "additionalProperties": false,
+        "description": "The two thresholds every judgment is read against.",
         "properties": {
-          "green_min_confidence": {
+          "no_max": {
             "format": "double",
             "type": "number"
           },
-          "red_min_confidence": {
+          "yes_min": {
             "format": "double",
             "type": "number"
           }
         },
         "required": [
-          "green_min_confidence",
-          "red_min_confidence"
+          "yes_min",
+          "no_max"
         ],
         "type": "object"
       },
@@ -5025,6 +5028,87 @@
         "required": [
           "input_tokens",
           "output_tokens"
+        ],
+        "type": "object"
+      },
+      "LandGateAdvisorStatus": {
+        "description": "What a workspace has set up, for `GET /workspaces/{id}/land-gate/advisor`.",
+        "properties": {
+          "enabled": {
+            "description": "Whether this instance offers advice at all.",
+            "type": "boolean"
+          },
+          "host": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdvisorKeySource",
+                "description": "Whose key a call from this workspace would use; absent when there is\nnone, and then advice is refused."
+              }
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "description": "The provider, model and host the hand-off is sent to, when enabled.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "LandGateJudgment": {
+        "description": "One of the model's judgments about the hand-off.",
+        "properties": {
+          "answer": {
+            "$ref": "#/components/schemas/JudgmentAnswer"
+          },
+          "concern": {
+            "description": "Whether this judgment kept the advice from green.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "A stable name for the judgment, such as `tests_passed`.",
+            "type": "string"
+          },
+          "label": {
+            "description": "The judgment in a few words, for a reader.",
+            "type": "string"
+          },
+          "probability": {
+            "description": "The probability that the answer is yes, from the model.",
+            "format": "double",
+            "type": "number"
+          },
+          "reading": {
+            "description": "The answer as a statement, such as \"Reports no passing tests\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "probability",
+          "answer",
+          "reading",
+          "concern"
         ],
         "type": "object"
       },
@@ -9697,6 +9781,20 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "SetLandGateAdvisor": {
+        "additionalProperties": false,
+        "description": "The body of `PUT /workspaces/{id}/land-gate/advisor`.",
+        "properties": {
+          "api_key": {
+            "description": "The workspace's own TypeSafe API key. Stored encrypted, never returned.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
         ],
         "type": "object"
       },
@@ -28767,7 +28865,7 @@
                 }
               }
             },
-            "description": "Advisory result; never writes the gate pointer"
+            "description": "The model's judgments and the advice the rules draw from them"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -28789,10 +28887,17 @@
                 }
               }
             },
-            "description": "Experimental advisor disabled"
+            "description": "This instance offers no advice"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The task has no result yet, the workspace has no key to ask with, or the hand-off is too large to send"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -28817,7 +28922,7 @@
                 }
               }
             },
-            "description": "Decision provider unavailable"
+            "description": "The decision model's provider is unavailable"
           },
           "503": {
             "$ref": "#/components/responses/Overloaded"
@@ -28828,7 +28933,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Ask for land-gate advice",
+        "summary": "Ask a decision model for advice on a hand-off; never writes the gate",
         "tags": [
           "land_gate"
         ]
@@ -34276,6 +34381,115 @@
         ]
       }
     },
+    "/ui/api/threads/{tid}/land-gate/advice": {
+      "post": {
+        "description": "The bearer tree's `POST /threads/{id}/land-gate/advice` for the console:\nthe task sheet shows the judgments beside a task that needs review.",
+        "operationId": "ui_advise_land_gate",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandGateAdviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvice"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The decision model's provider is unavailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Ask a decision model for advice on a hand-off (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/ui/api/threads/{tid}/messages": {
       "get": {
         "operationId": "ui_list_messages",
@@ -35815,6 +36029,262 @@
           }
         ],
         "summary": "Revoke an unused workspace invite (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/workspaces/{wid}/land-gate/advisor": {
+      "delete": {
+        "operationId": "ui_clear_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Forget this workspace's TypeSafe key (console)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "get": {
+        "operationId": "ui_get_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Whether land-gate advice is on, and whose key this workspace would use (console)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "put": {
+        "description": "For the workspace's admin, signed in as a person. A session made from a\ntoken is refused: that token's holder uses\n`PUT /workspaces/{id}/land-gate/advisor`.",
+        "operationId": "ui_set_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLandGateAdvisor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance cannot store a workspace's key"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The decision model's provider is unavailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Store this workspace's own TypeSafe key (console)",
         "tags": [
           "auth"
         ]
@@ -37769,6 +38239,266 @@
         "summary": "Count a workspace's events by kind",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/land-gate/advisor": {
+      "delete": {
+        "operationId": "clear_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance offers no advice"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Forget this workspace's TypeSafe key",
+        "tags": [
+          "land_gate"
+        ]
+      },
+      "get": {
+        "operationId": "get_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Whether land-gate advice is on, and whose key this workspace would use",
+        "tags": [
+          "land_gate"
+        ]
+      },
+      "put": {
+        "operationId": "set_land_gate_advisor",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLandGateAdvisor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandGateAdvisorStatus"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance offers no advice"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance cannot store a workspace's key"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The decision model's provider is unavailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Store this workspace's own TypeSafe key for land-gate advice",
+        "tags": [
+          "land_gate"
         ]
       }
     },

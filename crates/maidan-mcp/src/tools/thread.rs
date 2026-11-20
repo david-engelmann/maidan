@@ -250,6 +250,10 @@ struct CreateThreadArgs {
     channel_id: uuid::Uuid,
     #[serde(default)]
     title: Option<String>,
+    /// What the task asks for, in the creator's words, as `POST
+    /// /channels/:cid/threads` takes it.
+    #[serde(default)]
+    description: Option<String>,
     #[serde(default)]
     parent_thread_id: Option<uuid::Uuid>,
     /// Stored with the thread, so the claim queue never sees it without one.
@@ -323,7 +327,7 @@ pub(super) async fn create_thread(
         channel_id: ChannelId(a.channel_id),
         parent_thread_id: a.parent_thread_id.map(ThreadId),
         title: a.title,
-        description: None,
+        description: a.description.filter(|d| !d.trim().is_empty()),
         created_by: Some(auth.member_id()),
     };
     let (created, superseded) = match a.supersedes.map(ThreadId) {

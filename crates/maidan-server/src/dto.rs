@@ -431,6 +431,22 @@ pub struct SetLandGate {
     pub land: Option<LandColor>,
 }
 
+/// The body of `PUT /workspaces/{id}/land-gate/advisor`.
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetLandGateAdvisor {
+    /// The workspace's own TypeSafe API key. Stored encrypted, never returned.
+    pub api_key: String,
+}
+
+impl std::fmt::Debug for SetLandGateAdvisor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetLandGateAdvisor")
+            .field("api_key", &"<redacted>")
+            .finish()
+    }
+}
+
 /// A resolved secret value — the `resolve` response body. This is the only
 /// place a secret value crosses the wire out of Maidan.
 #[derive(Debug, Serialize, ToSchema)]

@@ -111,12 +111,19 @@ class Stub(http.server.BaseHTTPRequestHandler):
         if self.path == "/v1/systemone":
             if self.headers.get("Authorization") != "Bearer " + sys.argv[2]:
                 return self.answer(401, {"error": "unknown key"})
-            if body.get("questions", {}).get("land", {}).get("type") != "choice" or "state" not in body:
-                return self.answer(400, {"error": "not a land question"})
-            probabilities = {"green": 0.95, "amber": 0.04, "red": 0.01}
-            land = {"type": "choice", "choice": "green", "confidence": 0.95, "probabilities": probabilities}
+            questions = body.get("questions") or {}
+            state = body.get("state")
+            asked_well = all(
+                q.get("type") == "noul" and q.get("instructions", "").endswith("?") and set(q.get("criteria", {})) == {"true", "false"}
+                for q in questions.values()
+            )
+            if not questions or not asked_well or not isinstance(state, dict) or "task" not in state or "result" not in state:
+                return self.answer(400, {"error": "not a hand-off with yes/no questions"})
+            # All clear: the work is done and tested, and no warning sign shows.
+            clear = {"done": 0.96, "tests_passed": 0.96, "code_change": 0.96}
+            answers = {name: {"type": "noul", "noul": clear.get(name, 0.03)} for name in questions}
             usage = {"input_tokens": 1, "output_tokens": 1}
-            return self.answer(200, {"model": "jev-stub", "answers": {"land": land}, "usage": usage})
+            return self.answer(200, {"model": "jev-stub", "answers": answers, "usage": usage})
         if self.path == "/rpc":
             # A chain with a head and no transfers: the watcher ticks, credits nothing.
             results = {"eth_blockNumber": "0x64", "eth_getLogs": []}
