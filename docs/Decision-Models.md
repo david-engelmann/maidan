@@ -50,14 +50,15 @@ shape and a caller cannot choose what leaves:
   in the thread. Nobody else's messages are sent, and the field is left out
   when there are none.
 
-The whole request stays under 16 KiB, the questions included, so what a call
-costs has a ceiling and a relay in front of the provider can hold the same
-line. When a hand-off is larger, the agent's oldest messages are left out
+The whole request stays under 16 KiB, the questions included, so what one
+call costs has a ceiling and a relay in front of the provider can hold the
+same line. When a hand-off is larger, the agent's oldest messages are left out
 first, then long strings in the result are cut shorter (2,000 characters,
 then 1,000, 500, 250). A hand-off that is still too large after the last cut
 is not sent: the call answers `409` and there is no advice.
 
-The task's opening message is not sent, and that was measured. An opening
+The task's opening message (the thread's first message, when the member that
+made the thread wrote it) is not sent, and that was measured. An opening
 message tells the agent how to work (claim the task, say what you ran, send
 it to review), and a hand-off cannot show those steps. With it in the packet
 the model was no longer sure the hand-off did what the task asks, and on four
@@ -159,8 +160,8 @@ thread the caller can read.
 Each judgment carries its `reading`: the answer as a statement ("Reports no
 passing tests"), so a reader does not have to work out whether a yes is good.
 One reading depends on the rules: when a task asks for no code change, missing
-tests are no concern, and the row says so ("Reports no tests, which this task
-does not call for"). The console shows how sure the model is of each
+tests are no concern, and the row says so ("Reports no passing tests, which this
+task does not call for"). The console shows how sure the model is of each
 statement, which is its probability for the answer shown: a 1% chance of yes
 is shown as the no, 99% sure.
 

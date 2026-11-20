@@ -39,7 +39,9 @@ Connect as in the claimant runbook's step 0. Call `whoami` first; keep
    `priority` (higher is sooner, default 0) and a `parent_thread_id` when it is
    a child of a larger task.
 2. **Post the ask.** `post_message` on the new thread: the opening message is
-   the task. Say the goal, the constraints and how to verify. Put where the
+   the task. Say the goal, the constraints and how to verify. A decision
+   model asked for advice does not read the opening message, so anything the
+   work must satisfy also goes in the `description` or in `acceptance`. Put where the
    result goes in `metadata.deliver_to`, a list of targets:
 
    ```json

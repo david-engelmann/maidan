@@ -17,8 +17,8 @@ export const JEV_KEY_VAR = "TYPESAFE_API_KEY";
 export const JEV_LIMIT_BINDING = "JEV_LIMIT";
 // The largest question the server sends: its own cap on a request to the
 // provider (MAX_REQUEST_BYTES in crates/maidan-server/src/land_gate_advisor.rs,
-// which test/demo-jev.test.js holds this to). With the rate limit it bounds
-// what a day of the demo can cost.
+// which test/demo-jev.test.js holds this to). With the rate limit it sets
+// about what a day of the demo can cost; the limiter is approximate.
 export const JEV_MAX_BODY_BYTES = 16 * 1024;
 
 // What the container's key reads. It is not one: the Worker swaps in its own

@@ -435,7 +435,7 @@ const helloAdvice = (changes = {}) => ({
   reasons: [],
   judgments: [
     judgment("done", "Does what the task asks", 0.93),
-    judgment("tests_passed", "Reports no tests, which this task does not call for", 0.01),
+    judgment("tests_passed", "Reports no passing tests, which this task does not call for", 0.01),
     judgment("code_change", "The task asks for no code change", 0.04),
     judgment("unresolved_failure", "Reports nothing still failing", 0.02),
     judgment("left_undone", "Reports nothing left undone", 0.02),
@@ -460,7 +460,7 @@ test("advice reads as a title, the model, and each judgment as a statement with 
   assert.equal(advice.rows.length, 10);
   assert.deepEqual(advice.rows[0], { reading: "Does what the task asks", sure: "93% sure", mark: "clear" });
   // 1% yes is a no the model is 99% sure of.
-  assert.deepEqual(advice.rows[1], { reading: "Reports no tests, which this task does not call for", sure: "99% sure", mark: "clear" });
+  assert.deepEqual(advice.rows[1], { reading: "Reports no passing tests, which this task does not call for", sure: "99% sure", mark: "clear" });
   assert.ok(advice.rows.every((row) => row.mark === "clear"));
 });
 

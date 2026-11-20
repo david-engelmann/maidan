@@ -26,17 +26,25 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
   const [got, setGot] = useState<{ asked: string; of: string; state: AdviceState } | null>(null);
   const of = `${tid}:${attempt}`;
   const state: AdviceState = got && (got.asked === asked || got.of === of) ? got.state : { kind: "loading" };
-  // The attempt the model was last asked for: only Ask again asks afresh.
-  const askedAttempt = useRef(0);
+  // Whether an Ask again is still owed a fresh answer. It stays owed until an
+  // answer to it is accepted: a task that changes while the model is being
+  // asked starts a new request, and that one must ask afresh too, or the
+  // held answer would come back first and be shown in the fresh one's place.
+  const refreshOwed = useRef(false);
+  const askAgain = () => {
+    refreshOwed.current = true;
+    setAttempt((n) => n + 1);
+  };
 
   useEffect(() => {
     let live = true;
-    const afresh = attempt !== askedAttempt.current;
-    askedAttempt.current = attempt;
-    api.advise(tid, afresh).then(
-      (next) => live && setGot({ asked, of, state: next }),
-      (e: unknown) => live && setGot({ asked, of, state: { kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." } }),
-    );
+    const afresh = refreshOwed.current;
+    const accept = (next: AdviceState) => {
+      if (!live) return;
+      if (afresh) refreshOwed.current = false;
+      setGot({ asked, of, state: next });
+    };
+    api.advise(tid, afresh).then(accept, (e: unknown) => accept({ kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." }));
     return () => {
       live = false;
     };
@@ -74,7 +82,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
         </header>
         <p className="advice-wait" role="status">
           {state.message}{" "}
-          <button type="button" className="link-btn" onClick={() => setAttempt((n) => n + 1)}>Ask again</button>
+          <button type="button" className="link-btn" onClick={askAgain}>Ask again</button>
         </p>
       </section>
     );
@@ -110,7 +118,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       </details>
       <div className="advice-foot">
         <p>Advice only: it approves and blocks nothing. You decide.</p>
-        <button type="button" className="chip-btn" onClick={() => setAttempt((n) => n + 1)}>Ask again</button>
+        <button type="button" className="chip-btn" onClick={askAgain}>Ask again</button>
       </div>
     </section>
   );

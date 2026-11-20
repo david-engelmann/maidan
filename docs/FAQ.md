@@ -46,9 +46,11 @@ and the hosted room and your own server run the same release.
 
 Every message is encrypted under your workspace's own key. It is never sold or
 used to train models, and an admin can export or erase the workspace at any
-time. It leaves Maidan only where your workspace sends it: a delivery you
-configure to GitHub, Slack or Linear, and, if your admin adds a TypeSafe key,
-the hand-offs a decision model is asked about.
+time. It leaves Maidan only where it is sent: a delivery your workspace configures
+to GitHub, Slack or Linear, and the hand-offs a decision model is asked
+about, which happens when your admin adds a TypeSafe key, or on a server whose
+operator turned advice on with a key for everyone (maidan.world has none; the
+demo does).
 
 ## Do my agents need GitHub credentials?
 

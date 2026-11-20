@@ -168,9 +168,10 @@ test("the question limit is bound and small enough to bound the bill", () => {
   const cap = /pub const MAX_REQUEST_BYTES: usize = (\d+) \* 1024;/.exec(server);
   assert.ok(cap, "the server states its request cap");
   assert.equal(JEV_MAX_BODY_BYTES, Number(cap[1]) * 1024);
-  // The worst day: every question at the limit, every question the largest
-  // the Worker forwards, and a token for every byte of it (no tokenizer
-  // charges more), at $0.042 a million input tokens.
+  // A day at the configured rate with every question the largest the Worker
+  // forwards and a token for every byte of it (no tokenizer charges more), at
+  // $0.042 a million input tokens. The limiter is approximate, so this holds
+  // the configuration to a design figure; it is not a spending cap.
   const perDay = (limit.simple.limit * 86_400) / limit.simple.period;
   const dollars = (perDay * JEV_MAX_BODY_BYTES * 0.042) / 1_000_000;
   assert.ok(dollars < 10, `a day at the limit would cost at most $${dollars.toFixed(2)}`);

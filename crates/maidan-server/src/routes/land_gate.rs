@@ -155,10 +155,14 @@ pub async fn set_land_gate_advisor(
     // Not a failure of this request: the instance was set up without the key
     // that encrypts workspace secrets, so it has nowhere to keep one.
     let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Conflict(
-            "this instance cannot store a workspace's key (it has no FEDERATION_ENCRYPTION_KEY); advice here uses the instance's key"
-                .into(),
-        )
+        let fallback = if advisor.has_instance_key() {
+            "; advice here uses the instance's key"
+        } else {
+            ""
+        };
+        ApiError::Conflict(format!(
+            "this instance cannot store a workspace's key: storing one needs FEDERATION_ENCRYPTION_KEY on the instance{fallback}"
+        ))
     })?;
     advisor
         .check_key(api_key)

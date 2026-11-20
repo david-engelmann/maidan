@@ -216,7 +216,7 @@ const QUESTIONS: [Question; 10] = [
 /// the rules do not ask for any (the task asks for no code change). "Reports
 /// no passing tests" beside a clear mark reads as bad news that was let
 /// through; these say why it is not a concern.
-const NO_TESTS_NOT_CALLED_FOR: &str = "Reports no tests, which this task does not call for";
+const NO_TESTS_NOT_CALLED_FOR: &str = "Reports no passing tests, which this task does not call for";
 const UNCLEAR_TESTS_NOT_CALLED_FOR: &str =
     "Unclear whether tests passed, which this task does not call for";
 
@@ -615,6 +615,11 @@ impl LandGateAdvisor {
         )
     }
 
+    /// Whether the instance has a key of its own to fall back on.
+    pub fn has_instance_key(&self) -> bool {
+        self.instance_key.is_some()
+    }
+
     fn status_with(&self, key_source: Option<AdvisorKeySource>) -> LandGateAdvisorStatus {
         LandGateAdvisorStatus {
             enabled: true,
@@ -966,9 +971,12 @@ struct HandOff {
 /// The task's opening message is left out on evidence: it tells the agent how
 /// to work (claim, say what you ran, send to review), a hand-off cannot show
 /// those steps, and with it "done" went unsettled on a quarter of the
-/// labelled hand-offs.
+/// labelled hand-offs. The opening message is the thread's first message when
+/// the member that made the thread wrote it, so it stays out even where that
+/// member went on to do the work.
 async fn hand_off(store: &dyn Store, thread_id: ThreadId) -> Result<HandOff, LandGateAdvisorError> {
     let thread = store.get_thread(thread_id).await?;
+    let made_by = thread.created_by;
     let result = store
         .get_thread_result(thread_id)
         .await?
@@ -1000,6 +1008,7 @@ async fn hand_off(store: &dyn Store, thread_id: ThreadId) -> Result<HandOff, Lan
     let page_size = i64::try_from(MESSAGE_PAGE).unwrap_or(i64::MAX);
     let mut said = std::collections::VecDeque::with_capacity(MAX_AGENT_MESSAGES);
     let mut after = None;
+    let mut opening = true;
     for _ in 0..MESSAGE_PAGES {
         let page = store
             .list_messages_after(thread_id, after, page_size)
@@ -1010,6 +1019,11 @@ async fn hand_off(store: &dyn Store, thread_id: ThreadId) -> Result<HandOff, Lan
         after = Some(last.id);
         let full = page.len() >= MESSAGE_PAGE;
         for message in page {
+            // The first message, from whoever made the thread, is the ask.
+            let is_opening = std::mem::take(&mut opening) && made_by == Some(message.author_id);
+            if is_opening {
+                continue;
+            }
             if message.author_id != result.produced_by
                 || message.tombstoned_at.is_some()
                 || message.body.trim().is_empty()

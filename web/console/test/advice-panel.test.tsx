@@ -142,3 +142,34 @@ test("a task that changes while its sheet is open is asked about again, without 
   // Not a refresh: the server answers from what it holds when the hand-off is the same.
   expect(bodies).toEqual(["{}", "{}"]);
 });
+
+test("a task that changes while Ask again is in flight still gets a fresh answer", async () => {
+  const user = userEvent.setup();
+  const bodies: string[] = [];
+  let release: () => void = () => {};
+  let asked = 0;
+  const router = withSession([
+    advice(() => {
+      asked += 1;
+      if (asked === 1) return amber;
+      // The answer to Ask again is held back until after the task has changed.
+      if (asked === 2) return new Promise((resolve) => (release = () => resolve(amber)));
+      return green;
+    }),
+  ]);
+  const fn: typeof router.fn = (url, init) => {
+    if (String(url).endsWith("/land-gate/advice")) bodies.push(String(init?.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Changing />, fn);
+  await screen.findByText("Worth a look");
+  await user.click(screen.getByRole("button", { name: "Ask again" }));
+  await user.click(screen.getByRole("button", { name: "The task changed" }));
+  await screen.findByText("Nothing flagged");
+  // The request for the changed task asks afresh too: a held answer must not
+  // come back in the fresh one's place.
+  expect(bodies).toEqual(["{}", JSON.stringify({ refresh: true }), JSON.stringify({ refresh: true })]);
+  release();
+  // The late answer to the first Ask again is not shown over the newer one.
+  await waitFor(() => expect(screen.queryByText("Worth a look")).toBeNull());
+});

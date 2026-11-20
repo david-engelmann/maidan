@@ -93,8 +93,8 @@ Env: `MAIDAN_EMBEDDING_ENDPOINT`, `MAIDAN_EMBEDDING_MODEL`, optional
 `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_EMBEDDING_DIM`. Per-model tables
 and reindex: [Embeddings.md](Embeddings.md).
 
-**Chat / completion models are not a Maidan provider.** Agents bring
-Claude, GPT, local llama, etc. Maidan stores threads and tools.
+**Chat / completion models are not a Maidan provider.** Agents bring their
+own, hosted or local. Maidan stores threads and tools.
 
 **A decision model is, optionally.** With `MAIDAN_JEV_LAND_GATE_ENABLED=1`
 and a TypeSafe key (the instance's or a workspace's own), Maidan asks

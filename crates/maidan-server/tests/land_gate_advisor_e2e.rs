@@ -698,6 +698,77 @@ async fn the_workspaces_key_is_out_of_reach_of_the_generic_secret_routes() {
 }
 
 #[tokio::test]
+async fn the_opening_message_stays_out_even_when_its_author_did_the_work() {
+    let world = spawn(Some(Some(INSTANCE_KEY))).await;
+    let store = world.store.as_ref();
+    let tenant = test_support::tenant(store, "opening").await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: tenant.workspace_id,
+            name: "api".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    // The agent files the task itself, writes its opening message, then does
+    // the work: the first message is the ask, and only what follows is its
+    // account of the work.
+    let agent = tenant.member(store, "builder", MemberKind::Agent).await;
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("Rename the billing module".into()),
+            description: None,
+            created_by: Some(agent.member_id),
+        })
+        .await
+        .unwrap();
+    let post = |body: &'static str| {
+        store.post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: agent.member_id,
+            body: body.into(),
+            metadata: json!({}),
+            content: None,
+        })
+    };
+    post("Claim this, rename crates/billing, say what you ran, send it to review.")
+        .await
+        .unwrap();
+    let claim = store
+        .claim_thread(thread.id, agent.member_id)
+        .await
+        .unwrap();
+    assert!(claim.claimed);
+    post("Renamed the crate and every import.").await.unwrap();
+    post("cargo test passes.").await.unwrap();
+    store
+        .set_thread_result(
+            thread.id,
+            agent.member_id,
+            claim.thread.claim_lease_id.unwrap(),
+            &json!({ "summary": "Renamed crates/billing to crates/invoicing." }),
+        )
+        .await
+        .unwrap();
+    let response = tenant
+        .client()
+        .post(world.advice_url(thread.id))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let asked = world.asked();
+    assert_eq!(
+        asked[0].1["state"]["agent_messages"],
+        json!(["Renamed the crate and every import.", "cargo test passes."])
+    );
+}
+
+#[tokio::test]
 async fn a_provider_failure_fails_the_advice_and_leaves_the_gate_alone() {
     let world = spawn(Some(Some(INSTANCE_KEY))).await;
     let (thread, tenant) = handed_off(&world, "down").await;

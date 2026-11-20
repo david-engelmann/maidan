@@ -28897,7 +28897,7 @@
                 }
               }
             },
-            "description": "The task has no result yet, or the workspace has no key to ask with"
+            "description": "The task has no result yet, the workspace has no key to ask with, or the hand-off is too large to send"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -34462,6 +34462,16 @@
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The decision model's provider is unavailable"
+          },
           "503": {
             "$ref": "#/components/responses/Overloaded"
           }
@@ -36251,6 +36261,16 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The decision model's provider is unavailable"
           },
           "503": {
             "$ref": "#/components/responses/Overloaded"

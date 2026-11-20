@@ -99,6 +99,10 @@ def main() -> int:
         if case["task"].get("description"):
             filed["description"] = case["task"]["description"]
         thread = tool("create_thread", filed)["id"]
+        # The ask, as a dispatcher posts it. The advisor leaves a thread's
+        # opening message out when its author made the thread, so without
+        # this the agent's first message below would be taken for it.
+        tool("post_message", {"thread_id": thread, "body": case["task"].get("description") or case["task"]["title"]})
         claim = tool("claim_thread", {"thread_id": thread})
         claimed = claim.get("thread", claim)
         for body in case.get("agent_messages", []):

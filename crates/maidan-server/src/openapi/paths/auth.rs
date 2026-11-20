@@ -695,6 +695,7 @@ pub fn ui_list_messages() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn ui_advise_land_gate() {}
@@ -737,6 +738,7 @@ pub fn ui_get_land_gate_advisor() {}
         (status = 403, response = Forbidden),
         (status = 409, description = "This instance cannot store a workspace's key", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, response = NotFound),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn ui_set_land_gate_advisor() {}

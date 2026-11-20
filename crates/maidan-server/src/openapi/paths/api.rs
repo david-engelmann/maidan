@@ -2650,7 +2650,7 @@ pub fn require_land_gate() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, description = "This instance offers no advice", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 409, description = "The task has no result yet, or the workspace has no key to ask with", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 409, description = "The task has no result yet, the workspace has no key to ask with, or the hand-off is too large to send", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn advise_land_gate() {}
