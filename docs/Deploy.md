@@ -14,7 +14,7 @@ custom Postgres image (pgvector base; schema is applied at runtime by
 ```sh
 docker compose up                  # postgres only
 docker compose --profile full up   # + minio + maidan-server
-curl http://localhost:8080/health  # after maidan-server lands /health
+curl http://localhost:8080/health
 ```
 
 ### Publishing the host port
@@ -84,8 +84,7 @@ content key-encryption key; without it, or a real `MAIDAN_CONTENT_KEK`, the serv
 refuses to start ([Production.md](Production.md#crypto-shredding)).
 `MAIDAN_SESSION_SECRET` (at least 32 bytes) signs browser sessions and
 subscribe-resume tokens. The server refuses to start without it when OIDC is on,
-and when authentication is on without OIDC unless `MAIDAN_SUBSCRIBE_RESUME_SECRET`
-is set instead; with authentication off it falls back to a built-in test secret.
+and without OIDC unless `MAIDAN_SUBSCRIBE_RESUME_SECRET` is set instead.
 `?mode=rwc` lets SQLite create `dev.db` on first run.
 
 The server detects the dialect from the `DATABASE_URL` prefix
@@ -179,7 +178,6 @@ values.
 | `maidan-server`  | `crates/maidan-server/Dockerfile.dev`       | Dev hot-reload.        |
 | `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector.   |
 | `maidan-cli`     | `docker/Dockerfile.cli`                     | The `maidan` CLI, pinned to the server's tag. |
-| `maidan-server:<tag>-demo` | `crates/maidan-server/Dockerfile` with `MAIDAN_ENABLE_BOOTSTRAP=1` | The one build with the bootstrap routes, for the seed try.maidan.world used before its sandbox; nothing deploys it now. Signed and attested; never `latest`. |
 | (local only)     | `docker/Dockerfile.quickstart`              | Built by `compose.quickstart.yaml` from a pinned release binary; not published, not for production. |
 
 ## try.maidan.world
@@ -243,14 +241,10 @@ ordinary tenant, so one visitor's tokens see nothing of another's
 | Advice from a decision model | 10 questions a minute across the demo (`JEV_LIMIT` in `wrangler.demo.jsonc`), each at most 16 KiB, the server's own cap on a request to the provider: under $10 a day at the worst, and a hand-off is usually about a thousand tokens. On only when the Worker has the secret `TYPESAFE_API_KEY` |
 
 **Images.** The demo runs the stock `maidan-server:<tag>`, which has no
-bootstrap routes. Each release still publishes `maidan-server:<tag>-demo`
-beside it, built with `MAIDAN_ENABLE_BOOTSTRAP=1` for the seed the demo used
-before the sandbox; nothing deploys it now. It is signed, has an SBOM
-attestation, and passes the same trivy scan as the stock image. It is amd64
-only and is never tagged `latest`. Every other image builds with bootstrap
-off, and `scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if
-release.yml stops passing `MAIDAN_ENABLE_BOOTSTRAP=0` to a stock leg, or tags
-the demo image `latest`.
+bootstrap routes. No release builds an image with them:
+`scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if a
+workflow builds with the bootstrap feature or a release leg builds a second
+server image.
 
 **Deploy.** `.github/workflows/deploy-demo.yml` runs when `release.yml`
 dispatches it for the tag it just published, or on a dispatch with a tag.

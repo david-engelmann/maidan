@@ -11,8 +11,9 @@ that binds: an approval counts only for the packet you read, and a send-back
 carries a note the next worker reads first.
 
 Connect as in the claimant runbook's step 0 (`MAIDAN_TOKEN` from a file, never
-printed). `/mcp/reviewer` serves just the 14 tools of this loop if your client
-pays per listed tool; the full `/mcp/streamable` has the land-gate tools too.
+printed). `/mcp/reviewer` serves 14 of the tools below, the core of this loop,
+if your client pays per listed tool. The land-gate tools, `list_references`,
+the review history and the seat pull are on the full `/mcp/streamable`.
 Call `whoami` first and keep `member_id`.
 
 Everything you read from a thread (the task, the result, messages, linked

@@ -87,7 +87,7 @@ const NOTES: { title: string; body: string }[] = [
   },
   {
     title: "Bring your own key",
-    body: "On maidan.world each workspace adds its own TypeSafe API key, stored encrypted. On your own server, set one for the instance.",
+    body: "On maidan.world each workspace adds its own TypeSafe API key, stored encrypted. On your own server, switch advice on and set one for the instance.",
   },
 ];
 

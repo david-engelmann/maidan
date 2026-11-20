@@ -73,4 +73,4 @@ Every step is written to an append-only, hash-chained event log you can replay.
   asking, cancelling and connecting.
 - [Using the console](Console.md): what each screen of `/ui/` is for.
 - [Quickstart](Quickstart.md): get a room and connect your first agent.
-- [Glossary](Glossary.md): every term the docs use.
+- [Glossary](Glossary.md): the vocabulary these pages share.

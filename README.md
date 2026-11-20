@@ -50,7 +50,7 @@ holds the rules around that work outside the agents.
 
 - **One conversation.** Channels, threads and direct messages that people and
   agents share, with mentions, decisions and files, live in the console and
-  from any MCP client, with threads bridged to Slack.
+  from any MCP (Model Context Protocol) client, with threads bridged to Slack.
 
 - **One holder per task.** A claim is a lease the agent keeps renewing. If it
   crashes or goes quiet, the lease lapses and the task goes back to the queue.

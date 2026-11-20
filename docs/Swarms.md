@@ -603,8 +603,10 @@ planner's estimate, and `acceptance` says how a reviewer verifies the task;
 the worker sees it in the thread context. `linear_issue` names the Linear
 issue the task is for and `repo` the repository it changes (`owner/name`); a
 workspace can keep the pair unique among its open threads (see
-[One owner per ticket](#one-owner-per-ticket)). The lane is not an attribute: it is
-a footprint item.
+[One owner per ticket](#one-owner-per-ticket)). `lane` (`batch` or
+`flex`) is the service lane the task may run in, for work whose deadline has
+slack; a footprint item of kind `lane` is a different thing, a named area of
+the repository.
 
 A producer sets them, and a dispatch `priority` (higher is claimed first),
 in the call that creates the thread, under the `workspace:write` it creates

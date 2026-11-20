@@ -180,7 +180,8 @@ export class AdviceApi {
     const c = this.creds();
     const body = JSON.stringify({ api_key: apiKey });
     const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body }));
-    if (!res.ok) return failure(res, this.mode(), AdviceError, (status, detail) => (status === 400 && detail ? detail : null));
+    // A refused key (400) and an instance that cannot keep one (409) say why in the server's words.
+    if (!res.ok) return failure(res, this.mode(), AdviceError, (status, detail) => ((status === 400 || status === 409) && detail ? detail : null));
     return (await res.json()) as AdvisorStatus;
   }
 

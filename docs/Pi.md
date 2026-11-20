@@ -11,7 +11,7 @@ with auth on. Integrate agents against the instance with
 | `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` and `maidan` binaries |
 | `ghcr.io/david-engelmann/maidan-server:v469.0.0` | Multi-arch server image (`linux/arm64` included). Pin the tag, never `:latest` |
 | `ghcr.io/david-engelmann/maidan-cli:v469.0.0` | The tag-matched CLI image, for `maidan init` |
-| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs, cosign bundles, and per-image SBOMs (from `v469.0.0`) |
+| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs, cosign bundles, and per-image SBOMs |
 
 ---
 
@@ -65,7 +65,7 @@ curl -s http://127.0.0.1:8080/health
 Both images run as a non-root user, so `--user` runs them as you, the owner of
 `~/maidan-data`, and SQLite can create its file there. Send the token as
 `Authorization: Bearer <token>`, and mint narrower per-agent tokens from it
-([Production.md](Production.md#maidan-init)). Verify an image before
+([Production.md](Production.md#more-workspaces-and-agents)). Verify an image before
 you trust its tag with the `cosign verify` command in the
 [README](../README.md).
 

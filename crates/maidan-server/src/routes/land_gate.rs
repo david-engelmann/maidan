@@ -152,9 +152,12 @@ pub async fn set_land_gate_advisor(
             "api_key is 1 to 512 characters with no spaces".into(),
         ));
     }
+    // Not a failure of this request: the instance was set up without the key
+    // that encrypts workspace secrets, so it has nowhere to keep one.
     let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Internal(
-            "secret storage requires an encryption key (set FEDERATION_ENCRYPTION_KEY)".into(),
+        ApiError::Conflict(
+            "this instance cannot store a workspace's key (it has no FEDERATION_ENCRYPTION_KEY); advice here uses the instance's key"
+                .into(),
         )
     })?;
     advisor

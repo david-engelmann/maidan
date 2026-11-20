@@ -128,9 +128,7 @@ the full acceptance criteria.
 
 ### Phase 1: Maidan's own surfaces are cache-stable
 
-- **C1. The context pack.** Partial work is on `wip/context-pack-cache-stable`
-  (a shared builder in `maidan-types` and `maidan-store`, deterministic ties,
-  REST moved onto it; MCP mid-rewrite; unbuilt as a whole):
+- **C1. The context pack.** Shipped:
   - one canonical pack, the same bytes on REST and MCP, with deterministic ties;
   - layered in order: identity, the stable thread brief, glossary, parent grounding, accepted decisions, messages, the rest, then a volatile tail;
   - elision that folds in fixed blocks;
@@ -141,9 +139,7 @@ the full acceptance criteria.
   - a byte cap a caller can set (and a default from `clientInfo` where the harness is known), so a pack fits the smallest result limit and is cut by Maidan's elision, not the harness.
   
   Proof: a byte golden, REST/MCP parity, and a test that a new message leaves every byte before the messages layer unchanged.
-- **C2. The MCP surface.** Partial work is on `wip/mcp-cache-hints-discover`
-  (`server/discover`, the cache-hint choices, a contract test; profiles not
-  started):
+- **C2. The MCP surface.** Shipped, the tool profiles included:
   - `server/discover`, which now carries the `instructions`;
   - `ttlMs` and `cacheScope` on every cacheable result, chosen per result (content-addressed artifacts get the longest);
   - tool profiles as their own endpoints, a worker profile of about 14 tools and a reviewer profile, each list byte-identical for every client and sorted, so a profile's list never varies per connection (SEP-2567) and can be `cacheScope: "public"`;

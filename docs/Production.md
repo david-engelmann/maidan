@@ -20,8 +20,7 @@ artifact store, so the server holds no state of its own.
 | Redis | no | Shares rate-limit counters across replicas. |
 | SMTP, embeddings, GitHub, Slack, Linear | no | Mail, semantic search and result delivery. |
 
-Set `MAIDAN_ENV=production`. It refuses every development switch (running
-without authentication, the public development content key, the mock OIDC
+Set `MAIDAN_ENV=production`. It refuses every development switch (the public development content key, the mock OIDC
 provider, private-network egress) and marks session cookies `Secure`, so
 reach the console over HTTPS or on `localhost`. The Helm chart sets it
 whenever `production: true` (both charts' `values-prod.yaml`), and so does
@@ -44,7 +43,7 @@ the secret ([the list](Configuration.md#how-configuration-works)).
 | Backup | `pg_dump`, point-in-time recovery | `scripts/backup.sh` (`VACUUM INTO`) |
 
 Use Postgres when several agents write at once; SQLite suits one operator and
-a few agents. The `maidan-postgres` image is Postgres 17 with pgvector, and
+a few agents. The `maidan-postgres` image is Postgres 16 with pgvector, and
 any Postgres with the `vector` extension works. On a managed Postgres, add
 `?sslmode=require` and use the direct connection, not a pooler: the server
 holds `LISTEN` connections.
@@ -126,7 +125,7 @@ run. `helm/maidan-stack` wraps it and can run its own Postgres and MinIO.
 | `values-prod.yaml` | The release image, production refusals, autoscaling, ingress with your TLS secret |
 | `values-cert-manager.yaml` | A cert-manager issuer on the ingress; layer on `values-prod.yaml` |
 | `values-profile-otel.yaml`, `-redis.yaml`, `-s3.yaml` | OTLP and JSON logs; Redis rate limits; an S3 artifact store ([how to layer them](https://github.com/david-engelmann/maidan/blob/main/helm/maidan/PROFILES.md)) |
-| `values-ci.yaml` | The CI smoke test (SQLite, authentication off) |
+| `values-ci.yaml` | The CI smoke test (SQLite, a development admin token) |
 
 Create a `maidan-secrets` Secret with `DATABASE_URL`, `MAIDAN_CONTENT_KEK` and
 `MAIDAN_SESSION_SECRET`, then:

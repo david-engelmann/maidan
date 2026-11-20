@@ -616,7 +616,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
             "anthropic",
             "openai",
             "google",
-            "xai"
+            "xai",
+            "deepseek",
+            "zhipu"
           ],
           "type": "string"
         },
@@ -2708,7 +2710,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "anthropic",
         "openai",
         "google",
-        "xai"
+        "xai",
+        "deepseek",
+        "zhipu"
       ],
       "type": "string"
     },

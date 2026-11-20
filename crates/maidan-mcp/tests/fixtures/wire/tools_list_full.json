@@ -577,7 +577,9 @@
                   "anthropic",
                   "openai",
                   "google",
-                  "xai"
+                  "xai",
+                  "deepseek",
+                  "zhipu"
                 ],
                 "type": "string"
               },
@@ -2669,7 +2671,9 @@
               "anthropic",
               "openai",
               "google",
-              "xai"
+              "xai",
+              "deepseek",
+              "zhipu"
             ],
             "type": "string"
           },

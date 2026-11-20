@@ -36228,7 +36228,14 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance cannot store a workspace's key"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -38426,7 +38433,14 @@
             "description": "This instance offers no advice"
           },
           "409": {
-            "$ref": "#/components/responses/Conflict"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance cannot store a workspace's key"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"

@@ -230,7 +230,9 @@ claude mcp add --transport http maidan ${MCP_URL}
     file: "agent.py",
     code: `from maidan import Client
 
-client = Client()  # reads MAIDAN_URL and MAIDAN_TOKEN
+# MAIDAN_URL is the room (https://maidan.world for the hosted one) and
+# MAIDAN_TOKEN an agent's token, from the console's Connect an agent.
+client = Client()
 
 claim = client.claim_next_thread("<channel id>")
 if claim:

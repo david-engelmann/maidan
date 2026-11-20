@@ -9,7 +9,7 @@ agent, n8n, or Slack. This page covers *how Maidan talks*. Where it runs
 accepted.** `initialize` echoes `2026-07-28`, `2025-11-25`, `2025-06-18`,
 `2025-03-26` or `2024-11-05`, whichever the client asks for. Every revision
 from `2025-03-26` on is served over the same stateless Streamable HTTP (no
-`Mcp-Session-Id`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` headers). Only
+`Mcp-Session-Id`; SEP-2243 `Mcp-Method`/`Mcp-Name` headers, optional before `2026-07-28` and required on it). Only
 `2024-11-05` keeps the SSE-session model. The 2025 revisions matter most: the
 official TypeScript SDK 2.0 and the MCP Inspector request `2025-11-25` and do
 not accept `2026-07-28`. `scripts/mcp-inspector.sh` runs the Inspector against
@@ -62,7 +62,7 @@ IT stack already uses.
 |---------|-------|-------|
 | REST + OpenAPI 3.1 | `GET /openapi.json` | Every operation. Creating a workspace or a member is REST or the CLI, not MCP. |
 | MCP JSON-RPC | `POST /mcp` | Negotiates `2026-07-28` (the default), `2025-11-25`, `2025-06-18`, `2025-03-26` and `2024-11-05`. Stateless: JSON-RPC in, JSON-RPC out. |
-| MCP Streamable HTTP | `POST/GET/DELETE /mcp/streamable` | Stateless from `2025-03-26` on: one JSON-RPC response on its own POST, no `Mcp-Session-Id`, a notification answered `202`, optional SEP-2243 `Mcp-Method`/`Mcp-Name` headers. Only a `2024-11-05` client (by its `initialize` or its `MCP-Protocol-Version` header) gets the SSE-session model, where the first POST opens SSE and an `Mcp-Session-Id`. `GET` opens server→client notifications. Live waits ride `GET /mcp/stream`, not a POST session. `POST /mcp/worker` and `POST /mcp/reviewer` serve smaller fixed tool lists. |
+| MCP Streamable HTTP | `POST/GET/DELETE /mcp/streamable` | Stateless from `2025-03-26` on: one JSON-RPC response on its own POST, no `Mcp-Session-Id`, a notification answered `202`, SEP-2243 `Mcp-Method`/`Mcp-Name` headers, optional before `2026-07-28` and required on it. Only a `2024-11-05` client (by its `initialize` or its `MCP-Protocol-Version` header) gets the SSE-session model, where the first POST opens SSE and an `Mcp-Session-Id`. `GET` opens server→client notifications. Live waits ride `GET /mcp/stream`, not a POST session. `POST /mcp/worker` and `POST /mcp/reviewer` serve smaller fixed tool lists. |
 | MCP SSE | `GET /mcp/stream`, `GET /mcp/notifications` | Live waits. A stateless `resources/subscribe` is kept in the database, so `GET /mcp/notifications` on any replica delivers it. HTTP+SSE is deprecated in the MCP spec (SEP-2596): move clients toward Streamable HTTP. |
 | MCP stdio | `maidan mcp-stdio` | For desktop clients that run a local process. Same JSON-RPC, on SQLite or Postgres. |
 | WebSocket | `GET /ws/subscribe` | Live events with resumable cursors; capability `event:subscribe`. The agent ↔ UI live path. |
@@ -81,7 +81,8 @@ MCP tool count is **265**. There is **no** MCP tool that creates a workspace or 
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit
 `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the
-same on `/mcp`, `/mcp/streamable`, `/mcp/worker` and `/mcp/reviewer`.
+same on `/mcp`, `/mcp/streamable`, `/mcp/worker`, `/mcp/reviewer` and
+`/mcp/coordinator`.
 `openWorldHint` is true only for a tool that itself reaches outside Maidan,
 such as `post_message` running a slash command's HTTP receiver or
 `search_messages` calling a remote embedding provider. The reason for each
@@ -122,8 +123,9 @@ official TypeScript client caches on them by default and caps a TTL at 24
 hours (`MAX_CACHE_TTL_MS`). `public` means a shared gateway may hand the result to
 any caller, so Maidan uses it only for a result that is the same bytes whoever
 asks. A hint never stands in for authorization: every call is checked against
-its token, whatever a client has cached. `POST /mcp/worker` and
-`POST /mcp/reviewer` are the exception to the filtered list: each serves one
+its token, whatever a client has cached. `POST /mcp/worker`,
+`POST /mcp/reviewer` and `POST /mcp/coordinator` are the exception to the
+filtered list: each serves one
 profile, and a tool the token cannot call is refused when it is called. A test
 checks this table against the server's values.
 
@@ -131,7 +133,7 @@ checks this table against the server's values.
 |--------|---------|--------------|-----|
 | `server/discover` | 3600000 | `public` | Versions, capabilities and instructions are the same for every caller and change only with a release. |
 | `tools/list` on `/mcp`, `/mcp/streamable` | 3600000 | `private` | Filtered to the token's capabilities, so two tokens get two lists. The catalog changes only with a release, and Maidan cannot announce a deploy (`notifications/tools/list_changed` never fires), so the TTL bounds how long a client keeps a list from before one. |
-| `tools/list` on `/mcp/worker`, `/mcp/reviewer` | 3600000 | `public` | A fixed profile, sorted by name, the same bytes for every caller, so a shared cache can keep it (SEP-2567). A tool the token cannot call stays in the list and is refused at `tools/call`. |
+| `tools/list` on `/mcp/worker`, `/mcp/reviewer`, `/mcp/coordinator` | 3600000 | `public` | A fixed profile, sorted by name, the same bytes for every caller, so a shared cache can keep it (SEP-2567). A tool the token cannot call stays in the list and is refused at `tools/call`. |
 | `prompts/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/templates/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/list` | 3600000 | `private` | Lists the caller's own workspace, which its token fixes. |

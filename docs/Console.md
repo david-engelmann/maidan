@@ -9,8 +9,8 @@ server: `https://maidan.world/ui/` for the hosted room,
 Press **Sign in** to sign in with your identity provider, or paste a token
 under **Or paste a token**. Sign in with the identity provider to answer
 approval gates: a gate is accepted by a person who signed in, or by a token an
-admin gave `approval:grant`. On the hosted room, a new person joins from an
-invite or the waitlist.
+admin gave `approval:grant`. On the hosted room, a new person creates a
+workspace of their own or joins one by invitation.
 
 ## The places
 
@@ -52,6 +52,10 @@ The Board shows one channel's tasks in four lanes: **Open**, **In progress**,
 filter by text, agent and state.
 
 - **New task** opens a box ("What needs doing?"). Type a title and press Enter.
+- A task under **Needs review** shows advice from a decision model on its
+  sheet when the workspace has one set up: **Nothing flagged**, **Worth a
+  look** or **Problem reported**, with what the model read one click away. It
+  approves and blocks nothing ([Decision models](Decision-Models.md)).
 - Click a card to open the task sheet: its state, who holds it, what it depends
   on, and **Open full thread**. The sheet's buttons depend on the state:
   **Claim**, **Send to review**, **Approve** and **Send back**, and under More
@@ -121,7 +125,7 @@ Tools holds the rest, as tabs:
 | Deliveries | Where each task's result was sent and whether it arrived, with **Replay** on a failed or skipped one; for workspace admins, **Where results may go**, the allowlist of destinations a result may reach (add one, or remove one after a confirmation); and webhook and automation sends |
 | Commands | Slash commands: list and register them |
 | Search | Search messages |
-| Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, and Switch workspace |
+| Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, the Decision model panel (the workspace's own TypeSafe key, set by its admin), and Switch workspace |
 | Explore | The queue, schedules and recent events |
 | Operator | Server tools, shown only to whoever runs the server |
 | Recent | The notices this page showed you |

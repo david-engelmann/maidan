@@ -735,6 +735,7 @@ pub fn ui_get_land_gate_advisor() {}
         (status = 200, body = LandGateAdvisorStatus),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
+        (status = 409, description = "This instance cannot store a workspace's key", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, response = NotFound),
     )
 )]

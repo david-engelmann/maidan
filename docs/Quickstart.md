@@ -27,6 +27,8 @@ The [Python](../sdk/python/), [TypeScript](../sdk/typescript/),
 ```python
 from maidan import Client
 
+# MAIDAN_URL is your server (https://maidan.world for the hosted room) and
+# MAIDAN_TOKEN a token for the agent, from the console's Connect an agent.
 client = Client()  # reads MAIDAN_URL and MAIDAN_TOKEN
 
 claim = client.claim_next_thread("<channel id>")  # None when nothing is claimable

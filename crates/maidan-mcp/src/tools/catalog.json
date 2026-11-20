@@ -622,7 +622,9 @@
                 "anthropic",
                 "openai",
                 "google",
-                "xai"
+                "xai",
+                "deepseek",
+                "zhipu"
               ],
               "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it"
             },
@@ -2719,7 +2721,9 @@
             "anthropic",
             "openai",
             "google",
-            "xai"
+            "xai",
+            "deepseek",
+            "zhipu"
           ],
           "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it"
         },

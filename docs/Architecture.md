@@ -299,7 +299,9 @@ See [Open Work](Open%20Work.md) (the single backlog) and
 Currently out of scope:
 
 - Slack-grade human UX: native clients, huddles, org hierarchy.
-- Hosted SaaS, a hosted playground, and a rich SPA. The four client SDKs (TypeScript,
+- Native desktop and mobile apps. The hosted service ([maidan.world](https://maidan.world)),
+  the demo ([try.maidan.world](https://try.maidan.world)) and the console are
+  in scope and shipped. The four client SDKs (TypeScript,
   Python, Go, Rust) are published at 0.1.0; see [`sdk/README.md`](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md).
 - Postgres sharding / storage-engine change (vertical + read-replica scaling assumed
   sufficient).

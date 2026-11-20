@@ -192,7 +192,7 @@ key otherwise. With neither, advice is refused.
 curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"api_key": "…"}'
-# What is set up: {"enabled": true, "key_source": "workspace", "model": "jev-latest", "host": "api.typesafe.ai"}
+# What is set up: {"enabled": true, "key_source": "workspace", "provider": "typesafe", "model": "jev-latest", "host": "api.typesafe.ai"}
 curl "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
 # Forget it.
 curl -X DELETE "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
@@ -205,7 +205,10 @@ secret, so the generic secret routes and tools cannot create, list, resolve,
 substitute or delete it: the only way in is this route, after the provider
 accepted the key, and the only place it goes is the provider. In the console
 it is under **Tools**, **Workspace**, for a person signed in who holds
-`token:admin` or may mint the workspace's first admin token.
+`token:admin` or may mint the workspace's first admin token. An instance
+that was set up without `FEDERATION_ENCRYPTION_KEY` has nowhere to keep a
+workspace's key: the `PUT` answers `409`, and advice there uses the
+instance's key.
 
 On maidan.world a workspace brings its own key. try.maidan.world asks with the
 demo's: when the page's scripted agent has sent **Say hello** to review, the
