@@ -232,7 +232,7 @@ erase() { # erase LETTER WS ADMIN_TOKEN
   if is "$STATUS" 200 && is "$(got .workspace_erased)" true; then
     pass "cleanup: workspace $who ($ws) is erased"
   else
-    fail "cleanup: workspace $who ($ws) was not erased (HTTP $STATUS): erase it by hand"
+    fail "cleanup: workspace $who ($ws) was not erased (HTTP $STATUS): erase it with DELETE /operator/workspaces/$ws (docs/Operations.md, Erasing a workspace as the operator)"
   fi
   http GET "/workspaces/$ws" bearer "$token"
   check "cleanup: $who's admin token is refused once its workspace is gone (HTTP $STATUS)" is "$STATUS" 401

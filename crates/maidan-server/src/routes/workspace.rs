@@ -1144,26 +1144,91 @@ pub async fn erase_workspace(
             "confirm_workspace_id must match path workspace id".into(),
         ));
     }
-    let actor = auth.actor_id();
+    erase_and_reap(&state, workspace_id, auth.actor_id(), None)
+        .await
+        .map(Json)
+}
+
+/// The longest reason an operator's erase records.
+const ERASE_REASON_LIMIT: usize = 1000;
+
+/// `DELETE /operator/workspaces/:id`: an operator erases a workspace that its
+/// own admin cannot, because no token of it is left or its people are gone.
+/// `operator:global`. It is the erase of `DELETE /workspaces/:id`, legal holds
+/// included; the audit row names the operator and the reason.
+///
+/// The operator's own workspace is refused: it holds the credential every
+/// other operator route answers to, and its admin route erases it.
+pub async fn operator_erase_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<crate::dto::OperatorEraseWorkspace>,
+) -> ApiResult<Json<WorkspaceEraseResult>> {
+    cap(&auth, OPERATOR_GLOBAL)?;
+    let workspace_id = WorkspaceId(id);
+    if workspace_id == auth.workspace_id() {
+        return Err(ApiError::BadRequest(
+            "an operator may not erase its own workspace on the operator route".into(),
+        ));
+    }
+    if body.confirm_workspace_id != workspace_id.0 {
+        return Err(ApiError::BadRequest(
+            "confirm_workspace_id must match path workspace id".into(),
+        ));
+    }
+    let reason = body.reason.trim();
+    if reason.is_empty() || reason.chars().count() > ERASE_REASON_LIMIT {
+        return Err(ApiError::BadRequest(format!(
+            "reason is 1 to {ERASE_REASON_LIMIT} characters"
+        )));
+    }
+    state.store.get_workspace(workspace_id).await?;
+    erase_and_reap(
+        &state,
+        workspace_id,
+        auth.actor_id(),
+        Some(reason.to_owned()),
+    )
+    .await
+    .map(Json)
+}
+
+/// Erase a workspace with its audit row, then delete the blobs it orphaned
+/// and tell MCP subscribers its resources are gone. `operator_reason` is set
+/// when an operator, not the workspace's own admin, asked for it.
+async fn erase_and_reap(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    actor: MemberId,
+    operator_reason: Option<String>,
+) -> Result<WorkspaceEraseResult, ApiError> {
     let mut result = state
         .store
         .erase_workspace_audited(
             workspace_id,
-            Box::new(move |result| NewAuditEvent {
-                scope: AuditScope::Workspace(workspace_id),
-                actor_id: Some(actor),
-                action: "workspace.erase".into(),
-                target_kind: Some("workspace".into()),
-                target_id: Some(workspace_id.0),
-                metadata: purge_metadata(&result.purge),
+            Box::new(move |result| {
+                let mut metadata = purge_metadata(&result.purge);
+                if let Some(reason) = operator_reason {
+                    metadata["by"] = "operator".into();
+                    metadata["reason"] = reason.into();
+                }
+                NewAuditEvent {
+                    scope: AuditScope::Workspace(workspace_id),
+                    actor_id: Some(actor),
+                    action: "workspace.erase".into(),
+                    target_kind: Some("workspace".into()),
+                    target_id: Some(workspace_id.0),
+                    metadata,
+                }
             }),
         )
         .await?;
-    delete_orphaned_blobs(&state, workspace_id, &result.purge.artifact_shas).await;
+    delete_orphaned_blobs(state, workspace_id, &result.purge.artifact_shas).await;
     result.purge.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
-    Ok(Json(result))
+    Ok(result)
 }
 
 /// `POST /workspaces/:id/legal-holds` — place a legal hold for one matter.

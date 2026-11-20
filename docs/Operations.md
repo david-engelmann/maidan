@@ -121,6 +121,24 @@ replayed. Both acts are in the workspace's audit log (`workspace.suspend`,
 `workspace.suspension_lift`), attributed to the operator. An operator cannot
 suspend its own workspace, since that would lock out the credential that lifts it.
 
+## Erasing a workspace as the operator
+
+A workspace's own admin erases it (`DELETE /workspaces/{id}`, `token:admin`).
+When nobody can, because every token of it is lost or its people are gone, an
+operator does:
+
+```sh
+curl -X DELETE "$MAIDAN/operator/workspaces/$WS" \
+  -H "authorization: Bearer $OPERATOR_TOKEN" -H 'content-type: application/json' \
+  -d "{\"confirm_workspace_id\": \"$WS\", \"reason\": \"orphaned test tenant\"}"
+```
+
+It is the same erase: messages, events, tokens, sessions, keys and artifacts
+go in one transaction, and it cannot be undone. A workspace under a legal hold
+is refused with a 409, for the operator as for its admin. The audit row
+(`workspace.erase`) names the operator and the reason. An operator cannot
+erase its own workspace on this route.
+
 ## Usage meters
 
 Each workspace's usage is counted in memory and written to

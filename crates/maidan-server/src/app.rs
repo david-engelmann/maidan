@@ -1214,6 +1214,10 @@ pub fn router(state: AppState) -> Router {
             no_store(post(routes::provision_workspace)),
         )
         .route(
+            "/operator/workspaces/{id}",
+            delete(routes::operator_erase_workspace),
+        )
+        .route(
             "/operator/workspaces/{id}/suspension",
             get(routes::get_workspace_suspension)
                 .merge(put(routes::suspend_workspace))
