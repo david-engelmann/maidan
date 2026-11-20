@@ -244,8 +244,22 @@ work, written to include the hard cases: tests that were not run, a question
 left in a message, work on the wrong thing, a result that tells the reader
 how to answer.
 
-Use your own hand-offs before you rely on it: a model that reads our examples
-well has not been shown to read yours.
+The result on 2026-11-20, against `jev-1.14.0` through a running server: of
+325 labelled answers, 314 agreed with their label, 11 were unsettled and none
+was a settled wrong answer; the advice matched its label on 34 of the 36
+hand-offs. The two it missed are worth knowing:
+
+- A memory limit raised in a production values file, tested on staging, read
+  as nothing flagged where we had labelled it worth a look. Every judgment
+  was right. None of the ten questions asks whether a change touches
+  production configuration, so the rules had nothing to go on.
+- Release notes handed over with "let me know if you would like a longer
+  version" read as worth a look: the model was unsure whether part of the
+  task was left undone. We had labelled it nothing flagged.
+
+We wrote these hand-offs and their labels ourselves, so this is a regression
+set, not an independent test. Use your own hand-offs before you rely on it: a
+model that reads our examples well has not been shown to read yours.
 
 ## What it is not
 

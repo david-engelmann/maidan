@@ -109,9 +109,11 @@ def main() -> int:
             tool("post_message", {"thread_id": thread, "body": body})
         tool("set_thread_result", {"thread_id": thread, "result": case["result"], "claim_lease_id": claimed["claim_lease_id"]})
         advice = tool("advise_land_gate", {"thread_id": thread, "refresh": True})
-        # Give the task back: a claim held for every case would run into a
-        # workspace's limit on work in progress.
-        tool("release_claim", {"thread_id": thread, "claim_lease_id": claimed["claim_lease_id"]})
+        # End the task: a claim held for every case would run into a
+        # workspace's limit on work in progress, and a later case with the
+        # same title and description would be refused as a duplicate of an
+        # open task.
+        tool("cancel_thread", {"thread_id": thread, "reason": "advice eval: this case has been read"})
         tokens += advice["usage"]["input_tokens"]
         if sink:
             sink.write(json.dumps({"id": case["id"], "advice": advice}) + "\n")
