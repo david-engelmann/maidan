@@ -100,7 +100,7 @@ async fn advisor_admin(
         .get_member_in(workspace_id, session.member_id)
         .await?;
     if member.kind == MemberKind::Human
-        && super::member::session_holds_or_may_mint(state, session, TOKEN_ADMIN).await
+        && super::member::session_holds_or_may_mint(state, session, TOKEN_ADMIN).await?
     {
         Ok(())
     } else {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { HELLO, MCP_PATH, RESULT, STEPS, createDemoAgent } from "../try/demo-agent.js";
+import { ADVICE_ALL_CLEAR, ADVICE_TITLE, HELLO, MCP_PATH, RESULT, STEPS, createDemoAgent, readAdvice } from "../try/demo-agent.js";
 import { START_RETRY_SECS, createTryPage } from "../try/try.js";
 
 // The try page's demo agent against a stand-in for the sandbox's MCP
@@ -317,8 +317,12 @@ const PAGE_IDS = [
   "agent-console-status",
 ];
 
-function page(tools) {
-  const elements = new Map(PAGE_IDS.map((id) => [id, element(id)]));
+// The advice block's elements, which a page from before it does not have.
+const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-rows"];
+
+function page(tools, ids = PAGE_IDS) {
+  const elements = new Map(ids.map((id) => [id, element(id)]));
+  if (elements.has("agent-advice")) elements.get("agent-advice").hidden = true;
   const doc = {
     getElementById: (id) => elements.get(id),
     createElement: (tag) => element("", tag),
@@ -410,4 +414,172 @@ test("the page shows a failed call as an error on its step, and Try again finish
   assert.equal(rows[1].detail, "Its working clock started.");
   assert.equal(ui.el("agent-done").hidden, false);
   assert.equal(ui.srv.tools().filter((t) => t === "claim_next_thread").length, 1);
+});
+
+// What the server answers for the hand-off the demo agent makes: the numbers
+// Jev 1.14.0 gave for it on 2026-11-20, in the shape of
+// crates/maidan-server/src/land_gate_advisor.rs.
+const judgment = (id, reading, probability, extra = {}) => ({
+  id,
+  label: id,
+  probability,
+  answer: probability >= 0.7 ? "yes" : probability <= 0.3 ? "no" : "unsettled",
+  reading,
+  concern: false,
+  ...extra,
+});
+const helloAdvice = (changes = {}) => ({
+  provider: "typesafe",
+  model: "jev-1.14.0",
+  land: "green",
+  reasons: [],
+  judgments: [
+    judgment("done", "Does what the task asks", 0.93),
+    judgment("tests_passed", "Reports no passing tests", 0.01),
+    judgment("code_change", "The task asks for no code change", 0.04),
+    judgment("unresolved_failure", "Reports nothing still failing", 0.02),
+    judgment("left_undone", "Reports nothing left undone", 0.02),
+    judgment("asks_person", "Waits on no question", 0.02),
+    judgment("beyond_task", "Stays within the task", 0.02),
+    judgment("changes_access", "Leaves sign-in and permissions alone", 0.01),
+    judgment("deletes_data", "Deletes no stored data", 0.01),
+    judgment("flags_risk", "The agent flags no risk", 0.01),
+  ],
+  thresholds: { yes_min: 0.7, no_max: 0.3 },
+  key_source: "instance",
+  cached: false,
+  ...changes,
+});
+
+test("advice reads as a title, the model, and each judgment as a statement with how sure the model is", () => {
+  const advice = readAdvice(helloAdvice());
+  assert.equal(advice.land, "green");
+  assert.equal(advice.title, "Nothing flagged");
+  assert.equal(advice.model, "Jev 1.14.0 by TypeSafe");
+  assert.equal(advice.why, ADVICE_ALL_CLEAR);
+  assert.equal(advice.rows.length, 10);
+  assert.deepEqual(advice.rows[0], { reading: "Does what the task asks", sure: "93% sure", mark: "clear" });
+  // 1% yes is a no the model is 99% sure of.
+  assert.deepEqual(advice.rows[1], { reading: "Reports no passing tests", sure: "99% sure", mark: "clear" });
+  assert.ok(advice.rows.every((row) => row.mark === "clear"));
+});
+
+test("a concern and an unsettled judgment are marked, counted, and never shown as a percentage they are not", () => {
+  const answer = helloAdvice({ land: "amber", reasons: ["not_shown_done", "tests_not_reported"] });
+  answer.judgments[0] = judgment("done", "Unclear whether it does what the task asks", 0.5, { concern: true });
+  answer.judgments[1] = judgment("tests_passed", "Reports no passing tests", 0.004, { concern: true });
+  const advice = readAdvice(answer);
+  assert.equal(advice.title, "Worth a look");
+  assert.deepEqual(advice.rows[0], { reading: "Unclear whether it does what the task asks", sure: "unsure", mark: "unsure" });
+  assert.deepEqual(advice.rows[1], { reading: "Reports no passing tests", sure: "99% sure", mark: "concern" });
+  assert.equal(advice.why, "2 of the 10 judgments kept this from “Nothing flagged”. They are marked below.");
+  const one = helloAdvice({ land: "red" });
+  one.judgments[3] = judgment("unresolved_failure", "Reports something still failing", 0.99, { concern: true });
+  assert.match(readAdvice(one).why, /^1 of the 10 judgments .* It is marked below\.$/);
+  assert.equal(readAdvice(one).title, "Problem reported");
+});
+
+test("an answer that is not advice shows nothing", () => {
+  assert.equal(readAdvice(null), null);
+  assert.equal(readAdvice({}), null);
+  assert.equal(readAdvice(helloAdvice({ land: "blue" })), null);
+  assert.equal(readAdvice(helloAdvice({ land: "toString" })), null);
+  assert.equal(readAdvice(helloAdvice({ judgments: [] })), null);
+  assert.equal(readAdvice(helloAdvice({ judgments: [{ id: "done", probability: 0.9, answer: "yes" }] })), null);
+  assert.equal(readAdvice(helloAdvice({ judgments: [{ reading: "Does what the task asks", probability: "0.9", answer: "yes" }] })), null);
+  assert.equal(readAdvice(helloAdvice({ model: 7 })), null);
+});
+
+test("the page's words for the advice are the console's", () => {
+  const consoleWords = readFileSync(new URL("../../../web/console/src/core/advice.ts", import.meta.url), "utf8");
+  for (const [land, title] of Object.entries(ADVICE_TITLE)) {
+    assert.match(consoleWords, new RegExp(`${land}: "${title}"`), land);
+  }
+  assert.ok(consoleWords.includes(`ALL_CLEAR = "${ADVICE_ALL_CLEAR}"`));
+});
+
+test("the agent asks for advice only once the task is in review, with its own token, and a refusal is no advice", async () => {
+  const srv = server({ advise_land_gate: () => answer(helloAdvice()) });
+  const agent = agentOn(srv);
+  assert.equal(await agent.advice(), null);
+  assert.deepEqual(srv.tools(), [], "nothing is asked before the hand-off exists");
+  await agent.run();
+  const advice = await agent.advice();
+  assert.equal(advice.title, "Nothing flagged");
+  const call = srv.calls.at(-1);
+  assert.equal(call.tool, "advise_land_gate");
+  assert.deepEqual(call.args, { thread_id: TASK });
+  assert.equal(call.init.headers.authorization, `Bearer ${AGENT_TOKEN}`);
+
+  // Advice is off on this server (NotFound), the model did not answer, or
+  // the limit was reached: each is no advice, and none is an error.
+  for (const refusal of [
+    () => refused("not found", -32004),
+    () => new Response("", { status: 502 }),
+    () => new Response("", { status: 429 }),
+    () => answer({ land: "green" }),
+  ]) {
+    const off = server({ advise_land_gate: refusal });
+    const other = agentOn(off);
+    await other.run();
+    assert.equal(await other.advice(), null);
+  }
+});
+
+test("the page shows the advice with the next step, each judgment a row, and says so once", async () => {
+  const ui = page({ advise_land_gate: () => answer(helloAdvice()) }, [...PAGE_IDS, ...ADVICE_IDS]);
+  await ui.app.start();
+  await ui.app.watchAgent();
+  const box = ui.el("agent-advice");
+  assert.equal(box.hidden, false);
+  assert.equal(box.dataset.land, "green");
+  assert.equal(ui.el("advice-title").textContent, "Nothing flagged");
+  assert.equal(ui.el("advice-model").textContent, "Jev 1.14.0 by TypeSafe");
+  assert.equal(ui.el("advice-why").textContent, ADVICE_ALL_CLEAR);
+  const rows = ui.el("advice-rows").children;
+  assert.equal(rows.length, 10);
+  const [mark, word, reading, sure] = rows[0].children;
+  assert.equal(rows[0].dataset.mark, "clear");
+  assert.equal(mark.ariaHidden, "true");
+  assert.equal(word.textContent, "");
+  assert.equal(reading.textContent, "Does what the task asks");
+  assert.equal(sure.textContent, "93% sure");
+  assert.equal(ui.el("agent-status").textContent, "The agent sent Say hello to review. A decision model read the hand-off: nothing flagged.");
+  assert.equal(ui.el("agent-done").hidden, false);
+  assert.equal(ui.el("agent-console").focused, true);
+  assert.equal(ui.srv.tools().filter((t) => t === "advise_land_gate").length, 1);
+});
+
+test("a marked row carries the word a reader cannot see in its shape", async () => {
+  const answerWith = helloAdvice({ land: "amber", reasons: ["tests_not_reported"] });
+  answerWith.judgments[1] = judgment("tests_passed", "Reports no passing tests", 0.01, { concern: true });
+  answerWith.judgments[2] = judgment("code_change", "Unclear whether the task asks for a code change", 0.5);
+  const ui = page({ advise_land_gate: () => answer(answerWith) }, [...PAGE_IDS, ...ADVICE_IDS]);
+  await ui.app.start();
+  await ui.app.watchAgent();
+  const rows = ui.el("advice-rows").children;
+  assert.equal(rows[1].dataset.mark, "concern");
+  assert.equal(rows[1].children[1].textContent, "Concern: ");
+  assert.equal(rows[2].dataset.mark, "unsure");
+  assert.equal(rows[2].children[1].textContent, "Unsure: ");
+  assert.equal(ui.el("agent-advice").dataset.land, "amber");
+});
+
+test("without advice the page goes on exactly as before", async () => {
+  const ui = page({ advise_land_gate: () => refused("not found", -32004) }, [...PAGE_IDS, ...ADVICE_IDS]);
+  await ui.app.start();
+  await ui.app.watchAgent();
+  assert.equal(ui.el("agent-advice").hidden, true);
+  assert.equal(ui.el("advice-rows").children.length, 0);
+  assert.equal(ui.el("agent-status").textContent, "The agent sent Say hello to review.");
+  assert.equal(ui.el("agent-done").hidden, false);
+  assert.equal(ui.el("agent-console").focused, true);
+});
+
+test("the try page has the advice block, hidden, inside the step that follows the agent", () => {
+  const html = readFileSync(new URL("../try/index.html", import.meta.url), "utf8");
+  const done = html.slice(html.indexOf('id="agent-done"'), html.indexOf('id="agent-console"'));
+  assert.match(done, /<div id="agent-advice" class="advice" role="group" aria-labelledby="advice-label" hidden>/);
+  for (const id of ADVICE_IDS) assert.ok(done.includes(`id="${id}"`), id);
+  assert.match(done, /It approves nothing/);
 });
