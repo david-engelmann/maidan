@@ -23,8 +23,8 @@ A2A.
 A model appears in two places, both optional. Embeddings for semantic search
 are pluggable and off by default on SQLite. And when a task is handed to
 review, Maidan can ask a decision model (TypeSafe's Jev) ten yes-or-no
-questions about the hand-off and show the reviewer the answers as advice; it
-is off unless you turn it on and give it a key, and it decides nothing. See
+questions about the hand-off and show the reviewer the answers as advice. It
+is off unless you turn it on and give it a key. See
 [Decision models](Decision-Models.md).
 
 ## What does it cost to run?
