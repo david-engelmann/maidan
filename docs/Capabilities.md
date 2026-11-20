@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v468.0.0](https://github.com/david-engelmann/maidan/releases/tag/v468.0.0) — a workspace that has done work can be erased on Postgres
+
+A workspace that has done work can be erased on Postgres, and the console's task sheet keeps its focus when the board refreshes: the two bugs the launch gate found on v467.
+
+- A workspace that has done work can be erased on Postgres
+
+`CHANGELOG.md` under `[468.0.0]` has every entry.
+
 ## [v467.0.0](https://github.com/david-engelmann/maidan/releases/tag/v467.0.0) — the landing's board is never blank on a phone, and its headline is one plain claim
 
 The landing's board is never blank on a phone, its headline is the one claim the board shows, and the water is calmer behind the closing headline and softer in shade.
