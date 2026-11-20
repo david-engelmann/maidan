@@ -31,13 +31,23 @@ const TIMEOUT = 20_000;
 
 let failed = 0;
 const firstLine = (e) => String(e?.message ?? e).split("\n")[0].slice(0, 240);
+// What a timed-out step was waiting for: the "waiting for" line of the call
+// log, which names a locator and never a request or its headers.
+// Playwright colours the log when FORCE_COLOR is set; the codes go first.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const waitingFor = (e) => {
+  const line = /^\s*- (waiting for [^\n]+)$/m.exec(String(e?.message ?? "").replace(ANSI, ""));
+  return line ? ` (${line[1].slice(0, 200)})` : "";
+};
 async function check(what, fn) {
   try {
     await fn();
     console.log(`PASS  ${step}: ${what}`);
   } catch (e) {
     failed += 1;
-    console.log(`FAIL  ${step}: ${what}: ${firstLine(e)}`);
+    console.log(`FAIL  ${step}: ${what}: ${firstLine(e)}${waitingFor(e)}`);
+    // The page as it stood, so the failure can be read from the evidence alone.
+    await page.screenshot({ path: `${shots}/fail-${step}-${failed}.png` }).catch(() => {});
   }
 }
 const must = (ok, why) => {

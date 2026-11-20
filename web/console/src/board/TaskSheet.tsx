@@ -82,6 +82,15 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   const terminal = th.state === "closed" || th.state === "archived";
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 
+  // The board hands a new onClose on every render: a clock tick, a refresh,
+  // a live event. Kept in a ref, so the effect below runs once per sheet. Run
+  // again, it took focus back to the close button, which shut an open menu
+  // and pulled the caret out of a note being typed.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
+
   // Focus moves in, Tab stays in, Escape closes, focus goes back on close.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -89,7 +98,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        close.current();
         return;
       }
       if (e.key !== "Tab" || !box.current) return;
@@ -111,7 +120,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       document.removeEventListener("keydown", onKey);
       opener?.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   // History is part of every task. A close still names who closed it from the same rows.
   useEffect(() => {
