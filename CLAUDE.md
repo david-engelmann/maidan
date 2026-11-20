@@ -377,6 +377,12 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   every `migrations/{postgres,sqlite}/NNNN_<slug>.sql` by its version; add the
   file on both backends and nothing else. `schema_parity` then checks both
   backends build the same tables, columns, keys and foreign keys.
+- **A new foreign key into a workspace's tables says `ON DELETE CASCADE` or
+  `SET NULL`.** Postgres deletes a workspace's members before its channels, so
+  a key that does neither fails the erase of any workspace holding such a row.
+  The erase deletes what names a member that way first (read from the
+  catalog); a key like that on any other table fails `workspace_erase`'s
+  Postgres test, which lists the parents the erase handles.
 - **A module for one backend only** goes in `POSTGRES_ONLY_MODULES` or
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.
 - **A new column read by a shared row mapper** must be added to every `SELECT`
