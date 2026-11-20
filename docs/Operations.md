@@ -133,8 +133,11 @@ curl -X DELETE "$MAIDAN/operator/workspaces/$WS" \
   -d "{\"confirm_workspace_id\": \"$WS\", \"reason\": \"orphaned test tenant\"}"
 ```
 
-It is the same erase: messages, events, tokens, sessions, keys and artifacts
-go in one transaction, and it cannot be undone. A workspace under a legal hold
+It is the same erase: the workspace's rows (messages, events, tokens,
+sessions, keys and artifact records) go in one database transaction, and it
+cannot be undone. The artifact bytes no other workspace holds are deleted
+after it commits, and one that fails to delete is queued for the retention
+sweep to retry. A workspace under a legal hold
 is refused with a 409, for the operator as for its admin. The audit row
 (`workspace.erase`) names the operator and the reason. An operator cannot
 erase its own workspace on this route.
