@@ -184,7 +184,7 @@ async fn a_sandbox_opens_on_general_with_the_say_hello_task_and_expiring_tokens(
     assert!(
         thread["description"]
             .as_str()
-            .is_some_and(|d| d.starts_with("A first task for the agent you connect")),
+            .is_some_and(|d| d.starts_with("Post a one-line hello on this task")),
         "{thread}"
     );
 

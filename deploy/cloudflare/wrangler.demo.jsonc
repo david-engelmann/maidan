@@ -35,6 +35,14 @@
   // makes it, since the container has no internet. Neither reaches the
   // container.
   "vars": { "MAIDAN_PUBLIC_ORIGIN": "https://try.maidan.world" },
+  // TYPESAFE_API_KEY (a Worker secret) turns on advice from a decision model
+  // in the demo (docs/Decision-Models.md). The server asks
+  // http://jev.internal/, which the Worker intercepts and forwards to
+  // TypeSafe with this key (src/demo-jev.js): the key never reaches the
+  // container, and the container reaches nothing else. JEV_LIMIT bounds what
+  // the demo's visitors can spend together: 30 questions a minute, each a few
+  // hundred input tokens.
+  "ratelimits": [{ "name": "JEV_LIMIT", "namespace_id": "4690", "simple": { "limit": 30, "period": 60 } }],
   // Keep in step with DEMO_RESET_CRON in src/demo-config.js.
   "triggers": { "crons": ["0 4 * * *"] },
   "observability": { "enabled": true }

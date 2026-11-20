@@ -113,10 +113,8 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_INDEXER_QUEUE_CAPACITY",
     "MAIDAN_INTERNAL_EGRESS_HOSTS",
     "MAIDAN_JEV_BASE_URL",
-    "MAIDAN_JEV_GREEN_MIN_CONFIDENCE",
     "MAIDAN_JEV_LAND_GATE_ENABLED",
     "MAIDAN_JEV_MODEL",
-    "MAIDAN_JEV_RED_MIN_CONFIDENCE",
     "MAIDAN_JEV_TIMEOUT_MS",
     "MAIDAN_KMS_INSTANCE",
     "MAIDAN_LINEAR_API_KEY",
@@ -925,19 +923,11 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_JEV_GREEN_MIN_CONFIDENCE",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_JEV_LAND_GATE_ENABLED",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
             "MAIDAN_JEV_MODEL",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_JEV_RED_MIN_CONFIDENCE",
             "self-hosted bind, custody, or sweep tuning",
         ),
         (

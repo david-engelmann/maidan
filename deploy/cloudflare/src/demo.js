@@ -11,18 +11,21 @@ import { tooLarge } from "./demo-config.js";
 import { handleTry } from "./try-page.js";
 import { fetchDemo } from "./demo-edge.js";
 import { ContainerEnvSession, envFingerprint } from "./server-env.js";
+import { jevOutboundByHost } from "./demo-jev.js";
 
 export class MaidanDemo extends Container {
   defaultPort = 8080;
   // Cost: an idle demo sleeps after 15 minutes.
   sleepAfter = "15m";
   // No outbound egress: webhooks, delivery to GitHub, Slack or Linear, and
-  // OAuth metadata fetches all fail closed inside the demo.
+  // OAuth metadata fetches all fail closed inside the demo. The one call that
+  // leaves is advice on a hand-off, which the Worker forwards itself
+  // (`outboundByHost` below).
   enableInternet = false;
 
   constructor(ctx, env) {
     super(ctx, env);
-    this.envVars = demoEnv(env[DEMO_PUBLIC_ORIGIN_VAR]);
+    this.envVars = demoEnv(env[DEMO_PUBLIC_ORIGIN_VAR], env);
     this.envSession = new ContainerEnvSession();
   }
 
@@ -59,6 +62,14 @@ export class MaidanDemo extends Container {
     });
   }
 }
+
+// The server's calls to `jev.internal` come back to this Worker, which
+// forwards them to TypeSafe with its own key. Set at module scope and through
+// the static accessor, as in index.js: the runtime's outbound proxy
+// (`ContainerProxy`, exported below) reads it in its own isolate.
+MaidanDemo.outboundByHost = jevOutboundByHost;
+
+export { ContainerProxy } from "@cloudflare/containers";
 
 export default {
   async fetch(request, env) {

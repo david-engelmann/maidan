@@ -17,7 +17,8 @@ use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownAuth, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::land_gate_advisor::{
-    LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
+    AdvisorKeySource, JudgmentAnswer, LandGateAdvice, LandGateAdviceRequest,
+    LandGateAdviceThresholds, LandGateAdviceUsage, LandGateAdvisorStatus, LandGateJudgment,
 };
 use crate::openapi::responses::{
     BadRequest, Conflict, Forbidden, Gone, IdempotencyKeyReused, InternalServerError, NotFound,
@@ -609,6 +610,9 @@ fn requires_credential(op: &Operation) -> bool {
         paths::clear_land_gate,
         paths::require_land_gate,
         paths::advise_land_gate,
+        paths::get_land_gate_advisor,
+        paths::set_land_gate_advisor,
+        paths::clear_land_gate_advisor,
         paths::set_spawn_budget,
         paths::get_spawn_budget,
         paths::add_member_skill,
@@ -711,6 +715,10 @@ fn requires_credential(op: &Operation) -> bool {
         paths::oauth_register,
         paths::oauth_authorize,
         paths::ui_list_events,
+        paths::ui_advise_land_gate,
+        paths::ui_get_land_gate_advisor,
+        paths::ui_set_land_gate_advisor,
+        paths::ui_clear_land_gate_advisor,
         paths::ui_list_channels,
         paths::ui_rename_workspace,
         paths::ui_create_channel,
@@ -827,6 +835,11 @@ fn requires_credential(op: &Operation) -> bool {
         LandGateAdvice,
         LandGateAdviceThresholds,
         LandGateAdviceUsage,
+        LandGateJudgment,
+        JudgmentAnswer,
+        AdvisorKeySource,
+        LandGateAdvisorStatus,
+        SetLandGateAdvisor,
         Workspace,
         WorkspaceEraseResult,
         WorkspaceUsage,

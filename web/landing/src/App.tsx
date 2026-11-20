@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { AdviceSection } from "./AdviceSection";
 import { JourneyField } from "./JourneyField";
 import { MediaToggle } from "./MediaToggle";
 import { RoomSection } from "./RoomSection";
@@ -105,6 +106,8 @@ export default function App() {
           <Guarantee title="Never its own reviewer" body="The server refuses an approval from the member who did the work. Only a different member can approve it." />
           <Guarantee title="Every step on the record" body="Every change lands in a hash-chained event log you can verify, and a review is tied to the exact result it covered." />
         </section>
+
+        <AdviceSection />
 
         <section className="watch" aria-labelledby="watch-title">
           <p className="eyebrow">The real thing</p>

@@ -301,9 +301,10 @@ pub struct AppState {
     /// Optional public-key pin for import/verify (`MAIDAN_EXPORT_VERIFY_KEYS`).
     /// Empty = integrity against the embedded key only (blank-instance default).
     pub export_verify_keys: Vec<[u8; 32]>,
-    /// Optional, advisory-only Jev land-gate scorer. `None` is the default and
-    /// makes the advice route unavailable without changing gate writes.
-    pub land_gate_advisor: Option<Arc<dyn crate::land_gate_advisor::LandGateAdvisor>>,
+    /// Optional advice at the land gate from a decision model. `None` is the
+    /// default and makes the advice route unavailable; gate writes never
+    /// depend on it.
+    pub land_gate_advisor: Option<Arc<crate::land_gate_advisor::LandGateAdvisor>>,
     /// Per-host bound on retries, shared by every outbound delivery worker in
     /// this process. Tests swap in one on a manual clock.
     pub retry_budget: Arc<crate::retry_budget::RetryBudget>,
@@ -460,12 +461,14 @@ impl AppState {
 
     pub fn attach_land_gate_advisor(
         &mut self,
-        advisor: Arc<dyn crate::land_gate_advisor::LandGateAdvisor>,
+        advisor: Arc<crate::land_gate_advisor::LandGateAdvisor>,
     ) {
         self.mcp
-            .set_land_gate_advisor(Arc::new(crate::land_gate_advisor::McpLandGateBridge(
-                advisor.clone(),
-            )));
+            .set_land_gate_advisor(Arc::new(crate::land_gate_advisor::McpLandGateBridge {
+                advisor: advisor.clone(),
+                store: self.store.clone(),
+                encryption_key: self.federation.encryption_key.as_deref().copied(),
+            }));
         self.land_gate_advisor = Some(advisor);
     }
 

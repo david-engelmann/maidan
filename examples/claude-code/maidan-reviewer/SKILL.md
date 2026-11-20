@@ -111,8 +111,9 @@ opened lands when it merges; `wait_for_landed` waits for that.
 
 **Land gates.** A thread can require an external verifier's pass before it
 closes. `get_land_gate` and `list_land_gate_history` read it;
-`advise_land_gate` asks the configured advisor for a recommendation (read
-only). Recording a verdict with `set_land_gate` needs the `land_gate` skill and
+`advise_land_gate` asks a decision model what it reads in the hand-off (ten
+yes/no judgments, and green, amber or red by fixed rules). It is advice: read
+it, then make your own call. Recording a verdict with `set_land_gate` needs the `land_gate` skill and
 must come from a member who did not implement the work; arming
 (`require_land_gate`) and clearing (`clear_land_gate`) change what the close
 requires, so do them only when the person running the review asks.

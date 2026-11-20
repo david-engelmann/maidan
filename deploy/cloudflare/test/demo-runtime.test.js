@@ -22,7 +22,7 @@ function silenceConsole() {
 }
 
 test("the demo class fingerprints its own environment and recycles through the session", () => {
-  assert.match(demoWorker, /this\.envVars = demoEnv\(env\[DEMO_PUBLIC_ORIGIN_VAR\]\)/);
+  assert.match(demoWorker, /this\.envVars = demoEnv\(env\[DEMO_PUBLIC_ORIGIN_VAR\], env\)/);
   assert.match(demoWorker, /this\.envSession = new ContainerEnvSession\(\)/);
   const fetch = demoWorker.slice(demoWorker.indexOf("async fetch(request)"), demoWorker.indexOf("async reset()"));
   assert.match(fetch, /envFingerprint\(this\.envVars\)/);

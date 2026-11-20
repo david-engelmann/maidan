@@ -42,6 +42,10 @@
     // loopback or app-scheme redirects, plus https to VS Code's web redirect.
     "MAIDAN_OAUTH_DYNAMIC_REGISTRATION": "1",
     "MAIDAN_OAUTH_DCR_REDIRECT_HOSTS": "vscode.dev,insiders.vscode.dev",
+    // Advice on a hand-off from a decision model (docs/Decision-Models.md).
+    // No TYPESAFE_API_KEY is set here, so a workspace gets advice only with a
+    // key of its own, stored as its encrypted secret.
+    "MAIDAN_JEV_LAND_GATE_ENABLED": "1",
     "ARTIFACT_BACKEND": "s3",
     "S3_BUCKET": "maidan-artifacts-prod",
     "S3_REGION": "auto",

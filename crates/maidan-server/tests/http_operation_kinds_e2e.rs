@@ -32,50 +32,17 @@
 
 mod seeded_workspace;
 
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use maidan_auth::ExportSigningKey;
-use maidan_server::land_gate_advisor::{
-    LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
-    LandGateAdvisor, LandGateAdvisorError,
-};
 use maidan_server::{auth::MUTATION_ACTION, AppState};
-use maidan_types::{LandColor, MemberId};
+use maidan_types::MemberId;
 use reqwest::Method;
 use seeded_workspace::{
     changed_tables, example, fill, json_body_schema, query, seed_victim, snapshot, spawn_with,
     Harness, Victim,
 };
 use serde_json::{json, Value};
-
-/// Advice from nowhere, so the advice route can succeed.
-struct FixedAdvisor;
-
-#[async_trait::async_trait]
-impl LandGateAdvisor for FixedAdvisor {
-    async fn advise(
-        &self,
-        _request: LandGateAdviceRequest,
-    ) -> Result<LandGateAdvice, LandGateAdvisorError> {
-        Ok(LandGateAdvice {
-            provider: "fixture".into(),
-            model: "fixture".into(),
-            raw_land: LandColor::Green,
-            recommended_land: LandColor::Green,
-            confidence: 0.95,
-            probabilities: BTreeMap::from([("green".into(), 0.95)]),
-            thresholds: LandGateAdviceThresholds {
-                green_min_confidence: 0.9,
-                red_min_confidence: 0.9,
-            },
-            usage: LandGateAdviceUsage {
-                input_tokens: 1,
-                output_tokens: 1,
-            },
-            latency_ms: 1,
-        })
-    }
-}
 
 const SIGNING_SEED: [u8; 32] = [0x2a; 32];
 
@@ -109,16 +76,45 @@ fn phase(call: &Call, kind: &str) -> u8 {
 }
 
 async fn world() -> (Harness, Value, Victim) {
-    let h = spawn_with(|state: &mut AppState| {
+    // A stand-in provider, so the advice route can succeed.
+    let advisor = maidan_server::test_support::land_gate_advisor_stub().await;
+    let h = spawn_with(move |state: &mut AppState| {
         let key = ExportSigningKey::from_seed(SIGNING_SEED);
         state.attach_export_verify_keys(vec![key.public_key_bytes()]);
         state.attach_export_signing(key);
-        state.attach_land_gate_advisor(Arc::new(FixedAdvisor));
+        state.attach_land_gate_advisor(advisor);
     })
     .await;
     let doc = serde_json::to_value(maidan_server::openapi::document()).unwrap();
     let victim = seed_victim(&h, &doc).await;
+    seed_result(&h, &victim).await;
     (h, doc, victim)
+}
+
+/// Advice reads a task's result, and only a claim's holder writes one: give
+/// the seeded thread a result, then hand the thread back unclaimed.
+async fn seed_result(h: &Harness, victim: &Victim) {
+    let id = |kind: &str| -> uuid::Uuid {
+        victim
+            .id(kind)
+            .unwrap_or_else(|| panic!("no seeded {kind}"))
+            .parse()
+            .unwrap()
+    };
+    let thread = maidan_types::ThreadId(id("threads"));
+    let owner = MemberId(id("members"));
+    let claim = h.store.claim_thread(thread, owner).await.unwrap();
+    assert!(claim.claimed, "the seeded thread could not be claimed");
+    h.store
+        .set_thread_result(
+            thread,
+            owner,
+            claim.thread.claim_lease_id.unwrap(),
+            &json!({ "summary": "seeded for the advice route" }),
+        )
+        .await
+        .unwrap();
+    h.store.unassign_thread(thread).await.unwrap();
 }
 
 /// Path templates with their parameter names dropped, so the router's

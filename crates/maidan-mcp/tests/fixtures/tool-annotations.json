@@ -234,7 +234,7 @@
       "title": "Advise land gate",
       "readOnlyHint": {
         "value": true,
-        "reason": "writes nothing in Maidan: advisor.advise result is returned, the pointer and requirement are untouched"
+        "reason": "writes nothing in Maidan: the advisor's answer is returned (and held in memory for fifteen minutes), the pointer and requirement are untouched"
       },
       "destructiveHint": {
         "value": false,
@@ -242,11 +242,11 @@
       },
       "idempotentHint": {
         "value": true,
-        "reason": "no Maidan state changes, so repeating has no additional effect (advice text may vary)"
+        "reason": "no Maidan state changes, so repeating has no additional effect (a repeat is answered from the held answer unless refresh is set)"
       },
       "openWorldHint": {
         "value": true,
-        "reason": "TypeSafeLandGateAdvisor POSTs the state to the external Jev API (MAIDAN_JEV_BASE_URL, default api.typesafe.ai)"
+        "reason": "LandGateAdvisor POSTs the hand-off (task, result, the agent's messages) to the external Jev API (MAIDAN_JEV_BASE_URL, default api.typesafe.ai)"
       }
     },
     "allow_secret_egress_host": {

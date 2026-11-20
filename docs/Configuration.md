@@ -395,33 +395,29 @@ OTLP export is the `otel` Cargo feature, on by default. A build without it
 still work, and an `OTLP_ENDPOINT` that is set is reported at startup and
 ignored.
 
-## Experimental: Jev land-gate advice
+## Advice from a decision model
 
 Off by default, and no part of the land-gate decision itself. Turning it on
-adds only `POST /threads/:id/land-gate/advice` (`thread:transition`), which
-takes a bounded description of the work as `state` (a string, array or object)
-and optional `thresholds` (`green_min_confidence`, `red_min_confidence`). It
-answers with the model's raw verdict, probabilities and confidence, plus a
-`recommended_land` in which a green or red below its threshold becomes amber;
-the policy never promotes an answer to green. The route never writes or arms
-the gate: a verifier with the `land_gate` skill still records the pass or fail.
-A disabled advisor is `404`, and a provider failure is `502` on the advice call
-only. `scripts/eval-land-gate-advisor.py` scores recorded answers against
-independently labelled outcomes. The supplied `state` leaves the deployment
-for TypeSafe when the route is called, so send no secrets or unapproved data.
+adds `POST /threads/:id/land-gate/advice` (`thread:transition`), the MCP tool
+`advise_land_gate` and the workspace key routes under
+`/workspaces/:id/land-gate/advisor`. The server sends the hand-off (the task's
+title and description, the result without its diff, and the producing agent's
+messages) to TypeSafe's Jev with ten yes/no questions, and turns the ten
+probabilities into green, amber or red by rules in code; an unsettled answer
+is never green. Nothing here writes or arms the gate. A disabled advisor is
+`404`, a task with no result or a workspace with no key `409`, and a provider
+failure `502` on the advice call only. [Decision models](Decision-Models.md)
+has the questions, the rules and what leaves the deployment.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns on the advisory route. An invalid value refuses boot. With it off, none of the others are read. |
-| `TYPESAFE_API_KEY` | required when on | Never sent to clients or logged. |
+| `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the advice routes and the tool on. An invalid value refuses boot. With it off, none of the others are read. |
+| `TYPESAFE_API_KEY` | none | The instance's own key, used for a workspace that stored none. Unset, every workspace brings its own. |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe `GET /v1/models`. |
-| `MAIDAN_JEV_GREEN_MIN_CONFIDENCE` | `0.90` | Green below this becomes amber. In `[0,1]`. |
-| `MAIDAN_JEV_RED_MIN_CONFIDENCE` | `0.90` | Red below this becomes amber. In `[0,1]`. |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout. A timeout fails only the advice call, with `502`. |
 | `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. |
 
-When it is on, a missing key, a malformed threshold, an unsafe base URL or a
-failed DNS lookup refuses boot.
+A base URL that is not an origin refuses boot. The provider's name is resolved through the egress guard on the first call and again every ten minutes, so a provider that cannot be reached fails the advice call, not the server.
 
 ## Build options
 

@@ -13,21 +13,26 @@
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ},
+    capability::{CHANNEL_ADMIN, SECRET_ADMIN, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ},
     AuthContext,
 };
 use maidan_types::*;
 
-use super::{cap, ApiResult};
-use crate::dto::SetLandGate;
+use super::{cap, ensure_workspace, ApiResult};
+use crate::dto::{SetLandGate, SetLandGateAdvisor};
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
-use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError};
+use crate::land_gate_advisor::{
+    LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError, LandGateAdvisorStatus,
+    WORKSPACE_KEY_SECRET,
+};
+use crate::session::SessionContext;
 use crate::state::AppState;
 
-/// Ask the optional decision model for advice. This route never writes the
-/// pointer: a qualified external verifier remains the only authority that can
-/// call [`set_land_gate`].
+/// Ask the decision model for advice on a hand-off. This route never writes
+/// the pointer: a qualified external verifier remains the only authority that
+/// can call [`set_land_gate`]. The packet the model reads is built from the
+/// thread, so a caller cannot choose what leaves.
 pub async fn advise_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -38,16 +43,188 @@ pub async fn advise_land_gate(
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
-    match advisor.advise(body).await {
-        Ok(advice) => Ok(Json(advice)),
-        Err(LandGateAdvisorError::InvalidRequest(error)) => Err(ApiError::BadRequest(error)),
-        Err(error) => {
-            tracing::warn!(%error, %thread_id, "land-gate advisor request failed");
-            Err(ApiError::BadGateway(
+    advisor
+        .advise(
+            state.store.as_ref(),
+            state.federation.encryption_key.as_deref(),
+            auth.workspace_id(),
+            thread_id,
+            body,
+        )
+        .await
+        .map(Json)
+        .map_err(|error| advisor_error(error, "land-gate advice"))
+}
+
+/// One answer for every advisor failure: the caller's mistake is a 400, a
+/// thread or workspace that is not ready a 409, and the provider's trouble a
+/// 502 that says the gate itself is untouched.
+fn advisor_error(error: LandGateAdvisorError, what: &str) -> ApiError {
+    match error {
+        LandGateAdvisorError::InvalidRequest(error) => ApiError::BadRequest(error),
+        LandGateAdvisorError::NotReady(error) => ApiError::Conflict(error),
+        LandGateAdvisorError::Store(error) => error.into(),
+        error => {
+            tracing::warn!(%error, what, "land-gate advisor request failed");
+            ApiError::BadGateway(
                 "land-gate advisor unavailable; the authoritative gate is unchanged".into(),
-            ))
+            )
         }
     }
+}
+
+/// Who may set or forget a workspace's advisor key. A bearer needs
+/// `secret:admin`, as for any workspace secret. In the console it is the
+/// workspace's admin, signed in as a person: someone who holds a `token:admin`
+/// token or may mint the first one, so the session lends them nothing a token
+/// of theirs could not do. A session made from a token is refused, as on the
+/// console's other admin panels: that token's holder uses the bearer route.
+async fn advisor_admin(
+    state: &AppState,
+    auth: &AuthContext,
+    session: Option<&SessionContext>,
+    workspace_id: WorkspaceId,
+) -> ApiResult<()> {
+    let Some(session) = session else {
+        cap(auth, SECRET_ADMIN)?;
+        return ensure_workspace(auth, workspace_id);
+    };
+    ensure_workspace(auth, workspace_id)?;
+    if session.token.is_some() {
+        return Err(ApiError::Forbidden(
+            "a session made from a token cannot set the advisor key here; that token's holder uses PUT /workspaces/{id}/land-gate/advisor".into(),
+        ));
+    }
+    let member = state
+        .store
+        .get_member_in(workspace_id, session.member_id)
+        .await?;
+    if member.kind == MemberKind::Human
+        && super::member::session_holds_or_may_mint(state, session, TOKEN_ADMIN).await
+    {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(
+            "only the workspace's admin can set the advisor key".into(),
+        ))
+    }
+}
+
+/// `GET /workspaces/:id/land-gate/advisor`: whether this instance offers
+/// advice, and whose key a call from this workspace would use. Never the key.
+pub async fn get_land_gate_advisor(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<LandGateAdvisorStatus>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let Some(advisor) = state.land_gate_advisor.as_ref() else {
+        return Ok(Json(LandGateAdvisorStatus::disabled()));
+    };
+    advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map(Json)
+        .map_err(|error| advisor_error(error, "advisor status"))
+}
+
+/// `PUT /workspaces/:id/land-gate/advisor`: store this workspace's own
+/// TypeSafe key, after the provider accepts it. The key is kept as the
+/// workspace secret `typesafe_api_key`, encrypted at rest, and is sent only
+/// to the provider's host.
+pub async fn set_land_gate_advisor(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetLandGateAdvisor>,
+) -> ApiResult<Json<LandGateAdvisorStatus>> {
+    let workspace_id = WorkspaceId(id);
+    advisor_admin(&state, &auth, session.as_ref().map(|s| &s.0), workspace_id).await?;
+    let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
+    let api_key = body.api_key.trim();
+    if api_key.is_empty() || api_key.len() > 512 || api_key.chars().any(char::is_whitespace) {
+        return Err(ApiError::BadRequest(
+            "api_key is 1 to 512 characters with no spaces".into(),
+        ));
+    }
+    let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
+        ApiError::Internal(
+            "secret storage requires an encryption key (set FEDERATION_ENCRYPTION_KEY)".into(),
+        )
+    })?;
+    advisor
+        .check_key(api_key)
+        .await
+        .map_err(|error| advisor_error(error, "advisor key check"))?;
+    let value_ciphertext = maidan_auth::encrypt_peer_secret(api_key, key)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let actor = auth.actor_id();
+    state
+        .store
+        .create_secret_audited(
+            NewSecret {
+                workspace_id,
+                name: WORKSPACE_KEY_SECRET.into(),
+                value_ciphertext,
+                created_by: auth.member_id(),
+            },
+            Box::new(move |secret| NewAuditEvent {
+                scope: AuditScope::Workspace(secret.workspace_id),
+                actor_id: Some(actor),
+                action: "land_gate_advisor.set_key".into(),
+                target_kind: Some("secret".into()),
+                target_id: Some(secret.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": secret.workspace_id.0,
+                    "name": secret.name,
+                }),
+            }),
+        )
+        .await?;
+    advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map(Json)
+        .map_err(|error| advisor_error(error, "advisor status"))
+}
+
+/// `DELETE /workspaces/:id/land-gate/advisor`: forget this workspace's key.
+/// Advice then uses the instance's key, or is refused when it has none.
+pub async fn clear_land_gate_advisor(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<LandGateAdvisorStatus>> {
+    let workspace_id = WorkspaceId(id);
+    advisor_admin(&state, &auth, session.as_ref().map(|s| &s.0), workspace_id).await?;
+    let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
+    state
+        .store
+        .delete_secret_audited(
+            workspace_id,
+            WORKSPACE_KEY_SECRET,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id()),
+                action: "land_gate_advisor.clear_key".into(),
+                target_kind: Some("secret".into()),
+                target_id: None,
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "name": WORKSPACE_KEY_SECRET,
+                }),
+            },
+        )
+        .await?;
+    advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map(Json)
+        .map_err(|error| advisor_error(error, "advisor status"))
 }
 
 pub async fn set_land_gate(

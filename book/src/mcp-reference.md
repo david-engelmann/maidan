@@ -8317,7 +8317,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `advise_land_gate`
 
-**Advise land gate.** Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.
+**Advise land gate.** Ask a decision model (TypeSafe's Jev) for advice on a task handed to review. Maidan sends the task's title and description, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment is never green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a TypeSafe key unless the instance has one. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -8326,23 +8326,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
-    "instructions": {
-      "type": "string"
-    },
-    "state": {
-      "type": "object"
+    "refresh": {
+      "description": "Ask the model again even when an answer for this exact hand-off is held.",
+      "type": "boolean"
     },
     "thread_id": {
       "format": "uuid",
       "type": "string"
-    },
-    "thresholds": {
-      "type": "object"
     }
   },
   "required": [
-    "thread_id",
-    "state"
+    "thread_id"
   ],
   "type": "object"
 }

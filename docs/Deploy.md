@@ -240,6 +240,7 @@ ordinary tenant, so one visitor's tokens see nothing of another's
 | Bodies | 64 KiB, refused at the edge before they wake the container |
 | Human check | Turnstile, when the Worker has `DEMO_TURNSTILE_SITE_KEY` and the secret `DEMO_TURNSTILE_SECRET`. The Worker checks it, since the container cannot reach Cloudflare |
 | Cross-site | a browser post from another origin is refused |
+| Advice from a decision model | 30 questions a minute across the demo (`JEV_LIMIT` in `wrangler.demo.jsonc`), each a hand-off of a few hundred tokens. On only when the Worker has the secret `TYPESAFE_API_KEY` |
 
 **Images.** The demo runs the stock `maidan-server:<tag>`, which has no
 bootstrap routes. Each release still publishes `maidan-server:<tag>-demo`
@@ -282,6 +283,13 @@ deploy.
    and add `DEMO_TURNSTILE_SITE_KEY` to the `vars` in `wrangler.demo.jsonc`.
    The next deploy turns the check on; with only one of the two set, it stays
    off.
+5. Optional: advice from a decision model on each sandbox's tasks
+   ([Decision models](Decision-Models.md)). Store a TypeSafe API key with
+   `npx wrangler secret put TYPESAFE_API_KEY -c wrangler.demo.jsonc`. The
+   container still has no internet: its server asks `http://jev.internal/`,
+   the Worker forwards that one call to TypeSafe with the key
+   (`src/demo-jev.js`), and the key never reaches the container. The next
+   request after the secret is set recycles the container with advice on.
 
 **Boot and reset.** On every boot `demo/entrypoint.sh` deletes any old
 database, makes this boot's keys and starts the server; nothing is seeded.

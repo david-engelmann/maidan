@@ -13,6 +13,7 @@ import { useToolsApi } from "../hooks/useTools.ts";
 import { ReviewContext } from "../needs/ReviewContext.tsx";
 import { convHash, membersPending } from "../core/threads.ts";
 import { END_TITLE } from "../core/endTask.ts";
+import { Advice } from "./Advice.tsx";
 import { EndTaskForm, useEndActions, useEndTaskApi } from "./EndTask.tsx";
 
 type Props = {
@@ -268,6 +269,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
+      {th.state === "in_review" && <Advice key={`advice-${rev}`} tid={th.id} />}
       <SheetContext key={rev} tid={th.id} />
       <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
 

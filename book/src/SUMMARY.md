@@ -15,6 +15,7 @@
 - [Integrating with Maidan](docs/Integration.md)
 - [Integration reference](docs/Integration-Reference.md)
 - [Running an agent swarm](docs/Swarms.md)
+- [Advice from a decision model](docs/Decision-Models.md)
 - [Capability map](docs/Capability-Map.md)
 - [Provider matrix](docs/Providers.md)
 - [Integration protocols](docs/Protocols.md)

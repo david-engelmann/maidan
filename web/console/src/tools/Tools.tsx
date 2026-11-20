@@ -83,6 +83,7 @@ import { consolePushManager, installStore, promptInstall } from "../pwa/install.
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
 import { peekPaletteIndex } from "../shell/paletteIndex.ts";
 import { Connect } from "./Connect.tsx";
+import { DecisionModel } from "./DecisionModel.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 import { useScrollFade } from "../hooks/useScrollFade.ts";
 
@@ -1179,6 +1180,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
         </form>
         {agent.handle && agentWhy ? <p className="err small">{agentWhy}</p> : null}
       </Panel>
+      <DecisionModel ws={ws} />
       {holds(session.grant, "workspace:write") ? <Reindex api={api} ws={ws} server={false} /> : null}
       {federation ? (
       <Panel title="Peers">

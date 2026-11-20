@@ -1119,6 +1119,12 @@ pub fn router(state: AppState) -> Router {
             post(routes::advise_land_gate),
         )
         .route(
+            "/workspaces/{id}/land-gate/advisor",
+            get(routes::get_land_gate_advisor)
+                .merge(put(routes::set_land_gate_advisor))
+                .merge(delete(routes::clear_land_gate_advisor)),
+        )
+        .route(
             "/workspaces/{wid}/webhooks",
             no_store(post(webhooks::create_webhook).merge(get(webhooks::list_webhooks))),
         )
@@ -1661,6 +1667,10 @@ pub fn router(state: AppState) -> Router {
     let ui_api_read = Router::new()
         .route("/ui/api/workspaces/{wid}/events", get(routes::list_events))
         .route(
+            "/ui/api/workspaces/{wid}/land-gate/advisor",
+            get(routes::get_land_gate_advisor),
+        )
+        .route(
             "/ui/api/workspaces/{wid}/channels",
             get(routes::list_channels),
         )
@@ -1882,6 +1892,16 @@ pub fn router(state: AppState) -> Router {
             delete(routes::clear_thread_block),
         )
         .route("/ui/api/threads/{tid}/reviews", post(routes::submit_review))
+        // Advice on the task sheet, and the workspace's own key under Tools:
+        // the bearer handlers, which take a signed-in admin for the key.
+        .route(
+            "/ui/api/threads/{tid}/land-gate/advice",
+            post(routes::advise_land_gate),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/land-gate/advisor",
+            put(routes::set_land_gate_advisor).merge(delete(routes::clear_land_gate_advisor)),
+        )
         .route("/ui/api/messages/{mid}", patch(routes::edit_message))
         .route(
             "/ui/api/artifacts",

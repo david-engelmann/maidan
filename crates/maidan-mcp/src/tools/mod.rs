@@ -1104,7 +1104,7 @@ fn tool<'a>(
         "list_land_gate_history" => boxed(move || land_gate::list_land_gate_history(store, args)),
         "require_land_gate" => boxed(move || land_gate::require_land_gate(store, args)),
         "clear_land_gate" => boxed(move || land_gate::clear_land_gate(store, auth, args)),
-        "advise_land_gate" => boxed(move || land_gate::advise_land_gate(server, args)),
+        "advise_land_gate" => boxed(move || land_gate::advise_land_gate(server, store, args)),
         "set_glossary_term" => boxed(move || glossary::set_glossary_term(store, auth, args)),
         "get_glossary_term" => boxed(move || glossary::get_glossary_term(store, auth, args)),
         "list_glossary_terms" => boxed(move || glossary::list_glossary_terms(store, auth, args)),

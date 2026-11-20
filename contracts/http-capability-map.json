@@ -1224,6 +1224,30 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/ui/api/threads/{tid}/land-gate/advice",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/land-gate/advisor",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/ui/api/workspaces/{wid}/land-gate/advisor",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/land-gate/advisor",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/ui/api/threads/{tid}/reviews",
     "capability": "workspace:read",
@@ -2359,6 +2383,24 @@
     "method": "GET",
     "path": "/threads/{id}/land-gate/history",
     "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/land-gate/advisor",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/land-gate/advisor",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{id}/land-gate/advisor",
+    "capability": "secret:admin",
     "surface": "http"
   },
   {
