@@ -9,3 +9,4 @@
 - **Added:** try.maidan.world can offer advice with a key its Worker holds: the container still has no internet, and the Worker forwards that one call (`deploy/cloudflare/src/demo-jev.js`). When the page's scripted agent has sent Say hello to review, the page asks for advice on that hand-off and shows the ten judgments before it sends the visitor to the console. maidan.world turns advice on with workspace keys only.
 - **Added:** the landing's "Judgments from a model. Decisions in code." section.
 - **Changed:** the privacy policy says what is sent to TypeSafe and when (a workspace's own key, and the demo's), and the try page says before a sandbox exists that tasks sent to review there are read by a decision model.
+- **Added:** MCP `create_thread` takes a `description`, as `POST /channels/{cid}/threads` does: a task an agent files can say what it asks for. The advice packet carries the task's `acceptance` attribute when it is set.

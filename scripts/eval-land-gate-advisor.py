@@ -85,7 +85,8 @@ def main() -> int:
         raise SystemExit(f"{name}: still rate limited")
 
     stamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
-    channel = tool("create_channel", {"name": f"advice-eval-{stamp}"})["id"]
+    workspace = tool("whoami", {})["workspace_id"]
+    channel = tool("create_channel", {"workspace_id": workspace, "name": f"advice-eval-{stamp}"})["id"]
     judged = {}  # judgment -> [agree, unsettled, wrong]
     wrong_lines = []
     land_agree = 0
@@ -93,7 +94,10 @@ def main() -> int:
     sink = args.out.open("w", encoding="utf-8") if args.out else None
     print(f"{'case':26} {'advice':7} {'label':7}  why")
     for case in cases:
-        thread = tool("create_thread", {"channel_id": channel, "title": case["task"]["title"], "description": case["task"].get("description")})["id"]
+        filed = {"channel_id": channel, "title": case["task"]["title"]}
+        if case["task"].get("description"):
+            filed["description"] = case["task"]["description"]
+        thread = tool("create_thread", filed)["id"]
         claim = tool("claim_thread", {"thread_id": thread})
         claimed = claim.get("thread", claim)
         for body in case.get("agent_messages", []):

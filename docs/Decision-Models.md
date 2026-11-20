@@ -38,13 +38,23 @@ shape and a caller cannot choose what leaves:
 }
 ```
 
-- `task` is the thread's title and description.
+- `task` is the thread's title and description, and its `acceptance` when
+  the task's attributes say how a reviewer checks it. The questions about
+  what the task asks for are read against all three.
 - `result` is the result the agent recorded, without `diff`, `deliver_to` and
   `base_sha` (the bytes the change flow needs, not a description of the work),
   and with any string over 6,000 characters cut.
 - `agent_messages` are the last ten messages on the thread from the member
   that produced the result, each cut at 2,000 characters. Nobody else's
   messages are sent, and the field is left out when there are none.
+
+The task's opening message is not sent, and that was measured. An opening
+message tells the agent how to work (claim the task, say what you ran, send
+it to review), and a hand-off cannot show those steps. With it in the packet,
+"does what the task asks" went unsettled and the advice left its label on
+four of sixteen labelled hand-offs; without it, on none. So say what a task
+asks for in its description and how to check it in `acceptance`: MCP
+`create_thread` takes both.
 
 That is everything that leaves the deployment, and it goes only to the host in
 `MAIDAN_JEV_BASE_URL`.

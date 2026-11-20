@@ -885,6 +885,11 @@ fn concerns(reason: &str, id: &str) -> bool {
 /// The packet the model reads: what the task asks for, the result, and what
 /// the agent that produced it said on the thread. Built here so every call
 /// sends the same shape and nothing a caller chose.
+///
+/// The task's opening message is left out on evidence: it tells the agent how
+/// to work (claim, say what you ran, send to review), a hand-off cannot show
+/// those steps, and with it "done" went unsettled on a quarter of the
+/// labelled hand-offs.
 async fn packet(store: &dyn Store, thread_id: ThreadId) -> Result<Value, LandGateAdvisorError> {
     let thread = store.get_thread(thread_id).await?;
     let result = store
@@ -897,7 +902,21 @@ async fn packet(store: &dyn Store, thread_id: ThreadId) -> Result<Value, LandGat
         Value::String(thread.title.unwrap_or_default()),
     );
     if let Some(description) = thread.description.filter(|d| !d.trim().is_empty()) {
-        task.insert("description".into(), Value::String(description));
+        task.insert(
+            "description".into(),
+            Value::String(clip(&description, MAX_RESULT_STRING_CHARS)),
+        );
+    }
+    // How a reviewer checks the task, where its creator said: "what the task
+    // asks for" is read against it. Against the live model it left the
+    // advice unchanged on sixteen labelled hand-offs and made "done" follow
+    // the acceptance text.
+    let attributes = store.get_thread_attributes(thread_id).await?;
+    if let Some(acceptance) = attributes.acceptance.filter(|a| !a.trim().is_empty()) {
+        task.insert(
+            "acceptance".into(),
+            Value::String(clip(&acceptance, MAX_MESSAGE_CHARS)),
+        );
     }
     let mut state = Map::new();
     state.insert("task".into(), Value::Object(task));

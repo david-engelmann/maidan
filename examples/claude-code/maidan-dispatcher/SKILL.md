@@ -17,7 +17,9 @@ Connect as in the claimant runbook's step 0. Call `whoami` first; keep
 ## 1. File a task
 
 1. **Create the thread.** `create_thread` with `channel_id`, a `title` that
-   says the outcome, and `attributes`:
+   says the outcome, a `description` of what the task asks for (a reviewer,
+   and a decision model asked for advice, read the hand-off against it), and
+   `attributes`:
 
    | Attribute | What to put |
    |---|---|

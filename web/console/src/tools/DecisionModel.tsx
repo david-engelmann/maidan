@@ -55,7 +55,7 @@ export function DecisionModel({ ws }: { ws: string }) {
       <p className="small">{advisorLine(current)} Only this workspace’s admin can set or remove the key.</p>
       <ul className="muted small advisor-facts">
         <li><b>When.</b> Advice is asked for when someone opens a task that is in review, or an agent asks for it. Until then nothing is sent.</li>
-        <li><b>What is sent.</b> To {current.host ?? "the provider"}: the task’s title and description, its result, and the messages of the agent that did the work. What TypeSafe keeps is under its own terms.</li>
+        <li><b>What is sent.</b> To {current.host ?? "the provider"}: the task’s title, description and acceptance, its result, and the messages of the agent that did the work. What TypeSafe keeps is under its own terms.</li>
         <li><b>The key.</b> Saving sends it to TypeSafe once, to check that it works. It is then stored encrypted here and never shown again.</li>
       </ul>
       <form

@@ -20,7 +20,7 @@ use maidan_server::{
     land_gate_advisor::LandGateAdvisor, router, test_support, AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMessage, NewThread, ThreadId};
+use maidan_types::{MemberKind, NewChannel, NewMessage, NewThread, TaskAttributes, ThreadId};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -166,6 +166,15 @@ async fn spawn(advisor: Option<Option<&str>>) -> World {
 /// A task an agent has worked: claimed, a message from the agent, a message
 /// from someone else, and a result. Returns the thread and the tenant.
 async fn handed_off(world: &World, name: &str) -> (ThreadId, test_support::Tenant) {
+    handed_off_with(world, name, None).await
+}
+
+/// A hand-off on a task whose creator said how a reviewer checks it.
+async fn handed_off_with(
+    world: &World,
+    name: &str,
+    acceptance: Option<&str>,
+) -> (ThreadId, test_support::Tenant) {
     let store = world.store.as_ref();
     let tenant = test_support::tenant(store, name).await;
     let channel = store
@@ -177,14 +186,22 @@ async fn handed_off(world: &World, name: &str) -> (ThreadId, test_support::Tenan
         })
         .await
         .unwrap();
-    let thread = store
-        .create_thread(NewThread {
-            channel_id: channel.id,
-            parent_thread_id: None,
-            title: Some("Rate-limit the public API".into()),
-            description: Some("60 requests a minute per token, then 429.".into()),
-            created_by: Some(tenant.admin_id),
-        })
+    let (thread, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("Rate-limit the public API".into()),
+                description: Some("60 requests a minute per token, then 429.".into()),
+                created_by: Some(tenant.admin_id),
+            },
+            None,
+            acceptance.map(|acceptance| TaskAttributes {
+                acceptance: Some(acceptance.into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
         .await
         .unwrap();
     let agent = tenant.member(store, "builder", MemberKind::Agent).await;
@@ -359,6 +376,31 @@ async fn a_hand_off_is_sent_as_a_packet_and_answered_with_judgments() {
         .unwrap();
     assert_eq!(fresh["cached"], false);
     assert_eq!(world.asked().len(), 2);
+}
+
+#[tokio::test]
+async fn a_tasks_acceptance_is_sent_with_what_it_asks_for() {
+    let world = spawn(Some(Some(INSTANCE_KEY))).await;
+    let acceptance = "cargo test passes; the 61st request in a minute gets 429.";
+    let (thread, tenant) = handed_off_with(&world, "acceptance", Some(acceptance)).await;
+    let response = tenant
+        .client()
+        .post(world.advice_url(thread))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let asked = world.asked();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(
+        asked[0].1["state"]["task"],
+        json!({
+            "title": "Rate-limit the public API",
+            "description": "60 requests a minute per token, then 429.",
+            "acceptance": acceptance,
+        })
+    );
 }
 
 #[tokio::test]

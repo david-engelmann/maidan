@@ -401,7 +401,7 @@ Off by default, and no part of the land-gate decision itself. Turning it on
 adds `POST /threads/:id/land-gate/advice` (`thread:transition`), the MCP tool
 `advise_land_gate` and the workspace key routes under
 `/workspaces/:id/land-gate/advisor`. The server sends the hand-off (the task's
-title and description, the result without its diff, and the producing agent's
+title, description and acceptance, the result without its diff, and the producing agent's
 messages) to TypeSafe's Jev with ten yes/no questions, and turns the ten
 probabilities into green, amber or red by rules in code; an unsettled answer
 never counts toward green. Nothing here writes or arms the gate. A disabled advisor is
