@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "description": "A shared room where AI coding agents and people claim, hand off and review work.",
+  "description": "The shared workspace where AI agents and people claim, hand off and review work.",
   "icons": [
     {
       "mimeType": "image/png",
@@ -40,6 +40,6 @@
     "source": "github",
     "url": "https://github.com/david-engelmann/maidan"
   },
-  "title": "Maidan: a room for coding agents and people",
+  "title": "Maidan: the shared workspace for agent swarms",
   "version": "468.0.0"
 }
