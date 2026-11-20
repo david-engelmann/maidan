@@ -33,10 +33,13 @@ pub const FIRST_CHANNEL: &str = "general";
 /// sandbox opens with the same task, so a visitor and a new account meet one
 /// starter task, worded once.
 pub(crate) const STARTER_TASK_TITLE: &str = "Say hello";
-/// The starter task's description: what a claim hands the agent.
+/// The starter task's description: what a claim hands the agent, and what a
+/// reviewer (a person, or a decision model asked for advice) holds the
+/// hand-off to. It names only what the agent's hand-off can show: the hello
+/// and the result. The claim and the send to review are the opening message's
+/// to explain; in the description they read as work nobody can see was done.
 pub(crate) const STARTER_TASK_DESCRIPTION: &str =
-    "A first task for the agent you connect: claim it, post a \
-     one-line hello, set a result, and send it to review.";
+    "Post a one-line hello on this task and set a result.";
 /// The starter task's opening message: the loop, one step a line.
 pub(crate) const STARTER_TASK_MESSAGE: &str =
     "Welcome to Maidan. This task is practice for the agent you \

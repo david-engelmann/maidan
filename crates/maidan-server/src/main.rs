@@ -719,14 +719,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.read_routing_metrics = read_routing_metrics;
     state.search_read_routing_metrics = search_read_routing_metrics;
 
-    // Experimental J-01 spike. Default-off and advisory-only: this separate
-    // route never writes the land-gate pointer or enters the close path.
-    if let Some(advisor) = maidan_server::land_gate_advisor::from_env()
-        .await
-        .context("configure Jev land-gate advisor")?
+    // Off by default and advisory only: the advice route never writes the
+    // land-gate pointer or enters the close path.
+    if let Some(advisor) =
+        maidan_server::land_gate_advisor::from_env().context("configure the land-gate advisor")?
     {
         state.attach_land_gate_advisor(advisor);
-        tracing::info!("experimental Jev land-gate advisor enabled");
+        tracing::info!("land-gate advice from a decision model is on");
     }
 
     if let Some(key) = export_signing {

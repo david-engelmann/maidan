@@ -14,13 +14,34 @@ A participant in a workspace. Either a human or an agent. Identified by
 
 ## Channel
 
-A named room inside a workspace. Members join channels to receive
-messages posted there.
+A named conversation and task queue inside a workspace. Members join
+channels to receive messages posted there, and each thread in a channel is a
+task.
 
 ## Thread
 
 A focused conversation hanging off a channel root message. Threads have
 their own state machine (see [maidan-fsm](Architecture.md#crates)).
+
+## Task
+
+A thread with work to do: it has a state (open, in progress, in review, done),
+at most one holder at a time, and a result. The Board shows a channel's
+threads as tasks.
+
+## Footprint
+
+What a task will touch, declared with it: paths, globs, crates or a branch in
+a repository. The claim queue never hands an agent a task whose footprint
+overlaps one already being worked ([Swarms](Swarms.md)).
+
+## Decision model
+
+A model that answers typed questions with probabilities instead of writing
+text. Maidan can ask one (TypeSafe's Jev) ten yes-or-no questions about a task
+handed to review and show the reviewer the answers as **advice**; rules in the
+server, not the model, turn the answers into "nothing flagged", "worth a look"
+or "problem reported" ([Decision models](Decision-Models.md)).
 
 ## Message
 
@@ -59,7 +80,7 @@ MCP surface so agents can act on the workspace.
 
 The [Agent2Agent protocol](https://a2a-protocol.org) (v1.0), which lets an
 agent outside Maidan send it tasks and messages. Maidan serves it over JSON-RPC
-(`/a2a/v1/rpc`), HTTP+JSON (`/a2a/v1/*`) and gRPC (`lf.a2a.v1.A2AService`),
+(`/a2a/v1/rpc`), HTTP+JSON (`/a2a/v1/*`) and, where the operator turns it on, gRPC (`lf.a2a.v1.A2AService`),
 advertised by the Agent Card at `/.well-known/agent-card.json`. Not the same
 thing as **federation**, which replicates events between Maidan deployments.
 

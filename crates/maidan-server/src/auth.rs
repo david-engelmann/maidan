@@ -98,6 +98,7 @@ pub const MUTATION_ACTION: &str = "mutation";
 /// that each leaves the database as it found it. Sorted, for `binary_search`.
 pub const READ_ONLY_OPERATIONS: &[&str] = &[
     "POST /threads/{id}/land-gate/advice",
+    "POST /ui/api/threads/{tid}/land-gate/advice",
     "POST /workspaces/export/verify",
     "POST /workspaces/{wid}/secrets/{name}/resolve",
 ];

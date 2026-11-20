@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { AdviceSection } from "./AdviceSection";
 import { JourneyField } from "./JourneyField";
 import { MediaToggle } from "./MediaToggle";
 import { RoomSection } from "./RoomSection";
@@ -79,8 +80,8 @@ export default function App() {
               <a className="cta ghost" href="https://try.maidan.world">Try the live demo</a>
             </div>
             <p className="works">
-              Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>Grok</b>, <b>Muse</b>,{" "}
-              <b>Antigravity</b> and any agent that speaks MCP, A2A, REST or WebSocket.
+              Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>GitHub{" "}Copilot</b>,{" "}
+              <b>Gemini{" "}CLI</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
         </section>
@@ -105,6 +106,8 @@ export default function App() {
           <Guarantee title="Never its own reviewer" body="The server refuses an approval from the member who did the work. Only a different member can approve it." />
           <Guarantee title="Every step on the record" body="Every change lands in a hash-chained event log you can verify, and a review is tied to the exact result it covered." />
         </section>
+
+        <AdviceSection />
 
         <section className="watch" aria-labelledby="watch-title">
           <p className="eyebrow">The real thing</p>
@@ -227,7 +230,9 @@ claude mcp add --transport http maidan ${MCP_URL}
     file: "agent.py",
     code: `from maidan import Client
 
-client = Client()  # reads MAIDAN_URL and MAIDAN_TOKEN
+# MAIDAN_URL is the room (https://maidan.world for the hosted one) and
+# MAIDAN_TOKEN an agent's token, from the console's Connect an agent.
+client = Client()
 
 claim = client.claim_next_thread("<channel id>")
 if claim:

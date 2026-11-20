@@ -104,8 +104,8 @@ then:
 A front-door sign-in never links by email and never auto-provisions: there is
 no workspace to do it in, and matching an email across workspaces is the
 "automatic cross-workspace identity" rule 3 below rules out. A person reaches a
-new workspace the first time through its own id or invite link. Sign-up,
-proposed in the hosted console design note, is not built.
+new workspace the first time through its own id or invite link. Sign-up is the
+separate waitlist and open sign-up flow (`MAIDAN_SIGNUP`, below).
 
 ### No existence oracle before sign-in
 
@@ -392,9 +392,8 @@ curl -sS -X POST "$MAIDAN_URL/workspaces/$WS/members/$MEMBER_ID/tokens" \
 `whoami` with that token answers as the person's member with exactly those
 capabilities. A tool that needs more is refused ("missing capability:
 workspace:write"), and after `expires_at` the token gets a 401. Pasting the
-token into an MCP client is the step an OAuth authorization server would
-replace. That server is parked (Decisions, "The connected-apps program runs its
-fast track without an authorization server").
+token into an MCP client is the step OAuth sign-in replaces: an MCP client
+that speaks OAuth signs its person in against Maidan itself ([OAuth](OAuth.md)).
 
 ## Security notes
 
@@ -414,7 +413,7 @@ stolen or cross-origin browser session.
 
 | Surface | Current behavior |
 |---------|------------------|
-| MCP | **No OIDC** — clients continue `Authorization: Bearer`. A device-code flow for MCP is future scope, not implemented here. |
+| MCP | A client that speaks OAuth signs its person in through Maidan's own authorization server ([OAuth](OAuth.md)), which uses this OIDC sign-in for the person. Any client can still send `Authorization: Bearer`. |
 | WebSocket | Bearer clients use `SubscribeFrame.token`; the UI may authenticate the handshake with its same-origin session cookie. |
 | `/ui/` | Uses the session cookie with same-origin `fetch` to session-gated APIs and the WebSocket path. |
 
@@ -428,9 +427,9 @@ authorization, token exchange, ES256 JWKS validation, session creation, and
 provider logout; invalid state, nonce, signature, audience, and issuer inputs
 are rejected without issuing a session.
 
-The only OIDC-related item called out as future scope here is a device-code flow
-for MCP. MCP clients continue to use bearer tokens; this does not make human
-OIDC login unfinished.
+MCP clients sign in through Maidan's OAuth authorization server
+([OAuth](OAuth.md)) or send a bearer token; neither changes how a person signs
+in here.
 
 ## Historical alternatives considered
 

@@ -7,7 +7,7 @@ page has copy-paste recipes for LangChain and Microsoft AutoGen, plus a
 framework-independent REST client. Runnable versions are in
 [`examples/`](https://github.com/david-engelmann/maidan/tree/main/examples).
 
-**The catalog is large — well over a hundred tools; don't hand an agent all of them.** The recipes below load
+**The catalog is large, 265 tools; don't hand an agent all of them.** The recipes below load
 the catalog and filter to the **seven-tool hero loop** — `claim_next_thread`,
 `post_message`, `get_thread_context`, `set_thread_result`, `transition_thread`,
 `wait_for_result`, `wait_for_ready` — which is all an agent needs to pick up work, do it,
@@ -20,7 +20,7 @@ a Python and a TypeScript worker claim off one channel and Maidan hands each tas
 exactly one of them.
 
 The recipes were verified against a live Maidan (the
-[quickstart](https://github.com/david-engelmann/maidan#quickstart)) with the pinned
+[quickstart](Quickstart.md#on-your-machine)) with the pinned
 versions below. Run one first, then point the example at it:
 
 ```sh
@@ -118,5 +118,4 @@ HTTP+JSON bindings is at
 
 MCP adapters move quickly. The examples pin known-good versions; when bumping them,
 re-run each example against a fresh quickstart and confirm the tool list loads before
-updating the pins. (An automated interop CI job that does this is tracked in
-[Open Work](Open%20Work.md).)
+updating the pins.

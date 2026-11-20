@@ -33,6 +33,8 @@
   --scrim: rgba(3, 4, 6, 0.62);
   --accent: #ff6a2b;
   --danger: #ff6f64;
+  --ok: #43d08a;
+  --warn: #f2b33d;
   /* The mark and the primary action are lit, like the console's. */
   --mark-ink: #ff6a2b;
   --primary: linear-gradient(180deg, #ff7b40, #f45a1d);
@@ -86,6 +88,8 @@
   --scrim: rgba(40, 36, 30, 0.28);
   --accent: #e8501c;
   --danger: #b4231a;
+  --ok: #256b41;
+  --warn: #c98a12;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.07 0 0 0 0 0.05 0.18 0 0 0 -0.072'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
   --mark-ink: #151411;
   --primary: #151411;
@@ -246,10 +250,56 @@ section > *, .hero > * { min-width: 0; }
 .plan .cta-row .cta { margin-top: 0; }
 
 
+/* Advice from a decision model: the words, three hand-offs to switch
+   between with what the model read in each, and what to know about it. The
+   card is the console's advice panel in the landing's own tokens. */
+.advise { display: grid; gap: 2.6rem; }
+.advise-lede { margin: 1.4rem 0 0; max-width: 40rem; color: var(--muted); font-size: 1.05rem; line-height: 1.55; text-wrap: pretty; }
+.advise-demo { min-width: 0; }
+.advise-kicker { margin: 0; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.advise-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; margin: 0.6rem 0 0.8rem; }
+.advise-tabs button { min-height: 46px; padding: 0 0.6rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border: 0; border-radius: 99px; background: none; color: var(--muted); font: inherit; font-size: 0.9rem; white-space: nowrap; cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: color 0.15s ease, background-color 0.15s ease; }
+.advise-tabs button:hover { color: var(--ink); background: var(--ghost-hover); }
+.advise-tabs button[aria-selected="true"] { color: var(--ink); background: var(--card); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.advise-tabs i, .advise-land i { flex: none; border-radius: 99px; background: var(--advise-tone); }
+.advise-tabs i { inline-size: 8px; block-size: 8px; }
+[data-land="green"] { --advise-tone: var(--ok); }
+[data-land="amber"] { --advise-tone: var(--warn); }
+[data-land="red"] { --advise-tone: var(--danger); }
+.advise-card { border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 30px 60px -34px rgba(0, 0, 0, 0.55); overflow: hidden; }
+.advise-handoff { padding: 1.3rem 1.4rem 1.2rem; border-bottom: 1px solid var(--line); background: var(--paper-2); }
+.advise-task { margin: 0.25rem 0 0.9rem; font-size: 1.08rem; font-weight: 560; letter-spacing: -0.01em; }
+.advise-result { margin: 0.3rem 0 0; min-height: 4.5em; color: var(--muted); font-size: 0.94rem; line-height: 1.5; text-wrap: pretty; }
+.advise-verdict { padding: 1.2rem 1.4rem 1.3rem; }
+.advise-head { display: flex; justify-content: space-between; gap: 1rem; margin: 0 0 0.5rem; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.advise-head span:last-child { letter-spacing: 0.02em; text-transform: none; white-space: nowrap; }
+.advise-land { display: flex; align-items: center; gap: 0.6rem; margin: 0; font-size: 1.5rem; letter-spacing: -0.03em; line-height: 1.15; }
+.advise-land strong { font-weight: 600; }
+.advise-land i { inline-size: 12px; block-size: 12px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--advise-tone) 22%, transparent); }
+.advise-why { margin: 0.45rem 0 0; min-height: 2.9em; color: var(--muted); font-size: 0.94rem; line-height: 1.45; text-wrap: pretty; }
+.advise-legend { display: flex; justify-content: space-between; gap: 1rem; margin: 0.9rem 0 0.35rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.advise-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.advise-rows li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; column-gap: 0.65rem; padding: 0.3rem 0; font-size: 0.9rem; line-height: 1.45; color: var(--muted); }
+/* The disc is quiet on a clear row and filled on a concern */
+.advise-rows svg { inline-size: 20px; block-size: 20px; margin-top: 0.05rem; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.advise-rows svg circle { stroke: var(--line); stroke-width: 1.5; }
+.advise-q { min-width: 0; }
+.advise-p { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.advise-rows li[data-concern] .advise-q { color: var(--ink); }
+.advise-rows li[data-concern] svg circle { fill: var(--advise-tone); stroke: var(--advise-tone); }
+.advise-rows li[data-concern] svg path { stroke: var(--card); stroke-width: 2.4; }
+.advise-notes { display: grid; gap: 1.4rem; }
+.advise-notes h3 { font-size: 1.05rem; }
+.advise-aside .cta-row { margin-top: 1.8rem; }
+@media (max-width: 479px) {
+  .advise-handoff, .advise-verdict { padding-inline: 1.1rem; }
+  .advise-tabs button { font-size: 0.82rem; gap: 0.35rem; padding: 0 0.3rem; }
+}
+
 /* Each turn of the page is the field's horizon in place of a rule, lit
    where the reader stands */
-.how, .dev, .hosting, .close { isolation: isolate; }
-.how::before, .dev::before, .hosting::before, .close::before {
+.how, .advise, .dev, .hosting, .close { isolation: isolate; }
+.how::before, .advise::before, .dev::before, .hosting::before, .close::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--rule-edge) 16%, var(--rule-core) 50%, var(--rule-edge) 84%, transparent);
 }
@@ -265,7 +315,7 @@ section > *, .hero > * { min-width: 0; }
    cooling as it leaves, and a ribbon of light over "How it works" and over
    "Hosted or self-hosted". Each gets the room. */
 .room { padding-top: clamp(3.5rem, 9svh, 6rem); }
-.how, .hosting, .watch { padding-top: clamp(4rem, 10svh, 6rem); }
+.how, .advise, .hosting, .watch { padding-top: clamp(4rem, 10svh, 6rem); }
 /* The recording is the whole console: too small to read on a phone, where the board above already shows the product */
 @media (max-width: 719px) { .watch { display: none; } }
 
@@ -314,6 +364,14 @@ section > *, .hero > * { min-width: 0; }
   .guarantees { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dev { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); column-gap: 4vw; align-items: center; }
+  /* The card sits beside what to know about it; on a narrower screen it comes
+     first, straight under the words it illustrates. */
+  .advise { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); grid-template-areas: "top top" "aside demo"; column-gap: 4vw; row-gap: 2.8rem; align-items: start; }
+  .advise-top { grid-area: top; }
+  .advise-demo { grid-area: demo; }
+  /* Beside a taller card, what to know about it stays in view */
+  .advise-aside { grid-area: aside; align-self: start; position: sticky; top: 7rem; }
+  .advise-notes { grid-template-columns: minmax(0, 1fr); max-width: 28rem; }
   /* Centred beside the words, the card would move its tabs as it changed
      height: it takes the tallest example's height for every one */
   .code-sizer { display: block; visibility: hidden; }

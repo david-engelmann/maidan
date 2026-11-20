@@ -9,9 +9,11 @@ use crate::dto::{
     ListAuditQuery, ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
     OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
-    SessionWorkspaces, SetMemberDisplayName, ThreadTransitionsQuery, ThreadVotes,
+    SessionWorkspaces, SetLandGateAdvisor, SetMemberDisplayName, ThreadTransitionsQuery,
+    ThreadVotes,
 };
 use crate::error::ProblemDetails;
+use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorStatus};
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
     AllowedEgressTarget, ApprovalGate, AuditEvent, CancelledThread, Channel, Member, Message,
@@ -673,6 +675,91 @@ pub fn ui_list_threads() {}
     )
 )]
 pub fn ui_list_messages() {}
+
+/// Ask a decision model for advice on a hand-off (console)
+///
+/// The bearer tree's `POST /threads/{id}/land-gate/advice` for the console:
+/// the task sheet shows the judgments beside a task that needs review.
+#[utoipa::path(
+    post,
+    path = "/ui/api/threads/{tid}/land-gate/advice",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    request_body = LandGateAdviceRequest,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = LandGateAdvice),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_advise_land_gate() {}
+
+/// Whether land-gate advice is on, and whose key this workspace would use (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/land-gate/advisor",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn ui_get_land_gate_advisor() {}
+
+/// Store this workspace's own TypeSafe key (console)
+///
+/// For the workspace's admin, signed in as a person. A session made from a
+/// token is refused: that token's holder uses
+/// `PUT /workspaces/{id}/land-gate/advisor`.
+#[utoipa::path(
+    put,
+    path = "/ui/api/workspaces/{wid}/land-gate/advisor",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = SetLandGateAdvisor,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 409, description = "This instance cannot store a workspace's key", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, response = NotFound),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_set_land_gate_advisor() {}
+
+/// Forget this workspace's TypeSafe key (console)
+#[utoipa::path(
+    delete,
+    path = "/ui/api/workspaces/{wid}/land-gate/advisor",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_clear_land_gate_advisor() {}
 
 /// List a thread's reviews (console)
 ///

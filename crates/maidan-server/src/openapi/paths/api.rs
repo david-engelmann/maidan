@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::dto::*;
 use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownMaidan};
-use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest};
+use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorStatus};
 use crate::openapi::schemas::SearchHit;
 use crate::share_consumer::*;
 use crate::thread_context::ThreadContext;
@@ -2640,19 +2640,56 @@ pub fn clear_land_gate() {}
     ))]
 pub fn require_land_gate() {}
 
-/// Ask for land-gate advice
+/// Ask a decision model for advice on a hand-off; never writes the gate
 #[utoipa::path(post, path = "/threads/{id}/land-gate/advice", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = LandGateAdviceRequest,
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = LandGateAdvice, description = "Advisory result; never writes the gate pointer"),
+        (status = 200, body = LandGateAdvice, description = "The model's judgments and the advice the rules draw from them"),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 404, description = "Experimental advisor disabled", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 502, description = "Decision provider unavailable", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "This instance offers no advice", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 409, description = "The task has no result yet, the workspace has no key to ask with, or the hand-off is too large to send", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn advise_land_gate() {}
+
+/// Whether land-gate advice is on, and whose key this workspace would use
+#[utoipa::path(get, path = "/workspaces/{id}/land-gate/advisor", tag = "land_gate",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_land_gate_advisor() {}
+
+/// Store this workspace's own TypeSafe key for land-gate advice
+#[utoipa::path(put, path = "/workspaces/{id}/land-gate/advisor", tag = "land_gate",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetLandGateAdvisor,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 409, description = "This instance cannot store a workspace's key", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "This instance offers no advice", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "The decision model's provider is unavailable", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn set_land_gate_advisor() {}
+
+/// Forget this workspace's TypeSafe key
+#[utoipa::path(delete, path = "/workspaces/{id}/land-gate/advisor", tag = "land_gate",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LandGateAdvisorStatus),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "This instance offers no advice", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn clear_land_gate_advisor() {}
 
 // --- spawn budget ---
 

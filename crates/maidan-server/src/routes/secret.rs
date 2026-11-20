@@ -96,7 +96,9 @@ pub async fn list_secrets(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    Ok(Json(state.store.list_secrets(workspace_id).await?))
+    let mut secrets = state.store.list_secrets(workspace_id).await?;
+    secrets.retain(|secret| !is_reserved_secret_name(&secret.name));
+    Ok(Json(secrets))
 }
 
 pub async fn resolve_secret(
@@ -107,6 +109,10 @@ pub async fn resolve_secret(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_READ)?;
     ensure_workspace(&auth, workspace_id)?;
+    // A secret the server keeps for itself is not here to be read.
+    if is_reserved_secret_name(&name) {
+        return Err(ApiError::NotFound);
+    }
     let ciphertext = state
         .store
         .get_secret_ciphertext(workspace_id, &name)
@@ -138,6 +144,10 @@ pub async fn delete_secret(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    // Nor to be deleted from here: the feature that stored it has its route.
+    if is_reserved_secret_name(&name) {
+        return Err(ApiError::NotFound);
+    }
     let deleted = state
         .store
         .delete_secret_audited(

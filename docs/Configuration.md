@@ -118,10 +118,10 @@ Unset, keys carry no instance tag and nothing is swept. Metrics:
 | `MAIDAN_DEV_ADMIN_TOKEN` | unset | Development only. On an instance with no workspace yet, boot opens workspace `dev` with an admin holding every capability whose bearer is this value: a real token, hashed, audited and revocable. Later boots and other replicas find it present; with workspaces already there it does nothing. At least 32 characters. Refused in production. For a compose or Helm stack whose database `maidan init` cannot reach. |
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` | unset | Removed with the unauthenticated mode. Boot refuses it, and `AUTH_DISABLED`, by name whatever the value. |
 | `MAIDAN_BOOTSTRAP` | unset | Test builds only: `1` opens unauthenticated `POST /workspaces` (first workspace only) and `POST /workspaces/:wid/members`. No build that ships has the routes, and such a build refuses the variable at boot. |
-
-Every caller is authenticated; there is no unauthenticated mode. Boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH`, the variables of the mode the server had before, by name and whatever their value. Mint the first token with `maidan init` or `MAIDAN_DEV_ADMIN_TOKEN`.
 | `MAIDAN_ALLOWED_HOSTS` | unset | Comma-separated host names (no ports) that a request with no credential may name under the anonymous MCP reader, besides loopback names and IP addresses. See [DNS rebinding](Production.md#dns-rebinding). |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | unset | Development only. A workspace id whose name begins `synthetic-`, which an MCP `POST` with no credential may read with read-only tools. Refused in production. |
+
+Every caller is authenticated; there is no unauthenticated mode. Boot refuses `AUTH_DISABLED` and `MAIDAN_ALLOW_INSECURE_NO_AUTH`, the variables of the mode the server had before, by name and whatever their value. Mint the first token with `maidan init` or `MAIDAN_DEV_ADMIN_TOKEN`.
 
 ## OIDC sign-in
 
@@ -395,33 +395,30 @@ OTLP export is the `otel` Cargo feature, on by default. A build without it
 still work, and an `OTLP_ENDPOINT` that is set is reported at startup and
 ignored.
 
-## Experimental: Jev land-gate advice
+## Advice from a decision model
 
 Off by default, and no part of the land-gate decision itself. Turning it on
-adds only `POST /threads/:id/land-gate/advice` (`thread:transition`), which
-takes a bounded description of the work as `state` (a string, array or object)
-and optional `thresholds` (`green_min_confidence`, `red_min_confidence`). It
-answers with the model's raw verdict, probabilities and confidence, plus a
-`recommended_land` in which a green or red below its threshold becomes amber;
-the policy never promotes an answer to green. The route never writes or arms
-the gate: a verifier with the `land_gate` skill still records the pass or fail.
-A disabled advisor is `404`, and a provider failure is `502` on the advice call
-only. `scripts/eval-land-gate-advisor.py` scores recorded answers against
-independently labelled outcomes. The supplied `state` leaves the deployment
-for TypeSafe when the route is called, so send no secrets or unapproved data.
+adds `POST /threads/:id/land-gate/advice` (`thread:transition`), the MCP tool
+`advise_land_gate` and the workspace key routes under
+`/workspaces/:id/land-gate/advisor`. The server sends the hand-off (the task's
+title, description and acceptance, the result without its diff, and the producing agent's
+messages) to TypeSafe's Jev with ten yes/no questions, and turns the ten
+probabilities into green, amber or red by rules in code; an unsettled answer
+never counts toward green. Nothing here writes or arms the gate. A disabled advisor is
+`404`, a task with no result, a workspace with no key or a hand-off too large
+to send `409`, and a provider
+failure `502` on the advice call only. [Decision models](Decision-Models.md)
+has the questions, the rules and what leaves the deployment.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns on the advisory route. An invalid value refuses boot. With it off, none of the others are read. |
-| `TYPESAFE_API_KEY` | required when on | Never sent to clients or logged. |
+| `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the advice routes and the tool on. An invalid value refuses boot. With it off, none of the others are read. |
+| `TYPESAFE_API_KEY` | none | The instance's own key, used for a workspace that stored none. Unset, every workspace brings its own: its admin stores it with `PUT /workspaces/{id}/land-gate/advisor` (`token:admin`), which needs `FEDERATION_ENCRYPTION_KEY` on the instance and answers `409` without it. This variable has no `_FILE` form yet: set it in the environment. |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe `GET /v1/models`. |
-| `MAIDAN_JEV_GREEN_MIN_CONFIDENCE` | `0.90` | Green below this becomes amber. In `[0,1]`. |
-| `MAIDAN_JEV_RED_MIN_CONFIDENCE` | `0.90` | Red below this becomes amber. In `[0,1]`. |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout. A timeout fails only the advice call, with `502`. |
-| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. |
+| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`. |
 
-When it is on, a missing key, a malformed threshold, an unsafe base URL or a
-failed DNS lookup refuses boot.
+A base URL that is not an origin refuses boot. The provider's name is resolved through the egress guard on the first call and again every ten minutes, so a provider that cannot be reached fails the advice call, not the server.
 
 ## Build options
 

@@ -37,7 +37,7 @@ mkdir -p "$src_docs/assets"
 # under hyphenated names (space -> hyphen).
 top_pages=(
   "Using-Maidan" "Setup-Modes" "Typical-Flows" "Console"
-  "Quickstart" "Integration" "Integration Reference" "Swarms" "Capability Map" "Result Delivery"
+  "Quickstart" "Integration" "Integration Reference" "Swarms" "Decision-Models" "Capability Map" "Result Delivery"
   "Production" "Configuration" "Credits" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison" "Architecture" "Claims"
   "Providers" "Protocols" "Clients"

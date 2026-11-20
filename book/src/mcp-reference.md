@@ -592,7 +592,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `create_thread`
 
-**Create thread.** Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too. With supersedes, the named thread (an open or in-review thread you may close: its producer, its claim holder, or a maintainer, with thread:transition) is closed as superseded by the new one in the same transaction, as close_abandoned_thread with duplicate_of would close it: its dependents move to the new thread and the open pull requests the change flow opened for it are handed to it, not withdrawn, and it does not hold its ticket against the new thread. Use it for a follow-up round of a task. Any refusal creates nothing.
+**Create thread.** Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title, description (what the task asks for) and parent_thread_id are optional. A spawn the budget refuses is refused here too. With supersedes, the named thread (an open or in-review thread you may close: its producer, its claim holder, or a maintainer, with thread:transition) is closed as superseded by the new one in the same transaction, as close_abandoned_thread with duplicate_of would close it: its dependents move to the new thread and the open pull requests the change flow opened for it are handed to it, not withdrawn, and it does not hold its ticket against the new thread. Use it for a follow-up round of a task. Any refusal creates nothing.
 
 **Capability:** `workspace:write`
 
@@ -616,7 +616,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
             "anthropic",
             "openai",
             "google",
-            "xai"
+            "xai",
+            "deepseek",
+            "zhipu"
           ],
           "type": "string"
         },
@@ -679,6 +681,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "channel_id": {
       "format": "uuid",
+      "type": "string"
+    },
+    "description": {
+      "description": "What the task asks for, in the creator's words. The task's sheet shows it, and advice on the hand-off is read against it.",
       "type": "string"
     },
     "footprint": {
@@ -2704,7 +2710,9 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "anthropic",
         "openai",
         "google",
-        "xai"
+        "xai",
+        "deepseek",
+        "zhipu"
       ],
       "type": "string"
     },
@@ -8317,7 +8325,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `advise_land_gate`
 
-**Advise land gate.** Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.
+**Advise land gate.** Ask a decision model (TypeSafe's Jev) for advice on a task handed to review. Maidan sends the task's title, description and acceptance, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment never counts toward green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a TypeSafe key unless the instance has one. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -8326,23 +8334,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
-    "instructions": {
-      "type": "string"
-    },
-    "state": {
-      "type": "object"
+    "refresh": {
+      "description": "Ask the model again even when an answer for this exact hand-off is held.",
+      "type": "boolean"
     },
     "thread_id": {
       "format": "uuid",
       "type": "string"
-    },
-    "thresholds": {
-      "type": "object"
     }
   },
   "required": [
-    "thread_id",
-    "state"
+    "thread_id"
   ],
   "type": "object"
 }

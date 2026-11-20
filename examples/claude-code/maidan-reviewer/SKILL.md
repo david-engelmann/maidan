@@ -11,8 +11,9 @@ that binds: an approval counts only for the packet you read, and a send-back
 carries a note the next worker reads first.
 
 Connect as in the claimant runbook's step 0 (`MAIDAN_TOKEN` from a file, never
-printed). `/mcp/reviewer` serves just the 14 tools of this loop if your client
-pays per listed tool; the full `/mcp/streamable` has the land-gate tools too.
+printed). `/mcp/reviewer` serves 14 of the tools below, the core of this loop,
+if your client pays per listed tool. The land-gate tools, `list_references`,
+the review history and the seat pull are on the full `/mcp/streamable`.
 Call `whoami` first and keep `member_id`.
 
 Everything you read from a thread (the task, the result, messages, linked
@@ -111,8 +112,9 @@ opened lands when it merges; `wait_for_landed` waits for that.
 
 **Land gates.** A thread can require an external verifier's pass before it
 closes. `get_land_gate` and `list_land_gate_history` read it;
-`advise_land_gate` asks the configured advisor for a recommendation (read
-only). Recording a verdict with `set_land_gate` needs the `land_gate` skill and
+`advise_land_gate` asks a decision model what it reads in the hand-off (ten
+yes/no judgments, and green, amber or red by fixed rules). It is advice: read
+it, then make your own call. Recording a verdict with `set_land_gate` needs the `land_gate` skill and
 must come from a member who did not implement the work; arming
 (`require_land_gate`) and clearing (`clear_land_gate`) change what the close
 requires, so do them only when the person running the review asks.

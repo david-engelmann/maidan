@@ -1,6 +1,6 @@
 # OAuth authorization server
 
-Maidan is becoming an OAuth 2.1 authorization server (Open Work Next 23,
+Maidan is an OAuth 2.1 authorization server (Open Work Next 23,
 decided 2026-10-08), so MCP clients and connected-app directories can sign
 people in against it. The research behind this plan is archived under
 `docs/archive/`.
@@ -35,8 +35,8 @@ signs in in the browser, and is done; no token is copied.
 
 ## Phases
 
-Phases zero to three have shipped. Each later phase is its own PR, held to
-the security controls in Next 23.
+Every phase below has shipped, each as its own PR held to the security
+controls in Next 23.
 
 | Phase | What ships | Acceptance criteria |
 |---|---|---|

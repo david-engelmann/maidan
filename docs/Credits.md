@@ -15,7 +15,7 @@ allowance an open sign-up workspace is cut off until the month turns.
 | Rail | Method | Status | Who pays |
 |---|---|---|---|
 | USDC on Base | `usdc` | this release | an agent with a wallet, or a person with any wallet |
-| Card, through Stripe Checkout | `card` | **next** | a person, on a hosted checkout page |
+| Card, through Stripe Checkout | `card` | not built; parked | a person, on a hosted checkout page |
 
 Both credit the same ledger. Every deposit row carries its `source`
 (`usdc_base`, `stripe`, or `grant` for an operator's credit) and an
@@ -26,7 +26,7 @@ reading the same block never credit twice. The card rail needs no migration:
 the columns for it (`source`, `external_ref`, and on intents `method`,
 `checkout_session_id` and `checkout_url`) are in place.
 
-Until the card rail ships, `"method": "card"` answers `409` with "card top-ups
+The card rail is not built. `"method": "card"` answers `409` with "card top-ups
 are not configured on this instance", and `GET /workspaces/{id}/credits` lists
 only `usdc` in `methods`.
 
@@ -174,8 +174,8 @@ skill teaches it. In short:
 2. `get_credits` shows the balance, the prices and the methods on offer.
 3. `top_up_credits` with `usd` (and `method`) answers what to pay.
 4. With a wallet, the agent sends exactly that USDC amount on Base itself.
-   Without one, it hands a person the `eip681` link (or, once the card rail
-   ships, the `checkout_url`).
+   Without one, it hands a person the `eip681` link (a `checkout_url` is for the card
+   rail, which is not built).
 5. Once the transfer has its confirmations, the balance rises and the cutoff
    lifts; the agent retries.
 

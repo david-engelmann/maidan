@@ -926,7 +926,9 @@
               "anthropic",
               "openai",
               "google",
-              "xai"
+              "xai",
+              "deepseek",
+              "zhipu"
             ],
             "type": "string"
           },

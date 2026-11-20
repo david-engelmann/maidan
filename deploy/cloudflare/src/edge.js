@@ -67,8 +67,11 @@ export const SECURITY_HEADERS = {
 // types), served from the Worker's static assets where an instance has them.
 // Nothing else in the container lives at these paths. The front page is the
 // server's own waitlist page, which links the first two
-// (`MAIDAN_SIGNUP_PRIVACY_URL`, `_TERMS_URL`).
-export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/problems", "/site.css"]);
+// (`MAIDAN_SIGNUP_PRIVACY_URL`, `_TERMS_URL`). The favicon and the sitemap
+// are here for what asks for them by their well-known paths: every page
+// names its own icon, but a crawler or a chat client's link preview does not
+// read the page first.
+export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/problems", "/site.css", "/favicon.ico", "/sitemap.xml"]);
 
 // Every problem `type` the server sends is `https://maidan.world/problems/`
 // plus one of these, and each has a row on the problems page.

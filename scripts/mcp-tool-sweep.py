@@ -72,7 +72,8 @@ REAL_ANSWER = {
     and str(v.get("eip681", "")).startswith("ethereum:")
     and 5_000_000 < v.get("amount_micros", 0) < 5_010_000,
     "advise_land_gate": lambda v: v.get("provider") == "typesafe"
-    and v.get("recommended_land") in ("green", "amber", "red"),
+    and v.get("land") in ("green", "amber", "red")
+    and len(v.get("judgments", [])) == 10,
 }
 
 parser = argparse.ArgumentParser(description="Call every MCP tool on a running Maidan.")
@@ -245,7 +246,6 @@ IDS = {
 }
 # Read-only tools whose required arguments are not one of the ids above.
 READ_ARGS = {
-    "advise_land_gate": {"state": {"title": f"fixture {RUN}", "tests": "pass"}},
     "find_thread": {"repo": "o/r", "pr_number": 1},
     "get_group_dm": {"group_dm_conversation_id": group_dm},
     "list_references": {"src_kind": "thread", "src_id": thread},
@@ -270,6 +270,10 @@ def read_args(tool):
     schema = tool["inputSchema"]
     args = {a: IDS[a] for a in schema.get("required", []) if a in IDS}
     args.update(READ_ARGS.get(tool["name"], {}))
+    # Advice reads a result, so it is asked about the task the write flow
+    # handed to review.
+    if tool["name"] == "advise_land_gate" and DELIVERED:
+        args["thread_id"] = DELIVERED[0]
     if "timeout_ms" in schema.get("properties", {}):
         args.setdefault("timeout_ms", 1)
     return args
