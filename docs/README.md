@@ -80,6 +80,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 | [Context Economics](Context%20Economics.md) | How Maidan makes agents spend less on models: the research, the principles and Program C |
 | [Capabilities](Capabilities.md) | Every release and source record: what shipped, and whether it is tagged |
 | [Gates/maidan-scale-1.0](Gates/maidan-scale-1.0.md) | The scale gate's criteria and evidence |
+| [Gates/maidan-launch-1.0](Gates/maidan-launch-1.0.md) | The launch gate's run on maidan.world: every check, and what is left to a person |
 
 ## History
 

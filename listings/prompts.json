@@ -30,7 +30,7 @@
       "expect": ["find_threads", "get_review_packet"]
     },
     "ask-approval": {
-      "prompt": "Before you deploy, ask a person in Maidan to approve the deploy of v2 to production.",
+      "prompt": "Before v2 goes to production, ask a person in Maidan to approve it.",
       "expect": ["request_approval"]
     },
     "catch-up": {
