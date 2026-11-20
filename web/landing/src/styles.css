@@ -281,7 +281,9 @@ section > *, .hero > * { min-width: 0; }
 .advise-why { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.94rem; line-height: 1.45; text-wrap: pretty; }
 /* What was flagged shows at once. The ten readings wait behind one press,
    so a clear hand-off stays a short card. */
-.advise-flagged { margin-top: 0.9rem; }
+.advise-flagged { margin-top: 1.1rem; }
+/* Open, the full list marks the same rows in place */
+.advise-verdict:has(.advise-all[open]) .advise-flagged { display: none; }
 .advise-all { margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .advise-all summary { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 32px; list-style: none; cursor: pointer; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-radius: 6px; }
 .advise-all summary::-webkit-details-marker { display: none; }
@@ -301,7 +303,7 @@ section > *, .hero > * { min-width: 0; }
 .advise-rows li[data-concern] > svg path { stroke: var(--card); stroke-width: 2.4; }
 @media (max-width: 479px) {
   .advise-handoff, .advise-verdict { padding-inline: 1.1rem; }
-  .advise-tabs button { font-size: 0.82rem; gap: 0.35rem; padding: 0 0.3rem; }
+  .advise-tabs button { font-size: 0.8rem; gap: 0.3rem; padding: 0 0.2rem; }
 }
 
 /* Each turn of the page is the field's horizon in place of a rule, lit

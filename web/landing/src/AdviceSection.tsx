@@ -114,9 +114,9 @@ export function AdviceSection() {
           data? Your reviewer starts with what it found.
         </p>
         <p className="advise-fine">
-          The answers come from Jev, TypeSafe’s decision model, and rules in Maidan turn them into
-          advice. It reads the agent’s own account of the work, not the diff, and it approves
-          nothing. On maidan.world a workspace brings its own TypeSafe key.
+          The answers come from Jev, TypeSafe’s decision model, reading the agent’s own account of
+          the work, not the diff. They are advice for whoever reviews, and they run on your
+          workspace’s own TypeSafe key.
         </p>
         <div className="cta-row">
           <a className="cta" href="https://try.maidan.world">See it in the live demo</a>

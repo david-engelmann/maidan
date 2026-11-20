@@ -597,7 +597,7 @@ test("the try page has the advice block, hidden, inside the step that follows th
   const done = html.slice(html.indexOf('id="agent-done"'), html.indexOf('id="agent-console"'));
   assert.match(done, /<div id="agent-advice" class="advice" role="group" aria-labelledby="advice-label" hidden>/);
   for (const id of ADVICE_IDS) assert.ok(done.includes(`id="${id}"`), id);
-  assert.match(done, /It is advice, and it is on the task in the console too\./);
+  assert.match(done, /The task in the console shows the same advice\./);
   // The ten readings wait behind one press; what was flagged does not.
   assert.match(done, /<ul id="advice-flagged"[^>]*><\/ul>\s*<details class="advice-all">\s*<summary>All ten readings<\/summary>\s*<ul id="advice-rows"/);
 });

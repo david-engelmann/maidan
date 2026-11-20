@@ -167,7 +167,9 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice-land strong { font-weight: 600; }
 .advice-land i { flex: none; inline-size: 12px; block-size: 12px; border-radius: 99px; background: var(--advice-tone); box-shadow: 0 0 0 4px color-mix(in srgb, var(--advice-tone) 22%, transparent); }
 .advice .advice-why { margin-top: 0.4rem; color: var(--muted); font-size: 0.94rem; }
-.advice-flagged { margin-top: 0.8rem; }
+.advice-flagged { margin-top: 1rem; }
+/* Open, the full list marks the same rows in place */
+.advice:has(.advice-all[open]) .advice-flagged { display: none; }
 .advice-flagged[hidden] { display: none; }
 .advice-all { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px solid var(--line); }
 .advice-all summary { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 32px; cursor: pointer; list-style: none; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-radius: 6px; }
