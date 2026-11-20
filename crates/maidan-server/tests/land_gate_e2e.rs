@@ -328,7 +328,7 @@ async fn land_gate_advice_requires_transition_before_revealing_feature_state() {
             thread.id.0
         ))
         .bearer_auth(reader)
-        .json(&json!({"state": "bounded fixture"}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap();
@@ -347,7 +347,7 @@ async fn land_gate_advice_requires_transition_before_revealing_feature_state() {
             thread.id.0
         ))
         .bearer_auth(verifier)
-        .json(&json!({"state": "bounded fixture"}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap();

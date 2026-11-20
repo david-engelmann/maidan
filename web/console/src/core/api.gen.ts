@@ -9,6 +9,7 @@ export type AddChannelMember = { member_id: string; role?: null | ChannelMemberR
 export type AddReviewer = { member_id: string; };
 export type AddSkill = { skill: string; };
 export type AddThreadDependency = { depends_on_thread_id: string; };
+export type AdvisorKeySource = "workspace" | "instance";
 export type AllowedEgressTarget = { created_at: string; created_by?: null | MemberId; dead?: string | null; id: EgressTargetId; selector: string; surface: string; workspace_id: WorkspaceId; };
 export type AllowEgressTarget = { selector: string; surface: EgressSurface; };
 export type AllowSecretEgressHost = { host: string; };
@@ -166,13 +167,16 @@ export type IntakeState = "proposed" | "accepted" | "rejected";
 export type IntakeTriageDecision = "accept" | "reject";
 export type InviteMintedView = { entry: WaitlistEntryView; invite_expires_at: string; invite_token: string; signup_path: string; };
 export type JoinWaitlistRequest = { consent: boolean; email: string; turnstile_token?: string | null; use_case: string; website?: string | null; };
+export type JudgmentAnswer = "yes" | "no" | "unsettled";
 export type KindCensus = { channel_id?: null | ChannelId; counts: KindCount[]; thread_id?: null | ThreadId; total: number; workspace_id: WorkspaceId; };
 export type KindCount = { count: number; kind: EventKind; };
 export type LandColor = "green" | "amber" | "red";
-export type LandGateAdvice = { confidence: number; latency_ms: number; model: string; probabilities: { [k: string]: number; }; provider: string; raw_land: LandColor; recommended_land: LandColor; thresholds: LandGateAdviceThresholds; usage: LandGateAdviceUsage; };
-export type LandGateAdviceRequest = { instructions?: string | null; state: unknown; thresholds?: null | LandGateAdviceThresholds; };
-export type LandGateAdviceThresholds = { green_min_confidence: number; red_min_confidence: number; };
+export type LandGateAdvice = { cached: boolean; judgments: LandGateJudgment[]; key_source: AdvisorKeySource; land: LandColor; latency_ms: number; model: string; provider: string; reasons: string[]; thresholds: LandGateAdviceThresholds; usage: LandGateAdviceUsage; };
+export type LandGateAdviceRequest = { refresh?: boolean; };
+export type LandGateAdviceThresholds = { no_max: number; yes_min: number; };
 export type LandGateAdviceUsage = { input_tokens: number; output_tokens: number; };
+export type LandGateAdvisorStatus = { enabled: boolean; host?: string | null; key_source?: null | AdvisorKeySource; model?: string | null; provider?: string | null; };
+export type LandGateJudgment = { answer: JudgmentAnswer; concern: boolean; id: string; label: string; probability: number; reading: string; };
 export type LandGatePointer = { artifact_sha?: string | null; kind: string; land: LandColor; status: LandGateStatus; };
 export type LandGateStanding = { land: LandColor; landable: boolean; pointer?: null | LandGatePointer; recorded_at?: string | null; recorded_by?: null | MemberId; required: boolean; };
 export type LandGateStatus = "pass" | "fail";
@@ -347,6 +351,7 @@ export type SetDeliveryMode = { mode: EmailDeliveryMode; };
 export type SetEmail = { email: string; };
 export type SetGlossaryTerm = { aliases?: string[] | null; definition: string; };
 export type SetLandGate = { artifact_sha?: string | null; land?: null | LandColor; status: LandGateStatus; };
+export type SetLandGateAdvisor = { api_key: string; };
 export type SetMemberDisplayName = { display_name?: string; };
 export type SetMemoryBlockValue = { expected_revision: number; value: string; };
 export type SetMentionWebhook = { webhook_id?: string | null; };
@@ -533,7 +538,9 @@ export type ApiRoute =
   | "DELETE /tokens/{id}"
   | "DELETE /ui/api/workspaces/{wid}/egress-targets/{tid}"
   | "DELETE /ui/api/workspaces/{wid}/invites/{iid}"
+  | "DELETE /ui/api/workspaces/{wid}/land-gate/advisor"
   | "DELETE /workspaces/{id}"
+  | "DELETE /workspaces/{id}/land-gate/advisor"
   | "DELETE /workspaces/{id}/legal-holds/{hold_id}"
   | "DELETE /workspaces/{id}/repo-pauses"
   | "DELETE /workspaces/{id}/slots"
@@ -683,6 +690,7 @@ export type ApiRoute =
   | "GET /ui/api/workspaces/{wid}/egress-targets"
   | "GET /ui/api/workspaces/{wid}/events"
   | "GET /ui/api/workspaces/{wid}/invites"
+  | "GET /ui/api/workspaces/{wid}/land-gate/advisor"
   | "GET /ui/api/workspaces/{wid}/peers"
   | "GET /ui/api/workspaces/{wid}/search"
   | "GET /web-push/vapid-public-key"
@@ -696,6 +704,7 @@ export type ApiRoute =
   | "GET /workspaces/{id}/export"
   | "GET /workspaces/{id}/handle"
   | "GET /workspaces/{id}/kind-census"
+  | "GET /workspaces/{id}/land-gate/advisor"
   | "GET /workspaces/{id}/legal-holds"
   | "GET /workspaces/{id}/legal-holds/preserved"
   | "GET /workspaces/{id}/linear-claim-comments"
@@ -846,6 +855,7 @@ export type ApiRoute =
   | "POST /ui/api/channels/{cid}/threads"
   | "POST /ui/api/threads/{tid}/cancel"
   | "POST /ui/api/threads/{tid}/close-abandoned"
+  | "POST /ui/api/threads/{tid}/land-gate/advice"
   | "POST /ui/api/threads/{tid}/messages"
   | "POST /ui/api/workspaces/{wid}/agents"
   | "POST /ui/api/workspaces/{wid}/channels"
@@ -917,10 +927,12 @@ export type ApiRoute =
   | "PUT /threads/{id}/title"
   | "PUT /threads/{id}/unclaimable"
   | "PUT /threads/{id}/wait"
+  | "PUT /ui/api/workspaces/{wid}/land-gate/advisor"
   | "PUT /workspaces/{id}/approval-policy"
   | "PUT /workspaces/{id}/default-engine"
   | "PUT /workspaces/{id}/delegation-policy"
   | "PUT /workspaces/{id}/handle"
+  | "PUT /workspaces/{id}/land-gate/advisor"
   | "PUT /workspaces/{id}/linear-claim-comments"
   | "PUT /workspaces/{id}/repo-pauses"
   | "PUT /workspaces/{id}/retention"

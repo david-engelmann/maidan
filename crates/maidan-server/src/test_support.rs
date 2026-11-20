@@ -203,7 +203,7 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
         .await
         .expect("bind the stand-in provider");
     let addr = listener.local_addr().expect("stand-in provider address");
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
     let base = format!("http://{addr}/")
