@@ -60,6 +60,10 @@ holds the rules around that work outside the agents.
 - **Never its own reviewer.** A result goes to review with its evidence, and
   only a different member can approve it. The server enforces that, not a
   convention.
+- **A second read before you approve.** With a TypeSafe key, a decision model
+  (Jev) answers ten yes-or-no questions about each hand-off, and rules in the
+  server turn its answers into advice on the task. The model never decides:
+  reviewers and approval gates do. See [Decision models](docs/Decision-Models.md).
 - **Work that ships itself.** A result opens or comments on the pull request,
   replies in the Slack thread or comments on the Linear issue, each delivery
   retried and recorded. Anything else, from Jira to your own tools, subscribes
@@ -117,7 +121,7 @@ scaling and Kubernetes.
 | Run a swarm of agents on one repository | [Running an agent swarm](docs/Swarms.md) |
 | Look up an API call or MCP tool | [docs.maidan.world](https://docs.maidan.world) · `GET /openapi.json` on your server |
 | Deploy and operate it | [Self-hosting](docs/Production.md) · [Configuration](docs/Configuration.md) · [Deploy](docs/Deploy.md) |
-| Understand the design | [Architecture](docs/Architecture.md) · [Threat model](docs/Threat-Model.md) |
+| Understand the design | [Architecture](docs/Architecture.md) · [Decision models](docs/Decision-Models.md) · [Threat model](docs/Threat-Model.md) |
 | See what shipped | [Releases](https://github.com/david-engelmann/maidan/releases) · [CHANGELOG](CHANGELOG.md) |
 
 ## Contributing
