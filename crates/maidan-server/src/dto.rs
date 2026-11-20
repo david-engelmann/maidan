@@ -66,6 +66,15 @@ pub struct EraseWorkspace {
     pub confirm_workspace_id: uuid::Uuid,
 }
 
+/// The body of `DELETE /operator/workspaces/{id}`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct OperatorEraseWorkspace {
+    /// The id in the path again, so a mistyped path erases nothing.
+    pub confirm_workspace_id: uuid::Uuid,
+    /// Why, for the audit log.
+    pub reason: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMember {
     pub handle: String,

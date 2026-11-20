@@ -662,6 +662,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true }, "claim_lease_id": uuid::Uuid::nil() }));
     }
+    if path == "/operator/workspaces/{id}" && method == "DELETE" {
+        return b.json(&json!({ "confirm_workspace_id": f.workspace, "reason": "probe" }));
+    }
     if path == "/operator/workspaces/{id}/suspension" && method == "PUT" {
         return b.json(&json!({ "reason": "probe" }));
     }

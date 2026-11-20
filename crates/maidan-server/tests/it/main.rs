@@ -557,6 +557,9 @@ mod operator_audit_e2e;
 #[path = "../operator_status_e2e.rs"]
 mod operator_status_e2e;
 
+#[path = "../operator_workspace_erase_e2e.rs"]
+mod operator_workspace_erase_e2e;
+
 #[path = "../ops_alert_dedupe_e2e.rs"]
 mod ops_alert_dedupe_e2e;
 

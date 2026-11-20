@@ -417,6 +417,21 @@ pub fn get_workspace_suspension() {}
     ))]
 pub fn suspend_workspace() {}
 
+/// Erase a workspace as the operator, when its own admin cannot
+#[utoipa::path(delete, path = "/operator/workspaces/{id}", tag = "operator",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = OperatorEraseWorkspace,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceEraseResult),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn operator_erase_workspace() {}
+
 /// Lift a workspace's suspension
 #[utoipa::path(delete, path = "/operator/workspaces/{id}/suspension", tag = "operator",
     params(("id" = Uuid, Path, description = "Workspace id")),
