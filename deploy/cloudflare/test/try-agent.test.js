@@ -318,7 +318,7 @@ const PAGE_IDS = [
 ];
 
 // The advice block's elements, which a page from before it does not have.
-const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-flagged", "advice-rows"];
+const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-flagged", "advice-rows", "advice-status"];
 
 function page(tools, ids = PAGE_IDS) {
   const elements = new Map(ids.map((id) => [id, element(id)]));
@@ -544,7 +544,9 @@ test("the page shows the advice with the next step, each judgment a row, and say
   assert.equal(word.textContent, "");
   assert.equal(reading.textContent, "Does what the task asks");
   assert.equal(sure.textContent, "93% sure");
-  assert.equal(ui.el("agent-status").textContent, "The agent sent Say hello to review. A decision model read the hand-off: nothing flagged.");
+  // The visible status is unchanged; the advice is announced once, out of sight.
+  assert.equal(ui.el("agent-status").textContent, "The agent sent Say hello to review.");
+  assert.equal(ui.el("advice-status").textContent, "A decision model read the hand-off: nothing flagged.");
   // Nothing was flagged, so only the ten readings are there, behind their press.
   assert.equal(ui.el("advice-flagged").hidden, true);
   assert.equal(ui.el("advice-flagged").children.length, 0);
@@ -600,4 +602,5 @@ test("the try page has the advice block, hidden, inside the step that follows th
   assert.match(done, /The task in the console shows the same advice\./);
   // The ten readings wait behind one press; what was flagged does not.
   assert.match(done, /<ul id="advice-flagged"[^>]*><\/ul>\s*<details class="advice-all">\s*<summary>All ten readings<\/summary>\s*<ul id="advice-rows"/);
+  assert.match(done, /<p id="advice-status" class="sr-only" role="status" aria-live="polite"><\/p>/);
 });

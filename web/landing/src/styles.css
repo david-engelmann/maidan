@@ -281,7 +281,7 @@ section > *, .hero > * { min-width: 0; }
 .advise-why { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.94rem; line-height: 1.45; text-wrap: pretty; }
 /* What was flagged shows at once. The ten readings wait behind one press,
    so a clear hand-off stays a short card. */
-.advise-flagged { margin-top: 1.1rem; }
+.advise-rows.advise-flagged { margin-top: 1.1rem; }
 /* Open, the full list marks the same rows in place */
 .advise-verdict:has(.advise-all[open]) .advise-flagged { display: none; }
 .advise-all { margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }

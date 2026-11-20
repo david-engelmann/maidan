@@ -293,7 +293,7 @@ export function createTryPage(
   // What a decision model read in the hand-off the agent just made, when
   // this demo offers advice. Without it, or when the model is slow or does
   // not answer, nothing is shown: the review is the same either way.
-  async function showAdvice(status) {
+  async function showAdvice() {
     const box = $(doc, "agent-advice");
     if (!box) return;
     let timer;
@@ -339,7 +339,10 @@ export function createTryPage(
     }
     flagged.hidden = !advice.rows.some((row) => row.mark !== "clear");
     box.hidden = false;
-    say(status, `The agent sent Say hello to review. A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
+    // Said once to a screen reader, where the block's arrival would go
+    // unheard; a sighted visitor reads it in the block itself.
+    const heard = $(doc, "advice-status");
+    if (heard) say(heard, `A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
   }
 
   async function watchAgent() {
@@ -356,7 +359,7 @@ export function createTryPage(
       button.hidden = true;
       // Asked before the next step is shown, so the advice is in place when
       // it appears and nothing moves under the person's pointer.
-      await showAdvice(status);
+      await showAdvice();
       $(doc, "agent-done").hidden = false;
       // The button that had focus is gone; the next thing to do is here.
       $(doc, "agent-console").focus();

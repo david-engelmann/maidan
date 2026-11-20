@@ -167,7 +167,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice-land strong { font-weight: 600; }
 .advice-land i { flex: none; inline-size: 12px; block-size: 12px; border-radius: 99px; background: var(--advice-tone); box-shadow: 0 0 0 4px color-mix(in srgb, var(--advice-tone) 22%, transparent); }
 .advice .advice-why { margin-top: 0.4rem; color: var(--muted); font-size: 0.94rem; }
-.advice-flagged { margin-top: 1rem; }
+.advice-rows.advice-flagged { margin-top: 1rem; }
 /* Open, the full list marks the same rows in place */
 .advice:has(.advice-all[open]) .advice-flagged { display: none; }
 .advice-flagged[hidden] { display: none; }
@@ -190,7 +190,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice-row:not([data-mark="clear"]) .advice-mark { display: grid; place-items: center; background: var(--advice-tone); box-shadow: none; color: var(--paper-2); font-size: 0.74rem; font-weight: 800; line-height: 1; }
 .advice-row[data-mark="concern"] .advice-mark::after { content: "!"; }
 .advice-row[data-mark="unsure"] .advice-mark::after { content: "?"; }
-.advice .advice-foot { margin-top: 0.8rem; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+.advice .advice-foot { margin-top: 0.7rem; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 .advice-foot a { color: var(--signal-ink); font-weight: 560; white-space: nowrap; }
 
 .foot { display: flex; flex-wrap: wrap; gap: 1.2rem; width: 100%; max-width: 52rem; margin: 2rem auto 0; padding: 1.2rem var(--pad) calc(env(safe-area-inset-bottom) + 1.2rem); font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); }
