@@ -163,7 +163,9 @@ page asks for advice on that hand-off with the sandbox's own token
 (`advise_land_gate`) and shows the answer, the ten judgments included, before
 it sends the visitor to the console to approve. The task's sheet there shows
 the same answer, held from that call. When the demo has no key, or the model
-does not answer within four seconds, the page shows nothing and goes on.
+does not answer within four seconds, the page shows nothing and goes on. Where the
+demo has a key, the page says before a sandbox exists that tasks sent to
+review there are read by Jev (`advice` in `/try-config.json`).
 
 ## Turning it on
 

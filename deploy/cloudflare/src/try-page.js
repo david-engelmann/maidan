@@ -4,6 +4,8 @@
 // has no internet). Kept apart from demo.js so the tests run it without the
 // Containers runtime.
 
+import { jevEnabled } from "./demo-jev.js";
+
 // The page and its files, served from the Worker's static assets
 // (deploy/cloudflare/try, the `ASSETS` binding in wrangler.demo.jsonc).
 // /theme.js is the console's pre-paint script (web/console/public/theme.js),
@@ -24,7 +26,8 @@ export const TRY_PATHS = new Set([
   "/icon.png",
 ]);
 
-// What the page reads to know whether to render the Turnstile widget.
+// What the page reads to know whether to render the Turnstile widget, and
+// whether to say that hand-offs here are read by a decision model.
 export const TRY_CONFIG_PATH = "/try-config.json";
 
 // The Worker's own settings, never passed to the container: the widget's
@@ -108,7 +111,7 @@ export async function handleTry(request, env, fetchImpl = fetch) {
   const read = request.method === "GET" || request.method === "HEAD";
   if (read && url.pathname === TRY_CONFIG_PATH) {
     const siteKey = turnstileOn(env) ? env[TURNSTILE_SITE_KEY_VAR] : null;
-    return new Response(JSON.stringify({ turnstile_site_key: siteKey }), {
+    return new Response(JSON.stringify({ turnstile_site_key: siteKey, advice: jevEnabled(env) }), {
       headers: { "content-type": "application/json", "cache-control": "no-store" },
     });
   }

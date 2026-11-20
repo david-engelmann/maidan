@@ -301,3 +301,19 @@ test("a failed human check stays hidden and the start button tries again", async
     globalThis.window = previous;
   }
 });
+
+test("where the demo offers advice the page says so before a sandbox exists, and stays quiet where it does not", async () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
+  for (const advice of [true, false, undefined]) {
+    const ui = page();
+    const notes = [{ hidden: true }, { hidden: true }];
+    ui.doc.querySelectorAll = (selector) => (selector === ".advice-notice" ? notes : []);
+    const app = createTryPage(ui.doc, async (url) => {
+      assert.equal(url, "/try-config.json");
+      return new Response(JSON.stringify({ turnstile_site_key: null, advice }), { status: 200 });
+    });
+    app.mount();
+    await flush();
+    assert.deepEqual(notes.map((n) => n.hidden), advice === true ? [false, false] : [true, true], String(advice));
+  }
+});

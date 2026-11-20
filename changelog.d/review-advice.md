@@ -8,3 +8,4 @@
 - **Changed:** the starter task's description says only what a hand-off can show ("Post a one-line hello on this task and set a result.").
 - **Added:** try.maidan.world can offer advice with a key its Worker holds: the container still has no internet, and the Worker forwards that one call (`deploy/cloudflare/src/demo-jev.js`). When the page's scripted agent has sent Say hello to review, the page asks for advice on that hand-off and shows the ten judgments before it sends the visitor to the console. maidan.world turns advice on with workspace keys only.
 - **Added:** the landing's "Judgments from a model. Decisions in code." section.
+- **Changed:** the privacy policy says what is sent to TypeSafe and when (a workspace's own key, and the demo's), and the try page says before a sandbox exists that tasks sent to review there are read by a decision model.

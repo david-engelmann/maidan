@@ -97,7 +97,13 @@ export function createTryPage(
     let siteKey = null;
     try {
       const res = await fetch("/try-config.json", { cache: "no-store" });
-      siteKey = (await res.json())?.turnstile_site_key ?? null;
+      const config = await res.json();
+      siteKey = config?.turnstile_site_key ?? null;
+      // Said before a sandbox exists: where this demo offers advice, a task
+      // sent to review is read by a decision model outside it.
+      if (config?.advice === true) {
+        for (const note of doc.querySelectorAll?.(".advice-notice") ?? []) note.hidden = false;
+      }
     } catch {
       siteKey = null;
     }

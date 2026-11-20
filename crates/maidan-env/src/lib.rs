@@ -626,6 +626,7 @@ mod tests {
             "S3_ENDPOINT",
             "S3_REGION",
             "S3_SECRET_ACCESS_KEY",
+            "TYPESAFE_API_KEY",
         ];
         let mut worker_names = forwarded.clone();
         worker_names.extend(fixed.iter().cloned());
