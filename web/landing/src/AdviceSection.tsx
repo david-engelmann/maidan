@@ -83,7 +83,7 @@ const NOTES: { title: string; body: string }[] = [
   },
   {
     title: "The decision is in code",
-    body: "Rules in the server turn the ten answers into nothing flagged, worth a look or problem reported. A judgment between 30% and 70% is unsure, and an unsure one is never clear.",
+    body: "Rules in the server turn the ten answers into nothing flagged, worth a look or problem reported. A judgment between 30% and 70% is unsure, and an unsure one never counts as clear.",
   },
   {
     title: "Bring your own key",

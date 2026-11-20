@@ -76,7 +76,9 @@ judgment reads as yes, at 0.3 or below as no, and in between it is unsettled.
 | **Green** | `done` is yes; `unresolved_failure`, `left_undone`, `asks_person`, `beyond_task`, `changes_access`, `deletes_data` and `flags_risk` are all no; and either `code_change` is no or `tests_passed` is yes |
 | **Amber** | everything else |
 
-An unsettled judgment is never green. A change to sign-in or permissions, a
+An unsettled judgment never counts toward green: a doubt about the work or
+about any warning sign is amber, a task that may ask for a code change needs
+its tests, and tests that may have passed are read as not reported. A change to sign-in or permissions, a
 deletion of stored data and a warning from the agent are amber by policy, not
 because the model disapproves: those are the hand-offs a person should look
 at. The answer lists everything that kept it from green (`reasons`), with
@@ -112,6 +114,9 @@ thread the caller can read.
 
 Each judgment carries its `reading`: the answer as a statement ("Reports no
 passing tests"), so a reader does not have to work out whether a yes is good.
+One reading depends on the rules: when a task asks for no code change, missing
+tests are no concern, and the row says so ("Reports no tests, which this task
+does not call for").
 The model is as sure of that statement as the probability of the answer it
 reads as: 1% yes is a no it is 99% sure of.
 
@@ -153,7 +158,12 @@ The key is kept as the workspace secret `typesafe_api_key`, encrypted at rest
 the console it is under **Tools**, **Workspace**.
 
 On maidan.world a workspace brings its own key. try.maidan.world asks with the
-demo's.
+demo's: when the page's scripted agent has sent **Say hello** to review, the
+page asks for advice on that hand-off with the sandbox's own token
+(`advise_land_gate`) and shows the answer, the ten judgments included, before
+it sends the visitor to the console to approve. The task's sheet there shows
+the same answer, held from that call. When the demo has no key, or the model
+does not answer within four seconds, the page shows nothing and goes on.
 
 ## Turning it on
 

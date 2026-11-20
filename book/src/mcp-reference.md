@@ -8317,7 +8317,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `advise_land_gate`
 
-**Advise land gate.** Ask a decision model (TypeSafe's Jev) for advice on a task handed to review. Maidan sends the task's title and description, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment is never green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a TypeSafe key unless the instance has one. Requires thread:transition.
+**Advise land gate.** Ask a decision model (TypeSafe's Jev) for advice on a task handed to review. Maidan sends the task's title and description, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment never counts toward green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a TypeSafe key unless the instance has one. Requires thread:transition.
 
 **Capability:** `thread:transition`
 

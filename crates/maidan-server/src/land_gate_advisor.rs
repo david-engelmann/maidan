@@ -195,6 +195,14 @@ const QUESTIONS: [Question; 10] = [
     },
 ];
 
+/// What the tests judgment reads as when no passing tests are reported and
+/// the rules do not ask for any (the task asks for no code change). "Reports
+/// no passing tests" beside a clear mark reads as bad news that was let
+/// through; these say why it is not a concern.
+const NO_TESTS_NOT_CALLED_FOR: &str = "Reports no tests, which this task does not call for";
+const UNCLEAR_TESTS_NOT_CALLED_FOR: &str =
+    "Unclear whether tests passed, which this task does not call for";
+
 #[derive(Debug, Error)]
 pub enum LandGateAdvisorError {
     #[error("invalid advisor configuration: {0}")]
@@ -738,13 +746,14 @@ impl LandGateAdvisor {
             .map(|question| {
                 let probability = probabilities.get(question.id).copied().unwrap_or(0.5);
                 let answer = JudgmentAnswer::of(probability);
+                let concern = reasons.iter().any(|reason| concerns(reason, question.id));
                 LandGateJudgment {
                     id: question.id.into(),
                     label: question.label.into(),
                     probability,
                     answer,
-                    reading: question.reads[answer.index()].into(),
-                    concern: reasons.iter().any(|reason| concerns(reason, question.id)),
+                    reading: reading(question, answer, concern).into(),
+                    concern,
                 }
             })
             .collect();
@@ -849,6 +858,15 @@ pub fn decide(p: &BTreeMap<&'static str, f64>) -> (LandColor, Vec<&'static str>)
         LandColor::Amber
     };
     (land, reasons)
+}
+
+/// A judgment's answer as a statement.
+fn reading(question: &Question, answer: JudgmentAnswer, concern: bool) -> &'static str {
+    match (question.id, answer, concern) {
+        ("tests_passed", JudgmentAnswer::No, false) => NO_TESTS_NOT_CALLED_FOR,
+        ("tests_passed", JudgmentAnswer::Unsettled, false) => UNCLEAR_TESTS_NOT_CALLED_FOR,
+        _ => question.reads[answer.index()],
+    }
 }
 
 /// Whether `reason` rests on the judgment `id`, so a reader sees which
@@ -1123,6 +1141,37 @@ mod tests {
         assert_eq!(
             decide(&with(&[("code_change", 0.04), ("tests_passed", 0.01)])).0,
             LandColor::Green
+        );
+    }
+
+    #[test]
+    fn tests_a_task_does_not_call_for_read_as_no_concern() {
+        let tests = QUESTIONS
+            .iter()
+            .find(|q| q.id == "tests_passed")
+            .expect("the tests question");
+        // Asked for and missing: the plain statement, marked as a concern.
+        assert_eq!(
+            reading(tests, JudgmentAnswer::No, true),
+            "Reports no passing tests"
+        );
+        assert_eq!(
+            reading(tests, JudgmentAnswer::No, false),
+            NO_TESTS_NOT_CALLED_FOR
+        );
+        assert_eq!(
+            reading(tests, JudgmentAnswer::Unsettled, false),
+            UNCLEAR_TESTS_NOT_CALLED_FOR
+        );
+        assert_eq!(
+            reading(tests, JudgmentAnswer::Yes, false),
+            "Reports tests or checks passing"
+        );
+        // No other judgment changes its words with the rules.
+        let done = &QUESTIONS[0];
+        assert_eq!(
+            reading(done, JudgmentAnswer::No, false),
+            "Does not show the task was done"
         );
     }
 

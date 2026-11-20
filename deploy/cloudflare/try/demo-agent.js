@@ -67,7 +67,8 @@ export function readAdvice(answer) {
     rows.push({
       reading: j.reading,
       sure: settled ? `${percent(j.answer === "yes" ? p : 1 - p)} sure` : "unsure",
-      mark: !settled ? "unsure" : j.concern === true ? "concern" : "clear",
+      // Only what kept the advice from "nothing flagged" is marked.
+      mark: j.concern !== true ? "clear" : settled ? "concern" : "unsure",
     });
   }
   const marked = rows.filter((row) => row.mark !== "clear").length;

@@ -58,6 +58,8 @@ test("a judgment reads as a statement with how sure the model is of that stateme
   assert.equal(judgmentLine(tests), "Reports no passing tests, 99% sure");
   assert.equal(sureness(risk), "unsure");
   assert.deepEqual([done, tests, risk].map(rowMark), ["clear", "concern", "unsure"]);
+  // Unsettled, but the rules did not need it: no mark.
+  assert.equal(rowMark({ ...risk, concern: false }), "clear");
   assert.equal(concernCount(advice), 2);
   // A server from before `reading` still reads, from the label and the answer.
   assert.equal(readingOf({ ...tests, reading: undefined }), "Reports passing tests: no");

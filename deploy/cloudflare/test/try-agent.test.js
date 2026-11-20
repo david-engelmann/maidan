@@ -435,7 +435,7 @@ const helloAdvice = (changes = {}) => ({
   reasons: [],
   judgments: [
     judgment("done", "Does what the task asks", 0.93),
-    judgment("tests_passed", "Reports no passing tests", 0.01),
+    judgment("tests_passed", "Reports no tests, which this task does not call for", 0.01),
     judgment("code_change", "The task asks for no code change", 0.04),
     judgment("unresolved_failure", "Reports nothing still failing", 0.02),
     judgment("left_undone", "Reports nothing left undone", 0.02),
@@ -460,7 +460,7 @@ test("advice reads as a title, the model, and each judgment as a statement with 
   assert.equal(advice.rows.length, 10);
   assert.deepEqual(advice.rows[0], { reading: "Does what the task asks", sure: "93% sure", mark: "clear" });
   // 1% yes is a no the model is 99% sure of.
-  assert.deepEqual(advice.rows[1], { reading: "Reports no passing tests", sure: "99% sure", mark: "clear" });
+  assert.deepEqual(advice.rows[1], { reading: "Reports no tests, which this task does not call for", sure: "99% sure", mark: "clear" });
   assert.ok(advice.rows.every((row) => row.mark === "clear"));
 });
 
@@ -553,6 +553,8 @@ test("the page shows the advice with the next step, each judgment a row, and say
 test("a marked row carries the word a reader cannot see in its shape", async () => {
   const answerWith = helloAdvice({ land: "amber", reasons: ["tests_not_reported"] });
   answerWith.judgments[1] = judgment("tests_passed", "Reports no passing tests", 0.01, { concern: true });
+  answerWith.judgments[0] = judgment("done", "Unclear whether it does what the task asks", 0.5, { concern: true });
+  // Unsettled, but the rules did not need it: no mark.
   answerWith.judgments[2] = judgment("code_change", "Unclear whether the task asks for a code change", 0.5);
   const ui = page({ advise_land_gate: () => answer(answerWith) }, [...PAGE_IDS, ...ADVICE_IDS]);
   await ui.app.start();
@@ -560,8 +562,12 @@ test("a marked row carries the word a reader cannot see in its shape", async () 
   const rows = ui.el("advice-rows").children;
   assert.equal(rows[1].dataset.mark, "concern");
   assert.equal(rows[1].children[1].textContent, "Concern: ");
-  assert.equal(rows[2].dataset.mark, "unsure");
-  assert.equal(rows[2].children[1].textContent, "Unsure: ");
+  assert.equal(rows[0].dataset.mark, "unsure");
+  assert.equal(rows[0].children[1].textContent, "Unsure: ");
+  assert.equal(rows[2].dataset.mark, "clear");
+  assert.equal(rows[2].children[1].textContent, "");
+  assert.equal(rows[2].children[3].textContent, "unsure");
+  assert.equal(ui.el("advice-why").textContent, "2 of the 10 judgments kept this from “Nothing flagged”. They are marked below.");
   assert.equal(ui.el("agent-advice").dataset.land, "amber");
 });
 

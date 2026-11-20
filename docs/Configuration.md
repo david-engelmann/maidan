@@ -404,7 +404,7 @@ adds `POST /threads/:id/land-gate/advice` (`thread:transition`), the MCP tool
 title and description, the result without its diff, and the producing agent's
 messages) to TypeSafe's Jev with ten yes/no questions, and turns the ten
 probabilities into green, amber or red by rules in code; an unsettled answer
-is never green. Nothing here writes or arms the gate. A disabled advisor is
+never counts toward green. Nothing here writes or arms the gate. A disabled advisor is
 `404`, a task with no result or a workspace with no key `409`, and a provider
 failure `502` on the advice call only. [Decision models](Decision-Models.md)
 has the questions, the rules and what leaves the deployment.

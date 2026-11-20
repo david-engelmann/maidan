@@ -107,10 +107,15 @@ export function sureness(j: Judgment): string {
   return `${percent(j.answer === "yes" ? j.probability : 1 - j.probability)} sure`;
 }
 
-/** Whether a row is clear, a concern, or one the model could not settle. */
+/**
+ * Whether a row is clear, a concern, or a concern because the model could not
+ * settle it. Only what kept the advice from green is marked: an unsettled
+ * answer the rules did not need (tests on a task that asks for no code change)
+ * is clear.
+ */
 export function rowMark(j: Judgment): "clear" | "concern" | "unsure" {
-  if (j.answer === "unsettled") return "unsure";
-  return j.concern ? "concern" : "clear";
+  if (!j.concern) return "clear";
+  return j.answer === "unsettled" ? "unsure" : "concern";
 }
 
 /** A judgment as one spoken line: "Reports no passing tests, 98% sure". */
@@ -158,12 +163,9 @@ export class AdviceApi {
    */
   async advise(threadId: string, refresh = false): Promise<AdviceState> {
     const c = this.creds();
-    const res = await this.fetchFn(apiPath(c, `/threads/${threadId}/land-gate/advice`), {
-      method: "POST",
-      headers: headers(c, true),
-      credentials: "include",
-      body: JSON.stringify(refresh ? { refresh: true } : {}),
-    });
+    // The path and its method share a line: check:spec reads the method off the path's line.
+    const body = JSON.stringify(refresh ? { refresh: true } : {});
+    const res = await this.fetchFn(apiPath(c, `/threads/${threadId}/land-gate/advice`), { method: "POST", headers: headers(c, true), credentials: "include", body });
     if (res.status === 404) return { kind: "off" };
     if (res.status === 409) {
       const detail = await res.json().then((b: { detail?: unknown }) => (typeof b.detail === "string" ? b.detail : ""), () => "");
@@ -176,10 +178,8 @@ export class AdviceApi {
   /** Store this workspace's own key. The server asks the provider to accept it first. */
   async setKey(workspaceId: string, apiKey: string): Promise<AdvisorStatus> {
     const c = this.creds();
-    const res = await this.fetchFn(
-      apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`),
-      writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body: JSON.stringify({ api_key: apiKey }) }),
-    );
+    const body = JSON.stringify({ api_key: apiKey });
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body }));
     if (!res.ok) return failure(res, this.mode(), AdviceError, (status, detail) => (status === 400 && detail ? detail : null));
     return (await res.json()) as AdvisorStatus;
   }
@@ -187,10 +187,7 @@ export class AdviceApi {
   /** Forget this workspace's key. */
   async clearKey(workspaceId: string): Promise<AdvisorStatus> {
     const c = this.creds();
-    const res = await this.fetchFn(
-      apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`),
-      writeInit({ method: "DELETE", headers: headers(c), credentials: "include" }),
-    );
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "DELETE", headers: headers(c), credentials: "include" }));
     if (!res.ok) return failure(res, this.mode(), AdviceError);
     return (await res.json()) as AdvisorStatus;
   }
