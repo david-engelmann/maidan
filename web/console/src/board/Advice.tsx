@@ -1,11 +1,17 @@
 // Advice on a task that needs review: what a decision model reads in the
 // hand-off, as ten judgments, and the green, amber or red the server's rules
 // draw from them. It informs the reviewer; the sheet's buttons decide.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, modelLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
 import { useSession } from "../hooks/useSession.ts";
 
-export function Advice({ tid }: { tid: string }) {
+/**
+ * `stamp` is the task's last change. When it moves while the sheet is open
+ * (the agent posted again, or set a new result), the advice is asked for
+ * again: the server answers from what it holds when the hand-off is the same,
+ * and asks the model when it is not.
+ */
+export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
   const { store } = useSession();
   const api = useMemo(
     () => new AdviceApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),
@@ -14,21 +20,27 @@ export function Advice({ tid }: { tid: string }) {
   // Bumped by Ask again, which asks the model afresh.
   const [attempt, setAttempt] = useState(0);
   // The answer, with the question it answers, so a new task or a new ask
-  // reads as loading until its own answer arrives.
-  const asked = `${tid}:${attempt}`;
-  const [got, setGot] = useState<{ asked: string; state: AdviceState } | null>(null);
-  const state: AdviceState = got?.asked === asked ? got.state : { kind: "loading" };
+  // reads as loading until its own answer arrives. A task that only changed
+  // keeps showing the answer it had until the new one lands.
+  const asked = `${tid}:${attempt}:${stamp}`;
+  const [got, setGot] = useState<{ asked: string; of: string; state: AdviceState } | null>(null);
+  const of = `${tid}:${attempt}`;
+  const state: AdviceState = got && (got.asked === asked || got.of === of) ? got.state : { kind: "loading" };
+  // The attempt the model was last asked for: only Ask again asks afresh.
+  const askedAttempt = useRef(0);
 
   useEffect(() => {
     let live = true;
-    api.advise(tid, attempt > 0).then(
-      (next) => live && setGot({ asked, state: next }),
-      (e: unknown) => live && setGot({ asked, state: { kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." } }),
+    const afresh = attempt !== askedAttempt.current;
+    askedAttempt.current = attempt;
+    api.advise(tid, afresh).then(
+      (next) => live && setGot({ asked, of, state: next }),
+      (e: unknown) => live && setGot({ asked, of, state: { kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." } }),
     );
     return () => {
       live = false;
     };
-  }, [api, tid, attempt, asked]);
+  }, [api, tid, attempt, asked, of]);
 
   // Nothing to show: advice is off here, or the task has no result to read.
   if (state.kind === "off" || state.kind === "none") return null;
@@ -37,7 +49,7 @@ export function Advice({ tid }: { tid: string }) {
     return (
       <section className="advice advice-quiet" aria-label="Advice">
         <p className="advice-hint">
-          A decision model can read each hand-off for you. <a className="msg-link" href="#/tools">Add your TypeSafe key under Tools, Workspace.</a>
+          A decision model can read each hand-off for you. <a className="msg-link" href="#/tools/workspace">Add your TypeSafe key under Tools, Workspace.</a>
         </p>
       </section>
     );

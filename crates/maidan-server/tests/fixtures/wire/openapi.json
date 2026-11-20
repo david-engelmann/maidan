@@ -13801,7 +13801,7 @@
         "description": "How a client or a person can sign in, so a first-run screen offers only\nthe ways that work on this server.",
         "properties": {
           "bearer": {
-            "description": "`Authorization: *** is always accepted.",
+            "description": "`Authorization: Bearer <token>` is always accepted.",
             "type": "boolean"
           },
           "oidc": {

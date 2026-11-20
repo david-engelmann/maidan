@@ -25,7 +25,8 @@ pub(super) async fn list_secrets(
     auth: &AuthContext,
     _args: &Value,
 ) -> Result<Value, McpError> {
-    let secrets = store.list_secrets(auth.workspace_id()).await?;
+    let mut secrets = store.list_secrets(auth.workspace_id()).await?;
+    secrets.retain(|secret| !maidan_types::is_reserved_secret_name(&secret.name));
     Ok(content_json(&secrets))
 }
 
@@ -43,6 +44,10 @@ pub(super) async fn resolve_secret(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ResolveArgs = crate::tools::parse_args(args)?;
+    // A secret the server keeps for itself is not here to be read.
+    if maidan_types::is_reserved_secret_name(&a.name) {
+        return Err(McpError::NotFound);
+    }
     let Some(key) = server.encryption_key() else {
         return Err(McpError::Internal(
             "secret storage requires an encryption key configured on the server".into(),
@@ -230,6 +235,9 @@ pub(super) async fn delete_secret(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ResolveArgs = crate::tools::parse_args(args)?;
+    if maidan_types::is_reserved_secret_name(&a.name) {
+        return Err(McpError::NotFound);
+    }
     let deleted = store
         .delete_secret_audited(
             auth.workspace_id(),

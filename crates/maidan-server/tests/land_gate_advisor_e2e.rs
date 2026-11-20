@@ -113,6 +113,7 @@ impl World {
 
 /// A server with the advisor on (`Some(key)`: with or without a key of its
 /// own) or off (`None`).
+#[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
 async fn spawn(advisor: Option<Option<&str>>) -> World {
     let provider = Arc::new(Provider::default());
     let provider_app = Router::new()
@@ -596,6 +597,104 @@ async fn a_workspace_asks_with_its_own_key_and_another_cannot_set_it() {
         .await
         .unwrap();
     assert_eq!(refused.status(), StatusCode::CONFLICT, "the key is gone");
+}
+
+#[tokio::test]
+async fn the_workspaces_key_is_out_of_reach_of_the_generic_secret_routes() {
+    let world = spawn(Some(None)).await;
+    let (_thread, tenant) = handed_off(&world, "reserved").await;
+    let client = tenant.client();
+    let ws = tenant.workspace_id.0;
+    let advisor = world.url(&format!("/workspaces/{ws}/land-gate/advisor"));
+    let set = client
+        .put(&advisor)
+        .json(&json!({ "api_key": WORKSPACE_KEY }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), StatusCode::OK);
+
+    // The name the key is stored under is one the server keeps for itself.
+    let name = "maidan:typesafe_api_key";
+    let listed = client
+        .get(world.url(&format!("/workspaces/{ws}/secrets")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::OK);
+    let listed = listed.text().await.unwrap();
+    assert!(!listed.contains("typesafe"), "not listed: {listed}");
+
+    let resolved = client
+        .post(world.url(&format!("/workspaces/{ws}/secrets/{name}/resolve")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resolved.status(), StatusCode::NOT_FOUND);
+    assert!(!resolved.text().await.unwrap().contains(WORKSPACE_KEY));
+
+    let deleted = client
+        .delete(world.url(&format!("/workspaces/{ws}/secrets/{name}")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NOT_FOUND);
+
+    // A value the provider never accepted cannot be written over it.
+    let overwritten = client
+        .post(world.url(&format!("/workspaces/{ws}/secrets")))
+        .json(&json!({ "name": name, "value": "ts_wrong" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(overwritten.status(), StatusCode::BAD_REQUEST);
+
+    // The MCP tools answer the same way.
+    for (tool, arguments) in [
+        ("resolve_secret", json!({ "name": name })),
+        ("delete_secret", json!({ "name": name })),
+        (
+            "create_secret",
+            json!({ "name": name, "value": "ts_wrong" }),
+        ),
+        ("list_secrets", json!({})),
+    ] {
+        let answer = client
+            .post(world.url("/mcp"))
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": { "name": tool, "arguments": arguments },
+            }))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(!answer.contains(WORKSPACE_KEY), "{tool}: {answer}");
+        if tool == "list_secrets" {
+            assert!(!answer.contains("typesafe"), "{tool}: {answer}");
+        } else {
+            let answer: Value = serde_json::from_str(&answer).unwrap();
+            assert!(
+                answer.get("error").is_some() || answer["result"]["isError"] == true,
+                "{tool} must refuse: {answer}"
+            );
+        }
+    }
+
+    // The key is still there, still the workspace's, and still the one used.
+    let status: Value = client
+        .get(&advisor)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["key_source"], "workspace");
 }
 
 #[tokio::test]

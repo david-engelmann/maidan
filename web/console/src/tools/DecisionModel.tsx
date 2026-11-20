@@ -25,8 +25,24 @@ export function DecisionModel({ ws }: { ws: string }) {
   const [busy, setBusy] = useState<"set" | "clear" | null>(null);
   const [confirming, setConfirming] = useState(false);
 
+  const retry = (
+    <button type="button" className="link-btn" onClick={() => void status.reload()}>Try again</button>
+  );
+  if (status.value === null) {
+    // Still reading. A read that failed says so: a hidden panel would leave
+    // nothing to retry.
+    if (status.status !== "error") return null;
+    return (
+      <section className="card tool-panel">
+        <div className="panel-head">
+          <h2>Decision model</h2>
+        </div>
+        <p className="small" role="alert">Could not read how advice is set up here: {status.error} {retry}</p>
+      </section>
+    );
+  }
   // A server that does not offer advice has nothing to set up.
-  if (!status.value?.enabled) return null;
+  if (!status.value.enabled) return null;
   const current = status.value;
 
   const run = async (kind: "set" | "clear", work: () => Promise<unknown>, done: string, fallback: string) => {
@@ -53,6 +69,7 @@ export function DecisionModel({ ws }: { ws: string }) {
         {current.model?.startsWith("jev") ? "TypeSafe’s Jev" : "A decision model"} reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice. It approves and blocks nothing: reviewers still decide.
       </p>
       <p className="small">{advisorLine(current)} Only this workspace’s admin can set or remove the key.</p>
+      {status.error ? <p className="small" role="alert">This may be out of date. The last read failed: {status.error} {retry}</p> : null}
       <ul className="muted small advisor-facts">
         <li><b>When.</b> Advice is asked for when someone opens a task that is in review, or an agent asks for it. Until then nothing is sent.</li>
         <li><b>What is sent.</b> To {current.host ?? "the provider"}: the task’s title, description and acceptance, its result, and the messages of the agent that did the work. What TypeSafe keeps is under its own terms.</li>

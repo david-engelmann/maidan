@@ -269,7 +269,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
-      {th.state === "in_review" && <Advice key={`advice-${rev}`} tid={th.id} />}
+      {th.state === "in_review" && <Advice key={`advice-${rev}`} tid={th.id} stamp={th.updated_at ?? ""} />}
       <SheetContext key={rev} tid={th.id} />
       <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
 

@@ -171,6 +171,7 @@ pub fn bearer_client(token: &str) -> reqwest::Client {
 /// A land-gate advisor whose provider is a stand-in on a loopback address:
 /// it answers every yes/no question it is asked as all clear (the work is
 /// done and tested, and no warning sign shows) and accepts any key.
+#[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
 pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor::LandGateAdvisor> {
     use axum::{routing::post, Json, Router};
     use serde_json::{json, Value};

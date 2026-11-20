@@ -15,8 +15,11 @@ export const JEV_KEY_VAR = "TYPESAFE_API_KEY";
 // A rate limit binding (wrangler.demo.jsonc) on forwarded questions, so the
 // demo's visitors together cannot run past a small, known bill.
 export const JEV_LIMIT_BINDING = "JEV_LIMIT";
-// A hand-off is a few kilobytes. The demo's own body cap is the same.
-export const JEV_MAX_BODY_BYTES = 64 * 1024;
+// The largest question the server sends: its own cap on a request to the
+// provider (MAX_REQUEST_BYTES in crates/maidan-server/src/land_gate_advisor.rs,
+// which test/demo-jev.test.js holds this to). With the rate limit it bounds
+// what a day of the demo can cost.
+export const JEV_MAX_BODY_BYTES = 16 * 1024;
 
 // What the container's key reads. It is not one: the Worker swaps in its own
 // on the way out.
@@ -45,10 +48,36 @@ function allowed(method, pathname) {
   return (method === "POST" && pathname === "/v1/systemone") || (method === "GET" && pathname === "/v1/models");
 }
 
+// The request's body, or `null` once it runs past `max` bytes: the read stops
+// there and the rest is never buffered, whatever Content-Length said.
+async function readCapped(request, max) {
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  let next = await reader.read();
+  while (!next.done) {
+    total += next.value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(next.value);
+    next = await reader.read();
+  }
+  const body = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return body;
+}
+
 // Forward one of the server's calls to TypeSafe with the Worker's key. Any
-// other path or method is refused here, a body over the cap is refused before
-// it is read past the cap, and a question over the rate limit is a 429 the
-// server reports as "the model did not answer".
+// other path or method is refused here, a body over the cap is refused
+// without being read past it, and a question over the rate limit is a 429
+// the server reports as "the model did not answer".
 export async function forwardJev(request, env, fetchFn = fetch) {
   const key = env?.[JEV_KEY_VAR];
   if (!jevEnabled(env)) return refuse(503, "advice is not configured for the demo");
@@ -61,8 +90,8 @@ export async function forwardJev(request, env, fetchFn = fetch) {
   if (request.method === "POST") {
     const declared = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(declared) && declared > JEV_MAX_BODY_BYTES) return refuse(413, "the hand-off is too large for the demo");
-    const body = await request.arrayBuffer();
-    if (body.byteLength > JEV_MAX_BODY_BYTES) return refuse(413, "the hand-off is too large for the demo");
+    const body = await readCapped(request, JEV_MAX_BODY_BYTES);
+    if (body === null) return refuse(413, "the hand-off is too large for the demo");
     const limiter = env?.[JEV_LIMIT_BINDING];
     if (limiter) {
       const { success } = await limiter.limit({ key: "demo" });

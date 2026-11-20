@@ -920,22 +920,6 @@ mod tests {
             "self-hosted bind, custody, or sweep tuning",
         ),
         (
-            "MAIDAN_JEV_BASE_URL",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_JEV_LAND_GATE_ENABLED",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_JEV_MODEL",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
-            "MAIDAN_JEV_TIMEOUT_MS",
-            "self-hosted bind, custody, or sweep tuning",
-        ),
-        (
             "MAIDAN_KMS_INSTANCE",
             "self-hosted bind, custody, or sweep tuning",
         ),

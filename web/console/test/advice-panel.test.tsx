@@ -1,6 +1,7 @@
 import { renderSignedIn, withSession, type Route } from "./console-harness.tsx";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, expect, test } from "vitest";
 import { Advice } from "../src/board/Advice.tsx";
 
@@ -103,10 +104,41 @@ test("with advice off, or no result to read, the sheet shows nothing", async () 
 test("a workspace with no key is told where to add one, and a failure offers another try", async () => {
   const noKey = withSession([advice(() => ({ detail: "this workspace has no TypeSafe key: store one" }), 409)]);
   await renderSignedIn(<Advice tid={TASK} />, noKey.fn);
-  await screen.findByRole("link", { name: "Add your TypeSafe key under Tools, Workspace." });
+  const link = await screen.findByRole("link", { name: "Add your TypeSafe key under Tools, Workspace." });
+  // The key panel is on the Workspace tab, not the tab Tools opens on.
+  expect(link.getAttribute("href")).toBe("#/tools/workspace");
   cleanup();
   const down = withSession([advice(() => ({ detail: "land-gate advisor unavailable" }), 502)]);
   await renderSignedIn(<Advice tid={TASK} />, down.fn);
   await screen.findByText(/The task is unchanged/);
   screen.getByRole("button", { name: "Ask again" });
+});
+
+function Changing() {
+  const [stamp, setStamp] = useState("2026-11-20T10:00:00Z");
+  return (
+    <>
+      <button type="button" onClick={() => setStamp("2026-11-20T10:05:00Z")}>The task changed</button>
+      <Advice tid={TASK} stamp={stamp} />
+    </>
+  );
+}
+
+test("a task that changes while its sheet is open is asked about again, without forcing the model", async () => {
+  const user = userEvent.setup();
+  let asked = 0;
+  const bodies: string[] = [];
+  const router = withSession([advice(() => (++asked === 1 ? amber : green))]);
+  const fn: typeof router.fn = (url, init) => {
+    if (String(url).endsWith("/land-gate/advice")) bodies.push(String(init?.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Changing />, fn);
+  await screen.findByText("Worth a look");
+  await user.click(screen.getByRole("button", { name: "The task changed" }));
+  // The answer for the earlier hand-off gives way to the one for this one.
+  await screen.findByText("Nothing flagged");
+  expect(screen.queryByText("Worth a look")).toBeNull();
+  // Not a refresh: the server answers from what it holds when the hand-off is the same.
+  expect(bodies).toEqual(["{}", "{}"]);
 });

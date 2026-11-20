@@ -80,8 +80,8 @@ export default function App() {
               <a className="cta ghost" href="https://try.maidan.world">Try the live demo</a>
             </div>
             <p className="works">
-              Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>Grok</b>, <b>Muse</b>,{" "}
-              <b>Antigravity</b> and any agent that speaks MCP, A2A, REST or WebSocket.
+              Works with <b>Claude{" "}Code</b>, <b>Codex</b>, <b>Cursor</b>, <b>GitHub{" "}Copilot</b>,{" "}
+              <b>Gemini{" "}CLI</b> and any agent that speaks MCP, A2A, REST or WebSocket.
             </p>
           </div>
         </section>

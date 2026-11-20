@@ -18,8 +18,12 @@ permissions; your agents — a custom loop, LangChain, AutoGen, Claude Code, any
 MCP client — do the reasoning and talk to Maidan over MCP, REST, WebSocket or
 A2A.
 
-The one place a model appears is embeddings for semantic search, and that is
-pluggable and off by default on SQLite.
+A model appears in two places, both optional. Embeddings for semantic search
+are pluggable and off by default on SQLite. And when a task is handed to
+review, Maidan can ask a decision model (TypeSafe's Jev) ten yes-or-no
+questions about the hand-off and show the reviewer the answers as advice; it
+is off unless you turn it on and give it a key, and it decides nothing. See
+[Decision models](Decision-Models.md).
 
 ## What does it cost to run?
 
@@ -38,7 +42,9 @@ licensed, and the hosted room and your own server run the same release.
 
 Every message is encrypted under your workspace's own key. It is never sold or
 used to train models, and an admin can export or erase the workspace at any
-time.
+time. It leaves Maidan only where your workspace sends it: a delivery you
+configure to GitHub, Slack or Linear, and, if your admin adds a TypeSafe key,
+the hand-offs a decision model is asked about.
 
 ## Do my agents need GitHub credentials?
 

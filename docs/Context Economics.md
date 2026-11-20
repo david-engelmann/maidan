@@ -3,8 +3,11 @@
 The goal: a team of agents coordinated through Maidan pays for what changed,
 not for what the room already knows, and can say what each finished task cost.
 
-Maidan makes no model calls and holds no provider keys. It decides three
-things an agent's bill depends on: the bytes it hands an agent, when work is
+Maidan calls no language model for your agents and holds none of their
+provider keys. (The one model it can call itself is a decision model asked
+for advice on a hand-off, off unless you turn it on: see
+[Decision models](Decision-Models.md).) It decides three things an agent's
+bill depends on: the bytes it hands an agent, when work is
 released, and what gets recorded about the cost. This program makes each of
 them work with the providers' caches and discounts, and measures the result
 per completed task.

@@ -13,7 +13,7 @@
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{CHANNEL_ADMIN, SECRET_ADMIN, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ},
+    capability::{CHANNEL_ADMIN, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ},
     AuthContext,
 };
 use maidan_types::*;
@@ -73,12 +73,13 @@ fn advisor_error(error: LandGateAdvisorError, what: &str) -> ApiError {
     }
 }
 
-/// Who may set or forget a workspace's advisor key. A bearer needs
-/// `secret:admin`, as for any workspace secret. In the console it is the
-/// workspace's admin, signed in as a person: someone who holds a `token:admin`
-/// token or may mint the first one, so the session lends them nothing a token
-/// of theirs could not do. A session made from a token is refused, as on the
-/// console's other admin panels: that token's holder uses the bearer route.
+/// Who may set or forget a workspace's advisor key: the workspace's admin.
+/// A bearer needs `token:admin`, as for the delivery allowlist: the key is
+/// the workspace's choice of where its hand-offs go. In the console it is a
+/// person signed in who holds `token:admin` on a live token, or may mint the
+/// first one, so the session lends them nothing a token of theirs could not
+/// do. A session made from a token is refused, as on the console's other
+/// admin panels: that token's holder uses the bearer route.
 async fn advisor_admin(
     state: &AppState,
     auth: &AuthContext,
@@ -86,7 +87,7 @@ async fn advisor_admin(
     workspace_id: WorkspaceId,
 ) -> ApiResult<()> {
     let Some(session) = session else {
-        cap(auth, SECRET_ADMIN)?;
+        cap(auth, TOKEN_ADMIN)?;
         return ensure_workspace(auth, workspace_id);
     };
     ensure_workspace(auth, workspace_id)?;
@@ -131,9 +132,10 @@ pub async fn get_land_gate_advisor(
 }
 
 /// `PUT /workspaces/:id/land-gate/advisor`: store this workspace's own
-/// TypeSafe key, after the provider accepts it. The key is kept as the
-/// workspace secret `typesafe_api_key`, encrypted at rest, and is sent only
-/// to the provider's host.
+/// TypeSafe key, after the provider accepts it. The key is kept as a
+/// workspace secret under a name the server keeps for itself, encrypted at
+/// rest, out of reach of the generic secret routes, and is sent only to the
+/// provider's host.
 pub async fn set_land_gate_advisor(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -184,11 +186,8 @@ pub async fn set_land_gate_advisor(
             }),
         )
         .await?;
-    advisor
-        .status(state.store.as_ref(), workspace_id)
-        .await
-        .map(Json)
-        .map_err(|error| advisor_error(error, "advisor status"))
+    // What was just committed, not a second read that could fail after it.
+    Ok(Json(advisor.status_with_own_key()))
 }
 
 /// `DELETE /workspaces/:id/land-gate/advisor`: forget this workspace's key.
@@ -220,11 +219,7 @@ pub async fn clear_land_gate_advisor(
             },
         )
         .await?;
-    advisor
-        .status(state.store.as_ref(), workspace_id)
-        .await
-        .map(Json)
-        .map_err(|error| advisor_error(error, "advisor status"))
+    Ok(Json(advisor.status_without_own_key()))
 }
 
 pub async fn set_land_gate(

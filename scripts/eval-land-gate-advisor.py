@@ -104,6 +104,9 @@ def main() -> int:
             tool("post_message", {"thread_id": thread, "body": body})
         tool("set_thread_result", {"thread_id": thread, "result": case["result"], "claim_lease_id": claimed["claim_lease_id"]})
         advice = tool("advise_land_gate", {"thread_id": thread, "refresh": True})
+        # Give the task back: a claim held for every case would run into a
+        # workspace's limit on work in progress.
+        tool("release_claim", {"thread_id": thread, "claim_lease_id": claimed["claim_lease_id"]})
         tokens += advice["usage"]["input_tokens"]
         if sink:
             sink.write(json.dumps({"id": case["id"], "advice": advice}) + "\n")

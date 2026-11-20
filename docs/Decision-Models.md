@@ -28,7 +28,8 @@ shape and a caller cannot choose what leaves:
 {
   "task": {
     "title": "Rate-limit the public API",
-    "description": "60 requests a minute per token, then 429."
+    "description": "60 requests a minute per token, then 429.",
+    "acceptance": "cargo test passes; the 61st request in a minute gets 429."
   },
   "result": {
     "status": "changed",
@@ -43,18 +44,26 @@ shape and a caller cannot choose what leaves:
   what the task asks for are read against all three.
 - `result` is the result the agent recorded, without `diff`, `deliver_to` and
   `base_sha` (the bytes the change flow needs, not a description of the work),
-  and with any string over 6,000 characters cut.
+  and with any string over 4,000 characters cut.
 - `agent_messages` are the last ten messages on the thread from the member
-  that produced the result, each cut at 2,000 characters. Nobody else's
-  messages are sent, and the field is left out when there are none.
+  that produced the result, each cut at 1,500 characters, wherever they are
+  in the thread. Nobody else's messages are sent, and the field is left out
+  when there are none.
+
+The whole request stays under 16 KiB, the questions included, so what a call
+costs has a ceiling and a relay in front of the provider can hold the same
+line. When a hand-off is larger, the agent's oldest messages are left out
+first, then long strings in the result are cut shorter (2,000 characters,
+then 1,000, 500, 250). A hand-off that is still too large after the last cut
+is not sent: the call answers `409` and there is no advice.
 
 The task's opening message is not sent, and that was measured. An opening
 message tells the agent how to work (claim the task, say what you ran, send
-it to review), and a hand-off cannot show those steps. With it in the packet,
-"does what the task asks" went unsettled and the advice left its label on
-four of sixteen labelled hand-offs; without it, on none. So say what a task
-asks for in its description and how to check it in `acceptance`: MCP
-`create_thread` takes both.
+it to review), and a hand-off cannot show those steps. With it in the packet
+the model was no longer sure the hand-off did what the task asks, and on four
+of sixteen labelled hand-offs the advice came out different from its label;
+without it, on none. So say what a task asks for in its description and how
+to check it in `acceptance`: MCP `create_thread` takes both.
 
 That is everything that leaves the deployment, and it goes only to the host in
 `MAIDAN_JEV_BASE_URL`.
@@ -63,7 +72,10 @@ That is everything that leaves the deployment, and it goes only to the host in
 
 Each is one question with a yes and a no described, sent together in one
 request. The model answers each with the probability of yes. At 0.7 or above a
-judgment reads as yes, at 0.3 or below as no, and in between it is unsettled.
+judgment reads as yes, at 0.3 or below as no, and in between it is unsettled:
+the hand-off does not say enough for the model to tell. The two thresholds
+are TypeSafe's suggested starting points, the same for every question, and
+were not fitted to the labelled hand-offs below.
 
 | Judgment | The question |
 |---|---|
@@ -78,6 +90,16 @@ judgment reads as yes, at 0.3 or below as no, and in between it is unsettled.
 | `deletes_data` | Does the result report that the agent deleted stored data, or added something that deletes it? |
 | `flags_risk` | Does the agent warn about a risk or a consequence of this work that someone should deal with? |
 
+`done` is a judgment about what the hand-off says, not about whether the
+work is good: the model has the agent's account and nothing else.
+
+Two questions name two things each: `changes_access` asks about sign-in or
+permissions, and `deletes_data` about deleting data or adding something that
+deletes it. A question is usually better asked as two when it holds an "or",
+so both were tried split in two. On all 36 labelled hand-offs the pair read
+the same as the one question, and the rules treat both halves alike, so each
+stays one row for the reviewer.
+
 ## The decision, in code
 
 | Advice | When |
@@ -88,11 +110,23 @@ judgment reads as yes, at 0.3 or below as no, and in between it is unsettled.
 
 An unsettled judgment never counts toward green: a doubt about the work or
 about any warning sign is amber, a task that may ask for a code change needs
-its tests, and tests that may have passed are read as not reported. A change to sign-in or permissions, a
-deletion of stored data and a warning from the agent are amber by policy, not
-because the model disapproves: those are the hand-offs a person should look
-at. The answer lists everything that kept it from green (`reasons`), with
+its tests, and tests that may have passed are read as not reported. The only
+unsettled answers a green can carry are the two that could not change it:
+whether the task asks for code when its tests passed anyway, and whether tests
+passed on a task that asks for no code.
+
+A change to sign-in or permissions, a deletion of stored data and a warning
+from the agent are amber by policy, not because the model disapproves: those
+are the hand-offs a person should look at. The answer lists everything that kept it from green (`reasons`), with
 what made it red first, and marks the judgments behind each reason.
+
+| Reason | It means |
+|---|---|
+| `unresolved_failure` | Something is reported as still failing, or the model could not rule it out |
+| `different_work` | `done` is no and `beyond_task` is yes: the hand-off is about something other than the task |
+| `not_shown_done` | `done` is not a yes |
+| `left_undone`, `asks_person`, `beyond_task`, `changes_access`, `deletes_data`, `flags_risk` | That judgment is not a settled no |
+| `tests_not_reported` | The task asks, or may ask, for a code change, and `tests_passed` is not a yes |
 
 ## Asking
 
@@ -117,7 +151,7 @@ thread the caller can read.
   "thresholds": { "yes_min": 0.7, "no_max": 0.3 },
   "key_source": "workspace",
   "cached": false,
-  "usage": { "input_tokens": 512, "output_tokens": 10 },
+  "usage": { "input_tokens": 1118, "output_tokens": 10 },
   "latency_ms": 148
 }
 ```
@@ -126,18 +160,19 @@ Each judgment carries its `reading`: the answer as a statement ("Reports no
 passing tests"), so a reader does not have to work out whether a yes is good.
 One reading depends on the rules: when a task asks for no code change, missing
 tests are no concern, and the row says so ("Reports no tests, which this task
-does not call for").
-The model is as sure of that statement as the probability of the answer it
-reads as: 1% yes is a no it is 99% sure of.
+does not call for"). The console shows how sure the model is of each
+statement, which is its probability for the answer shown: a 1% chance of yes
+is shown as the no, 99% sure.
 
 An answer is held for fifteen minutes under the exact packet it was given
-for, so a sheet opened twice asks once; a changed result or a new message
-from the agent asks again, and `{"refresh": true}` always does.
+for and the key that paid for it, so a sheet opened twice asks once; a
+changed result or a new message from the agent asks again, and
+`{"refresh": true}` always does.
 
 | Status | Meaning |
 |---|---|
 | 404 | The instance does not offer advice |
-| 409 | The task has no result yet, or the workspace has no key to ask with |
+| 409 | The task has no result yet, the workspace has no key to ask with, or the hand-off is too large to send |
 | 502 | The provider failed or timed out. Only the advice call fails; the gate is unchanged |
 
 In the console, a task under **Needs review** shows the advice on its sheet:
@@ -152,8 +187,8 @@ A call uses the workspace's own key when it stored one, and the instance's
 key otherwise. With neither, advice is refused.
 
 ```sh
-# Store this workspace's key (secret:admin). The provider is asked to accept
-# it first; a key it refuses is not stored.
+# Store this workspace's key (token:admin: the workspace's admin). The
+# provider is asked to accept it first; a key it refuses is not stored.
 curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"api_key": "…"}'
@@ -163,9 +198,14 @@ curl "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN
 curl -X DELETE "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
 ```
 
-The key is kept as the workspace secret `typesafe_api_key`, encrypted at rest
-(the instance needs `FEDERATION_ENCRYPTION_KEY`), and no route returns it. In
-the console it is under **Tools**, **Workspace**.
+The key is kept as a workspace secret, encrypted at rest (the instance needs
+`FEDERATION_ENCRYPTION_KEY`), under a name the server keeps for itself
+(`maidan:typesafe_api_key`). A colon is outside the names a member may give a
+secret, so the generic secret routes and tools cannot create, list, resolve,
+substitute or delete it: the only way in is this route, after the provider
+accepted the key, and the only place it goes is the provider. In the console
+it is under **Tools**, **Workspace**, for a person signed in who holds
+`token:admin` or may mint the workspace's first admin token.
 
 On maidan.world a workspace brings its own key. try.maidan.world asks with the
 demo's: when the page's scripted agent has sent **Say hello** to review, the
@@ -173,7 +213,9 @@ page asks for advice on that hand-off with the sandbox's own token
 (`advise_land_gate`) and shows the answer, the ten judgments included, before
 it sends the visitor to the console to approve. The task's sheet there shows
 the same answer, held from that call. When the demo has no key, or the model
-does not answer within four seconds, the page shows nothing and goes on. Where the
+does not answer within four seconds (the server gives the model a second and
+a half; the page allows for the round trip), the page shows nothing and goes
+on. Where the
 demo has a key, the page says before a sandbox exists that tasks sent to
 review there are read by Jev (`advice` in `/try-config.json`).
 
@@ -185,7 +227,7 @@ review there are read by Jev (`advice` in `/try-config.json`).
 | `TYPESAFE_API_KEY` | none | The instance's own key, for workspaces that stored none. Leave it unset to have every workspace bring its own |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request. A timeout fails only the advice call, with `502` |
-| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
+| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
 
 ## Measuring it
 
@@ -205,8 +247,10 @@ well has not been shown to read yours.
 
 - It does not read the diff. It reads what the agent says it did. A result
   that misdescribes its change is judged on the description.
-- It is not a security control. Text in a result can try to steer the model;
-  the rules never let an unsettled or steered answer reach green on its own
-  say-so, but a careful reviewer is still the control.
+- It is not a security control. The agent writes the text the model reads,
+  and text that steers the model into settled, favourable answers gets green
+  advice: the rules read probabilities and cannot tell a steered answer from
+  an honest one. The reviewer is the control, and the advice only says where
+  to look first.
 - It does not decide. Reviews, approval gates and the land gate work the same
   with it on, off or failing.

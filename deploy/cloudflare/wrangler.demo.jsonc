@@ -42,7 +42,7 @@
   // container, and the container reaches nothing else. JEV_LIMIT bounds what
   // the demo's visitors can spend together: 30 questions a minute, each a few
   // hundred input tokens.
-  "ratelimits": [{ "name": "JEV_LIMIT", "namespace_id": "4690", "simple": { "limit": 30, "period": 60 } }],
+  "ratelimits": [{ "name": "JEV_LIMIT", "namespace_id": "4690", "simple": { "limit": 10, "period": 60 } }],
   // Keep in step with DEMO_RESET_CRON in src/demo-config.js.
   "triggers": { "crons": ["0 4 * * *"] },
   "observability": { "enabled": true }

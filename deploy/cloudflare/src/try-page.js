@@ -24,6 +24,8 @@ export const TRY_PATHS = new Set([
   "/gathering.js",
   "/geist.woff2",
   "/icon.png",
+  // Asked for by its well-known path by what does not read the page first.
+  "/favicon.ico",
 ]);
 
 // What the page reads to know whether to render the Turnstile widget, and

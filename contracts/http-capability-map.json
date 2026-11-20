@@ -1238,13 +1238,13 @@
   {
     "method": "PUT",
     "path": "/ui/api/workspaces/{wid}/land-gate/advisor",
-    "capability": "secret:admin",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/ui/api/workspaces/{wid}/land-gate/advisor",
-    "capability": "secret:admin",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
@@ -2394,13 +2394,13 @@
   {
     "method": "PUT",
     "path": "/workspaces/{id}/land-gate/advisor",
-    "capability": "secret:admin",
+    "capability": "token:admin",
     "surface": "http"
   },
   {
     "method": "DELETE",
     "path": "/workspaces/{id}/land-gate/advisor",
-    "capability": "secret:admin",
+    "capability": "token:admin",
     "surface": "http"
   },
   {

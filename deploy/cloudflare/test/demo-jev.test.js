@@ -80,6 +80,34 @@ test("a question is forwarded to TypeSafe with the Worker's key in place of the 
   assert.equal(new TextDecoder().decode(up.calls[0].init.body), question);
 });
 
+test("a body is read no further than the cap, whatever its Content-Length says", async () => {
+  const up = upstream();
+  let pulled = 0;
+  let stopped = false;
+  const chunk = new Uint8Array(4 * 1024);
+  // A stream that would never end, and declares no length.
+  const endless = new ReadableStream({
+    pull(controller) {
+      pulled += 1;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      stopped = true;
+    },
+  });
+  const request = new Request(`http://${JEV_INTERNAL_HOST}/v1/systemone`, { method: "POST", body: endless, duplex: "half" });
+  assert.equal(request.headers.get("content-length"), null);
+  const res = await forwardJev(request, { [JEV_KEY_VAR]: KEY }, up.fn);
+  assert.equal(res.status, 413);
+  assert.equal(stopped, true, "the rest of the body is dropped, not read");
+  assert.ok(pulled * chunk.byteLength <= JEV_MAX_BODY_BYTES + 3 * chunk.byteLength, `${pulled} chunks read`);
+  assert.equal(up.calls.length, 0);
+  // A body exactly at the cap goes through, byte for byte.
+  const atCap = "x".repeat(JEV_MAX_BODY_BYTES);
+  assert.equal((await forwardJev(ask({ body: atCap }), { [JEV_KEY_VAR]: KEY }, up.fn)).status, 200);
+  assert.equal(up.calls[0].init.body.byteLength, JEV_MAX_BODY_BYTES);
+});
+
 test("the key check is forwarded too, and nothing else is", async () => {
   const up = upstream();
   const models = await forwardJev(new Request(`http://${JEV_INTERNAL_HOST}/v1/models`), { [JEV_KEY_VAR]: KEY }, up.fn);
@@ -135,9 +163,16 @@ test("the question limit is bound and small enough to bound the bill", () => {
   assert.equal(limit.name, JEV_LIMIT_BINDING);
   assert.match(limit.namespace_id, /^\d+$/);
   assert.ok([10, 60].includes(limit.simple.period));
-  // A day at the limit, at 2,000 input tokens a question and $0.042 a million.
+  // The Worker's cap is the server's own cap on a request to the provider.
+  const server = read("../../../crates/maidan-server/src/land_gate_advisor.rs");
+  const cap = /pub const MAX_REQUEST_BYTES: usize = (\d+) \* 1024;/.exec(server);
+  assert.ok(cap, "the server states its request cap");
+  assert.equal(JEV_MAX_BODY_BYTES, Number(cap[1]) * 1024);
+  // The worst day: every question at the limit, every question the largest
+  // the Worker forwards, and a token for every byte of it (no tokenizer
+  // charges more), at $0.042 a million input tokens.
   const perDay = (limit.simple.limit * 86_400) / limit.simple.period;
-  const dollars = (perDay * 2_000 * 0.042) / 1_000_000;
-  assert.ok(dollars < 5, `a day at the limit would cost about $${dollars.toFixed(2)}`);
+  const dollars = (perDay * JEV_MAX_BODY_BYTES * 0.042) / 1_000_000;
+  assert.ok(dollars < 10, `a day at the limit would cost at most $${dollars.toFixed(2)}`);
   assert.equal(wrangler.vars[JEV_KEY_VAR], undefined, "the key is a secret, never a var");
 });

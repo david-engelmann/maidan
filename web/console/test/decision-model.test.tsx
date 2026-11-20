@@ -1,0 +1,97 @@
+import { renderSignedIn, withSession, type Route } from "./console-harness.tsx";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, test } from "vitest";
+import { DecisionModel } from "../src/tools/DecisionModel.tsx";
+
+afterEach(() => cleanup());
+
+const ADVISOR = /\/workspaces\/ws\/land-gate\/advisor$/;
+const on = (key_source?: "workspace" | "instance") => ({ enabled: true, key_source, provider: "typesafe", model: "jev-latest", host: "api.typesafe.ai" });
+const read = (body: () => unknown, status = 200): Route => ({ method: "GET", match: ADVISOR, body, status });
+
+test("a server that offers no advice shows no panel", async () => {
+  for (const route of [read(() => ({ enabled: false })), read(() => ({}), 404)]) {
+    const router = withSession([route]);
+    const view = await renderSignedIn(<DecisionModel ws="ws" />, router.fn);
+    await waitFor(() => expect(router.calls.some((c) => ADVISOR.test(c.url))).toBe(true));
+    await waitFor(() => expect(view.container.querySelector(".tool-panel")).toBeNull());
+    cleanup();
+  }
+});
+
+test("the panel says what is sent and when, and saving a key turns advice on", async () => {
+  const user = userEvent.setup();
+  let stored = false;
+  const sent: string[] = [];
+  const router = withSession([
+    read(() => on(stored ? "workspace" : undefined)),
+    {
+      method: "PUT",
+      match: ADVISOR,
+      body: () => {
+        stored = true;
+        return on("workspace");
+      },
+    },
+  ]);
+  const fn: typeof router.fn = (url, init) => {
+    if (init?.method === "PUT") sent.push(String(init.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<DecisionModel ws="ws" />, fn);
+  await screen.findByText(/Off for this workspace until it has a key\./);
+  screen.getByText(/Until then nothing is sent\./);
+  screen.getByText(/the task’s title, description and acceptance, its result, and the messages of the agent that did the work/);
+  screen.getByText(/It approves and blocks nothing: reviewers still decide\./);
+  const input = screen.getByLabelText("Your TypeSafe API key") as HTMLInputElement;
+  expect(input.type).toBe("password");
+  const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  await user.type(input, "  ts_live_fixture ");
+  await user.click(save);
+  await screen.findByText(/On, with this workspace’s own key\./);
+  expect(sent).toEqual([JSON.stringify({ api_key: "ts_live_fixture" })]);
+  // The key is gone from the page once it is saved.
+  expect((screen.getByLabelText("Replace the key with another") as HTMLInputElement).value).toBe("");
+});
+
+test("removing the key asks first", async () => {
+  const user = userEvent.setup();
+  let stored = true;
+  const router = withSession([
+    read(() => on(stored ? "workspace" : undefined)),
+    {
+      method: "DELETE",
+      match: ADVISOR,
+      body: () => {
+        stored = false;
+        return on(undefined);
+      },
+    },
+  ]);
+  await renderSignedIn(<DecisionModel ws="ws" />, router.fn);
+  await user.click(await screen.findByRole("button", { name: "Remove the key…" }));
+  expect(router.calls.some((c) => c.method === "DELETE")).toBe(false);
+  await user.click(screen.getByRole("button", { name: "Remove" }));
+  await screen.findByText(/Off for this workspace until it has a key\./);
+  expect(router.calls.filter((c) => c.method === "DELETE").length).toBe(1);
+});
+
+test("a failed read says so and offers another try, where a hidden panel would leave nothing to retry", async () => {
+  const user = userEvent.setup();
+  let fail = true;
+  const router = withSession([read(() => (fail ? { detail: "database unavailable" } : on("instance")), 500)]);
+  // The status flips to 200 once the read is allowed to pass.
+  const fn: typeof router.fn = async (url, init) => {
+    if (!fail && ADVISOR.test(String(url))) return new Response(JSON.stringify(on("instance")), { status: 200, headers: { "content-type": "application/json" } });
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<DecisionModel ws="ws" />, fn);
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toMatch(/Could not read how advice is set up here/);
+  fail = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+  await screen.findByText(/On, with this server’s key\./);
+  expect(screen.queryByRole("alert")).toBeNull();
+});

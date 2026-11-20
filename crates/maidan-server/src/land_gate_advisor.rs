@@ -30,8 +30,12 @@ const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/";
 const DEFAULT_MODEL: &str = "jev-latest";
 const DEFAULT_TIMEOUT_MS: u64 = 1_500;
 
-/// The workspace secret that holds a workspace's own TypeSafe key.
-pub const WORKSPACE_KEY_SECRET: &str = "typesafe_api_key";
+/// The workspace secret that holds a workspace's own TypeSafe key. The name
+/// is one the server keeps for itself (`maidan_types::RESERVED_SECRET_PREFIX`):
+/// no generic secret route or tool creates, lists, resolves, substitutes or
+/// deletes it, so the key is set only after the provider accepted it and is
+/// sent only to the provider.
+pub const WORKSPACE_KEY_SECRET: &str = "maidan:typesafe_api_key";
 
 /// At or above this a judgment reads as yes.
 pub const YES_MIN: f64 = 0.7;
@@ -39,11 +43,24 @@ pub const YES_MIN: f64 = 0.7;
 /// and an unsettled judgment never counts toward green.
 pub const NO_MAX: f64 = 0.3;
 
+/// The largest request the advisor sends, body and all. A relay in front of
+/// the provider (the demo's Worker, `deploy/cloudflare/src/demo-jev.js`) caps
+/// bodies at the same size, and a bounded request is a bounded bill.
+pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
+
 /// How much of the hand-off leaves for the provider.
 const MAX_AGENT_MESSAGES: usize = 10;
-const MAX_MESSAGE_CHARS: usize = 2_000;
-const MAX_RESULT_STRING_CHARS: usize = 6_000;
-const MESSAGE_SCAN: i64 = 200;
+const MAX_MESSAGE_CHARS: usize = 1_500;
+const MAX_TITLE_CHARS: usize = 300;
+const MAX_DESCRIPTION_CHARS: usize = 3_000;
+/// A long string in the result is cut at the first of these that lets the
+/// packet fit [`MAX_REQUEST_BYTES`]; a hand-off that fits at none is too
+/// large to ask about.
+const RESULT_STRING_CUTS: [usize; 5] = [4_000, 2_000, 1_000, 500, 250];
+/// The thread's messages are read a page at a time, to the end, so the
+/// producer's newest are the ones sent however long the thread is.
+const MESSAGE_PAGE: usize = 200;
+const MESSAGE_PAGES: usize = 100;
 /// Result fields that carry bytes for the change flow, not a description of
 /// the work: a diff is long, and the model reads the summary beside it.
 const RESULT_FIELDS_LEFT_OUT: [&str; 3] = ["diff", "deliver_to", "base_sha"];
@@ -294,7 +311,7 @@ pub struct LandGateAdviceThresholds {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdvisorKeySource {
-    /// The workspace's own key, stored as its `typesafe_api_key` secret.
+    /// The workspace's own key, stored encrypted as a secret of its own.
     Workspace,
     /// The key this instance was started with.
     Instance,
@@ -354,6 +371,9 @@ struct Settings {
     /// own key gets advice.
     api_key: Option<String>,
     base_url: String,
+    /// The `.internal` names this instance may send to: the only hosts the
+    /// provider may be reached at over plain HTTP.
+    internal_hosts: Vec<String>,
     model: String,
     timeout: Duration,
 }
@@ -407,6 +427,9 @@ impl Settings {
         Ok(Some(Self {
             api_key,
             base_url: get("MAIDAN_JEV_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.into()),
+            internal_hosts: get(maidan_auth::INTERNAL_EGRESS_HOSTS_ENV)
+                .map(|raw| maidan_auth::parse_internal_egress_hosts(&raw))
+                .unwrap_or_default(),
             model,
             timeout: Duration::from_millis(timeout_ms),
         }))
@@ -444,6 +467,9 @@ pub struct LandGateAdvisor {
     instance_key: Option<String>,
     model: String,
     timeout: Duration,
+    /// How many bytes the packet may take of [`MAX_REQUEST_BYTES`], once the
+    /// model's name and the questions have theirs.
+    state_budget: usize,
     held: Mutex<HashMap<String, Held>>,
 }
 
@@ -462,6 +488,15 @@ impl LandGateAdvisor {
         {
             return Err(LandGateAdvisorError::Config(
                 "MAIDAN_JEV_BASE_URL must be an origin URL without a path, query, or fragment"
+                    .into(),
+            ));
+        }
+        // The key travels as a bearer: over plain HTTP only to a relay of our
+        // own, a name listed in MAIDAN_INTERNAL_EGRESS_HOSTS.
+        let host = base_url.host_str().unwrap_or_default().to_ascii_lowercase();
+        if base_url.scheme() == "http" && !settings.internal_hosts.contains(&host) {
+            return Err(LandGateAdvisorError::Config(
+                "MAIDAN_JEV_BASE_URL must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS"
                     .into(),
             ));
         }
@@ -502,11 +537,13 @@ impl LandGateAdvisor {
         let endpoint = base_url.join("v1/systemone").map_err(|error| {
             LandGateAdvisorError::Config(format!("invalid MAIDAN_JEV_BASE_URL: {error}"))
         })?;
+        let envelope = request_body(&model, &Value::Null).to_string().len();
         Ok(Self {
             transport,
             base_url,
             endpoint,
             instance_key,
+            state_budget: (MAX_REQUEST_BYTES + "null".len()).saturating_sub(envelope),
             model,
             timeout,
             held: Mutex::new(HashMap::new()),
@@ -560,13 +597,32 @@ impl LandGateAdvisor {
         store: &dyn Store,
         workspace_id: WorkspaceId,
     ) -> Result<LandGateAdvisorStatus, LandGateAdvisorError> {
-        Ok(LandGateAdvisorStatus {
+        Ok(self.status_with(self.key_source(store, workspace_id).await?))
+    }
+
+    /// The status for a workspace whose own key was just stored.
+    pub fn status_with_own_key(&self) -> LandGateAdvisorStatus {
+        self.status_with(Some(AdvisorKeySource::Workspace))
+    }
+
+    /// The status for a workspace whose own key was just forgotten: the
+    /// instance's key if it has one, else none.
+    pub fn status_without_own_key(&self) -> LandGateAdvisorStatus {
+        self.status_with(
+            self.instance_key
+                .as_ref()
+                .map(|_| AdvisorKeySource::Instance),
+        )
+    }
+
+    fn status_with(&self, key_source: Option<AdvisorKeySource>) -> LandGateAdvisorStatus {
+        LandGateAdvisorStatus {
             enabled: true,
-            key_source: self.key_source(store, workspace_id).await?,
+            key_source,
             provider: Some("typesafe".into()),
             model: Some(self.model.clone()),
             host: Some(self.host()),
-        })
+        }
     }
 
     /// The workspace's own key when it stored one, else the instance's.
@@ -646,16 +702,24 @@ impl LandGateAdvisor {
         thread_id: ThreadId,
         request: LandGateAdviceRequest,
     ) -> Result<LandGateAdvice, LandGateAdvisorError> {
-        let state = packet(store, thread_id).await?;
+        let state = hand_off(store, thread_id)
+            .await?
+            .packet(self.state_budget)
+            .ok_or_else(|| {
+                LandGateAdvisorError::NotReady(
+                    "this hand-off is too large to send for advice".into(),
+                )
+            })?;
         let key = self
             .resolve_key(store, encryption_key, workspace_id)
             .await?;
-        let held_as = held_as(workspace_id, &self.model, &state);
+        // Held under the key's owner too: an answer one key paid for is never
+        // shown as another's, and a workspace that adds its key asks with it.
+        let held_as = held_as(workspace_id, &self.model, key.source, &state);
         if !request.refresh
             && let Some(mut advice) = self.held(&held_as)
         {
             advice.cached = true;
-            advice.key_source = key.source;
             return Ok(advice);
         }
         let advice = self.ask(&state, &key).await?;
@@ -694,20 +758,7 @@ impl LandGateAdvisor {
         state: &Value,
         key: &ResolvedKey,
     ) -> Result<LandGateAdvice, LandGateAdvisorError> {
-        let questions: BTreeMap<&str, Value> = QUESTIONS
-            .iter()
-            .map(|q| {
-                (
-                    q.id,
-                    json!({
-                        "type": "noul",
-                        "instructions": q.instructions,
-                        "criteria": { "true": q.yes, "false": q.no },
-                    }),
-                )
-            })
-            .collect();
-        let body = json!({ "model": self.model, "state": state, "questions": questions });
+        let body = request_body(&self.model, state);
         let started = Instant::now();
         let response = self
             .client()
@@ -882,15 +933,41 @@ fn concerns(reason: &str, id: &str) -> bool {
     }
 }
 
-/// The packet the model reads: what the task asks for, the result, and what
-/// the agent that produced it said on the thread. Built here so every call
-/// sends the same shape and nothing a caller chose.
+/// The request the provider is sent: the model, the packet and every question
+/// as written in [`QUESTIONS`].
+fn request_body(model: &str, state: &Value) -> Value {
+    let questions: BTreeMap<&str, Value> = QUESTIONS
+        .iter()
+        .map(|q| {
+            (
+                q.id,
+                json!({
+                    "type": "noul",
+                    "instructions": q.instructions,
+                    "criteria": { "true": q.yes, "false": q.no },
+                }),
+            )
+        })
+        .collect();
+    json!({ "model": model, "state": state, "questions": questions })
+}
+
+/// A hand-off as read from the thread: what the task asks for, the result,
+/// and what the agent that produced it said, oldest first.
+struct HandOff {
+    task: Map<String, Value>,
+    result: Value,
+    said: Vec<String>,
+}
+
+/// Read the hand-off. Built here so every call sends the same shape and
+/// nothing a caller chose.
 ///
 /// The task's opening message is left out on evidence: it tells the agent how
 /// to work (claim, say what you ran, send to review), a hand-off cannot show
 /// those steps, and with it "done" went unsettled on a quarter of the
 /// labelled hand-offs.
-async fn packet(store: &dyn Store, thread_id: ThreadId) -> Result<Value, LandGateAdvisorError> {
+async fn hand_off(store: &dyn Store, thread_id: ThreadId) -> Result<HandOff, LandGateAdvisorError> {
     let thread = store.get_thread(thread_id).await?;
     let result = store
         .get_thread_result(thread_id)
@@ -899,12 +976,12 @@ async fn packet(store: &dyn Store, thread_id: ThreadId) -> Result<Value, LandGat
     let mut task = Map::new();
     task.insert(
         "title".into(),
-        Value::String(thread.title.unwrap_or_default()),
+        Value::String(clip(&thread.title.unwrap_or_default(), MAX_TITLE_CHARS)),
     );
     if let Some(description) = thread.description.filter(|d| !d.trim().is_empty()) {
         task.insert(
             "description".into(),
-            Value::String(clip(&description, MAX_RESULT_STRING_CHARS)),
+            Value::String(clip(&description, MAX_DESCRIPTION_CHARS)),
         );
     }
     // How a reviewer checks the task, where its creator said: "what the task
@@ -918,53 +995,103 @@ async fn packet(store: &dyn Store, thread_id: ThreadId) -> Result<Value, LandGat
             Value::String(clip(&acceptance, MAX_MESSAGE_CHARS)),
         );
     }
-    let mut state = Map::new();
-    state.insert("task".into(), Value::Object(task));
-    state.insert("result".into(), trimmed_result(&result.result));
-    let messages = store.list_messages(thread_id, MESSAGE_SCAN).await?;
-    let mut said: Vec<(chrono::DateTime<chrono::Utc>, String)> = messages
-        .into_iter()
-        .filter(|m| m.author_id == result.produced_by && m.tombstoned_at.is_none())
-        .filter(|m| !m.body.trim().is_empty())
-        .map(|m| (m.posted_at, clip(&m.body, MAX_MESSAGE_CHARS)))
-        .collect();
-    said.sort_by_key(|(at, _)| *at);
-    let skip = said.len().saturating_sub(MAX_AGENT_MESSAGES);
-    let said: Vec<Value> = said
-        .into_iter()
-        .skip(skip)
-        .map(|(_, body)| Value::String(body))
-        .collect();
-    // An empty list reads as a signal, so the field is left out instead.
-    if !said.is_empty() {
-        state.insert("agent_messages".into(), Value::Array(said));
+    // The producer's newest messages, wherever they are in the thread: a
+    // failure reported in message 201 is the one a reviewer needs.
+    let page_size = i64::try_from(MESSAGE_PAGE).unwrap_or(i64::MAX);
+    let mut said = std::collections::VecDeque::with_capacity(MAX_AGENT_MESSAGES);
+    let mut after = None;
+    for _ in 0..MESSAGE_PAGES {
+        let page = store
+            .list_messages_after(thread_id, after, page_size)
+            .await?;
+        let Some(last) = page.last() else {
+            break;
+        };
+        after = Some(last.id);
+        let full = page.len() >= MESSAGE_PAGE;
+        for message in page {
+            if message.author_id != result.produced_by
+                || message.tombstoned_at.is_some()
+                || message.body.trim().is_empty()
+            {
+                continue;
+            }
+            if said.len() == MAX_AGENT_MESSAGES {
+                said.pop_front();
+            }
+            said.push_back(clip(&message.body, MAX_MESSAGE_CHARS));
+        }
+        if !full {
+            break;
+        }
     }
-    Ok(Value::Object(state))
+    Ok(HandOff {
+        task,
+        result: result.result,
+        said: said.into(),
+    })
+}
+
+impl HandOff {
+    /// The packet the model reads, within `budget` bytes. When the hand-off is
+    /// larger, the agent's oldest messages are left out first, then long
+    /// strings in the result are cut shorter. `None` when it fits at no cut.
+    fn packet(&self, budget: usize) -> Option<Value> {
+        let size =
+            |state: &Map<String, Value>| serde_json::to_vec(state).map_or(usize::MAX, |b| b.len());
+        for cut in RESULT_STRING_CUTS {
+            let mut state = Map::new();
+            state.insert("task".into(), Value::Object(self.task.clone()));
+            state.insert("result".into(), trimmed_result(&self.result, cut));
+            if size(&state) > budget {
+                continue;
+            }
+            // The newest messages that fit, sent oldest first. An empty list
+            // reads as a signal, so the field is left out instead.
+            let mut from = self.said.len();
+            while from > 0 {
+                state.insert("agent_messages".into(), json!(self.said[from - 1..]));
+                if size(&state) > budget {
+                    break;
+                }
+                from -= 1;
+            }
+            if from == self.said.len() {
+                state.remove("agent_messages");
+            } else {
+                state.insert("agent_messages".into(), json!(self.said[from..]));
+            }
+            return Some(Value::Object(state));
+        }
+        None
+    }
 }
 
 /// The result without the fields that carry bytes for the change flow, and
 /// with any very long string cut.
-fn trimmed_result(result: &Value) -> Value {
+fn trimmed_result(result: &Value, max_chars: usize) -> Value {
     match result {
         Value::Object(fields) => Value::Object(
             fields
                 .iter()
                 .filter(|(name, _)| !RESULT_FIELDS_LEFT_OUT.contains(&name.as_str()))
-                .map(|(name, value)| (name.clone(), clipped(value)))
+                .map(|(name, value)| (name.clone(), clipped(value, max_chars)))
                 .collect(),
         ),
-        other => clipped(other),
+        other => clipped(other, max_chars),
     }
 }
 
-fn clipped(value: &Value) -> Value {
+fn clipped(value: &Value, max_chars: usize) -> Value {
     match value {
-        Value::String(text) => Value::String(clip(text, MAX_RESULT_STRING_CHARS)),
-        Value::Array(items) => Value::Array(items.iter().map(clipped).collect()),
+        Value::String(text) => Value::String(clip(text, max_chars)),
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|item| clipped(item, max_chars)).collect())
+        }
         Value::Object(fields) => Value::Object(
             fields
                 .iter()
-                .map(|(name, value)| (name.clone(), clipped(value)))
+                .map(|(name, value)| (name.clone(), clipped(value, max_chars)))
                 .collect(),
         ),
         other => other.clone(),
@@ -982,10 +1109,19 @@ fn clip(text: &str, max_chars: usize) -> String {
 
 /// What an answer is held under: the workspace, the model and the packet's
 /// bytes, so a changed result or a new message asks again.
-fn held_as(workspace_id: WorkspaceId, model: &str, state: &Value) -> String {
+fn held_as(
+    workspace_id: WorkspaceId,
+    model: &str,
+    key_source: AdvisorKeySource,
+    state: &Value,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(workspace_id.0.as_bytes());
     hasher.update(model.as_bytes());
+    hasher.update(match key_source {
+        AdvisorKeySource::Workspace => b"w",
+        AdvisorKeySource::Instance => b"i",
+    });
     hasher.update(state.to_string().as_bytes());
     hex::encode(hasher.finalize())
 }
@@ -1142,6 +1278,25 @@ mod tests {
     }
 
     #[test]
+    fn the_key_goes_over_plain_http_only_to_a_listed_internal_relay() {
+        let on = |url: &str, internal: &str| {
+            Settings::from_lookup(lookup(&[
+                ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
+                ("MAIDAN_JEV_BASE_URL", url),
+                ("MAIDAN_INTERNAL_EGRESS_HOSTS", internal),
+            ]))
+            .unwrap()
+            .map(LandGateAdvisor::from_settings)
+            .unwrap()
+        };
+        assert!(on("http://provider.invalid/", "").is_err());
+        assert!(on("http://127.0.0.1:8080/", "").is_err());
+        assert!(on("http://jev.internal/", "hooks.internal").is_err());
+        assert!(on("http://jev.internal/", "hooks.internal, jev.internal").is_ok());
+        assert!(on("https://provider.invalid/", "").is_ok());
+    }
+
+    #[test]
     fn every_question_is_one_noul_with_both_criteria_and_a_distinct_name() {
         let mut seen = std::collections::BTreeSet::new();
         for q in &QUESTIONS {
@@ -1159,6 +1314,32 @@ mod tests {
         // A task that asks for no code change needs no tests.
         assert_eq!(
             decide(&with(&[("code_change", 0.04), ("tests_passed", 0.01)])).0,
+            LandColor::Green
+        );
+    }
+
+    #[test]
+    fn a_doubt_never_counts_toward_green_and_one_the_rules_did_not_need_changes_nothing() {
+        // Unsure whether the task asks for a code change: read as one, so the
+        // tests are asked for.
+        assert_eq!(
+            decide(&with(&[("code_change", 0.5), ("tests_passed", 0.02)])),
+            (LandColor::Amber, vec!["tests_not_reported"])
+        );
+        // Unsure whether the tests passed: read as not reported.
+        assert_eq!(
+            decide(&with(&[("tests_passed", 0.5)])),
+            (LandColor::Amber, vec!["tests_not_reported"])
+        );
+        // The two cases where the unsettled answer could not change the
+        // advice: the tests passed whether or not the task asked for code,
+        // and tests are not asked of a task that asks for no code.
+        assert_eq!(
+            decide(&with(&[("code_change", 0.5), ("tests_passed", 0.97)])).0,
+            LandColor::Green
+        );
+        assert_eq!(
+            decide(&with(&[("code_change", 0.04), ("tests_passed", 0.5)])).0,
             LandColor::Green
         );
     }
@@ -1263,33 +1444,146 @@ mod tests {
 
     #[test]
     fn the_result_is_sent_without_its_diff_and_with_long_text_cut() {
-        let long = "x".repeat(MAX_RESULT_STRING_CHARS + 10);
-        let trimmed = trimmed_result(&json!({
-            "summary": "Renamed the module.",
-            "diff": "diff --git a/x b/x",
-            "deliver_to": { "repo": "example/app" },
-            "base_sha": "abc",
-            "notes": [long],
-        }));
+        let cut = RESULT_STRING_CUTS[0];
+        let long = "x".repeat(cut + 10);
+        let trimmed = trimmed_result(
+            &json!({
+                "summary": "Renamed the module.",
+                "diff": "diff --git a/x b/x",
+                "deliver_to": { "repo": "example/app" },
+                "base_sha": "abc",
+                "notes": [long],
+            }),
+            cut,
+        );
         assert_eq!(trimmed["summary"], "Renamed the module.");
         assert!(trimmed.get("diff").is_none());
         assert!(trimmed.get("deliver_to").is_none());
         assert!(trimmed.get("base_sha").is_none());
         let note = trimmed["notes"][0].as_str().unwrap();
         assert!(note.ends_with("[cut here: the rest was not sent]"));
-        assert!(note.chars().count() < MAX_RESULT_STRING_CHARS + 60);
+        assert!(note.chars().count() < cut + 60);
         // A result that is not an object is sent as it is.
-        assert_eq!(trimmed_result(&json!("done")), json!("done"));
+        assert_eq!(trimmed_result(&json!("done"), cut), json!("done"));
+    }
+
+    fn hand_off_of(result: Value, said: &[&str]) -> HandOff {
+        let mut task = Map::new();
+        task.insert("title".into(), json!("Rename the billing module"));
+        HandOff {
+            task,
+            result,
+            said: said.iter().map(|body| (*body).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_small_hand_off_is_sent_whole_and_no_messages_means_no_field() {
+        let whole = hand_off_of(json!({ "summary": "Renamed." }), &["first", "second"])
+            .packet(4_000)
+            .unwrap();
+        assert_eq!(
+            whole,
+            json!({
+                "task": { "title": "Rename the billing module" },
+                "result": { "summary": "Renamed." },
+                "agent_messages": ["first", "second"],
+            })
+        );
+        let silent = hand_off_of(json!({ "summary": "Renamed." }), &[])
+            .packet(4_000)
+            .unwrap();
+        assert!(silent.get("agent_messages").is_none());
+    }
+
+    #[test]
+    fn a_large_hand_off_loses_its_oldest_messages_first_then_has_its_result_cut() {
+        let wordy = "m".repeat(400);
+        let said = [wordy.as_str(), wordy.as_str(), "the newest"];
+        let packet = hand_off_of(json!({ "summary": "Renamed." }), &said)
+            .packet(600)
+            .unwrap();
+        assert_eq!(packet["agent_messages"], json!([wordy, "the newest"]));
+        assert_eq!(packet["result"]["summary"], "Renamed.");
+        assert!(packet.to_string().len() <= 600);
+
+        // A result too long for the budget is cut shorter, never dropped.
+        let long = hand_off_of(json!({ "summary": "s".repeat(3_000) }), &["the newest"]);
+        let packet = long.packet(1_400).unwrap();
+        let summary = packet["result"]["summary"].as_str().unwrap();
+        assert!(summary.ends_with("[cut here: the rest was not sent]"));
+        assert!(summary.chars().count() < 1_100, "cut at 1,000 to fit");
+        assert_eq!(packet["agent_messages"], json!(["the newest"]));
+        assert!(packet.to_string().len() <= 1_400);
+
+        // One that fits at no cut is not sent at all.
+        let fields: Map<String, Value> = (0..200)
+            .map(|i| (format!("field_{i}"), json!("x".repeat(300))))
+            .collect();
+        assert!(hand_off_of(Value::Object(fields), &[])
+            .packet(2_000)
+            .is_none());
+    }
+
+    #[test]
+    fn the_whole_request_stays_within_its_cap() {
+        let advisor = LandGateAdvisor::with_http(
+            Client::new(),
+            "http://127.0.0.1:9/".parse().unwrap(),
+            None,
+            DEFAULT_MODEL,
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        // The worst a thread can hold: every string at its cut, in characters
+        // that take four bytes each.
+        let wide = "\u{1F600}".repeat(5_000);
+        let mut task = Map::new();
+        task.insert("title".into(), json!(clip(&wide, MAX_TITLE_CHARS)));
+        task.insert(
+            "description".into(),
+            json!(clip(&wide, MAX_DESCRIPTION_CHARS)),
+        );
+        let said: Vec<String> = (0..MAX_AGENT_MESSAGES)
+            .map(|_| clip(&wide, MAX_MESSAGE_CHARS))
+            .collect();
+        let hand_off = HandOff {
+            task,
+            result: json!({ "summary": wide, "notes": [wide, wide] }),
+            said,
+        };
+        if let Some(state) = hand_off.packet(advisor.state_budget) {
+            let body = request_body(&advisor.model, &state).to_string();
+            assert!(body.len() <= MAX_REQUEST_BYTES, "{} bytes", body.len());
+        }
+        // An ordinary hand-off has room for every message.
+        let ordinary = hand_off_of(
+            json!({ "summary": "Renamed the module and updated every import." }),
+            &["Renamed.", "Tests pass."],
+        );
+        let state = ordinary.packet(advisor.state_budget).unwrap();
+        assert_eq!(state["agent_messages"], json!(["Renamed.", "Tests pass."]));
+        assert!(request_body(&advisor.model, &state).to_string().len() <= MAX_REQUEST_BYTES);
+        assert!(advisor.state_budget > 8_000, "{}", advisor.state_budget);
     }
 
     #[test]
     fn an_answer_is_held_under_the_packet_it_was_given_for() {
         let ws = WorkspaceId(uuid::Uuid::nil());
-        let a = held_as(ws, "jev-latest", &json!({ "result": { "said": "hello" } }));
-        let b = held_as(ws, "jev-latest", &json!({ "result": { "said": "hello!" } }));
-        let c = held_as(ws, "jev-1.13.0", &json!({ "result": { "said": "hello" } }));
+        let own = AdvisorKeySource::Workspace;
+        let hello = json!({ "result": { "said": "hello" } });
+        let a = held_as(ws, "jev-latest", own, &hello);
+        let b = held_as(
+            ws,
+            "jev-latest",
+            own,
+            &json!({ "result": { "said": "hello!" } }),
+        );
+        let c = held_as(ws, "jev-1.13.0", own, &hello);
+        let d = held_as(ws, "jev-latest", AdvisorKeySource::Instance, &hello);
         assert_ne!(a, b, "a changed result asks again");
         assert_ne!(a, c, "so does another model");
+        assert_ne!(a, d, "and an answer one key paid for is not another's");
     }
 
     #[test]
