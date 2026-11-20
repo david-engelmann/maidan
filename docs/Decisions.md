@@ -2397,3 +2397,15 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** If a client connecting to `/mcp/coordinator` turns out not to send `resource` (claude.ai's connector sends none), its token is bound to the full catalog and refused on the coordinator endpoint. The answer then is a per-client default, not a looser binding.
 
 **Record.** `crates/maidan-server/src/oauth/metadata.rs` (`OAUTH_RESOURCE_PATHS`), `maidan_auth::resolve_resource_bearer`, migration 0239 (both backends), [OAuth](OAuth.md), [Listing](Listing.md#the-chatgpt-directory).
+
+### The launch gate runs on what launches, and is handed over only after it passes on Postgres (2026-11-20)
+
+**Decision.** The `maidan-launch-1.0` gate runs on the release that launches (the maintainer, 2026-11-17, when the gate moved from `v456.0.0` to `v460.0.0` so the polish releases were inside it). When a release replaces that one, the gate moves with it. Delegated to the coordinator on that basis: the maintainer is given a gate command for a release only after `scripts/launch-gate.sh`, from that release's tag, has passed against the released `maidan-server` on a local Postgres, and the release's validation record says so.
+
+**Alternative.** Rehearse on SQLite, which needs no Docker and is what the page described until now. Or let the run against maidan.world be the first run on Postgres.
+
+**Why.** maidan.world runs Postgres. The first run against it, on `v467.0.0`, failed on a workspace erase that SQLite accepts and Postgres refuses, and left a test workspace behind. A failed run there costs the maintainer a round, and a release.
+
+**To revisit.** When CI runs the gate command against a Postgres-backed server on every release, the local rehearsal is that job's and the handoff waits on it instead.
+
+**Record.** [Launch Gate](Launch%20Gate.md#rehearse-it-locally), `listings/validation/v468.md`, #2403.
