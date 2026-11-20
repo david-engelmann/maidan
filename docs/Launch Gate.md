@@ -99,6 +99,7 @@ release's `maidan` and `maidan-server` binaries:
 
 ```sh
 docker run -d --name gate-rehearsal-pg -e POSTGRES_PASSWORD=dev -p 127.0.0.1:55467:5432 pgvector/pgvector:pg17
+until docker exec gate-rehearsal-pg pg_isready -h 127.0.0.1 -U postgres -q; do sleep 1; done
 export DATABASE_URL="postgres://postgres:dev@127.0.0.1:55467/postgres" MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 umask 077
 maidan init --workspace gate-root --admin-handle root 2>/dev/null |
@@ -107,11 +108,13 @@ MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BIND=127.0.
   MAIDAN_PUBLIC_ORIGIN=http://127.0.0.1:18731 MAIDAN_OAUTH_DYNAMIC_REGISTRATION=1 \
   MAIDAN_COOKIE_SECURE=0 maidan-server &
 ORIGIN=http://127.0.0.1:18731 scripts/launch-gate.sh --env-file "$HOME/gate-rehearsal.env"
+kill $! && docker rm -f gate-rehearsal-pg
 ```
 
 A local server has no identity provider and no `/status` page (the Worker
 serves that on maidan.world), so those three checks are skipped, and say so.
-`docker rm -f gate-rehearsal-pg` removes the database afterwards.
+The last line stops the server before it removes the database: a server left
+running keeps the port, and the next rehearsal would run against it.
 
 ## The path by hand
 
