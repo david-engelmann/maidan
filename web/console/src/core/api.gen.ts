@@ -247,6 +247,7 @@ export type OccupancyPresence = "offline" | "away" | "online";
 export type OidcSignupForm = { invite?: string | null; return_to?: string | null; turnstile?: string | null; workspace_name?: string | null; };
 export type OpenDmBody = { other_member_id: string; };
 export type OpenGroupDmBody = { member_ids: string[]; title?: string | null; };
+export type OperatorEraseWorkspace = { confirm_workspace_id: string; reason: string; };
 export type OperatorStatus = { checks: StatusCheck[]; phase: string; queues: QueueStatus; replica?: null | ReplicaStatus; search: SearchProgress; version: string; };
 export type OrphanToolResult = { author_id: MemberId; content: string; is_error: boolean; message_id: MessageId; posted_at: string; tool_use_id: string; };
 export type PackElision = { elided_message_count: number; elided_token_estimate: number; first_elided_id: MessageId; last_elided_id: MessageId; summary: string; };
@@ -510,6 +511,7 @@ export type ApiRoute =
   | "DELETE /messages/{id}/reactions"
   | "DELETE /messages/{id}/votes"
   | "DELETE /operator/github/enqueue"
+  | "DELETE /operator/workspaces/{id}"
   | "DELETE /operator/workspaces/{id}/suspension"
   | "DELETE /task-schedules/{id}"
   | "DELETE /threads/{id}/artifacts/{sha256}"
