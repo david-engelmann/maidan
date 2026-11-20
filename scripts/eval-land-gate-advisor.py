@@ -60,7 +60,8 @@ def main() -> int:
             f"{origin}/mcp/streamable",
             data=body,
             method="POST",
-            headers={"authorization": f"Bearer {token}", "content-type": "application/json", "accept": "application/json, text/event-stream"},
+            # Named, because a hosted instance's edge refuses Python's default client.
+            headers={"authorization": f"Bearer {token}", "content-type": "application/json", "accept": "application/json, text/event-stream", "user-agent": "maidan-advice-eval/1"},
         )
         for attempt in range(5):
             try:
