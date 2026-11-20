@@ -172,6 +172,11 @@ jobs:
           npm test
           npm run check:spec
           npm run build
+      # The try page shares tokens with the landing, and its tests ran only
+      # when a deploy did: a landing change drifted two of them unseen.
+      - name: hosted Worker and try page tests
+        working-directory: deploy/cloudflare
+        run: npm test
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy

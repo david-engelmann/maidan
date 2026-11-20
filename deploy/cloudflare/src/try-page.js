@@ -21,6 +21,7 @@ export const TRY_PATHS = new Set([
   "/backdrop.js",
   "/gathering.js",
   "/geist.woff2",
+  "/icon.png",
 ]);
 
 // What the page reads to know whether to render the Turnstile widget.
