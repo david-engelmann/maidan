@@ -286,8 +286,12 @@ deploy.
    no internet: its server asks an `.internal` name for each provider
    (`http://jev.internal/` for TypeSafe), the Worker forwards those calls to
    the provider with its key (`src/demo-jev.js`), and no key reaches the
-   container. With more than one, the try page lets a visitor switch. The next
-   request after the secret is set recycles the container with advice on.
+   container. With more than one, the try page lets a visitor switch. A key
+   set after the demo is running reaches it when its container next starts,
+   which it does once the demo has been idle for fifteen minutes. Until then
+   the try page already offers that provider and an ask of it gets no answer
+   (seen on 2026-11-21 with a key set through the API: listed at once,
+   answering after the idle restart).
 
 **Boot and reset.** On every boot `demo/entrypoint.sh` deletes any old
 database, makes this boot's keys and starts the server; nothing is seeded.
