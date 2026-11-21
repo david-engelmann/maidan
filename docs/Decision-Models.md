@@ -322,6 +322,39 @@ either way between runs. The two it missed are worth knowing:
   version" read as worth a look: the model was unsure whether part of the
   task was left undone. We had labelled it nothing flagged.
 
+### Across the three providers
+
+One run each on 2026-11-21, the same 36 hand-offs through a locally built
+server (`scripts/eval-land-gate-advisor.py --provider`):
+
+| Provider | Model | Agreed | Unsettled | Wrong | Advice on its label | Median answer | Input tokens, all 36 |
+|---|---|---|---|---|---|---|---|
+| TypeSafe | `jev-1.14.0` | 313 | 12 | 0 | 34 of 36 | 78 ms | 41,366 |
+| OpenAI | `gpt-6-luna` | 313 | 9 | 3 | 31 of 36 | 216 ms | 75,935 |
+| Google | `gemini-decision-1` | 318 | 6 | 1 | 33 of 36 | 332 ms | 45,994 |
+
+Read it with two things in mind. The questions were written and probed
+against Jev, and the two thresholds are TypeSafe's, so Jev has the home
+advantage here. And it is one run of a set we labelled ourselves.
+
+- **A settled wrong answer** is a probability at or past a threshold on the
+  wrong side. Jev gave none. OpenAI gave three: no passing tests where the
+  hand-off reports them (0.01), a risk flagged where none was (0.77), and
+  passing tests where none were reported (0.78). Google gave one: work beyond
+  the task where there was none (0.76).
+- **All three** read the production values change as nothing flagged, for the
+  reason above: no question asks about it.
+- **OpenAI** also read a change to payment code as nothing flagged where we
+  had labelled it worth a look. That is the direction to care about: advice
+  that says nothing where a reviewer should look.
+- **OpenAI and Google** read an agent blocked on access as worth a look where
+  we had labelled it a reported problem.
+- OpenAI's requests are larger because a predicate has no field for what yes
+  and no mean, so both are sent in every question's instructions.
+
+None of the three took longer than 0.8 seconds on any hand-off, against the
+default 1.5 second timeout.
+
 We wrote these hand-offs and their labels ourselves, so this is a regression
 set, not an independent test. Use your own hand-offs before you rely on it: a
 model that reads our examples well has not been shown to read yours.
