@@ -371,9 +371,13 @@ struct Settings {
     /// own key gets advice.
     api_key: Option<String>,
     base_url: String,
-    /// The `.internal` names this instance may send to: the only hosts the
-    /// provider may be reached at over plain HTTP.
+    /// The `.internal` names this instance may send to. With a listed
+    /// loopback address they are the only hosts the provider may be reached
+    /// at over plain HTTP.
     internal_hosts: Vec<String>,
+    /// The loopback addresses among the private peers the operator listed
+    /// (`MAIDAN_PRIVATE_EGRESS_HOSTS`): a stand-in provider on this machine.
+    loopback_peers: Vec<String>,
     model: String,
     timeout: Duration,
 }
@@ -430,6 +434,15 @@ impl Settings {
             internal_hosts: get(maidan_auth::INTERNAL_EGRESS_HOSTS_ENV)
                 .map(|raw| maidan_auth::parse_internal_egress_hosts(&raw))
                 .unwrap_or_default(),
+            loopback_peers: get(maidan_auth::PRIVATE_EGRESS_HOSTS_ENV)
+                .map(|raw| maidan_auth::parse_private_egress_hosts(&raw))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|host| {
+                    host.parse::<std::net::IpAddr>()
+                        .is_ok_and(|address| address.is_loopback())
+                })
+                .collect(),
             model,
             timeout: Duration::from_millis(timeout_ms),
         }))
@@ -492,11 +505,21 @@ impl LandGateAdvisor {
             ));
         }
         // The key travels as a bearer: over plain HTTP only to a relay of our
-        // own, a name listed in MAIDAN_INTERNAL_EGRESS_HOSTS.
+        // own, a name listed in MAIDAN_INTERNAL_EGRESS_HOSTS, or to this
+        // machine, a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS,
+        // where nothing crosses a network.
         let host = base_url.host_str().unwrap_or_default().to_ascii_lowercase();
-        if base_url.scheme() == "http" && !settings.internal_hosts.contains(&host) {
+        let host = host
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+            .unwrap_or(&host)
+            .to_string();
+        if base_url.scheme() == "http"
+            && !settings.internal_hosts.contains(&host)
+            && !settings.loopback_peers.contains(&host)
+        {
             return Err(LandGateAdvisorError::Config(
-                "MAIDAN_JEV_BASE_URL must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS"
+                "MAIDAN_JEV_BASE_URL must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS or is a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS"
                     .into(),
             ));
         }
@@ -1308,6 +1331,31 @@ mod tests {
         assert!(on("http://jev.internal/", "hooks.internal").is_err());
         assert!(on("http://jev.internal/", "hooks.internal, jev.internal").is_ok());
         assert!(on("https://provider.invalid/", "").is_ok());
+    }
+
+    #[test]
+    fn the_key_goes_over_plain_http_to_this_machine_only_when_its_address_is_listed() {
+        let on = |url: &str, peers: &str| {
+            Settings::from_lookup(lookup(&[
+                ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
+                ("MAIDAN_JEV_BASE_URL", url),
+                ("MAIDAN_PRIVATE_EGRESS_HOSTS", peers),
+            ]))
+            .unwrap()
+            .map(LandGateAdvisor::from_settings)
+            .unwrap()
+        };
+        // A stand-in provider on this machine, as scripts/mcp-inspector.sh
+        // runs one.
+        assert!(on("http://127.0.0.1:8080/", "127.0.0.1").is_ok());
+        assert!(on("http://[::1]:8080/", "::1").is_ok());
+        assert!(on("http://127.0.0.1:8080/", "").is_err());
+        assert!(on("http://127.0.0.1:8080/", "::1").is_err());
+        // A listed private peer that is not this machine still needs https:
+        // the key would cross a network in the clear.
+        assert!(on("http://10.0.0.7:8080/", "10.0.0.7").is_err());
+        assert!(on("http://relay.lan:8080/", "relay.lan").is_err());
+        assert!(on("http://localhost:8080/", "localhost").is_err());
     }
 
     #[test]
