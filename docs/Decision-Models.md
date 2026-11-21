@@ -231,7 +231,7 @@ review there are read by Jev (`advice` in `/try-config.json`).
 | `TYPESAFE_API_KEY` | none | The instance's own key, for workspaces that stored none. Leave it unset to have every workspace bring its own |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request. A timeout fails only the advice call, with `502` |
-| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
+| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
 
 ## Measuring it
 

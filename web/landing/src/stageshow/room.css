@@ -1,7 +1,8 @@
 /* Inside the room: the board with everyone on it. The hero's look (look.css,
-   card.css), a board big enough to read, and named cursors the way a
-   multiplayer tool shows who is where: agents with the lit arrow and a steel
-   tag, people with a warm white one. */
+   card.css), a board big enough to read, a terminal for each agent whose
+   calls are shown, and a named pointer for each person, the way a
+   multiplayer tool shows who is where. An agent has no pointer: it never
+   touches the screen. */
 .rm .ss-stage {
   --rm-arrow: #ff6a2b;
   --rm-arrow-edge: #1b0b03;
@@ -133,7 +134,7 @@
 }
 .rm-card .ml-card__title {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12.5px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -205,9 +206,163 @@
   color: var(--ss-accent-text);
   font-size: 11px;
   line-height: 1.35;
-  white-space: nowrap;
 }
 .rm-note b { font-weight: 600; }
+
+/* What a decision model made of the hand-off, while the task is in review */
+.rm-advice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  color: var(--ss-text-strong);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.rm-advice__k { color: var(--ss-text); font-weight: 400; }
+.rm-advice i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+.rm-advice[data-land="green"] i {
+  background: var(--ss-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ss-success) 22%, transparent);
+}
+
+/* A call changed this card: it lights once, where a pointer would have been */
+.rm-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px var(--ss-accent), inset 0 0 18px -6px var(--ss-accent);
+  opacity: 0;
+  animation: rm-ping 1.2s ease-out;
+}
+@keyframes rm-ping {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* The agents' column: a terminal each, a call and its answer to a line */
+.rm-agents {
+  position: absolute;
+  top: 12px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rm-agents__title {
+  color: var(--ss-text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rm-agents__how {
+  color: var(--ss-text);
+  font-family: var(--ss-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rm-term {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 10px 12px 0;
+  overflow: hidden;
+  border-radius: var(--ss-radius-lg);
+  background: var(--ml-lane);
+  box-shadow: inset 0 0 0 1px var(--ss-line-faint);
+  transition: box-shadow 0.35s ease;
+}
+/* The one that called last */
+.rm-term[data-live] { box-shadow: inset 0 0 0 1px var(--ss-text-faint); }
+.rm-term__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  color: var(--ss-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+.rm-term__tag {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--ss-radius-pill);
+  box-shadow: inset 0 0 0 1px var(--ss-line);
+  color: var(--ss-text);
+  font-family: var(--ss-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+.rm-term__body {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  font-family: var(--ss-mono);
+  font-size: 11.5px;
+  line-height: 18px;
+}
+.rm-term__line { animation: rm-line-in 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+@keyframes rm-line-in {
+  from { opacity: 0; translate: 0 8px; }
+}
+.rm-term__call,
+.rm-term__ans {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rm-term__call { color: var(--ss-text); transition: color 0.4s ease; }
+.rm-term__line[data-new] .rm-term__call { color: var(--ss-text-strong); }
+.rm-term__dot {
+  margin-right: 7px;
+  color: var(--ss-text-faint);
+  font-size: 8.5px;
+  vertical-align: 1px;
+  transition: color 0.4s ease;
+}
+.rm-term__line[data-new] .rm-term__dot { color: var(--ss-accent); }
+.rm-term__ans {
+  padding-left: 1px;
+  color: var(--ss-text);
+  animation: rm-ans-in 0.4s ease both;
+}
+@keyframes rm-ans-in {
+  from { opacity: 0; }
+}
+.rm-term__ans > span:first-child { margin-right: 7px; color: var(--ss-text-faint); }
+.rm-term__ans[data-tone="ok"] { color: var(--ss-success-text); }
+.rm-term__ans[data-tone="no"] { color: var(--ss-danger-text); }
+.rm-term__ans[data-tone="warn"] { color: var(--ss-text-strong); }
+.rm-term__ans[data-tone="warn"] > span:first-child { color: var(--warn); }
+/* Blocked in a wait: the server will wake it */
+.rm-term__ans[data-tone="wait"] { animation: rm-wait 1.8s ease-in-out infinite alternate; }
+@keyframes rm-wait {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+/* The agents on the board whose terminals are not shown */
+.rm-others {
+  position: absolute;
+  top: 452px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ss-line);
+  color: var(--ss-text);
+  font-size: 12px;
+}
+.rm-others .rm-presence__stack { flex: none; }
 
 /* Named cursors */
 .rm-cur {
@@ -344,6 +499,13 @@
   font-family: var(--ss-mono);
   font-size: 11px;
 }
+.rm-log__kind {
+  flex: none;
+  width: 170px;
+  color: var(--ss-text);
+  font-family: var(--ss-mono);
+  font-size: 10.5px;
+}
 .rm-log__text {
   overflow: hidden;
   color: var(--ss-text-strong);
@@ -454,7 +616,36 @@
 /* The newest line is the strongest; older ones settle to the quieter gray,
    which still reads at full contrast */
 .rm-log__row[data-old] .rm-log__text { color: var(--ss-text); }
-.rm-body[data-compact] .rm-log { top: 472px; left: 14px; right: 14px; }
+.rm-body[data-compact] .rm-log { top: 470px; left: 14px; right: 14px; }
+.rm-body[data-compact] .rm-log__kind { display: none; }
+/* The phone's one strip: who called last, the call, and its answer */
+.rm-last {
+  position: absolute;
+  top: 86px;
+  left: 14px;
+  right: 14px;
+  height: 36px;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  font-family: var(--ss-mono);
+  font-size: 10.5px;
+  line-height: 16px;
+  animation: rm-line-in 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+.rm-last__call {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--ss-text-strong);
+  white-space: nowrap;
+}
+.rm-last__call b { font-family: var(--ss-font, inherit); font-size: 11.5px; font-weight: 600; }
+.rm-last__call .rm-term__dot { margin-right: 0; color: var(--ss-accent); }
+.rm-last__name { overflow: hidden; text-overflow: ellipsis; }
+.rm-last .rm-term__ans { padding-left: 22px; }
+.rm-card[data-big] .rm-advice { font-size: 12px; }
 .rm-body[data-compact] .rm-log__rows { height: 72px; }
 .rm-body[data-compact] .rm-log__text { font-size: 12px; }
 
@@ -462,7 +653,12 @@
 .rm .ss-stage[data-still] .rm-cur__drift,
 .rm .ss-stage[data-still] .rm-log__row,
 .rm .ss-stage[data-still] .rm-cur__press,
-.rm .ss-stage[data-still] .rm-cur__tag { animation: none; }
+.rm .ss-stage[data-still] .rm-cur__tag,
+.rm .ss-stage[data-still] .rm-term__line,
+.rm .ss-stage[data-still] .rm-term__ans,
+.rm .ss-stage[data-still] .rm-last { animation: none; }
+.rm .ss-stage[data-still] .rm-ping { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .rm-cur__drift, .rm-log__row, .rm-cur__press, .rm-cur__tag, .rm-chip-wrap[data-bump] { animation: none; }
+  .rm-cur__drift, .rm-log__row, .rm-cur__press, .rm-cur__tag, .rm-chip-wrap[data-bump], .rm-term__line, .rm-term__ans, .rm-last { animation: none; }
+  .rm-ping { display: none; }
 }

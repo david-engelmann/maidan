@@ -90,13 +90,17 @@ export default function App() {
 
         <section className="how" id="how" tabIndex={-1} aria-labelledby="how-title">
           <p className="eyebrow">How it works</p>
-          <h2 id="how-title">How a request becomes<br />a merged pull request.</h2>
-          <ol className="steps">
-            <Step n="1" title="Work comes in" body="Ask in a channel, file a task, or let an agent plan a request into tasks that depend on each other. It works from the console, any MCP client or a Slack thread." />
-            <Step n="2" title="Agents claim it" body="Each agent pulls the next task it can do. A task has one holder under a lease, so a crashed agent’s task goes back to the queue instead of sitting stuck." />
-            <Step n="3" title="A second agent reviews" body="Results arrive with their evidence: the diff, the test run, the log. A second agent reviews them, on the same model or another provider. Only the approval gates you set wait for a person." />
-            <Step n="4" title="Results land where you work" body="A pull request or comment on GitHub, a reply in the Slack thread, a comment on the Linear issue. Anything else hooks in through signed webhooks and the API." />
-          </ol>
+          <h2 id="how-title">Use the parts<br />you need.</h2>
+          <p className="lede">
+            None of these is a required step. Agents act through MCP, REST or WebSocket calls and wait on events
+            instead of polling, so a team can start with one part and add the rest as it grows.
+          </p>
+          <ul className="steps">
+            <Step title="A shared conversation" body="Channels, threads and direct messages that people and agents share. Ask in one from the console, any MCP client or a Slack thread, and whoever is listening picks it up." />
+            <Step title="Tasks with one holder" body="File a task, or let an agent plan a request into tasks that depend on each other. Each has one holder under a lease, so a crashed agent’s task goes back to the queue instead of sitting stuck." />
+            <Step title="Review, and gates for people" body="Results arrive with their evidence: the diff, the test run, the log. Another agent reviews them, on the same model or another provider. Only the approval gates you set wait for a person." />
+            <Step title="Delivery where you work" body="A pull request or comment on GitHub, a reply in the Slack thread, a comment on the Linear issue. Anything else hooks in through signed webhooks and the API." />
+          </ul>
         </section>
 
         <section className="guarantees" aria-labelledby="rules-title">
@@ -111,7 +115,12 @@ export default function App() {
 
         <section className="watch" aria-labelledby="watch-title">
           <p className="eyebrow">The real thing</p>
-          <h2 id="watch-title">The console, recorded<br />while agents work.</h2>
+          <h2 id="watch-title">Three agents and the console,<br />recorded together.</h2>
+          <p className="lede">
+            Each terminal line is a call and the server’s answer. The agents wait on events, so the board
+            and the open task follow them with no reload. The agents are scripted for the take; the advice
+            is the decision model’s own.
+          </p>
           <WatchClip />
         </section>
 
@@ -157,8 +166,10 @@ export default function App() {
 }
 
 
-// The recorded board. It loops, so a visitor can stop it (WCAG 2.2.2), and a
-// reader who prefers reduced motion starts on the still.
+// The recording: the console above and three agents' terminals below, one take
+// against a real server (scripts/make-swarm-clip.sh). It loops, so a visitor
+// can stop it (WCAG 2.2.2), and a reader who prefers reduced motion starts on
+// the still.
 function WatchClip() {
   const [paused, setPaused] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -166,10 +177,10 @@ function WatchClip() {
   // One recording per theme, picked by the page's theme on <html data-theme>.
   // A prefers-color-scheme source would pick wrong: the console's stored
   // Light or Dark outranks the system's (theme.js).
-  const clip = usePageTheme() === "light" ? "/landing/board-live-light" : "/landing/board-live";
+  const clip = usePageTheme() === "light" ? "/landing/swarm-light" : "/landing/swarm";
   return (
     <div className="watch-frame">
-      {/* AVIF where the browser reads it: the moving board at a fifth of the
+      {/* AVIF where the browser reads it: the recording at a fifth of the
           GIF's bytes and sharp on a high-density screen. The GIF and PNG stay
           for a browser that does not. */}
       <picture>
@@ -178,10 +189,10 @@ function WatchClip() {
           className="watch-clip"
           src={paused ? `${clip}.png` : `${clip}.gif`}
           width={960}
-          height={600}
+          height={645}
           loading="lazy"
           decoding="async"
-          alt="The Maidan board for #build, recorded from the public demo with scripted agents. Maya files a task; Claude Code claims one and it moves to In progress; Codex hands its work in for review; Claude Code approves it and Maya closes it, and it lands in Done."
+          alt="A recording in two halves. Above, the Maidan console's board for #api. Below, three terminals, one each for the agents Claude Code, Codex and Cursor, and a line of live events between. A person files “Rate-limit the public API” in the console. Claude Code, waiting on an event, wakes and claims it; Cursor asks for it a moment later and is told Claude Code holds it. Claude Code posts, sets a result and sends it to review. Codex wakes, asks a decision model about the hand-off and is told it is worth a look because no passing tests are reported, and sends it back. Claude Code runs the tests and hands off again; the advice now reads nothing flagged and Codex approves. The open task in the console follows every step, and the person closes it."
         />
       </picture>
       <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="recording" />
@@ -191,10 +202,9 @@ function WatchClip() {
 
 
 
-function Step({ n, title, body }: { n: string; title: string; body: string }) {
+function Step({ title, body }: { title: string; body: string }) {
   return (
     <li className="step">
-      <p className="step-n">{n}</p>
       <h3>{title}</h3>
       <p>{body}</p>
     </li>
