@@ -121,8 +121,8 @@ wat = "1"
 flate2 = "1"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tempfile = "3"
 tokio-tungstenite = "0.24"
 # Generates the throwaway GitHub App key the tests sign with, so no private key
