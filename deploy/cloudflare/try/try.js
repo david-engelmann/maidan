@@ -89,6 +89,8 @@ export function createTryPage(
   let agent = null;
   const agentSteps = new Map();
   let turnstileToken = "";
+  // Who the demo can ask for advice (`/try-config.json`); one or none shows no switch.
+  let adviceProviders = [];
   let turnstileWidget = null;
   let turnstileFailed = false;
   const copyTimers = new WeakMap();
@@ -103,6 +105,10 @@ export function createTryPage(
       // sent to review is read by a decision model outside it.
       if (config?.advice === true) {
         for (const note of doc.querySelectorAll?.(".advice-notice") ?? []) note.hidden = false;
+      }
+      // The decision models this demo can ask, for the switch on the advice.
+      if (Array.isArray(config?.providers)) {
+        adviceProviders = config.providers.filter((p) => typeof p?.id === "string" && typeof p?.name === "string");
       }
     } catch {
       siteKey = null;
@@ -293,16 +299,23 @@ export function createTryPage(
   // What a decision model read in the hand-off the agent just made, when
   // this demo offers advice. Without it, or when the model is slow or does
   // not answer, nothing is shown: the review is the same either way.
-  async function showAdvice() {
+  // `provider` asks one model by name, from the switch.
+  async function showAdvice(provider = null) {
     const box = $(doc, "agent-advice");
     if (!box) return;
     let timer;
     const late = new Promise((resolve) => {
       timer = setTimeout(() => resolve(null), ADVICE_WAIT_MS);
     });
-    const advice = await Promise.race([agent.advice(), late]);
+    const advice = await Promise.race([agent.advice(provider), late]);
     clearTimeout(timer);
-    if (!advice) return;
+    const heard = $(doc, "advice-status");
+    if (!advice) {
+      // The first ask shows nothing. A switch that got no answer says so and
+      // leaves the advice already on the page.
+      if (provider && heard) say(heard, "That model did not answer. The advice shown is unchanged.");
+      return;
+    }
     box.dataset.land = advice.land;
     $(doc, "advice-model").textContent = advice.model;
     $(doc, "advice-title").textContent = advice.title;
@@ -310,6 +323,8 @@ export function createTryPage(
     // What was flagged shows at once; all ten readings wait behind one press.
     const all = $(doc, "advice-rows");
     const flagged = $(doc, "advice-flagged");
+    all.replaceChildren?.();
+    flagged.replaceChildren?.();
     const line = (row) => {
       const li = doc.createElement("li");
       li.className = "advice-row";
@@ -338,11 +353,39 @@ export function createTryPage(
       if (row.mark !== "clear") flagged.appendChild(line(row));
     }
     flagged.hidden = !advice.rows.some((row) => row.mark !== "clear");
+    showProviders(advice.provider);
     box.hidden = false;
     // Said once to a screen reader, where the block's arrival would go
     // unheard; a sighted visitor reads it in the block itself.
-    const heard = $(doc, "advice-status");
     if (heard) say(heard, `A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
+  }
+
+  // One button per decision model this demo can ask, the one that answered
+  // pressed. Pressing another asks it about the same hand-off.
+  function showProviders(answered) {
+    const group = $(doc, "advice-providers");
+    if (!group) return;
+    if (adviceProviders.length < 2) {
+      group.hidden = true;
+      return;
+    }
+    group.replaceChildren?.();
+    for (const p of adviceProviders) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "advice-provider";
+      button.textContent = p.name;
+      button.ariaPressed = String(p.id === answered);
+      button.addEventListener("click", () => {
+        if (p.id === answered) return;
+        for (const other of group.children) other.disabled = true;
+        void showAdvice(p.id).finally(() => {
+          for (const other of group.children) other.disabled = false;
+        });
+      });
+      group.appendChild(button);
+    }
+    group.hidden = false;
   }
 
   async function watchAgent() {
@@ -417,7 +460,8 @@ export function createTryPage(
     });
   }
 
-  return { start, openConsole, watchAgent, mount };
+  // `loadConfig` is what `mount` does first: the human check, and what this demo offers.
+  return { start, openConsole, watchAgent, mount, loadConfig: loadTurnstile };
 }
 
 if (typeof document !== "undefined") {

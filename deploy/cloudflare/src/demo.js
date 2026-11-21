@@ -63,8 +63,8 @@ export class MaidanDemo extends Container {
   }
 }
 
-// The server's calls to `jev.internal` come back to this Worker, which
-// forwards them to TypeSafe with its own key. Set at module scope and through
+// The server's calls to each provider's `.internal` name come back to this
+// Worker, which forwards them to that provider with its own key. Set at module scope and through
 // the static accessor, as in index.js: the runtime's outbound proxy
 // (`ContainerProxy`, exported below) reads it in its own isolate.
 MaidanDemo.outboundByHost = jevOutboundByHost;

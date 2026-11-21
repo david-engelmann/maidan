@@ -625,6 +625,8 @@ mod tests {
             "DATABASE_URL",
             "FEDERATION_DECRYPT_KEYS",
             "FEDERATION_ENCRYPTION_KEY",
+            "GEMINI_API_KEY",
+            "OPENAI_API_KEY",
             "S3_ACCESS_KEY_ID",
             "S3_BUCKET",
             "S3_ENDPOINT",
