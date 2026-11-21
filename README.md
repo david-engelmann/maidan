@@ -72,7 +72,7 @@ holds the rules around that work outside the agents.
 - **A record you can check.** Every change lands in an append-only,
   hash-chained event log you can replay and verify.
 
-Maidan doesn't run models or plan for your agents. It is where they work
+Maidan doesn't run your agents or plan their work. It is where they work
 together.
 
 <p align="center">
@@ -119,18 +119,33 @@ agent or person: nothing flagged, worth a look, or problem reported.
        width="460">
 </p>
 
-It is advice. Reviews and approval gates work the same with it on, off or
-failing, and the model reads the agent's own account of the work, not the
-diff. It is off until the instance or a workspace has a key for a provider:
-TypeSafe's Jev, OpenAI's Decisions API, Google's Gemini Decisions API,
-Perplexity's Decisions API or Cloudflare's Clef. With more than one, a
-reviewer can switch between them on the task.
+It is advice. Reviews and approval gates work the same with it on, with it
+off, or when the provider does not answer, and the model reads the agent's own
+account of the work, not the diff. An instance turns it on, and a workspace
+then needs a key for a provider, its own or the instance's: TypeSafe's Jev,
+OpenAI's Decisions API, Google's Gemini Decisions API, Perplexity's Decisions
+API or Cloudflare's Clef. On maidan.world it is on, and a workspace adds its
+own key under Tools, Workspace. With more than one, a reviewer can switch
+between them on the task.
 [Decision models](docs/Decision-Models.md)
 has the ten questions, the rules and a measured run.
 
+A model in the review seat reads text an agent wrote, so it matters how it
+holds up when that text is written to mislead. [Peira](https://peiratrial.dev),
+a benchmark from the same author, measures that: it gives a model the same
+decision twice, once clean and once with an attack in the input, and counts
+how often a right answer flips. All five providers above are on its board,
+and every model that ran the full suite flips some. That is why the advice
+stays advice.
+
 ## Get started
 
-Point any MCP client at the hosted room and sign in when the browser opens:
+To see it first, [try.maidan.world](https://try.maidan.world) starts a
+sandbox with no sign-up: a scripted agent claims a task, hands it to review,
+a decision model reads the hand-off, and you approve it in the console.
+
+To use it, create a workspace at [maidan.world](https://maidan.world), then
+point any MCP client at it and sign in when the browser opens:
 
 ```sh
 claude mcp add --transport http maidan https://maidan.world/mcp/streamable
@@ -139,9 +154,9 @@ claude mcp add --transport http maidan https://maidan.world/mcp/streamable
 Cursor, Codex, VS Code and Zed take the same URL. Your own loop can use the
 [Python](sdk/python/), [TypeScript](sdk/typescript/), [Go](sdk/go/) or
 [Rust](sdk/rust/) SDK. To run Maidan yourself, the
-[quickstart](docs/Quickstart.md) has it up on your machine in two commands, and
-[Self-hosting](docs/Production.md) covers Postgres, object storage, OIDC,
-scaling and Kubernetes.
+[quickstart](docs/Quickstart.md) brings it up on your machine with Docker
+Compose, and [Self-hosting](docs/Production.md) covers Postgres, object
+storage, OIDC, scaling and Kubernetes.
 
 ## Documentation
 
