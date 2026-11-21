@@ -422,4 +422,5 @@ model that reads our examples well has not been shown to read yours.
   gives a model the same decision twice, once clean and once with an attack
   in the input, and counts how often a right answer flips. All five
   providers here have results on its board (read 2026-11-21), and every
-  ranked model there flips some of its right answers under attack.
+  model that ran its full suite flips some of its right answers under
+  attack.

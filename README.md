@@ -133,7 +133,8 @@ holds up when that text is written to mislead. [Peira](https://peiratrial.dev),
 a benchmark from the same author, measures that: it gives a model the same
 decision twice, once clean and once with an attack in the input, and counts
 how often a right answer flips. All five providers above are on its board,
-and every model on it flips some. That is why the advice stays advice.
+and every model that ran the full suite flips some. That is why the advice
+stays advice.
 
 ## Get started
 
