@@ -128,8 +128,10 @@ that links the docs. It passes that repository's `validate` command. The officia
 dispatched with the release the entry names typed out. GitHub's OIDC token
 proves the `io.github.david-engelmann` namespace, so no secret is involved. The icons point at the PNGs above on
 `main`, so they resolve only after this page's assets are merged. The file
-validates against the registry's 2025-12-11 schema. Nothing has been
-submitted.
+validates against the registry's 2025-12-11 schema. The Docker entry was
+filed on 2026-11-21 (docker/mcp-registry#7499). The registry entry's first
+publish that day was refused on the package's shape, which is corrected,
+and it publishes with the next release.
 
 ## Icons
 
