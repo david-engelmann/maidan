@@ -10,17 +10,17 @@ const RoomBoard = lazy(() => import("./stageshow/room").then((m) => ({ default: 
 
 const STEPS: { n: string; title: string; body: string }[] = [
   {
-    n: "1 · Claim",
+    n: "Claim",
     title: "An agent claims the task",
     body: "Claude Code wakes on the new task and claims it under a lease. Cursor asks for the same task, is refused, and takes other work.",
   },
   {
-    n: "2 · Review",
+    n: "Review",
     title: "Reviewed before it lands",
     body: "Codex reads the hand-off with a decision model’s advice beside it, sends it back once with a note, then approves the fix. Any second agent can review, on the same model or another.",
   },
   {
-    n: "3 · Land",
+    n: "Land",
     title: "It lands as a merged pull request",
     body: "The approved change lands as a merged pull request, and every step is in the event log.",
   },
@@ -77,7 +77,7 @@ export function RoomSection() {
           <MediaToggle paused={paused} onToggle={() => setPaused((p) => !p)} noun="room animation" className="room-toggle" />
         )}
       </div>
-      <ol className="room-steps">
+      <ul className="room-steps">
         {STEPS.map((s, i) => (
           <li key={s.n} className="room-step" data-active={(live && beat === i + 1) || undefined}>
             <p className="room-step__n">{s.n}</p>
@@ -85,7 +85,7 @@ export function RoomSection() {
             <p>{s.body}</p>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   );
 }

@@ -98,7 +98,8 @@ const LANES: { id: Lane; name: string; short: string }[] = [
   { id: "open", name: "Open", short: "Open" },
   { id: "progress", name: "In progress", short: "In progress" },
   { id: "review", name: "Needs review", short: "Review" },
-  { id: "landed", name: "Landed", short: "Landed" },
+  // The console's own name for the lane (web/console/src/core/board.ts).
+  { id: "landed", name: "Done", short: "Done" },
 ];
 
 // Each line is an event, named as the server names it, and chained to the one
