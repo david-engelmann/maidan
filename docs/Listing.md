@@ -118,7 +118,12 @@ container image to run yourself. It also sets the `title`, the `repository`
 and both icons. `listings/toolhive/server.json` and `listings/docker/server.yaml`
 list only the image, so they keep the self-hosted variant;
 `listings/docker/server.yaml`'s `about` block sets the title, the description
-and the 400×400 icon. The official registry entry publishes by hand with the
+and the 400×400 icon. `listings/docker/remote/` is the entry for the Docker MCP
+Catalog as that catalog takes a hosted server today (`servers/maidan/` in
+`docker/mcp-registry`): a `type: remote` `server.yaml` for
+`https://maidan.world/mcp/streamable` with OAuth, an empty `tools.json`
+because the catalog reads a remote server's tools live, and a `readme.md`
+that links the docs. It passes that repository's `validate` command. The official registry entry publishes by hand with the
 `publish MCP registry` workflow (`.github/workflows/publish-mcp-registry.yml`),
 dispatched with the release the entry names typed out. GitHub's OIDC token
 proves the `io.github.david-engelmann` namespace, so no secret is involved. The icons point at the PNGs above on

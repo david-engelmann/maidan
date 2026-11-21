@@ -39,9 +39,10 @@
     "MAIDAN_OAUTH_CLIENT_METADATA_HOSTS": "claude.ai,chatgpt.com,zed.dev,vscode.dev",
     // RFC 7591 dynamic client registration, for every other MCP client
     // (Cursor, Gemini CLI, the MCP Inspector): public clients only, with
-    // loopback or app-scheme redirects, plus https to VS Code's web redirect.
+    // loopback or app-scheme redirects, plus https to VS Code's web redirect
+    // and to the callback Docker Desktop's MCP Toolkit uses for catalog servers.
     "MAIDAN_OAUTH_DYNAMIC_REGISTRATION": "1",
-    "MAIDAN_OAUTH_DCR_REDIRECT_HOSTS": "vscode.dev,insiders.vscode.dev",
+    "MAIDAN_OAUTH_DCR_REDIRECT_HOSTS": "vscode.dev,insiders.vscode.dev,mcp.docker.com",
     // Advice on a hand-off from a decision model (docs/Decision-Models.md).
     // No TYPESAFE_API_KEY is set here, so a workspace gets advice only with a
     // key of its own, stored as its encrypted secret.
