@@ -243,8 +243,16 @@ filled in:
 
 ## The ChatGPT directory
 
-Not ready to submit. ChatGPT's rules
-(<https://developers.openai.com/apps-sdk/app-submission-guidelines>) add three
+Not ready to submit. Checked on 2026-11-20: OpenAI now calls these plugins,
+the rules are at <https://developers.openai.com/plugins/plugin-guidelines>,
+and a submission is a ZIP with a `plugin.json` uploaded in the dashboard
+(<https://developers.openai.com/plugins/deploy/submission>), with a demo
+video, the website, support, privacy and terms URLs, and exactly five
+positive and three negative test cases. The reviewer's account must "work
+immediately without MFA approval, email or SMS codes, magic links, or
+private-network access", so the one-time code maidan.world signs in with is
+refused, and so, most likely, is the sandbox's sign-in link. The package, the
+video and a sign-in a reviewer can use do not exist yet. The rules add three
 things that the Claude listing doesn't need:
 
 1. **A verified submitter.** The maintainer verifies their identity or
