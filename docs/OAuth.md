@@ -263,7 +263,10 @@ every client that registered itself, at authorize and at the token endpoint.
     MCP client's (`cursor`, `vscode`, `vscode-insiders`, `windsurf`, `zed`).
   - `https` only on a host in `MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`. maidan.world
     lists `vscode.dev` and `insiders.vscode.dev`, for VS Code's
-    `https://vscode.dev/redirect`.
+    `https://vscode.dev/redirect`, and `mcp.docker.com`, for the
+    `https://mcp.docker.com/oauth/callback` that Docker Desktop's MCP Toolkit
+    registers for a server in its catalog (outside the catalog it registers a
+    loopback callback, which needs no listing).
   - `javascript:`, `data:`, `file:` and other script or local schemes, `http`
     to any other host, a fragment or credentials refuse the registration
     (`invalid_redirect_uri`). An `https` redirect on an unlisted host is left
