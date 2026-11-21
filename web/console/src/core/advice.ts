@@ -29,7 +29,7 @@ export type Advice = {
   cached: boolean;
 };
 
-export type ProviderId = "typesafe" | "openai" | "google";
+export type ProviderId = "typesafe" | "openai" | "google" | "perplexity" | "cloudflare";
 
 /** One provider of decision models, as this workspace sees it. */
 export type AdvisorProvider = {
@@ -56,7 +56,15 @@ export const KEY_NAME: Record<ProviderId, string> = {
   typesafe: "TypeSafe API key",
   openai: "OpenAI API key",
   google: "Gemini API key",
+  perplexity: "Perplexity API key",
+  cloudflare: "Cloudflare Workers AI token",
 };
+
+/**
+ * Cloudflare's key is two things: a token, and the id of the account whose
+ * Workers AI it calls. Every other provider's is the key alone.
+ */
+export const needsAccount = (provider: ProviderId): boolean => provider === "cloudflare";
 
 /** The providers a call from this workspace can ask now. */
 export function usableProviders(status: AdvisorStatus | null): AdvisorProvider[] {
@@ -196,9 +204,9 @@ export class AdviceApi {
   }
 
   /** Store this workspace's own key for a provider. The server asks the provider to accept it first. */
-  async setKey(workspaceId: string, apiKey: string, provider: ProviderId = "typesafe"): Promise<AdvisorStatus> {
+  async setKey(workspaceId: string, apiKey: string, provider: ProviderId = "typesafe", accountId: string | null = null): Promise<AdvisorStatus> {
     const c = this.creds();
-    const body = JSON.stringify({ api_key: apiKey, provider });
+    const body = JSON.stringify({ api_key: apiKey, provider, ...(accountId ? { account_id: accountId } : {}) });
     const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body }));
     // A refused key (400) and an instance that cannot keep one (409) say why in the server's words.
     if (!res.ok) return failure(res, this.mode(), AdviceError, (status, detail) => ((status === 400 || status === 409) && detail ? detail : null));

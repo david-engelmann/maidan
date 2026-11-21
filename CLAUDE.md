@@ -418,8 +418,8 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   decision-model keys (one per provider: `AdvisorProvider::secret` in
   `land_gate_advisor.rs`). A new decision-model provider is a variant of
   `AdvisorProvider` with its request shape in `request_body` and its answer
-  in `answers`, a relay in `deploy/cloudflare/src/demo-jev.js`, and a row in
-  `docs/Decision-Models.md`. No member can create one (a colon is outside
+  in `answers`, a relay in `deploy/cloudflare/src/demo-jev.js` when the demo
+  should offer it, and a row in `docs/Decision-Models.md`. No member can create one (a colon is outside
   `is_valid_secret_name`), and the generic secret routes and MCP tools answer
   it as not found and leave it out of their lists. A new generic path that
   reads, lists or deletes secrets by name makes the same check.

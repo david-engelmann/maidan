@@ -110,7 +110,7 @@ export function AdviceSection() {
         <h2 id="advise-title">A second read<br />on every hand-off.</h2>
         <p className="advise-lede">
           A decision model reads each hand-off and answers ten small questions about it. Use
-          TypeSafe’s Jev, OpenAI’s Decisions API or Google’s Gemini Decisions, and switch between them. Is the task done? Did the tests pass? Does it touch sign-in, or delete
+          TypeSafe’s Jev or the decision APIs from OpenAI, Google, Perplexity and Cloudflare, and switch between them. Is the task done? Did the tests pass? Does it touch sign-in, or delete
           data? Your reviewer starts with what it found.
         </p>
         <p className="advise-fine">

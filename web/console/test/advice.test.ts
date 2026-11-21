@@ -99,6 +99,10 @@ test("the workspace key is set, cleared and read without ever being returned", a
   // Another provider's key is set and cleared under its own name.
   await a.api.setKey("ws", "sk-key", "openai");
   assert.equal(a.calls[2].init?.body, JSON.stringify({ api_key: "sk-key", provider: "openai" }));
+  // Cloudflare's token goes with the account it is for; no other key does.
+  const cf = api([{ status: 200, body: { enabled: true } }]);
+  await cf.api.setKey("ws", "cf-token", "cloudflare", "0123456789abcdef0123456789abcdef");
+  assert.equal(cf.calls[0].init?.body, JSON.stringify({ api_key: "cf-token", provider: "cloudflare", account_id: "0123456789abcdef0123456789abcdef" }));
   await a.api.clearKey("ws", "google");
   assert.equal(a.calls[3].url, "http://h/ui/api/workspaces/ws/land-gate/advisor?provider=google");
   // A call may name who to ask; one that does not sends no provider.

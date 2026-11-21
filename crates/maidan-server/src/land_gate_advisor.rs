@@ -1,5 +1,6 @@
 //! Advice at the land gate from a decision model: TypeSafe's Jev, OpenAI's
-//! Decisions API or Google's Gemini Decisions API.
+//! Decisions API, Google's Gemini Decisions API, Perplexity's Decisions API
+//! or Cloudflare's Clef on Workers AI.
 //!
 //! The model makes judgments and code makes the decision. A hand-off to review
 //! is read as a short packet (what the task asks for, the result, what the
@@ -29,8 +30,8 @@ use utoipa::ToSchema;
 
 const DEFAULT_TIMEOUT_MS: u64 = 1_500;
 
-/// A provider of decision models the advisor can put its questions to. All
-/// three are asked the same ten questions and read by the same rules.
+/// A provider of decision models the advisor can put its questions to. Every
+/// one is asked the same ten questions and read by the same rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdvisorProvider {
@@ -40,11 +41,22 @@ pub enum AdvisorProvider {
     Openai,
     /// Google's Gemini Decisions API (`POST /v1beta/decisions`).
     Google,
+    /// Perplexity's Decisions API (`POST /v1/decisions`).
+    Perplexity,
+    /// Cloudflare's Clef on Workers AI
+    /// (`POST /client/v4/accounts/{account}/ai/run/@cf/cloudflare/{model}`).
+    Cloudflare,
 }
 
 impl AdvisorProvider {
     /// Every provider, in the order a call that names none tries them.
-    pub const ALL: [Self; 3] = [Self::Typesafe, Self::Openai, Self::Google];
+    pub const ALL: [Self; 5] = [
+        Self::Typesafe,
+        Self::Openai,
+        Self::Google,
+        Self::Perplexity,
+        Self::Cloudflare,
+    ];
 
     /// The name the API and stored advice use.
     pub fn id(self) -> &'static str {
@@ -52,6 +64,8 @@ impl AdvisorProvider {
             Self::Typesafe => "typesafe",
             Self::Openai => "openai",
             Self::Google => "google",
+            Self::Perplexity => "perplexity",
+            Self::Cloudflare => "cloudflare",
         }
     }
 
@@ -66,6 +80,8 @@ impl AdvisorProvider {
             Self::Typesafe => "TypeSafe Jev",
             Self::Openai => "OpenAI Decisions",
             Self::Google => "Gemini Decisions",
+            Self::Perplexity => "Perplexity Decider",
+            Self::Cloudflare => "Cloudflare Clef",
         }
     }
 
@@ -75,6 +91,8 @@ impl AdvisorProvider {
             Self::Typesafe => "TypeSafe",
             Self::Openai => "OpenAI",
             Self::Google => "Google",
+            Self::Perplexity => "Perplexity",
+            Self::Cloudflare => "Cloudflare",
         }
     }
 
@@ -89,15 +107,22 @@ impl AdvisorProvider {
             Self::Typesafe => "maidan:typesafe_api_key",
             Self::Openai => "maidan:openai_api_key",
             Self::Google => "maidan:gemini_api_key",
+            Self::Perplexity => "maidan:perplexity_api_key",
+            Self::Cloudflare => "maidan:cloudflare_workers_ai_key",
         }
     }
 
     /// The variable an instance's own key for this provider is read from.
+    /// Cloudflare's is a token of its own name, not `CLOUDFLARE_API_TOKEN`: a
+    /// host often holds that one for other work, and its presence must not
+    /// turn a provider on.
     fn key_env(self) -> &'static str {
         match self {
             Self::Typesafe => "TYPESAFE_API_KEY",
             Self::Openai => "OPENAI_API_KEY",
             Self::Google => "GEMINI_API_KEY",
+            Self::Perplexity => "PERPLEXITY_API_KEY",
+            Self::Cloudflare => "CLOUDFLARE_WORKERS_AI_TOKEN",
         }
     }
 
@@ -106,6 +131,8 @@ impl AdvisorProvider {
             Self::Typesafe => "MAIDAN_JEV_MODEL",
             Self::Openai => "MAIDAN_OPENAI_DECISIONS_MODEL",
             Self::Google => "MAIDAN_GEMINI_DECISIONS_MODEL",
+            Self::Perplexity => "MAIDAN_PERPLEXITY_DECISIONS_MODEL",
+            Self::Cloudflare => "MAIDAN_CLEF_MODEL",
         }
     }
 
@@ -114,6 +141,8 @@ impl AdvisorProvider {
             Self::Typesafe => "MAIDAN_JEV_BASE_URL",
             Self::Openai => "MAIDAN_OPENAI_DECISIONS_BASE_URL",
             Self::Google => "MAIDAN_GEMINI_DECISIONS_BASE_URL",
+            Self::Perplexity => "MAIDAN_PERPLEXITY_DECISIONS_BASE_URL",
+            Self::Cloudflare => "MAIDAN_CLEF_BASE_URL",
         }
     }
 
@@ -122,6 +151,8 @@ impl AdvisorProvider {
             Self::Typesafe => "https://api.typesafe.ai/",
             Self::Openai => "https://api.openai.com/",
             Self::Google => "https://generativelanguage.googleapis.com/",
+            Self::Perplexity => "https://api.perplexity.ai/",
+            Self::Cloudflare => "https://api.cloudflare.com/",
         }
     }
 
@@ -130,32 +161,80 @@ impl AdvisorProvider {
             Self::Typesafe => "jev-latest",
             Self::Openai => "gpt-6-luna",
             Self::Google => "gemini-decision-1",
+            Self::Perplexity => "pplx-decider-latest",
+            Self::Cloudflare => "clef",
         }
     }
 
-    /// Where the questions are sent, under the provider's origin.
+    /// Where the questions are sent, under the provider's origin. Cloudflare's
+    /// is the start of the path: the account and the model follow it
+    /// ([`Backend::ask_url`]).
     fn ask_path(self) -> &'static str {
         match self {
             Self::Typesafe => "v1/systemone",
-            Self::Openai => "v1/decisions",
+            Self::Openai | Self::Perplexity => "v1/decisions",
             Self::Google => "v1beta/decisions",
+            Self::Cloudflare => "client/v4/accounts/",
         }
     }
 
     /// A cheap authenticated read, to learn whether the provider takes a key.
-    fn models_path(self) -> &'static str {
+    /// Cloudflare has none that proves a token may run a model, so its check
+    /// asks one small question instead.
+    fn models_path(self) -> Option<&'static str> {
         match self {
-            Self::Typesafe | Self::Openai => "v1/models",
-            Self::Google => "v1beta/models",
+            Self::Typesafe | Self::Openai | Self::Perplexity => Some("v1/models"),
+            Self::Google => Some("v1beta/models"),
+            Self::Cloudflare => None,
         }
     }
 
     /// Put the key on a request the way this provider reads it.
     fn authorize(self, request: reqwest::RequestBuilder, key: &str) -> reqwest::RequestBuilder {
         match self {
-            Self::Typesafe | Self::Openai => request.bearer_auth(key),
+            Self::Typesafe | Self::Openai | Self::Perplexity => request.bearer_auth(key),
             Self::Google => request.header("x-goog-api-key", key),
+            Self::Cloudflare => {
+                request.bearer_auth(key.split_once(':').map_or(key, |(_, token)| token))
+            }
         }
+    }
+}
+
+/// The variable an instance's Cloudflare account is read from.
+const CLOUDFLARE_ACCOUNT_ENV: &str = "CLOUDFLARE_ACCOUNT_ID";
+
+/// Cloudflare's key is two things: the account whose Workers AI is called,
+/// and a token for it. They are kept and passed as one string,
+/// `account:token`, so a workspace's key for Cloudflare is one secret like
+/// any other provider's.
+///
+/// The account goes into the request's path, so it is held to what an
+/// account id is: 32 hexadecimal characters.
+pub fn cloudflare_key(account_id: &str, token: &str) -> Result<String, LandGateAdvisorError> {
+    let account_id = account_id.trim();
+    if account_id.len() != 32 || !account_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(LandGateAdvisorError::InvalidRequest(
+            "a Cloudflare account id is 32 hexadecimal characters".into(),
+        ));
+    }
+    Ok(format!("{}:{token}", account_id.to_ascii_lowercase()))
+}
+
+/// The account in a key made by [`cloudflare_key`], checked again: a stored
+/// value is not trusted to be one.
+fn cloudflare_account(key: &str) -> Result<&str, LandGateAdvisorError> {
+    match key.split_once(':') {
+        Some((account, token))
+            if account.len() == 32
+                && account.bytes().all(|b| b.is_ascii_hexdigit())
+                && !token.is_empty() =>
+        {
+            Ok(account)
+        }
+        _ => Err(LandGateAdvisorError::NotReady(
+            "the Cloudflare key here is not an account id and a token: store it again".into(),
+        )),
     }
 }
 
@@ -607,11 +686,35 @@ impl Settings {
                     provider.model_env()
                 )));
             }
+            // The model is part of Cloudflare's path.
+            if provider == AdvisorProvider::Cloudflare
+                && !model
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+            {
+                return Err(LandGateAdvisorError::Config(format!(
+                    "{} is a Workers AI model's short name, such as clef or clef-flash",
+                    provider.model_env()
+                )));
+            }
+            let api_key = get(provider.key_env())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let api_key = match (provider, api_key) {
+                (AdvisorProvider::Cloudflare, Some(token)) => {
+                    let account = get(CLOUDFLARE_ACCOUNT_ENV).unwrap_or_default();
+                    Some(cloudflare_key(&account, &token).map_err(|_| {
+                        LandGateAdvisorError::Config(format!(
+                            "{} needs {CLOUDFLARE_ACCOUNT_ENV}, the 32-character id of the account the token calls",
+                            provider.key_env()
+                        ))
+                    })?)
+                }
+                (_, api_key) => api_key,
+            };
             providers.push(ProviderSettings {
                 provider,
-                api_key: get(provider.key_env())
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty()),
+                api_key,
                 base_url: get(provider.base_url_env())
                     .unwrap_or_else(|| provider.default_base_url().into()),
                 model,
@@ -714,6 +817,23 @@ impl Backend {
         self.base_url.host_str().unwrap_or_default().to_string()
     }
 
+    /// Where a call made with `key` is sent. Cloudflare's address names the
+    /// account the key is for, and the model.
+    fn ask_url(&self, key: &str) -> Result<Url, LandGateAdvisorError> {
+        if self.provider != AdvisorProvider::Cloudflare {
+            return Ok(self.endpoint.clone());
+        }
+        let account = cloudflare_account(key)?;
+        self.endpoint
+            .join(&format!("{account}/ai/run/@cf/cloudflare/{}", self.model))
+            .map_err(|error| {
+                LandGateAdvisorError::Config(format!(
+                    "invalid {}: {error}",
+                    self.provider.base_url_env()
+                ))
+            })
+    }
+
     /// Whose key a call from `workspace_id` would use, if any.
     async fn key_source(
         &self,
@@ -782,16 +902,22 @@ impl Backend {
         api_key: &str,
         timeout: Duration,
     ) -> Result<(), LandGateAdvisorError> {
-        let models = self
-            .base_url
-            .join(self.provider.models_path())
-            .map_err(|error| {
+        let client = self.client().await?;
+        let request = match self.provider.models_path() {
+            Some(path) => client.get(self.base_url.join(path).map_err(|error| {
                 LandGateAdvisorError::Config(format!(
                     "invalid {}: {error}",
                     self.provider.base_url_env()
                 ))
-            })?;
-        let request = self.client().await?.get(models);
+            })?),
+            // One question about nothing of anyone's: it shows the token may
+            // run the model on this account, which no read does.
+            None => client.post(self.ask_url(api_key)?).json(&json!({
+                "model": self.model,
+                "state": "A key check.",
+                "questions": { "check": { "type": "noul", "instructions": "Is this a key check?" } },
+            })),
+        };
         let response = self
             .provider
             .authorize(request, api_key)
@@ -800,11 +926,14 @@ impl Backend {
             .await
             .map_err(|error| LandGateAdvisorError::Unavailable(error.to_string()))?;
         let status = response.status();
-        // Google answers a key it does not know with 400, not 401.
+        // Google answers a key it does not know with 400, not 401, and
+        // Cloudflare an account the token is not for with 404.
         let refused = status == reqwest::StatusCode::UNAUTHORIZED
             || status == reqwest::StatusCode::FORBIDDEN
             || (self.provider == AdvisorProvider::Google
-                && status == reqwest::StatusCode::BAD_REQUEST);
+                && status == reqwest::StatusCode::BAD_REQUEST)
+            || (self.provider == AdvisorProvider::Cloudflare
+                && status == reqwest::StatusCode::NOT_FOUND);
         if status.is_success() {
             Ok(())
         } else if refused {
@@ -840,7 +969,7 @@ impl Backend {
     ) -> Result<LandGateAdvice, LandGateAdvisorError> {
         let body = request_body(self.provider, &self.model, state);
         let started = Instant::now();
-        let request = self.client().await?.post(self.endpoint.clone());
+        let request = self.client().await?.post(self.ask_url(&key.value)?);
         let response = self
             .provider
             .authorize(request, &key.value)
@@ -967,7 +1096,7 @@ impl LandGateAdvisor {
     /// Build an advisor on a client the caller made: the constructor tests and
     /// test servers use, which reach a stand-in on a loopback address. The
     /// stand-in answers for every provider; `instance_key` and `model` are
-    /// TypeSafe's, and the other two start with no key of the instance's.
+    /// TypeSafe's, and the others start with no key of the instance's.
     pub fn with_http(
         client: Client,
         base_url: Url,
@@ -975,8 +1104,12 @@ impl LandGateAdvisor {
         model: impl Into<String>,
         timeout: Duration,
     ) -> Result<Self, LandGateAdvisorError> {
-        let mut advisor =
-            Self::with_http_keys(client, base_url, [instance_key, None, None], timeout)?;
+        let mut advisor = Self::with_http_keys(
+            client,
+            base_url,
+            [instance_key, None, None, None, None],
+            timeout,
+        )?;
         advisor.backends[0].model = model.into();
         Ok(advisor)
     }
@@ -986,7 +1119,7 @@ impl LandGateAdvisor {
     pub fn with_http_keys(
         client: Client,
         base_url: Url,
-        instance_keys: [Option<String>; 3],
+        instance_keys: [Option<String>; 5],
         timeout: Duration,
     ) -> Result<Self, LandGateAdvisorError> {
         let backends = AdvisorProvider::ALL
@@ -1159,6 +1292,17 @@ fn probability(value: Option<&Value>, id: &str, field: &str) -> Result<f64, Land
 /// except where the provider says it declined one: that judgment is left
 /// out, and [`decide`] reads a judgment it was not given as unsettled.
 fn answers(provider: AdvisorProvider, response: &Value) -> Result<Answered, LandGateAdvisorError> {
+    // Cloudflare wraps what the model answered in its API's envelope.
+    let response = if provider == AdvisorProvider::Cloudflare {
+        response
+            .get("result")
+            .filter(|r| r.is_object())
+            .ok_or_else(|| {
+                LandGateAdvisorError::InvalidResponse("response had no `result`".into())
+            })?
+    } else {
+        response
+    };
     let count = |path: &[&str]| {
         path.iter()
             .try_fold(response, |at, key| at.get(key))
@@ -1171,7 +1315,10 @@ fn answers(provider: AdvisorProvider, response: &Value) -> Result<Answered, Land
         .map(str::to_string);
     let mut probabilities = BTreeMap::new();
     match provider {
-        AdvisorProvider::Typesafe | AdvisorProvider::Google => {
+        AdvisorProvider::Typesafe
+        | AdvisorProvider::Google
+        | AdvisorProvider::Perplexity
+        | AdvisorProvider::Cloudflare => {
             for question in &QUESTIONS {
                 let id = question.id;
                 let answer = response
@@ -1226,7 +1373,10 @@ fn answers(provider: AdvisorProvider, response: &Value) -> Result<Answered, Land
         }
     }
     let usage = match provider {
-        AdvisorProvider::Typesafe | AdvisorProvider::Openai => LandGateAdviceUsage {
+        AdvisorProvider::Typesafe
+        | AdvisorProvider::Openai
+        | AdvisorProvider::Perplexity
+        | AdvisorProvider::Cloudflare => LandGateAdviceUsage {
             input_tokens: count(&["usage", "input_tokens"]),
             output_tokens: count(&["usage", "output_tokens"]),
         },
@@ -1320,10 +1470,11 @@ fn concerns(reason: &str, id: &str) -> bool {
 
 /// The request a provider is sent: the model, the packet and every question
 /// as written in [`QUESTIONS`], in that provider's own shape. The wording is
-/// the same for all three.
+/// the same for every provider.
 fn request_body(provider: AdvisorProvider, model: &str, state: &Value) -> Value {
     match provider {
-        AdvisorProvider::Typesafe => {
+        // Perplexity's and Cloudflare's APIs take TypeSafe's request as it is.
+        AdvisorProvider::Typesafe | AdvisorProvider::Perplexity | AdvisorProvider::Cloudflare => {
             let questions: BTreeMap<&str, Value> = QUESTIONS
                 .iter()
                 .map(|q| {
@@ -1704,7 +1855,13 @@ mod tests {
                 .iter()
                 .map(|p| p.model.as_str())
                 .collect::<Vec<_>>(),
-            ["jev-latest", "gpt-6-luna", "gemini-decision-1"]
+            [
+                "jev-latest",
+                "gpt-6-luna",
+                "gemini-decision-1",
+                "pplx-decider-latest",
+                "clef"
+            ]
         );
         let keyed = Settings::from_lookup(lookup(&[
             ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
@@ -1734,6 +1891,82 @@ mod tests {
             ("MAIDAN_GEMINI_DECISIONS_MODEL", " "),
         ]))
         .is_err());
+        let more = Settings::from_lookup(lookup(&[
+            ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
+            ("PERPLEXITY_API_KEY", "pplx-three"),
+            ("MAIDAN_CLEF_MODEL", "clef-flash"),
+        ]))
+        .unwrap()
+        .unwrap();
+        assert_eq!(more.providers[3].api_key.as_deref(), Some("pplx-three"));
+        assert_eq!(more.providers[4].model, "clef-flash");
+        assert!(more.providers[4].api_key.is_none());
+    }
+
+    #[test]
+    fn cloudflares_key_is_an_account_and_a_token_for_it() {
+        const ACCOUNT: &str = "0123456789abcdef0123456789ABCDEF";
+        let on = |extra: &[(&str, &str)]| {
+            let mut vars = vec![("MAIDAN_JEV_LAND_GATE_ENABLED", "1")];
+            vars.extend_from_slice(extra);
+            Settings::from_lookup(lookup(&vars))
+        };
+        // The two are read together and kept as one string.
+        let both = on(&[
+            ("CLOUDFLARE_ACCOUNT_ID", ACCOUNT),
+            ("CLOUDFLARE_WORKERS_AI_TOKEN", " cf-token "),
+        ])
+        .unwrap()
+        .unwrap();
+        let key = both.providers[4].api_key.clone().unwrap();
+        assert_eq!(key, format!("{}:cf-token", ACCOUNT.to_ascii_lowercase()));
+        // A token with no account, or with something that is not one, stops
+        // the server at boot: the account is part of the address.
+        assert!(on(&[("CLOUDFLARE_WORKERS_AI_TOKEN", "cf-token")]).is_err());
+        assert!(on(&[
+            ("CLOUDFLARE_ACCOUNT_ID", "../../user"),
+            ("CLOUDFLARE_WORKERS_AI_TOKEN", "cf-token"),
+        ])
+        .is_err());
+        // An account alone turns nothing on: a host may hold it for other work.
+        let alone = on(&[("CLOUDFLARE_ACCOUNT_ID", ACCOUNT)]).unwrap().unwrap();
+        assert!(alone.providers[4].api_key.is_none());
+        // The token most hosts hold for other work is not read at all.
+        let other = on(&[
+            ("CLOUDFLARE_ACCOUNT_ID", ACCOUNT),
+            ("CLOUDFLARE_API_TOKEN", "deploy-token"),
+        ])
+        .unwrap()
+        .unwrap();
+        assert!(other.providers[4].api_key.is_none());
+        // The model is part of the path too.
+        assert!(on(&[("MAIDAN_CLEF_MODEL", "clef/../../x")]).is_err());
+
+        // The call goes to that account's model, with the token alone as the bearer.
+        let advisor = LandGateAdvisor::from_settings(both).unwrap();
+        let clef = &advisor.backends[4];
+        assert_eq!(
+            clef.ask_url(&key).unwrap().as_str(),
+            format!(
+                "https://api.cloudflare.com/client/v4/accounts/{}/ai/run/@cf/cloudflare/clef",
+                ACCOUNT.to_ascii_lowercase()
+            )
+        );
+        let sent = AdvisorProvider::Cloudflare
+            .authorize(Client::new().get("https://example.invalid/"), &key)
+            .build()
+            .unwrap();
+        assert_eq!(sent.headers()["authorization"], "Bearer cf-token");
+        // A stored value that is not an account and a token is not sent anywhere.
+        for bad in ["cf-token", "../x:cf-token", &format!("{ACCOUNT}:")] {
+            assert!(clef.ask_url(bad).is_err(), "{bad}");
+        }
+        assert!(cloudflare_key("not-an-account", "t").is_err());
+        // Every other provider's address does not depend on the key.
+        assert_eq!(
+            advisor.backends[3].ask_url("anything").unwrap().as_str(),
+            "https://api.perplexity.ai/v1/decisions"
+        );
         assert!(Settings::from_lookup(lookup(&[
             ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
             ("MAIDAN_JEV_TIMEOUT_MS", "0"),
@@ -2176,6 +2409,17 @@ mod tests {
             google["questions"]["done"]["criteria"]["false_description"],
             QUESTIONS[0].no
         );
+
+        // Perplexity and Cloudflare take TypeSafe's request, each under its
+        // own model name.
+        for (provider, model) in [
+            (AdvisorProvider::Perplexity, "pplx-decider-latest"),
+            (AdvisorProvider::Cloudflare, "clef"),
+        ] {
+            let mut same = jev.clone();
+            same["model"] = json!(model);
+            assert_eq!(request_body(provider, model, &state), same, "{provider:?}");
+        }
     }
 
     #[test]
@@ -2235,6 +2479,22 @@ mod tests {
                 "answers": QUESTIONS.iter().map(|q| (q.id.to_string(), json!({ "type": "noul", "noul": p, "confidence": p }))).collect::<Map<_, _>>(),
                 "usage": { "total_tokens": 1300, "total_input_tokens": 1300, "total_output_tokens": 0 },
             }),
+            AdvisorProvider::Perplexity => json!({
+                "model": "pplx-decider-latest",
+                "answers": QUESTIONS.iter().map(|q| (q.id.to_string(), json!({ "type": "noul", "noul": p }))).collect::<Map<_, _>>(),
+                "usage": { "input_tokens": 1400, "output_tokens": 2 },
+            }),
+            // Cloudflare's API wraps the model's answer.
+            AdvisorProvider::Cloudflare => json!({
+                "result": {
+                    "model": "clef",
+                    "answers": QUESTIONS.iter().map(|q| (q.id.to_string(), json!({ "type": "noul", "noul": p }))).collect::<Map<_, _>>(),
+                    "usage": { "input_tokens": 1500, "output_tokens": 0 },
+                },
+                "success": true,
+                "errors": [],
+                "messages": [],
+            }),
         }
     }
 
@@ -2245,6 +2505,12 @@ mod tests {
             (AdvisorProvider::Openai, 1200, Some("gpt-6-luna")),
             // Google names no model in its answer: the one asked is reported.
             (AdvisorProvider::Google, 1300, None),
+            (
+                AdvisorProvider::Perplexity,
+                1400,
+                Some("pplx-decider-latest"),
+            ),
+            (AdvisorProvider::Cloudflare, 1500, Some("clef")),
         ] {
             let read = answers(provider, &answered(provider, 0.4)).unwrap();
             assert_eq!(read.probabilities.len(), QUESTIONS.len(), "{provider:?}");
@@ -2279,6 +2545,9 @@ mod tests {
         let mut openai = answered(AdvisorProvider::Openai, 0.4);
         openai["answers"][0] = json!({ "type": "score", "name": "done", "score": 1 });
         assert!(answers(AdvisorProvider::Openai, &openai).is_err());
+        // Cloudflare's answer outside its envelope is not read as one.
+        let bare = answered(AdvisorProvider::Cloudflare, 0.4)["result"].clone();
+        assert!(answers(AdvisorProvider::Cloudflare, &bare).is_err());
         // A question missing from the array is an answer missing.
         let mut short = answered(AdvisorProvider::Openai, 0.4);
         short["answers"].as_array_mut().unwrap().remove(0);

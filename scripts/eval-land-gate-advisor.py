@@ -40,7 +40,7 @@ def main() -> int:
     parser.add_argument("--only", help="comma-separated case ids")
     parser.add_argument("--min-land", type=float, default=0.9, help="the share of cases whose advice must match its label")
     parser.add_argument("--out", type=Path, help="write every answer here as JSON lines")
-    parser.add_argument("--provider", choices=["typesafe", "openai", "google"], help="which provider to ask; left out, the instance's default for the token's workspace")
+    parser.add_argument("--provider", choices=["typesafe", "openai", "google", "perplexity", "cloudflare"], help="which provider to ask; left out, the instance's default for the token's workspace")
     args = parser.parse_args()
     token = os.environ.get(args.token_env, "").strip()
     if not token:

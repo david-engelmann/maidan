@@ -165,6 +165,27 @@ pub async fn set_land_gate_advisor(
             "this instance cannot store a workspace's key: storing one needs FEDERATION_ENCRYPTION_KEY on the instance{fallback}"
         ))
     })?;
+    // Cloudflare's key is the account and its token as one string; every
+    // other provider's is the key alone.
+    let composed;
+    let api_key = match (provider, body.account_id.as_deref()) {
+        (AdvisorProvider::Cloudflare, Some(account_id)) => {
+            composed = crate::land_gate_advisor::cloudflare_key(account_id, api_key)
+                .map_err(|error| advisor_error(error, "advisor key check"))?;
+            composed.as_str()
+        }
+        (AdvisorProvider::Cloudflare, None) => {
+            return Err(ApiError::BadRequest(
+                "account_id is required for Cloudflare: the id of the account whose Workers AI the token calls".into(),
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(ApiError::BadRequest(
+                "account_id is for Cloudflare only".into(),
+            ));
+        }
+        (_, None) => api_key,
+    };
     advisor
         .check_key(provider, api_key)
         .await

@@ -48,6 +48,19 @@ export const RELAYS = [
     auth: (key) => ({ "x-goog-api-key": key }),
     baseUrlVar: "MAIDAN_GEMINI_DECISIONS_BASE_URL",
   },
+  {
+    id: "perplexity",
+    name: "Perplexity Decider",
+    host: "perplexity-decisions.internal",
+    origin: "https://api.perplexity.ai",
+    keyVar: "PERPLEXITY_API_KEY",
+    ask: "/v1/decisions",
+    models: "/v1/models",
+    auth: (key) => ({ authorization: `Bearer ${key}` }),
+    baseUrlVar: "MAIDAN_PERPLEXITY_DECISIONS_BASE_URL",
+  },
+  // Cloudflare's Clef is a provider the server offers, and not one the demo
+  // asks: its key is an account's token, and the demo holds none for it.
 ];
 
 const TYPESAFE = RELAYS[0];
