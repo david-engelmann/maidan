@@ -43,7 +43,7 @@ test("the panel says what is sent and when, and saving a key turns advice on", a
   await screen.findByText(/Off for this workspace until it has a key\./);
   screen.getByText(/Until then nothing is sent\./);
   screen.getByText(/the task’s title, description and acceptance, its result, and the messages of the agent that did the work/);
-  screen.getByText(/It approves and blocks nothing: reviewers still decide\./);
+  screen.getByText(/The answers show on the task as advice for whoever reviews it\./);
   const input = screen.getByLabelText("Your TypeSafe API key") as HTMLInputElement;
   expect(input.type).toBe("password");
   const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;

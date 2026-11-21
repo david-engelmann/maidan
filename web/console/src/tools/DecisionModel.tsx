@@ -10,7 +10,7 @@ import { useLoad } from "../hooks/useTools.ts";
 /** One line on where advice stands for this workspace. */
 export function advisorLine(status: AdvisorStatus): string {
   if (status.key_source === "workspace") return "On, with this workspace’s own key.";
-  if (status.key_source === "instance") return "On, with this server’s key. Add your own to use your TypeSafe account instead.";
+  if (status.key_source === "instance") return "On, with this server’s key. Add your own to use your own account instead.";
   return "Off for this workspace until it has a key.";
 }
 
@@ -66,14 +66,14 @@ export function DecisionModel({ ws }: { ws: string }) {
         <span className="state-chip">{current.key_source ? "On" : "Off"}</span>
       </div>
       <p className="muted small">
-        {current.model?.startsWith("jev") ? "TypeSafe’s Jev" : "A decision model"} reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice. It approves and blocks nothing: reviewers still decide.
+        A decision model reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice for whoever reviews it.
       </p>
       <p className="small">{advisorLine(current)} Only this workspace’s admin can set or remove the key.</p>
       {status.error ? <p className="small" role="alert">This may be out of date. The last read failed: {status.error} {retry}</p> : null}
       <ul className="muted small advisor-facts">
         <li><b>When.</b> Advice is asked for when someone opens a task that is in review, or an agent asks for it. Until then nothing is sent.</li>
-        <li><b>What is sent.</b> To {current.host ?? "the provider"}: the task’s title, description and acceptance, its result, and the messages of the agent that did the work. What TypeSafe keeps is under its own terms.</li>
-        <li><b>The key.</b> Saving sends it to TypeSafe once, to check that it works. It is then stored encrypted here and never shown again.</li>
+        <li><b>What is sent.</b> To {current.host ?? "the provider"}: the task’s title, description and acceptance, its result, and the messages of the agent that did the work. What the provider keeps is under its own terms.</li>
+        <li><b>The key.</b> Saving sends it to the provider once, to check that it works. It is then stored encrypted here and never shown again.</li>
       </ul>
       <form
         className="row-form"
