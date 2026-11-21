@@ -48,3 +48,32 @@ test("an open task's result and messages appear when an agent sets them, without
   await screen.findByText(/212 passed/);
   expect(screen.queryByText("No result recorded yet.")).toBeNull();
 });
+
+test("a task whose events arrive faster than a read answers still shows what the reads find", async () => {
+  let result: unknown = null;
+  const routes: Route[] = [
+    { match: new RegExp(`/threads/${TASK}/result$`), body: () => result, get status() { return result ? 200 : 404; } },
+    { match: new RegExp(`/threads/${TASK}/messages`), body: () => [] },
+    { match: /\/workspaces\/ws\/members/, body: () => [] },
+  ];
+  const router = withSession(routes);
+  // Every read of the result takes 600 ms to answer.
+  const slow: typeof router.fn = async (url, init) => {
+    const res = await router.fn(url, init);
+    if (/\/result$/.test(String(url))) await new Promise((r) => setTimeout(r, 600));
+    return res;
+  };
+  await renderSignedIn(<ReviewContext tid={TASK} shas={[]} />, slow);
+  await screen.findByText("No result recorded yet.");
+
+  result = { thread_id: TASK, result: { summary: "Adds a token-bucket limiter." } };
+  // An event every 400 ms for two seconds: each starts a read before the last one answered.
+  const busy = setInterval(() => act(() => liveBus.emit(event("message_posted", TASK))), 400);
+  act(() => liveBus.emit(event("thread_result_set", TASK)));
+  try {
+    // The first of those reads answers about 850 ms in, while events still arrive.
+    await waitFor(() => expect(screen.getByText(/token-bucket limiter/)).toBeTruthy(), { timeout: 1500 });
+  } finally {
+    clearInterval(busy);
+  }
+});

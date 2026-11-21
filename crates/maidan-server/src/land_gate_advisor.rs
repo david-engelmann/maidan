@@ -377,7 +377,7 @@ struct Settings {
     internal_hosts: Vec<String>,
     /// The loopback addresses among the private peers the operator listed
     /// (`MAIDAN_PRIVATE_EGRESS_HOSTS`): a stand-in provider on this machine.
-    loopback_peers: Vec<String>,
+    loopback_peers: Vec<std::net::IpAddr>,
     model: String,
     timeout: Duration,
 }
@@ -438,10 +438,10 @@ impl Settings {
                 .map(|raw| maidan_auth::parse_private_egress_hosts(&raw))
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|host| {
-                    host.parse::<std::net::IpAddr>()
-                        .is_ok_and(|address| address.is_loopback())
-                })
+                // Parsed, so one address listed in another spelling
+                // (`0:0:0:0:0:0:0:1` for `::1`) is still that address.
+                .filter_map(|host| host.parse::<std::net::IpAddr>().ok())
+                .filter(std::net::IpAddr::is_loopback)
                 .collect(),
             model,
             timeout: Duration::from_millis(timeout_ms),
@@ -514,9 +514,12 @@ impl LandGateAdvisor {
             .and_then(|rest| rest.strip_suffix(']'))
             .unwrap_or(&host)
             .to_string();
+        let listed_loopback = host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| settings.loopback_peers.contains(&address));
         if base_url.scheme() == "http"
             && !settings.internal_hosts.contains(&host)
-            && !settings.loopback_peers.contains(&host)
+            && !listed_loopback
         {
             return Err(LandGateAdvisorError::Config(
                 "MAIDAN_JEV_BASE_URL must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS or is a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS"
@@ -1349,6 +1352,7 @@ mod tests {
         // runs one.
         assert!(on("http://127.0.0.1:8080/", "127.0.0.1").is_ok());
         assert!(on("http://[::1]:8080/", "::1").is_ok());
+        assert!(on("http://[::1]:8080/", "0:0:0:0:0:0:0:1").is_ok());
         assert!(on("http://127.0.0.1:8080/", "").is_err());
         assert!(on("http://127.0.0.1:8080/", "::1").is_err());
         // A listed private peer that is not this machine still needs https:

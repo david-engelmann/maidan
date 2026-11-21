@@ -1,6 +1,6 @@
 // What a reviewer reads before deciding, inline in the review pane: the
 // result itself, a look inside each file, and the last few messages.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiPath, type Credentials } from "../core/api.ts";
 import { BoardApi, type Member } from "../core/board.ts";
 import { liveBus, type BusMessage } from "../core/bus.ts";
@@ -97,16 +97,33 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   const members = staleRoster ? new Map<string, Member>() : roster.members;
   const membersReady = staleRoster ? !workspaceId : roster.ready;
 
+  // Reads are numbered, and an answer is shown unless a later read's answer
+  // already is. A read is not dropped because another one started: on a task
+  // whose events arrive faster than a read answers, dropping would leave the
+  // pane on what it showed first for as long as the task stays busy.
+  const reads = useRef({ started: 0, result: 0, recent: 0, tid });
+  const mounted = useRef(true);
   useEffect(() => {
-    let live = true;
-    void apis.threads.resultRead(tid).then((r) => live && setResult({ tid, text: resultText(r.result?.result), error: r.error }));
-    void apis.threads.messages(tid).then(
-      (ms) => live && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT), error: null }),
-      (e) => live && setRecent({ tid, rows: [], error: e instanceof Error ? e.message : "Could not load the messages" }),
-    );
+    mounted.current = true;
     return () => {
-      live = false;
+      mounted.current = false;
     };
+  }, []);
+  useEffect(() => {
+    const r = reads.current;
+    if (r.tid !== tid) reads.current = { started: r.started, result: r.started, recent: r.started, tid };
+    const mine = ++reads.current.started;
+    const current = (slot: "result" | "recent") => {
+      const now = reads.current;
+      if (!mounted.current || now.tid !== tid || mine < now[slot]) return false;
+      now[slot] = mine;
+      return true;
+    };
+    void apis.threads.resultRead(tid).then((got) => current("result") && setResult({ tid, text: resultText(got.result?.result), error: got.error }));
+    void apis.threads.messages(tid).then(
+      (ms) => current("recent") && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT), error: null }),
+      (e) => current("recent") && setRecent({ tid, rows: [], error: e instanceof Error ? e.message : "Could not load the messages" }),
+    );
   }, [apis, tid, attempt, seen]);
 
   useEffect(() => {
