@@ -29,13 +29,39 @@ export type Advice = {
   cached: boolean;
 };
 
+export type ProviderId = "typesafe" | "openai" | "google";
+
+/** One provider of decision models, as this workspace sees it. */
+export type AdvisorProvider = {
+  id: ProviderId;
+  name: string;
+  model: string;
+  host: string;
+  key_source?: "workspace" | "instance" | null;
+};
+
 export type AdvisorStatus = {
   enabled: boolean;
+  /** These four describe the provider a call that names none would ask. */
   key_source?: "workspace" | "instance" | null;
   provider?: string | null;
   model?: string | null;
   host?: string | null;
+  /** Every provider the server can ask. */
+  providers?: AdvisorProvider[];
 };
+
+/** The provider's key, as its own site calls it. */
+export const KEY_NAME: Record<ProviderId, string> = {
+  typesafe: "TypeSafe API key",
+  openai: "OpenAI API key",
+  google: "Gemini API key",
+};
+
+/** The providers a call from this workspace can ask now. */
+export function usableProviders(status: AdvisorStatus | null): AdvisorProvider[] {
+  return (status?.providers ?? []).filter((p) => p.key_source);
+}
 
 /** What the sheet shows in place of advice, and why. */
 export type AdviceState =
@@ -155,10 +181,10 @@ export class AdviceApi {
    * as states: advice is off here, the workspace has no key, or the task has
    * no result to read yet.
    */
-  async advise(threadId: string, refresh = false): Promise<AdviceState> {
+  async advise(threadId: string, refresh = false, provider: ProviderId | null = null): Promise<AdviceState> {
     const c = this.creds();
     // The path and its method share a line: check:spec reads the method off the path's line.
-    const body = JSON.stringify(refresh ? { refresh: true } : {});
+    const body = JSON.stringify({ ...(refresh ? { refresh: true } : {}), ...(provider ? { provider } : {}) });
     const res = await this.fetchFn(apiPath(c, `/threads/${threadId}/land-gate/advice`), { method: "POST", headers: headers(c, true), credentials: "include", body });
     if (res.status === 404) return { kind: "off" };
     if (res.status === 409) {
@@ -169,20 +195,20 @@ export class AdviceApi {
     return { kind: "ready", advice: (await res.json()) as Advice };
   }
 
-  /** Store this workspace's own key. The server asks the provider to accept it first. */
-  async setKey(workspaceId: string, apiKey: string): Promise<AdvisorStatus> {
+  /** Store this workspace's own key for a provider. The server asks the provider to accept it first. */
+  async setKey(workspaceId: string, apiKey: string, provider: ProviderId = "typesafe"): Promise<AdvisorStatus> {
     const c = this.creds();
-    const body = JSON.stringify({ api_key: apiKey });
+    const body = JSON.stringify({ api_key: apiKey, provider });
     const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body }));
     // A refused key (400) and an instance that cannot keep one (409) say why in the server's words.
     if (!res.ok) return failure(res, this.mode(), AdviceError, (status, detail) => ((status === 400 || status === 409) && detail ? detail : null));
     return (await res.json()) as AdvisorStatus;
   }
 
-  /** Forget this workspace's key. */
-  async clearKey(workspaceId: string): Promise<AdvisorStatus> {
+  /** Forget this workspace's key for a provider. */
+  async clearKey(workspaceId: string, provider: ProviderId = "typesafe"): Promise<AdvisorStatus> {
     const c = this.creds();
-    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`), writeInit({ method: "DELETE", headers: headers(c), credentials: "include" }));
+    const res = await this.fetchFn(apiPath(c, `/workspaces/${workspaceId}/land-gate/advisor`) + `?provider=${provider}`, writeInit({ method: "DELETE", headers: headers(c), credentials: "include" }));
     if (!res.ok) return failure(res, this.mode(), AdviceError);
     return (await res.json()) as AdvisorStatus;
   }

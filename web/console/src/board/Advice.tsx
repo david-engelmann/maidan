@@ -2,7 +2,7 @@
 // hand-off, as ten judgments, and the green, amber or red the server's rules
 // draw from them. It informs the reviewer; the sheet's buttons decide.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
+import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, readingOf, reasonText, rowMark, sureness, usableProviders, type AdviceState, type AdvisorProvider, type Judgment, type ProviderId } from "../core/advice.ts";
 import { useSession } from "../hooks/useSession.ts";
 
 /**
@@ -12,19 +12,43 @@ import { useSession } from "../hooks/useSession.ts";
  * and asks the model when it is not.
  */
 export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
-  const { store } = useSession();
+  const { store, session } = useSession();
   const api = useMemo(
     () => new AdviceApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),
     [store],
   );
+  // The providers this workspace can ask, for the switch. A read that fails
+  // leaves no switch: the advice itself still comes from the default.
+  const ws = session.workspaceId;
+  const [usable, setUsable] = useState<AdvisorProvider[]>([]);
+  useEffect(() => {
+    if (!ws) return;
+    let live = true;
+    api.status(ws).then((s) => live && setUsable(usableProviders(s)), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [api, ws]);
+  // The reviewer's choice is kept for the next task. One that can no longer
+  // be asked is not sent: the server then picks.
+  const [picked, setPicked] = useState<ProviderId | null>(() => storedProvider());
+  const provider = usable.some((p) => p.id === picked) ? picked : null;
+  const pick = (id: ProviderId) => {
+    try {
+      window.localStorage.setItem(PROVIDER_KEY, id);
+    } catch {
+      // A browser that keeps nothing still switches for this page.
+    }
+    setPicked(id);
+  };
   // Bumped by Ask again, which asks the model afresh.
   const [attempt, setAttempt] = useState(0);
   // The answer, with the question it answers, so a new task or a new ask
   // reads as loading until its own answer arrives. A task that only changed
   // keeps showing the answer it had until the new one lands.
-  const asked = `${tid}:${attempt}:${stamp}`;
+  const asked = `${tid}:${attempt}:${stamp}:${provider ?? ""}`;
   const [got, setGot] = useState<{ asked: string; of: string; state: AdviceState } | null>(null);
-  const of = `${tid}:${attempt}`;
+  const of = `${tid}:${attempt}:${provider ?? ""}`;
   const state: AdviceState = got && (got.asked === asked || got.of === of) ? got.state : { kind: "loading" };
   // Whether an Ask again is still owed a fresh answer. It stays owed until an
   // answer to it is accepted: a task that changes while the model is being
@@ -44,11 +68,22 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       if (afresh) refreshOwed.current = false;
       setGot({ asked, of, state: next });
     };
-    api.advise(tid, afresh).then(accept, (e: unknown) => accept({ kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." }));
+    api.advise(tid, afresh, provider).then(accept, (e: unknown) => accept({ kind: "failed", message: e instanceof Error ? e.message : "The model did not answer." }));
     return () => {
       live = false;
     };
-  }, [api, tid, attempt, asked, of]);
+  }, [api, tid, attempt, asked, of, provider]);
+
+  // Which model answered, or a choice of who to ask when there is one.
+  const who = (shown: string | null) =>
+    usable.length > 1 ? (
+      <label className="advice-switch">
+        <span className="visually-hidden">Decision model</span>
+        <select value={provider ?? shown ?? usable[0].id} onChange={(e) => pick(e.target.value as ProviderId)}>
+          {usable.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+    ) : null;
 
   // Nothing to show: advice is off here, or the task has no result to read.
   if (state.kind === "off" || state.kind === "none") return null;
@@ -57,7 +92,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     return (
       <section className="advice advice-quiet" aria-label="Advice">
         <p className="advice-hint">
-          A decision model can read each hand-off for you. <a className="msg-link" href="#/tools/workspace">Add your TypeSafe key under Tools, Workspace.</a>
+          A decision model can read each hand-off for you. <a className="msg-link" href="#/tools/workspace">Add a key for one under Tools, Workspace.</a>
         </p>
       </section>
     );
@@ -68,6 +103,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       <section className="advice" aria-label="Advice" aria-busy="true">
         <header className="advice-head">
           <h3>Advice</h3>
+          {who(null)}
         </header>
         <p className="advice-wait" role="status"><span className="advice-pulse" aria-hidden="true" />Reading the hand-off…</p>
       </section>
@@ -79,6 +115,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       <section className="advice" aria-label="Advice">
         <header className="advice-head">
           <h3>Advice</h3>
+          {who(null)}
         </header>
         <p className="advice-wait" role="status">
           {state.message}{" "}
@@ -93,7 +130,10 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     <section className="advice" data-land={advice.land} aria-label="Advice">
       <header className="advice-head">
         <h3>Advice</h3>
-        <span className="advice-model">{advice.model}</span>
+        <span className="advice-by">
+          {who(advice.provider)}
+          <span className="advice-model">{advice.model}</span>
+        </span>
       </header>
       <p className="advice-land">
         <span className="advice-lamp" aria-hidden="true" />
@@ -122,6 +162,18 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       </div>
     </section>
   );
+}
+
+const PROVIDER_KEY = "maidan_advice_provider";
+const PROVIDERS: readonly string[] = ["typesafe", "openai", "google"];
+
+function storedProvider(): ProviderId | null {
+  try {
+    const kept = window.localStorage.getItem(PROVIDER_KEY);
+    return kept && PROVIDERS.includes(kept) ? (kept as ProviderId) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Each mark is drawn inside a disc, so a concern is a filled shape and not a

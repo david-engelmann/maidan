@@ -91,10 +91,21 @@ test("the workspace key is set, cleared and read without ever being returned", a
   assert.equal(set.key_source, "workspace");
   assert.equal(a.calls[0].url, "http://h/ui/api/workspaces/ws/land-gate/advisor");
   assert.equal(a.calls[0].init?.method, "PUT");
-  assert.equal(a.calls[0].init?.body, JSON.stringify({ api_key: "ts_key" }));
+  assert.equal(a.calls[0].init?.body, JSON.stringify({ api_key: "ts_key", provider: "typesafe" }));
   assert.ok((a.calls[0].init?.headers as Record<string, string>)["Idempotency-Key"]);
   await a.api.clearKey("ws");
   assert.equal(a.calls[1].init?.method, "DELETE");
+  assert.equal(a.calls[1].url, "http://h/ui/api/workspaces/ws/land-gate/advisor?provider=typesafe");
+  // Another provider's key is set and cleared under its own name.
+  await a.api.setKey("ws", "sk-key", "openai");
+  assert.equal(a.calls[2].init?.body, JSON.stringify({ api_key: "sk-key", provider: "openai" }));
+  await a.api.clearKey("ws", "google");
+  assert.equal(a.calls[3].url, "http://h/ui/api/workspaces/ws/land-gate/advisor?provider=google");
+  // A call may name who to ask; one that does not sends no provider.
+  await a.api.advise("t1", false, "google");
+  assert.equal(a.calls[4].init?.body, JSON.stringify({ provider: "google" }));
+  await a.api.advise("t1", true);
+  assert.equal(a.calls[5].init?.body, JSON.stringify({ refresh: true }));
   // A server from before the advisor answers 404: advice is simply off.
   assert.deepEqual(await api([{ status: 404 }]).api.status("ws"), { enabled: false });
   await assert.rejects(api([{ status: 400, body: { detail: "TypeSafe refused this key" } }]).api.setKey("ws", "bad"), /TypeSafe refused this key/);
