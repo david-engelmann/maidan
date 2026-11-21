@@ -114,7 +114,8 @@ export function AdviceSection() {
           data? Your reviewer starts with what it found.
         </p>
         <p className="advise-fine">
-          It reads the agent’s own account of the work, not the diff, and runs on your own key.
+          It reads the agent’s own account of the work, not the diff, and stays off until your
+          workspace adds a key.
         </p>
         <div className="cta-row">
           <a className="cta" href="https://try.maidan.world">See it in the live demo</a>
