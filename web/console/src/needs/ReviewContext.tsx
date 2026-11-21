@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiPath, type Credentials } from "../core/api.ts";
 import { BoardApi, type Member } from "../core/board.ts";
+import { liveBus, type BusMessage } from "../core/bus.ts";
 import { authorLabel, freshRoster } from "../core/people.ts";
 import { ThreadsApi, type Message } from "../core/threads.ts";
 import { mediaEssence, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
@@ -11,6 +12,14 @@ import { useToolsApi } from "../hooks/useTools.ts";
 import { MessageBody } from "../threads/MessageBody.tsx";
 
 const RECENT = 3;
+// The events that change what this pane shows for a task.
+const CHANGES = new Set(["thread_result_set", "message_posted", "message_edited", "message_tombstoned"]);
+
+/** Whether a live message means this task's result or messages may have changed. */
+export function changesContext(m: BusMessage, tid: string): boolean {
+  if (m.type === "resync") return true;
+  return m.frame.thread_id === tid && CHANGES.has(m.frame.kind ?? "");
+}
 const LOG_LINES = 12;
 const TEXT_MAX = 2 * 1024 * 1024;
 
@@ -58,6 +67,22 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
   const [recent, setRecent] = useState<{ tid: string; rows: Message[]; error: string | null } | null>(null);
   // Bumped by Try again, so a failed read is never shown as an empty one.
   const [attempt, setAttempt] = useState(0);
+  // Bumped when an agent or another person sets the result or posts while
+  // this pane is open: it is read again, and what was shown stays until the
+  // new read answers. A burst of events is one read.
+  const [seen, setSeen] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = liveBus.listen((m) => {
+      if (!changesContext(m, tid)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setSeen((n) => n + 1), 250);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [tid]);
   // Reset when the workspace changes, during render, so an author is never
   // "Someone" for a roster that has not answered yet. With no workspace there
   // is nothing to load, so the roster starts ready instead of stuck on "…".
@@ -82,7 +107,7 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
     return () => {
       live = false;
     };
-  }, [apis, tid, attempt]);
+  }, [apis, tid, attempt, seen]);
 
   useEffect(() => {
     if (!workspaceId) return;
