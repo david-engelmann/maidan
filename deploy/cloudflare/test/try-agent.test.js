@@ -455,7 +455,7 @@ test("advice reads as a title, the model, and each judgment as a statement with 
   const advice = readAdvice(helloAdvice());
   assert.equal(advice.land, "green");
   assert.equal(advice.title, "Nothing flagged");
-  assert.equal(advice.model, "Jev 1.14.0 by TypeSafe");
+  assert.equal(advice.model, "jev-1.14.0");
   assert.equal(advice.why, ADVICE_ALL_CLEAR);
   assert.equal(advice.rows.length, 10);
   assert.deepEqual(advice.rows[0], { reading: "Does what the task asks", sure: "93% sure", mark: "clear" });
@@ -534,7 +534,7 @@ test("the page shows the advice with the next step, each judgment a row, and say
   assert.equal(box.hidden, false);
   assert.equal(box.dataset.land, "green");
   assert.equal(ui.el("advice-title").textContent, "Nothing flagged");
-  assert.equal(ui.el("advice-model").textContent, "Jev 1.14.0 by TypeSafe");
+  assert.equal(ui.el("advice-model").textContent, "jev-1.14.0");
   assert.equal(ui.el("advice-why").textContent, ADVICE_ALL_CLEAR);
   const rows = ui.el("advice-rows").children;
   assert.equal(rows.length, 10);

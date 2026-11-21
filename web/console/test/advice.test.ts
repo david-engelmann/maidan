@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
-import { AdviceApi, LAND_TITLE, concernCount, judgmentLine, modelLine, percent, readingOf, reasonText, rowMark, sureness, type Advice } from "../src/core/advice.ts";
+import { AdviceApi, LAND_TITLE, concernCount, judgmentLine, percent, readingOf, reasonText, rowMark, sureness, type Advice } from "../src/core/advice.ts";
 
 const session: Credentials = { base: "http://h", pastedToken: "", tokenSession: false, sessionMemberId: "me" };
 const bearer: Credentials = { base: "http://h", pastedToken: "tok", tokenSession: false, sessionMemberId: null };
@@ -63,12 +63,6 @@ test("a judgment reads as a statement with how sure the model is of that stateme
   assert.equal(concernCount(advice), 2);
   // A server from before `reading` still reads, from the label and the answer.
   assert.equal(readingOf({ ...tests, reading: undefined }), "Reports passing tests: no");
-});
-
-test("the small print names the model and its maker", () => {
-  assert.equal(modelLine(advice), "Jev 1.14.0 by TypeSafe");
-  assert.equal(modelLine({ provider: "typesafe", model: "jev-latest" }), "Jev latest by TypeSafe");
-  assert.equal(modelLine({ provider: "other", model: "m1" }), "m1 by other");
 });
 
 test("advice is asked on the session route or the bearer route, with refresh only when asked for", async () => {

@@ -2,7 +2,7 @@
 // hand-off, as ten judgments, and the green, amber or red the server's rules
 // draw from them. It informs the reviewer; the sheet's buttons decide.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, modelLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
+import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
 import { useSession } from "../hooks/useSession.ts";
 
 /**
@@ -93,7 +93,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     <section className="advice" data-land={advice.land} aria-label="Advice">
       <header className="advice-head">
         <h3>Advice</h3>
-        <span className="advice-model">{modelLine(advice)}</span>
+        <span className="advice-model">{advice.model}</span>
       </header>
       <p className="advice-land">
         <span className="advice-lamp" aria-hidden="true" />

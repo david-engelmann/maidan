@@ -60,8 +60,8 @@ holds the rules around that work outside the agents.
 - **Never its own reviewer.** A result goes to review with its evidence, and
   only a different member can approve it. The server enforces that, not a
   convention.
-- **A second read before you approve.** With a TypeSafe key, a decision model
-  (Jev) answers ten yes-or-no questions about each hand-off, and the reviewer
+- **A second read before you approve.** A decision model, such as TypeSafe's
+  Jev, answers ten yes-or-no questions about each hand-off, and the reviewer
   sees what it found first. See [Decision models](docs/Decision-Models.md).
 - **Work that ships itself.** A result opens or comments on the pull request,
   replies in the Slack thread or comments on the Linear issue, each delivery

@@ -48,7 +48,7 @@ test("a clear hand-off says nothing was flagged, that it is advice only, and kee
   await within(panel).findByText("Nothing flagged");
   expect(panel.getAttribute("data-land")).toBe("green");
   within(panel).getByText("All ten readings are clear.");
-  within(panel).getByText("Jev 1.14.0 by TypeSafe");
+  within(panel).getByText("jev-1.14.0");
   within(panel).getByText(/Advice only\./);
   expect(panel.querySelector("details")?.open).toBe(false);
   await user.click(within(panel).getByText("All ten readings"));

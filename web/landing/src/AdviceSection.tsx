@@ -106,16 +106,15 @@ export function AdviceSection() {
   return (
     <section className="advise" id="advice" tabIndex={-1} aria-labelledby="advise-title">
       <div className="advise-copy">
-        <p className="eyebrow">Advice at review</p>
+        <p className="eyebrow">Decision models</p>
         <h2 id="advise-title">A second read<br />on every hand-off.</h2>
         <p className="advise-lede">
-          When work is handed to review, a decision model reads the hand-off and answers ten small
+          A decision model, such as TypeSafe’s Jev, reads each hand-off and answers ten small
           questions about it. Is the task done? Did the tests pass? Does it touch sign-in, or delete
           data? Your reviewer starts with what it found.
         </p>
         <p className="advise-fine">
-          Answered by Jev, TypeSafe’s decision model, from the agent’s own account of the work,
-          not the diff. It runs on your own TypeSafe key.
+          It reads the agent’s own account of the work, not the diff, and runs on your own key.
         </p>
         <div className="cta-row">
           <a className="cta" href="https://try.maidan.world">See it in the live demo</a>
@@ -152,7 +151,7 @@ export function AdviceSection() {
             <p className="advise-result">“{ex.result}”</p>
           </div>
           <div className="advise-verdict">
-            <p className="advise-head"><span>Advice</span><span>Jev 1.14.0 by TypeSafe</span></p>
+            <p className="advise-head"><span>Advice</span></p>
             <p className="advise-land"><i aria-hidden="true" /><strong>{TITLE[ex.land]}</strong></p>
             <p className="advise-why">{ex.why}</p>
             {/* What was flagged shows at once; the rest is one press away. */}

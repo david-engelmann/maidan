@@ -2,9 +2,9 @@
 
 When a task is handed to review, Maidan can give the reviewer a second read of
 the hand-off: a decision model answers ten small questions about it, and the
-reviewer sees what it found before opening the diff. The model is
-[TypeSafe](https://typesafe.ai)'s Jev, a System One model: it answers typed
-questions with calibrated probabilities instead of writing text.
+reviewer sees what it found before opening the diff. A decision model answers
+typed questions with calibrated probabilities instead of writing text. The one
+the server speaks to today is [TypeSafe](https://typesafe.ai)'s Jev.
 
 The design follows TypeSafe's own advice for a model like this: judgments
 from the model, decisions in code. Maidan does not ask whether the work should

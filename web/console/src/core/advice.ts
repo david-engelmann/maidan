@@ -128,12 +128,6 @@ export function concernCount(advice: Advice): number {
   return advice.judgments.filter((j) => j.concern).length;
 }
 
-/** The provider and model as the panel's small print: "Jev 1.14.0 by TypeSafe". */
-export function modelLine(advice: Pick<Advice, "provider" | "model">): string {
-  const jev = /^jev-(.+)$/.exec(advice.model);
-  const model = jev ? `Jev ${jev[1]}` : advice.model;
-  return advice.provider === "typesafe" ? `${model} by TypeSafe` : `${model} by ${advice.provider}`;
-}
 
 export class AdviceApi {
   private readonly fetchFn: Fetch;

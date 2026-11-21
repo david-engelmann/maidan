@@ -52,12 +52,6 @@ function count(n, first) {
   return first ? word.charAt(0).toUpperCase() + word.slice(1) : word;
 }
 
-function modelLine(provider, model) {
-  const jev = /^jev-(.+)$/.exec(model);
-  const name = jev ? `Jev ${jev[1]}` : model;
-  return provider === "typesafe" ? `${name} by TypeSafe` : `${name} by ${provider}`;
-}
-
 // What the page shows of the server's answer to `advise_land_gate`, or `null`
 // when the answer is not advice. Each row's words are the server's; the
 // title, and how sure the model is of each statement (the probability of the
@@ -83,7 +77,7 @@ export function readAdvice(answer) {
     answer.land === "green" && marked === 0
       ? ADVICE_ALL_CLEAR
       : `${count(marked, true)} of the ${count(rows.length, false)} readings ${marked === 1 ? "needs" : "need"} a look.`;
-  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: modelLine(answer.provider, answer.model), why, rows };
+  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: answer.model, why, rows };
 }
 
 export class AgentError extends Error {}
