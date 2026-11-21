@@ -761,6 +761,15 @@ enum Transport {
     Fixed(Client),
 }
 
+/// How one request to a provider ended, when it did not end in an answer.
+enum Exchange {
+    /// The time allowed ran out, before the answer began or part-way
+    /// through it. The one failure worth asking again.
+    TimedOut(String),
+    /// Anything else: the provider refused, failed or answered nonsense.
+    Failed(LandGateAdvisorError),
+}
+
 /// One provider, ready to be asked.
 struct Backend {
     provider: AdvisorProvider,
@@ -961,6 +970,46 @@ impl Backend {
         })
     }
 
+    /// One request and the whole of its answer. The time allowed covers both,
+    /// so an answer whose first bytes came in time and whose rest did not is
+    /// a timeout like any other.
+    async fn exchange(
+        &self,
+        client: &Client,
+        url: &Url,
+        key: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Result<Value, Exchange> {
+        let late = |error: reqwest::Error| {
+            if error.is_timeout() {
+                Exchange::TimedOut(error.to_string())
+            } else {
+                Exchange::Failed(LandGateAdvisorError::Unavailable(error.to_string()))
+            }
+        };
+        let response = self
+            .provider
+            .authorize(client.post(url.clone()), key)
+            .timeout(timeout)
+            .json(body)
+            .send()
+            .await
+            .map_err(late)?;
+        if !response.status().is_success() {
+            return Err(Exchange::Failed(LandGateAdvisorError::Unavailable(
+                format!("provider returned {}", response.status()),
+            )));
+        }
+        response.json().await.map_err(|error| {
+            if error.is_timeout() {
+                Exchange::TimedOut(error.to_string())
+            } else {
+                Exchange::Failed(LandGateAdvisorError::InvalidResponse(error.to_string()))
+            }
+        })
+    }
+
     async fn ask(
         &self,
         state: &Value,
@@ -973,12 +1022,10 @@ impl Backend {
         let url = self.ask_url(&key.value)?;
         let mut asked_again = false;
         let response = loop {
-            let request = self
-                .provider
-                .authorize(client.post(url.clone()), &key.value)
-                .timeout(timeout)
-                .json(&body);
-            match request.send().await {
+            match self
+                .exchange(&client, &url, &key.value, &body, timeout)
+                .await
+            {
                 Ok(response) => break response,
                 // A provider's answers are quick with a rare slow one, many
                 // times the usual: measured, about one in sixty of
@@ -986,20 +1033,13 @@ impl Backend {
                 // asked again is answered at the usual speed, so a timeout is
                 // tried once more before the call fails. Anything else the
                 // provider answered or refused is not asked twice.
-                Err(error) if error.is_timeout() && !asked_again => asked_again = true,
-                Err(error) => return Err(LandGateAdvisorError::Unavailable(error.to_string())),
+                Err(Exchange::TimedOut(_)) if !asked_again => asked_again = true,
+                Err(Exchange::TimedOut(error)) => {
+                    return Err(LandGateAdvisorError::Unavailable(error));
+                }
+                Err(Exchange::Failed(error)) => return Err(error),
             }
         };
-        if !response.status().is_success() {
-            return Err(LandGateAdvisorError::Unavailable(format!(
-                "provider returned {}",
-                response.status()
-            )));
-        }
-        let response: Value = response
-            .json()
-            .await
-            .map_err(|error| LandGateAdvisorError::InvalidResponse(error.to_string()))?;
         let latency_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
         let answered = answers(self.provider, &response)?;
         let (land, reasons) = decide(&answered.probabilities);
