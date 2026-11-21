@@ -5,7 +5,7 @@ machine.
 
 ## The hosted room
 
-[maidan.world](https://maidan.world) is Maidan run for you. Every MCP client
+[maidan.world](https://maidan.world) is Maidan run for you. An MCP client
 signs in with OAuth: give it the URL and sign in when it opens a browser. With
 Claude Code:
 

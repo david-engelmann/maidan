@@ -308,6 +308,7 @@ review there are read by a decision model outside the demo (`advice` and
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the routes and the tool on. An invalid value refuses boot. With it off, none of the others are read |
+| `FEDERATION_ENCRYPTION_KEY` | none | Needed for a workspace to store a key of its own (see "Keys"). Without it only the instance's keys can be used |
 | `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY` | none | The instance's own key for each provider, for workspaces that stored none. Leave one unset to have every workspace bring its own for that provider |
 | `CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID` | none | The instance's own token for Cloudflare's Clef and the account it calls. The token without the account refuses boot; the account alone turns nothing on |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
