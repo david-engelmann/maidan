@@ -232,6 +232,8 @@ section > *, .hero > * { min-width: 0; }
 .code-sizer { display: none; }
 .code { margin: 0; padding: 1.1rem 1.2rem 1.3rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--run-code); }
 .code code { font: inherit; }
+/* Two hyphens stay two hyphens: a flag is copied as it reads. */
+.code { font-variant-ligatures: none; }
 /* A line that wraps hangs under its own start, past any indent it has */
 .code .ln { display: block; min-height: 1lh; padding-left: 2ch; text-indent: -2ch; }
 .code .ln[data-in="4"] { padding-left: 6ch; text-indent: -6ch; }
