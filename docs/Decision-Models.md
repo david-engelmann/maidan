@@ -250,9 +250,9 @@ each task once its advice has been read.
 The result on 2026-11-20, against `jev-1.14.0` through a running server: of
 325 labelled answers, 314 agreed with their label, 11 were unsettled and none
 was a settled wrong answer; the advice matched its label on 34 of the 36
-hand-offs. A second run the same day read 315 and 10, with the same two
-misses: an answer near a threshold can settle either way between runs. The
-two it missed are worth knowing:
+hand-offs. Two more runs the same day read 315 and 10, then 313 and 12, with
+none wrong and the same two misses: an answer near a threshold can settle
+either way between runs. The two it missed are worth knowing:
 
 - A memory limit raised in a production values file, tested on staging, read
   as nothing flagged where we had labelled it worth a look. Every judgment
