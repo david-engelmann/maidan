@@ -40,19 +40,24 @@ fn the_registry_and_toolhive_entries_name_the_same_published_image() {
     let registry = read_listing("listings/registry/server.json");
     let package = &registry["packages"][0];
     assert_eq!(package["registryType"], "oci");
-    assert_eq!(package["registryBaseUrl"], "https://ghcr.io");
-    assert_eq!(package["identifier"], "david-engelmann/maidan-server");
-    let version = package["version"]
+    // The registry takes an OCI package as one canonical reference,
+    // `registry/namespace/repository:tag`, and refuses the registry or the
+    // version as fields of their own (a 400 on publish, 2026-11-21).
+    assert!(package.get("registryBaseUrl").is_none());
+    assert!(package.get("version").is_none());
+    let image = package["identifier"]
         .as_str()
-        .expect("the registry package names a version");
+        .expect("the registry package names an image");
+    let version = image
+        .strip_prefix("ghcr.io/david-engelmann/maidan-server:")
+        .unwrap_or_else(|| panic!("the registry package is not the server image: {image}"));
     assert!(
         version.starts_with('v'),
-        "the registry package's version is a release tag, not {version}"
+        "the registry package's tag is a release tag, not {version}"
     );
-    let image = format!("ghcr.io/david-engelmann/maidan-server:{version}");
 
     let toolhive = read_listing("listings/toolhive/server.json");
-    assert_eq!(toolhive["image"], image.as_str());
+    assert_eq!(toolhive["image"], image);
     let names: Vec<Value> = maidan_mcp::tools::catalog()
         .iter()
         .map(|tool| tool["name"].clone())
