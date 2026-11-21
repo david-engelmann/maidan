@@ -441,6 +441,15 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `deploy/cloudflare` writes `try/gathering.js` (Node strips the types, so
   the source keeps to types that erase). Commit both;
   `test/try-gathering.test.js` fails while they differ.
+- **The README's and the landing's recording is taken, not drawn.**
+  `scripts/make-swarm-clip.sh` starts a server from `MAIDAN_BIN_DIR`, plays
+  three agents against it over MCP (`ui-tests/capture/swarm/`), films the
+  console and their terminals, and writes `docs/assets/motion/swarm.*`,
+  `web/landing/public/swarm*` and `docs/assets/screens/advice-readme.png`. It
+  needs a provider key, because the advice in it is a real answer. The server
+  serves each landing file by name (`app.rs`, `oidc_signup_e2e.rs`), so a new
+  file there is three edits. `scripts/gen-brand-art.py` draws the README's
+  diagram and needs `fonttools` and `brotli`.
 - **A dependency bump or a new crate needs `cargo vet`.** Every crate in the
   root `Cargo.lock` must be audited or exempted in `supply-chain/`, or the
   `cargo vet (root lockfile)` job goes red. Run `cargo vet`, then certify or

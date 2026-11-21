@@ -112,16 +112,16 @@ test("the footer's theme switch themes the page and its recording, and the choic
   const theme = page.getByRole("group", { name: "Theme" });
   await expect(html).toHaveAttribute("data-theme", "dark");
   await expect(theme.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live.avif");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm.avif");
 
   await theme.getByRole("button", { name: "Light" }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f2eee6");
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light.avif");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm-light.avif");
   // Paused, the still is the light one too
   await page.locator(".watch-frame").getByRole("button", { name: "Pause the recording" }).click();
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light-still.avif");
-  await expect(page.locator(".watch-clip")).toHaveAttribute("src", "/landing/board-live-light.png");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm-light-still.avif");
+  await expect(page.locator(".watch-clip")).toHaveAttribute("src", "/landing/swarm-light.png");
 
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "light");

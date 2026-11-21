@@ -1458,43 +1458,43 @@ pub fn router(state: AppState) -> Router {
                 "image/png",
                 include_bytes!("../static/landing/dist/icon.png"),
             ),
-            // The board moving, recorded from the public demo
-            // (scripts/make-motion.sh), and its still for reduced motion.
-            "board-live.gif" => (
+            // The console and three agents' terminals in one recording
+            // (scripts/make-swarm-clip.sh), and its still for reduced motion.
+            "swarm.gif" => (
                 "image/gif",
-                include_bytes!("../static/landing/dist/board-live.gif"),
+                include_bytes!("../static/landing/dist/swarm.gif"),
             ),
-            "board-live.png" => (
+            "swarm.png" => (
                 "image/png",
-                include_bytes!("../static/landing/dist/board-live.png"),
+                include_bytes!("../static/landing/dist/swarm.png"),
             ),
             // The same two as AVIF, which a browser that reads it takes
             // instead: the clip at a fifth of the GIF's bytes.
-            "board-live.avif" => (
+            "swarm.avif" => (
                 "image/avif",
-                include_bytes!("../static/landing/dist/board-live.avif"),
+                include_bytes!("../static/landing/dist/swarm.avif"),
             ),
-            "board-live-still.avif" => (
+            "swarm-still.avif" => (
                 "image/avif",
-                include_bytes!("../static/landing/dist/board-live-still.avif"),
+                include_bytes!("../static/landing/dist/swarm-still.avif"),
             ),
             // The same four recorded in the console's light theme, for the
             // light page.
-            "board-live-light.gif" => (
+            "swarm-light.gif" => (
                 "image/gif",
-                include_bytes!("../static/landing/dist/board-live-light.gif"),
+                include_bytes!("../static/landing/dist/swarm-light.gif"),
             ),
-            "board-live-light.png" => (
+            "swarm-light.png" => (
                 "image/png",
-                include_bytes!("../static/landing/dist/board-live-light.png"),
+                include_bytes!("../static/landing/dist/swarm-light.png"),
             ),
-            "board-live-light.avif" => (
+            "swarm-light.avif" => (
                 "image/avif",
-                include_bytes!("../static/landing/dist/board-live-light.avif"),
+                include_bytes!("../static/landing/dist/swarm-light.avif"),
             ),
-            "board-live-light-still.avif" => (
+            "swarm-light-still.avif" => (
                 "image/avif",
-                include_bytes!("../static/landing/dist/board-live-light-still.avif"),
+                include_bytes!("../static/landing/dist/swarm-light-still.avif"),
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };

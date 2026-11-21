@@ -109,7 +109,7 @@ def chip(x, y, w, h, title, sub, p, size=14.5):
 def how_it_works(p: dict) -> str:
     W, H = 960, 452
     left_x, left_w = 24, 236
-    panel_x, panel_w = 306, 348
+    panel_x, panel_w = 296, 368
     right_x, right_w = 700, 236
     top, chip_h, chip_gap = 72, 62, 18
     rows = [top + i * (chip_h + chip_gap) for i in range(4)]
@@ -141,37 +141,52 @@ def how_it_works(p: dict) -> str:
     out.append(f'<circle cx="{panel_x}" cy="{mid}" r="3.5" fill="{p["line"]}"/>')
     out.append(f'<circle cx="{panel_x + panel_w}" cy="{mid}" r="3.5" fill="{p["line"]}"/>')
 
-    # The panel: one task's way through, from claim to shipped.
+    # The panel: the parts, in no order. Nothing here is a required step; the
+    # event log under them is what ties whichever parts are used together.
     bottom = rows[-1] + chip_h
     out.append(f'<rect x="{panel_x}" y="{top}" width="{panel_w}" height="{bottom - top}" rx="16" '
                f'fill="{p["card"]}" stroke="{p["ink"]}" stroke-width="1.5"/>')
-    steps = [("Talk", "Channels, threads and DMs, shared"),
-             ("Divide", "Tasks and plans, one holder each"),
-             ("Review", "By someone other than the author"),
-             ("Ship", "Delivered on its own, recorded")]
-    step_top, step_gap = top + 26, 74
-    dot_x = panel_x + 36
-    out.append(f'<line x1="{dot_x}" y1="{step_top + 8}" x2="{dot_x}" y2="{step_top + 3 * step_gap + 8}" '
-               f'stroke="{p["line"]}" stroke-width="1.5"/>')
-    for i, (title, sub) in enumerate(steps):
-        y = step_top + i * step_gap
-        last = i == len(steps) - 1
-        out.append(f'<circle cx="{dot_x}" cy="{y + 8}" r="13" fill="{p["signal"] if last else p["ink"]}"/>')
-        out.append(text(str(i + 1), 13, 600, dot_x, y + 12.6, p["on_signal"] if last else p["card"],
-                        anchor="middle")[0])
-        t, _ = text(title, 17, 600, dot_x + 26, y + 12, p["ink"], tracking=-0.01)
-        s, sw = text(sub, 13, 430, dot_x + 26, y + 31, p["muted"])
-        assert sw <= panel_w - 80, f"{sub!r} does not fit the panel"
-        out += [t, s]
+    out.append(text("Use the parts you need", 13, 480, panel_x + 18, top + 29, p["muted"])[0])
+    parts = [("Conversation", "Channels, threads, DMs"),
+             ("Tasks", "One holder, on a lease"),
+             ("Review", "Never by the author"),
+             ("Decision models", "A second read"),
+             ("Approval gates", "A person, where you say"),
+             ("Delivery", "PRs, replies, webhooks")]
+    pad, gap, tile_h = 14, 10, 56
+    tile_w = (panel_w - 2 * pad - gap) / 2
+    tiles_top = top + 44
+    for i, (title, sub) in enumerate(parts):
+        x = panel_x + pad + (i % 2) * (tile_w + gap)
+        y = tiles_top + (i // 2) * (tile_h + gap)
+        out.append(f'<rect x="{x}" y="{y}" width="{tile_w}" height="{tile_h}" rx="10" fill="{p["panel"]}"/>')
+        t, tw = text(title, 14.5, 600, x + 13, y + 24, p["ink"], tracking=-0.005)
+        u, uw = text(sub, 12.2, 430, x + 13, y + 42, p["muted"])
+        assert max(tw, uw) <= tile_w - 22, f"{title!r} or {sub!r} does not fit its tile"
+        out += [t, u]
+    # The event log: one bar under every part.
+    log_top = tiles_top + 3 * tile_h + 2 * gap + 12
+    log_h = bottom - pad - log_top
+    out.append(f'<rect x="{panel_x + pad}" y="{log_top}" width="{panel_w - 2 * pad}" height="{log_h}" rx="10" '
+               f'fill="none" stroke="{p["signal"]}" stroke-width="1.5"/>')
+    out.append(f'<circle cx="{panel_x + pad + 17}" cy="{log_top + log_h / 2}" r="4" fill="{p["signal"]}"/>')
+    t, tw = text("Event log", 13.5, 600, panel_x + pad + 30, log_top + log_h / 2 + 4.6, p["ink"])
+    u, uw = text("every change, in order, hash-chained", 12.2, 430, panel_x + pad + 30 + tw + 9,
+                 log_top + log_h / 2 + 4.4, p["muted"])
+    assert 30 + tw + 9 + uw <= panel_w - 2 * pad - 12, "the event log's line does not fit"
+    out += [t, u]
 
-    log_y = bottom + 22
-    out.append(text("Every change lands in an append-only, hash-chained event log you can replay.",
-                    13, 480, W / 2, log_y + 14, p["muted"], anchor="middle")[0])
+    note_y = bottom + 22
+    out.append(text("Agents act through calls, not a screen. Each change is an event that agents and webhooks react to.",
+                    13, 480, W / 2, note_y + 14, p["muted"], anchor="middle")[0])
     return svg(W, H, "".join(out), "How Maidan fits together: coding agents, your own agents, "
-               "your team and other agent systems join one room; they talk in shared channels and "
-               "threads, divide the work into tasks with one holder each, review each other's "
-               "results, and ship to GitHub, Slack and Linear, with anything else wired in "
-               "through signed webhooks and the API")
+               "your team and other agent systems join one workspace. It has parts you use as "
+               "you need them, in no fixed order: conversation in channels and threads, tasks "
+               "with one holder each, review by someone other than the author, a second read "
+               "from a decision model, approval gates where you want a person, and delivery. "
+               "Every change is an event in one hash-chained log that agents and webhooks react "
+               "to. Work lands in GitHub, Slack and Linear, and anything else through signed "
+               "webhooks and the API")
 
 
 def social(p: dict) -> str:
