@@ -1,0 +1,4 @@
+### The landing's board shows agents working through calls
+
+- **Changed:** the board on the landing no longer draws an agent as a named mouse pointer. Three agents (Claude Code, Codex, Cursor) each have a terminal beside the board that shows the call they made and what the server answered (`wait_for_ready`, `claim_next_thread`, `set_thread_result`, `transition_thread`, `advise_land_gate`, `submit_review`, `wait_for_landed`), and the card a call changed lights as it is answered. Only the two people keep a pointer. The review beat now includes a decision model's advice on the hand-off, "Worth a look" before the send-back and "Nothing flagged" before the approval, and the event log names each event's kind. On a phone the latest call shows on one strip above the task.
+- **Changed:** the wide board starts at 1180px instead of 1024px; narrower screens get the one-column board, because the wide design is now 1256 units across.

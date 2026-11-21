@@ -112,16 +112,16 @@ test("the footer's theme switch themes the page and its recording, and the choic
   const theme = page.getByRole("group", { name: "Theme" });
   await expect(html).toHaveAttribute("data-theme", "dark");
   await expect(theme.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live.avif");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm.avif");
 
   await theme.getByRole("button", { name: "Light" }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f2eee6");
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light.avif");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm-light.avif");
   // Paused, the still is the light one too
   await page.locator(".watch-frame").getByRole("button", { name: "Pause the recording" }).click();
-  await expect(clip).toHaveAttribute("srcset", "/landing/board-live-light-still.avif");
-  await expect(page.locator(".watch-clip")).toHaveAttribute("src", "/landing/board-live-light.png");
+  await expect(clip).toHaveAttribute("srcset", "/landing/swarm-light-still.avif");
+  await expect(page.locator(".watch-clip")).toHaveAttribute("src", "/landing/swarm-light.png");
 
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "light");
@@ -207,10 +207,16 @@ test("the room's board loads near its section and plays claim, review and land, 
   // The picture is named as a whole, with everyone on the board
   const art = page.locator(".room-stage__art");
   await expect(art).toHaveAttribute("role", "img");
-  for (const who of CAST) {
-    await expect(art).toHaveAttribute("aria-label", new RegExp(who));
-    await expect(stage.locator(".rm-cur__tag", { hasText: who })).toHaveCount(1);
+  for (const who of CAST) await expect(art).toHaveAttribute("aria-label", new RegExp(who));
+  // An agent acts through calls, so it has a terminal and no pointer; only
+  // the people point at the board
+  for (const who of ["Claude Code", "Codex", "Cursor"]) {
+    await expect(stage.locator(".rm-term__name", { hasText: who })).toHaveCount(1);
   }
+  await expect(stage.locator(".rm-others")).toContainText("Grok, Muse and Antigravity");
+  await expect(stage.locator(".rm-cur__tag")).toHaveText(["Maya", "Jun"]);
+  // Each loop opens with the agents blocked in a wait
+  await expect(stage.locator(".rm-term").first()).toContainText("wait_for_ready(#api)", { timeout: 30_000 });
   const steps = page.locator(".room-step");
   const beats = [
     ["lease 15m", 0],
@@ -223,6 +229,8 @@ test("the room's board loads near its section and plays claim, review and land, 
   }
   // The send-back and the merge are both on the record
   await expect(stage.locator(".rm-log")).toContainText("PR #482 merged");
+  // And the calls that got it there are in the terminals
+  await expect(stage.locator(".rm-term", { hasText: "Codex" })).toContainText("submit_review(approve)", { timeout: 30_000 });
 });
 
 test.describe("with reduced motion", () => {
