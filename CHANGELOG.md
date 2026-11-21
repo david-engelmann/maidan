@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [473.0.0] — 2026-11-21
+
+For the announcement: the docs site's front page shows the recording of the console above three agents' terminals; the README, the landing and the decision models page point at Peira, where the models in the review seat are measured under attack; the demo has room for several visitors asking a decision model at once; the test containers no longer bring in tokio-tar, the repository's one open advisory; a newer base image; the MCP registry entry takes the shape the registry requires; the v472 validation record and the gate's record are in.
+
+### Docs: the recording on the docs site's front page
+
+- **Changed:** the docs site's introduction shows the recording of the console above three agents' terminals under "See it work", as the README and the landing do. It showed a terminal recording of an older demo script.
+- **Added:** the README's Decision models section and `docs/Decision-Models.md` ("Limits") point at [Peira](https://peiratrial.dev), a benchmark for how often a decision model's right answer flips when the input carries an attack. All five providers Maidan can ask are on its board, and every model that ran its full suite flips some right answers, which is the reason the advice is advice.
+- **Changed:** the README says what the try page does and that the hosted path starts with a workspace at maidan.world, says an instance turns advice on before a key matters (it is on at maidan.world), and no longer says Maidan "doesn't run models" two sections above the one on decision models. `docs/Decision-Models.md` lists `FEDERATION_ENCRYPTION_KEY` where it lists what turns advice on.
+
+### The test containers no longer bring in tokio-tar
+
+- **Security:** `testcontainers` moves from 0.23 to 0.27 (and `testcontainers-modules` from 0.11 to 0.15), which removes `tokio-tar` 0.3.1 from the lockfile. That crate has an open advisory with no fixed release (RUSTSEC-2025-0111, GHSA-j5gw-2vrg-8fgx) and was the repository's one open Dependabot alert. It was never in a shipped binary: only the integration tests reach it. `rustls-pemfile` leaves the lockfile with it.
+- **Changed:** `deny.toml` drops the two advisory ignores that covered those crates and gains one for RUSTSEC-2026-0440, a notice that `astral-tokio-tar`, the replacement, is unmaintained. The locked 0.6.4 has no open vulnerability advisory and is test-only too. Three skips for `rand` 0.8 crates that matched nothing are gone.
+- **Changed:** `supply-chain/` exempts the fifteen crate versions the bump brings in, unreviewed, with the reason on each.
+
+### The demo's advice limit, and Peira on the landing
+
+- **Changed:** the demo's shared limit on questions to a decision model is 30 a minute (it was 10). A visitor's run asks once and a visitor who tries every model asks once more for each, so three visitors arriving together were refused at ten. At the new rate a day of the largest requests costs under $30, and under $2 at the usual size of a hand-off.
+- **Added:** the landing's decision models section links [Peira](https://peiratrial.dev), where these models are measured against hand-offs written to mislead them.
+
+### The MCP registry entry in the shape the registry takes
+
+- **Fixed:** `listings/registry/server.json` named its container image as an `identifier`, a `registryBaseUrl` and a `version`. The official MCP registry now takes an OCI package as one canonical reference and refused the entry with a 400 when it was first published (2026-11-21). The package is now `"identifier": "ghcr.io/david-engelmann/maidan-server:<tag>"` with neither of the other two fields. `scripts/check-deploy-pins.sh`, the `publish MCP registry` workflow's own check and `listing_tools_contract` read the tag from the reference.
+
 ## [472.0.0] — 2026-11-21
 
 The landing's board captions are unnumbered and its last lane is named as the console names it; the v471 validation record and the reconciled plan are in. v471's five decision-model providers and one retry on a slow answer are unchanged.

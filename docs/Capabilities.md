@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v473.0.0](https://github.com/david-engelmann/maidan/releases/tag/v473.0.0) — docs: the recording on the docs site's front page, and 3 more
+
+For the announcement: the docs site's front page shows the recording of the console above three agents' terminals; the README, the landing and the decision models page point at Peira, where the models in the review seat are measured under attack; the demo has room for several visitors asking a decision model at once; the test containers no longer bring in tokio-tar, the repository's one open advisory; a newer base image; the MCP registry entry takes the shape the registry requires; the v472 validation record and the gate's record are in.
+
+- Docs: the recording on the docs site's front page
+- The test containers no longer bring in tokio-tar
+- The demo's advice limit, and Peira on the landing
+- The MCP registry entry in the shape the registry takes
+
+`CHANGELOG.md` under `[473.0.0]` has every entry.
+
 ## [v472.0.0](https://github.com/david-engelmann/maidan/releases/tag/v472.0.0) — landing: what a cold read of the live page found, and 1 more
 
 The landing's board captions are unnumbered and its last lane is named as the console names it; the v471 validation record and the reconciled plan are in. v471's five decision-model providers and one retry on a slow answer are unchanged.
