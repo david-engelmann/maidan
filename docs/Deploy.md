@@ -238,7 +238,7 @@ ordinary tenant, so one visitor's tokens see nothing of another's
 | Bodies | 64 KiB, refused at the edge before they wake the container |
 | Human check | Turnstile, when the Worker has `DEMO_TURNSTILE_SITE_KEY` and the secret `DEMO_TURNSTILE_SECRET`. The Worker checks it, since the container cannot reach Cloudflare |
 | Cross-site | a browser post from another origin is refused |
-| Advice from a decision model | About 10 questions a minute across the demo (`JEV_LIMIT` in `wrangler.demo.jsonc`; Cloudflare's limiter is approximate and allows short bursts), each at most 16 KiB, the server's own cap on a request to the provider. At that rate a day of the largest requests costs under $10, and a hand-off is usually about a thousand tokens; it is a design figure, not a spending cap. On only when the Worker has the secret `TYPESAFE_API_KEY` |
+| Advice from a decision model | About 30 questions a minute across the demo (`JEV_LIMIT` in `wrangler.demo.jsonc`; Cloudflare's limiter is approximate and allows short bursts), each at most 16 KiB, the server's own cap on a request to the provider. That is room for several visitors at once, each asking every model. At that rate a day of the largest requests costs under $30, and under $2 at the usual thousand tokens a hand-off; it is a design figure, not a spending cap. On only when the Worker has the secret `TYPESAFE_API_KEY` |
 
 **Images.** The demo runs the stock `maidan-server:<tag>`, which has no
 bootstrap routes. No release builds an image with them:

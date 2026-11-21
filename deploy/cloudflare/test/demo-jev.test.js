@@ -180,7 +180,11 @@ test("the question limit is bound and small enough to bound the bill", () => {
   // the configuration to a design figure; it is not a spending cap.
   const perDay = (limit.simple.limit * 86_400) / limit.simple.period;
   const dollars = (perDay * JEV_MAX_BODY_BYTES * 0.042) / 1_000_000;
-  assert.ok(dollars < 10, `a day at the limit would cost at most $${dollars.toFixed(2)}`);
+  assert.ok(dollars < 30, `a day at the limit would cost at most $${dollars.toFixed(2)}`);
+  // Room for a handful of visitors at once: each run of the page asks once,
+  // and a visitor who tries every model asks once more for each. At ten a
+  // minute, three of them arriving together were refused.
+  assert.ok(limit.simple.limit / (limit.simple.period / 60) >= 30);
   assert.equal(wrangler.vars[JEV_KEY_VAR], undefined, "the key is a secret, never a var");
 });
 

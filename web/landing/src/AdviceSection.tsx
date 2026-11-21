@@ -115,7 +115,8 @@ export function AdviceSection() {
         </p>
         <p className="advise-fine">
           It reads the agent’s own account of the work, not the diff, and stays off until your
-          workspace adds a key.
+          workspace adds a key. How these models hold up when a hand-off is written to mislead
+          them is measured in <a href="https://peiratrial.dev">Peira</a>.
         </p>
         <div className="cta-row">
           <a className="cta" href="https://try.maidan.world">See it in the live demo</a>
