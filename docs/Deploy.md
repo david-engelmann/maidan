@@ -281,7 +281,8 @@ deploy.
    ([Decision models](Decision-Models.md)). Store a key for each provider the
    demo should offer with
    `npx wrangler secret put TYPESAFE_API_KEY -c wrangler.demo.jsonc`
-   (`OPENAI_API_KEY` and `GEMINI_API_KEY` likewise). The container still has
+   (`OPENAI_API_KEY`, `GEMINI_API_KEY` and `PERPLEXITY_API_KEY` likewise;
+   Cloudflare's Clef is not offered in the demo). The container still has
    no internet: its server asks an `.internal` name for each provider
    (`http://jev.internal/` for TypeSafe), the Worker forwards those calls to
    the provider with its key (`src/demo-jev.js`), and no key reaches the

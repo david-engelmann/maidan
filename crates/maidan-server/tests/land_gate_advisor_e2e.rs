@@ -28,6 +28,9 @@ const INSTANCE_KEY: &str = "ts_instance_key";
 const WORKSPACE_KEY: &str = "ts_workspace_key";
 const OPENAI_KEY: &str = "sk-workspace-openai";
 const GEMINI_KEY: &str = "g-workspace-gemini";
+const PERPLEXITY_KEY: &str = "pplx-workspace-perplexity";
+const CLOUDFLARE_ACCOUNT: &str = "0123456789abcdef0123456789abcdef";
+const CLOUDFLARE_TOKEN: &str = "cf-workspace-token";
 
 /// What the stand-in provider saw and how it answers.
 #[derive(Default)]
@@ -38,9 +41,9 @@ struct Provider {
     answers: Mutex<BTreeMap<String, f64>>,
     /// When set, `/v1/systemone` answers 500.
     down: Mutex<bool>,
-    /// Every call to the other two providers' paths: the path, the key it
+    /// Every call to the other providers' paths: the path, the key it
     /// carried in that provider's own header, and its body.
-    seen: Mutex<Vec<(&'static str, String, Value)>>,
+    seen: Mutex<Vec<(String, String, Value)>>,
 }
 
 fn bearer_of(headers: &HeaderMap) -> String {
@@ -110,7 +113,62 @@ fn stand_in_p(provider: &Provider, name: &str) -> f64 {
         .unwrap_or(clear)
 }
 
-/// OpenAI's Decisions API: predicates in an array, answered in order.
+/// A map of nouls answered as TypeSafe's API, Perplexity's and Cloudflare's
+/// write them.
+fn nouls(provider: &Provider, body: &Value, model: &str, tokens: u64) -> Value {
+    let mut answers = serde_json::Map::new();
+    for (name, question) in body["questions"].as_object().unwrap() {
+        assert_eq!(question["type"], "noul", "{name} is not a yes/no question");
+        answers.insert(
+            name.clone(),
+            json!({ "type": "noul", "noul": stand_in_p(provider, name) }),
+        );
+    }
+    json!({
+        "model": model,
+        "answers": answers,
+        "usage": { "input_tokens": tokens, "output_tokens": 0 },
+    })
+}
+
+/// Cloudflare's Workers AI: the account and the model in the path, the
+/// answer inside the API's envelope. A token is good for one account only.
+async fn clef(
+    State(provider): State<Arc<Provider>>,
+    axum::extract::Path((account, model)): axum::extract::Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let refuse = |status: StatusCode, message: &str| {
+        (
+            status,
+            Json(json!({ "result": null, "success": false, "errors": [{ "message": message }] })),
+        )
+    };
+    if bearer_of(&headers) != CLOUDFLARE_TOKEN {
+        return refuse(StatusCode::UNAUTHORIZED, "Authentication error");
+    }
+    if account != CLOUDFLARE_ACCOUNT {
+        return refuse(StatusCode::NOT_FOUND, "Could not route to this account");
+    }
+    // The key check asks one question of its own; it is not a hand-off.
+    if body["questions"].get("done").is_some() {
+        provider.seen.lock().unwrap().push((
+            format!("/client/v4/accounts/{account}/ai/run/{model}"),
+            bearer_of(&headers),
+            body.clone(),
+        ));
+    }
+    let answer = nouls(&provider, &body, "clef-fixture", 840);
+    (
+        StatusCode::OK,
+        Json(json!({ "result": answer, "success": true, "errors": [], "messages": [] })),
+    )
+}
+
+/// `/v1/decisions` is OpenAI's path and Perplexity's. OpenAI's Decisions API
+/// takes predicates in an array and answers them in order; Perplexity's takes
+/// a `state` and a map of nouls.
 async fn openai_decisions(
     State(provider): State<Arc<Provider>>,
     headers: HeaderMap,
@@ -120,7 +178,10 @@ async fn openai_decisions(
         .seen
         .lock()
         .unwrap()
-        .push(("/v1/decisions", bearer_of(&headers), body.clone()));
+        .push(("/v1/decisions".into(), bearer_of(&headers), body.clone()));
+    if body.get("state").is_some() {
+        return Json(nouls(&provider, &body, "pplx-fixture", 730));
+    }
     let answers: Vec<Value> = body["questions"]
         .as_array()
         .unwrap()
@@ -145,7 +206,7 @@ async fn gemini_decisions(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     provider.seen.lock().unwrap().push((
-        "/v1beta/decisions",
+        "/v1beta/decisions".into(),
         google_key_of(&headers),
         body.clone(),
     ));
@@ -190,6 +251,12 @@ async fn models(headers: HeaderMap) -> (StatusCode, Json<Value>) {
     } else if bearer_of(&headers).starts_with("sk-") {
         // The same path on the same stand-in is OpenAI's too.
         openai_models(headers).await
+    } else if bearer_of(&headers) == PERPLEXITY_KEY {
+        // And Perplexity's.
+        (
+            StatusCode::OK,
+            Json(json!({ "object": "list", "data": [] })),
+        )
     } else {
         (StatusCode::UNAUTHORIZED, Json(json!({ "detail": "no" })))
     }
@@ -211,7 +278,7 @@ impl World {
     fn asked(&self) -> Vec<(String, Value)> {
         self.provider.asked.lock().unwrap().clone()
     }
-    fn seen(&self) -> Vec<(&'static str, String, Value)> {
+    fn seen(&self) -> Vec<(String, String, Value)> {
         self.provider.seen.lock().unwrap().clone()
     }
     fn answer(&self, id: &str, p: f64) {
@@ -230,6 +297,7 @@ async fn spawn(advisor: Option<Option<&str>>) -> World {
         .route("/v1/decisions", post(openai_decisions))
         .route("/v1beta/decisions", post(gemini_decisions))
         .route("/v1beta/models", axum::routing::get(gemini_models))
+        .route("/client/v4/accounts/{account}/ai/run/{*model}", post(clef))
         .with_state(provider.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let provider_addr = listener.local_addr().unwrap();
@@ -959,7 +1027,10 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
         .iter()
         .map(|p| p["id"].as_str().unwrap())
         .collect();
-    assert_eq!(offered, ["typesafe", "openai", "google"]);
+    assert_eq!(
+        offered,
+        ["typesafe", "openai", "google", "perplexity", "cloudflare"]
+    );
     assert!(before["providers"]
         .as_array()
         .unwrap()
@@ -1046,7 +1117,7 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
     let seen = world.seen();
     assert_eq!(seen.len(), 1);
     let (path, key, body) = &seen[0];
-    assert_eq!((*path, key.as_str()), ("/v1/decisions", OPENAI_KEY));
+    assert_eq!((path.as_str(), key.as_str()), ("/v1/decisions", OPENAI_KEY));
     assert_eq!(body["model"], "gpt-6-luna");
     let packet = &body["input"][0]["content"][0];
     assert_eq!(packet["type"], "input_json");
@@ -1076,7 +1147,10 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
     assert_eq!(advice["usage"]["input_tokens"], 620);
     let seen = world.seen();
     let (path, key, body) = &seen[1];
-    assert_eq!((*path, key.as_str()), ("/v1beta/decisions", GEMINI_KEY));
+    assert_eq!(
+        (path.as_str(), key.as_str()),
+        ("/v1beta/decisions", GEMINI_KEY)
+    );
     let sent: Value = serde_json::from_str(body["input"].as_str().unwrap()).unwrap();
     assert_eq!(sent["task"]["title"], "Rate-limit the public API");
     assert_eq!(body["questions"]["done"]["type"], "noul");
@@ -1159,4 +1233,166 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
         "what was returned is what is stored"
     );
     gate_is_untouched(&world, thread).await;
+}
+
+#[tokio::test]
+async fn perplexity_and_cloudflare_are_asked_with_the_workspaces_keys_for_them() {
+    // The instance has no key for any provider.
+    let world = spawn(Some(None)).await;
+    let (thread, tenant) = handed_off(&world, "five").await;
+    let client = tenant.client();
+    let advisor = world.url(&format!(
+        "/workspaces/{}/land-gate/advisor",
+        tenant.workspace_id.0
+    ));
+    let put = |body: Value| {
+        let (client, advisor) = (client.clone(), advisor.clone());
+        async move { client.put(&advisor).json(&body).send().await.unwrap() }
+    };
+
+    // Perplexity: a key its API refuses is not stored; one it takes is.
+    let wrong = put(json!({ "api_key": "pplx-not-a-key", "provider": "perplexity" })).await;
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+    let set = put(json!({ "api_key": PERPLEXITY_KEY, "provider": "perplexity" })).await;
+    assert_eq!(set.status(), StatusCode::OK);
+
+    // Cloudflare's key is an account and a token for it. Without the
+    // account, with something that is not one, with a token that is not
+    // that account's, or with a token Cloudflare does not know, nothing is
+    // stored. An account id is Cloudflare's alone.
+    for (body, why) in [
+        (
+            json!({ "api_key": CLOUDFLARE_TOKEN, "provider": "cloudflare" }),
+            "no account",
+        ),
+        (
+            json!({ "api_key": CLOUDFLARE_TOKEN, "provider": "cloudflare", "account_id": "../../user" }),
+            "not an account id",
+        ),
+        (
+            json!({ "api_key": CLOUDFLARE_TOKEN, "provider": "cloudflare", "account_id": "ffffffffffffffffffffffffffffffff" }),
+            "another account",
+        ),
+        (
+            json!({ "api_key": "cf-not-a-token", "provider": "cloudflare", "account_id": CLOUDFLARE_ACCOUNT }),
+            "an unknown token",
+        ),
+        (
+            json!({ "api_key": PERPLEXITY_KEY, "provider": "perplexity", "account_id": CLOUDFLARE_ACCOUNT }),
+            "an account id for another provider",
+        ),
+    ] {
+        let refused = put(body).await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{why}");
+    }
+    assert!(world.seen().is_empty(), "a key check is not a hand-off");
+    let set = put(json!({
+        "api_key": CLOUDFLARE_TOKEN,
+        "provider": "cloudflare",
+        "account_id": CLOUDFLARE_ACCOUNT.to_ascii_uppercase(),
+    }))
+    .await;
+    assert_eq!(set.status(), StatusCode::OK);
+    let after: Value = set.json().await.unwrap();
+    let text = after.to_string();
+    assert!(
+        !text.contains(CLOUDFLARE_TOKEN) && !text.contains(CLOUDFLARE_ACCOUNT),
+        "never the token or the account: {text}"
+    );
+    assert_eq!(after["providers"][3]["key_source"], "workspace");
+    assert_eq!(after["providers"][3]["model"], "pplx-decider-latest");
+    assert_eq!(after["providers"][4]["key_source"], "workspace");
+    assert_eq!(after["providers"][4]["model"], "clef");
+    // A call that names no provider asks the first with a key.
+    assert_eq!(after["provider"], "perplexity");
+
+    // Perplexity: a bearer, TypeSafe's request under Perplexity's model name.
+    let advice: Value = client
+        .post(world.advice_url(thread))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(advice["provider"], "perplexity", "{advice}");
+    assert_eq!(advice["model"], "pplx-fixture");
+    assert_eq!(advice["land"], "green");
+    assert_eq!(advice["usage"]["input_tokens"], 730);
+    let seen = world.seen();
+    let (path, key, body) = &seen[0];
+    assert_eq!(
+        (path.as_str(), key.as_str()),
+        ("/v1/decisions", PERPLEXITY_KEY)
+    );
+    assert_eq!(body["model"], "pplx-decider-latest");
+    assert_eq!(body["state"]["task"]["title"], "Rate-limit the public API");
+    assert_eq!(body["questions"].as_object().unwrap().len(), 10);
+    assert!(body["questions"]["done"]["criteria"]["true"].is_string());
+
+    // Cloudflare: the account and the model in the path, the token alone as
+    // the bearer, the answer read out of the API's envelope.
+    world.answer("flags_risk", 0.9);
+    let advice: Value = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "provider": "cloudflare" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(advice["provider"], "cloudflare", "{advice}");
+    assert_eq!(advice["model"], "clef-fixture");
+    assert_eq!(advice["land"], "amber");
+    assert_eq!(advice["key_source"], "workspace");
+    assert_eq!(advice["usage"]["input_tokens"], 840);
+    assert_eq!(advice["judgments"].as_array().unwrap().len(), 10);
+    let seen = world.seen();
+    assert_eq!(seen.len(), 2);
+    let (path, key, body) = &seen[1];
+    assert_eq!(
+        path.as_str(),
+        format!("/client/v4/accounts/{CLOUDFLARE_ACCOUNT}/ai/run/@cf/cloudflare/clef")
+    );
+    assert_eq!(key.as_str(), CLOUDFLARE_TOKEN, "the token, not the pair");
+    assert_eq!(body["model"], "clef");
+    assert_eq!(body["state"]["task"]["title"], "Rate-limit the public API");
+    assert!(world.asked().is_empty(), "TypeSafe was never asked");
+
+    // Neither key shows through the generic secret routes, and each can be
+    // forgotten on its own.
+    let listed: Value = client
+        .get(world.url(&format!("/workspaces/{}/secrets", tenant.workspace_id.0)))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(!listed.to_string().contains("maidan:"), "{listed}");
+    let cleared = client
+        .delete(format!("{advisor}?provider=cloudflare"))
+        .send()
+        .await
+        .unwrap();
+    assert!(cleared.status().is_success(), "{}", cleared.status());
+    let now: Value = client
+        .get(&advisor)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(now["providers"][4].get("key_source").is_none());
+    assert_eq!(now["providers"][3]["key_source"], "workspace");
+    let gone = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "provider": "cloudflare", "refresh": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(gone.status(), StatusCode::CONFLICT);
 }

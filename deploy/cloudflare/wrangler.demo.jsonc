@@ -35,8 +35,8 @@
   // makes it, since the container has no internet. Neither reaches the
   // container.
   "vars": { "MAIDAN_PUBLIC_ORIGIN": "https://try.maidan.world" },
-  // TYPESAFE_API_KEY, OPENAI_API_KEY and GEMINI_API_KEY (Worker secrets, any
-  // of them) turn on advice from a decision model in the demo
+  // TYPESAFE_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY and PERPLEXITY_API_KEY
+  // (Worker secrets, any of them) turn on advice from a decision model in the demo
   // (docs/Decision-Models.md), one provider per key. The server asks an
   // .internal name for each (http://jev.internal/ for TypeSafe), which the
   // Worker intercepts and forwards to that provider with its key

@@ -371,11 +371,13 @@
         "type": "string"
       },
       "AdvisorProvider": {
-        "description": "A provider of decision models the advisor can put its questions to. All\nthree are asked the same ten questions and read by the same rules.",
+        "description": "A provider of decision models the advisor can put its questions to. Every\none is asked the same ten questions and read by the same rules.",
         "enum": [
           "typesafe",
           "openai",
-          "google"
+          "google",
+          "perplexity",
+          "cloudflare"
         ],
         "type": "string"
       },
@@ -9851,6 +9853,13 @@
         "additionalProperties": false,
         "description": "The body of `PUT /workspaces/{id}/land-gate/advisor`.",
         "properties": {
+          "account_id": {
+            "description": "For Cloudflare only, and required there: the id of the account whose\nWorkers AI the token calls. `api_key` is then that account's token.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "api_key": {
             "description": "The workspace's own API key for the provider. Stored encrypted, never\nreturned.",
             "type": "string"

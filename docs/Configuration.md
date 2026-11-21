@@ -402,8 +402,9 @@ adds `POST /threads/:id/land-gate/advice` (`thread:transition`), the MCP tool
 `advise_land_gate` and the workspace key routes under
 `/workspaces/:id/land-gate/advisor`. The server sends the hand-off (the task's
 title, description and acceptance, the result without its diff, and the producing agent's
-messages) to a decision model (TypeSafe's Jev, OpenAI's Decisions API or
-Google's Gemini Decisions API) with ten yes/no questions, and turns the ten
+messages) to a decision model (TypeSafe's Jev, OpenAI's Decisions API,
+Google's Gemini Decisions API, Perplexity's Decisions API or Cloudflare's
+Clef) with ten yes/no questions, and turns the ten
 probabilities into green, amber or red by rules in code; an unsettled answer
 never counts toward green. Nothing here writes or arms the gate. A disabled advisor is
 `404`, a task with no result, a workspace with no key or a hand-off too large
@@ -417,13 +418,20 @@ has the questions, the rules and what leaves the deployment.
 | `TYPESAFE_API_KEY` | none | The instance's own key, used for a workspace that stored none. Unset, every workspace brings its own: its admin stores it with `PUT /workspaces/{id}/land-gate/advisor` (`token:admin`), which needs `FEDERATION_ENCRYPTION_KEY` on the instance and answers `409` without it. This variable has no `_FILE` form yet: set it in the environment. |
 | `OPENAI_API_KEY` | none | The instance's own key for OpenAI's Decisions API, as `TYPESAFE_API_KEY` is for TypeSafe. A workspace stores its own with `{"api_key": "…", "provider": "openai"}`. |
 | `GEMINI_API_KEY` | none | The instance's own key for Google's Gemini Decisions API. A workspace stores its own with `"provider": "google"`. On Google's free tier what is sent may be used to improve its products. |
+| `PERPLEXITY_API_KEY` | none | The instance's own key for Perplexity's Decisions API. A workspace stores its own with `"provider": "perplexity"`. |
+| `CLOUDFLARE_WORKERS_AI_TOKEN` | none | The instance's own token for Cloudflare's Clef on Workers AI: a Cloudflare API token that may run Workers AI models. It is read only with `CLOUDFLARE_ACCOUNT_ID`; set without one, boot is refused. The server does not read `CLOUDFLARE_API_TOKEN`, so a token a host holds for other work turns nothing on. A workspace stores its own with `{"api_key": "<token>", "provider": "cloudflare", "account_id": "<account id>"}`. |
+| `CLOUDFLARE_ACCOUNT_ID` | none | The 32-character id of the account whose Workers AI `CLOUDFLARE_WORKERS_AI_TOKEN` calls. Alone it turns nothing on. |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe `GET /v1/models`. |
 | `MAIDAN_OPENAI_DECISIONS_MODEL` | `gpt-6-luna` | The model OpenAI's Decisions API is asked for. |
 | `MAIDAN_GEMINI_DECISIONS_MODEL` | `gemini-decision-1` | The model Google's Decisions API is asked for. |
+| `MAIDAN_PERPLEXITY_DECISIONS_MODEL` | `pplx-decider-latest` | The model Perplexity's Decisions API is asked for (`pplx-decider-flash-latest` is the faster one). |
+| `MAIDAN_CLEF_MODEL` | `clef` | The Workers AI model's short name: `clef` or `clef-flash`. It is asked as `@cf/cloudflare/<name>`. |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout, for every provider. A timeout fails only the advice call, with `502`. |
 | `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. |
 | `MAIDAN_OPENAI_DECISIONS_BASE_URL` | `https://api.openai.com/` | As `MAIDAN_JEV_BASE_URL`, for OpenAI's Decisions API. |
 | `MAIDAN_GEMINI_DECISIONS_BASE_URL` | `https://generativelanguage.googleapis.com/` | As `MAIDAN_JEV_BASE_URL`, for Google's Gemini Decisions API. |
+| `MAIDAN_PERPLEXITY_DECISIONS_BASE_URL` | `https://api.perplexity.ai/` | As `MAIDAN_JEV_BASE_URL`, for Perplexity's Decisions API. |
+| `MAIDAN_CLEF_BASE_URL` | `https://api.cloudflare.com/` | As `MAIDAN_JEV_BASE_URL`, for Cloudflare's API. |
 
 A base URL that is not an origin refuses boot. The provider's name is resolved through the egress guard on the first call and again every ten minutes, so a provider that cannot be reached fails the advice call, not the server.
 

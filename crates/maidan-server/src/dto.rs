@@ -441,6 +441,10 @@ pub struct SetLandGateAdvisor {
     /// Whose key it is. Absent, TypeSafe's.
     #[serde(default)]
     pub provider: Option<crate::land_gate_advisor::AdvisorProvider>,
+    /// For Cloudflare only, and required there: the id of the account whose
+    /// Workers AI the token calls. `api_key` is then that account's token.
+    #[serde(default)]
+    pub account_id: Option<String>,
 }
 
 /// The query of `DELETE /workspaces/{id}/land-gate/advisor`.
@@ -458,6 +462,10 @@ impl std::fmt::Debug for SetLandGateAdvisor {
         f.debug_struct("SetLandGateAdvisor")
             .field("api_key", &"<redacted>")
             .field("provider", &self.provider)
+            .field(
+                "account_id",
+                &self.account_id.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }

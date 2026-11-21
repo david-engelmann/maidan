@@ -153,7 +153,9 @@ test("no key, too large, or too fast: refused here, and TypeSafe is not called",
 });
 
 test("the demo routes only the internal name, keeps the internet off, and exports the proxy", () => {
-  assert.deepEqual(Object.keys(jevOutboundByHost), [JEV_INTERNAL_HOST, "openai-decisions.internal", "gemini-decisions.internal"]);
+  assert.deepEqual(Object.keys(jevOutboundByHost), [JEV_INTERNAL_HOST, "openai-decisions.internal", "gemini-decisions.internal", "perplexity-decisions.internal"]);
+  // Cloudflare's Clef is the server's to offer, not the demo's to ask.
+  assert.ok(!RELAYS.some((relay) => relay.id === "cloudflare" || /cloudflare/.test(relay.origin)));
   assert.match(demoWorker, /enableInternet = false/);
   assert.doesNotMatch(demoWorker, /static\s+outboundByHost\s*=/);
   assert.match(demoWorker, /MaidanDemo\.outboundByHost = jevOutboundByHost;/);
@@ -203,17 +205,21 @@ test("each provider the Worker holds a key for is offered, pointed at its own na
   // would ask TypeSafe's own address, which the container cannot reach.
   assert.equal(env.MAIDAN_JEV_BASE_URL, undefined);
   assert.equal(env.TYPESAFE_API_KEY, undefined);
-  const all = demoEnv(undefined, { ...two, [JEV_KEY_VAR]: KEY });
-  assert.equal(all.MAIDAN_INTERNAL_EGRESS_HOSTS, "jev.internal,openai-decisions.internal,gemini-decisions.internal");
-  assert.ok(!JSON.stringify(all).match(/sk-fixture|g-fixture|ts_live_fixture/), "no real key reaches the container");
+  const all = demoEnv(undefined, { ...two, [JEV_KEY_VAR]: KEY, PERPLEXITY_API_KEY: "pplx-fixture" });
+  assert.equal(all.MAIDAN_INTERNAL_EGRESS_HOSTS, "jev.internal,openai-decisions.internal,gemini-decisions.internal,perplexity-decisions.internal");
+  assert.equal(all.MAIDAN_PERPLEXITY_DECISIONS_BASE_URL, "http://perplexity-decisions.internal/");
+  assert.equal(all.PERPLEXITY_API_KEY, JEV_PLACEHOLDER_KEY);
+  assert.ok(!JSON.stringify(all).match(/sk-fixture|g-fixture|ts_live_fixture|pplx-fixture/), "no real key reaches the container");
+  // A Cloudflare token on the Worker turns nothing on in the demo.
+  assert.deepEqual(adviceProviders({ CLOUDFLARE_WORKERS_AI_TOKEN: "cf", CLOUDFLARE_ACCOUNT_ID: "0".repeat(32), CLOUDFLARE_API_TOKEN: "cf" }), []);
   // The names the server is given are names it reads (crates/maidan-env).
   const registry = read("../../../crates/maidan-env/src/lib.rs");
   for (const name of Object.keys(all).filter((n) => n.startsWith("MAIDAN_"))) assert.ok(registry.includes(`"${name}"`), name);
 });
 
 test("each provider's question goes to its own address with its own key in its own header", async () => {
-  const [, openai, google] = RELAYS;
-  const env = { OPENAI_API_KEY: "sk-fixture", GEMINI_API_KEY: "g-fixture" };
+  const [, openai, google, perplexity] = RELAYS;
+  const env = { OPENAI_API_KEY: "sk-fixture", GEMINI_API_KEY: "g-fixture", PERPLEXITY_API_KEY: "pplx-fixture" };
   const up = upstream();
   const o = await forwardAdvice(openai, new Request("http://openai-decisions.internal/v1/decisions", { method: "POST", body: question, headers: { authorization: `Bearer ${JEV_PLACEHOLDER_KEY}` } }), env, up.fn);
   assert.equal(o.status, 200);
@@ -224,11 +230,15 @@ test("each provider's question goes to its own address with its own key in its o
   assert.equal(up.calls[1].url, "https://generativelanguage.googleapis.com/v1beta/decisions");
   assert.equal(up.calls[1].init.headers["x-goog-api-key"], "g-fixture");
   assert.equal(up.calls[1].init.headers.authorization, undefined);
+  const px = await forwardAdvice(perplexity, new Request("http://perplexity-decisions.internal/v1/decisions", { method: "POST", body: question, headers: { authorization: `Bearer ${JEV_PLACEHOLDER_KEY}` } }), env, up.fn);
+  assert.equal(px.status, 200);
+  assert.equal(up.calls[2].url, "https://api.perplexity.ai/v1/decisions");
+  assert.equal(up.calls[2].init.headers.authorization, "Bearer pplx-fixture");
   // Each relay takes its own two paths and no other provider's.
   assert.equal((await forwardAdvice(openai, new Request("http://openai-decisions.internal/v1/systemone", { method: "POST", body: question }), env, up.fn)).status, 404);
   assert.equal((await forwardAdvice(google, new Request("http://gemini-decisions.internal/v1/decisions", { method: "POST", body: question }), env, up.fn)).status, 404);
   assert.equal((await forwardAdvice(google, new Request("http://gemini-decisions.internal/v1beta/models"), env, up.fn)).status, 200);
   // A provider with no key on the Worker is not asked.
   assert.equal((await forwardJev(ask(), env, up.fn)).status, 503);
-  assert.equal(up.calls.length, 3);
+  assert.equal(up.calls.length, 4);
 });
