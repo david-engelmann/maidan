@@ -88,7 +88,9 @@ test("the agent claims Say hello, acknowledges, says hello, sets a result and se
   assert.deepEqual(claim.args, { channel_id: CHANNEL });
   assert.deepEqual(ack.args, { thread_id: TASK, claim_lease_id: LEASE });
   assert.deepEqual(post.args, { thread_id: TASK, body: HELLO });
-  assert.deepEqual(result.args, { thread_id: TASK, claim_lease_id: LEASE, result: { said: "hello" } });
+  assert.deepEqual(result.args, { thread_id: TASK, claim_lease_id: LEASE, result: { said: HELLO } });
+  // What it records is what it posted.
+  assert.equal(result.args.result.said, post.args.body);
   assert.deepEqual(review.args, { thread_id: TASK, action: "start_review" });
 
   // Each step is shown starting, then done with what the server answered.

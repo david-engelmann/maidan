@@ -18,7 +18,11 @@ export const MCP_PATH = "/mcp/streamable";
 // person reviewing in the console is not misled into thinking their own agent
 // ran.
 export const HELLO = "Hello from the demo agent the try page runs in your browser.";
-export const RESULT = { said: "hello" };
+// The result records the hello it posted, word for word. A result that says
+// something else ("hello") leaves a reviewer, and a decision model asked for
+// advice, to guess whether it is the same hello: one model was unsure of
+// that hand-off three asks in four, and of the matching one never.
+export const RESULT = { said: HELLO };
 
 // The steps in order, one MCP call each (the claim makes a second only to
 // give back a task that is not Say hello). `tool` is shown beside each step
