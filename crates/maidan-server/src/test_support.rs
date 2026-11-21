@@ -194,8 +194,15 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
             "usage": { "input_tokens": 1, "output_tokens": 1 },
         }))
     }
-    // OpenAI's Decisions API: predicates in an array, answered in order.
-    async fn openai(Json(body): Json<Value>) -> Json<Value> {
+    // `/v1/decisions` is OpenAI's path and Perplexity's. OpenAI's Decisions
+    // API takes predicates in an array and answers them in order;
+    // Perplexity's takes TypeSafe's request, a `state` and a map of nouls.
+    async fn decisions(Json(body): Json<Value>) -> Json<Value> {
+        if body.get("state").is_some() {
+            let Json(mut answer) = systemone(Json(body)).await;
+            answer["model"] = json!("pplx-stub");
+            return Json(answer);
+        }
         let answers: Vec<Value> = body["questions"]
             .as_array()
             .into_iter()
@@ -235,13 +242,21 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
             "usage": { "total_tokens": 1, "total_input_tokens": 1, "total_output_tokens": 0 },
         }))
     }
+    // Cloudflare's Workers AI: TypeSafe's request under the account and the
+    // model in the path, the answer inside the API's envelope.
+    async fn clef(Json(body): Json<Value>) -> Json<Value> {
+        let Json(mut answer) = systemone(Json(body)).await;
+        answer["model"] = json!("clef-stub");
+        Json(json!({ "result": answer, "success": true, "errors": [], "messages": [] }))
+    }
     async fn models() -> Json<Value> {
         Json(json!({ "data": [] }))
     }
 
     let app = Router::new()
         .route("/v1/systemone", post(systemone))
-        .route("/v1/decisions", post(openai))
+        .route("/v1/decisions", post(decisions))
+        .route("/client/v4/accounts/{account}/ai/run/{*model}", post(clef))
         .route("/v1beta/decisions", post(google))
         .route("/v1/models", axum::routing::get(models))
         .route("/v1beta/models", axum::routing::get(models));
@@ -263,6 +278,8 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
                 Some("stub-key".into()),
                 Some("stub-key".into()),
                 Some("stub-key".into()),
+                Some("stub-key".into()),
+                Some("0123456789abcdef0123456789abcdef:stub-key".into()),
             ],
             std::time::Duration::from_secs(5),
         )

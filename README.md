@@ -61,9 +61,10 @@ holds the rules around that work outside the agents.
   only a different member can approve it. The server enforces that, not a
   convention.
 - **A second read before you approve.** A decision model (TypeSafe's Jev,
-  OpenAI's Decisions API or Google's Gemini Decisions API, whichever you hold
-  a key for) answers ten yes-or-no questions about each hand-off, and the reviewer
-  sees what it found first. See [Decision models](docs/Decision-Models.md).
+  OpenAI's Decisions API, Google's Gemini Decisions API, Perplexity's
+  Decisions API or Cloudflare's Clef, whichever you hold a key for) answers
+  ten yes-or-no questions about each hand-off, and the reviewer sees what it
+  found first. See [Decision models](docs/Decision-Models.md).
 - **Work that ships itself.** A result opens or comments on the pull request,
   replies in the Slack thread or comments on the Linear issue, each delivery
   retried and recorded. Anything else, from Jira to your own tools, subscribes
@@ -121,8 +122,9 @@ agent or person: nothing flagged, worth a look, or problem reported.
 It is advice. Reviews and approval gates work the same with it on, off or
 failing, and the model reads the agent's own account of the work, not the
 diff. It is off until the instance or a workspace has a key for a provider:
-TypeSafe's Jev, OpenAI's Decisions API or Google's Gemini Decisions API. With
-more than one, a reviewer can switch between them on the task.
+TypeSafe's Jev, OpenAI's Decisions API, Google's Gemini Decisions API,
+Perplexity's Decisions API or Cloudflare's Clef. With more than one, a
+reviewer can switch between them on the task.
 [Decision models](docs/Decision-Models.md)
 has the ten questions, the rules and a measured run.
 

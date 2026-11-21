@@ -28,8 +28,6 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_AGENT_ADD_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_ALLOWED_HOSTS",
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
-    // Removed with the unauthenticated mode; listed so boot refuses it by name
-    // (`maidan_server::config::REMOVED_AUTH_SWITCHES`) instead of as unknown.
     "MAIDAN_ALLOW_INSECURE_NO_AUTH",
     "MAIDAN_ALLOW_PRIVATE_EGRESS",
     "MAIDAN_ALLOW_UNKNOWN_ENV",
@@ -49,6 +47,8 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CLAIM_LAPSE_WARN_SECS",
     "MAIDAN_CLAIM_REAPER_BOOT_GRACE_SECS",
     "MAIDAN_CLAIM_REAP_TICK_SECS",
+    "MAIDAN_CLEF_BASE_URL",
+    "MAIDAN_CLEF_MODEL",
     "MAIDAN_CONSOLE_ORIGIN",
     "MAIDAN_CONTENT_KEK",
     "MAIDAN_CONTENT_KEK_FILE",
@@ -167,6 +167,8 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_OUTBOX_RELAY",
     "MAIDAN_OUTBOX_RELAY_MODE",
     "MAIDAN_OVERAGE_PRICES",
+    "MAIDAN_PERPLEXITY_DECISIONS_BASE_URL",
+    "MAIDAN_PERPLEXITY_DECISIONS_MODEL",
     "MAIDAN_PRIVATE_EGRESS_HOSTS",
     "MAIDAN_PUBLIC_ORIGIN",
     "MAIDAN_RATE_LIMIT_MAX",
@@ -485,6 +487,10 @@ mod tests {
         ),
         ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
         (
+            "MAIDAN_CLEF_BASE_URL",
+            "an endpoint that carries no credential",
+        ),
+        (
             "MAIDAN_CREDITS_RPC_URL",
             "a chain read endpoint; a provider key in it reads public chain data only",
         ),
@@ -501,6 +507,10 @@ mod tests {
         ("MAIDAN_MAX_STREAMS_PER_CREDENTIAL", "a count"),
         (
             "MAIDAN_OPENAI_DECISIONS_BASE_URL",
+            "an endpoint that carries no credential",
+        ),
+        (
+            "MAIDAN_PERPLEXITY_DECISIONS_BASE_URL",
             "an endpoint that carries no credential",
         ),
         ("MAIDAN_PRIVATE_EGRESS_HOSTS", "a list of hosts"),
@@ -630,11 +640,14 @@ mod tests {
         let known_non_maidan = [
             "ARTIFACT_BACKEND",
             "ARTIFACT_LOCALFS_ROOT",
+            "CLOUDFLARE_ACCOUNT_ID",
+            "CLOUDFLARE_WORKERS_AI_TOKEN",
             "DATABASE_URL",
             "FEDERATION_DECRYPT_KEYS",
             "FEDERATION_ENCRYPTION_KEY",
             "GEMINI_API_KEY",
             "OPENAI_API_KEY",
+            "PERPLEXITY_API_KEY",
             "S3_ACCESS_KEY_ID",
             "S3_BUCKET",
             "S3_ENDPOINT",

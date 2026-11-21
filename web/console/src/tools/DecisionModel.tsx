@@ -2,7 +2,7 @@
 // provider has its own key, typed here once, checked by that provider, stored
 // encrypted, and never read back: the panel only ever knows whether one is set.
 import { type FormEvent, useMemo, useState } from "react";
-import { AdviceApi, KEY_NAME, type AdvisorProvider, type AdvisorStatus } from "../core/advice.ts";
+import { AdviceApi, KEY_NAME, needsAccount, type AdvisorProvider, type AdvisorStatus } from "../core/advice.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad } from "../hooks/useTools.ts";
@@ -77,6 +77,9 @@ export function DecisionModel({ ws }: { ws: string }) {
 
 function Provider({ ws, api, provider, reload }: { ws: string; api: AdviceApi; provider: AdvisorProvider; reload: () => Promise<unknown> }) {
   const [key, setKey] = useState("");
+  // Cloudflare's key comes with the account it is for.
+  const withAccount = needsAccount(provider.id);
+  const [account, setAccount] = useState("");
   const [busy, setBusy] = useState<"set" | "clear" | null>(null);
   const [confirming, setConfirming] = useState(false);
   const own = provider.key_source === "workspace";
@@ -107,14 +110,20 @@ function Provider({ ws, api, provider, reload }: { ws: string; api: AdviceApi; p
         className="row-form"
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
-          void run("set", async () => { await api.setKey(ws, key.trim(), provider.id); setKey(""); }, `Key saved. ${provider.name} is on for this workspace.`, "Could not save the key");
+          void run("set", async () => { await api.setKey(ws, key.trim(), provider.id, withAccount ? account.trim() : null); setKey(""); setAccount(""); }, `Key saved. ${provider.name} is on for this workspace.`, "Could not save the key");
         }}
       >
+        {withAccount ? (
+          <label className="field grow">
+            Cloudflare account ID
+            <input type="text" value={account} onChange={(e) => setAccount(e.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder="32 characters" />
+          </label>
+        ) : null}
         <label className="field grow">
           {own ? `Replace the ${KEY_NAME[provider.id]}` : `Your ${KEY_NAME[provider.id]}`}
           <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder="Paste the key" />
         </label>
-        <button className="button steel" disabled={busy !== null || !key.trim()} aria-label={`Save the ${KEY_NAME[provider.id]}`}>{busy === "set" ? "Checking…" : "Save"}</button>
+        <button className="button steel" disabled={busy !== null || !key.trim() || (withAccount && !account.trim())} aria-label={`Save the ${KEY_NAME[provider.id]}`}>{busy === "set" ? "Checking…" : "Save"}</button>
       </form>
       {own ? (
         confirming ? (

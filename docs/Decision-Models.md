@@ -4,9 +4,10 @@ When a task is handed to review, Maidan can give the reviewer a second read of
 the hand-off: a decision model answers ten small questions about it, and the
 reviewer sees what it found before opening the diff. A decision model answers
 typed questions with probabilities instead of writing text. The server can
-ask three: [TypeSafe](https://typesafe.ai)'s Jev, OpenAI's Decisions API and
-Google's Gemini Decisions API. All three are asked the same ten questions and
-read by the same rules, and a workspace chooses which by the keys it adds.
+ask five: [TypeSafe](https://typesafe.ai)'s Jev, OpenAI's Decisions API,
+Google's Gemini Decisions API, Perplexity's Decisions API and Cloudflare's
+Clef on Workers AI. All five are asked the same ten questions and read by the
+same rules, and a workspace chooses which by the keys it adds.
 
 The design follows TypeSafe's own advice for a model like this: judgments
 from the model, decisions in code. Maidan does not ask whether the work should
@@ -28,10 +29,12 @@ least one provider: the instance's, or the workspace's own.
 | TypeSafe Jev | `typesafe` | `POST https://api.typesafe.ai/v1/systemone` | `jev-latest` | `TYPESAFE_API_KEY` | `maidan:typesafe_api_key` |
 | OpenAI Decisions | `openai` | `POST https://api.openai.com/v1/decisions` | `gpt-6-luna` | `OPENAI_API_KEY` | `maidan:openai_api_key` |
 | Gemini Decisions | `google` | `POST https://generativelanguage.googleapis.com/v1beta/decisions` | `gemini-decision-1` | `GEMINI_API_KEY` | `maidan:gemini_api_key` |
+| Perplexity Decider | `perplexity` | `POST https://api.perplexity.ai/v1/decisions` | `pplx-decider-latest` | `PERPLEXITY_API_KEY` | `maidan:perplexity_api_key` |
+| Cloudflare Clef | `cloudflare` | `POST https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/cloudflare/clef` | `clef` | `CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID` | `maidan:cloudflare_workers_ai_key` |
 
 A call may name its provider. One that names none asks the first provider
 the workspace has a key for, in the order above. The questions' wording is
-the same for all three, and each is sent in the provider's own shape:
+the same for all five, and each is sent in the provider's own shape:
 
 - **TypeSafe** takes the packet as `state` and each question as a `noul`
   with what yes and no mean in its `criteria`.
@@ -46,6 +49,18 @@ the same for all three, and each is sent in the provider's own shape:
   the advice call fails with it. The API is `v1beta`. On Google's free tier
   what is sent may be used to improve its products; a paid key is the one to
   use for real work.
+- **Perplexity** takes TypeSafe's request as it is: the packet as `state` and
+  each question as a `noul` with `criteria`. `pplx-decider-flash-latest` is
+  its faster model (`MAIDAN_PERPLEXITY_DECISIONS_MODEL`).
+- **Cloudflare** takes the same request too, at an address that names the
+  account and the model, and answers inside its API's envelope (`result`).
+  Its key is two things, a token that may run Workers AI models and the id of
+  the account it calls, so a workspace stores both (see "Keys") and an
+  instance sets both. The account id is held to its shape, 32 hexadecimal
+  characters, before it goes into the address. `clef-flash` is the faster
+  model (`MAIDAN_CLEF_MODEL`). The server reads `CLOUDFLARE_WORKERS_AI_TOKEN`
+  and never `CLOUDFLARE_API_TOKEN`: a token a host holds for deploys does not
+  turn a provider on.
 
 Each provider's answer is kept apart: the hold of an answer is by provider,
 and one provider's answer is never shown as another's.
@@ -174,8 +189,8 @@ curl -X POST "$MAIDAN/threads/$THREAD/land-gate/advice" \
 
 MCP: `advise_land_gate` with `thread_id`. Both need `thread:transition` and a
 thread the caller can read. Both take an optional `provider` (`typesafe`,
-`openai` or `google`), and the answer names the provider and model that gave
-it:
+`openai`, `google`, `perplexity` or `cloudflare`), and the answer names the
+provider and model that gave it:
 
 ```sh
 curl -X POST "$MAIDAN/threads/$THREAD/land-gate/advice" \
@@ -239,12 +254,19 @@ neither, that provider is refused.
 curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"api_key": "…", "provider": "openai"}'
+# Cloudflare's key is a token and the account it calls. The check asks the
+# model one small question of its own, since no read shows a token may run it.
+curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"api_key": "…", "provider": "cloudflare", "account_id": "…"}'
 # What is set up. The top-level fields describe the provider a call that
-# names none would ask, and `providers` lists all three:
+# names none would ask, and `providers` lists all five:
 # {"enabled": true, "key_source": "workspace", "provider": "openai", "model": "gpt-6-luna", "host": "api.openai.com",
 #  "providers": [{"id": "typesafe", "name": "TypeSafe Jev", "model": "jev-latest", "host": "api.typesafe.ai"},
 #                {"id": "openai", "name": "OpenAI Decisions", "model": "gpt-6-luna", "host": "api.openai.com", "key_source": "workspace"},
-#                {"id": "google", "name": "Gemini Decisions", "model": "gemini-decision-1", "host": "generativelanguage.googleapis.com"}]}
+#                {"id": "google", "name": "Gemini Decisions", "model": "gemini-decision-1", "host": "generativelanguage.googleapis.com"},
+#                {"id": "perplexity", "name": "Perplexity Decider", "model": "pplx-decider-latest", "host": "api.perplexity.ai"},
+#                {"id": "cloudflare", "name": "Cloudflare Clef", "model": "clef", "host": "api.cloudflare.com"}]}
 curl "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
 # Forget one provider's key.
 curl -X DELETE "$MAIDAN/workspaces/$WS/land-gate/advisor?provider=openai" -H "authorization: Bearer $TOKEN"
@@ -268,8 +290,8 @@ reviewer can ask another model about the same hand-off, and the console
 remembers the choice.
 
 On maidan.world a workspace brings its own keys. try.maidan.world asks with the
-demo's, for each provider the demo holds a key for, and the page has the same
-switch: when the page's scripted agent has sent **Say hello** to review, the
+demo's, for each provider the demo holds a key for (Cloudflare's Clef is not
+one the demo offers), and the page has the same switch: when the page's scripted agent has sent **Say hello** to review, the
 page asks for advice on that hand-off with the sandbox's own token
 (`advise_land_gate`) and shows the answer, the ten judgments included, before
 it sends the visitor to the console to approve. The task's sheet there shows
@@ -286,12 +308,15 @@ review there are read by a decision model outside the demo (`advice` and
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the routes and the tool on. An invalid value refuses boot. With it off, none of the others are read |
-| `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | none | The instance's own key for each provider, for workspaces that stored none. Leave one unset to have every workspace bring its own for that provider |
+| `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY` | none | The instance's own key for each provider, for workspaces that stored none. Leave one unset to have every workspace bring its own for that provider |
+| `CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID` | none | The instance's own token for Cloudflare's Clef and the account it calls. The token without the account refuses boot; the account alone turns nothing on |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
 | `MAIDAN_OPENAI_DECISIONS_MODEL` | `gpt-6-luna` | The model OpenAI's Decisions API is asked for |
 | `MAIDAN_GEMINI_DECISIONS_MODEL` | `gemini-decision-1` | The model Google's Decisions API is asked for |
+| `MAIDAN_PERPLEXITY_DECISIONS_MODEL` | `pplx-decider-latest` | The model Perplexity's Decisions API is asked for |
+| `MAIDAN_CLEF_MODEL` | `clef` | The Workers AI model's short name, `clef` or `clef-flash` |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request, for every provider. A timeout fails only the advice call, with `502` |
-| `MAIDAN_JEV_BASE_URL`, `MAIDAN_OPENAI_DECISIONS_BASE_URL`, `MAIDAN_GEMINI_DECISIONS_BASE_URL` | `https://api.typesafe.ai/`, `https://api.openai.com/`, `https://generativelanguage.googleapis.com/` | Each an origin only, behind the same egress guard as other outbound calls. `https`, since the key travels in a header; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
+| `MAIDAN_JEV_BASE_URL`, `MAIDAN_OPENAI_DECISIONS_BASE_URL`, `MAIDAN_GEMINI_DECISIONS_BASE_URL`, `MAIDAN_PERPLEXITY_DECISIONS_BASE_URL`, `MAIDAN_CLEF_BASE_URL` | `https://api.typesafe.ai/`, `https://api.openai.com/`, `https://generativelanguage.googleapis.com/`, `https://api.perplexity.ai/`, `https://api.cloudflare.com/` | Each an origin only, behind the same egress guard as other outbound calls. `https`, since the key travels in a header; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
 
 ## Measuring it
 
@@ -322,7 +347,7 @@ either way between runs. The two it missed are worth knowing:
   version" read as worth a look: the model was unsure whether part of the
   task was left undone. We had labelled it nothing flagged.
 
-### Across the three providers
+### Across the providers
 
 One run each on 2026-11-21, the same 36 hand-offs through a locally built
 server (`scripts/eval-land-gate-advisor.py --provider`):
@@ -332,6 +357,8 @@ server (`scripts/eval-land-gate-advisor.py --provider`):
 | TypeSafe | `jev-1.14.0` | 313 | 12 | 0 | 34 of 36 | 78 ms | 41,366 |
 | OpenAI | `gpt-6-luna` | 313 | 9 | 3 | 31 of 36 | 216 ms | 75,935 |
 | Google | `gemini-decision-1` | 318 | 6 | 1 | 33 of 36 | 332 ms | 45,994 |
+| Perplexity | `pplx-decider-latest` | 318 | 5 | 2 | 33 of 36 | 247 ms | 29,262 |
+| Cloudflare | `clef` | 314 | 10 | 1 | 32 of 36 | 372 ms | 45,056 |
 
 Read it with two things in mind. The questions were written and probed
 against Jev, and the two thresholds are TypeSafe's, so Jev has the home
@@ -342,18 +369,38 @@ advantage here. And it is one run of a set we labelled ourselves.
   hand-off reports them (0.01), a risk flagged where none was (0.77), and
   passing tests where none were reported (0.78). Google gave one: work beyond
   the task where there was none (0.76).
-- **All three** read the production values change as nothing flagged, for the
+  Perplexity gave two: a change to sign-in or permissions where there was
+  none (0.72), and no passing tests where the hand-off reports them (0.27).
+  Cloudflare gave one: the task done where the work was on another endpoint
+  (0.83).
+- **All five** read the production values change as nothing flagged, for the
   reason above: no question asks about it.
-- **OpenAI** also read a change to payment code as nothing flagged where we
-  had labelled it worth a look. That is the direction to care about: advice
-  that says nothing where a reviewer should look.
-- **OpenAI and Google** read an agent blocked on access as worth a look where
-  we had labelled it a reported problem.
+- **OpenAI and Perplexity** also read a change to payment code as nothing
+  flagged where we had labelled it worth a look. That is the direction to
+  care about: advice that says nothing where a reviewer should look.
+  **Cloudflare** did the same on a fix whose whole result is "Tests pass."
+- **OpenAI, Google and Perplexity** read an agent blocked on access as worth
+  a look where we had labelled it a reported problem.
+- **Cloudflare** read two clean hand-offs as worth a look: an investigation
+  that ends in a recommendation (a risk, it said), and the release notes
+  with the offer of a longer version that Jev also stopped at.
 - OpenAI's requests are larger because a predicate has no field for what yes
   and no mean, so both are sent in every question's instructions.
+  Perplexity's count fewest tokens for the same text.
 
-None of the three took longer than 0.8 seconds on any hand-off, against the
-default 1.5 second timeout.
+The first three rows were measured through the server's own call to each
+provider, and none took longer than 0.8 seconds on any hand-off, against the
+default 1.5 second timeout. Perplexity's and Cloudflare's rows were measured
+through a local relay standing where TypeSafe's API would be (both take
+TypeSafe's request unchanged), on a machine busy with other work, so their
+answer times include a hop the server does not make and are a ceiling, not a
+comparison. The slowest single answers were 0.4 seconds (Perplexity) and 0.9
+(Cloudflare).
+
+Each of the two has a faster model. On the same run
+`pplx-decider-flash-latest` agreed on 312 with 12 unsettled and 1 wrong, its
+advice on its label for 32 of 36; `clef-flash` on 303 with 21 unsettled and 1
+wrong, for 31 of 36.
 
 We wrote these hand-offs and their labels ourselves, so this is a regression
 set, not an independent test. Use your own hand-offs before you rely on it: a

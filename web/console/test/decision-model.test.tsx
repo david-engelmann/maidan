@@ -148,3 +148,52 @@ test("each provider has its own key, saved to that provider and no other", async
   // The other providers' fields are untouched.
   expect((screen.getByLabelText("Your OpenAI API key") as HTMLInputElement).value).toBe("");
 });
+
+test("Cloudflare's token is saved with the account it is for", async () => {
+  const user = userEvent.setup();
+  let source: Source;
+  const sent: string[] = [];
+  const status = () => ({
+    enabled: true,
+    key_source: source,
+    provider: "cloudflare",
+    model: "clef",
+    host: "api.cloudflare.com",
+    providers: [
+      { id: "perplexity", name: "Perplexity Decider", model: "pplx-decider-latest", host: "api.perplexity.ai" },
+      { id: "cloudflare", name: "Cloudflare Clef", model: "clef", host: "api.cloudflare.com", key_source: source },
+    ],
+  });
+  const router = withSession([
+    read(status),
+    {
+      method: "PUT",
+      match: ADVISOR,
+      body: () => {
+        source = "workspace";
+        return status();
+      },
+    },
+  ]);
+  const fn: typeof router.fn = (url, init) => {
+    if (init?.method === "PUT") sent.push(String(init.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<DecisionModel ws="ws" />, fn);
+  await screen.findByRole("heading", { name: /Cloudflare Clef/ });
+  screen.getByText(/Sent to api\.cloudflare\.com, model clef\./);
+  // Only Cloudflare asks for an account.
+  expect(screen.getAllByLabelText("Cloudflare account ID").length).toBe(1);
+  const save = screen.getByRole("button", { name: "Save the Cloudflare Workers AI token" });
+  await user.type(screen.getByLabelText("Your Cloudflare Workers AI token"), "cf-token");
+  expect((save as HTMLButtonElement).disabled, "a token with no account is not sent").toBe(true);
+  await user.type(screen.getByLabelText("Cloudflare account ID"), " 0123456789abcdef0123456789abcdef ");
+  await user.click(save);
+  await screen.findByText(/On, with this workspace’s own key\./);
+  expect(sent).toEqual([JSON.stringify({ api_key: "cf-token", provider: "cloudflare", account_id: "0123456789abcdef0123456789abcdef" })]);
+  // Perplexity's key is the key alone.
+  await user.type(screen.getByLabelText("Your Perplexity API key"), "pplx-fixture");
+  await user.click(screen.getByRole("button", { name: "Save the Perplexity API key" }));
+  await waitFor(() => expect(sent.length).toBe(2));
+  expect(sent[1]).toBe(JSON.stringify({ api_key: "pplx-fixture", provider: "perplexity" }));
+});
