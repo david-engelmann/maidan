@@ -244,10 +244,15 @@ work, written to include the hard cases: tests that were not run, a question
 left in a message, work on the wrong thing, a result that tells the reader
 how to answer.
 
+The script makes one task per hand-off in a channel of its own, and cancels
+each task once its advice has been read.
+
 The result on 2026-11-20, against `jev-1.14.0` through a running server: of
 325 labelled answers, 314 agreed with their label, 11 were unsettled and none
 was a settled wrong answer; the advice matched its label on 34 of the 36
-hand-offs. The two it missed are worth knowing:
+hand-offs. A second run the same day read 315 and 10, with the same two
+misses: an answer near a threshold can settle either way between runs. The
+two it missed are worth knowing:
 
 - A memory limit raised in a production values file, tested on staging, read
   as nothing flagged where we had labelled it worth a look. Every judgment

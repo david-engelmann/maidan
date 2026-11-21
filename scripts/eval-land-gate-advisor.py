@@ -4,13 +4,14 @@
 For each case in the labelled set this makes a task on a running Maidan,
 claims it, posts the agent's messages, sets the result, and asks for advice
 (`advise_land_gate`). It then reports, for every judgment and for the advice,
-how many answers agree with the labels. Nothing is approved or closed, and the
-land gate is never written.
+how many answers agree with the labels. Each task is cancelled once its advice
+has been read, whether or not the case ran to the end. Nothing is approved, and
+the land gate is never written.
 
     eval-land-gate-advisor.py --maidan https://maidan.example.com --token-env MAIDAN_TOKEN
 
-The token needs to create a channel and tasks, claim, and ask for advice (an
-admin's does). The instance must have advice on and a TypeSafe key for the
+The token needs to create a channel and tasks, claim, cancel, and ask for
+advice (an admin's does). The instance must have advice on and a TypeSafe key for the
 token's workspace. Every hand-off in the set is sent to the provider.
 
 Exit status: 0 when no labelled judgment was answered wrong and the advice
@@ -99,21 +100,27 @@ def main() -> int:
         if case["task"].get("description"):
             filed["description"] = case["task"]["description"]
         thread = tool("create_thread", filed)["id"]
-        # The ask, as a dispatcher posts it. The advisor leaves a thread's
-        # opening message out when its author made the thread, so without
-        # this the agent's first message below would be taken for it.
-        tool("post_message", {"thread_id": thread, "body": case["task"].get("description") or case["task"]["title"]})
-        claim = tool("claim_thread", {"thread_id": thread})
-        claimed = claim.get("thread", claim)
-        for body in case.get("agent_messages", []):
-            tool("post_message", {"thread_id": thread, "body": body})
-        tool("set_thread_result", {"thread_id": thread, "result": case["result"], "claim_lease_id": claimed["claim_lease_id"]})
-        advice = tool("advise_land_gate", {"thread_id": thread, "refresh": True})
-        # End the task: a claim held for every case would run into a
-        # workspace's limit on work in progress, and a later case with the
-        # same title and description would be refused as a duplicate of an
-        # open task.
-        tool("cancel_thread", {"thread_id": thread, "reason": "advice eval: this case has been read"})
+        try:
+            # The ask, as a dispatcher posts it. The advisor leaves a thread's
+            # opening message out when its author made the thread, so without
+            # this the agent's first message below would be taken for it.
+            tool("post_message", {"thread_id": thread, "body": case["task"].get("description") or case["task"]["title"]})
+            claim = tool("claim_thread", {"thread_id": thread})
+            claimed = claim.get("thread", claim)
+            for body in case.get("agent_messages", []):
+                tool("post_message", {"thread_id": thread, "body": body})
+            tool("set_thread_result", {"thread_id": thread, "result": case["result"], "claim_lease_id": claimed["claim_lease_id"]})
+            advice = tool("advise_land_gate", {"thread_id": thread, "refresh": True})
+        finally:
+            # End the task, also when the case failed part-way. A claim held
+            # for every case would run into a workspace's limit on work in
+            # progress, and a task left open makes the next run's task with
+            # the same title and description a duplicate that cannot be
+            # claimed.
+            try:
+                tool("cancel_thread", {"thread_id": thread, "reason": "advice eval: this case has been read"})
+            except SystemExit as error:
+                print(f"could not cancel task {thread}: {error}", file=sys.stderr)
         tokens += advice["usage"]["input_tokens"]
         if sink:
             sink.write(json.dumps({"id": case["id"], "advice": advice}) + "\n")
