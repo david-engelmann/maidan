@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v470.0.0](https://github.com/david-engelmann/maidan/releases/tag/v470.0.0) — advice on a hand-off: judgments from a decision model, the decision in code, and 2 more
+
+Advice at review from a decision model: ten yes-or-no judgments on each hand-off, shown on the landing, the demo and the console, with a workspace's own key; and Docker Desktop can sign a person in.
+
+- Advice on a hand-off: judgments from a decision model, the decision in code
+- Advice, with a lighter hand
+- Signing in from Docker Desktop
+
+`CHANGELOG.md` under `[470.0.0]` has every entry.
+
 ## [v469.0.0](https://github.com/david-engelmann/maidan/releases/tag/v469.0.0) — the public pages agree with each other, and 3 more
 
 An operator can erase a workspace nobody can sign in to; the listing copy, the social card and the docs site carry the tagline "The shared workspace for agent swarms."; try.maidan.world has a link preview and its colours match the landing again; and the launch gate's record from the runs on v468.0.0.
