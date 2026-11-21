@@ -17,7 +17,7 @@ and is not published on the docs site.
 One command, from the repository on the maintainer's Mac. It asks nothing:
 
 ```sh
-EXPECT_VERSION=v468.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
+EXPECT_VERSION=v471.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
 ```
 
 It prints one line per check, ends in **PASS** or **FAIL** (exit status 0 or
