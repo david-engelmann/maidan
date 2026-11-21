@@ -297,8 +297,8 @@ page asks for advice on that hand-off with the sandbox's own token
 it sends the visitor to the console to approve. The task's sheet there shows
 the same answer, held from that call. When the demo has no key, or the model
 does not answer within four seconds (the server gives the model a second and
-a half; the page allows for the round trip), the page shows nothing and goes
-on. Where the
+a half, and once more if that ran out; the page allows for the round trip),
+the page shows nothing and goes on. Where the
 demo has a key, the page says before a sandbox exists that tasks sent to
 review there are read by a decision model outside the demo (`advice` and
 `providers` in `/try-config.json`).
@@ -315,7 +315,7 @@ review there are read by a decision model outside the demo (`advice` and
 | `MAIDAN_GEMINI_DECISIONS_MODEL` | `gemini-decision-1` | The model Google's Decisions API is asked for |
 | `MAIDAN_PERPLEXITY_DECISIONS_MODEL` | `pplx-decider-latest` | The model Perplexity's Decisions API is asked for |
 | `MAIDAN_CLEF_MODEL` | `clef` | The Workers AI model's short name, `clef` or `clef-flash` |
-| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request, for every provider. A timeout fails only the advice call, with `502` |
+| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request, for every provider. A request that times out is made once more, so a call can take twice this before it fails; a second timeout fails only the advice call, with `502` |
 | `MAIDAN_JEV_BASE_URL`, `MAIDAN_OPENAI_DECISIONS_BASE_URL`, `MAIDAN_GEMINI_DECISIONS_BASE_URL`, `MAIDAN_PERPLEXITY_DECISIONS_BASE_URL`, `MAIDAN_CLEF_BASE_URL` | `https://api.typesafe.ai/`, `https://api.openai.com/`, `https://generativelanguage.googleapis.com/`, `https://api.perplexity.ai/`, `https://api.cloudflare.com/` | Each an origin only, behind the same egress guard as other outbound calls. `https`, since the key travels in a header; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
 
 ## Measuring it
@@ -357,8 +357,8 @@ server (`scripts/eval-land-gate-advisor.py --provider`):
 | TypeSafe | `jev-1.14.0` | 313 | 12 | 0 | 34 of 36 | 78 ms | 41,366 |
 | OpenAI | `gpt-6-luna` | 313 | 9 | 3 | 31 of 36 | 216 ms | 75,935 |
 | Google | `gemini-decision-1` | 318 | 6 | 1 | 33 of 36 | 332 ms | 45,994 |
-| Perplexity | `pplx-decider-latest` | 318 | 5 | 2 | 33 of 36 | 247 ms | 29,262 |
-| Cloudflare | `clef` | 314 | 10 | 1 | 32 of 36 | 372 ms | 45,056 |
+| Perplexity | `pplx-decider-latest` | 318 | 5 | 2 | 33 of 36 | 200 ms | 29,262 |
+| Cloudflare | `clef` | 314 | 10 | 1 | 32 of 36 | 290 ms | 45,056 |
 
 Read it with two things in mind. The questions were written and probed
 against Jev, and the two thresholds are TypeSafe's, so Jev has the home
@@ -388,19 +388,22 @@ advantage here. And it is one run of a set we labelled ourselves.
   and no mean, so both are sent in every question's instructions.
   Perplexity's count fewest tokens for the same text.
 
-The first three rows were measured through the server's own call to each
-provider, and none took longer than 0.8 seconds on any hand-off, against the
-default 1.5 second timeout. Perplexity's and Cloudflare's rows were measured
-through a local relay standing where TypeSafe's API would be (both take
-TypeSafe's request unchanged), on a machine busy with other work, so their
-answer times include a hop the server does not make and are a ceiling, not a
-comparison. The slowest single answers were 0.4 seconds (Perplexity) and 0.9
-(Cloudflare).
+Four of the five never took longer than 0.8 seconds on any hand-off,
+against the default 1.5 second timeout. Perplexity is the exception. Its
+usual answer is as quick as the others, and about one in sixty is not: asked
+the same small question 360 times in a row, `pplx-decider-latest` took five
+to ten seconds for six of them, each on its own with quick answers on either
+side. Three runs of this measurement stopped on one. So the server makes a
+request that timed out once more before the advice call fails
+(`MAIDAN_JEV_TIMEOUT_MS`). The row above is a run at the default timeout
+through a server that asks again, in which no answer took longer than 0.7.
 
-Each of the two has a faster model. On the same run
-`pplx-decider-flash-latest` agreed on 312 with 12 unsettled and 1 wrong, its
-advice on its label for 32 of 36; `clef-flash` on 303 with 21 unsettled and 1
-wrong, for 31 of 36.
+Perplexity and Cloudflare each have a faster model, measured the same day
+through a relay in front of the server as it was before it knew them (both
+take TypeSafe's request unchanged). `pplx-decider-flash-latest` agreed on 312
+with 12 unsettled and 1 wrong, its advice on its label for 32 of 36, and none
+of 60 answers took longer than 0.3 seconds. `clef-flash` agreed on 303 with
+21 unsettled and 1 wrong, for 31 of 36.
 
 We wrote these hand-offs and their labels ourselves, so this is a regression
 set, not an independent test. Use your own hand-offs before you rely on it: a

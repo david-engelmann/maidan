@@ -426,7 +426,7 @@ has the questions, the rules and what leaves the deployment.
 | `MAIDAN_GEMINI_DECISIONS_MODEL` | `gemini-decision-1` | The model Google's Decisions API is asked for. |
 | `MAIDAN_PERPLEXITY_DECISIONS_MODEL` | `pplx-decider-latest` | The model Perplexity's Decisions API is asked for (`pplx-decider-flash-latest` is the faster one). |
 | `MAIDAN_CLEF_MODEL` | `clef` | The Workers AI model's short name: `clef` or `clef-flash`. It is asked as `@cf/cloudflare/<name>`. |
-| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout, for every provider. A timeout fails only the advice call, with `502`. |
+| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout, for every provider. A request that times out is made once more, so a call can take twice this before it fails. A second timeout fails only the advice call, with `502`. |
 | `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. |
 | `MAIDAN_OPENAI_DECISIONS_BASE_URL` | `https://api.openai.com/` | As `MAIDAN_JEV_BASE_URL`, for OpenAI's Decisions API. |
 | `MAIDAN_GEMINI_DECISIONS_BASE_URL` | `https://generativelanguage.googleapis.com/` | As `MAIDAN_JEV_BASE_URL`, for Google's Gemini Decisions API. |

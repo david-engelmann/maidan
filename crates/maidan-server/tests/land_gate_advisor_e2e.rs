@@ -28,6 +28,9 @@ const INSTANCE_KEY: &str = "ts_instance_key";
 const WORKSPACE_KEY: &str = "ts_workspace_key";
 const OPENAI_KEY: &str = "sk-workspace-openai";
 const GEMINI_KEY: &str = "g-workspace-gemini";
+/// The provider timeout of a server made by [`spawn_with_timeout`] for the
+/// tests of a slow answer.
+const SHORT_TIMEOUT: Duration = Duration::from_millis(300);
 const PERPLEXITY_KEY: &str = "pplx-workspace-perplexity";
 const CLOUDFLARE_ACCOUNT: &str = "0123456789abcdef0123456789abcdef";
 const CLOUDFLARE_TOKEN: &str = "cf-workspace-token";
@@ -41,6 +44,13 @@ struct Provider {
     answers: Mutex<BTreeMap<String, f64>>,
     /// When set, `/v1/systemone` answers 500.
     down: Mutex<bool>,
+    /// How many of the next `/v1/systemone` calls answer too late.
+    late: Mutex<u32>,
+    /// How many of the next `/v1/systemone` calls send their headers at once
+    /// and the answer itself too late.
+    late_body: Mutex<u32>,
+    /// Every `/v1/systemone` call that arrived, whatever it was answered.
+    attempts: Mutex<u32>,
     /// Every call to the other providers' paths: the path, the key it
     /// carried in that provider's own header, and its body.
     seen: Mutex<Vec<(String, String, Value)>>,
@@ -59,15 +69,26 @@ async fn systemone(
     State(provider): State<Arc<Provider>>,
     headers: HeaderMap,
     Json(body): Json<Value>,
-) -> (StatusCode, Json<Value>) {
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    *provider.attempts.lock().unwrap() += 1;
     if *provider.down.lock().unwrap() {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({})));
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response();
     }
     provider
         .asked
         .lock()
         .unwrap()
         .push((bearer_of(&headers), body.clone()));
+    let late = {
+        let mut left = provider.late.lock().unwrap();
+        let late = *left > 0;
+        *left = left.saturating_sub(1);
+        late
+    };
+    if late {
+        tokio::time::sleep(SHORT_TIMEOUT * 4).await;
+    }
     let given = provider.answers.lock().unwrap().clone();
     let mut answers = serde_json::Map::new();
     for (name, question) in body["questions"].as_object().unwrap() {
@@ -80,14 +101,30 @@ async fn systemone(
         let p = given.get(name).copied().unwrap_or(clear);
         answers.insert(name.clone(), json!({ "type": "noul", "noul": p }));
     }
-    (
-        StatusCode::OK,
-        Json(json!({
-            "model": "jev-fixture",
-            "answers": answers,
-            "usage": { "input_tokens": 420, "output_tokens": 10 },
-        })),
-    )
+    let answer = json!({
+        "model": "jev-fixture",
+        "answers": answers,
+        "usage": { "input_tokens": 420, "output_tokens": 10 },
+    });
+    let late_body = {
+        let mut left = provider.late_body.lock().unwrap();
+        let late = *left > 0;
+        *left = left.saturating_sub(1);
+        late
+    };
+    if late_body {
+        // The headers go at once; the answer follows after the time allowed.
+        let bytes = serde_json::to_vec(&answer).unwrap();
+        let body = futures::stream::once(async move {
+            tokio::time::sleep(SHORT_TIMEOUT * 4).await;
+            Ok::<_, std::convert::Infallible>(bytes)
+        });
+        return axum::response::Response::builder()
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from_stream(body))
+            .unwrap();
+    }
+    (StatusCode::OK, Json(answer)).into_response()
 }
 
 fn google_key_of(headers: &HeaderMap) -> String {
@@ -290,6 +327,12 @@ impl World {
 /// own) or off (`None`).
 #[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
 async fn spawn(advisor: Option<Option<&str>>) -> World {
+    spawn_with_timeout(advisor, Duration::from_secs(5)).await
+}
+
+/// As [`spawn`], with the time the advisor gives a provider to answer.
+#[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
+async fn spawn_with_timeout(advisor: Option<Option<&str>>, timeout: Duration) -> World {
     let provider = Arc::new(Provider::default());
     let provider_app = Router::new()
         .route("/v1/systemone", post(systemone))
@@ -327,7 +370,7 @@ async fn spawn(advisor: Option<Option<&str>>) -> World {
             format!("http://{provider_addr}/").parse().unwrap(),
             instance_key.map(str::to_string),
             "jev-latest",
-            Duration::from_secs(5),
+            timeout,
         )
         .unwrap();
         state.attach_land_gate_advisor(Arc::new(advisor));
@@ -1395,4 +1438,85 @@ async fn perplexity_and_cloudflare_are_asked_with_the_workspaces_keys_for_them()
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn an_answer_that_comes_too_late_is_asked_for_once_more() {
+    let world = spawn_with_timeout(Some(Some(INSTANCE_KEY)), SHORT_TIMEOUT).await;
+    let (thread, tenant) = handed_off(&world, "late").await;
+    let client = tenant.client();
+
+    // One slow answer: the question is asked again and the advice arrives.
+    *world.provider.late.lock().unwrap() = 1;
+    let advice = client
+        .post(world.advice_url(thread))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(advice.status(), StatusCode::OK);
+    let advice: Value = advice.json().await.unwrap();
+    assert_eq!(advice["land"], "green", "{advice}");
+    assert_eq!(world.asked().len(), 2, "asked, then asked once more");
+    assert_eq!(
+        world.asked()[0].1,
+        world.asked()[1].1,
+        "the same question both times"
+    );
+    assert!(
+        advice["latency_ms"].as_u64().unwrap() >= u64::try_from(SHORT_TIMEOUT.as_millis()).unwrap(),
+        "the wait for the late answer is part of how long this one took: {advice}"
+    );
+
+    // A provider that stays slow fails the call after the second try, and
+    // only the call: nothing is asked a third time and the gate is untouched.
+    *world.provider.late.lock().unwrap() = 2;
+    let failed = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "refresh": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(failed.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(world.asked().len(), 4);
+    gate_is_untouched(&world, thread).await;
+
+    // An answer the provider gave, however bad, is not asked for twice.
+    let attempts = || *world.provider.attempts.lock().unwrap();
+    let before = attempts();
+    *world.provider.down.lock().unwrap() = true;
+    let down = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "refresh": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(down.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        attempts(),
+        before + 1,
+        "a 500 is an answer; it is not asked for twice"
+    );
+    *world.provider.down.lock().unwrap() = false;
+
+    // Headers in time and the answer itself too late is a late answer too.
+    let before = attempts();
+    *world.provider.late_body.lock().unwrap() = 1;
+    let advice = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "refresh": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(advice.status(), StatusCode::OK);
+    assert_eq!(attempts(), before + 2, "asked, then asked once more");
+    *world.provider.late_body.lock().unwrap() = 2;
+    let failed = client
+        .post(world.advice_url(thread))
+        .json(&json!({ "refresh": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(failed.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(attempts(), before + 4, "and not a third time");
 }
