@@ -38,8 +38,8 @@ maidan-store = { path = "../maidan-store", features = ["test-support"] }
 anyhow.workspace = true
 criterion = "0.5"
 serde_json.workspace = true
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [features]

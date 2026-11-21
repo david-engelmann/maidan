@@ -6,44 +6,47 @@ a person's review and close, the two-tenant refusals, the meters, and both
 tenants erased. [Launch Gate](../Launch%20Gate.md) is the runbook, and says
 what each check means.
 
-**The command passed on `v468.0.0`. The launch is not called here:** the legs
-the command leaves to a person, and the go or no-go rows of the runbook, are
-the maintainer's.
+**The command passed on `v472.0.0`, the launch release. The launch is not
+called here:** the legs the command leaves to a person, and the go or no-go
+rows of the runbook, are the maintainer's.
 
 ## The run
 
 | | |
 |---|---|
 | Origin | `https://maidan.world` |
-| Release | `v468.0.0`, commit `4d714e1bf952e306f76369e3ec1506a7aca91752` (`/health`, checked by step 0) |
-| Run by | the maintainer, with `EXPECT_VERSION=v468.0.0 scripts/launch-gate.sh --env-file .env.cloud` from a clone of the tag |
-| When | 2026-11-20, 17:53 to 17:55 UTC |
+| Release | `v472.0.0`, commit `a9be563061ffb95648570feb172aba0d92ab1869` (`/health`, checked by step 0) |
+| Run by | the maintainer, with `EXPECT_VERSION=v472.0.0 scripts/launch-gate.sh --env-file .env.cloud` |
+| When | 2026-11-21, 16:39 to 16:40 UTC |
 | Result | **PASS: 75 passed, 0 failed, 0 skipped** |
 | Console checks | in headless Chromium, 1440 x 900 |
-| The run before it | the same command at 17:31 UTC: PASS, 75 passed, 0 failed, 0 skipped |
-| Validation record | [`listings/validation/v468.md`](../../listings/validation/v468.md), with the same gate rehearsed on a local Postgres |
+| The runs before it | on `v471.0.0` at 13:46 UTC the same day, and on `v468.0.0` twice on 2026-11-20: each PASS, 75 passed, 0 failed, 0 skipped |
+| Validation record | [`listings/validation/v472.md`](../../listings/validation/v472.md), with the same gate rehearsed on a local Postgres |
 
-The first run against maidan.world, on `v467.0.0` at 14:09 UTC the same day,
-failed: 73 passed, 3 failed. On Postgres a workspace that had done work could
-not be erased, and the console's task sheet closed its menu whenever the
-board refreshed. `v468.0.0` fixes both (#2403). That run left one test
-workspace behind, `launch-gate-a-202611201409`, which nothing can erase
-through the API: erasing takes the workspace's own admin token, and the run
-held the only copy. See "Still open".
+`v472.0.0` is `v471.0.0` with the landing's wording corrected; no route, tool
+or schema differs between them. `v471.0.0` added advice at review from five
+decision-model providers to what `v468.0.0` was.
+
+The first run against maidan.world, on `v467.0.0` on 2026-11-20, failed: 73
+passed, 3 failed. On Postgres a workspace that had done work could not be
+erased, and the console's task sheet closed its menu whenever the board
+refreshed. `v468.0.0` fixed both (#2403). The test workspace that run left
+behind was erased the same day, once an operator could erase a workspace
+nobody can sign in to (`v469.0.0`).
 
 ## Every check
 
 The step numbers are the runbook's.
 
 ```
-PASS  0: /health is ok, on v468.0.0
-PASS  0: it is the release under test, v468.0.0
+PASS  0: /health is ok, on v472.0.0
+PASS  0: it is the release under test, v472.0.0
 PASS  0: /status answers
 PASS  0: the operator token holds operator:global
-PASS  1: the operator opens workspace a, launch-gate-a-202611201753 (01a1fa17-be76-7328-9568-0b1c228e18bd)
+PASS  1: the operator opens workspace a, launch-gate-a-202611211639 (01a1fefa-2d42-768f-bf05-257a56ee0959)
 PASS  1: its first member is a person (kind human)
 PASS  1: its admin token administers it and nothing across tenants
-PASS  1: the operator opens workspace b, launch-gate-b-202611201753 (01a1fa17-c110-722b-bdad-471744355140)
+PASS  1: the operator opens workspace b, launch-gate-b-202611211639 (01a1fefa-2ef3-768f-9569-75a3a248b951)
 PASS  1: its first member is a person (kind human)
 PASS  1: its admin token administers it and nothing across tenants
 PASS  1: the two workspaces are distinct
@@ -100,16 +103,16 @@ PASS  6: More actions, Close task closes it
 PASS  6: the thread is closed
 PASS  8: B's session is refused /ui/api/threads/T (HTTP 403), with nothing of A in the answer
 PASS  8: B's session is refused /ui/api/threads/T/review-packet (HTTP 403), with nothing of A in the answer
-PASS  8: B's session is refused /ui/api/channels/01a1fa18-2088-7606-b9db-c490a2577b7a/threads (HTTP 403), with nothing of A in the answer
+PASS  8: B's session is refused /ui/api/channels/01a1fefa-571a-7383-a352-5a8067f19650/threads (HTTP 403), with nothing of A in the answer
 PASS  8: B's admin token is refused A's thread (HTTP 403)
 PASS  8: B's admin token is refused A's members (HTTP 403)
 PASS  8: B's Board and People show B's own and nothing of workspace A
 PASS  7: A's mcp_calls is the 13 calls its agent made (it reads 13)
-PASS  7: A's requests is at least its mcp_calls (it reads 85)
+PASS  7: A's requests is at least its mcp_calls (it reads 90)
 PASS  7: B's mcp_calls is the 3 calls its own agent made, none of A's (it reads 3)
-PASS  cleanup: workspace a (01a1fa17-be76-7328-9568-0b1c228e18bd) is erased
+PASS  cleanup: workspace a (01a1fefa-2d42-768f-bf05-257a56ee0959) is erased
 PASS  cleanup: a's admin token is refused once its workspace is gone (HTTP 401)
-PASS  cleanup: workspace b (01a1fa17-c110-722b-bdad-471744355140) is erased
+PASS  cleanup: workspace b (01a1fefa-2ef3-768f-9569-75a3a248b951) is erased
 PASS  cleanup: b's admin token is refused once its workspace is gone (HTTP 401)
 ```
 
@@ -145,14 +148,11 @@ All the maintainer's:
 - The go or no-go rows of the runbook
   ([Go or no-go for the launch release](../Launch%20Gate.md#go-or-no-go-for-the-launch-release)),
   the launch release named among them.
-- The test workspace the `v467.0.0` run left behind. Nobody holds a token
-  for it. It goes when an operator can erase a workspace, or by a delete in
-  the database.
 
 ## Re-running the gate
 
 ```sh
-EXPECT_VERSION=v468.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
+EXPECT_VERSION=v472.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
 ```
 
 A new release re-runs it. Before the command is handed to the maintainer it

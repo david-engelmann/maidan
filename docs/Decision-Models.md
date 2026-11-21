@@ -308,6 +308,7 @@ review there are read by a decision model outside the demo (`advice` and
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the routes and the tool on. An invalid value refuses boot. With it off, none of the others are read |
+| `FEDERATION_ENCRYPTION_KEY` | none | Needed for a workspace to store a key of its own (see "Keys"). Without it only the instance's keys can be used |
 | `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY` | none | The instance's own key for each provider, for workspaces that stored none. Leave one unset to have every workspace bring its own for that provider |
 | `CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID` | none | The instance's own token for Cloudflare's Clef and the account it calls. The token without the account refuses boot; the account alone turns nothing on |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
@@ -417,4 +418,10 @@ model that reads our examples well has not been shown to read yours.
   and text that steers the model into settled, favourable answers gets green
   advice: the rules read probabilities and cannot tell a steered answer from
   an honest one. The reviewer is the control, and the advice says where to
-  look first.
+  look first. How often a decision model is steered is measured by
+  [Peira](https://peiratrial.dev), a benchmark from the same author: it
+  gives a model the same decision twice, once clean and once with an attack
+  in the input, and counts how often a right answer flips. All five
+  providers here have results on its board (read 2026-11-21), and every
+  model that ran its full suite flips some of its right answers under
+  attack.

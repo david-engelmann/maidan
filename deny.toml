@@ -8,12 +8,8 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2025-0134"
-reason = "rustls-pemfile unmaintained; dev-only via testcontainers/bollard"
-
-[[advisories.ignore]]
-id = "RUSTSEC-2025-0111"
-reason = "tokio-tar via testcontainers build context upload; trusted CI path only"
+id = "RUSTSEC-2026-0440"
+reason = "astral-tokio-tar is unmaintained (2026-11): a maintenance notice, and 0.6.4 has no open vulnerability advisory. It is locked only through testcontainers, which packs files for the Docker daemon in the integration tests and never unpacks an archive from anyone; no shipped binary links it. testcontainers 0.27 replaced tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release) with it. Drop this ignore when testcontainers moves off the crate, or at once if it gets a vulnerability advisory."
 
 [[advisories.ignore]]
 id = "RUSTSEC-2026-0387"
@@ -78,9 +74,6 @@ skip-tree = [
 skip = [
     { crate = "getrandom@0.2.17", reason = "rand 0.8 / ring still on getrandom 0.2" },
     { crate = "getrandom@0.3.4", reason = "getrandom 0.2->0.4 ecosystem transition" },
-    { crate = "rand@0.8.6", reason = "rand 0.8->0.9 transition (transitive)" },
-    { crate = "rand_core@0.6.4", reason = "rand 0.8 core" },
-    { crate = "rand_chacha@0.3.1", reason = "rand 0.8 chacha" },
     { crate = "hashbrown@0.15.5", reason = "hashbrown ecosystem transition (0.15/0.16/0.17)" },
     { crate = "hashbrown@0.16.1", reason = "hashbrown ecosystem transition" },
     { crate = "windows-sys@0.48.0", reason = "windows-sys 0.48/0.52/0.61 transition (platform shims)" },

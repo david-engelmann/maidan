@@ -1,0 +1,3 @@
+### The MCP registry entry in the shape the registry takes
+
+- **Fixed:** `listings/registry/server.json` named its container image as an `identifier`, a `registryBaseUrl` and a `version`. The official MCP registry now takes an OCI package as one canonical reference and refused the entry with a 400 when it was first published (2026-11-21). The package is now `"identifier": "ghcr.io/david-engelmann/maidan-server:<tag>"` with neither of the other two fields. `scripts/check-deploy-pins.sh`, the `publish MCP registry` workflow's own check and `listing_tools_contract` read the tag from the reference.

@@ -16,7 +16,7 @@
 #   docker/Dockerfile.quickstart          ARG MAIDAN_VERSION
 #   compose.quickstart.yaml               the MAIDAN_VERSION default
 #   k8s/overlays/prod/kustomization.yaml  newTag of maidan-server and maidan-postgres
-#   listings/registry/server.json         its version and its package version
+#   listings/registry/server.json         its version and its package's image
 #   listings/toolhive/server.json,
 #   listings/docker/server.yaml           the image they name
 #   docs/Quickstart.md, docs/Production.md every ghcr.io/david-engelmann/maidan-{server,
@@ -111,8 +111,9 @@ pin docs/Quickstart.md 0 "${image}"
 pin docs/Quickstart.md 1 "^MAIDAN_TAG=${v}$"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
 # The catalog listings under listings/ name the published image too: the
-# registry entry's package version, and the image in ToolHive and Docker.
-pin listings/registry/server.json 1 "\"version\": \"${v}\""
+# registry entry's package (one canonical reference), and the image in
+# ToolHive and Docker.
+pin listings/registry/server.json 1 "\"identifier\": \"${image}\""
 pin listings/toolhive/server.json 0 "${image}"
 pin listings/docker/server.yaml 0 "${image}"
 # The registry entry's own version is the release without its v.
