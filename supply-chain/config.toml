@@ -63,9 +63,24 @@ criteria = "safe-to-deploy"
 version = "1.9.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.astral-tokio-tar]]
+version = "0.6.4"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
 [[exemptions.async-compression]]
 version = "0.4.42"
 criteria = "safe-to-deploy"
+
+[[exemptions.async-stream]]
+version = "0.3.6"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
+[[exemptions.async-stream-impl]]
+version = "0.3.6"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.async-trait]]
 version = "0.1.92"
@@ -220,12 +235,19 @@ version = "0.12.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.bollard]]
-version = "0.18.1"
+version = "0.20.2"
 criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
+[[exemptions.bollard-buildkit-proto]]
+version = "0.7.0"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.bollard-stubs]]
-version = "1.47.1-rc.27.3.1"
+version = "1.52.1-rc.29.1.3"
 criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.bs58]]
 version = "0.5.1"
@@ -491,6 +513,11 @@ criteria = "safe-to-deploy"
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.etcetera]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
 [[exemptions.event-listener]]
 version = "5.4.1"
 criteria = "safe-to-deploy"
@@ -499,16 +526,17 @@ criteria = "safe-to-deploy"
 version = "2.4.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.ferroid]]
+version = "2.0.0"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
 [[exemptions.ff]]
 version = "0.13.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.ff]]
 version = "0.14.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.filetime]]
-version = "0.2.29"
 criteria = "safe-to-deploy"
 
 [[exemptions.find-msvc-tools]]
@@ -843,6 +871,11 @@ criteria = "safe-to-deploy"
 version = "8.0.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.num]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
 [[exemptions.num-bigint]]
 version = "0.4.6"
 criteria = "safe-to-deploy"
@@ -850,6 +883,11 @@ criteria = "safe-to-deploy"
 [[exemptions.num-bigint-dig]]
 version = "0.8.6"
 criteria = "safe-to-deploy"
+
+[[exemptions.num-complex]]
+version = "0.4.6"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.oauth2]]
 version = "5.0.0"
@@ -1112,10 +1150,6 @@ version = "0.27.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.redox_syscall]]
-version = "0.3.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.redox_syscall]]
 version = "0.5.18"
 criteria = "safe-to-deploy"
 
@@ -1181,10 +1215,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rustls-native-certs]]
 version = "0.8.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.rustls-pemfile]]
-version = "2.2.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-pki-types]]
@@ -1404,12 +1434,14 @@ version = "3.27.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.testcontainers]]
-version = "0.23.3"
+version = "0.27.3"
 criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.testcontainers-modules]]
-version = "0.11.6"
+version = "0.15.0"
 criteria = "safe-to-run"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.thiserror]]
 version = "1.0.69"
@@ -1458,10 +1490,6 @@ criteria = "safe-to-deploy"
 version = "0.1.19"
 criteria = "safe-to-deploy"
 notes = "Patch bump from the weekly Dependabot cargo group; no imported audit covers this version yet."
-
-[[exemptions.tokio-tar]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
 
 [[exemptions.tokio-tungstenite]]
 version = "0.24.0"
@@ -1547,6 +1575,16 @@ criteria = "safe-to-deploy"
 version = "0.1.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.ureq]]
+version = "3.5.2"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
+[[exemptions.ureq-proto]]
+version = "0.7.1"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
+
 [[exemptions.url]]
 version = "2.5.8"
 criteria = "safe-to-deploy"
@@ -1554,6 +1592,11 @@ criteria = "safe-to-deploy"
 [[exemptions.urlencoding]]
 version = "2.1.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.utf8-zero]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+notes = "Security bump off tokio-tar 0.3.1 (RUSTSEC-2025-0111, no fixed release): testcontainers 0.23 to 0.27 and the crates it pulls in. Reached only through testcontainers, which the integration tests use; no shipped binary links it. Not reviewed; no imported audit covers this version yet."
 
 [[exemptions.utoipa]]
 version = "5.5.0"
