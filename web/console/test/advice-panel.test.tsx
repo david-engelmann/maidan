@@ -104,7 +104,7 @@ test("with advice off, or no result to read, the sheet shows nothing", async () 
 test("a workspace with no key is told where to add one, and a failure offers another try", async () => {
   const noKey = withSession([advice(() => ({ detail: "this workspace has no TypeSafe key: store one" }), 409)]);
   await renderSignedIn(<Advice tid={TASK} />, noKey.fn);
-  const link = await screen.findByRole("link", { name: "Add your TypeSafe key under Tools, Workspace." });
+  const link = await screen.findByRole("link", { name: "Add a key for one under Tools, Workspace." });
   // The key panel is on the Workspace tab, not the tab Tools opens on.
   expect(link.getAttribute("href")).toBe("#/tools/workspace");
   cleanup();
@@ -172,4 +172,96 @@ test("a task that changes while Ask again is in flight still gets a fresh answer
   release();
   // The late answer to the first Ask again is not shown over the newer one.
   await waitFor(() => expect(screen.queryByText("Worth a look")).toBeNull());
+});
+
+test("with keys for more than one provider the reviewer can switch who is asked, and the choice is kept", async () => {
+  const user = userEvent.setup();
+  window.localStorage.removeItem("maidan_advice_provider");
+  const asked: string[] = [];
+  const providers = [
+    { id: "typesafe", name: "TypeSafe Jev", model: "jev-latest", host: "api.typesafe.ai", key_source: "workspace" },
+    { id: "openai", name: "OpenAI Decisions", model: "gpt-6-luna", host: "api.openai.com" },
+    { id: "google", name: "Gemini Decisions", model: "gemini-decision-1", host: "generativelanguage.googleapis.com", key_source: "instance" },
+  ];
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ enabled: true, key_source: "workspace", provider: "typesafe", model: "jev-latest", host: "api.typesafe.ai", providers }) },
+    advice(() => (asked.at(-1)?.includes("google") ? { ...amber, provider: "google", model: "gemini-decision-1" } : green)),
+  ]);
+  const fn: typeof router.fn = (url, init) => {
+    if (init?.method === "POST") asked.push(String(init.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Advice tid={TASK} />, fn);
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  // Only the providers with a key are offered.
+  const pick = (await within(panel).findByLabelText("Decision model")) as HTMLSelectElement;
+  expect([...pick.options].map((o) => o.text)).toEqual(["TypeSafe Jev", "Gemini Decisions"]);
+  expect(asked[0]).toBe("{}");
+
+  await user.selectOptions(pick, "google");
+  await within(panel).findByText("Worth a look");
+  within(panel).getByText("gemini-decision-1");
+  expect(asked.at(-1)).toBe(JSON.stringify({ provider: "google" }));
+  expect(window.localStorage.getItem("maidan_advice_provider")).toBe("google");
+  window.localStorage.removeItem("maidan_advice_provider");
+});
+
+test("one provider with a key shows no switch", async () => {
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ enabled: true, key_source: "instance", provider: "typesafe", model: "jev-latest", host: "api.typesafe.ai", providers: [{ id: "typesafe", name: "TypeSafe Jev", model: "jev-latest", host: "api.typesafe.ai", key_source: "instance" }, { id: "openai", name: "OpenAI Decisions", model: "gpt-6-luna", host: "api.openai.com" }] }) },
+    advice(() => green),
+  ]);
+  await renderSignedIn(<Advice tid={TASK} />, router.fn);
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  await new Promise((r) => setTimeout(r, 50));
+  expect(within(panel).queryByLabelText("Decision model")).toBeNull();
+});
+
+test("a reviewer who chose a model is not asked for through another while the choice is being checked", async () => {
+  window.localStorage.setItem("maidan_advice_provider", "google");
+  const asked: string[] = [];
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((r) => { release = r; });
+  const providers = [
+    { id: "typesafe", name: "TypeSafe Jev", model: "jev-latest", host: "api.typesafe.ai", key_source: "workspace" },
+    { id: "google", name: "Gemini Decisions", model: "gemini-decision-1", host: "generativelanguage.googleapis.com", key_source: "workspace" },
+  ];
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ enabled: true, key_source: "workspace", provider: "typesafe", model: "jev-latest", host: "api.typesafe.ai", providers }) },
+    advice(() => ({ ...green, provider: "google", model: "gemini-decision-1" })),
+  ]);
+  // The read of what is set up answers late.
+  const fn: typeof router.fn = async (url, init) => {
+    if (init?.method === "POST") asked.push(String(init.body));
+    else if (/land-gate\/advisor$/.test(String(url))) await held;
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Advice tid={TASK} />, fn);
+  await new Promise((r) => setTimeout(r, 150));
+  expect(asked, "nothing is sent until the choice is known to be askable").toEqual([]);
+  release();
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  expect(asked).toEqual([JSON.stringify({ provider: "google" })]);
+  window.localStorage.removeItem("maidan_advice_provider");
+});
+
+test("a reviewer's chosen model is still the one asked when what is set up could not be read", async () => {
+  window.localStorage.setItem("maidan_advice_provider", "google");
+  const asked: string[] = [];
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ detail: "down" }), status: 503 },
+    advice(() => ({ ...green, provider: "google", model: "gemini-decision-1" })),
+  ]);
+  const fn: typeof router.fn = async (url, init) => {
+    if (init?.method === "POST") asked.push(String(init.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Advice tid={TASK} />, fn);
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  expect(asked, "never an ask with no provider named").toEqual([JSON.stringify({ provider: "google" })]);
+  window.localStorage.removeItem("maidan_advice_provider");
 });

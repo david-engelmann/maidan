@@ -125,7 +125,7 @@ Tools holds the rest, as tabs:
 | Deliveries | Where each task's result was sent and whether it arrived, with **Replay** on a failed or skipped one; for workspace admins, **Where results may go**, the allowlist of destinations a result may reach (add one, or remove one after a confirmation); and webhook and automation sends |
 | Commands | Slash commands: list and register them |
 | Search | Search messages |
-| Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, the Decision model panel (the workspace's own TypeSafe key, set by its admin), and Switch workspace |
+| Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, the Decision models panel (the workspace's own key for each provider, set by its admin), and Switch workspace |
 | Explore | The queue, schedules and recent events |
 | Operator | Server tools, shown only to whoever runs the server |
 | Recent | The notices this page showed you |

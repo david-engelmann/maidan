@@ -77,7 +77,7 @@ export function readAdvice(answer) {
     answer.land === "green" && marked === 0
       ? ADVICE_ALL_CLEAR
       : `${count(marked, true)} of the ${count(rows.length, false)} readings ${marked === 1 ? "needs" : "need"} a look.`;
-  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: answer.model, why, rows };
+  return { land: answer.land, title: ADVICE_TITLE[answer.land], provider: answer.provider, model: answer.model, why, rows };
 }
 
 export class AgentError extends Error {}
@@ -248,10 +248,12 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
   // review it: asked with the sandbox's own token, once the task is in
   // review. `null` when this demo offers no advice or the model did not
   // answer; the review is the same either way, so no failure is shown.
-  async function advice() {
+  // `provider` names who to ask, where the demo offers more than one;
+  // without it the server picks.
+  async function advice(provider = null) {
     if (next < work.length) return null;
     try {
-      return readAdvice(await call("advise_land_gate", { thread_id: taskId }));
+      return readAdvice(await call("advise_land_gate", { thread_id: taskId, ...(provider ? { provider } : {}) }));
     } catch {
       return null;
     }

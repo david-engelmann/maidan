@@ -370,6 +370,15 @@
         ],
         "type": "string"
       },
+      "AdvisorProvider": {
+        "description": "A provider of decision models the advisor can put its questions to. All\nthree are asked the same ten questions and read by the same rules.",
+        "enum": [
+          "typesafe",
+          "openai",
+          "google"
+        ],
+        "type": "string"
+      },
       "AllowEgressTarget": {
         "description": "Bless an external destination for egress. `selector` must be an **id**: a\nSlack channel id (`C…`/`G…`), or a GitHub repository `owner/name` — not a\n`#channel-name`, and not `owner/name#123`. A name is mutable, so an\nallowlist keyed on one is not an allowlist; and on GitHub the operator\nblesses the repository, since per-issue blessing would mean a ticket per PR.",
         "properties": {
@@ -4987,6 +4996,17 @@
         "additionalProperties": false,
         "description": "The body of `POST /threads/{id}/land-gate/advice`. Nothing in it changes\nwhat is sent: the packet is built from the thread.",
         "properties": {
+          "provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdvisorProvider",
+                "description": "Which provider to ask. Absent, the first one this workspace has a key\nfor is asked, in the order of [`AdvisorProvider::ALL`]."
+              }
+            ]
+          },
           "refresh": {
             "description": "Ask the model again even when an answer for this exact hand-off is held.",
             "type": "boolean"
@@ -5031,6 +5051,43 @@
         ],
         "type": "object"
       },
+      "LandGateAdvisorProvider": {
+        "description": "One provider as a workspace sees it.",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AdvisorProvider"
+          },
+          "key_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdvisorKeySource",
+                "description": "Whose key a call from this workspace would use; absent when there is\nnone, and then this provider is refused."
+              }
+            ]
+          },
+          "model": {
+            "description": "The model and host a hand-off is sent to.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The provider's name as a person reads it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "model",
+          "host"
+        ],
+        "type": "object"
+      },
       "LandGateAdvisorStatus": {
         "description": "What a workspace has set up, for `GET /workspaces/{id}/land-gate/advisor`.",
         "properties": {
@@ -5051,7 +5108,7 @@
               },
               {
                 "$ref": "#/components/schemas/AdvisorKeySource",
-                "description": "Whose key a call from this workspace would use; absent when there is\nnone, and then advice is refused."
+                "description": "The provider a call that names none would ask: the first with a key\nfor this workspace, or the first of all when none has one. The four\nfields below describe it."
               }
             ]
           },
@@ -5062,11 +5119,17 @@
             ]
           },
           "provider": {
-            "description": "The provider, model and host the hand-off is sent to, when enabled.",
             "type": [
               "string",
               "null"
             ]
+          },
+          "providers": {
+            "description": "Every provider this instance can ask, each with whose key it would use.",
+            "items": {
+              "$ref": "#/components/schemas/LandGateAdvisorProvider"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -9789,8 +9852,19 @@
         "description": "The body of `PUT /workspaces/{id}/land-gate/advisor`.",
         "properties": {
           "api_key": {
-            "description": "The workspace's own TypeSafe API key. Stored encrypted, never returned.",
+            "description": "The workspace's own API key for the provider. Stored encrypted, never\nreturned.",
             "type": "string"
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdvisorProvider",
+                "description": "Whose key it is. Absent, TypeSafe's."
+              }
+            ]
           }
         },
         "required": [
@@ -36049,6 +36123,15 @@
             }
           },
           {
+            "description": "Whose key to forget. Absent, TypeSafe's.",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AdvisorProvider"
+            }
+          },
+          {
             "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -36110,7 +36193,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Forget this workspace's TypeSafe key (console)",
+        "summary": "Forget this workspace's key for a decision-model provider (console)",
         "tags": [
           "auth"
         ]
@@ -36284,7 +36367,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Store this workspace's own TypeSafe key (console)",
+        "summary": "Store this workspace's own key for a decision-model provider (console)",
         "tags": [
           "auth"
         ]
@@ -38257,6 +38340,15 @@
             }
           },
           {
+            "description": "Whose key to forget. Absent, TypeSafe's.",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AdvisorProvider"
+            }
+          },
+          {
             "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -38322,7 +38414,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Forget this workspace's TypeSafe key",
+        "summary": "Forget this workspace's key for a decision-model provider",
         "tags": [
           "land_gate"
         ]
@@ -38496,7 +38588,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Store this workspace's own TypeSafe key for land-gate advice",
+        "summary": "Store this workspace's own key for a decision-model provider",
         "tags": [
           "land_gate"
         ]

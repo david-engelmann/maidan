@@ -112,7 +112,7 @@ test("other paths go to the container", async () => {
 test("without Turnstile configured, the page shows no widget and the mint takes no token", async () => {
   const env = assets();
   const res = await handleTry(new Request(`https://try.maidan.world${TRY_CONFIG_PATH}`), env);
-  assert.deepEqual(await res.json(), { turnstile_site_key: null, advice: false });
+  assert.deepEqual(await res.json(), { turnstile_site_key: null, advice: false, providers: [] });
   const mint = new Request("https://try.maidan.world/sandbox", { method: "POST", body: "{}" });
   assert.equal(await handleTry(mint, env, () => assert.fail("no siteverify call")), null);
   assert.doesNotMatch(tryCsp(false), /challenges\.cloudflare\.com/);
@@ -170,7 +170,7 @@ test("with Turnstile, the page's CSP lets the widget load and the config names t
   assert.match(csp, /script-src 'self' https:\/\/challenges\.cloudflare\.com/);
   assert.match(csp, /frame-src https:\/\/challenges\.cloudflare\.com/);
   const config = await (await handleTry(new Request(`https://try.maidan.world${TRY_CONFIG_PATH}`), env)).json();
-  assert.deepEqual(config, { turnstile_site_key: "site-key", advice: false });
+  assert.deepEqual(config, { turnstile_site_key: "site-key", advice: false, providers: [] });
   assert.doesNotMatch(JSON.stringify(config), /secret/);
 });
 
@@ -211,7 +211,7 @@ test("the config says when this demo offers advice, and never carries the key", 
   const env = { ...assets(), TYPESAFE_API_KEY: "ts_live_fixture" };
   const res = await handleTry(new Request(`https://try.maidan.world${TRY_CONFIG_PATH}`), env);
   const text = await res.text();
-  assert.deepEqual(JSON.parse(text), { turnstile_site_key: null, advice: true });
+  assert.deepEqual(JSON.parse(text), { turnstile_site_key: null, advice: true, providers: [{ id: "typesafe", name: "TypeSafe Jev" }] });
   assert.doesNotMatch(text, /ts_live_fixture/);
 });
 
@@ -219,5 +219,5 @@ test("the page says, in both notices and hidden until the config asks, that a de
   const html = readFileSync(new URL("../try/index.html", import.meta.url), "utf8");
   const notes = [...html.matchAll(/<span class="advice-notice" hidden>([^<]+)<\/span>/g)].map((m) => m[1]);
   assert.equal(notes.length, 2);
-  for (const note of notes) assert.match(note, /read by a decision model, TypeSafe’s Jev, for advice/);
+  for (const note of notes) assert.match(note, /read by a decision model outside the demo, for advice/);
 });
