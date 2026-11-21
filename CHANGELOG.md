@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [470.0.0] — 2026-11-21
+
+Advice at review from a decision model: ten yes-or-no judgments on each hand-off, shown on the landing, the demo and the console, with a workspace's own key; and Docker Desktop can sign a person in.
+
+### Advice on a hand-off: judgments from a decision model, the decision in code
+
+- **Changed:** land-gate advice (`POST /threads/{id}/land-gate/advice`, MCP `advise_land_gate`) no longer asks the model for a verdict. The server builds the packet from the thread (the task, the result without its diff, the producing agent's messages), asks TypeSafe's Jev ten yes/no questions, and turns the ten probabilities into green, amber or red by rules in code; an unsettled judgment never counts toward green. The request takes no `state`, `instructions` or `thresholds`, and the answer carries `land`, `reasons` and `judgments` (each with its `reading`, a statement such as "Reports no passing tests") in place of `raw_land`, `recommended_land` and `confidence`. `MAIDAN_JEV_GREEN_MIN_CONFIDENCE` and `MAIDAN_JEV_RED_MIN_CONFIDENCE` are gone.
+- **Added:** a workspace's own TypeSafe key: `GET`, `PUT` and `DELETE /workspaces/{id}/land-gate/advisor`. The `GET` (whether advice is on, and whose key a call would use) needs `workspace:read`; the `PUT` and `DELETE` need `token:admin` (the workspace's admin). The provider is asked to accept the key before it is stored, it is kept as an encrypted workspace secret under a name the generic secret routes and tools cannot reach, and no route returns it. `TYPESAFE_API_KEY` is now optional: without it, only a workspace with its own key gets advice.
+- **Added:** the console shows the advice on a task in review, and has a Decision model panel under Tools, Workspace, for the workspace's admin.
+- **Added:** `docs/Decision-Models.md`; `scripts/eval-land-gate-advisor.py` now drives a running instance over 36 labelled hand-offs (`scripts/land-gate-advice-cases.json`).
+- **Changed:** the provider's name is resolved on the first call and again every ten minutes, not at boot: a provider that cannot be reached fails the advice call, never the server.
+- **Changed:** the starter task's description says only what a hand-off can show ("Post a one-line hello on this task and set a result.").
+- **Added:** try.maidan.world can offer advice with a key its Worker holds: the container still has no internet, and the Worker forwards that one call (`deploy/cloudflare/src/demo-jev.js`). When the page's scripted agent has sent Say hello to review, the page asks for advice on that hand-off and shows the ten judgments before it sends the visitor to the console. maidan.world turns advice on with workspace keys only.
+- **Added:** the landing's "Judgments from a model. Decisions in code." section.
+- **Changed:** the privacy policy says what is sent to TypeSafe and when (a workspace's own key, and the demo's), and the try page says before a sandbox exists that tasks sent to review there are read by a decision model.
+- **Added:** MCP `create_thread` takes a `description`, as `POST /channels/{cid}/threads` does: a task an agent files can say what it asks for. The advice packet carries the task's `acceptance` attribute when it is set.
+- **Added:** every request to the provider is at most 16 KiB: a larger hand-off loses the agent's oldest messages first, then has long result strings cut shorter. The agent's newest messages are sent wherever they are in the thread. `MAIDAN_JEV_BASE_URL` must be `https`, except for a relay whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`.
+
+### Advice, with a lighter hand
+
+- **Changed:** the landing's section is about decision models, with TypeSafe's Jev named once as an example: it leads with what a reviewer gets ("A second read on every hand-off") and shows what was flagged, with the ten readings one press away. The try page's advice block does the same, and the console's panel says "Advice only." where it had a sentence. The try page and the console show the model's name as the provider gives it (`jev-1.14.0`), with no credit line.
+- **Fixed:** the landing's hero names the agents the room below it shows (Claude Code, Codex, Cursor, Grok, Muse, Antigravity) again.
+- **Fixed:** `scripts/eval-land-gate-advisor.py` stopped at the first case that shares a title with an earlier one, because the server refuses a claim on a duplicate of an open task. Each case's task is now cancelled once its advice is read.
+- **Added:** `docs/Decision-Models.md` gives the measured result of that eval through a running server (325 labelled answers, 314 agreeing, 11 unsettled, none wrong; the advice on its label for 34 of 36 hand-offs) and names the two it missed.
+
+### Signing in from Docker Desktop
+
+- **Added:** maidan.world and dev.maidan.world accept `https://mcp.docker.com/oauth/callback` as a redirect for a self-registered OAuth client (`MAIDAN_OAUTH_DCR_REDIRECT_HOSTS`), the callback Docker Desktop's MCP Toolkit registers for a server in its catalog. Until now that registration was refused, so the Toolkit could not sign a person in.
+- **Added:** `listings/docker/remote/` holds the Docker MCP Catalog entry in the shape the catalog takes a hosted server today: a remote `server.yaml` for `https://maidan.world/mcp/streamable` with OAuth, an empty `tools.json` and a `readme.md`.
+
 ## [469.0.0] — 2026-11-20
 
 An operator can erase a workspace nobody can sign in to; the listing copy, the social card and the docs site carry the tagline "The shared workspace for agent swarms."; try.maidan.world has a link preview and its colours match the landing again; and the launch gate's record from the runs on v468.0.0.
