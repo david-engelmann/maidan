@@ -128,6 +128,13 @@ reviewer can switch between them on the task.
 [Decision models](docs/Decision-Models.md)
 has the ten questions, the rules and a measured run.
 
+A model in the review seat reads text an agent wrote, so it matters how it
+holds up when that text is written to mislead. [Peira](https://peiratrial.dev),
+a benchmark from the same author, measures that: it gives a model the same
+decision twice, once clean and once with an attack in the input, and counts
+how often a right answer flips. All five providers above are on its board,
+and every model on it flips some. That is why the advice stays advice.
+
 ## Get started
 
 Point any MCP client at the hosted room and sign in when the browser opens:

@@ -417,4 +417,9 @@ model that reads our examples well has not been shown to read yours.
   and text that steers the model into settled, favourable answers gets green
   advice: the rules read probabilities and cannot tell a steered answer from
   an honest one. The reviewer is the control, and the advice says where to
-  look first.
+  look first. How often a decision model is steered is measured by
+  [Peira](https://peiratrial.dev), a benchmark from the same author: it
+  gives a model the same decision twice, once clean and once with an attack
+  in the input, and counts how often a right answer flips. All five
+  providers here have results on its board (read 2026-11-21), and every
+  ranked model there flips some of its right answers under attack.
