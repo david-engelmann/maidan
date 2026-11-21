@@ -66,9 +66,10 @@ stacked() {
     -filter_complex "[0:v]fps=30,scale=1280:-2:flags=lanczos[a];[1:v]fps=30,scale=1280:-2:flags=lanczos[b];[a][b]vstack=shortest=1,format=yuv420p" \
     -c:v libx264 -preset slow -crf 20 -movflags +faststart "$2"
 }
+# gif <mp4> <out> <width> <frames a second>
 gif() {
   "$ffmpeg" -v error -y -i "$1" -filter_complex \
-    "fps=12,scale=960:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$2"
+    "fps=$4,scale=$3:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$2"
 }
 
 # SWARM_THEMES="dark" retakes one theme and encodes both from what is kept.
@@ -83,7 +84,9 @@ for theme in dark light; do
   [[ "$theme" == light ]] && suffix="-light"
   dir="$frames/$theme"
   stacked "$dir" "$dir/swarm.mp4"
-  gif "$dir/swarm.mp4" "$landing/swarm$suffix.gif"
+  # The landing's GIF is only for a browser that reads no AVIF, and it ships
+  # inside the server binary: smaller and slower than the README's.
+  gif "$dir/swarm.mp4" "$landing/swarm$suffix.gif" 800 8
   # The landing shows an animated AVIF where the browser reads one, a fifth
   # of the GIF's bytes, and a still for a reader who stops it.
   "$ffmpeg" -v error -y -i "$dir/swarm.mp4" -vf "fps=15,scale=1440:-2:flags=lanczos" \
@@ -93,7 +96,7 @@ for theme in dark light; do
   "$ffmpeg" -v error -y -i "$landing/swarm$suffix.png" -c:v libaom-av1 -still-picture 1 -crf 30 "$landing/swarm$suffix-still.avif"
   if [[ "$theme" == dark ]]; then
     cp "$dir/swarm.mp4" "$out/swarm.mp4"
-    cp "$landing/swarm.gif" "$out/swarm.gif"
+    gif "$dir/swarm.mp4" "$out/swarm.gif" 960 12
     # The advice panel, cut from the frame the take marked.
     read -r frame x y w h < <(jq -r '[.frame, .x, .y, .w, .h] | @tsv' "$dir/advice-still.json")
     "$ffmpeg" -v error -y -i "$dir/$frame" -vf "crop=$w:$h:$x:$y" "$root/docs/assets/screens/advice-readme.png"
