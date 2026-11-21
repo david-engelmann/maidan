@@ -456,13 +456,15 @@ section > *, .hero > * { min-width: 0; }
 .room-head { max-width: 48rem; }
 .room-stage { position: relative; margin-top: 2.6rem; }
 /* The board's box is sized before its code arrives: the one-column design
-   below 1024px, the four lanes above, each at its own proportions */
+   below 1180px, the terminals beside four lanes above, each at its own
+   proportions. The wide design is 1256 units across, so on anything narrower
+   its words would be too small to read. */
 .room-stage__art { aspect-ratio: 360 / 620; }
 /* A phone takes the board nearly to its edges, so the words in it stay
    large; a narrow tablet gets the same one-column board, centred */
 @media (max-width: 639px) { .room-stage { margin-inline: calc(0.6rem - var(--pad)); } }
-@media (min-width: 640px) and (max-width: 1023px) { .room-stage { max-width: 34rem; margin-inline: auto; } }
-@media (min-width: 1024px) { .room-stage__art { aspect-ratio: 1100 / 560; } }
+@media (min-width: 640px) and (max-width: 1179px) { .room-stage { max-width: 34rem; margin-inline: auto; } }
+@media (min-width: 1180px) { .room-stage__art { aspect-ratio: 1256 / 640; } }
 /* In the window's title bar, clear of everything the board shows */
 .room-toggle { top: 4px; right: 6px; bottom: auto; }
 .room-steps { list-style: none; margin: 3rem 0 0; padding: 0; display: grid; gap: 1.4rem; }

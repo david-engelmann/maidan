@@ -5,21 +5,37 @@ import "./look.css";
 import "./card.css";
 import "./room.css";
 
-// Inside the room: one board, six agents and two people on it at once, the
-// way a multiplayer tool shows presence. Beats: Maya files a task; Claude
-// Code claims it and it carries a lease lock; Cursor comes for it, sees the
-// lock and takes other work; Claude Code hands it to review; Codex sends it
-// back once with a note, then approves the fix; it lands as a merged pull
-// request. The event log ticks along under the board.
+// Inside the room: one board, six agents and two people on it at once. An
+// agent has no screen: it works through calls, so three of them have a
+// terminal beside the board, and each call lands on the board as it is
+// answered. Only the two people have a pointer. Beats: Maya files a task;
+// Claude Code, waiting on the channel, wakes and claims it under a lease;
+// Cursor asks for the same task, is refused, and takes other work; Claude
+// Code hands it to review; Codex asks a decision model about the hand-off,
+// sends it back once with a note, then approves the fix; it lands as a
+// merged pull request. The event log ticks along under the board.
 //
 // On a phone the board is one column: the task's journey in one card, the
-// lane it is in on a rail above it, the rest of the board as a list below.
+// lane it is in on a rail above it, the latest call on one strip, the rest of
+// the board as a list below.
 
 type Lane = "open" | "progress" | "review" | "landed";
 export type Who = "Claude Code" | "Codex" | "Cursor" | "Grok" | "Muse" | "Antigravity" | "Maya" | "Jun";
 type CardId = "main" | "search" | "notes" | "billing" | "sso" | "audit" | "safari" | "postgres";
 
 const PEOPLE: ReadonlySet<Who> = new Set<Who>(["Maya", "Jun"]);
+/** The people, who point at the board; an agent never does. */
+const POINTERS: Who[] = ["Maya", "Jun"];
+/** The agents whose calls are shown. */
+type Caller = "Claude Code" | "Codex" | "Cursor";
+const CALLERS: Caller[] = ["Claude Code", "Codex", "Cursor"];
+/** On the board too, with no terminal on screen. */
+const OTHERS: Who[] = ["Grok", "Muse", "Antigravity"];
+
+/** One call and what the server answered. */
+type Line = { n: number; call: string; ans: string; tone?: "wait" | "warn" | "ok" | "no" };
+/** What a decision model made of a hand-off. */
+type Advice = "amber" | "green";
 const CAST: Who[] = ["Claude Code", "Codex", "Cursor", "Grok", "Muse", "Antigravity", "Maya", "Jun"];
 
 type Chip =
@@ -34,14 +50,18 @@ type Card = {
   holder: Who | null;
   chip: Chip;
   evidence: { tests: number; add: number; del: number } | null;
+  /** A decision model's reading of the hand-off, while it is in review. */
+  advice: Advice | null;
   note: string | null;
   shown: boolean;
   /** Bumped when someone tries a held card: its lock answers. */
   bump: number;
+  /** Bumped when a call changes the card: it lights once. */
+  ping: number;
 };
 
-/** Where a cursor is: its own resting spot, on a card, or passing one by. */
-type Spot = "rest" | `card:${CardId}` | `near:${CardId}`;
+/** Where a person's pointer is: its own resting spot, or on a card. */
+type Spot = "rest" | `card:${CardId}`;
 type Cur = { at: Spot; on: boolean; press: number };
 
 export type Beat = 0 | 1 | 2 | 3;
@@ -49,6 +69,12 @@ export type Beat = 0 | 1 | 2 | 3;
 type S = {
   cards: Record<CardId, Card>;
   cur: Record<Who, Cur>;
+  /** Each caller's calls, oldest first. */
+  term: Record<Caller, Line[]>;
+  /** Who called last, for the phone's one strip. */
+  spoke: Caller;
+  /** How many calls have been made, so each line has its own key. */
+  calls: number;
   /** How many lines of LOG have been written. */
   log: number;
   beat: Beat;
@@ -75,54 +101,65 @@ const LANES: { id: Lane; name: string; short: string }[] = [
   { id: "landed", name: "Landed", short: "Landed" },
 ];
 
-// Each line is chained to the one before it; the short hash says so.
-// The first two are the morning so far, so the log is never empty.
+// Each line is an event, named as the server names it, and chained to the one
+// before it; the short hash says so. The first two are the morning so far,
+// so the log is never empty. A refused claim changes nothing, so it is not
+// here.
 const HISTORY = 2;
-const LOG: [string, string][] = [
-  ["41c9", "PR #479 merged, the Safari fix landed"],
-  ["b27e", "Muse is reviewing Antigravity’s Okta SSO"],
-  ["e1a4", "Maya filed “Rate-limit the public API”"],
-  ["7c02", "Claude Code claimed it, lease 15m"],
-  ["3b9d", "Cursor passed it by: Claude Code holds it"],
-  ["d415", "Cursor claimed “Speed up workspace search”"],
-  ["90fe", "Claude Code handed it to review"],
-  ["5a31", "Codex sent it back: cover the 429 retry path"],
-  ["c6e8", "Claude Code pushed a fix, 51 tests pass"],
-  ["2f7b", "Codex approved Claude Code’s change"],
-  ["8d40", "PR #482 merged, the task landed"],
+const LOG: [string, string, string][] = [
+  ["41c9", "thread_landed", "PR #479 merged, the Safari fix landed"],
+  ["b27e", "thread_state_changed", "Muse is reviewing Antigravity’s Okta SSO"],
+  ["e1a4", "thread_created", "Maya filed “Rate-limit the public API”"],
+  ["7c02", "thread_assignment_changed", "Claude Code claimed it, lease 15m"],
+  ["d415", "thread_assignment_changed", "Cursor claimed “Speed up workspace search”"],
+  ["90fe", "thread_state_changed", "Claude Code handed it to review"],
+  ["5a31", "review_submitted", "Codex sent it back: cover the 429 retry path"],
+  ["c6e8", "thread_result_set", "Claude Code pushed a fix, 51 tests pass"],
+  ["2f7b", "review_submitted", "Codex approved Claude Code’s change"],
+  ["8d40", "thread_landed", "PR #482 merged, the task landed"],
 ];
 
 const NOTE = "Cover the 429 retry path";
 
 const open = (): Chip => ({ k: "open" });
+const blank = { evidence: null, advice: null, note: null, bump: 0, ping: 0 };
+const WAITING: Line["tone"] = "wait";
 const initial: S = {
   cards: {
-    main: { lane: "open", holder: null, chip: open(), evidence: null, note: null, shown: false, bump: 0 },
-    search: { lane: "open", holder: null, chip: open(), evidence: null, note: null, shown: true, bump: 0 },
-    notes: { lane: "open", holder: null, chip: open(), evidence: null, note: null, shown: true, bump: 0 },
-    billing: { lane: "progress", holder: "Grok", chip: { k: "lease", m: 9 }, evidence: null, note: null, shown: true, bump: 0 },
-    sso: { lane: "review", holder: "Antigravity", chip: { k: "reviewing", who: "Muse" }, evidence: null, note: null, shown: true, bump: 0 },
-    audit: { lane: "review", holder: "Jun", chip: { k: "reviewing", who: "Grok" }, evidence: null, note: null, shown: true, bump: 0 },
-    safari: { lane: "landed", holder: "Codex", chip: { k: "merged", pr: 479 }, evidence: null, note: null, shown: true, bump: 0 },
-    postgres: { lane: "landed", holder: "Antigravity", chip: { k: "merged", pr: 476 }, evidence: null, note: null, shown: true, bump: 0 },
+    main: { ...blank, lane: "open", holder: null, chip: open(), shown: false },
+    search: { ...blank, lane: "open", holder: null, chip: open(), shown: true },
+    notes: { ...blank, lane: "open", holder: null, chip: open(), shown: true },
+    billing: { ...blank, lane: "progress", holder: "Grok", chip: { k: "lease", m: 9 }, shown: true },
+    sso: { ...blank, lane: "review", holder: "Antigravity", chip: { k: "reviewing", who: "Muse" }, shown: true },
+    audit: { ...blank, lane: "review", holder: "Jun", chip: { k: "reviewing", who: "Grok" }, shown: true },
+    safari: { ...blank, lane: "landed", holder: "Codex", chip: { k: "merged", pr: 479 }, shown: true },
+    postgres: { ...blank, lane: "landed", holder: "Antigravity", chip: { k: "merged", pr: 476 }, shown: true },
   },
   cur: {
-    "Claude Code": { at: "rest", on: true, press: 0 },
-    Codex: { at: "rest", on: true, press: 0 },
-    Cursor: { at: "rest", on: true, press: 0 },
-    Grok: { at: "card:billing", on: true, press: 0 },
-    Muse: { at: "card:sso", on: true, press: 0 },
-    Antigravity: { at: "rest", on: true, press: 0 },
+    "Claude Code": { at: "rest", on: false, press: 0 },
+    Codex: { at: "rest", on: false, press: 0 },
+    Cursor: { at: "rest", on: false, press: 0 },
+    Grok: { at: "rest", on: false, press: 0 },
+    Muse: { at: "rest", on: false, press: 0 },
+    Antigravity: { at: "rest", on: false, press: 0 },
     Maya: { at: "rest", on: true, press: 0 },
     Jun: { at: "card:notes", on: true, press: 0 },
   },
+  // Every agent starts blocked in a wait: the server wakes it, it never polls
+  term: {
+    "Claude Code": [{ n: -3, call: "wait_for_ready(#api)", ans: "waiting", tone: WAITING }],
+    Codex: [{ n: -2, call: "wait_for_event(#api)", ans: "waiting", tone: WAITING }],
+    Cursor: [{ n: -1, call: "wait_for_ready(#api)", ans: "waiting", tone: WAITING }],
+  },
+  spoke: "Claude Code",
+  calls: 0,
   log: HISTORY,
   beat: 0,
   fade: false,
 };
 
 // The still for reduced motion: the task landed, the board busy around it,
-// and the log holding how it got there.
+// the calls that got it there in the terminals, and the log holding the rest.
 const POSTER: S = {
   ...initial,
   cards: {
@@ -130,7 +167,21 @@ const POSTER: S = {
     main: { ...initial.cards.main, lane: "landed", holder: "Claude Code", chip: { k: "merged", pr: 482 }, shown: true },
     search: { ...initial.cards.search, lane: "progress", holder: "Cursor", chip: { k: "lease", m: 15 } },
   },
-  cur: { ...initial.cur, "Claude Code": { at: "card:main", on: true, press: 0 }, Codex: { at: "rest", on: true, press: 0 }, Cursor: { at: "card:search", on: true, press: 0 }, Jun: { at: "card:notes", on: true, press: 0 } },
+  term: {
+    "Claude Code": [
+      { n: 101, call: "transition_thread(start_review)", ans: "in review" },
+      { n: 102, call: "wait_for_landed", ans: "PR #482 merged", tone: "ok" },
+    ],
+    Codex: [
+      { n: 103, call: "advise_land_gate", ans: "nothing flagged", tone: "ok" },
+      { n: 104, call: "submit_review(approve)", ans: "approved", tone: "ok" },
+    ],
+    Cursor: [
+      { n: 105, call: "claim_thread(“Rate-limit…”)", ans: "refused: Claude Code holds it", tone: "no" },
+      { n: 106, call: "claim_next_thread(#api)", ans: "“Speed up workspace search”" },
+    ],
+  },
+  spoke: "Claude Code",
   log: LOG.length,
 };
 
@@ -141,52 +192,46 @@ type Pt = { x: number; y: number };
 type Aim = Pt & { flip?: boolean };
 
 const WIDE = {
-  laneX: [20, 286, 552, 818],
-  laneW: 254,
+  // The terminals' column, then four lanes
+  termX: 20,
+  termW: 330,
+  termTop: 58,
+  termH: 122,
+  termGap: 8,
+  boardX: 366,
+  laneX: [366, 586, 806, 1026],
+  laneW: 210,
   laneTop: 58,
   cardTop: 100,
-  cardW: 238,
-  // Resting in the foot of a lane, below the most cards it ever holds, so a
-  // tag there sits over the gutter and never over a word
+  cardW: 194,
+  // A person's pointer rests where its tag sits over a gutter, never a word
   rest: {
-    "Claude Code": { x: 420, y: 418 },
-    Codex: { x: 716, y: 418 },
-    Cursor: { x: 178, y: 418 },
-    Grok: { x: 480, y: 330 },
-    Muse: { x: 760, y: 330 },
-    Antigravity: { x: 956, y: 418 },
     // beside the channel, so her way to the Open lane and back crosses no lane's name
-    Maya: { x: 150, y: 22 },
-    Jun: { x: 200, y: 400 },
-  } as Record<Who, Aim>,
+    Maya: { x: 500, y: 22 },
+    Jun: { x: 520, y: 400 },
+  } as Partial<Record<Who, Aim>>,
 };
 
 const COMPACT = {
   cardX: 14,
-  cardY: 92,
+  // Under the rail and the strip that holds the latest call
+  cardY: 128,
   cardW: 332,
-  rowTop: 300,
-  rowH: 42,
-  rows: ["search", "billing", "sso", "safari"] as CardId[],
+  rowTop: 344,
+  rowH: 40,
+  rows: ["search", "billing", "sso"] as CardId[],
   rest: {
-    // Hidden while resting on the phone; set beside the card, so a cursor
+    // Hidden while resting on the phone; set beside the card, so the pointer
     // coming to it or leaving it crosses only the card's empty side
-    "Claude Code": { x: 300, y: 214 },
-    Codex: { x: 318, y: 196 },
-    Cursor: { x: 300, y: 230 },
-    Grok: { x: 0, y: 0 },
-    Muse: { x: 0, y: 0 },
-    Antigravity: { x: 0, y: 0 },
-    Maya: { x: 310, y: 118 },
-    Jun: { x: 0, y: 0 },
-  } as Record<Who, Aim>,
+    Maya: { x: 310, y: 154 },
+  } as Partial<Record<Who, Aim>>,
 };
 
 // A card's height on the wide board, never less than it draws at, so the
 // lane's stack never overlaps: the title and two lines, then the evidence,
 // then a reviewer's note
 function cardHeight(c: Card): number {
-  return 88 + (c.evidence ? 28 : 0) + (c.note ? 36 : 0);
+  return 88 + (c.evidence ? 28 : 0) + (c.advice ? 24 : 0) + (c.note ? 50 : 0);
 }
 
 function wideSlots(s: S): Record<CardId, Pt> {
@@ -210,23 +255,22 @@ function compactSpot(id: CardId): Pt {
   return { x: COMPACT.cardX, y: COMPACT.rowTop + Math.max(0, i) * COMPACT.rowH };
 }
 
-/** Where a cursor points. */
+/** Where a person's pointer is. */
 function where(s: S, who: Who, layout: "wide" | "compact", slots: Record<CardId, Pt>): Aim {
   const at = s.cur[who].at;
   const geo = layout === "wide" ? WIDE : COMPACT;
-  if (at === "rest") return geo.rest[who];
-  const [kind, id] = at.split(":") as ["card" | "near", CardId];
+  const rest = geo.rest[who] ?? { x: 0, y: 0 };
+  if (at === "rest") return rest;
+  const id = at.slice("card:".length) as CardId;
   if (layout === "wide") {
     const p = slots[id];
-    // On a card: its right half, the tag inside it; passing: beside its lock
-    return kind === "card" ? { x: p.x + 136, y: p.y + 48 } : { x: p.x + 112, y: p.y + 58 };
+    // On a card's right half, the tag inside it
+    return { x: p.x + 112, y: p.y + 48 };
   }
   const p = compactSpot(id);
   // On an unfiled task: beside the empty slot's label, not on it
   if (id === "main" && !s.cards.main.shown) return { x: p.x + 250, y: p.y + 62 };
-  if (id === "main") return kind === "card" ? { x: p.x + 196, y: p.y + 46 } : { x: p.x + 118, y: p.y + 84 };
-  // A list row: on its chip, the tag hanging back over the row's own title
-  return { x: p.x + 236, y: p.y + 22, flip: true };
+  return { x: p.x + 196, y: p.y + 46 };
 }
 
 // The script, in small steps that read as sentences
@@ -246,6 +290,28 @@ function press(a: A, who: Who) {
 function log(a: A) {
   a.put((s) => ({ log: s.log + 1 }));
 }
+/** An agent makes a call and the server answers it. */
+function call(a: A, who: Caller, name: string, ans: string, tone?: Line["tone"]) {
+  a.put((s) => ({
+    calls: s.calls + 1,
+    spoke: who,
+    term: { ...s.term, [who]: [...s.term[who], { n: s.calls, call: name, ans, tone }] },
+  }));
+}
+/** The call an agent was blocked in returns. */
+function wake(a: A, who: Caller, ans: string) {
+  a.put((s) => {
+    const lines = s.term[who];
+    const last = lines[lines.length - 1];
+    return { spoke: who, term: { ...s.term, [who]: [...lines.slice(0, -1), { ...last, ans, tone: undefined }] } };
+  });
+}
+/** The card a call changed lights once. */
+function ping(a: A, id: CardId) {
+  card(a, id, (c) => ({ ping: c.ping + 1 }));
+}
+
+const LEASE: Chip = { k: "lease", m: 15 };
 
 async function script(a: A) {
   await a.wait(600);
@@ -260,36 +326,26 @@ async function script(a: A) {
   // She steps back as it lands, so the lane makes room under no one's name
   await a.wait(250);
   go(a, "Maya", "rest");
-  await a.wait(750);
-  go(a, "Claude Code", "card:main");
+  await a.wait(650);
+  // The new task is an event, and the agents waiting on the channel wake
+  wake(a, "Cursor", "woke: “Rate-limit the public API”");
+  wake(a, "Claude Code", "woke: “Rate-limit the public API”");
   await a.wait(1000);
-  press(a, "Claude Code");
-  card(a, "main", { holder: "Claude Code", chip: { k: "lease", m: 15 } });
+  call(a, "Claude Code", "claim_next_thread(#api)", "claimed · lease 15m", "ok");
+  card(a, "main", { holder: "Claude Code", chip: LEASE });
+  ping(a, "main");
   log(a);
   await a.wait(800);
   card(a, "main", { lane: "progress" });
-  await a.wait(1000);
-  // Claude Code gets to work, and the lock is what holds the card
-  go(a, "Claude Code", "rest");
-  await a.wait(500);
+  await a.wait(1100);
 
-  // Cursor comes for it, finds the lock, and takes other work
-  go(a, "Cursor", "near:main");
-  await a.wait(1000);
+  // Cursor asks for the same task, is refused, and takes other work
+  call(a, "Cursor", "claim_thread(“Rate-limit…”)", "refused: Claude Code holds it", "no");
   card(a, "main", (c) => ({ bump: c.bump + 1 }));
-  log(a);
-  await a.wait(900);
-  if (a.layout === "wide") {
-    go(a, "Cursor", "card:search");
-    await a.wait(1000);
-    press(a, "Cursor");
-  } else {
-    // On the phone the claim shows on the task's row; a cursor there would
-    // hang its name over the next row's words
-    go(a, "Cursor", "rest");
-    await a.wait(700);
-  }
-  card(a, "search", { holder: "Cursor", chip: { k: "lease", m: 15 } });
+  await a.wait(1500);
+  call(a, "Cursor", "claim_next_thread(#api)", "“Speed up workspace search”", "ok");
+  card(a, "search", { holder: "Cursor", chip: LEASE });
+  ping(a, "search");
   log(a);
   await a.wait(700);
   card(a, "search", { lane: "progress" });
@@ -297,45 +353,52 @@ async function script(a: A) {
 
   a.mark("review");
   a.put({ beat: 2 });
-  go(a, "Claude Code", "card:main");
-  await a.wait(1000);
+  call(a, "Claude Code", "set_thread_result", "48 tests pass · +42 −7");
   card(a, "main", { evidence: { tests: 48, add: 42, del: 7 } });
-  await a.wait(700);
+  ping(a, "main");
+  await a.wait(1200);
+  call(a, "Claude Code", "transition_thread(start_review)", "in review");
   card(a, "main", { lane: "review" });
   log(a);
-  await a.wait(900);
-  // The author steps back, and a different agent takes the review
-  go(a, "Claude Code", "rest");
-  go(a, "Codex", "card:main");
   await a.wait(1000);
+  // A different agent takes the review: the hand-off woke it
+  wake(a, "Codex", "woke: a review is waiting");
   card(a, "main", { chip: { k: "reviewing", who: "Codex" } });
-  await a.wait(1500);
-  press(a, "Codex");
-  card(a, "main", { note: NOTE, evidence: null, chip: { k: "lease", m: 15 }, lane: "progress" });
-  go(a, "Codex", "rest");
-  go(a, "Claude Code", "card:main");
+  await a.wait(1100);
+  // It asks a decision model what the hand-off says before it reads the diff
+  call(a, "Codex", "advise_land_gate", "worth a look: part left undone", "warn");
+  card(a, "main", { advice: "amber" });
+  ping(a, "main");
+  await a.wait(1900);
+  call(a, "Codex", "submit_review(request_changes)", "“Cover the 429 retry path”");
+  card(a, "main", { note: NOTE, evidence: null, advice: null, chip: LEASE, lane: "progress" });
   log(a);
   await a.wait(2200);
+  call(a, "Claude Code", "set_thread_result", "51 tests pass · +58 −7");
   card(a, "main", { evidence: { tests: 51, add: 58, del: 7 }, note: null });
+  ping(a, "main");
   log(a);
-  await a.wait(800);
+  await a.wait(900);
+  call(a, "Claude Code", "transition_thread(start_review)", "in review");
   card(a, "main", { lane: "review", chip: { k: "reviewing", who: "Codex" } });
-  await a.wait(500);
-  go(a, "Claude Code", "rest");
-  go(a, "Codex", "card:main");
-  await a.wait(1300);
-  press(a, "Codex");
+  await a.wait(1100);
+  call(a, "Codex", "advise_land_gate", "nothing flagged", "ok");
+  card(a, "main", { advice: "green" });
+  ping(a, "main");
+  await a.wait(1400);
+  call(a, "Codex", "submit_review(approve)", "approved", "ok");
   card(a, "main", { chip: { k: "approved", who: "Codex" } });
+  ping(a, "main");
   log(a);
   await a.wait(1300);
 
   a.mark("land");
   a.put({ beat: 3 });
-  card(a, "main", { lane: "landed", chip: { k: "merged", pr: 482 }, evidence: null });
+  card(a, "main", { lane: "landed", chip: { k: "merged", pr: 482 }, evidence: null, advice: null });
   log(a);
-  await a.wait(1000);
-  go(a, "Codex", "rest");
-  await a.wait(2600);
+  await a.wait(500);
+  call(a, "Claude Code", "wait_for_landed", "PR #482 merged", "ok");
+  await a.wait(3100);
 
   // The board clears to the morning's state under a short fade: the frame
   // the loop began on
@@ -449,19 +512,75 @@ function TaskCard({ id, c, style, big }: { id: CardId; c: Card; style?: CSSPrope
           </span>
         </div>
       ) : null}
+      {c.advice ? (
+        <div className="rm-advice" data-land={c.advice}>
+          <span className="rm-advice__k">Advice</span>
+          <i aria-hidden="true" />
+          <Roll variant="fade">{c.advice === "amber" ? "Worth a look" : "Nothing flagged"}</Roll>
+        </div>
+      ) : null}
       {c.note ? (
         <div className="rm-note">
           <b>Codex:</b> {c.note}
         </div>
       ) : null}
+      {c.ping > 0 ? <span key={c.ping} className="rm-ping" /> : null}
+    </div>
+  );
+}
+
+/** The mark an agent's terminal draws before a call's answer. */
+const ANSWER = "⎿";
+
+/** An agent's terminal: its last calls, each with what the server answered. */
+function Terminal({ who, lines, live, style }: { who: Caller; lines: Line[]; live: boolean; style?: CSSProperties }) {
+  const shown = lines.slice(-2);
+  return (
+    <div className="rm-term" data-live={live || undefined} style={style}>
+      <div className="rm-term__head">
+        <Who who={who} />
+        <span className="rm-term__name">{who}</span>
+        <span className="rm-term__tag">MCP</span>
+      </div>
+      <div className="rm-term__body">
+        {shown.map((l, i) => (
+          <div key={l.n} className="rm-term__line" data-new={i === shown.length - 1 || undefined}>
+            <div className="rm-term__call">
+              <span className="rm-term__dot" aria-hidden="true">●</span>
+              {l.call}
+            </div>
+            <div key={l.ans} className="rm-term__ans" data-tone={l.tone}>
+              <span aria-hidden="true">{ANSWER}</span>
+              {l.ans}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The phone's one strip: the latest call, and who made it. */
+function LastCall({ who, line }: { who: Caller; line: Line }) {
+  return (
+    <div className="rm-last">
+      <div className="rm-last__call">
+        <Who who={who} size={16} />
+        <b>{who}</b>
+        <span className="rm-term__dot" aria-hidden="true">●</span>
+        <span className="rm-last__name">{line.call}</span>
+      </div>
+      <div key={line.ans} className="rm-term__ans" data-tone={line.tone}>
+        <span aria-hidden="true">{ANSWER}</span>
+        {line.ans}
+      </div>
     </div>
   );
 }
 
 function Cursor({ who, at, on, press }: { who: Who; at: Aim; on: boolean; press: number }) {
-  const person = PEOPLE.has(who);
   return (
-    <div className="rm-cur" data-person={person || undefined} data-off={!on || undefined} data-flip={at.flip || undefined} style={{ transform: `translate(${at.x}px, ${at.y}px)` }}>
+    <div className="rm-cur" data-person data-off={!on || undefined} data-flip={at.flip || undefined} style={{ transform: `translate(${at.x}px, ${at.y}px)` }}>
       <span className="rm-cur__drift" style={{ "--i": CAST.indexOf(who) } as CSSProperties}>
         {press > 0 ? <span key={press} className="rm-cur__press" /> : null}
         <svg className="rm-cur__arrow" width="16" height="18" viewBox="0 0 16 18" aria-hidden="true">
@@ -490,10 +609,10 @@ function Presence({ compact }: { compact?: boolean }) {
   );
 }
 
-function Log({ n, rows }: { n: number; rows: number }) {
+function Log({ n, rows, style }: { n: number; rows: number; style?: CSSProperties }) {
   const shown = LOG.slice(Math.max(0, n - rows), n).reverse();
   return (
-    <div className="rm-log">
+    <div className="rm-log" style={style}>
       <div className="rm-log__head">
         <Icon name="activity" size={12} />
         Event log
@@ -503,9 +622,10 @@ function Log({ n, rows }: { n: number; rows: number }) {
         </span>
       </div>
       <div className="rm-log__rows">
-        {shown.map(([hash, text], i) => (
+        {shown.map(([hash, kind, text], i) => (
           <div key={hash} className="rm-log__row" data-old={i > 0 || undefined} style={{ transform: `translateY(${i * 24}px)` }}>
             <span className="rm-log__hash">{hash}</span>
+            <span className="rm-log__kind">{kind}</span>
             <span className="rm-log__text">{text}</span>
           </div>
         ))}
@@ -527,7 +647,28 @@ function Wide({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
   return (
     <Window className="rm-win" title="Board">
       <div className="rm-body">
-        <div className="rm-head">
+        <div className="rm-agents" style={{ left: WIDE.termX, width: WIDE.termW }}>
+          <span className="rm-agents__title">Agents</span>
+          <span className="rm-agents__how">every move is a call</span>
+        </div>
+        {CALLERS.map((w, i) => (
+          <Terminal
+            key={w}
+            who={w}
+            lines={s.term[w]}
+            live={s.spoke === w && s.calls > 0}
+            style={{ left: WIDE.termX, top: WIDE.termTop + i * (WIDE.termH + WIDE.termGap), width: WIDE.termW, height: WIDE.termH }}
+          />
+        ))}
+        <div className="rm-others" style={{ left: WIDE.termX, width: WIDE.termW }}>
+          <span className="rm-presence__stack">
+            {OTHERS.map((w) => (
+              <Who key={w} who={w} size={18} />
+            ))}
+          </span>
+          {OTHERS.slice(0, -1).join(", ")} and {OTHERS[OTHERS.length - 1]} work the same way.
+        </div>
+        <div className="rm-head" style={{ left: WIDE.boardX }}>
           <span className="rm-channel">
             <span className="rm-hash">#</span>api
           </span>
@@ -547,23 +688,24 @@ function Wide({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
           {ORDER.map((id) => (
             <TaskCard key={id} id={id} c={s.cards[id]} style={{ width: WIDE.cardW, transform: `translate(${slots[id].x}px, ${slots[id].y}px)` }} />
           ))}
-          {CAST.map((w) => (
+          {POINTERS.map((w) => (
             <Cursor key={w} who={w} at={where(s, w, "wide", slots)} on={s.cur[w].on} press={s.cur[w].press} />
           ))}
         </div>
-        <Log n={s.log} rows={4} />
+        <Log n={s.log} rows={4} style={{ left: WIDE.boardX }} />
       </div>
       <BeatSync beat={s.beat} onBeat={onBeat} />
     </Window>
   );
 }
 
-// On the phone only the cursors in the story move; the rest are on the list
-const PHONE_CAST: Who[] = ["Claude Code", "Codex", "Cursor", "Maya"];
+// On the phone only the person in the story points
+const PHONE_CAST: Who[] = ["Maya"];
 
 function Compact({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
   const main = s.cards.main;
   const at = LANES.findIndex((l) => l.id === main.lane);
+  const last = s.term[s.spoke][s.term[s.spoke].length - 1];
   const slots = {} as Record<CardId, Pt>;
   return (
     <Window className="rm-win" title="Board">
@@ -582,6 +724,7 @@ function Compact({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
             </span>
           ))}
         </div>
+        <LastCall key={last.n} who={s.spoke} line={last} />
         <div className="rm-cards" data-fade={s.fade || undefined}>
           {/* Where the next task is filed. Without it the phone's board opens
               on a blank panel until Maya files one. */}
@@ -605,7 +748,7 @@ function Compact({ s, onBeat }: { s: S; onBeat?: (b: Beat) => void }) {
               </div>
             );
           })}
-          {/* On a phone a cursor shows only while it acts; who is here is the stack's to say */}
+          {/* On a phone the pointer shows only while she acts; who is here is the stack's to say */}
           {PHONE_CAST.map((w) => (
             <Cursor key={w} who={w} at={where(s, w, "compact", slots)} on={s.cur[w].on && s.cur[w].at !== "rest"} press={s.cur[w].press} />
           ))}
@@ -623,7 +766,7 @@ export function RoomBoard({ paused, onBeat }: { paused: boolean; onBeat?: (b: Be
   const theme = usePageTheme();
   return (
     <Stage<S>
-      width={1100}
+      width={1256}
       height={640}
       compact={{ below: 600, width: 360, height: 620 }}
       fill
