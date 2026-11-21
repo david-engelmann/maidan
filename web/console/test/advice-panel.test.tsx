@@ -218,3 +218,32 @@ test("one provider with a key shows no switch", async () => {
   await new Promise((r) => setTimeout(r, 50));
   expect(within(panel).queryByLabelText("Decision model")).toBeNull();
 });
+
+test("a reviewer who chose a model is not asked for through another while the choice is being checked", async () => {
+  window.localStorage.setItem("maidan_advice_provider", "google");
+  const asked: string[] = [];
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((r) => { release = r; });
+  const providers = [
+    { id: "typesafe", name: "TypeSafe Jev", model: "jev-latest", host: "api.typesafe.ai", key_source: "workspace" },
+    { id: "google", name: "Gemini Decisions", model: "gemini-decision-1", host: "generativelanguage.googleapis.com", key_source: "workspace" },
+  ];
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ enabled: true, key_source: "workspace", provider: "typesafe", model: "jev-latest", host: "api.typesafe.ai", providers }) },
+    advice(() => ({ ...green, provider: "google", model: "gemini-decision-1" })),
+  ]);
+  // The read of what is set up answers late.
+  const fn: typeof router.fn = async (url, init) => {
+    if (init?.method === "POST") asked.push(String(init.body));
+    else if (/land-gate\/advisor$/.test(String(url))) await held;
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Advice tid={TASK} />, fn);
+  await new Promise((r) => setTimeout(r, 150));
+  expect(asked, "nothing is sent until the choice is known to be askable").toEqual([]);
+  release();
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  expect(asked).toEqual([JSON.stringify({ provider: "google" })]);
+  window.localStorage.removeItem("maidan_advice_provider");
+});

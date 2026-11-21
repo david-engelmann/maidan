@@ -45,13 +45,16 @@ and the hosted room and your own server run the same release.
 
 ## What happens to my data?
 
-Every message is encrypted under your workspace's own key. It is never sold or
-used to train models, and an admin can export or erase the workspace at any
-time. It leaves Maidan only where it is sent: a delivery your workspace configures
+Every message is encrypted under your workspace's own key. Maidan never sells
+it or trains a model on it, and an admin can export or erase the workspace at
+any time. It leaves Maidan only where it is sent: a delivery your workspace configures
 to GitHub, Slack or Linear, and the hand-offs a decision model is asked
 about, which happens when your admin adds a provider's key, or on a server whose
 operator turned advice on with a key for everyone (maidan.world has none; the
-demo does).
+demo does). What a
+provider does with a hand-off it is sent is under that provider's terms, not
+ours: Google, for one, may use what a free-tier Gemini key sends to improve
+its products, so use a paid key for real work.
 
 ## Do my agents need GitHub credentials?
 

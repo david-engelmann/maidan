@@ -666,9 +666,6 @@ struct Backend {
     endpoint: Url,
     instance_key: Option<String>,
     model: String,
-    /// How many bytes the packet may take of [`MAX_REQUEST_BYTES`], once the
-    /// model's name and the questions have theirs.
-    state_budget: usize,
 }
 
 impl Backend {
@@ -682,16 +679,12 @@ impl Backend {
         let endpoint = base_url.join(provider.ask_path()).map_err(|error| {
             LandGateAdvisorError::Config(format!("invalid {}: {error}", provider.base_url_env()))
         })?;
-        let envelope = request_body(provider, &model, &Value::Null)
-            .to_string()
-            .len();
         Ok(Self {
             provider,
             transport,
             base_url,
             endpoint,
             instance_key,
-            state_budget: (MAX_REQUEST_BYTES + "null".len()).saturating_sub(envelope),
             model,
         })
     }
@@ -827,22 +820,16 @@ impl Backend {
     }
 
     /// The largest packet of this hand-off whose whole request stays within
-    /// [`MAX_REQUEST_BYTES`]. A provider that takes the packet as text pays
-    /// for every quote in it twice, so the packet is cut further until the
-    /// request it makes fits.
+    /// [`MAX_REQUEST_BYTES`]. Each candidate is measured as the request this
+    /// provider would be sent, not as the packet alone: a provider that takes
+    /// the packet as text pays again for every quote and backslash in it.
     fn packet(&self, hand_off: &HandOff) -> Option<Value> {
-        let mut budget = self.state_budget;
-        for _ in 0..6 {
-            let state = hand_off.packet(budget)?;
-            let size = request_body(self.provider, &self.model, &state)
+        hand_off.packet_that(|state| {
+            request_body(self.provider, &self.model, &Value::Object(state.clone()))
                 .to_string()
-                .len();
-            if size <= MAX_REQUEST_BYTES {
-                return Some(state);
-            }
-            budget = budget.saturating_sub(size - MAX_REQUEST_BYTES + 64);
-        }
-        None
+                .len()
+                <= MAX_REQUEST_BYTES
+        })
     }
 
     async fn ask(
@@ -1111,13 +1098,7 @@ impl LandGateAdvisor {
             .await?;
         // Held under the key's owner too: an answer one key paid for is never
         // shown as another's, and a workspace that adds its key asks with it.
-        let held_as = held_as(
-            workspace_id,
-            backend.provider,
-            &backend.model,
-            key.source,
-            &state,
-        );
+        let held_as = held_as(workspace_id, backend.provider, &backend.model, &key, &state);
         if !request.refresh
             && let Some(mut advice) = self.held(&held_as)
         {
@@ -1488,17 +1469,25 @@ async fn hand_off(store: &dyn Store, thread_id: ThreadId) -> Result<HandOff, Lan
 }
 
 impl HandOff {
-    /// The packet the model reads, within `budget` bytes. When the hand-off is
-    /// larger, the agent's oldest messages are left out first, then long
-    /// strings in the result are cut shorter. `None` when it fits at no cut.
+    /// The packet the model reads, within `budget` bytes of its own JSON.
+    #[cfg(test)]
     fn packet(&self, budget: usize) -> Option<Value> {
-        let size =
-            |state: &Map<String, Value>| serde_json::to_vec(state).map_or(usize::MAX, |b| b.len());
+        self.packet_that(|state| {
+            serde_json::to_vec(state).map_or(usize::MAX, |b| b.len()) <= budget
+        })
+    }
+
+    /// The largest packet `fits` accepts. When the hand-off is too large, the
+    /// agent's oldest messages are left out first, then long strings in the
+    /// result are cut shorter. `None` when it fits at no cut. `fits` sees
+    /// every candidate, so a caller can measure the request the packet would
+    /// make and not the packet alone.
+    fn packet_that(&self, fits: impl Fn(&Map<String, Value>) -> bool) -> Option<Value> {
         for cut in RESULT_STRING_CUTS {
             let mut state = Map::new();
             state.insert("task".into(), Value::Object(self.task.clone()));
             state.insert("result".into(), trimmed_result(&self.result, cut));
-            if size(&state) > budget {
+            if !fits(&state) {
                 continue;
             }
             // The newest messages that fit, sent oldest first. An empty list
@@ -1506,7 +1495,7 @@ impl HandOff {
             let mut from = self.said.len();
             while from > 0 {
                 state.insert("agent_messages".into(), json!(self.said[from - 1..]));
-                if size(&state) > budget {
+                if !fits(&state) {
                     break;
                 }
                 from -= 1;
@@ -1562,13 +1551,13 @@ fn clip(text: &str, max_chars: usize) -> String {
     cut
 }
 
-/// What an answer is held under: the workspace, the provider, the model and the packet's
+/// What an answer is held under: the workspace, the provider, the model, the key and the packet's
 /// bytes, so a changed result or a new message asks again.
 fn held_as(
     workspace_id: WorkspaceId,
     provider: AdvisorProvider,
     model: &str,
-    key_source: AdvisorKeySource,
+    key: &ResolvedKey,
     state: &Value,
 ) -> String {
     let mut hasher = Sha256::new();
@@ -1576,10 +1565,13 @@ fn held_as(
     hasher.update(provider.id().as_bytes());
     hasher.update(b"\0");
     hasher.update(model.as_bytes());
-    hasher.update(match key_source {
+    hasher.update(match key.source {
         AdvisorKeySource::Workspace => b"w",
         AdvisorKeySource::Instance => b"i",
     });
+    // The key itself, not only whose it is: a workspace that replaces its key
+    // asks with the new one, and is not shown what the old one paid for.
+    hasher.update(Sha256::digest(key.value.as_bytes()));
     hasher.update(state.to_string().as_bytes());
     hex::encode(hasher.finalize())
 }
@@ -2106,12 +2098,46 @@ mod tests {
             }
             let state = backend.packet(&ordinary).unwrap();
             assert_eq!(state["agent_messages"], json!(["Renamed.", "Tests pass."]));
-            assert!(
-                backend.state_budget > 8_000,
-                "{name}: {}",
-                backend.state_budget
-            );
+            // The model's name and the questions leave most of the request
+            // for the packet.
+            let envelope = request_body(backend.provider, &backend.model, &Value::Null)
+                .to_string()
+                .len();
+            assert!(MAX_REQUEST_BYTES - envelope > 8_000, "{name}: {envelope}");
         }
+    }
+
+    #[test]
+    fn a_message_that_does_not_fit_as_text_is_left_out_and_the_rest_is_kept() {
+        let advisor = LandGateAdvisor::with_http(
+            Client::new(),
+            "http://127.0.0.1:9/".parse().unwrap(),
+            None,
+            "jev-latest",
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        let google = &advisor.backends[2];
+        assert_eq!(google.provider, AdvisorProvider::Google);
+        // A result that takes most of the request once it is text, and a
+        // newest message of backslashes: each costs four bytes as text.
+        let result = json!({ "summary": "a".repeat(3_900), "notes": "b".repeat(3_900) });
+        let slashes = "\\".repeat(MAX_MESSAGE_CHARS);
+        let hand_off = hand_off_of(result.clone(), &["Done.", &slashes]);
+        let state = google
+            .packet(&hand_off)
+            .expect("the task and result fit on their own");
+        assert_eq!(state["result"], result, "the result is whole, not cut");
+        assert!(
+            state.get("agent_messages").is_none(),
+            "{}",
+            state["agent_messages"]
+        );
+        let body = request_body(google.provider, &google.model, &state).to_string();
+        assert!(body.len() <= MAX_REQUEST_BYTES, "{} bytes", body.len());
+        // The same hand-off as a JSON object has room for the message.
+        let jev = advisor.backends[0].packet(&hand_off).unwrap();
+        assert_eq!(jev["agent_messages"].as_array().map(Vec::len), Some(2));
     }
 
     #[test]
@@ -2158,21 +2184,38 @@ mod tests {
         let own = AdvisorKeySource::Workspace;
         let hello = json!({ "result": { "said": "hello" } });
         let jev = AdvisorProvider::Typesafe;
-        let a = held_as(ws, jev, "jev-latest", own, &hello);
+        let key = |value: &str, source| ResolvedKey {
+            value: value.into(),
+            source,
+        };
+        let mine = key("key-a", own);
+        let a = held_as(ws, jev, "jev-latest", &mine, &hello);
         let b = held_as(
             ws,
             jev,
             "jev-latest",
-            own,
+            &mine,
             &json!({ "result": { "said": "hello!" } }),
         );
-        let c = held_as(ws, jev, "jev-1.13.0", own, &hello);
-        let d = held_as(ws, jev, "jev-latest", AdvisorKeySource::Instance, &hello);
-        let e = held_as(ws, AdvisorProvider::Openai, "jev-latest", own, &hello);
+        let c = held_as(ws, jev, "jev-1.13.0", &mine, &hello);
+        let d = held_as(
+            ws,
+            jev,
+            "jev-latest",
+            &key("key-a", AdvisorKeySource::Instance),
+            &hello,
+        );
+        let e = held_as(ws, AdvisorProvider::Openai, "jev-latest", &mine, &hello);
+        let f = held_as(ws, jev, "jev-latest", &key("key-b", own), &hello);
+        assert_eq!(
+            a,
+            held_as(ws, jev, "jev-latest", &key("key-a", own), &hello)
+        );
         assert_ne!(a, b, "a changed result asks again");
         assert_ne!(a, c, "so does another model");
         assert_ne!(a, d, "and an answer one key paid for is not another's");
         assert_ne!(a, e, "nor is one provider's answer another's");
+        assert_ne!(a, f, "a replaced key asks with the new one");
     }
 
     /// Every question answered `p`, as `provider` writes it.

@@ -1121,6 +1121,27 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
     assert_eq!(by_tool["provider"], "google");
     assert_eq!(by_tool["cached"], true);
 
+    // With both keys stored, neither shows through the generic secret routes.
+    let listed = client
+        .get(world.url(&format!("/workspaces/{}/secrets", tenant.workspace_id.0)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::OK);
+    let listed: Value = listed.json().await.unwrap();
+    assert_eq!(listed, json!([]), "the reserved names are left out");
+    for name in ["maidan:openai_api_key", "maidan:gemini_api_key"] {
+        let resolved = client
+            .post(world.url(&format!(
+                "/workspaces/{}/secrets/{name}/resolve",
+                tenant.workspace_id.0
+            )))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resolved.status(), StatusCode::NOT_FOUND, "{name}");
+    }
+
     // Forgetting one provider's key leaves the other's, and the default moves.
     let cleared = client
         .delete(format!("{advisor}?provider=openai"))
@@ -1136,19 +1157,6 @@ async fn each_provider_is_asked_in_its_own_shape_with_the_workspaces_key_for_it(
     assert_eq!(
         read["providers"], after["providers"],
         "what was returned is what is stored"
-    );
-    // Neither key shows through the generic secret routes.
-    let listed = client
-        .get(world.url(&format!("/workspaces/{}/secrets", tenant.workspace_id.0)))
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    assert!(
-        !listed.contains("gemini") && !listed.contains("openai"),
-        "{listed}"
     );
     gate_is_untouched(&world, thread).await;
 }

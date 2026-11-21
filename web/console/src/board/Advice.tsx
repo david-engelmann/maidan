@@ -21,10 +21,19 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
   // leaves no switch: the advice itself still comes from the default.
   const ws = session.workspaceId;
   const [usable, setUsable] = useState<AdvisorProvider[]>([]);
+  // Whether that read has answered, either way.
+  const [known, setKnown] = useState(!ws);
   useEffect(() => {
     if (!ws) return;
     let live = true;
-    api.status(ws).then((s) => live && setUsable(usableProviders(s)), () => undefined);
+    api.status(ws).then(
+      (s) => {
+        if (!live) return;
+        setUsable(usableProviders(s));
+        setKnown(true);
+      },
+      () => live && setKnown(true),
+    );
     return () => {
       live = false;
     };
@@ -33,6 +42,10 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
   // be asked is not sent: the server then picks.
   const [picked, setPicked] = useState<ProviderId | null>(() => storedProvider());
   const provider = usable.some((p) => p.id === picked) ? picked : null;
+  // A reviewer who chose a model is not asked for until it is known whether
+  // that model can be: asking first with no name would send the hand-off to
+  // the server's pick, a provider they did not choose.
+  const waiting = picked !== null && !known;
   const pick = (id: ProviderId) => {
     try {
       window.localStorage.setItem(PROVIDER_KEY, id);
@@ -61,6 +74,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
   };
 
   useEffect(() => {
+    if (waiting) return;
     let live = true;
     const afresh = refreshOwed.current;
     const accept = (next: AdviceState) => {
@@ -72,7 +86,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     return () => {
       live = false;
     };
-  }, [api, tid, attempt, asked, of, provider]);
+  }, [api, tid, attempt, asked, of, provider, waiting]);
 
   // Which model answered, or a choice of who to ask when there is one.
   const who = (shown: string | null) =>

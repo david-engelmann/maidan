@@ -649,12 +649,48 @@ test("a demo with more than one decision model lets the visitor ask another abou
   assert.equal(ui.el("advice-flagged").children.length, 1);
   assert.deepEqual(ui.el("advice-providers").children.map((b) => b.ariaPressed), ["false", "false", "true"]);
 
+  // The rebuilt switch keeps the keyboard where the press was.
+  assert.equal(ui.el("advice-providers").children[2].focused, true);
+
   // A model that does not answer leaves the advice as it was, and says so.
   await ui.el("advice-providers").children[1].listeners[0]();
   await new Promise((r) => setTimeout(r, 0));
   assert.deepEqual(asked, [null, "google", "openai"]);
   assert.equal(ui.el("advice-title").textContent, "Worth a look");
   assert.equal(ui.el("advice-status").textContent, "That model did not answer. The advice shown is unchanged.");
+  // The buttons work again, and the one pressed keeps the focus.
+  assert.deepEqual(ui.el("advice-providers").children.map((b) => b.disabled), [false, false, false]);
+  assert.equal(ui.el("advice-providers").children[1].focused, true);
+});
+
+test("when the first decision model does not answer, the visitor can still ask another", async () => {
+  const asked = [];
+  const tools = {
+    advise_land_gate: (args) => {
+      asked.push(args.provider ?? null);
+      if (!args.provider) return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "unavailable" } }), { status: 200 });
+      const from = helloAdvice();
+      from.provider = args.provider;
+      return answer(from);
+    },
+  };
+  const config = { turnstile_site_key: null, advice: true, providers: [{ id: "typesafe", name: "TypeSafe Jev" }, { id: "google", name: "Gemini Decisions" }] };
+  const ui = page(tools, [...PAGE_IDS, ...ADVICE_IDS], config);
+  await ui.app.loadConfig();
+  await ui.app.start();
+  await ui.app.watchAgent();
+  // No reading, but the block and its switch are there.
+  assert.equal(ui.el("agent-advice").hidden, false);
+  assert.equal(ui.el("advice-title").textContent, "No answer yet");
+  assert.equal(ui.el("advice-rows").children.length, 0);
+  const group = ui.el("advice-providers");
+  assert.equal(group.hidden, false);
+  assert.deepEqual(group.children.map((b) => b.ariaPressed), ["false", "false"]);
+  await group.children[1].listeners[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, [null, "google"]);
+  assert.equal(ui.el("advice-title").textContent, "Nothing flagged");
+  assert.deepEqual(ui.el("advice-providers").children.map((b) => b.ariaPressed), ["false", "true"]);
 });
 
 test("a demo with one decision model shows no switch", async () => {

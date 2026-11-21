@@ -311,9 +311,27 @@ export function createTryPage(
     clearTimeout(timer);
     const heard = $(doc, "advice-status");
     if (!advice) {
-      // The first ask shows nothing. A switch that got no answer says so and
-      // leaves the advice already on the page.
-      if (provider && heard) say(heard, "That model did not answer. The advice shown is unchanged.");
+      // A switch that got no answer says so and leaves the advice already on
+      // the page.
+      if (provider) {
+        if (heard) say(heard, "That model did not answer. The advice shown is unchanged.");
+        return;
+      }
+      // The first ask got no answer. With one model there is nothing to
+      // show. With more, the visitor can still ask another: the block shows
+      // with the switch and no reading.
+      if (adviceProviders.length >= 2) {
+        delete box.dataset.land;
+        $(doc, "advice-model").textContent = "";
+        $(doc, "advice-title").textContent = "No answer yet";
+        $(doc, "advice-why").textContent = "The first decision model did not answer. Ask another.";
+        $(doc, "advice-rows").replaceChildren?.();
+        const none = $(doc, "advice-flagged");
+        none.replaceChildren?.();
+        none.hidden = true;
+        showProviders(null);
+        box.hidden = false;
+      }
       return;
     }
     box.dataset.land = advice.land;
@@ -353,7 +371,9 @@ export function createTryPage(
       if (row.mark !== "clear") flagged.appendChild(line(row));
     }
     flagged.hidden = !advice.rows.some((row) => row.mark !== "clear");
-    showProviders(advice.provider);
+    // A switch replaces the buttons, the pressed one included: focus goes to
+    // the button for the model that answered, where the visitor's press was.
+    showProviders(advice.provider, provider !== null);
     box.hidden = false;
     // Said once to a screen reader, where the block's arrival would go
     // unheard; a sighted visitor reads it in the block itself.
@@ -362,7 +382,7 @@ export function createTryPage(
 
   // One button per decision model this demo can ask, the one that answered
   // pressed. Pressing another asks it about the same hand-off.
-  function showProviders(answered) {
+  function showProviders(answered, focus = false) {
     const group = $(doc, "advice-providers");
     if (!group) return;
     if (adviceProviders.length < 2) {
@@ -380,10 +400,14 @@ export function createTryPage(
         if (p.id === answered) return;
         for (const other of group.children) other.disabled = true;
         void showAdvice(p.id).finally(() => {
+          // A model that did not answer leaves these buttons in place:
+          // they work again, and the one pressed keeps the focus.
           for (const other of group.children) other.disabled = false;
+          if (group.children.includes?.(button) ?? button.isConnected) button.focus();
         });
       });
       group.appendChild(button);
+      if (focus && p.id === answered) button.focus();
     }
     group.hidden = false;
   }
