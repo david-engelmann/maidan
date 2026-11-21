@@ -14,7 +14,7 @@ names. If a sentence outruns its evidence, fix the sentence.
   `v445.0.0`, and [Claims](Claims.md) says so. Use the hosted variants, except
   where a listing ships the container image, which is self-hosted by nature.
 - **Name and logo clearance** comes before the first submission. That's the
-  maintainer's call, and it isn't done.
+  maintainer's call, and he gave it on 2026-11-21: both are cleared.
 - **The legal pages are live and the maintainer's.** Every listing links
   <https://maidan.world/privacy>, <https://maidan.world/terms> and
   <https://maidan.world/support> (support@maidan.world); this page doesn't
@@ -128,8 +128,10 @@ that links the docs. It passes that repository's `validate` command. The officia
 dispatched with the release the entry names typed out. GitHub's OIDC token
 proves the `io.github.david-engelmann` namespace, so no secret is involved. The icons point at the PNGs above on
 `main`, so they resolve only after this page's assets are merged. The file
-validates against the registry's 2025-12-11 schema. Nothing has been
-submitted.
+validates against the registry's 2025-12-11 schema. The Docker entry was
+filed on 2026-11-21 (docker/mcp-registry#7499). The registry entry's first
+publish that day was refused on the package's shape, which is corrected,
+and it publishes with the next release.
 
 ## Icons
 
