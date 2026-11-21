@@ -416,7 +416,7 @@ has the questions, the rules and what leaves the deployment.
 | `TYPESAFE_API_KEY` | none | The instance's own key, used for a workspace that stored none. Unset, every workspace brings its own: its admin stores it with `PUT /workspaces/{id}/land-gate/advisor` (`token:admin`), which needs `FEDERATION_ENCRYPTION_KEY` on the instance and answers `409` without it. This variable has no `_FILE` form yet: set it in the environment. |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe `GET /v1/models`. |
 | `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per-request timeout. A timeout fails only the advice call, with `502`. |
-| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`. |
+| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. |
 
 A base URL that is not an origin refuses boot. The provider's name is resolved through the egress guard on the first call and again every ten minutes, so a provider that cannot be reached fails the advice call, not the server.
 

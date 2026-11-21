@@ -386,8 +386,15 @@ pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, Eg
     let port = url
         .port_or_known_default()
         .ok_or(EgressTargetError::InvalidUrl)?;
+    // A URL writes an IPv6 literal in brackets; the lookup takes it bare.
+    // Left in, the bracketed text goes to the system resolver as a name and
+    // never resolves.
+    let lookup_name = host
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(&host);
     let addresses = lookup_with_deadline(
-        tokio::net::lookup_host((host.as_str(), port)),
+        tokio::net::lookup_host((lookup_name, port)),
         EGRESS_RESOLUTION_TIMEOUT,
     )
     .await?;
@@ -1042,6 +1049,19 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(EgressTargetError::Unresolvable)));
+    }
+
+    #[tokio::test]
+    async fn an_ipv6_address_literal_resolves_to_itself() {
+        let target = resolve_egress_target("https://[2606:4700:4700::1111]/hook")
+            .await
+            .unwrap();
+        assert_eq!(
+            target.addresses,
+            vec!["[2606:4700:4700::1111]:443".parse().unwrap()]
+        );
+        // The host keeps the URL's own spelling, for the Host header.
+        assert_eq!(target.host, "[2606:4700:4700::1111]");
     }
 
     #[tokio::test]
