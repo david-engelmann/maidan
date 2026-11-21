@@ -20,14 +20,12 @@
   "name": "io.github.david-engelmann/maidan",
   "packages": [
     {
-      "identifier": "david-engelmann/maidan-server",
-      "registryBaseUrl": "https://ghcr.io",
+      "identifier": "ghcr.io/david-engelmann/maidan-server:v472.0.0",
       "registryType": "oci",
       "transport": {
         "type": "streamable-http",
         "url": "http://localhost:8080/mcp/streamable"
-      },
-      "version": "v472.0.0"
+      }
     }
   ],
   "remotes": [

@@ -45,7 +45,8 @@ jobs:
           import json, os, sys
           entry = json.load(open("listings/registry/server.json"))
           release = os.environ["RELEASE"]
-          versions = {entry["version"]} | {p["version"] for p in entry["packages"]}
+          # An OCI package is one reference, registry/namespace/repository:tag.
+          versions = {entry["version"]} | {p["identifier"].rsplit(":", 1)[1] for p in entry["packages"]}
           if versions != {release.removeprefix("v"), release}:
               sys.exit(f"listings/registry/server.json names {sorted(versions)}, not {release}")
           print(f"publishing {entry['name']} at {release}")
