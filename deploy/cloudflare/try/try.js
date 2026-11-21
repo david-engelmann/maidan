@@ -20,7 +20,7 @@ export const START_RETRY_SECS = 20;
 export const AGENT_PAUSE_MS = 700;
 
 // How long the page waits for advice on the hand-off before it goes on
-// without it. The server gives the model a second and a half.
+// without it. The server gives the model a second and a half, twice.
 export const ADVICE_WAIT_MS = 4000;
 
 const OVERLOADED = "https://maidan.world/problems/overloaded";

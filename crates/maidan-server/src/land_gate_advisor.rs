@@ -969,15 +969,27 @@ impl Backend {
     ) -> Result<LandGateAdvice, LandGateAdvisorError> {
         let body = request_body(self.provider, &self.model, state);
         let started = Instant::now();
-        let request = self.client().await?.post(self.ask_url(&key.value)?);
-        let response = self
-            .provider
-            .authorize(request, &key.value)
-            .timeout(timeout)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| LandGateAdvisorError::Unavailable(error.to_string()))?;
+        let client = self.client().await?;
+        let url = self.ask_url(&key.value)?;
+        let mut asked_again = false;
+        let response = loop {
+            let request = self
+                .provider
+                .authorize(client.post(url.clone()), &key.value)
+                .timeout(timeout)
+                .json(&body);
+            match request.send().await {
+                Ok(response) => break response,
+                // A provider's answers are quick with a rare slow one, many
+                // times the usual: measured, about one in sixty of
+                // Perplexity's took five to ten seconds. The same question
+                // asked again is answered at the usual speed, so a timeout is
+                // tried once more before the call fails. Anything else the
+                // provider answered or refused is not asked twice.
+                Err(error) if error.is_timeout() && !asked_again => asked_again = true,
+                Err(error) => return Err(LandGateAdvisorError::Unavailable(error.to_string())),
+            }
+        };
         if !response.status().is_success() {
             return Err(LandGateAdvisorError::Unavailable(format!(
                 "provider returned {}",
