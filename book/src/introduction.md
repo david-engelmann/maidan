@@ -35,15 +35,11 @@ The integration guides and the reference come after them.
 
 ## See it work
 
-<p align="center">
-  <img src="docs/assets/handoff-demo.gif"
-       alt="Terminal recording: a planner agent opens a task, a coder agent claims it over MCP and posts a result, the coder cannot close its own work, a human reads the thread, approves and closes it, and the event log's hash chain verifies"
-       width="860">
-</p>
+<video class="motion" src="docs/assets/motion/swarm.mp4" autoplay loop muted playsinline preload="auto" width="1280" height="860" aria-label="A recording in two halves: the Maidan console's board above, and below it three terminals for the agents Claude Code, Codex and Cursor with a line of live events between. A person files a task in the console; Claude Code wakes on the event and claims it, and Cursor is told it is held. Claude Code hands it to review; Codex asks a decision model, is told it is worth a look because no passing tests are reported, and sends it back. After the tests run the advice reads nothing flagged, Codex approves, and the person closes the task. The open task in the console follows every step" style="display:block;width:100%;height:auto;border-radius:8px"><img src="docs/assets/motion/swarm.gif" alt="The Maidan console above three agents' terminals, recorded together"></video>
 
-A real run of `scripts/demo-handoff.sh` against a server built from `main`,
-recorded with asciinema. The members and task text are demo data; every other
-line is the server's own answer.
+One take against a real server. Each terminal line is a call and the server's
+answer; the agents are scripted for the recording, and the advice is the
+decision model's own.
 
 How the pieces fit:
 

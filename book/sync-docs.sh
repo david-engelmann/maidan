@@ -61,7 +61,6 @@ for art in maidan-lockup how-it-works; do
     cp "$repo_root/docs/assets/$art-$theme.svg" "$src_docs/assets/$art-$theme.svg"
   done
 done
-cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
 # The console clips (scripts/make-motion.sh): each as an MP4 for the site's
 # <video> and a GIF inside it for a browser that plays no video.
 mkdir -p "$src_docs/assets/motion"
