@@ -14,7 +14,7 @@ names. If a sentence outruns its evidence, fix the sentence.
   `v445.0.0`, and [Claims](Claims.md) says so. Use the hosted variants, except
   where a listing ships the container image, which is self-hosted by nature.
 - **Name and logo clearance** comes before the first submission. That's the
-  maintainer's call, and it isn't done.
+  maintainer's call, and he gave it on 2026-11-21: both are cleared.
 - **The legal pages are live and the maintainer's.** Every listing links
   <https://maidan.world/privacy>, <https://maidan.world/terms> and
   <https://maidan.world/support> (support@maidan.world); this page doesn't
