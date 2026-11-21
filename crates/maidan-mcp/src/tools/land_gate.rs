@@ -111,6 +111,8 @@ struct AdviseArgs {
     thread_id: uuid::Uuid,
     #[serde(default)]
     refresh: bool,
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 /// Ask the optional advisor about a hand-off. Twin of
@@ -127,7 +129,10 @@ pub(super) async fn advise_land_gate(
         return Err(McpError::NotFound);
     };
     let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
-    match advisor.advise(workspace_id, thread_id, a.refresh).await {
+    match advisor
+        .advise(workspace_id, thread_id, a.refresh, a.provider)
+        .await
+    {
         Ok(advice) => Ok(content_json(&advice)),
         Err(crate::land_gate_advice::LandGateAdviseError::Invalid(error)) => {
             Err(McpError::InvalidParams(error))

@@ -8308,9 +8308,18 @@
       "readOnlyHint": true,
       "title": "Advise land gate"
     },
-    "description": "Ask a decision model (TypeSafe's Jev) for advice on a task handed to review. Maidan sends the task's title, description and acceptance, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment never counts toward green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a TypeSafe key unless the instance has one. Requires thread:transition.",
+    "description": "Ask a decision model (TypeSafe's Jev, OpenAI's Decisions API or Google's Gemini Decisions API) for advice on a task handed to review. Maidan sends the task's title, description and acceptance, its result and what the agent said, and returns ten yes/no judgments, each with a probability (does what the task asks, reports tests passing, the task asks for a code change, reports a failure, left work undone, asks a person, changes something not asked for, changes sign-in or permissions, deletes data, warns of a risk), plus land: green, amber or red by fixed rules. An unsettled judgment never counts toward green. Advice only: it does not write the gate, approve or close. NotFound when the instance offers no advice; the workspace needs a key for the provider asked unless the instance has one. Requires thread:transition.",
     "inputSchema": {
       "properties": {
+        "provider": {
+          "description": "Which provider to ask. Omitted, the first one the workspace has a key for, in this order.",
+          "enum": [
+            "typesafe",
+            "openai",
+            "google"
+          ],
+          "type": "string"
+        },
         "refresh": {
           "description": "Ask the model again even when an answer for this exact hand-off is held.",
           "type": "boolean"

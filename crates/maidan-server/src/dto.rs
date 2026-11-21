@@ -435,14 +435,29 @@ pub struct SetLandGate {
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetLandGateAdvisor {
-    /// The workspace's own TypeSafe API key. Stored encrypted, never returned.
+    /// The workspace's own API key for the provider. Stored encrypted, never
+    /// returned.
     pub api_key: String,
+    /// Whose key it is. Absent, TypeSafe's.
+    #[serde(default)]
+    pub provider: Option<crate::land_gate_advisor::AdvisorProvider>,
+}
+
+/// The query of `DELETE /workspaces/{id}/land-gate/advisor`.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+#[serde(deny_unknown_fields)]
+pub struct ClearLandGateAdvisor {
+    /// Whose key to forget. Absent, TypeSafe's.
+    #[serde(default)]
+    pub provider: Option<crate::land_gate_advisor::AdvisorProvider>,
 }
 
 impl std::fmt::Debug for SetLandGateAdvisor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SetLandGateAdvisor")
             .field("api_key", &"<redacted>")
+            .field("provider", &self.provider)
             .finish()
     }
 }

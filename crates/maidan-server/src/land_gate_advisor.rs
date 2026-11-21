@@ -1,4 +1,5 @@
-//! Advice at the land gate from a decision model (TypeSafe's Jev).
+//! Advice at the land gate from a decision model: TypeSafe's Jev, OpenAI's
+//! Decisions API or Google's Gemini Decisions API.
 //!
 //! The model makes judgments and code makes the decision. A hand-off to review
 //! is read as a short packet (what the task asks for, the result, what the
@@ -26,16 +27,137 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use utoipa::ToSchema;
 
-const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/";
-const DEFAULT_MODEL: &str = "jev-latest";
 const DEFAULT_TIMEOUT_MS: u64 = 1_500;
 
-/// The workspace secret that holds a workspace's own TypeSafe key. The name
-/// is one the server keeps for itself (`maidan_types::RESERVED_SECRET_PREFIX`):
-/// no generic secret route or tool creates, lists, resolves, substitutes or
-/// deletes it, so the key is set only after the provider accepted it and is
-/// sent only to the provider.
-pub const WORKSPACE_KEY_SECRET: &str = "maidan:typesafe_api_key";
+/// A provider of decision models the advisor can put its questions to. All
+/// three are asked the same ten questions and read by the same rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdvisorProvider {
+    /// TypeSafe's Jev (`POST /v1/systemone`).
+    Typesafe,
+    /// OpenAI's Decisions API (`POST /v1/decisions`).
+    Openai,
+    /// Google's Gemini Decisions API (`POST /v1beta/decisions`).
+    Google,
+}
+
+impl AdvisorProvider {
+    /// Every provider, in the order a call that names none tries them.
+    pub const ALL: [Self; 3] = [Self::Typesafe, Self::Openai, Self::Google];
+
+    /// The name the API and stored advice use.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Typesafe => "typesafe",
+            Self::Openai => "openai",
+            Self::Google => "google",
+        }
+    }
+
+    /// The provider from its [`Self::id`].
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|provider| provider.id() == id)
+    }
+
+    /// The name a person reads.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Typesafe => "TypeSafe Jev",
+            Self::Openai => "OpenAI Decisions",
+            Self::Google => "Gemini Decisions",
+        }
+    }
+
+    /// Who the key belongs to, for a sentence about it.
+    fn vendor(self) -> &'static str {
+        match self {
+            Self::Typesafe => "TypeSafe",
+            Self::Openai => "OpenAI",
+            Self::Google => "Google",
+        }
+    }
+
+    /// The workspace secret that holds a workspace's own key for this
+    /// provider. Each name is one the server keeps for itself
+    /// (`maidan_types::RESERVED_SECRET_PREFIX`): no generic secret route or
+    /// tool creates, lists, resolves, substitutes or deletes it, so a key is
+    /// set only after its provider accepted it and is sent only to that
+    /// provider.
+    pub fn secret(self) -> &'static str {
+        match self {
+            Self::Typesafe => "maidan:typesafe_api_key",
+            Self::Openai => "maidan:openai_api_key",
+            Self::Google => "maidan:gemini_api_key",
+        }
+    }
+
+    /// The variable an instance's own key for this provider is read from.
+    fn key_env(self) -> &'static str {
+        match self {
+            Self::Typesafe => "TYPESAFE_API_KEY",
+            Self::Openai => "OPENAI_API_KEY",
+            Self::Google => "GEMINI_API_KEY",
+        }
+    }
+
+    fn model_env(self) -> &'static str {
+        match self {
+            Self::Typesafe => "MAIDAN_JEV_MODEL",
+            Self::Openai => "MAIDAN_OPENAI_DECISIONS_MODEL",
+            Self::Google => "MAIDAN_GEMINI_DECISIONS_MODEL",
+        }
+    }
+
+    fn base_url_env(self) -> &'static str {
+        match self {
+            Self::Typesafe => "MAIDAN_JEV_BASE_URL",
+            Self::Openai => "MAIDAN_OPENAI_DECISIONS_BASE_URL",
+            Self::Google => "MAIDAN_GEMINI_DECISIONS_BASE_URL",
+        }
+    }
+
+    fn default_base_url(self) -> &'static str {
+        match self {
+            Self::Typesafe => "https://api.typesafe.ai/",
+            Self::Openai => "https://api.openai.com/",
+            Self::Google => "https://generativelanguage.googleapis.com/",
+        }
+    }
+
+    fn default_model(self) -> &'static str {
+        match self {
+            Self::Typesafe => "jev-latest",
+            Self::Openai => "gpt-6-luna",
+            Self::Google => "gemini-decision-1",
+        }
+    }
+
+    /// Where the questions are sent, under the provider's origin.
+    fn ask_path(self) -> &'static str {
+        match self {
+            Self::Typesafe => "v1/systemone",
+            Self::Openai => "v1/decisions",
+            Self::Google => "v1beta/decisions",
+        }
+    }
+
+    /// A cheap authenticated read, to learn whether the provider takes a key.
+    fn models_path(self) -> &'static str {
+        match self {
+            Self::Typesafe | Self::Openai => "v1/models",
+            Self::Google => "v1beta/models",
+        }
+    }
+
+    /// Put the key on a request the way this provider reads it.
+    fn authorize(self, request: reqwest::RequestBuilder, key: &str) -> reqwest::RequestBuilder {
+        match self {
+            Self::Typesafe | Self::Openai => request.bearer_auth(key),
+            Self::Google => request.header("x-goog-api-key", key),
+        }
+    }
+}
 
 /// At or above this a judgment reads as yes.
 pub const YES_MIN: f64 = 0.7;
@@ -246,6 +368,10 @@ pub struct LandGateAdviceRequest {
     /// Ask the model again even when an answer for this exact hand-off is held.
     #[serde(default)]
     pub refresh: bool,
+    /// Which provider to ask. Absent, the first one this workspace has a key
+    /// for is asked, in the order of [`AdvisorProvider::ALL`].
+    #[serde(default)]
+    pub provider: Option<AdvisorProvider>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -336,22 +462,40 @@ pub struct LandGateAdvice {
     pub latency_ms: u64,
 }
 
+/// One provider as a workspace sees it.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct LandGateAdvisorProvider {
+    pub id: AdvisorProvider,
+    /// The provider's name as a person reads it.
+    pub name: String,
+    /// The model and host a hand-off is sent to.
+    pub model: String,
+    pub host: String,
+    /// Whose key a call from this workspace would use; absent when there is
+    /// none, and then this provider is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_source: Option<AdvisorKeySource>,
+}
+
 /// What a workspace has set up, for `GET /workspaces/{id}/land-gate/advisor`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LandGateAdvisorStatus {
     /// Whether this instance offers advice at all.
     pub enabled: bool,
-    /// Whose key a call from this workspace would use; absent when there is
-    /// none, and then advice is refused.
+    /// The provider a call that names none would ask: the first with a key
+    /// for this workspace, or the first of all when none has one. The four
+    /// fields below describe it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_source: Option<AdvisorKeySource>,
-    /// The provider, model and host the hand-off is sent to, when enabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
+    /// Every provider this instance can ask, each with whose key it would use.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub providers: Vec<LandGateAdvisorProvider>,
 }
 
 impl LandGateAdvisorStatus {
@@ -362,23 +506,58 @@ impl LandGateAdvisorStatus {
             provider: None,
             model: None,
             host: None,
+            providers: Vec::new(),
         }
+    }
+
+    fn of(providers: Vec<LandGateAdvisorProvider>) -> Self {
+        let chosen = providers
+            .iter()
+            .find(|provider| provider.key_source.is_some())
+            .or(providers.first());
+        Self {
+            enabled: true,
+            key_source: chosen.and_then(|provider| provider.key_source),
+            provider: chosen.map(|provider| provider.id.id().to_string()),
+            model: chosen.map(|provider| provider.model.clone()),
+            host: chosen.map(|provider| provider.host.clone()),
+            providers,
+        }
+    }
+
+    /// The same status with one provider's key changed: what a write that
+    /// just committed made true, without a second read that could fail.
+    pub fn with_key(self, provider: AdvisorProvider, key_source: Option<AdvisorKeySource>) -> Self {
+        let mut providers = self.providers;
+        for entry in &mut providers {
+            if entry.id == provider {
+                entry.key_source = key_source;
+            }
+        }
+        Self::of(providers)
     }
 }
 
-struct Settings {
+/// One provider as the instance was started: its key, if the instance has
+/// one, and where and what to ask.
+struct ProviderSettings {
+    provider: AdvisorProvider,
     /// The instance's own key. Without one, only a workspace that stored its
-    /// own key gets advice.
+    /// own key for this provider gets advice from it.
     api_key: Option<String>,
     base_url: String,
+    model: String,
+}
+
+struct Settings {
+    providers: Vec<ProviderSettings>,
     /// The `.internal` names this instance may send to. With a listed
-    /// loopback address they are the only hosts the provider may be reached
+    /// loopback address they are the only hosts a provider may be reached
     /// at over plain HTTP.
     internal_hosts: Vec<String>,
     /// The loopback addresses among the private peers the operator listed
     /// (`MAIDAN_PRIVATE_EGRESS_HOSTS`): a stand-in provider on this machine.
     loopback_peers: Vec<std::net::IpAddr>,
-    model: String,
     timeout: Duration,
 }
 
@@ -401,9 +580,6 @@ impl Settings {
         if !enabled {
             return Ok(None);
         }
-        let api_key = get("TYPESAFE_API_KEY")
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
         let timeout_ms = get("MAIDAN_JEV_TIMEOUT_MS")
             .map(|value| {
                 value.trim().parse::<u64>().map_err(|_| {
@@ -419,18 +595,30 @@ impl Settings {
                 "MAIDAN_JEV_TIMEOUT_MS must be a positive integer".into(),
             ));
         }
-        let model = get("MAIDAN_JEV_MODEL")
-            .unwrap_or_else(|| DEFAULT_MODEL.into())
-            .trim()
-            .to_string();
-        if model.is_empty() {
-            return Err(LandGateAdvisorError::Config(
-                "MAIDAN_JEV_MODEL must not be empty".into(),
-            ));
+        let mut providers = Vec::new();
+        for provider in AdvisorProvider::ALL {
+            let model = get(provider.model_env())
+                .unwrap_or_else(|| provider.default_model().into())
+                .trim()
+                .to_string();
+            if model.is_empty() {
+                return Err(LandGateAdvisorError::Config(format!(
+                    "{} must not be empty",
+                    provider.model_env()
+                )));
+            }
+            providers.push(ProviderSettings {
+                provider,
+                api_key: get(provider.key_env())
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                base_url: get(provider.base_url_env())
+                    .unwrap_or_else(|| provider.default_base_url().into()),
+                model,
+            });
         }
         Ok(Some(Self {
-            api_key,
-            base_url: get("MAIDAN_JEV_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.into()),
+            providers,
             internal_hosts: get(maidan_auth::INTERNAL_EGRESS_HOSTS_ENV)
                 .map(|raw| maidan_auth::parse_internal_egress_hosts(&raw))
                 .unwrap_or_default(),
@@ -443,7 +631,6 @@ impl Settings {
                 .filter_map(|host| host.parse::<std::net::IpAddr>().ok())
                 .filter(std::net::IpAddr::is_loopback)
                 .collect(),
-            model,
             timeout: Duration::from_millis(timeout_ms),
         }))
     }
@@ -460,7 +647,7 @@ struct Held {
     advice: LandGateAdvice,
 }
 
-/// How the advisor reaches the provider.
+/// How the advisor reaches a provider.
 enum Transport {
     /// Through the egress guard: the name is resolved, checked and pinned,
     /// and looked up again every [`RESOLVE_TTL`]. Resolving on first use, not
@@ -471,108 +658,41 @@ enum Transport {
     Fixed(Client),
 }
 
-/// The advisor: the instance's settings, a client for the provider and a
-/// short-lived hold of answers, so a sheet opened twice asks once.
-pub struct LandGateAdvisor {
+/// One provider, ready to be asked.
+struct Backend {
+    provider: AdvisorProvider,
     transport: Transport,
     base_url: Url,
     endpoint: Url,
     instance_key: Option<String>,
     model: String,
-    timeout: Duration,
     /// How many bytes the packet may take of [`MAX_REQUEST_BYTES`], once the
     /// model's name and the questions have theirs.
     state_budget: usize,
-    held: Mutex<HashMap<String, Held>>,
 }
 
-impl LandGateAdvisor {
-    fn from_settings(settings: Settings) -> Result<Self, LandGateAdvisorError> {
-        let base_url: Url = settings.base_url.trim().parse().map_err(|error| {
-            LandGateAdvisorError::Config(format!("invalid MAIDAN_JEV_BASE_URL: {error}"))
-        })?;
-        if !matches!(base_url.scheme(), "https" | "http")
-            || base_url.host_str().is_none()
-            || base_url.path() != "/"
-            || base_url.query().is_some()
-            || base_url.fragment().is_some()
-            || !base_url.username().is_empty()
-            || base_url.password().is_some()
-        {
-            return Err(LandGateAdvisorError::Config(
-                "MAIDAN_JEV_BASE_URL must be an origin URL without a path, query, or fragment"
-                    .into(),
-            ));
-        }
-        // The key travels as a bearer: over plain HTTP only to a relay of our
-        // own, a name listed in MAIDAN_INTERNAL_EGRESS_HOSTS, or to this
-        // machine, a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS,
-        // where nothing crosses a network.
-        let host = base_url.host_str().unwrap_or_default().to_ascii_lowercase();
-        let host = host
-            .strip_prefix('[')
-            .and_then(|rest| rest.strip_suffix(']'))
-            .unwrap_or(&host)
-            .to_string();
-        let listed_loopback = host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| settings.loopback_peers.contains(&address));
-        if base_url.scheme() == "http"
-            && !settings.internal_hosts.contains(&host)
-            && !listed_loopback
-        {
-            return Err(LandGateAdvisorError::Config(
-                "MAIDAN_JEV_BASE_URL must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS or is a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS"
-                    .into(),
-            ));
-        }
-        Self::build(
-            Transport::Guarded(tokio::sync::Mutex::new(None)),
-            base_url,
-            settings.api_key,
-            settings.model,
-            settings.timeout,
-        )
-    }
-
-    /// Build an advisor on a client the caller made: the constructor tests and
-    /// test servers use, which reach a stand-in on a loopback address.
-    pub fn with_http(
-        client: Client,
-        base_url: Url,
-        instance_key: Option<String>,
-        model: impl Into<String>,
-        timeout: Duration,
-    ) -> Result<Self, LandGateAdvisorError> {
-        Self::build(
-            Transport::Fixed(client),
-            base_url,
-            instance_key,
-            model.into(),
-            timeout,
-        )
-    }
-
+impl Backend {
     fn build(
+        provider: AdvisorProvider,
         transport: Transport,
         base_url: Url,
         instance_key: Option<String>,
         model: String,
-        timeout: Duration,
     ) -> Result<Self, LandGateAdvisorError> {
-        let endpoint = base_url.join("v1/systemone").map_err(|error| {
-            LandGateAdvisorError::Config(format!("invalid MAIDAN_JEV_BASE_URL: {error}"))
+        let endpoint = base_url.join(provider.ask_path()).map_err(|error| {
+            LandGateAdvisorError::Config(format!("invalid {}: {error}", provider.base_url_env()))
         })?;
-        let envelope = request_body(&model, &Value::Null).to_string().len();
+        let envelope = request_body(provider, &model, &Value::Null)
+            .to_string()
+            .len();
         Ok(Self {
+            provider,
             transport,
             base_url,
             endpoint,
             instance_key,
             state_budget: (MAX_REQUEST_BYTES + "null".len()).saturating_sub(envelope),
             model,
-            timeout,
-            held: Mutex::new(HashMap::new()),
         })
     }
 
@@ -608,7 +728,7 @@ impl LandGateAdvisor {
         workspace_id: WorkspaceId,
     ) -> Result<Option<AdvisorKeySource>, LandGateAdvisorError> {
         let own = store
-            .get_secret_ciphertext(workspace_id, WORKSPACE_KEY_SECRET)
+            .get_secret_ciphertext(workspace_id, self.provider.secret())
             .await?;
         Ok(match (own, &self.instance_key) {
             (Some(_), _) => Some(AdvisorKeySource::Workspace),
@@ -617,42 +737,13 @@ impl LandGateAdvisor {
         })
     }
 
-    /// What `workspace_id` has set up.
-    pub async fn status(
-        &self,
-        store: &dyn Store,
-        workspace_id: WorkspaceId,
-    ) -> Result<LandGateAdvisorStatus, LandGateAdvisorError> {
-        Ok(self.status_with(self.key_source(store, workspace_id).await?))
-    }
-
-    /// The status for a workspace whose own key was just stored.
-    pub fn status_with_own_key(&self) -> LandGateAdvisorStatus {
-        self.status_with(Some(AdvisorKeySource::Workspace))
-    }
-
-    /// The status for a workspace whose own key was just forgotten: the
-    /// instance's key if it has one, else none.
-    pub fn status_without_own_key(&self) -> LandGateAdvisorStatus {
-        self.status_with(
-            self.instance_key
-                .as_ref()
-                .map(|_| AdvisorKeySource::Instance),
-        )
-    }
-
-    /// Whether the instance has a key of its own to fall back on.
-    pub fn has_instance_key(&self) -> bool {
-        self.instance_key.is_some()
-    }
-
-    fn status_with(&self, key_source: Option<AdvisorKeySource>) -> LandGateAdvisorStatus {
-        LandGateAdvisorStatus {
-            enabled: true,
+    fn status_with(&self, key_source: Option<AdvisorKeySource>) -> LandGateAdvisorProvider {
+        LandGateAdvisorProvider {
+            id: self.provider,
+            name: self.provider.name().into(),
+            model: self.model.clone(),
+            host: self.host(),
             key_source,
-            provider: Some("typesafe".into()),
-            model: Some(self.model.clone()),
-            host: Some(self.host()),
         }
     }
 
@@ -664,7 +755,7 @@ impl LandGateAdvisor {
         workspace_id: WorkspaceId,
     ) -> Result<ResolvedKey, LandGateAdvisorError> {
         if let Some(ciphertext) = store
-            .get_secret_ciphertext(workspace_id, WORKSPACE_KEY_SECRET)
+            .get_secret_ciphertext(workspace_id, self.provider.secret())
             .await?
         {
             let key = encryption_key.ok_or_else(|| {
@@ -684,42 +775,316 @@ impl LandGateAdvisor {
                 value: value.clone(),
                 source: AdvisorKeySource::Instance,
             }),
-            None => Err(LandGateAdvisorError::NotReady(
-                "this workspace has no TypeSafe key: store one with PUT /workspaces/{id}/land-gate/advisor"
-                    .into(),
-            )),
+            None => Err(LandGateAdvisorError::NotReady(format!(
+                "this workspace has no {} key: store one with PUT /workspaces/{{id}}/land-gate/advisor",
+                self.provider.vendor()
+            ))),
         }
     }
 
     /// Ask the provider whether it accepts `api_key`, before a workspace
     /// stores it. A refusal is the caller's mistake; anything else is ours.
-    pub async fn check_key(&self, api_key: &str) -> Result<(), LandGateAdvisorError> {
-        let models = self.base_url.join("v1/models").map_err(|error| {
-            LandGateAdvisorError::Config(format!("invalid MAIDAN_JEV_BASE_URL: {error}"))
-        })?;
+    async fn check_key(
+        &self,
+        api_key: &str,
+        timeout: Duration,
+    ) -> Result<(), LandGateAdvisorError> {
+        let models = self
+            .base_url
+            .join(self.provider.models_path())
+            .map_err(|error| {
+                LandGateAdvisorError::Config(format!(
+                    "invalid {}: {error}",
+                    self.provider.base_url_env()
+                ))
+            })?;
+        let request = self.client().await?.get(models);
         let response = self
-            .client()
-            .await?
-            .get(models)
-            .bearer_auth(api_key)
-            .timeout(self.timeout.max(Duration::from_secs(5)))
+            .provider
+            .authorize(request, api_key)
+            .timeout(timeout.max(Duration::from_secs(5)))
             .send()
             .await
             .map_err(|error| LandGateAdvisorError::Unavailable(error.to_string()))?;
         let status = response.status();
+        // Google answers a key it does not know with 400, not 401.
+        let refused = status == reqwest::StatusCode::UNAUTHORIZED
+            || status == reqwest::StatusCode::FORBIDDEN
+            || (self.provider == AdvisorProvider::Google
+                && status == reqwest::StatusCode::BAD_REQUEST);
         if status.is_success() {
             Ok(())
-        } else if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
-            Err(LandGateAdvisorError::InvalidRequest(
-                "TypeSafe refused this key".into(),
-            ))
+        } else if refused {
+            Err(LandGateAdvisorError::InvalidRequest(format!(
+                "{} refused this key",
+                self.provider.vendor()
+            )))
         } else {
             Err(LandGateAdvisorError::Unavailable(format!(
                 "provider returned {status}"
             )))
         }
+    }
+
+    /// The largest packet of this hand-off whose whole request stays within
+    /// [`MAX_REQUEST_BYTES`]. A provider that takes the packet as text pays
+    /// for every quote in it twice, so the packet is cut further until the
+    /// request it makes fits.
+    fn packet(&self, hand_off: &HandOff) -> Option<Value> {
+        let mut budget = self.state_budget;
+        for _ in 0..6 {
+            let state = hand_off.packet(budget)?;
+            let size = request_body(self.provider, &self.model, &state)
+                .to_string()
+                .len();
+            if size <= MAX_REQUEST_BYTES {
+                return Some(state);
+            }
+            budget = budget.saturating_sub(size - MAX_REQUEST_BYTES + 64);
+        }
+        None
+    }
+
+    async fn ask(
+        &self,
+        state: &Value,
+        key: &ResolvedKey,
+        timeout: Duration,
+    ) -> Result<LandGateAdvice, LandGateAdvisorError> {
+        let body = request_body(self.provider, &self.model, state);
+        let started = Instant::now();
+        let request = self.client().await?.post(self.endpoint.clone());
+        let response = self
+            .provider
+            .authorize(request, &key.value)
+            .timeout(timeout)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| LandGateAdvisorError::Unavailable(error.to_string()))?;
+        if !response.status().is_success() {
+            return Err(LandGateAdvisorError::Unavailable(format!(
+                "provider returned {}",
+                response.status()
+            )));
+        }
+        let response: Value = response
+            .json()
+            .await
+            .map_err(|error| LandGateAdvisorError::InvalidResponse(error.to_string()))?;
+        let latency_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        let answered = answers(self.provider, &response)?;
+        let (land, reasons) = decide(&answered.probabilities);
+        let judgments = QUESTIONS
+            .iter()
+            .map(|question| {
+                let probability = answered
+                    .probabilities
+                    .get(question.id)
+                    .copied()
+                    .unwrap_or(0.5);
+                let answer = JudgmentAnswer::of(probability);
+                let concern = reasons.iter().any(|reason| concerns(reason, question.id));
+                LandGateJudgment {
+                    id: question.id.into(),
+                    label: question.label.into(),
+                    probability,
+                    answer,
+                    reading: reading(question, answer, concern).into(),
+                    concern,
+                }
+            })
+            .collect();
+        Ok(LandGateAdvice {
+            provider: self.provider.id().into(),
+            model: answered.model.unwrap_or_else(|| self.model.clone()),
+            land,
+            reasons: reasons.into_iter().map(str::to_string).collect(),
+            judgments,
+            thresholds: LandGateAdviceThresholds {
+                yes_min: YES_MIN,
+                no_max: NO_MAX,
+            },
+            key_source: key.source,
+            cached: false,
+            usage: answered.usage,
+            latency_ms,
+        })
+    }
+}
+
+/// The advisor: every provider this instance can ask and a short-lived hold
+/// of answers, so a sheet opened twice asks once.
+pub struct LandGateAdvisor {
+    backends: Vec<Backend>,
+    timeout: Duration,
+    held: Mutex<HashMap<String, Held>>,
+}
+
+impl LandGateAdvisor {
+    fn from_settings(settings: Settings) -> Result<Self, LandGateAdvisorError> {
+        let mut backends = Vec::new();
+        for provider in &settings.providers {
+            let name = provider.provider.base_url_env();
+            let base_url: Url = provider.base_url.trim().parse().map_err(|error| {
+                LandGateAdvisorError::Config(format!("invalid {name}: {error}"))
+            })?;
+            if !matches!(base_url.scheme(), "https" | "http")
+                || base_url.host_str().is_none()
+                || base_url.path() != "/"
+                || base_url.query().is_some()
+                || base_url.fragment().is_some()
+                || !base_url.username().is_empty()
+                || base_url.password().is_some()
+            {
+                return Err(LandGateAdvisorError::Config(format!(
+                    "{name} must be an origin URL without a path, query, or fragment"
+                )));
+            }
+            // The key travels in a header: over plain HTTP only to a relay of
+            // our own, a name listed in MAIDAN_INTERNAL_EGRESS_HOSTS, or to
+            // this machine, a loopback address listed in
+            // MAIDAN_PRIVATE_EGRESS_HOSTS, where nothing crosses a network.
+            let host = base_url.host_str().unwrap_or_default().to_ascii_lowercase();
+            let host = host
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+                .unwrap_or(&host)
+                .to_string();
+            let listed_loopback = host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| settings.loopback_peers.contains(&address));
+            if base_url.scheme() == "http"
+                && !settings.internal_hosts.contains(&host)
+                && !listed_loopback
+            {
+                return Err(LandGateAdvisorError::Config(format!(
+                    "{name} must be https, unless its host is listed in MAIDAN_INTERNAL_EGRESS_HOSTS or is a loopback address listed in MAIDAN_PRIVATE_EGRESS_HOSTS"
+                )));
+            }
+            backends.push(Backend::build(
+                provider.provider,
+                Transport::Guarded(tokio::sync::Mutex::new(None)),
+                base_url,
+                provider.api_key.clone(),
+                provider.model.clone(),
+            )?);
+        }
+        Ok(Self {
+            backends,
+            timeout: settings.timeout,
+            held: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// Build an advisor on a client the caller made: the constructor tests and
+    /// test servers use, which reach a stand-in on a loopback address. The
+    /// stand-in answers for every provider; `instance_key` and `model` are
+    /// TypeSafe's, and the other two start with no key of the instance's.
+    pub fn with_http(
+        client: Client,
+        base_url: Url,
+        instance_key: Option<String>,
+        model: impl Into<String>,
+        timeout: Duration,
+    ) -> Result<Self, LandGateAdvisorError> {
+        let mut advisor =
+            Self::with_http_keys(client, base_url, [instance_key, None, None], timeout)?;
+        advisor.backends[0].model = model.into();
+        Ok(advisor)
+    }
+
+    /// As [`Self::with_http`], with the instance's key for each provider in
+    /// the order of [`AdvisorProvider::ALL`].
+    pub fn with_http_keys(
+        client: Client,
+        base_url: Url,
+        instance_keys: [Option<String>; 3],
+        timeout: Duration,
+    ) -> Result<Self, LandGateAdvisorError> {
+        let backends = AdvisorProvider::ALL
+            .into_iter()
+            .zip(instance_keys)
+            .map(|(provider, key)| {
+                Backend::build(
+                    provider,
+                    Transport::Fixed(client.clone()),
+                    base_url.clone(),
+                    key,
+                    provider.default_model().into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            backends,
+            timeout,
+            held: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn backend(&self, provider: AdvisorProvider) -> Result<&Backend, LandGateAdvisorError> {
+        self.backends
+            .iter()
+            .find(|backend| backend.provider == provider)
+            .ok_or_else(|| {
+                LandGateAdvisorError::NotReady(format!(
+                    "this instance does not offer {}",
+                    provider.name()
+                ))
+            })
+    }
+
+    /// What `workspace_id` has set up, provider by provider.
+    pub async fn status(
+        &self,
+        store: &dyn Store,
+        workspace_id: WorkspaceId,
+    ) -> Result<LandGateAdvisorStatus, LandGateAdvisorError> {
+        let mut providers = Vec::with_capacity(self.backends.len());
+        for backend in &self.backends {
+            providers.push(backend.status_with(backend.key_source(store, workspace_id).await?));
+        }
+        Ok(LandGateAdvisorStatus::of(providers))
+    }
+
+    /// Whether the instance has a key of its own for `provider`.
+    pub fn has_instance_key(&self, provider: AdvisorProvider) -> bool {
+        self.backend(provider)
+            .is_ok_and(|backend| backend.instance_key.is_some())
+    }
+
+    /// Ask `provider` whether it accepts `api_key`, before a workspace
+    /// stores it.
+    pub async fn check_key(
+        &self,
+        provider: AdvisorProvider,
+        api_key: &str,
+    ) -> Result<(), LandGateAdvisorError> {
+        self.backend(provider)?
+            .check_key(api_key, self.timeout)
+            .await
+    }
+
+    /// The provider a call asks: the one it names, or the first this
+    /// workspace has a key for.
+    async fn chosen(
+        &self,
+        store: &dyn Store,
+        workspace_id: WorkspaceId,
+        named: Option<AdvisorProvider>,
+    ) -> Result<&Backend, LandGateAdvisorError> {
+        if let Some(provider) = named {
+            return self.backend(provider);
+        }
+        for backend in &self.backends {
+            if backend.key_source(store, workspace_id).await?.is_some() {
+                return Ok(backend);
+            }
+        }
+        Err(LandGateAdvisorError::NotReady(
+            "this workspace has no key for a decision model: store one with PUT /workspaces/{id}/land-gate/advisor"
+                .into(),
+        ))
     }
 
     /// Advise on `thread_id`'s hand-off. The caller has already checked that
@@ -733,27 +1098,33 @@ impl LandGateAdvisor {
         thread_id: ThreadId,
         request: LandGateAdviceRequest,
     ) -> Result<LandGateAdvice, LandGateAdvisorError> {
-        let state = hand_off(store, thread_id)
-            .await?
-            .packet(self.state_budget)
+        let backend = self.chosen(store, workspace_id, request.provider).await?;
+        let state = backend
+            .packet(&hand_off(store, thread_id).await?)
             .ok_or_else(|| {
                 LandGateAdvisorError::NotReady(
                     "this hand-off is too large to send for advice".into(),
                 )
             })?;
-        let key = self
+        let key = backend
             .resolve_key(store, encryption_key, workspace_id)
             .await?;
         // Held under the key's owner too: an answer one key paid for is never
         // shown as another's, and a workspace that adds its key asks with it.
-        let held_as = held_as(workspace_id, &self.model, key.source, &state);
+        let held_as = held_as(
+            workspace_id,
+            backend.provider,
+            &backend.model,
+            key.source,
+            &state,
+        );
         if !request.refresh
             && let Some(mut advice) = self.held(&held_as)
         {
             advice.cached = true;
             return Ok(advice);
         }
-        let advice = self.ask(&state, &key).await?;
+        let advice = backend.ask(&state, &key, self.timeout).await?;
         self.hold(held_as, advice.clone());
         Ok(advice)
     }
@@ -783,109 +1154,111 @@ impl LandGateAdvisor {
             },
         );
     }
-
-    async fn ask(
-        &self,
-        state: &Value,
-        key: &ResolvedKey,
-    ) -> Result<LandGateAdvice, LandGateAdvisorError> {
-        let body = request_body(&self.model, state);
-        let started = Instant::now();
-        let response = self
-            .client()
-            .await?
-            .post(self.endpoint.clone())
-            .bearer_auth(&key.value)
-            .timeout(self.timeout)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| LandGateAdvisorError::Unavailable(error.to_string()))?;
-        if !response.status().is_success() {
-            return Err(LandGateAdvisorError::Unavailable(format!(
-                "provider returned {}",
-                response.status()
-            )));
-        }
-        let response: ProviderResponse = response
-            .json()
-            .await
-            .map_err(|error| LandGateAdvisorError::InvalidResponse(error.to_string()))?;
-        let latency_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
-        let mut probabilities = BTreeMap::new();
-        for question in &QUESTIONS {
-            let answer = response.answers.get(question.id).ok_or_else(|| {
-                LandGateAdvisorError::InvalidResponse(format!(
-                    "response omitted `answers.{}`",
-                    question.id
-                ))
-            })?;
-            probabilities.insert(question.id, answer.probability(question.id)?);
-        }
-        let (land, reasons) = decide(&probabilities);
-        let judgments = QUESTIONS
-            .iter()
-            .map(|question| {
-                let probability = probabilities.get(question.id).copied().unwrap_or(0.5);
-                let answer = JudgmentAnswer::of(probability);
-                let concern = reasons.iter().any(|reason| concerns(reason, question.id));
-                LandGateJudgment {
-                    id: question.id.into(),
-                    label: question.label.into(),
-                    probability,
-                    answer,
-                    reading: reading(question, answer, concern).into(),
-                    concern,
-                }
-            })
-            .collect();
-        Ok(LandGateAdvice {
-            provider: "typesafe".into(),
-            model: response.model,
-            land,
-            reasons: reasons.into_iter().map(str::to_string).collect(),
-            judgments,
-            thresholds: LandGateAdviceThresholds {
-                yes_min: YES_MIN,
-                no_max: NO_MAX,
-            },
-            key_source: key.source,
-            cached: false,
-            usage: response.usage,
-            latency_ms,
-        })
-    }
 }
 
-#[derive(Deserialize)]
-struct ProviderResponse {
-    model: String,
-    answers: BTreeMap<String, ProviderAnswer>,
+/// What a provider answered, in one shape: the probability of yes for each
+/// question it answered, the model it names, and what it counted.
+struct Answered {
+    probabilities: BTreeMap<&'static str, f64>,
+    model: Option<String>,
     usage: LandGateAdviceUsage,
 }
 
-#[derive(Deserialize)]
-struct ProviderAnswer {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    noul: Option<f64>,
+/// A probability a provider gave for `id`, checked.
+fn probability(value: Option<&Value>, id: &str, field: &str) -> Result<f64, LandGateAdvisorError> {
+    match value.and_then(Value::as_f64) {
+        Some(p) if p.is_finite() && (0.0..=1.0).contains(&p) => Ok(p),
+        _ => Err(LandGateAdvisorError::InvalidResponse(format!(
+            "`answers.{id}.{field}` was outside [0, 1]"
+        ))),
+    }
 }
 
-impl ProviderAnswer {
-    fn probability(&self, id: &str) -> Result<f64, LandGateAdvisorError> {
-        if self.kind != "noul" {
-            return Err(LandGateAdvisorError::InvalidResponse(format!(
-                "`answers.{id}` was not a noul"
-            )));
+/// Read a provider's response. Every question must come back answered,
+/// except where the provider says it declined one: that judgment is left
+/// out, and [`decide`] reads a judgment it was not given as unsettled.
+fn answers(provider: AdvisorProvider, response: &Value) -> Result<Answered, LandGateAdvisorError> {
+    let count = |path: &[&str]| {
+        path.iter()
+            .try_fold(response, |at, key| at.get(key))
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    };
+    let model = response
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let mut probabilities = BTreeMap::new();
+    match provider {
+        AdvisorProvider::Typesafe | AdvisorProvider::Google => {
+            for question in &QUESTIONS {
+                let id = question.id;
+                let answer = response
+                    .get("answers")
+                    .and_then(|answers| answers.get(id))
+                    .ok_or_else(|| {
+                        LandGateAdvisorError::InvalidResponse(format!(
+                            "response omitted `answers.{id}`"
+                        ))
+                    })?;
+                if answer.get("type").and_then(Value::as_str) != Some("noul") {
+                    return Err(LandGateAdvisorError::InvalidResponse(format!(
+                        "`answers.{id}` was not a noul"
+                    )));
+                }
+                probabilities.insert(id, probability(answer.get("noul"), id, "noul")?);
+            }
         }
-        match self.noul {
-            Some(p) if p.is_finite() && (0.0..=1.0).contains(&p) => Ok(p),
-            _ => Err(LandGateAdvisorError::InvalidResponse(format!(
-                "`answers.{id}.noul` was outside [0, 1]"
-            ))),
+        AdvisorProvider::Openai => {
+            let given = response
+                .get("answers")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    LandGateAdvisorError::InvalidResponse("response had no `answers`".into())
+                })?;
+            for question in &QUESTIONS {
+                let id = question.id;
+                let answer = given
+                    .iter()
+                    .find(|answer| answer.get("name").and_then(Value::as_str) == Some(id))
+                    .ok_or_else(|| {
+                        LandGateAdvisorError::InvalidResponse(format!(
+                            "response omitted `answers.{id}`"
+                        ))
+                    })?;
+                match answer.get("type").and_then(Value::as_str) {
+                    Some("predicate") => {
+                        probabilities.insert(
+                            id,
+                            probability(answer.get("probability"), id, "probability")?,
+                        );
+                    }
+                    // The model declined this one question: unsettled.
+                    Some("refusal") => {}
+                    _ => {
+                        return Err(LandGateAdvisorError::InvalidResponse(format!(
+                            "`answers.{id}` was not a predicate"
+                        )));
+                    }
+                }
+            }
         }
     }
+    let usage = match provider {
+        AdvisorProvider::Typesafe | AdvisorProvider::Openai => LandGateAdviceUsage {
+            input_tokens: count(&["usage", "input_tokens"]),
+            output_tokens: count(&["usage", "output_tokens"]),
+        },
+        AdvisorProvider::Google => LandGateAdviceUsage {
+            input_tokens: count(&["usage", "total_input_tokens"]),
+            output_tokens: count(&["usage", "total_output_tokens"]),
+        },
+    };
+    Ok(Answered {
+        probabilities,
+        model,
+        usage,
+    })
 }
 
 /// The decision, in code. `p` holds every judgment's probability of yes.
@@ -964,23 +1337,65 @@ fn concerns(reason: &str, id: &str) -> bool {
     }
 }
 
-/// The request the provider is sent: the model, the packet and every question
-/// as written in [`QUESTIONS`].
-fn request_body(model: &str, state: &Value) -> Value {
-    let questions: BTreeMap<&str, Value> = QUESTIONS
-        .iter()
-        .map(|q| {
-            (
-                q.id,
-                json!({
-                    "type": "noul",
-                    "instructions": q.instructions,
-                    "criteria": { "true": q.yes, "false": q.no },
-                }),
-            )
-        })
-        .collect();
-    json!({ "model": model, "state": state, "questions": questions })
+/// The request a provider is sent: the model, the packet and every question
+/// as written in [`QUESTIONS`], in that provider's own shape. The wording is
+/// the same for all three.
+fn request_body(provider: AdvisorProvider, model: &str, state: &Value) -> Value {
+    match provider {
+        AdvisorProvider::Typesafe => {
+            let questions: BTreeMap<&str, Value> = QUESTIONS
+                .iter()
+                .map(|q| {
+                    (
+                        q.id,
+                        json!({
+                            "type": "noul",
+                            "instructions": q.instructions,
+                            "criteria": { "true": q.yes, "false": q.no },
+                        }),
+                    )
+                })
+                .collect();
+            json!({ "model": model, "state": state, "questions": questions })
+        }
+        // A predicate takes no description of yes and no, so they follow the
+        // question in its instructions. The packet goes as a JSON part, which
+        // keeps the field names the questions point at.
+        AdvisorProvider::Openai => {
+            let questions: Vec<Value> = QUESTIONS
+                .iter()
+                .map(|q| {
+                    json!({
+                        "type": "predicate",
+                        "name": q.id,
+                        "instructions": format!("{}\nYes: {}\nNo: {}", q.instructions, q.yes, q.no),
+                    })
+                })
+                .collect();
+            json!({
+                "model": model,
+                "input": [{ "role": "user", "content": [{ "type": "input_json", "data": state }] }],
+                "questions": questions,
+            })
+        }
+        // The shared input is text, so the packet is sent as its JSON.
+        AdvisorProvider::Google => {
+            let questions: BTreeMap<&str, Value> = QUESTIONS
+                .iter()
+                .map(|q| {
+                    (
+                        q.id,
+                        json!({
+                            "type": "noul",
+                            "instructions": q.instructions,
+                            "criteria": { "true_description": q.yes, "false_description": q.no },
+                        }),
+                    )
+                })
+                .collect();
+            json!({ "model": model, "input": state.to_string(), "questions": questions })
+        }
+    }
 }
 
 /// A hand-off as read from the thread: what the task asks for, the result,
@@ -1147,16 +1562,19 @@ fn clip(text: &str, max_chars: usize) -> String {
     cut
 }
 
-/// What an answer is held under: the workspace, the model and the packet's
+/// What an answer is held under: the workspace, the provider, the model and the packet's
 /// bytes, so a changed result or a new message asks again.
 fn held_as(
     workspace_id: WorkspaceId,
+    provider: AdvisorProvider,
     model: &str,
     key_source: AdvisorKeySource,
     state: &Value,
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(workspace_id.0.as_bytes());
+    hasher.update(provider.id().as_bytes());
+    hasher.update(b"\0");
     hasher.update(model.as_bytes());
     hasher.update(match key_source {
         AdvisorKeySource::Workspace => b"w",
@@ -1190,7 +1608,16 @@ impl maidan_mcp::LandGateAdvising for McpLandGateBridge {
         workspace_id: WorkspaceId,
         thread_id: ThreadId,
         refresh: bool,
+        provider: Option<String>,
     ) -> Result<Value, maidan_mcp::LandGateAdviseError> {
+        let provider = match provider.as_deref() {
+            None => None,
+            Some(id) => Some(AdvisorProvider::from_id(id).ok_or_else(|| {
+                maidan_mcp::LandGateAdviseError::Invalid(format!(
+                    "provider is one of typesafe, openai or google, not `{id}`"
+                ))
+            })?),
+        };
         let advice = self
             .advisor
             .advise(
@@ -1198,7 +1625,7 @@ impl maidan_mcp::LandGateAdvising for McpLandGateBridge {
                 self.encryption_key.as_ref(),
                 workspace_id,
                 thread_id,
-                LandGateAdviceRequest { refresh },
+                LandGateAdviceRequest { refresh, provider },
             )
             .await;
         match advice {
@@ -1272,15 +1699,49 @@ mod tests {
         let on = Settings::from_lookup(lookup(&[("MAIDAN_JEV_LAND_GATE_ENABLED", "1")]))
             .unwrap()
             .unwrap();
-        assert!(on.api_key.is_none(), "workspaces bring their own");
-        assert_eq!(on.model, DEFAULT_MODEL);
+        assert_eq!(
+            on.providers.iter().map(|p| p.provider).collect::<Vec<_>>(),
+            AdvisorProvider::ALL
+        );
+        assert!(
+            on.providers.iter().all(|p| p.api_key.is_none()),
+            "workspaces bring their own"
+        );
+        assert_eq!(
+            on.providers
+                .iter()
+                .map(|p| p.model.as_str())
+                .collect::<Vec<_>>(),
+            ["jev-latest", "gpt-6-luna", "gemini-decision-1"]
+        );
         let keyed = Settings::from_lookup(lookup(&[
             ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
             ("TYPESAFE_API_KEY", " secret "),
         ]))
         .unwrap()
         .unwrap();
-        assert_eq!(keyed.api_key.as_deref(), Some("secret"));
+        assert_eq!(keyed.providers[0].api_key.as_deref(), Some("secret"));
+        assert!(keyed.providers[1].api_key.is_none());
+        // Each provider's key, model and address are its own.
+        let three = Settings::from_lookup(lookup(&[
+            ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
+            ("OPENAI_API_KEY", "sk-one"),
+            ("GEMINI_API_KEY", "g-two"),
+            ("MAIDAN_OPENAI_DECISIONS_MODEL", "gpt-7"),
+            ("MAIDAN_GEMINI_DECISIONS_BASE_URL", "https://relay.example/"),
+        ]))
+        .unwrap()
+        .unwrap();
+        assert!(three.providers[0].api_key.is_none());
+        assert_eq!(three.providers[1].api_key.as_deref(), Some("sk-one"));
+        assert_eq!(three.providers[1].model, "gpt-7");
+        assert_eq!(three.providers[2].api_key.as_deref(), Some("g-two"));
+        assert_eq!(three.providers[2].base_url, "https://relay.example/");
+        assert!(Settings::from_lookup(lookup(&[
+            ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
+            ("MAIDAN_GEMINI_DECISIONS_MODEL", " "),
+        ]))
+        .is_err());
         assert!(Settings::from_lookup(lookup(&[
             ("MAIDAN_JEV_LAND_GATE_ENABLED", "1"),
             ("MAIDAN_JEV_TIMEOUT_MS", "0"),
@@ -1301,10 +1762,19 @@ mod tests {
         };
         // A name nothing resolves still builds: the lookup is the first call's.
         let advisor = on("https://provider.invalid/").unwrap();
-        assert_eq!(advisor.host(), "provider.invalid");
+        assert_eq!(advisor.backends[0].host(), "provider.invalid");
         assert_eq!(
-            advisor.endpoint.as_str(),
+            advisor.backends[0].endpoint.as_str(),
             "https://provider.invalid/v1/systemone"
+        );
+        // The other two keep their own addresses and paths.
+        assert_eq!(
+            advisor.backends[1].endpoint.as_str(),
+            "https://api.openai.com/v1/decisions"
+        );
+        assert_eq!(
+            advisor.backends[2].endpoint.as_str(),
+            "https://generativelanguage.googleapis.com/v1beta/decisions"
         );
         for bad in [
             "https://provider.invalid/v1",
@@ -1592,18 +2062,19 @@ mod tests {
     }
 
     #[test]
-    fn the_whole_request_stays_within_its_cap() {
+    fn the_whole_request_stays_within_its_cap_for_every_provider() {
         let advisor = LandGateAdvisor::with_http(
             Client::new(),
             "http://127.0.0.1:9/".parse().unwrap(),
             None,
-            DEFAULT_MODEL,
+            "jev-latest",
             Duration::from_secs(1),
         )
         .unwrap();
         // The worst a thread can hold: every string at its cut, in characters
-        // that take four bytes each.
-        let wide = "\u{1F600}".repeat(5_000);
+        // that take four bytes each, and quotes, which a provider that takes
+        // the packet as text pays for twice.
+        let wide = "\u{1F600}\"".repeat(5_000);
         let mut task = Map::new();
         task.insert("title".into(), json!(clip(&wide, MAX_TITLE_CHARS)));
         task.insert(
@@ -1613,24 +2084,72 @@ mod tests {
         let said: Vec<String> = (0..MAX_AGENT_MESSAGES)
             .map(|_| clip(&wide, MAX_MESSAGE_CHARS))
             .collect();
-        let hand_off = HandOff {
+        let worst = HandOff {
             task,
             result: json!({ "summary": wide, "notes": [wide, wide] }),
             said,
         };
-        if let Some(state) = hand_off.packet(advisor.state_budget) {
-            let body = request_body(&advisor.model, &state).to_string();
-            assert!(body.len() <= MAX_REQUEST_BYTES, "{} bytes", body.len());
-        }
         // An ordinary hand-off has room for every message.
         let ordinary = hand_off_of(
             json!({ "summary": "Renamed the module and updated every import." }),
             &["Renamed.", "Tests pass."],
         );
-        let state = ordinary.packet(advisor.state_budget).unwrap();
-        assert_eq!(state["agent_messages"], json!(["Renamed.", "Tests pass."]));
-        assert!(request_body(&advisor.model, &state).to_string().len() <= MAX_REQUEST_BYTES);
-        assert!(advisor.state_budget > 8_000, "{}", advisor.state_budget);
+        for backend in &advisor.backends {
+            let name = backend.provider.id();
+            if let Some(state) = backend.packet(&worst) {
+                let body = request_body(backend.provider, &backend.model, &state).to_string();
+                assert!(
+                    body.len() <= MAX_REQUEST_BYTES,
+                    "{name}: {} bytes",
+                    body.len()
+                );
+            }
+            let state = backend.packet(&ordinary).unwrap();
+            assert_eq!(state["agent_messages"], json!(["Renamed.", "Tests pass."]));
+            assert!(
+                backend.state_budget > 8_000,
+                "{name}: {}",
+                backend.state_budget
+            );
+        }
+    }
+
+    #[test]
+    fn each_provider_is_asked_the_same_ten_questions_in_its_own_shape() {
+        let state =
+            json!({ "task": { "title": "Rename it" }, "result": { "summary": "Renamed." } });
+        let jev = request_body(AdvisorProvider::Typesafe, "jev-latest", &state);
+        assert_eq!(jev["state"], state);
+        assert_eq!(jev["questions"]["done"]["type"], "noul");
+        assert_eq!(
+            jev["questions"]["done"]["criteria"]["true"],
+            QUESTIONS[0].yes
+        );
+        assert_eq!(jev["questions"].as_object().unwrap().len(), QUESTIONS.len());
+
+        let openai = request_body(AdvisorProvider::Openai, "gpt-6-luna", &state);
+        // The packet keeps its field names: the questions point at them.
+        assert_eq!(openai["input"][0]["content"][0]["type"], "input_json");
+        assert_eq!(openai["input"][0]["content"][0]["data"], state);
+        let asked = openai["questions"].as_array().unwrap();
+        assert_eq!(asked.len(), QUESTIONS.len());
+        assert_eq!(asked[0]["type"], "predicate");
+        assert_eq!(asked[0]["name"], "done");
+        let instructions = asked[0]["instructions"].as_str().unwrap();
+        assert!(instructions.starts_with(QUESTIONS[0].instructions));
+        assert!(instructions.contains(QUESTIONS[0].yes) && instructions.contains(QUESTIONS[0].no));
+
+        let google = request_body(AdvisorProvider::Google, "gemini-decision-1", &state);
+        assert_eq!(google["input"], json!(state.to_string()));
+        assert_eq!(google["questions"]["done"]["type"], "noul");
+        assert_eq!(
+            google["questions"]["done"]["criteria"]["true_description"],
+            QUESTIONS[0].yes
+        );
+        assert_eq!(
+            google["questions"]["done"]["criteria"]["false_description"],
+            QUESTIONS[0].no
+        );
     }
 
     #[test]
@@ -1638,42 +2157,112 @@ mod tests {
         let ws = WorkspaceId(uuid::Uuid::nil());
         let own = AdvisorKeySource::Workspace;
         let hello = json!({ "result": { "said": "hello" } });
-        let a = held_as(ws, "jev-latest", own, &hello);
+        let jev = AdvisorProvider::Typesafe;
+        let a = held_as(ws, jev, "jev-latest", own, &hello);
         let b = held_as(
             ws,
+            jev,
             "jev-latest",
             own,
             &json!({ "result": { "said": "hello!" } }),
         );
-        let c = held_as(ws, "jev-1.13.0", own, &hello);
-        let d = held_as(ws, "jev-latest", AdvisorKeySource::Instance, &hello);
+        let c = held_as(ws, jev, "jev-1.13.0", own, &hello);
+        let d = held_as(ws, jev, "jev-latest", AdvisorKeySource::Instance, &hello);
+        let e = held_as(ws, AdvisorProvider::Openai, "jev-latest", own, &hello);
         assert_ne!(a, b, "a changed result asks again");
         assert_ne!(a, c, "so does another model");
         assert_ne!(a, d, "and an answer one key paid for is not another's");
+        assert_ne!(a, e, "nor is one provider's answer another's");
+    }
+
+    /// Every question answered `p`, as `provider` writes it.
+    fn answered(provider: AdvisorProvider, p: f64) -> Value {
+        match provider {
+            AdvisorProvider::Typesafe => json!({
+                "model": "jev-1.14.0",
+                "answers": QUESTIONS.iter().map(|q| (q.id.to_string(), json!({ "type": "noul", "noul": p }))).collect::<Map<_, _>>(),
+                "usage": { "input_tokens": 1100, "output_tokens": 0 },
+            }),
+            AdvisorProvider::Openai => json!({
+                "model": "gpt-6-luna",
+                "answers": QUESTIONS.iter().map(|q| json!({ "type": "predicate", "name": q.id, "probability": p })).collect::<Vec<_>>(),
+                "usage": { "input_tokens": 1200, "output_tokens": 0, "total_tokens": 1200 },
+            }),
+            AdvisorProvider::Google => json!({
+                "answers": QUESTIONS.iter().map(|q| (q.id.to_string(), json!({ "type": "noul", "noul": p, "confidence": p }))).collect::<Map<_, _>>(),
+                "usage": { "total_tokens": 1300, "total_input_tokens": 1300, "total_output_tokens": 0 },
+            }),
+        }
+    }
+
+    #[test]
+    fn each_providers_answer_is_read_into_the_same_probabilities() {
+        for (provider, tokens, model) in [
+            (AdvisorProvider::Typesafe, 1100, Some("jev-1.14.0")),
+            (AdvisorProvider::Openai, 1200, Some("gpt-6-luna")),
+            // Google names no model in its answer: the one asked is reported.
+            (AdvisorProvider::Google, 1300, None),
+        ] {
+            let read = answers(provider, &answered(provider, 0.4)).unwrap();
+            assert_eq!(read.probabilities.len(), QUESTIONS.len(), "{provider:?}");
+            assert!(
+                read.probabilities.values().all(|p| *p == 0.4),
+                "{provider:?}"
+            );
+            assert_eq!(read.usage.input_tokens, tokens, "{provider:?}");
+            assert_eq!(read.model.as_deref(), model, "{provider:?}");
+        }
     }
 
     #[test]
     fn an_answer_that_is_not_a_probability_is_refused() {
-        let ok = ProviderAnswer {
-            kind: "noul".into(),
-            noul: Some(0.4),
-        };
-        assert_eq!(ok.probability("done").unwrap(), 0.4);
-        for bad in [
-            ProviderAnswer {
-                kind: "choice".into(),
-                noul: Some(0.4),
-            },
-            ProviderAnswer {
-                kind: "noul".into(),
-                noul: Some(1.4),
-            },
-            ProviderAnswer {
-                kind: "noul".into(),
-                noul: None,
-            },
-        ] {
-            assert!(bad.probability("done").is_err());
+        for provider in AdvisorProvider::ALL {
+            assert!(
+                answers(provider, &answered(provider, 1.4)).is_err(),
+                "{provider:?}"
+            );
+            assert!(
+                answers(provider, &json!({ "answers": {} })).is_err(),
+                "{provider:?}"
+            );
         }
+        // The wrong kind of answer, or none where a number belongs.
+        let mut jev = answered(AdvisorProvider::Typesafe, 0.4);
+        jev["answers"]["done"] = json!({ "type": "choice", "noul": 0.4 });
+        assert!(answers(AdvisorProvider::Typesafe, &jev).is_err());
+        let mut google = answered(AdvisorProvider::Google, 0.4);
+        google["answers"]["done"] = json!({ "type": "noul" });
+        assert!(answers(AdvisorProvider::Google, &google).is_err());
+        let mut openai = answered(AdvisorProvider::Openai, 0.4);
+        openai["answers"][0] = json!({ "type": "score", "name": "done", "score": 1 });
+        assert!(answers(AdvisorProvider::Openai, &openai).is_err());
+        // A question missing from the array is an answer missing.
+        let mut short = answered(AdvisorProvider::Openai, 0.4);
+        short["answers"].as_array_mut().unwrap().remove(0);
+        assert!(answers(AdvisorProvider::Openai, &short).is_err());
+    }
+
+    #[test]
+    fn a_question_a_provider_declined_is_unsettled_and_never_green() {
+        // Everything clear, but the model would not say whether data is deleted.
+        let clear = |q: &Question| match q.id {
+            "done" | "tests_passed" | "code_change" => 0.97,
+            _ => 0.02,
+        };
+        let mut response = json!({
+            "model": "gpt-6-luna",
+            "answers": QUESTIONS.iter().map(|q| json!({ "type": "predicate", "name": q.id, "probability": clear(q) })).collect::<Vec<_>>(),
+            "usage": { "input_tokens": 1, "output_tokens": 0 },
+        });
+        let all = answers(AdvisorProvider::Openai, &response).unwrap();
+        assert_eq!(decide(&all.probabilities).0, LandColor::Green);
+        let at = QUESTIONS
+            .iter()
+            .position(|q| q.id == "deletes_data")
+            .unwrap();
+        response["answers"][at] = json!({ "type": "refusal", "name": "deletes_data" });
+        let declined = answers(AdvisorProvider::Openai, &response).unwrap();
+        assert!(!declined.probabilities.contains_key("deletes_data"));
+        assert_ne!(decide(&declined.probabilities).0, LandColor::Green);
     }
 }

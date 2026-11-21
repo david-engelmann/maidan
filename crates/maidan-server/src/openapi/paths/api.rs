@@ -2665,7 +2665,7 @@ pub fn advise_land_gate() {}
     ))]
 pub fn get_land_gate_advisor() {}
 
-/// Store this workspace's own TypeSafe key for land-gate advice
+/// Store this workspace's own key for a decision-model provider
 #[utoipa::path(put, path = "/workspaces/{id}/land-gate/advisor", tag = "land_gate",
     params(("id" = Uuid, Path, description = "Workspace id")),
     request_body = SetLandGateAdvisor,
@@ -2680,9 +2680,9 @@ pub fn get_land_gate_advisor() {}
     ))]
 pub fn set_land_gate_advisor() {}
 
-/// Forget this workspace's TypeSafe key
+/// Forget this workspace's key for a decision-model provider
 #[utoipa::path(delete, path = "/workspaces/{id}/land-gate/advisor", tag = "land_gate",
-    params(("id" = Uuid, Path, description = "Workspace id")),
+    params(("id" = Uuid, Path, description = "Workspace id"), ClearLandGateAdvisor),
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = LandGateAdvisorStatus),

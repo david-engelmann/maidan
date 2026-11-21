@@ -19,12 +19,12 @@ use maidan_auth::{
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
-use crate::dto::{SetLandGate, SetLandGateAdvisor};
+use crate::dto::{ClearLandGateAdvisor, SetLandGate, SetLandGateAdvisor};
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
 use crate::land_gate_advisor::{
-    LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError, LandGateAdvisorStatus,
-    WORKSPACE_KEY_SECRET,
+    AdvisorKeySource, AdvisorProvider, LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError,
+    LandGateAdvisorStatus,
 };
 use crate::session::SessionContext;
 use crate::state::AppState;
@@ -131,8 +131,8 @@ pub async fn get_land_gate_advisor(
         .map_err(|error| advisor_error(error, "advisor status"))
 }
 
-/// `PUT /workspaces/:id/land-gate/advisor`: store this workspace's own
-/// TypeSafe key, after the provider accepts it. The key is kept as a
+/// `PUT /workspaces/:id/land-gate/advisor`: store this workspace's own key
+/// for a provider, after the provider accepts it. The key is kept as a
 /// workspace secret under a name the server keeps for itself, encrypted at
 /// rest, out of reach of the generic secret routes, and is sent only to the
 /// provider's host.
@@ -146,6 +146,7 @@ pub async fn set_land_gate_advisor(
     let workspace_id = WorkspaceId(id);
     advisor_admin(&state, &auth, session.as_ref().map(|s| &s.0), workspace_id).await?;
     let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
+    let provider = body.provider.unwrap_or(AdvisorProvider::Typesafe);
     let api_key = body.api_key.trim();
     if api_key.is_empty() || api_key.len() > 512 || api_key.chars().any(char::is_whitespace) {
         return Err(ApiError::BadRequest(
@@ -155,7 +156,7 @@ pub async fn set_land_gate_advisor(
     // Not a failure of this request: the instance was set up without the key
     // that encrypts workspace secrets, so it has nowhere to keep one.
     let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
-        let fallback = if advisor.has_instance_key() {
+        let fallback = if advisor.has_instance_key(provider) {
             "; advice here uses the instance's key"
         } else {
             ""
@@ -165,9 +166,15 @@ pub async fn set_land_gate_advisor(
         ))
     })?;
     advisor
-        .check_key(api_key)
+        .check_key(provider, api_key)
         .await
         .map_err(|error| advisor_error(error, "advisor key check"))?;
+    // Read before the write: what the write then makes true is known without
+    // a second read that could fail after it committed.
+    let before = advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map_err(|error| advisor_error(error, "advisor status"))?;
     let value_ciphertext = maidan_auth::encrypt_peer_secret(api_key, key)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     let actor = auth.actor_id();
@@ -176,7 +183,7 @@ pub async fn set_land_gate_advisor(
         .create_secret_audited(
             NewSecret {
                 workspace_id,
-                name: WORKSPACE_KEY_SECRET.into(),
+                name: provider.secret().into(),
                 value_ciphertext,
                 created_by: auth.member_id(),
             },
@@ -193,26 +200,34 @@ pub async fn set_land_gate_advisor(
             }),
         )
         .await?;
-    // What was just committed, not a second read that could fail after it.
-    Ok(Json(advisor.status_with_own_key()))
+    Ok(Json(
+        before.with_key(provider, Some(AdvisorKeySource::Workspace)),
+    ))
 }
 
-/// `DELETE /workspaces/:id/land-gate/advisor`: forget this workspace's key.
-/// Advice then uses the instance's key, or is refused when it has none.
+/// `DELETE /workspaces/:id/land-gate/advisor`: forget this workspace's key
+/// for a provider. Advice from it then uses the instance's key, or is refused
+/// when it has none.
 pub async fn clear_land_gate_advisor(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     session: Option<Extension<SessionContext>>,
     ApiPath(id): ApiPath<uuid::Uuid>,
+    crate::extract::ApiQuery(query): crate::extract::ApiQuery<ClearLandGateAdvisor>,
 ) -> ApiResult<Json<LandGateAdvisorStatus>> {
     let workspace_id = WorkspaceId(id);
     advisor_admin(&state, &auth, session.as_ref().map(|s| &s.0), workspace_id).await?;
     let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
+    let provider = query.provider.unwrap_or(AdvisorProvider::Typesafe);
+    let before = advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map_err(|error| advisor_error(error, "advisor status"))?;
     state
         .store
         .delete_secret_audited(
             workspace_id,
-            WORKSPACE_KEY_SECRET,
+            provider.secret(),
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id()),
@@ -221,12 +236,15 @@ pub async fn clear_land_gate_advisor(
                 target_id: None,
                 metadata: serde_json::json!({
                     "workspace_id": workspace_id.0,
-                    "name": WORKSPACE_KEY_SECRET,
+                    "name": provider.secret(),
                 }),
             },
         )
         .await?;
-    Ok(Json(advisor.status_without_own_key()))
+    let left = advisor
+        .has_instance_key(provider)
+        .then_some(AdvisorKeySource::Instance);
+    Ok(Json(before.with_key(provider, left)))
 }
 
 pub async fn set_land_gate(
