@@ -49,7 +49,7 @@ release, with the launch rows in Open Work (Next 23, 24, 29 and 30) closed.
 
 ## Where it is
 
-The latest release is `v435.0.0` (2026-11-07), which maidan.world and
+The latest release is the newest record in [Capabilities](Capabilities.md), which maidan.world and
 try.maidan.world run; `dev.maidan.world` and the swarm run `dev`. The work in flight and the
 launch path are the **Now** and **Next** sections of [Open Work](Open%20Work.md),
 which end at the launch gate. `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
@@ -60,7 +60,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). Done: every
-   deploy path pins the newest release (`v435.0.0`), moved with its record before
+   deploy path pins the newest release, moved with its record before
    the tag (#2114), including the ARM64 page with auth on, and the
    stack's bundled Postgres and MinIO run in the chart since #1172. Open Work's
    **Before anyone deploys** has no open blocker.
