@@ -278,11 +278,14 @@ deploy.
    The next deploy turns the check on; with only one of the two set, it stays
    off.
 5. Optional: advice from a decision model on each sandbox's tasks
-   ([Decision models](Decision-Models.md)). Store a TypeSafe API key with
-   `npx wrangler secret put TYPESAFE_API_KEY -c wrangler.demo.jsonc`. The
-   container still has no internet: its server asks `http://jev.internal/`,
-   the Worker forwards that one call to TypeSafe with the key
-   (`src/demo-jev.js`), and the key never reaches the container. The next
+   ([Decision models](Decision-Models.md)). Store a key for each provider the
+   demo should offer with
+   `npx wrangler secret put TYPESAFE_API_KEY -c wrangler.demo.jsonc`
+   (`OPENAI_API_KEY` and `GEMINI_API_KEY` likewise). The container still has
+   no internet: its server asks an `.internal` name for each provider
+   (`http://jev.internal/` for TypeSafe), the Worker forwards those calls to
+   the provider with its key (`src/demo-jev.js`), and no key reaches the
+   container. With more than one, the try page lets a visitor switch. The next
    request after the secret is set recycles the container with advice on.
 
 **Boot and reset.** On every boot `demo/entrypoint.sh` deletes any old

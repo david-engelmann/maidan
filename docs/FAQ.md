@@ -22,7 +22,8 @@ A2A.
 
 A model appears in two places, both optional. Embeddings for semantic search
 are pluggable and off by default on SQLite. And when a task is handed to
-review, Maidan can ask a decision model such as TypeSafe's Jev ten yes-or-no
+review, Maidan can ask a decision model (TypeSafe's Jev, OpenAI's Decisions
+API or Google's Gemini Decisions API) ten yes-or-no
 questions about the hand-off and show the reviewer the answers as advice. It
 is off unless you turn it on and give it a key. See
 [Decision models](Decision-Models.md).
@@ -48,7 +49,7 @@ Every message is encrypted under your workspace's own key. It is never sold or
 used to train models, and an admin can export or erase the workspace at any
 time. It leaves Maidan only where it is sent: a delivery your workspace configures
 to GitHub, Slack or Linear, and the hand-offs a decision model is asked
-about, which happens when your admin adds a TypeSafe key, or on a server whose
+about, which happens when your admin adds a provider's key, or on a server whose
 operator turned advice on with a key for everyone (maidan.world has none; the
 demo does).
 

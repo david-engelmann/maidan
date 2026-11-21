@@ -3,8 +3,10 @@
 When a task is handed to review, Maidan can give the reviewer a second read of
 the hand-off: a decision model answers ten small questions about it, and the
 reviewer sees what it found before opening the diff. A decision model answers
-typed questions with calibrated probabilities instead of writing text. The one
-the server speaks to today is [TypeSafe](https://typesafe.ai)'s Jev.
+typed questions with probabilities instead of writing text. The server can
+ask three: [TypeSafe](https://typesafe.ai)'s Jev, OpenAI's Decisions API and
+Google's Gemini Decisions API. All three are asked the same ten questions and
+read by the same rules, and a workspace chooses which by the keys it adds.
 
 The design follows TypeSafe's own advice for a model like this: judgments
 from the model, decisions in code. Maidan does not ask whether the work should
@@ -16,8 +18,42 @@ green, amber or red. The questions and the table are both in
 The result is advice for whoever reviews. Reviews, approval gates and the land
 gate work the same with it on, off or failing.
 
-It is off unless the instance turns it on, and it needs a TypeSafe API key:
-the instance's, or the workspace's own.
+It is off unless the instance turns it on, and it needs an API key for at
+least one provider: the instance's, or the workspace's own.
+
+## The providers
+
+| Provider | `provider` | Asked at | Default model | Instance key | A workspace's key is kept as |
+|---|---|---|---|---|---|
+| TypeSafe Jev | `typesafe` | `POST https://api.typesafe.ai/v1/systemone` | `jev-latest` | `TYPESAFE_API_KEY` | `maidan:typesafe_api_key` |
+| OpenAI Decisions | `openai` | `POST https://api.openai.com/v1/decisions` | `gpt-6-luna` | `OPENAI_API_KEY` | `maidan:openai_api_key` |
+| Gemini Decisions | `google` | `POST https://generativelanguage.googleapis.com/v1beta/decisions` | `gemini-decision-1` | `GEMINI_API_KEY` | `maidan:gemini_api_key` |
+
+A call may name its provider. One that names none asks the first provider
+the workspace has a key for, in the order above. The questions' wording is
+the same for all three, and each is sent in the provider's own shape:
+
+- **TypeSafe** takes the packet as `state` and each question as a `noul`
+  with what yes and no mean in its `criteria`.
+- **OpenAI** takes the packet as a JSON part of one user message and each
+  question as a `predicate`. A predicate has no field for what yes and no
+  mean, so they follow the question in its `instructions`. OpenAI may decline
+  a single question (`refusal`); that judgment is read as unsettled, which
+  never counts toward green.
+- **Google** takes the packet as text (its JSON) and each question as a
+  `noul` with `true_description` and `false_description`. Its probabilities
+  stop at 0.01 and 0.99. A request it blocks for safety fails as a whole, and
+  the advice call fails with it. The API is `v1beta`. On Google's free tier
+  what is sent may be used to improve its products; a paid key is the one to
+  use for real work.
+
+Each provider's answer is kept apart: the hold of an answer is by provider,
+and one provider's answer is never shown as another's.
+
+The thresholds below were TypeSafe's suggested starting points and assume
+probabilities that mean what they say. Whether a provider's 0.9 is right nine
+times in ten is that provider's claim. Run the measurement under "Measuring
+it" with each key before you rely on one.
 
 ## What the model reads
 
@@ -66,8 +102,8 @@ of sixteen labelled hand-offs the advice came out different from its label;
 without it, on none. So say what a task asks for in its description and how
 to check it in `acceptance`: MCP `create_thread` takes both.
 
-That is everything that leaves the deployment, and it goes only to the host in
-`MAIDAN_JEV_BASE_URL`.
+That is everything that leaves the deployment, and it goes only to the
+provider asked: the host in that provider's base URL variable.
 
 ## The ten judgments
 
@@ -137,7 +173,15 @@ curl -X POST "$MAIDAN/threads/$THREAD/land-gate/advice" \
 ```
 
 MCP: `advise_land_gate` with `thread_id`. Both need `thread:transition` and a
-thread the caller can read.
+thread the caller can read. Both take an optional `provider` (`typesafe`,
+`openai` or `google`), and the answer names the provider and model that gave
+it:
+
+```sh
+curl -X POST "$MAIDAN/threads/$THREAD/land-gate/advice" \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"provider": "openai"}'
+```
 
 ```json
 {
@@ -184,35 +228,48 @@ and blocks nothing.
 
 ## Keys
 
-A call uses the workspace's own key when it stored one, and the instance's
-key otherwise. With neither, advice is refused.
+Each provider has its own key. A call to a provider uses the workspace's own
+key for it when the workspace stored one, and the instance's otherwise. With
+neither, that provider is refused.
 
 ```sh
-# Store this workspace's key (token:admin: the workspace's admin). The
-# provider is asked to accept it first; a key it refuses is not stored.
+# Store this workspace's key for a provider (token:admin: the workspace's
+# admin). `provider` is typesafe when left out. The provider is asked to
+# accept the key first; a key it refuses is not stored.
 curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"api_key": "…"}'
-# What is set up: {"enabled": true, "key_source": "workspace", "provider": "typesafe", "model": "jev-latest", "host": "api.typesafe.ai"}
+  -d '{"api_key": "…", "provider": "openai"}'
+# What is set up. The top-level fields describe the provider a call that
+# names none would ask, and `providers` lists all three:
+# {"enabled": true, "key_source": "workspace", "provider": "openai", "model": "gpt-6-luna", "host": "api.openai.com",
+#  "providers": [{"id": "typesafe", "name": "TypeSafe Jev", "model": "jev-latest", "host": "api.typesafe.ai"},
+#                {"id": "openai", "name": "OpenAI Decisions", "model": "gpt-6-luna", "host": "api.openai.com", "key_source": "workspace"},
+#                {"id": "google", "name": "Gemini Decisions", "model": "gemini-decision-1", "host": "generativelanguage.googleapis.com"}]}
 curl "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
-# Forget it.
-curl -X DELETE "$MAIDAN/workspaces/$WS/land-gate/advisor" -H "authorization: Bearer $TOKEN"
+# Forget one provider's key.
+curl -X DELETE "$MAIDAN/workspaces/$WS/land-gate/advisor?provider=openai" -H "authorization: Bearer $TOKEN"
 ```
 
-The key is kept as a workspace secret, encrypted at rest (the instance needs
-`FEDERATION_ENCRYPTION_KEY`), under a name the server keeps for itself
-(`maidan:typesafe_api_key`). A colon is outside the names a member may give a
+A key is kept as a workspace secret, encrypted at rest (the instance needs
+`FEDERATION_ENCRYPTION_KEY`), under a name the server keeps for itself (the
+last column of the table above). A colon is outside the names a member may give a
 secret, so the generic secret routes and tools cannot create, list, resolve,
 substitute or delete it: the only way in is this route, after the provider
-accepted the key, and the only place it goes is the provider. In the console
-it is under **Tools**, **Workspace**, for a person signed in who holds
+accepted the key, and the only place it goes is that provider. In the console
+the keys are under **Tools**, **Workspace**, one row per provider, for a
+person signed in who holds
 `token:admin` or may mint the workspace's first admin token. An instance
 that was set up without `FEDERATION_ENCRYPTION_KEY` has nowhere to keep a
 workspace's key: the `PUT` answers `409`, and advice there uses the
 instance's key.
 
-On maidan.world a workspace brings its own key. try.maidan.world asks with the
-demo's: when the page's scripted agent has sent **Say hello** to review, the
+With keys for more than one provider, the advice on a task has a switch: a
+reviewer can ask another model about the same hand-off, and the console
+remembers the choice.
+
+On maidan.world a workspace brings its own keys. try.maidan.world asks with the
+demo's, for each provider the demo holds a key for, and the page has the same
+switch: when the page's scripted agent has sent **Say hello** to review, the
 page asks for advice on that hand-off with the sandbox's own token
 (`advise_land_gate`) and shows the answer, the ten judgments included, before
 it sends the visitor to the console to approve. The task's sheet there shows
@@ -221,17 +278,20 @@ does not answer within four seconds (the server gives the model a second and
 a half; the page allows for the round trip), the page shows nothing and goes
 on. Where the
 demo has a key, the page says before a sandbox exists that tasks sent to
-review there are read by Jev (`advice` in `/try-config.json`).
+review there are read by a decision model outside the demo (`advice` and
+`providers` in `/try-config.json`).
 
 ## Turning it on
 
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` turns the routes and the tool on. An invalid value refuses boot. With it off, none of the others are read |
-| `TYPESAFE_API_KEY` | none | The instance's own key, for workspaces that stored none. Leave it unset to have every workspace bring its own |
+| `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | none | The instance's own key for each provider, for workspaces that stored none. Leave one unset to have every workspace bring its own for that provider |
 | `MAIDAN_JEV_MODEL` | `jev-latest` | A model or alias from TypeSafe's `GET /v1/models` |
-| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request. A timeout fails only the advice call, with `502` |
-| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | An origin only, behind the same egress guard as other outbound calls. `https`, since the key travels as a bearer; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
+| `MAIDAN_OPENAI_DECISIONS_MODEL` | `gpt-6-luna` | The model OpenAI's Decisions API is asked for |
+| `MAIDAN_GEMINI_DECISIONS_MODEL` | `gemini-decision-1` | The model Google's Decisions API is asked for |
+| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Per request, for every provider. A timeout fails only the advice call, with `502` |
+| `MAIDAN_JEV_BASE_URL`, `MAIDAN_OPENAI_DECISIONS_BASE_URL`, `MAIDAN_GEMINI_DECISIONS_BASE_URL` | `https://api.typesafe.ai/`, `https://api.openai.com/`, `https://generativelanguage.googleapis.com/` | Each an origin only, behind the same egress guard as other outbound calls. `https`, since the key travels in a header; plain `http` only for a relay of your own whose `.internal` name is listed in `MAIDAN_INTERNAL_EGRESS_HOSTS`, or for a stand-in on the same machine, a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`. The name is resolved on the first call and again every ten minutes: a provider that cannot be reached fails the advice call, never the server |
 
 ## Measuring it
 
