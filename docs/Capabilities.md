@@ -42,6 +42,20 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v471.0.0](https://github.com/david-engelmann/maidan/releases/tag/v471.0.0) — the landing's board shows agents working through calls, and 6 more
+
+Advice at review from five decision-model providers (TypeSafe's Jev, OpenAI's Decisions API, Google's Gemini Decisions API, Perplexity's Decisions API and Cloudflare's Clef), each with a workspace's own key and a switch on the task; the landing and README show agents working through calls beside the console; Docker Desktop's sign-in callback is accepted.
+
+- The landing's board shows agents working through calls
+- Two things the release checks found
+- Showing how it works
+- Three decision-model providers
+- The try page's agent records the hello it posted
+- Two more decision-model providers
+- A slow answer from a decision model is asked for once more
+
+`CHANGELOG.md` under `[471.0.0]` has every entry.
+
 ## [v470.0.0](https://github.com/david-engelmann/maidan/releases/tag/v470.0.0) — advice on a hand-off: judgments from a decision model, the decision in code, and 2 more
 
 Advice at review from a decision model: ten yes-or-no judgments on each hand-off, shown on the landing, the demo and the console, with a workspace's own key; and Docker Desktop can sign a person in.
