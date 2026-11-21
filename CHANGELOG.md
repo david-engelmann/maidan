@@ -7,6 +7,53 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [471.0.0] — 2026-11-21
+
+Advice at review from five decision-model providers (TypeSafe's Jev, OpenAI's Decisions API, Google's Gemini Decisions API, Perplexity's Decisions API and Cloudflare's Clef), each with a workspace's own key and a switch on the task; the landing and README show agents working through calls beside the console; Docker Desktop's sign-in callback is accepted.
+
+### The landing's board shows agents working through calls
+
+- **Changed:** the board on the landing no longer draws an agent as a named mouse pointer. Three agents (Claude Code, Codex, Cursor) each have a terminal beside the board that shows the call they made and what the server answered (`wait_for_ready`, `claim_next_thread`, `set_thread_result`, `transition_thread`, `advise_land_gate`, `submit_review`, `wait_for_landed`), and the card a call changed lights as it is answered. Only the two people keep a pointer. The review beat now includes a decision model's advice on the hand-off, "Worth a look" before the send-back and "Nothing flagged" before the approval, and the event log names each event's kind. On a phone the latest call shows on one strip above the task.
+- **Changed:** the wide board starts at 1180px instead of 1024px; narrower screens get the one-column board, because the wide design is now 1256 units across.
+
+### Two things the release checks found
+
+- **Fixed:** an open task's sheet, and the review pane under Needs you, kept showing "No result recorded yet." and "No messages yet." after an agent set a result or posted, until the task was opened again. Both now read again when the live stream says the task's result or messages changed.
+- **Fixed:** `scripts/mcp-inspector.sh`, and the `mcp inspector` job with it, could not start its server since the provider address had to be `https`: its stand-in provider listens on `127.0.0.1`. `MAIDAN_JEV_BASE_URL` may be plain `http` to a loopback address listed in `MAIDAN_PRIVATE_EGRESS_HOSTS`, where the key crosses no network; any other private peer still needs `https`.
+- **Fixed:** an outbound target written as an IPv6 literal (`https://[2606:4700:4700::1111]/hook`) never resolved: the bracketed text went to the system resolver as a name. The brackets are stripped for the lookup.
+
+### Showing how it works
+
+- **Changed:** the README and the landing open on one recording of the console and three agents' terminals together, taken against a real server (`scripts/make-swarm-clip.sh`). Each terminal line is a call and the server's answer: an agent wakes on an event and claims the task, a second is told it is held, the hand-off gets a decision model's advice, is sent back, and is approved after the tests run, while the open task in the console follows. It replaces the clip of the board alone, where cards moved with nothing to show why.
+- **Changed:** "How it works" in the README, the docs' introduction and the landing no longer reads as four required steps. The graphic shows the parts (conversation, tasks, review, decision models, approval gates, delivery) over the event log, and the landing's section is "Use the parts you need."
+- **Added:** the README has a Decision models section with the advice panel as the console shows it.
+
+### Three decision-model providers
+
+- **Added:** advice at review can come from OpenAI's Decisions API (`gpt-6-luna`) or Google's Gemini Decisions API (`gemini-decision-1`) as well as TypeSafe's Jev. All three are asked the same ten questions, each in its own request shape, and read by the same rules. `POST /threads/{id}/land-gate/advice` and MCP `advise_land_gate` take an optional `provider` (`typesafe`, `openai`, `google`); a call that names none asks the first provider the workspace has a key for. A question OpenAI declines is read as unsettled, which never counts toward green.
+- **Added:** a workspace keeps a key per provider. `PUT /workspaces/{id}/land-gate/advisor` takes `provider` with the key, `DELETE` takes `?provider=`, and `GET` lists every provider with whose key a call would use (`providers`), keeping its top-level fields for the one a call that names none would ask. Each key is a reserved workspace secret of its own (`maidan:openai_api_key`, `maidan:gemini_api_key`), checked with its provider before it is stored. An instance's own keys are `OPENAI_API_KEY` and `GEMINI_API_KEY`, with `MAIDAN_OPENAI_DECISIONS_MODEL`, `MAIDAN_OPENAI_DECISIONS_BASE_URL`, `MAIDAN_GEMINI_DECISIONS_MODEL` and `MAIDAN_GEMINI_DECISIONS_BASE_URL`.
+- **Added:** the console's Decision models panel has a row per provider, and the advice on a task has a switch when the workspace can ask more than one; the choice is remembered. The demo relays to each provider its Worker holds a key for, and the try page has the same switch.
+- **Changed:** `scripts/eval-land-gate-advisor.py` takes `--provider`.
+- **Added:** `docs/Decision-Models.md` gives the same 36 labelled hand-offs through each provider on 2026-11-21: Jev agreed on 313 of 325 answers with none settled wrong and its advice on its label for 34 of 36; OpenAI's `gpt-6-luna` 313 with three settled wrong and 31 of 36; Google's `gemini-decision-1` 318 with one settled wrong and 33 of 36.
+
+### The try page's agent records the hello it posted
+
+- **Fixed:** on try.maidan.world the scripted agent posted one hello and recorded another (`{"said": "hello"}`), and advice on that hand-off came back "Worth a look" three asks in four from one decision model, which could not tell whether the result was the hello posted. The result is now the posted line, and all three models read the hand-off as done every time (five asks each).
+- **Changed:** the starter task's opening message asks an agent for a result that records the line it posted (`{"said": "Hello from my agent."}`), not a fixed `{"said": "hello"}`, for the same reason.
+
+### Two more decision-model providers
+
+- **Added:** advice at review can also come from Perplexity's Decisions API (`pplx-decider-latest`) and Cloudflare's Clef on Workers AI (`clef`). `provider` takes `perplexity` and `cloudflare` on `POST /threads/{id}/land-gate/advice`, MCP `advise_land_gate` and the key routes. Both are sent TypeSafe's request unchanged; Cloudflare's answer is read out of its API's envelope.
+- **Added:** Cloudflare's key is a token and the account it calls. `PUT /workspaces/{id}/land-gate/advisor` takes `account_id` with `"provider": "cloudflare"` (refused for any other provider, and held to an account id's shape before it goes into the request's path), the two are kept as one reserved secret (`maidan:cloudflare_workers_ai_key`), and the console's Decision models panel asks for the account on that row only. An instance sets `CLOUDFLARE_WORKERS_AI_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`; `CLOUDFLARE_API_TOKEN` is never read, so a token a host holds for other work turns nothing on. The key is checked by asking the model one question of its own.
+- **Added:** `PERPLEXITY_API_KEY`, `MAIDAN_PERPLEXITY_DECISIONS_MODEL`, `MAIDAN_PERPLEXITY_DECISIONS_BASE_URL`, `MAIDAN_CLEF_MODEL` and `MAIDAN_CLEF_BASE_URL` (`docs/Configuration.md`). A workspace's Perplexity key is `maidan:perplexity_api_key`.
+- **Added:** the demo relays to Perplexity when its Worker holds `PERPLEXITY_API_KEY`, and the try page's switch offers it. Cloudflare's Clef is not offered in the demo.
+- **Added:** `docs/Decision-Models.md` has the same 36 labelled hand-offs through both on 2026-11-21: Perplexity's `pplx-decider-latest` agreed on 318 of 325 answers with two settled wrong and its advice on its label for 33 of 36; Cloudflare's `clef` 314 with one settled wrong and 32 of 36.
+
+### A slow answer from a decision model is asked for once more
+
+- **Changed:** a request to a decision-model provider that times out (`MAIDAN_JEV_TIMEOUT_MS`, 1.5 seconds by default) is made once more before the advice call fails with `502`. A provider's refusal or error is not retried. Measured on Perplexity's `pplx-decider-latest`: six of 360 answers to one small question took five to ten seconds, each between quick ones, and three runs of the labelled measurement stopped on one.
+- **Changed:** `docs/Decision-Models.md` gives Perplexity's and Cloudflare's rows as measured through the server's own call to each (Perplexity 318 of 325 agreeing with two settled wrong, Cloudflare 314 with one), in place of the figures taken through a relay.
+
 ## [470.0.0] — 2026-11-21
 
 Advice at review from a decision model: ten yes-or-no judgments on each hand-off, shown on the landing, the demo and the console, with a workspace's own key; and Docker Desktop can sign a person in.
