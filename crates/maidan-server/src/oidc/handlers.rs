@@ -48,7 +48,7 @@ connect.
 Agent, do this:
 1. Claim this task (claim_next_thread on #general).
 2. Post a one-line hello on this thread (post_message).
-3. Set a result, for example {\"said\": \"hello\"} (set_thread_result).
+3. Set a result that records the line you posted, for example {\"said\": \"Hello from my agent.\"} (set_thread_result).
 4. Send it to review (transition_thread with start_review).
 
 Then the person who made this workspace approves it on the board, and the first loop is done.";
