@@ -247,3 +247,21 @@ test("a reviewer who chose a model is not asked for through another while the ch
   expect(asked).toEqual([JSON.stringify({ provider: "google" })]);
   window.localStorage.removeItem("maidan_advice_provider");
 });
+
+test("a reviewer's chosen model is still the one asked when what is set up could not be read", async () => {
+  window.localStorage.setItem("maidan_advice_provider", "google");
+  const asked: string[] = [];
+  const router = withSession([
+    { match: /\/workspaces\/ws\/land-gate\/advisor$/, body: () => ({ detail: "down" }), status: 503 },
+    advice(() => ({ ...green, provider: "google", model: "gemini-decision-1" })),
+  ]);
+  const fn: typeof router.fn = async (url, init) => {
+    if (init?.method === "POST") asked.push(String(init.body));
+    return router.fn(url, init);
+  };
+  await renderSignedIn(<Advice tid={TASK} />, fn);
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Nothing flagged");
+  expect(asked, "never an ask with no provider named").toEqual([JSON.stringify({ provider: "google" })]);
+  window.localStorage.removeItem("maidan_advice_provider");
+});

@@ -18,11 +18,12 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     [store],
   );
   // The providers this workspace can ask, for the switch. A read that fails
-  // leaves no switch: the advice itself still comes from the default.
+  // leaves no switch.
   const ws = session.workspaceId;
   const [usable, setUsable] = useState<AdvisorProvider[]>([]);
   // Whether that read has answered, either way.
   const [known, setKnown] = useState(!ws);
+  const [unread, setUnread] = useState(false);
   useEffect(() => {
     if (!ws) return;
     let live = true;
@@ -32,16 +33,22 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
         setUsable(usableProviders(s));
         setKnown(true);
       },
-      () => live && setKnown(true),
+      () => {
+        if (!live) return;
+        setUnread(true);
+        setKnown(true);
+      },
     );
     return () => {
       live = false;
     };
   }, [api, ws]);
   // The reviewer's choice is kept for the next task. One that can no longer
-  // be asked is not sent: the server then picks.
+  // be asked is not sent: the server then picks. When what is set up could
+  // not be read, the choice is sent by name all the same: the server asks
+  // that provider or says it cannot, and never another in its place.
   const [picked, setPicked] = useState<ProviderId | null>(() => storedProvider());
-  const provider = usable.some((p) => p.id === picked) ? picked : null;
+  const provider = unread || usable.some((p) => p.id === picked) ? picked : null;
   // A reviewer who chose a model is not asked for until it is known whether
   // that model can be: asking first with no name would send the hand-off to
   // the server's pick, a provider they did not choose.
