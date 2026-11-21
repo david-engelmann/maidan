@@ -12,6 +12,10 @@ import {
   JEV_MAX_BODY_BYTES,
   JEV_PLACEHOLDER_KEY,
   JEV_SERVER_ENV,
+  RELAYS,
+  adviceProviders,
+  adviceServerEnv,
+  forwardAdvice,
   forwardJev,
   jevEnabled,
   jevOutboundByHost,
@@ -149,7 +153,7 @@ test("no key, too large, or too fast: refused here, and TypeSafe is not called",
 });
 
 test("the demo routes only the internal name, keeps the internet off, and exports the proxy", () => {
-  assert.deepEqual(Object.keys(jevOutboundByHost), [JEV_INTERNAL_HOST]);
+  assert.deepEqual(Object.keys(jevOutboundByHost), [JEV_INTERNAL_HOST, "openai-decisions.internal", "gemini-decisions.internal"]);
   assert.match(demoWorker, /enableInternet = false/);
   assert.doesNotMatch(demoWorker, /static\s+outboundByHost\s*=/);
   assert.match(demoWorker, /MaidanDemo\.outboundByHost = jevOutboundByHost;/);
@@ -176,4 +180,55 @@ test("the question limit is bound and small enough to bound the bill", () => {
   const dollars = (perDay * JEV_MAX_BODY_BYTES * 0.042) / 1_000_000;
   assert.ok(dollars < 10, `a day at the limit would cost at most $${dollars.toFixed(2)}`);
   assert.equal(wrangler.vars[JEV_KEY_VAR], undefined, "the key is a secret, never a var");
+});
+
+test("each provider the Worker holds a key for is offered, pointed at its own name, and no other", () => {
+  assert.deepEqual(adviceProviders({}), []);
+  const two = { OPENAI_API_KEY: "sk-fixture", GEMINI_API_KEY: " g-fixture " };
+  assert.deepEqual(adviceProviders(two), [
+    { id: "openai", name: "OpenAI Decisions" },
+    { id: "google", name: "Gemini Decisions" },
+  ]);
+  assert.equal(jevEnabled(two), true);
+  const env = adviceServerEnv(two);
+  assert.deepEqual(env, {
+    MAIDAN_JEV_LAND_GATE_ENABLED: "1",
+    MAIDAN_INTERNAL_EGRESS_HOSTS: "openai-decisions.internal,gemini-decisions.internal",
+    MAIDAN_OPENAI_DECISIONS_BASE_URL: "http://openai-decisions.internal/",
+    OPENAI_API_KEY: JEV_PLACEHOLDER_KEY,
+    MAIDAN_GEMINI_DECISIONS_BASE_URL: "http://gemini-decisions.internal/",
+    GEMINI_API_KEY: JEV_PLACEHOLDER_KEY,
+  });
+  // TypeSafe has no key here: the server is told nothing about it, so it
+  // would ask TypeSafe's own address, which the container cannot reach.
+  assert.equal(env.MAIDAN_JEV_BASE_URL, undefined);
+  assert.equal(env.TYPESAFE_API_KEY, undefined);
+  const all = demoEnv(undefined, { ...two, [JEV_KEY_VAR]: KEY });
+  assert.equal(all.MAIDAN_INTERNAL_EGRESS_HOSTS, "jev.internal,openai-decisions.internal,gemini-decisions.internal");
+  assert.ok(!JSON.stringify(all).match(/sk-fixture|g-fixture|ts_live_fixture/), "no real key reaches the container");
+  // The names the server is given are names it reads (crates/maidan-env).
+  const registry = read("../../../crates/maidan-env/src/lib.rs");
+  for (const name of Object.keys(all).filter((n) => n.startsWith("MAIDAN_"))) assert.ok(registry.includes(`"${name}"`), name);
+});
+
+test("each provider's question goes to its own address with its own key in its own header", async () => {
+  const [, openai, google] = RELAYS;
+  const env = { OPENAI_API_KEY: "sk-fixture", GEMINI_API_KEY: "g-fixture" };
+  const up = upstream();
+  const o = await forwardAdvice(openai, new Request("http://openai-decisions.internal/v1/decisions", { method: "POST", body: question, headers: { authorization: `Bearer ${JEV_PLACEHOLDER_KEY}` } }), env, up.fn);
+  assert.equal(o.status, 200);
+  assert.equal(up.calls[0].url, "https://api.openai.com/v1/decisions");
+  assert.equal(up.calls[0].init.headers.authorization, "Bearer sk-fixture");
+  const g = await forwardAdvice(google, new Request("http://gemini-decisions.internal/v1beta/decisions", { method: "POST", body: question, headers: { "x-goog-api-key": JEV_PLACEHOLDER_KEY } }), env, up.fn);
+  assert.equal(g.status, 200);
+  assert.equal(up.calls[1].url, "https://generativelanguage.googleapis.com/v1beta/decisions");
+  assert.equal(up.calls[1].init.headers["x-goog-api-key"], "g-fixture");
+  assert.equal(up.calls[1].init.headers.authorization, undefined);
+  // Each relay takes its own two paths and no other provider's.
+  assert.equal((await forwardAdvice(openai, new Request("http://openai-decisions.internal/v1/systemone", { method: "POST", body: question }), env, up.fn)).status, 404);
+  assert.equal((await forwardAdvice(google, new Request("http://gemini-decisions.internal/v1/decisions", { method: "POST", body: question }), env, up.fn)).status, 404);
+  assert.equal((await forwardAdvice(google, new Request("http://gemini-decisions.internal/v1beta/models"), env, up.fn)).status, 200);
+  // A provider with no key on the Worker is not asked.
+  assert.equal((await forwardJev(ask(), env, up.fn)).status, 503);
+  assert.equal(up.calls.length, 3);
 });

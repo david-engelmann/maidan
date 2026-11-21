@@ -4,7 +4,7 @@
 // has no internet). Kept apart from demo.js so the tests run it without the
 // Containers runtime.
 
-import { jevEnabled } from "./demo-jev.js";
+import { adviceProviders, jevEnabled } from "./demo-jev.js";
 
 // The page and its files, served from the Worker's static assets
 // (deploy/cloudflare/try, the `ASSETS` binding in wrangler.demo.jsonc).
@@ -113,7 +113,7 @@ export async function handleTry(request, env, fetchImpl = fetch) {
   const read = request.method === "GET" || request.method === "HEAD";
   if (read && url.pathname === TRY_CONFIG_PATH) {
     const siteKey = turnstileOn(env) ? env[TURNSTILE_SITE_KEY_VAR] : null;
-    return new Response(JSON.stringify({ turnstile_site_key: siteKey, advice: jevEnabled(env) }), {
+    return new Response(JSON.stringify({ turnstile_site_key: siteKey, advice: jevEnabled(env), providers: adviceProviders(env) }), {
       headers: { "content-type": "application/json", "cache-control": "no-store" },
     });
   }

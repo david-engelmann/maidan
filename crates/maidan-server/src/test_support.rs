@@ -168,9 +168,10 @@ pub fn bearer_client(token: &str) -> reqwest::Client {
         .unwrap_or_else(|err| panic!("client: {err}"))
 }
 
-/// A land-gate advisor whose provider is a stand-in on a loopback address:
-/// it answers every yes/no question it is asked as all clear (the work is
-/// done and tested, and no warning sign shows) and accepts any key.
+/// A land-gate advisor whose providers are one stand-in on a loopback
+/// address, speaking each provider's own protocol: it answers every yes/no
+/// question it is asked as all clear (the work is done and tested, and no
+/// warning sign shows) and accepts any key.
 #[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
 pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor::LandGateAdvisor> {
     use axum::{routing::post, Json, Router};
@@ -193,13 +194,57 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
             "usage": { "input_tokens": 1, "output_tokens": 1 },
         }))
     }
+    // OpenAI's Decisions API: predicates in an array, answered in order.
+    async fn openai(Json(body): Json<Value>) -> Json<Value> {
+        let answers: Vec<Value> = body["questions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|question| {
+                let name = question["name"].as_str().unwrap_or_default();
+                let p = match name {
+                    "done" | "tests_passed" | "code_change" => 0.96,
+                    _ => 0.03,
+                };
+                json!({ "type": "predicate", "name": name, "probability": p })
+            })
+            .collect();
+        Json(json!({
+            "model": "gpt-stub",
+            "answers": answers,
+            "usage": { "input_tokens": 1, "output_tokens": 0, "total_tokens": 1 },
+        }))
+    }
+    // Google's Gemini Decisions API: nouls in a map, and no model named.
+    async fn google(Json(body): Json<Value>) -> Json<Value> {
+        let mut answers = serde_json::Map::new();
+        if let Some(questions) = body["questions"].as_object() {
+            for name in questions.keys() {
+                let p: f64 = match name.as_str() {
+                    "done" | "tests_passed" | "code_change" => 0.96,
+                    _ => 0.03,
+                };
+                answers.insert(
+                    name.clone(),
+                    json!({ "type": "noul", "noul": p, "confidence": p.max(1.0 - p) }),
+                );
+            }
+        }
+        Json(json!({
+            "answers": answers,
+            "usage": { "total_tokens": 1, "total_input_tokens": 1, "total_output_tokens": 0 },
+        }))
+    }
     async fn models() -> Json<Value> {
         Json(json!({ "data": [] }))
     }
 
     let app = Router::new()
         .route("/v1/systemone", post(systemone))
-        .route("/v1/models", axum::routing::get(models));
+        .route("/v1/decisions", post(openai))
+        .route("/v1beta/decisions", post(google))
+        .route("/v1/models", axum::routing::get(models))
+        .route("/v1beta/models", axum::routing::get(models));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind the stand-in provider");
@@ -211,11 +256,14 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
         .parse()
         .expect("stand-in provider url");
     std::sync::Arc::new(
-        crate::land_gate_advisor::LandGateAdvisor::with_http(
+        crate::land_gate_advisor::LandGateAdvisor::with_http_keys(
             reqwest::Client::new(),
             base,
-            Some("stub-key".into()),
-            "jev-latest",
+            [
+                Some("stub-key".into()),
+                Some("stub-key".into()),
+                Some("stub-key".into()),
+            ],
             std::time::Duration::from_secs(5),
         )
         .expect("stand-in advisor"),

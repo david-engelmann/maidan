@@ -40,6 +40,7 @@ def main() -> int:
     parser.add_argument("--only", help="comma-separated case ids")
     parser.add_argument("--min-land", type=float, default=0.9, help="the share of cases whose advice must match its label")
     parser.add_argument("--out", type=Path, help="write every answer here as JSON lines")
+    parser.add_argument("--provider", choices=["typesafe", "openai", "google"], help="which provider to ask; left out, the instance's default for the token's workspace")
     args = parser.parse_args()
     token = os.environ.get(args.token_env, "").strip()
     if not token:
@@ -110,7 +111,10 @@ def main() -> int:
             for body in case.get("agent_messages", []):
                 tool("post_message", {"thread_id": thread, "body": body})
             tool("set_thread_result", {"thread_id": thread, "result": case["result"], "claim_lease_id": claimed["claim_lease_id"]})
-            advice = tool("advise_land_gate", {"thread_id": thread, "refresh": True})
+            asked = {"thread_id": thread, "refresh": True}
+            if args.provider:
+                asked["provider"] = args.provider
+            advice = tool("advise_land_gate", asked)
         finally:
             # End the task, also when the case failed part-way. A claim held
             # for every case would run into a workspace's limit on work in

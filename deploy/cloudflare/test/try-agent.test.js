@@ -88,7 +88,9 @@ test("the agent claims Say hello, acknowledges, says hello, sets a result and se
   assert.deepEqual(claim.args, { channel_id: CHANNEL });
   assert.deepEqual(ack.args, { thread_id: TASK, claim_lease_id: LEASE });
   assert.deepEqual(post.args, { thread_id: TASK, body: HELLO });
-  assert.deepEqual(result.args, { thread_id: TASK, claim_lease_id: LEASE, result: { said: "hello" } });
+  assert.deepEqual(result.args, { thread_id: TASK, claim_lease_id: LEASE, result: { said: HELLO } });
+  // What it records is what it posted.
+  assert.equal(result.args.result.said, post.args.body);
   assert.deepEqual(review.args, { thread_id: TASK, action: "start_review" });
 
   // Each step is shown starting, then done with what the server answered.
@@ -286,6 +288,9 @@ function element(id, tag = "div") {
       this.children.push(child);
       return child;
     },
+    replaceChildren() {
+      this.children = [];
+    },
     focus() {
       this.focused = true;
     },
@@ -318,9 +323,9 @@ const PAGE_IDS = [
 ];
 
 // The advice block's elements, which a page from before it does not have.
-const ADVICE_IDS = ["agent-advice", "advice-model", "advice-title", "advice-why", "advice-flagged", "advice-rows", "advice-status"];
+const ADVICE_IDS = ["agent-advice", "advice-model", "advice-providers", "advice-title", "advice-why", "advice-flagged", "advice-rows", "advice-status"];
 
-function page(tools, ids = PAGE_IDS) {
+function page(tools, ids = PAGE_IDS, config = null) {
   const elements = new Map(ids.map((id) => [id, element(id)]));
   if (elements.has("agent-advice")) elements.get("agent-advice").hidden = true;
   const doc = {
@@ -331,6 +336,9 @@ function page(tools, ids = PAGE_IDS) {
   const fetch = async (url, init) => {
     if (url === "/sandbox") {
       return new Response(JSON.stringify(minted), { status: 201, headers: { "content-type": "application/json" } });
+    }
+    if (url === "/try-config.json" && config) {
+      return new Response(JSON.stringify(config), { status: 200, headers: { "content-type": "application/json" } });
     }
     return srv.fetch(url, init);
   };
@@ -603,4 +611,96 @@ test("the try page has the advice block, hidden, inside the step that follows th
   // The ten readings wait behind one press; what was flagged does not.
   assert.match(done, /<ul id="advice-flagged"[^>]*><\/ul>\s*<details class="advice-all">\s*<summary>All ten readings<\/summary>\s*<ul id="advice-rows"/);
   assert.match(done, /<p id="advice-status" class="sr-only" role="status" aria-live="polite"><\/p>/);
+});
+
+test("a demo with more than one decision model lets the visitor ask another about the same hand-off", async () => {
+  const asked = [];
+  const tools = {
+    advise_land_gate: (args) => {
+      asked.push(args.provider ?? null);
+      if (args.provider === "google") {
+        const amber = helloAdvice();
+        amber.provider = "google";
+        amber.model = "gemini-decision-1";
+        amber.land = "amber";
+        amber.judgments[1] = { ...amber.judgments[1], concern: true };
+        return answer(amber);
+      }
+      if (args.provider === "openai") return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "unavailable" } }), { status: 200 });
+      return answer(helloAdvice());
+    },
+  };
+  const config = { turnstile_site_key: null, advice: true, providers: [{ id: "typesafe", name: "TypeSafe Jev" }, { id: "openai", name: "OpenAI Decisions" }, { id: "google", name: "Gemini Decisions" }] };
+  const ui = page(tools, [...PAGE_IDS, ...ADVICE_IDS], config);
+  await ui.app.loadConfig();
+  await ui.app.start();
+  await ui.app.watchAgent();
+  // The first ask names no model: the server picks.
+  assert.deepEqual(asked, [null]);
+  const group = ui.el("advice-providers");
+  assert.equal(group.hidden, false);
+  assert.deepEqual(group.children.map((b) => [b.textContent, b.ariaPressed]), [["TypeSafe Jev", "true"], ["OpenAI Decisions", "false"], ["Gemini Decisions", "false"]]);
+
+  // Asking Google's replaces what is shown with its reading.
+  await group.children[2].listeners[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, [null, "google"]);
+  assert.equal(ui.el("advice-title").textContent, "Worth a look");
+  assert.equal(ui.el("advice-model").textContent, "gemini-decision-1");
+  assert.equal(ui.el("advice-rows").children.length, 10, "the rows are replaced, not added to");
+  assert.equal(ui.el("advice-flagged").children.length, 1);
+  assert.deepEqual(ui.el("advice-providers").children.map((b) => b.ariaPressed), ["false", "false", "true"]);
+
+  // The rebuilt switch keeps the keyboard where the press was.
+  assert.equal(ui.el("advice-providers").children[2].focused, true);
+
+  // A model that does not answer leaves the advice as it was, and says so.
+  await ui.el("advice-providers").children[1].listeners[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, [null, "google", "openai"]);
+  assert.equal(ui.el("advice-title").textContent, "Worth a look");
+  assert.equal(ui.el("advice-status").textContent, "That model did not answer. The advice shown is unchanged.");
+  // The buttons work again, and the one pressed keeps the focus.
+  assert.deepEqual(ui.el("advice-providers").children.map((b) => b.disabled), [false, false, false]);
+  assert.equal(ui.el("advice-providers").children[1].focused, true);
+});
+
+test("when the first decision model does not answer, the visitor can still ask another", async () => {
+  const asked = [];
+  const tools = {
+    advise_land_gate: (args) => {
+      asked.push(args.provider ?? null);
+      if (!args.provider) return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "unavailable" } }), { status: 200 });
+      const from = helloAdvice();
+      from.provider = args.provider;
+      return answer(from);
+    },
+  };
+  const config = { turnstile_site_key: null, advice: true, providers: [{ id: "typesafe", name: "TypeSafe Jev" }, { id: "google", name: "Gemini Decisions" }] };
+  const ui = page(tools, [...PAGE_IDS, ...ADVICE_IDS], config);
+  await ui.app.loadConfig();
+  await ui.app.start();
+  await ui.app.watchAgent();
+  // No reading, but the block and its switch are there.
+  assert.equal(ui.el("agent-advice").hidden, false);
+  assert.equal(ui.el("advice-title").textContent, "No answer yet");
+  assert.equal(ui.el("advice-rows").children.length, 0);
+  const group = ui.el("advice-providers");
+  assert.equal(group.hidden, false);
+  assert.deepEqual(group.children.map((b) => b.ariaPressed), ["false", "false"]);
+  await group.children[1].listeners[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, [null, "google"]);
+  assert.equal(ui.el("advice-title").textContent, "Nothing flagged");
+  assert.deepEqual(ui.el("advice-providers").children.map((b) => b.ariaPressed), ["false", "true"]);
+});
+
+test("a demo with one decision model shows no switch", async () => {
+  const config = { turnstile_site_key: null, advice: true, providers: [{ id: "typesafe", name: "TypeSafe Jev" }] };
+  const ui = page({ advise_land_gate: () => answer(helloAdvice()) }, [...PAGE_IDS, ...ADVICE_IDS], config);
+  await ui.app.loadConfig();
+  await ui.app.start();
+  await ui.app.watchAgent();
+  assert.equal(ui.el("agent-advice").hidden, false);
+  assert.equal(ui.el("advice-providers").hidden, true);
 });

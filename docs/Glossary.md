@@ -38,7 +38,8 @@ overlaps one already being worked ([Swarms](Swarms.md)).
 ## Decision model
 
 A model that answers typed questions with probabilities instead of writing
-text. Maidan can ask one (TypeSafe's Jev) ten yes-or-no questions about a task
+text. Maidan can ask one (TypeSafe's Jev, OpenAI's Decisions API or Google's
+Gemini Decisions API) ten yes-or-no questions about a task
 handed to review and show the reviewer the answers as **advice**; rules in the
 server, not the model, turn the answers into "nothing flagged", "worth a look"
 or "problem reported" ([Decision models](Decision-Models.md)).

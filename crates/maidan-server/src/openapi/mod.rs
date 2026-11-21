@@ -17,8 +17,9 @@ use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownAuth, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::land_gate_advisor::{
-    AdvisorKeySource, JudgmentAnswer, LandGateAdvice, LandGateAdviceRequest,
-    LandGateAdviceThresholds, LandGateAdviceUsage, LandGateAdvisorStatus, LandGateJudgment,
+    AdvisorKeySource, AdvisorProvider, JudgmentAnswer, LandGateAdvice, LandGateAdviceRequest,
+    LandGateAdviceThresholds, LandGateAdviceUsage, LandGateAdvisorProvider, LandGateAdvisorStatus,
+    LandGateJudgment,
 };
 use crate::openapi::responses::{
     BadRequest, Conflict, Forbidden, Gone, IdempotencyKeyReused, InternalServerError, NotFound,
@@ -838,6 +839,8 @@ fn requires_credential(op: &Operation) -> bool {
         LandGateJudgment,
         JudgmentAnswer,
         AdvisorKeySource,
+        AdvisorProvider,
+        LandGateAdvisorProvider,
         LandGateAdvisorStatus,
         SetLandGateAdvisor,
         Workspace,

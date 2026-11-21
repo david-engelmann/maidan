@@ -4,11 +4,12 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    AllowEgressTarget, CancelThread, CloseAbandonedThread, ConfirmApprovalGate, CreateAgent,
-    CreateChannel, CreateMessage, CreateThread, CreateWorkspaceInvite, CreatedAgentResponse,
-    ListAuditQuery, ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
-    MintApiTokenResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
-    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    AllowEgressTarget, CancelThread, ClearLandGateAdvisor, CloseAbandonedThread,
+    ConfirmApprovalGate, CreateAgent, CreateChannel, CreateMessage, CreateThread,
+    CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
+    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
+    MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm,
+    OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
     SessionWorkspaces, SetLandGateAdvisor, SetMemberDisplayName, ThreadTransitionsQuery,
     ThreadVotes,
 };
@@ -717,7 +718,7 @@ pub fn ui_advise_land_gate() {}
 )]
 pub fn ui_get_land_gate_advisor() {}
 
-/// Store this workspace's own TypeSafe key (console)
+/// Store this workspace's own key for a decision-model provider (console)
 ///
 /// For the workspace's admin, signed in as a person. A session made from a
 /// token is refused: that token's holder uses
@@ -743,12 +744,12 @@ pub fn ui_get_land_gate_advisor() {}
 )]
 pub fn ui_set_land_gate_advisor() {}
 
-/// Forget this workspace's TypeSafe key (console)
+/// Forget this workspace's key for a decision-model provider (console)
 #[utoipa::path(
     delete,
     path = "/ui/api/workspaces/{wid}/land-gate/advisor",
     tag = "auth",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ClearLandGateAdvisor),
     security(
         ("bearerAuth" = []),
         ("sessionCookie" = []),

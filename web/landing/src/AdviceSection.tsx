@@ -109,8 +109,8 @@ export function AdviceSection() {
         <p className="eyebrow">Decision models</p>
         <h2 id="advise-title">A second read<br />on every hand-off.</h2>
         <p className="advise-lede">
-          A decision model, such as TypeSafe’s Jev, reads each hand-off and answers ten small
-          questions about it. Is the task done? Did the tests pass? Does it touch sign-in, or delete
+          A decision model reads each hand-off and answers ten small questions about it. Use
+          TypeSafe’s Jev, OpenAI’s Decisions API or Google’s Gemini Decisions, and switch between them. Is the task done? Did the tests pass? Does it touch sign-in, or delete
           data? Your reviewer starts with what it found.
         </p>
         <p className="advise-fine">

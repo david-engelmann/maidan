@@ -163,6 +163,12 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .advice[data-land="red"] { --advice-tone: var(--danger); }
 .advice-head { display: flex; justify-content: space-between; gap: 0.3rem 1rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .advice-head span:last-child { letter-spacing: 0.02em; text-transform: none; }
+.advice-providers { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.2rem 0 0.9rem; }
+.advice-providers[hidden] { display: none; }
+.advice-provider { min-height: 36px; padding: 0 0.85rem; font: inherit; font-size: 0.85rem; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.advice-provider:hover { color: var(--ink); }
+.advice-provider[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+.advice-provider:disabled { opacity: 0.55; cursor: progress; }
 .advice .advice-land { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; font-size: 1.4rem; letter-spacing: -0.03em; line-height: 1.15; }
 .advice-land strong { font-weight: 600; }
 .advice-land i { flex: none; inline-size: 12px; block-size: 12px; border-radius: 99px; background: var(--advice-tone); box-shadow: 0 0 0 4px color-mix(in srgb, var(--advice-tone) 22%, transparent); }
