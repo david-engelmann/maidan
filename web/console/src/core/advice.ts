@@ -61,7 +61,7 @@ export const LAND_TITLE: Record<Land, string> = {
 };
 
 /** One line under the title when nothing kept the advice from green. */
-export const ALL_CLEAR = "None of the ten judgments raised a concern.";
+export const ALL_CLEAR = "All ten readings are clear.";
 
 /** Why the advice is not green, one sentence a reason. */
 const REASON: Record<string, string> = {
@@ -128,12 +128,6 @@ export function concernCount(advice: Advice): number {
   return advice.judgments.filter((j) => j.concern).length;
 }
 
-/** The provider and model as the panel's small print: "Jev 1.14.0 by TypeSafe". */
-export function modelLine(advice: Pick<Advice, "provider" | "model">): string {
-  const jev = /^jev-(.+)$/.exec(advice.model);
-  const model = jev ? `Jev ${jev[1]}` : advice.model;
-  return advice.provider === "typesafe" ? `${model} by TypeSafe` : `${model} by ${advice.provider}`;
-}
 
 export class AdviceApi {
   private readonly fetchFn: Fetch;

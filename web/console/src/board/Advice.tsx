@@ -2,7 +2,7 @@
 // hand-off, as ten judgments, and the green, amber or red the server's rules
 // draw from them. It informs the reviewer; the sheet's buttons decide.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, modelLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
+import { ALL_CLEAR, AdviceApi, LAND_TITLE, judgmentLine, readingOf, reasonText, rowMark, sureness, type AdviceState, type Judgment } from "../core/advice.ts";
 import { useSession } from "../hooks/useSession.ts";
 
 /**
@@ -93,7 +93,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
     <section className="advice" data-land={advice.land} aria-label="Advice">
       <header className="advice-head">
         <h3>Advice</h3>
-        <span className="advice-model">{modelLine(advice)}</span>
+        <span className="advice-model">{advice.model}</span>
       </header>
       <p className="advice-land">
         <span className="advice-lamp" aria-hidden="true" />
@@ -109,7 +109,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
       <details className="advice-rest">
         <summary>
           <svg className="advice-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-          The ten judgments
+          All ten readings
         </summary>
         <p className="advice-legend" aria-hidden="true"><span>What the model read</span><span>How sure it is</span></p>
         <ul className="advice-rows">
@@ -117,7 +117,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
         </ul>
       </details>
       <div className="advice-foot">
-        <p>Advice only: it approves and blocks nothing. You decide.</p>
+        <p>Advice only.</p>
         <button type="button" className="chip-btn" onClick={askAgain}>Ask again</button>
       </div>
     </section>
@@ -128,7 +128,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
 // hairline: a check for clear, a bar and dot for a concern, a question mark
 // for a judgment the model could not settle.
 const MARK = { clear: "M7.5 12.4l3 3 6-6.6", concern: "M12 7v6M12 16.4v.4", unsure: "M9.8 9.9a2.3 2.3 0 1 1 3.6 1.9c-.8.6-1.4 1-1.4 2M12 16.6v.3" } as const;
-const WORD = { clear: "", concern: "Concern: ", unsure: "Unsure: " } as const;
+const WORD = { clear: "", concern: "Flagged: ", unsure: "Unsure: " } as const;
 
 function Row({ j }: { j: Judgment }) {
   const mark = rowMark(j);

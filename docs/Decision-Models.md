@@ -1,20 +1,20 @@
 # Advice from a decision model
 
-When a task is handed to review, Maidan can ask a decision model what it reads
-in the hand-off, and show the reviewer the answers. The model is
-[TypeSafe](https://typesafe.ai)'s Jev, a System One model: it answers typed
-questions with calibrated probabilities instead of writing text.
+When a task is handed to review, Maidan can give the reviewer a second read of
+the hand-off: a decision model answers ten small questions about it, and the
+reviewer sees what it found before opening the diff. A decision model answers
+typed questions with calibrated probabilities instead of writing text. The one
+the server speaks to today is [TypeSafe](https://typesafe.ai)'s Jev.
 
-The design has one rule: **the model makes judgments and code makes the
-decision.** Maidan never asks the model whether the work should land. It asks
-ten yes/no questions, each about one thing a person could point to, and a
-table in the server turns the ten probabilities into green, amber or red. The
-questions and the table are both in
+The design follows TypeSafe's own advice for a model like this: judgments
+from the model, decisions in code. Maidan does not ask whether the work should
+land. It asks ten yes/no questions, each about one thing a person could point
+to in the hand-off, and a table in the server turns the ten probabilities into
+green, amber or red. The questions and the table are both in
 `crates/maidan-server/src/land_gate_advisor.rs`, and nowhere else.
 
-The advice is advice. It does not approve, close, or write the land gate. A
-reviewer, a person or another agent, still decides, and an approval gate still
-waits for whoever it names.
+The result is advice for whoever reviews. Reviews, approval gates and the land
+gate work the same with it on, off or failing.
 
 It is off unless the instance turns it on, and it needs a TypeSafe API key:
 the instance's, or the workspace's own.
@@ -244,17 +244,34 @@ work, written to include the hard cases: tests that were not run, a question
 left in a message, work on the wrong thing, a result that tells the reader
 how to answer.
 
-Use your own hand-offs before you rely on it: a model that reads our examples
-well has not been shown to read yours.
+The script makes one task per hand-off in a channel of its own, and cancels
+each task once its advice has been read.
 
-## What it is not
+The result on 2026-11-20, against `jev-1.14.0` through a running server: of
+325 labelled answers, 314 agreed with their label, 11 were unsettled and none
+was a settled wrong answer; the advice matched its label on 34 of the 36
+hand-offs. Two more runs the same day read 315 and 10, then 313 and 12, with
+none wrong and the same two misses: an answer near a threshold can settle
+either way between runs. The two it missed are worth knowing:
 
-- It does not read the diff. It reads what the agent says it did. A result
-  that misdescribes its change is judged on the description.
+- A memory limit raised in a production values file, tested on staging, read
+  as nothing flagged where we had labelled it worth a look. Every judgment
+  was right. None of the ten questions asks whether a change touches
+  production configuration, so the rules had nothing to go on.
+- Release notes handed over with "let me know if you would like a longer
+  version" read as worth a look: the model was unsure whether part of the
+  task was left undone. We had labelled it nothing flagged.
+
+We wrote these hand-offs and their labels ourselves, so this is a regression
+set, not an independent test. Use your own hand-offs before you rely on it: a
+model that reads our examples well has not been shown to read yours.
+
+## Limits
+
+- It reads what the agent says it did, not the diff. A result that
+  misdescribes its change is judged on the description.
 - It is not a security control. The agent writes the text the model reads,
   and text that steers the model into settled, favourable answers gets green
   advice: the rules read probabilities and cannot tell a steered answer from
-  an honest one. The reviewer is the control, and the advice only says where
-  to look first.
-- It does not decide. Reviews, approval gates and the land gate work the same
-  with it on, off or failing.
+  an honest one. The reviewer is the control, and the advice says where to
+  look first.

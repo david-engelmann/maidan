@@ -293,7 +293,7 @@ export function createTryPage(
   // What a decision model read in the hand-off the agent just made, when
   // this demo offers advice. Without it, or when the model is slow or does
   // not answer, nothing is shown: the review is the same either way.
-  async function showAdvice(status) {
+  async function showAdvice() {
     const box = $(doc, "agent-advice");
     if (!box) return;
     let timer;
@@ -307,8 +307,10 @@ export function createTryPage(
     $(doc, "advice-model").textContent = advice.model;
     $(doc, "advice-title").textContent = advice.title;
     $(doc, "advice-why").textContent = advice.why;
-    const list = $(doc, "advice-rows");
-    for (const row of advice.rows) {
+    // What was flagged shows at once; all ten readings wait behind one press.
+    const all = $(doc, "advice-rows");
+    const flagged = $(doc, "advice-flagged");
+    const line = (row) => {
       const li = doc.createElement("li");
       li.className = "advice-row";
       li.dataset.mark = row.mark;
@@ -318,7 +320,7 @@ export function createTryPage(
       // The mark is a shape; a reader that cannot see it hears the word.
       const word = doc.createElement("span");
       word.className = "sr-only";
-      word.textContent = row.mark === "concern" ? "Concern: " : row.mark === "unsure" ? "Unsure: " : "";
+      word.textContent = row.mark === "concern" ? "Flagged: " : row.mark === "unsure" ? "Unsure: " : "";
       const reading = doc.createElement("span");
       reading.className = "advice-reading";
       reading.textContent = row.reading;
@@ -329,10 +331,18 @@ export function createTryPage(
       li.appendChild(word);
       li.appendChild(reading);
       li.appendChild(sure);
-      list.appendChild(li);
+      return li;
+    };
+    for (const row of advice.rows) {
+      all.appendChild(line(row));
+      if (row.mark !== "clear") flagged.appendChild(line(row));
     }
+    flagged.hidden = !advice.rows.some((row) => row.mark !== "clear");
     box.hidden = false;
-    say(status, `The agent sent Say hello to review. A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
+    // Said once to a screen reader, where the block's arrival would go
+    // unheard; a sighted visitor reads it in the block itself.
+    const heard = $(doc, "advice-status");
+    if (heard) say(heard, `A decision model read the hand-off: ${advice.title.toLowerCase()}.`);
   }
 
   async function watchAgent() {
@@ -349,7 +359,7 @@ export function createTryPage(
       button.hidden = true;
       // Asked before the next step is shown, so the advice is in place when
       // it appears and nothing moves under the person's pointer.
-      await showAdvice(status);
+      await showAdvice();
       $(doc, "agent-done").hidden = false;
       // The button that had focus is gone; the next thing to do is here.
       $(doc, "agent-console").focus();

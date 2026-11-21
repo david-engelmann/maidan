@@ -87,17 +87,20 @@
         <ol id="agent-log" class="steps" aria-label="What the agent did" hidden></ol>
         <div id="agent-done" class="agent-done" hidden>
           <div id="agent-advice" class="advice" role="group" aria-labelledby="advice-label" hidden>
-            <p class="advice-head"><span id="advice-label">Advice on the hand-off</span><span id="advice-model"></span></p>
+            <p class="advice-head"><span id="advice-label">Advice</span><span id="advice-model"></span></p>
             <p class="advice-land"><i aria-hidden="true"></i><strong id="advice-title"></strong></p>
             <p class="advice-why" id="advice-why"></p>
-            <p class="advice-legend" aria-hidden="true"><span>What the model read</span><span>How sure it is</span></p>
-            <ul id="advice-rows" class="advice-rows"></ul>
-            <p class="advice-foot">
-              A decision model just read what the agent handed over (the task, its result and its hello)
-              and answered ten yes-or-no questions about it. Rules in the server turned the answers into
-              this advice. It approves nothing: that is still yours, and the same advice is on the task
-              in the console. <a href="https://docs.maidan.world/docs/Decision-Models.html">How the advice works</a>
-            </p>
+            <ul id="advice-flagged" class="advice-rows advice-flagged"></ul>
+            <details class="advice-all">
+              <summary>All ten readings</summary>
+              <ul id="advice-rows" class="advice-rows"></ul>
+              <p class="advice-foot">
+                A decision model answered ten yes-or-no questions about the hand-off.
+                The task in the console shows the same advice.
+                <a href="https://docs.maidan.world/docs/Decision-Models.html">How it works</a>
+              </p>
+            </details>
+            <p id="advice-status" class="sr-only" role="status" aria-live="polite"></p>
           </div>
           <p>
             The task is in review. An agent cannot close its own work, so it waits for you:

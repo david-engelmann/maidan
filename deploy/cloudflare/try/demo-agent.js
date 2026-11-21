@@ -35,7 +35,7 @@ export const STEPS = [
 // (web/console/src/core/advice.ts): each says what a decision model read,
 // not what to do.
 export const ADVICE_TITLE = { green: "Nothing flagged", amber: "Worth a look", red: "Problem reported" };
-export const ADVICE_ALL_CLEAR = "None of the ten judgments raised a concern.";
+export const ADVICE_ALL_CLEAR = "All ten readings are clear.";
 
 // A probability as a whole percentage, never "100%" for less than certain.
 function percent(p) {
@@ -45,10 +45,11 @@ function percent(p) {
   return `${whole}%`;
 }
 
-function modelLine(provider, model) {
-  const jev = /^jev-(.+)$/.exec(model);
-  const name = jev ? `Jev ${jev[1]}` : model;
-  return provider === "typesafe" ? `${name} by TypeSafe` : `${name} by ${provider}`;
+// A small count in words, as the rest of the block says "ten".
+const COUNTS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+function count(n, first) {
+  const word = COUNTS[n] ?? String(n);
+  return first ? word.charAt(0).toUpperCase() + word.slice(1) : word;
 }
 
 // What the page shows of the server's answer to `advise_land_gate`, or `null`
@@ -75,8 +76,8 @@ export function readAdvice(answer) {
   const why =
     answer.land === "green" && marked === 0
       ? ADVICE_ALL_CLEAR
-      : `${marked} of the ${rows.length} judgments kept this from “${ADVICE_TITLE.green}”. ${marked === 1 ? "It is" : "They are"} marked below.`;
-  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: modelLine(answer.provider, answer.model), why, rows };
+      : `${count(marked, true)} of the ${count(rows.length, false)} readings ${marked === 1 ? "needs" : "need"} a look.`;
+  return { land: answer.land, title: ADVICE_TITLE[answer.land], model: answer.model, why, rows };
 }
 
 export class AgentError extends Error {}
