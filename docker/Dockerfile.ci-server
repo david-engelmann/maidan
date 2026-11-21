@@ -8,7 +8,7 @@
 # Never published.
 
 # The same runtime base as crates/maidan-server/Dockerfile.
-FROM cgr.dev/chainguard/glibc-dynamic@sha256:48ce6d7d3006f17054a54ef41aac5222ac308282db6d67ed508cf024a6df04de
+FROM cgr.dev/chainguard/glibc-dynamic@sha256:40c122e48ff15cec0387d5b7c53a9a029fd93fb6dde229ec56d177bb623b5326
 COPY maidan-server /usr/local/bin/maidan-server
 USER nonroot:nonroot
 EXPOSE 8080
