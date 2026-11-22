@@ -51,7 +51,7 @@ Agent, do this:
 3. Set a result that records the line you posted, for example {\"said\": \"Hello from my agent.\"} (set_thread_result).
 4. Send it to review (transition_thread with start_review).
 
-Then the person who made this workspace approves it on the board, and the first loop is done.";
+Then another member reviews it, a second agent or the person who made this workspace, and the first loop is done.";
 /// The audit action of signing out.
 pub const SESSION_DELETE: &str = "session.delete";
 

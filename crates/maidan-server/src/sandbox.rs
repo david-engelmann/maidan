@@ -1,6 +1,6 @@
 //! The demo's per-visitor sandbox: `POST /sandbox` gives a stranger their own
-//! throwaway workspace and two tokens, with no sign-up, so they can connect an
-//! agent to try.maidan.world within a minute.
+//! throwaway workspace and three tokens, with no sign-up, so they can connect
+//! an agent to try.maidan.world within a minute.
 //!
 //! On only with `MAIDAN_DEMO_SANDBOX=1`, and only on an instance that is a
 //! throwaway as a whole: production mode needs `MAIDAN_DEMO_INSTANCE=1`
@@ -9,8 +9,11 @@
 //!
 //! Each call makes a workspace (origin `open`, so the free allowance cuts it
 //! off), a `#general` channel, the sign-up's "Say hello" starter task with its
-//! opening message, an admin and an agent, and returns both secrets once.
-//! Both tokens expire in 24 hours; the demo's daily reset deletes everything
+//! opening message, an admin, an agent and a second agent to review the
+//! first one's work, and returns the three secrets once. The second agent is
+//! what lets the demo run its loop with no person in it: the server refuses
+//! a review or a close from the member who did the work, so the loop needs
+//! two. The tokens expire in 24 hours; the demo's daily reset deletes everything
 //! sooner or later anyway. The route is charged per address by the
 //! rate-limit middleware, takes Turnstile when the instance has it, refuses a
 //! cross-site browser post, and stops at `MAIDAN_DEMO_SANDBOX_MAX` workspaces.
@@ -53,7 +56,7 @@ pub const MAX_ENV: &str = "MAIDAN_DEMO_SANDBOX_MAX";
 /// Two hundred sandboxes a day is far past what the demo expects, and at the
 /// demo's 4 MiB stored-bytes allowance each still fits the container's disk.
 pub const DEFAULT_MAX: i64 = 200;
-/// How long both tokens live.
+/// How long the tokens live.
 pub const TOKEN_TTL_HOURS: i64 = 24;
 /// The channel a sandbox opens on.
 pub const CHANNEL: &str = "general";
@@ -161,7 +164,7 @@ pub struct MintedSandbox {
     pub workspace_id: WorkspaceId,
     pub channel_id: ChannelId,
     pub task_id: ThreadId,
-    /// When both tokens stop working. The demo's daily reset may delete the
+    /// When the tokens stop working. The demo's daily reset may delete the
     /// sandbox before then.
     pub expires_at: DateTime<Utc>,
     pub mcp_url: String,
@@ -170,6 +173,9 @@ pub struct MintedSandbox {
     pub admin: SandboxCredential,
     /// The agent's token: `maidan.agent.worker`, for an MCP client.
     pub agent: SandboxCredential,
+    /// A second agent's token, the same capability set: the member that
+    /// reviews and closes what the first one hands off.
+    pub reviewer: SandboxCredential,
 }
 
 /// What a sandbox admin holds: everything in its own workspace, and nothing
@@ -280,39 +286,27 @@ async fn mint_sandbox(
         .await?;
     crate::routes::publish_stored(state, stored).await;
 
-    let agent_secret = TokenSecret::generate();
-    let agent_caps =
-        maidan_auth::capability_set::expand_set(AGENT_WORKER).map_err(ApiError::Internal)?;
     let actor = admin.id;
-    let agent = state
-        .store
-        .create_agent_with_token(
-            maidan_store::store::NewAgentWithToken {
-                workspace_id,
-                handle: "agent".into(),
-                display_name: Some("Your agent".into()),
-                token_hash: hash_secret(agent_secret.as_str()),
-                token_label: Some("sandbox agent".into()),
-                capabilities: agent_caps,
-                expires_at: Some(expires_at),
-            },
-            Box::new(move |member: &Member| NewAuditEvent {
-                scope: AuditScope::Workspace(member.workspace_id),
-                actor_id: Some(actor),
-                action: "member.create".into(),
-                target_kind: Some("member".into()),
-                target_id: Some(member.id.0),
-                metadata: serde_json::json!({
-                    "workspace_id": member.workspace_id.0,
-                    "handle": member.handle,
-                    "kind": member.kind,
-                    "source": "demo-sandbox",
-                }),
-            }),
-            token_audit(actor, "demo-sandbox"),
-        )
-        .await?;
-    crate::routes::publish_stored(state, agent.event).await;
+    let agent = sandbox_agent(
+        state,
+        workspace_id,
+        actor,
+        expires_at,
+        "agent",
+        "Your agent",
+        "sandbox agent",
+    )
+    .await?;
+    let reviewer = sandbox_agent(
+        state,
+        workspace_id,
+        actor,
+        expires_at,
+        "reviewer",
+        "Review agent",
+        "sandbox reviewer",
+    )
+    .await?;
 
     let (task, stored) = state
         .store
@@ -368,14 +362,60 @@ async fn mint_sandbox(
                 token: admin_secret.as_str().to_string(),
                 capabilities: provisioned.token.capabilities,
             },
-            agent: SandboxCredential {
-                member_id: agent.member.id,
-                handle: agent.member.handle,
-                token: agent_secret.as_str().to_string(),
-                capabilities: agent.token.capabilities,
-            },
+            agent,
+            reviewer,
         }),
     ))
+}
+
+/// One agent of a new sandbox with its worker token.
+async fn sandbox_agent(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    actor: MemberId,
+    expires_at: DateTime<Utc>,
+    handle: &str,
+    display_name: &str,
+    token_label: &str,
+) -> Result<SandboxCredential, ApiError> {
+    let secret = TokenSecret::generate();
+    let capabilities =
+        maidan_auth::capability_set::expand_set(AGENT_WORKER).map_err(ApiError::Internal)?;
+    let created = state
+        .store
+        .create_agent_with_token(
+            maidan_store::store::NewAgentWithToken {
+                workspace_id,
+                handle: handle.into(),
+                display_name: Some(display_name.into()),
+                token_hash: hash_secret(secret.as_str()),
+                token_label: Some(token_label.into()),
+                capabilities,
+                expires_at: Some(expires_at),
+            },
+            Box::new(move |member: &Member| NewAuditEvent {
+                scope: AuditScope::Workspace(member.workspace_id),
+                actor_id: Some(actor),
+                action: "member.create".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": member.workspace_id.0,
+                    "handle": member.handle,
+                    "kind": member.kind,
+                    "source": "demo-sandbox",
+                }),
+            }),
+            token_audit(actor, "demo-sandbox"),
+        )
+        .await?;
+    crate::routes::publish_stored(state, created.event).await;
+    Ok(SandboxCredential {
+        member_id: created.member.id,
+        handle: created.member.handle,
+        token: secret.as_str().to_string(),
+        capabilities: created.token.capabilities,
+    })
 }
 
 #[cfg(test)]

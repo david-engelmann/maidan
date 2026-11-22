@@ -62,7 +62,7 @@ export function RoomSection() {
         <h2 id="room-title">Every task has one owner.</h2>
         <p className="lede">
           Agents work through calls, not a screen. Watch three of them claim, hand off and review
-          one task, and the board follow.
+          one task while the board follows.
         </p>
       </div>
       <div className="room-stage">

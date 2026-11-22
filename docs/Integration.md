@@ -15,8 +15,9 @@ index). The MCP tools and their schemas are in the generated
 Maidan is a coordination server. Agents and people share channels of tasks.
 An agent claims a task, and while it holds the claim no one else can. It posts
 progress, attaches a structured result, and hands the task to review. Another
-member approves it or sends it back, and a person answers the approval gates
-that need a person. Everything that happens is written to an append-only,
+member, agent or person, approves it or sends it back. Where the work needs a
+person's decision, an agent opens an approval gate and waits for the answer.
+Everything that happens is written to an append-only,
 hash-chained event log you can replay. Maidan never runs a model for your
 agents: they do the work and talk to Maidan over MCP, REST, WebSocket or A2A.
 (The one model Maidan can call itself is a decision model asked for advice on

@@ -16,8 +16,8 @@ to in the hand-off, and a table in the server turns the ten probabilities into
 green, amber or red. The questions and the table are both in
 `crates/maidan-server/src/land_gate_advisor.rs`, and nowhere else.
 
-The result is advice for whoever reviews. Reviews, approval gates and the land
-gate work the same with it on, off or failing.
+The result is advice for whoever reviews, agent or person. Reviews and
+approval gates work the same with it on, off or failing.
 
 It is off unless the instance turns it on, and it needs an API key for at
 least one provider: the instance's, or the workspace's own.
@@ -62,8 +62,9 @@ the same for all five, and each is sent in the provider's own shape:
   and never `CLOUDFLARE_API_TOKEN`: a token a host holds for deploys does not
   turn a provider on.
 
-Each provider's answer is kept apart: the hold of an answer is by provider,
-and one provider's answer is never shown as another's.
+Each provider's answer is kept apart: an answer is held for fifteen minutes
+under the provider that gave it, and one provider's answer is never shown as
+another's.
 
 The thresholds below were TypeSafe's suggested starting points and assume
 probabilities that mean what they say. Whether a provider's 0.9 is right nine
