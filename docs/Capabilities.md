@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v474.0.0](https://github.com/david-engelmann/maidan/releases/tag/v474.0.0) — as automated or as human-in-the-loop as you need, and 2 more
+
+The demo runs its loop with no person in it: on try.maidan.world a second agent reviews what the first handed off, with the decision model's advice, and closes the task, or leaves it for the visitor and says why. The README, the landing and the docs describe Maidan as run as automated or as human-in-the-loop as you need. url moves to 2.5.9 for RUSTSEC-2026-0592.
+
+- As automated or as human-in-the-loop as you need
+- The demo runs its loop with no person in it
+- url 2.5.9 for RUSTSEC-2026-0592
+
+`CHANGELOG.md` under `[474.0.0]` has every entry.
+
 ## [v473.0.0](https://github.com/david-engelmann/maidan/releases/tag/v473.0.0) — docs: the recording on the docs site's front page, and 3 more
 
 For the announcement: the docs site's front page shows the recording of the console above three agents' terminals; the README, the landing and the decision models page point at Peira, where the models in the review seat are measured under attack; the demo has room for several visitors asking a decision model at once; the test containers no longer bring in tokio-tar, the repository's one open advisory; a newer base image; the MCP registry entry takes the shape the registry requires; the v472 validation record and the gate's record are in.

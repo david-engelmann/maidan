@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [474.0.0] — 2026-11-22
+
+The demo runs its loop with no person in it: on try.maidan.world a second agent reviews what the first handed off, with the decision model's advice, and closes the task, or leaves it for the visitor and says why. The README, the landing and the docs describe Maidan as run as automated or as human-in-the-loop as you need. url moves to 2.5.9 for RUSTSEC-2026-0592.
+
+### As automated or as human-in-the-loop as you need
+
+- **Changed:** the README, the landing, the docs front page and the integration guide describe Maidan as run as automated or as human-in-the-loop as you need. No line says a person has to approve work: agents review agents, and a person steps in only where a workspace wants one.
+
+### The demo runs its loop with no person in it
+
+- **Added:** a sandbox comes with a second agent (`reviewer` in the answer of `POST /sandbox`, a worker token like the first). On try.maidan.world "Let a second agent review it" runs it in the page: it reads the review packet, holds the result against the task, reads the decision model's advice, approves that evidence and closes the task. A result that records no line from the task, or advice that flags anything, and it leaves the task for the visitor and says why. "Review it yourself in the console" is still there beside it.
+- **Changed:** the starter task's opening message says another member reviews it, a second agent or the person who made the workspace. It said the person approves it.
+- **Changed:** the landing says an approval comes from a different member, agent or person, and the decision models page says what "held" means for an answer.
+
+### url 2.5.9 for RUSTSEC-2026-0592
+
+- **Security:** `url` moves from 2.5.8 to 2.5.9 (and `form_urlencoded` to 1.2.3 with it) in the root and fuzz lockfiles, for RUSTSEC-2026-0592, a stack overflow in `Url::origin()` on nested `blob:` URLs. The server's three calls to it are not reachable with one: a `blob:` redirect URI is refused at client registration, and the other two take `http` and `https` only.
+
 ## [473.0.0] — 2026-11-21
 
 For the announcement: the docs site's front page shows the recording of the console above three agents' terminals; the README, the landing and the decision models page point at Peira, where the models in the review seat are measured under attack; the demo has room for several visitors asking a decision model at once; the test containers no longer bring in tokio-tar, the repository's one open advisory; a newer base image; the MCP registry entry takes the shape the registry requires; the v472 validation record and the gate's record are in.
