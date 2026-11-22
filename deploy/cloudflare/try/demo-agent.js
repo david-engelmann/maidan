@@ -7,16 +7,16 @@
 // without a browser (test/try-agent.test.js).
 //
 // It stops at review. The server refuses an agent closing work it did
-// (separation of duties), so the hand-off to the person is the point of the
-// demo, not a gap in it.
+// (separation of duties), so the hand-off to another member is the point of
+// the demo, not a gap in it: the page's second agent (demo-reviewer.js), or
+// the visitor in the console.
 
 // Relative, not the sandbox's `mcp_url`: the page's CSP is connect-src 'self',
 // and a relative path cannot drift to another origin.
 export const MCP_PATH = "/mcp/streamable";
 
-// What the agent posts and records. The message says what posted it, so the
-// person reviewing in the console is not misled into thinking their own agent
-// ran.
+// What the agent posts and records. The message says what posted it, so
+// whoever reviews it is not misled into thinking their own agent ran.
 export const HELLO = "Hello from the demo agent the try page runs in your browser.";
 // The result records the hello it posted, word for word. A result that says
 // something else ("hello") leaves a reviewer, and a decision model asked for
@@ -109,19 +109,13 @@ function quoted(title) {
   return `“${typeof title === "string" && title ? title : "untitled"}”`;
 }
 
-// `pauseMs` spaces the calls out so a person can follow them; each call
-// still runs only after the one before it answered.
-export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 20, pauseMs = 0, sleep } = {}) {
-  const wait = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+// One scripted agent's MCP calls: each is a JSON-RPC `tools/call` to this
+// origin with that agent's token in a header, and resolves to the tool's
+// answer or throws an `AgentError` in words for the page. The page's second
+// agent (demo-reviewer.js) calls the same way with its own token.
+export function createCaller({ fetch, token, retrySecs = 20 } = {}) {
   let rpcId = 0;
-  // The step a retry resumes at, so a failure after the claim does not ask
-  // for the claim again: the task is already the agent's, and a second claim
-  // would find nothing.
-  let next = 0;
-  let leaseId = "";
-  let running = false;
-
-  async function call(name, args) {
+  return async function call(name, args) {
     rpcId += 1;
     let res;
     try {
@@ -164,7 +158,54 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
     } catch {
       throw new AgentError(`The server’s answer to ${name} was not JSON.`);
     }
+  };
+}
+
+// Runs `work` one step at a time. `onStep(index, state, detail)`: state is
+// "running", "done" or "failed". `run` resolves to { ok: true }, to
+// { ok: true, left } when `halted()` gives a reason to stop after a step
+// that itself succeeded, or to { ok: false, step, message }; it never
+// throws. A retry resumes at the step that failed, so a step that already
+// changed something on the server is not made twice.
+export function createRunner(work, { pauseMs = 0, wait, who = "agent", halted = () => "" } = {}) {
+  let next = 0;
+  let running = false;
+
+  async function run(onStep = () => {}) {
+    if (running) return { ok: false, step: next, message: `The ${who} is already running.` };
+    running = true;
+    try {
+      while (next < work.length) {
+        if (halted()) return { ok: true, left: halted() };
+        const index = next;
+        onStep(index, "running", "");
+        try {
+          const detail = await work[index]();
+          next += 1;
+          onStep(index, "done", detail);
+        } catch (err) {
+          const message =
+            err instanceof AgentError ? err.message : "Something went wrong in this page. Reload it and try again.";
+          onStep(index, "failed", message);
+          return { ok: false, step: index, message };
+        }
+        if (next < work.length && pauseMs > 0 && !halted()) await wait(pauseMs);
+      }
+      return halted() ? { ok: true, left: halted() } : { ok: true };
+    } finally {
+      running = false;
+    }
   }
+
+  return { run, finished: () => next >= work.length };
+}
+
+// `pauseMs` spaces the calls out so a person can follow them; each call
+// still runs only after the one before it answered.
+export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 20, pauseMs = 0, sleep } = {}) {
+  const wait = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const call = createCaller({ fetch, token, retrySecs });
+  let leaseId = "";
 
   async function claim() {
     const thread = await call("claim_next_thread", { channel_id: channelId });
@@ -216,37 +257,13 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
       const state = typeof thread?.state === "string" ? thread.state.replaceAll("_", " ") : "in an unknown state";
       throw new AgentError(`The task is ${state}, not in review.`);
     }
-    return "The task is in review, waiting for you.";
+    return "The task is in review. The agent that did the work cannot approve or close it.";
   }
 
-  const work = [claim, acknowledge, hello, result, review];
-
-  // `onStep(index, state, detail)`: state is "running", "done" or "failed".
-  // Resolves to { ok: true } or { ok: false, step, message }; never throws.
-  async function run(onStep = () => {}) {
-    if (running) return { ok: false, step: next, message: "The agent is already running." };
-    running = true;
-    try {
-      while (next < work.length) {
-        const index = next;
-        onStep(index, "running", "");
-        try {
-          const detail = await work[index]();
-          next += 1;
-          onStep(index, "done", detail);
-        } catch (err) {
-          const message =
-            err instanceof AgentError ? err.message : "Something went wrong in this page. Reload it and try again.";
-          onStep(index, "failed", message);
-          return { ok: false, step: index, message };
-        }
-        if (next < work.length && pauseMs > 0) await wait(pauseMs);
-      }
-      return { ok: true };
-    } finally {
-      running = false;
-    }
-  }
+  // A retry resumes at the step that failed, so a failure after the claim
+  // does not ask for the claim again: the task is already the agent's, and a
+  // second claim would find nothing.
+  const steps = createRunner([claim, acknowledge, hello, result, review], { pauseMs, wait });
 
   // What a decision model reads in the hand-off, for the person about to
   // review it: asked with the sandbox's own token, once the task is in
@@ -255,7 +272,7 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
   // `provider` names who to ask, where the demo offers more than one;
   // without it the server picks.
   async function advice(provider = null) {
-    if (next < work.length) return null;
+    if (!steps.finished()) return null;
     try {
       return readAdvice(await call("advise_land_gate", { thread_id: taskId, ...(provider ? { provider } : {}) }));
     } catch {
@@ -263,5 +280,5 @@ export function createDemoAgent({ fetch, token, channelId, taskId, retrySecs = 2
     }
   }
 
-  return { run, advice, finished: () => next >= work.length };
+  return { run: steps.run, advice, finished: steps.finished };
 }

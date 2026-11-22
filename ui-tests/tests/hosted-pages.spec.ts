@@ -56,6 +56,7 @@ function tryFiles(): Record<string, { body: string; type: string }> {
     "/try.js": { body: text(resolve(TRY, "try.js")), type: "text/javascript; charset=utf-8" },
     "/clients.js": { body: text(resolve(TRY, "clients.js")), type: "text/javascript; charset=utf-8" },
     "/demo-agent.js": { body: text(resolve(TRY, "demo-agent.js")), type: "text/javascript; charset=utf-8" },
+    "/demo-reviewer.js": { body: text(resolve(TRY, "demo-reviewer.js")), type: "text/javascript; charset=utf-8" },
     "/backdrop.js": { body: text(resolve(TRY, "backdrop.js")), type: "text/javascript; charset=utf-8" },
     "/gathering.js": { body: text(resolve(TRY, "gathering.js")), type: "text/javascript; charset=utf-8" },
     "/theme.js": { body: text(THEME), type: "text/javascript; charset=utf-8" },

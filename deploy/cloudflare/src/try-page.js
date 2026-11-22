@@ -20,6 +20,7 @@ export const TRY_PATHS = new Set([
   "/try.js",
   "/clients.js",
   "/demo-agent.js",
+  "/demo-reviewer.js",
   "/backdrop.js",
   "/gathering.js",
   "/geist.woff2",

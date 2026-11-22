@@ -1,6 +1,6 @@
 // The try page: start a sandbox, show its agent token once, set up a client
-// or watch the page's own demo agent take the task, and sign the console in
-// as the sandbox's admin.
+// or watch the page's own demo agent take the task and a second one review
+// it, and sign the console in as the sandbox's admin.
 //
 // Secrets stay in this page's memory. The agent token is shown in the page,
 // and the demo agent sends it only in a header to this origin; the admin
@@ -10,6 +10,7 @@
 
 import { claudeCommand, codexConfig, cursorLink, vscodeLink } from "./clients.js";
 import { STEPS, createDemoAgent } from "./demo-agent.js";
+import { REVIEW_STEPS, createDemoReviewer } from "./demo-reviewer.js";
 
 // Keep in step with UNAVAILABLE_RETRY_SECS in src/edge.js. The Worker sends
 // that delay on the 503 it writes while the demo container is starting.
@@ -22,6 +23,12 @@ export const AGENT_PAUSE_MS = 700;
 // How long the page waits for advice on the hand-off before it goes on
 // without it. The server gives the model a second and a half, twice.
 export const ADVICE_WAIT_MS = 4000;
+
+// What the step after the hand-off says where the sandbox has no second
+// agent (a container from before it minted one): the visitor is the only
+// other member, so the review is theirs.
+export const REVIEW_SOLO =
+  "The task is in review. The agent that did the work cannot approve or close it, and in this sandbox you are the only other member: open the console, find Say hello under Needs review on the board, and approve it.";
 
 const OVERLOADED = "https://maidan.world/problems/overloaded";
 // POST /sandbox when the daily cap is hit (crates/maidan-server sandbox.rs).
@@ -87,7 +94,9 @@ export function createTryPage(
 ) {
   let adminToken = "";
   let agent = null;
+  let reviewer = null;
   const agentSteps = new Map();
+  const reviewSteps = new Map();
   let turnstileToken = "";
   // Who the demo can ask for advice (`/try-config.json`); one or none shows no switch.
   let adviceProviders = [];
@@ -173,6 +182,23 @@ export function createTryPage(
       retrySecs: START_RETRY_SECS,
       pauseMs: agentPauseMs,
     });
+    // The second agent, where the sandbox has one and the page a place to
+    // show it. Without either, the review is the visitor's, as it was.
+    const reviewButton = $(doc, "review-run");
+    const reviewerToken = sandbox.reviewer?.token;
+    if (reviewButton && typeof reviewerToken === "string" && reviewerToken) {
+      reviewer = createDemoReviewer({
+        fetch,
+        token: reviewerToken,
+        taskId: sandbox.task_id,
+        retrySecs: START_RETRY_SECS,
+        pauseMs: agentPauseMs,
+      });
+    } else if (reviewButton) {
+      reviewButton.hidden = true;
+      const intro = $(doc, "review-intro");
+      if (intro) intro.textContent = REVIEW_SOLO;
+    }
   }
 
   async function start() {
@@ -261,11 +287,13 @@ export function createTryPage(
   // One list item per step, made when the step starts, so the log grows as
   // the agent works. The log is not a live region: the status line under the
   // button names each step as it starts, so a screen reader hears it once.
-  function showStep(index, state, detail) {
+  // The same for either agent: `steps` are its steps, `rows` the items made
+  // so far, and `log` and `status` its list and its status line.
+  function showStepIn(steps, rows, log, status, index, state, detail) {
     if (state === "running") {
-      say($(doc, "agent-status"), `Step ${index + 1} of ${STEPS.length}: ${STEPS[index].label}…`);
+      say(status, `Step ${index + 1} of ${steps.length}: ${steps[index].label}…`);
     }
-    let item = agentSteps.get(index);
+    let item = rows.get(index);
     if (!item) {
       const li = doc.createElement("li");
       li.className = "step";
@@ -273,9 +301,9 @@ export function createTryPage(
       head.className = "step-head";
       const label = doc.createElement("span");
       label.className = "step-label";
-      label.textContent = STEPS[index].label;
+      label.textContent = steps[index].label;
       const tool = doc.createElement("code");
-      tool.textContent = STEPS[index].tool;
+      tool.textContent = steps[index].tool;
       const mark = doc.createElement("span");
       mark.className = "step-state";
       const note = doc.createElement("span");
@@ -285,16 +313,20 @@ export function createTryPage(
       head.appendChild(mark);
       li.appendChild(head);
       li.appendChild(note);
-      const log = $(doc, "agent-log");
       log.appendChild(li);
       log.hidden = false;
       item = { li, mark, note };
-      agentSteps.set(index, item);
+      rows.set(index, item);
     }
     item.li.dataset.state = state;
     item.mark.textContent = state === "done" ? "Done" : state === "failed" ? "Failed" : "Working…";
     item.note.textContent = detail;
   }
+
+  const showStep = (index, state, detail) =>
+    showStepIn(STEPS, agentSteps, $(doc, "agent-log"), $(doc, "agent-status"), index, state, detail);
+  const showReviewStep = (index, state, detail) =>
+    showStepIn(REVIEW_STEPS, reviewSteps, $(doc, "review-log"), $(doc, "review-status"), index, state, detail);
 
   // What a decision model read in the hand-off the agent just made, when
   // this demo offers advice. Without it, or when the model is slow or does
@@ -429,7 +461,7 @@ export function createTryPage(
       await showAdvice();
       $(doc, "agent-done").hidden = false;
       // The button that had focus is gone; the next thing to do is here.
-      $(doc, "agent-console").focus();
+      (reviewer ? $(doc, "review-run") : $(doc, "agent-console")).focus();
       return;
     }
     say(status, `The agent stopped at step ${outcome.step + 1} of ${STEPS.length}. ${outcome.message}`, true);
@@ -438,6 +470,41 @@ export function createTryPage(
     // Disabling the focused button dropped focus to the page; put it back
     // where the next keypress tries again.
     button.focus();
+  }
+
+  // The second agent reviews the hand-off and closes the task, or leaves it
+  // for the visitor and says why. Either way the console button is what is
+  // left to press, so focus goes there.
+  async function watchReviewer() {
+    const button = $(doc, "review-run");
+    const status = $(doc, "review-status");
+    if (!button || !status) return;
+    if (!reviewer || !agent?.finished()) {
+      say(status, "Watch the first agent hand the task to review first.", true);
+      return;
+    }
+    button.disabled = true;
+    const outcome = await reviewer.run(showReviewStep);
+    if (!outcome.ok) {
+      say(
+        status,
+        `The reviewer stopped at step ${outcome.step + 1} of ${REVIEW_STEPS.length}. ${outcome.message}`,
+        true,
+      );
+      button.textContent = "Try again";
+      button.disabled = false;
+      button.focus();
+      return;
+    }
+    button.hidden = true;
+    const consoleButton = $(doc, "agent-console");
+    if (outcome.left) {
+      say(status, `The reviewer left this one for you. ${outcome.left}`);
+    } else {
+      say(status, "Say hello is closed. Two agents did the work and the review, and no step waited for a person.");
+      consoleButton.textContent = "See it in the console";
+    }
+    consoleButton.focus();
   }
 
   async function copy(button) {
@@ -474,6 +541,9 @@ export function createTryPage(
     $(doc, "agent-console").addEventListener("click", () => {
       void openConsole($(doc, "agent-console"), $(doc, "agent-console-status"));
     });
+    $(doc, "review-run")?.addEventListener("click", () => {
+      void watchReviewer();
+    });
     for (const button of doc.querySelectorAll("button.copy")) {
       button.addEventListener("click", () => {
         void copy(button);
@@ -485,7 +555,7 @@ export function createTryPage(
   }
 
   // `loadConfig` is what `mount` does first: the human check, and what this demo offers.
-  return { start, openConsole, watchAgent, mount, loadConfig: loadTurnstile };
+  return { start, openConsole, watchAgent, watchReviewer, mount, loadConfig: loadTurnstile };
 }
 
 if (typeof document !== "undefined") {

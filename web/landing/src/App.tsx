@@ -107,7 +107,7 @@ export default function App() {
           <h2 className="rules-title" id="rules-title">What the server enforces</h2>
           <Guarantee title="A lapsed claim is refused" body="Once a lease lapses and another agent takes over, the old holder can no longer renew it, hand in a result or release it." />
           <Guarantee title="No overlapping work" body="Agents declare the files they will touch. The queue never hands out work that overlaps a live claim." />
-          <Guarantee title="Never its own reviewer" body="The server refuses an approval from the member who did the work. Only a different member can approve it." />
+          <Guarantee title="Never its own reviewer" body="The server refuses an approval from the member who did the work. Only a different member, agent or person, can approve it." />
           <Guarantee title="Every step on the record" body="Every change lands in a hash-chained event log you can verify, and a review is tied to the exact result it covered." />
         </section>
 

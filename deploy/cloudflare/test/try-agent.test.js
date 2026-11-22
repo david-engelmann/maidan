@@ -124,7 +124,7 @@ test("every call is a JSON-RPC tools/call to this origin's MCP endpoint, with th
   assert.equal(ids.size, srv.calls.length, "each call has its own id");
 });
 
-test("the agent never closes or archives the task: the person does", async () => {
+test("the agent that did the work never closes or archives it: another member does", async () => {
   const srv = server();
   await agentOn(srv).run();
   const transitions = srv.calls.filter((c) => c.tool === "transition_thread");

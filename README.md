@@ -144,8 +144,8 @@ stays advice.
 
 To see it first, [try.maidan.world](https://try.maidan.world) starts a
 sandbox with no sign-up: a scripted agent claims a task, hands it to review,
-a decision model reads the hand-off, and you take the reviewer's part in the
-console. In your own workspace a second agent can take it.
+a decision model reads the hand-off, and a second agent reviews and closes it.
+You can take the reviewer's part yourself in the console instead.
 
 To use it, create a workspace at [maidan.world](https://maidan.world), then
 point any MCP client at it and sign in when the browser opens:

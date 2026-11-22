@@ -1,8 +1,9 @@
 //! The demo's per-visitor sandbox (`POST /sandbox`, `MAIDAN_DEMO_SANDBOX`).
 //!
 //! A stranger asks and gets a workspace of their own: a `#general` channel, a
-//! "Say hello" task, an admin token and an agent token. Two sandboxes are two
-//! tenants, so each one's tokens see nothing of the other. The mint is off
+//! "Say hello" task, an admin token and a token each for two agents, one to
+//! do the task and one to review it. Two sandboxes are two tenants, so each
+//! one's tokens see nothing of the other. The mint is off
 //! unless the instance turned it on, refuses another site's browser, stops at
 //! its cap, and is charged per address.
 
@@ -95,7 +96,7 @@ async fn minted(client: &reqwest::Client, base: &str, ip: &str) -> Value {
             .get(reqwest::header::CACHE_CONTROL)
             .and_then(|v| v.to_str().ok()),
         Some("no-store"),
-        "the answer holds two secrets"
+        "the answer holds three secrets"
     );
     res.json().await.unwrap()
 }
@@ -263,6 +264,147 @@ async fn the_agent_token_runs_the_say_hello_task_to_review() {
     assert_eq!(reviewed["state"], json!("in_review"), "{reviewed}");
 }
 
+/// A tool call the server refuses, and the reason it gives.
+async fn refusal(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+    args: Value,
+) -> String {
+    let body: Value = client
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": name, "arguments": args }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let said = if body["result"]["isError"] == json!(true) {
+        body["result"]["content"][0]["text"].as_str()
+    } else {
+        body["error"]["message"].as_str()
+    };
+    said.unwrap_or_else(|| panic!("{name} was not refused: {body}"))
+        .to_string()
+}
+
+/// The loop with no person in it: one agent does the task, the other reviews
+/// and closes it, and the sandbox's admin token is used only to read the
+/// outcome. The member who did the work can do neither of the last two.
+#[tokio::test]
+async fn a_second_agent_reviews_and_closes_the_task_with_no_person_acting() {
+    let base = spawn(Some(10)).await;
+    let c = client();
+    let sb = minted(&c, &base, "10.8.0.1").await;
+    let worker = s(&sb, &["agent", "token"]);
+    let reviewer = s(&sb, &["reviewer", "token"]);
+    let channel = s(&sb, &["channel_id"]);
+    let task = s(&sb, &["task_id"]);
+    assert_eq!(s(&sb, &["reviewer", "handle"]), "reviewer");
+    assert_ne!(sb["reviewer"]["member_id"], sb["agent"]["member_id"]);
+    assert_ne!(sb["reviewer"]["token"], sb["agent"]["token"]);
+    assert_eq!(
+        sb["reviewer"]["capabilities"], sb["agent"]["capabilities"],
+        "the reviewer is an agent like the first, not an admin"
+    );
+
+    let claim = tool(
+        &c,
+        &base,
+        worker,
+        "claim_next_thread",
+        json!({ "channel_id": channel }),
+    )
+    .await;
+    assert_eq!(claim["id"], json!(task), "{claim}");
+    tool(
+        &c,
+        &base,
+        worker,
+        "post_message",
+        json!({ "thread_id": task, "body": "hello" }),
+    )
+    .await;
+    tool(
+        &c,
+        &base,
+        worker,
+        "set_thread_result",
+        json!({ "thread_id": task, "claim_lease_id": claim["claim_lease_id"], "result": { "said": "hello" } }),
+    )
+    .await;
+    let reviewed = tool(
+        &c,
+        &base,
+        worker,
+        "transition_thread",
+        json!({ "thread_id": task, "action": "start_review" }),
+    )
+    .await;
+    assert_eq!(reviewed["state"], json!("in_review"), "{reviewed}");
+
+    let close = json!({ "thread_id": task, "action": "close" });
+    let why = refusal(&c, &base, worker, "transition_thread", close.clone()).await;
+    assert!(
+        why.contains("separation of duties"),
+        "the worker cannot close its own work: {why}"
+    );
+
+    let packet = tool(
+        &c,
+        &base,
+        reviewer,
+        "get_review_packet",
+        json!({ "thread_id": task }),
+    )
+    .await;
+    let root = packet["evidence_root"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the packet has an evidence root: {packet}"));
+    let result = tool(
+        &c,
+        &base,
+        reviewer,
+        "get_thread_result",
+        json!({ "thread_id": task }),
+    )
+    .await;
+    assert_eq!(result["result"]["said"], json!("hello"), "{result}");
+    let review = tool(
+        &c,
+        &base,
+        reviewer,
+        "submit_review",
+        json!({ "thread_id": task, "decision": "approve", "evidence_root": root }),
+    )
+    .await;
+    assert_eq!(review["decision"], json!("approve"), "{review}");
+    assert_eq!(
+        review["reviewer_id"], sb["reviewer"]["member_id"],
+        "{review}"
+    );
+
+    // Approved or not, landing it is still not the worker's to do.
+    let why = refusal(&c, &base, worker, "transition_thread", close.clone()).await;
+    assert!(why.contains("separation of duties"), "{why}");
+    let closed = tool(&c, &base, reviewer, "transition_thread", close).await;
+    assert_eq!(closed["state"], json!("closed"), "{closed}");
+
+    let admin = s(&sb, &["admin", "token"]);
+    let (status, thread) = get(&c, &base, admin, &format!("/threads/{task}")).await;
+    assert_eq!(status, StatusCode::OK, "{thread}");
+    let thread: Value = serde_json::from_str(&thread).unwrap();
+    assert_eq!(thread["state"], json!("closed"), "{thread}");
+}
+
 #[tokio::test]
 async fn one_sandboxs_tokens_see_nothing_of_another_sandbox() {
     let base = spawn(Some(10)).await;
@@ -284,7 +426,11 @@ async fn one_sandboxs_tokens_see_nothing_of_another_sandbox() {
         format!("/threads/{b_task}/messages"),
         format!("/members/{b_agent_id}"),
     ];
-    for token in [s(&a, &["admin", "token"]), s(&a, &["agent", "token"])] {
+    for token in [
+        s(&a, &["admin", "token"]),
+        s(&a, &["agent", "token"]),
+        s(&a, &["reviewer", "token"]),
+    ] {
         for path in &probes {
             let (status, body) = get(&c, &base, token, path).await;
             assert!(
