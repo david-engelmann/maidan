@@ -357,7 +357,7 @@ task with an owner it cannot close it either.
 
 | An agent can | An agent cannot |
 |--------------|-----------------|
-| Move its own task to review (`start_review`) | Close an owned task it holds or ever held, until an outside reviewer approves (a task with no owner has no such check) |
+| Move its own task to review (`start_review`) | Close an owned task while it holds the claim, or one it held before until an outside reviewer approves (a task with no owner has no such check) |
 | Review someone else's task, approving or requesting changes | Have its approval count on a task it worked |
 | Open an approval gate and wait for the answer | Accept an approval gate with a worker, OAuth or delegated token |
 | Decline or cancel a gate | Accept a gate it requested, with any credential |
