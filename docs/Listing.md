@@ -130,8 +130,8 @@ proves the `io.github.david-engelmann` namespace, so no secret is involved. The 
 `main`, so they resolve only after this page's assets are merged. The file
 validates against the registry's 2025-12-11 schema. The Docker entry was
 filed on 2026-11-21 (docker/mcp-registry#7499). The registry entry's first
-publish that day was refused on the package's shape, which is corrected,
-and it publishes with the next release.
+publish that day was refused on the package's shape, which `v473.0.0`
+corrects. It was published on 2026-11-22 after the gate passed on that release: the registry lists `io.github.david-engelmann/maidan` at 473.0.0, with the hosted endpoint and the signed image.
 
 ## Icons
 
