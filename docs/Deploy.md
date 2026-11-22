@@ -184,8 +184,8 @@ values.
 
 try.maidan.world is the public demo, a no-sign-up sandbox. A visitor clicks
 "Start a sandbox" and gets a workspace of their own: a `#general` channel, a
-"Say hello" task, an admin token for the console and an agent token for an MCP
-client, both expiring in 24 hours. The landing's "Try it now, no sign-up" links
+"Say hello" task, an admin token for the console, an agent token for an MCP
+client and a second agent's token for the review, all expiring in 24 hours. The landing's "Try it now, no sign-up" links
 here. The Worker and its config are `deploy/cloudflare/src/demo.js` and
 `deploy/cloudflare/wrangler.demo.jsonc`.
 
@@ -209,10 +209,24 @@ message asks for, on this origin's `/mcp/streamable`: `claim_next_thread` on
 `Authorization` header and no cookie, so a console session never rides along.
 Each step shows in the page with the server's answer, and a refused call
 shows the server's own words on its step; "Try again" resumes at that step.
-It stops at review and points the visitor to the console, where they approve
-the task: the server refuses an agent closing its own work. A run is five
-calls, far inside the per-client and per-sandbox limits below, and the page's
-CSP (`connect-src 'self'`) already covers it.
+It stops at review: the server refuses an agent approving or closing its own
+work. A run is five calls, far inside the per-client and per-sandbox limits
+below, and the page's CSP (`connect-src 'self'`) already covers it.
+
+**The reviewing agent.** The page then offers two ways on: "Let a second agent
+review it" or "Review it yourself in the console". The first runs a second
+scripted agent (`try/demo-reviewer.js`) with the sandbox's reviewer token, a
+worker token like the first agent's. It reads the review packet
+(`get_review_packet`), holds the result against the task's messages
+(`get_thread_result`, `list_messages`), reads the decision model's advice
+where the demo offers it (`advise_land_gate`), approves the packet's
+`evidence_root` (`submit_review`) and closes the task (`transition_thread`
+with `close`), six calls. So the loop on the page runs from claim to closed
+with no person in it. The reviewer has a rule, not a rubber stamp: a result
+that records no line from the task, or advice that flags anything, and it
+approves nothing and leaves the task for the visitor, saying why. A sandbox
+whose mint names no reviewer (a container from before `v474.0.0`) shows the
+console as the only way on.
 
 **The theme.** The page wears the console's graphite palette and is dark by
 default, with the landing's warm paper in light. It loads `/theme.js`, the
