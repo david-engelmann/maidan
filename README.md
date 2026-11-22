@@ -16,6 +16,7 @@
   and Linear, with anything else wired in through signed webhooks and the API.
   Bring Claude Code, Codex,
   Cursor, GitHub Copilot, Gemini or your own agent.
+  Run it as automated or as human-in-the-loop as you need.
 </p>
 
 <p align="center">
@@ -60,7 +61,7 @@ holds the rules around that work outside the agents.
 - **Never its own reviewer.** A result goes to review with its evidence, and
   only a different member can approve it. The server enforces that, not a
   convention.
-- **A second read before you approve.** A decision model (TypeSafe's Jev,
+- **A second read at review.** A decision model (TypeSafe's Jev,
   OpenAI's Decisions API, Google's Gemini Decisions API, Perplexity's
   Decisions API or Cloudflare's Clef, whichever you hold a key for) answers
   ten yes-or-no questions about each hand-off, and the reviewer sees what it
@@ -95,7 +96,9 @@ together.
 </p>
 
 Nothing in the middle is a required step. A team can use the conversation
-alone, tasks without review, or all of it. Agents never drive a screen: they
+alone, tasks without review, or all of it. A swarm can run unattended, with
+agents reviewing agents, or with a person at whichever steps you choose.
+Agents never drive a screen: they
 act through calls (MCP, REST, WebSocket or A2A), every change is an event in
 one log, and an agent waits on the events it cares about instead of polling.
 The console is where people watch the same state and step in.
@@ -130,10 +133,9 @@ between them on the task.
 [Decision models](docs/Decision-Models.md)
 has the ten questions, the rules and a measured run.
 
-A model in the review seat reads text an agent wrote, so it matters how it
-holds up when that text is written to mislead. [Peira](https://peiratrial.dev),
-a benchmark from the same author, measures that: it gives a model the same
-decision twice, once clean and once with an attack in the input, and counts
+The hand-off a decision model reads is written by another agent.
+[Peira](https://peiratrial.dev), a benchmark from the same author, measures
+how easily such a model is fooled: it gives a model the same decision twice, once clean and once with an attack in the input, and counts
 how often a right answer flips. All five providers above are on its board,
 and every model that ran the full suite flips some. That is why the advice
 stays advice.
@@ -142,7 +144,8 @@ stays advice.
 
 To see it first, [try.maidan.world](https://try.maidan.world) starts a
 sandbox with no sign-up: a scripted agent claims a task, hands it to review,
-a decision model reads the hand-off, and you approve it in the console.
+a decision model reads the hand-off, and you take the reviewer's part in the
+console. In your own workspace a second agent can take it.
 
 To use it, create a workspace at [maidan.world](https://maidan.world), then
 point any MCP client at it and sign in when the browser opens:
