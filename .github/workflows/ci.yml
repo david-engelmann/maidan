@@ -198,7 +198,7 @@ jobs:
         # (#[cfg(test)]) aren't compiled here, and tests/ + benches are excluded.
         run: cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used
       - name: install cargo-deny
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-deny
       - name: deny check
@@ -315,7 +315,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: trufflehog scan
-        uses: trufflesecurity/trufflehog@3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc # v3.99.9
+        uses: trufflesecurity/trufflehog@d232362a64a09a9e7d58267b8f5acef00ae90e23 # v3.100.0
         with:
           path: .
           extra_args: --only-verified
@@ -368,7 +368,7 @@ jobs:
           shared-key: test-build
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - name: install nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest
       # A docs-only change still builds everything: its doc contract tests
@@ -426,7 +426,7 @@ jobs:
         with:
           persist-credentials: false
       - name: install nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest
       - name: download the test archive
@@ -666,7 +666,7 @@ jobs:
       - name: install rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: install cargo-vet
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-vet@0.10.2
       - name: cargo vet
@@ -707,7 +707,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.22"
       - name: install pytest
@@ -794,7 +794,7 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest
       - name: download the test archive
@@ -975,7 +975,7 @@ jobs:
         with:
           targets: aarch64-unknown-linux-gnu
       - name: install cross
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cross
       - name: build the web assets for the cross container
@@ -1045,7 +1045,7 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: install nextest + cargo-llvm-cov
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest,cargo-llvm-cov
       - name: test the floor check
@@ -1537,7 +1537,7 @@ jobs:
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest
       - name: download the test archive
