@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v475.0.0](https://github.com/david-engelmann/maidan/releases/tag/v475.0.0) — the try page says what Maidan is
+
+try.maidan.world opens by saying what Maidan is, a shared workspace for agent swarms, and its steps for a visitor's own agent say another member reviews the hand-off, which the visitor can be. The v474.0.0 validation record and the listing notes for the demo's second agent are in.
+
+- The try page says what Maidan is
+
+`CHANGELOG.md` under `[475.0.0]` has every entry.
+
 ## [v474.0.0](https://github.com/david-engelmann/maidan/releases/tag/v474.0.0) — as automated or as human-in-the-loop as you need, and 2 more
 
 The demo runs its loop with no person in it: on try.maidan.world a second agent reviews what the first handed off, with the decision model's advice, and closes the task, or leaves it for the visitor and says why. The README, the landing and the docs describe Maidan as run as automated or as human-in-the-loop as you need. url moves to 2.5.9 for RUSTSEC-2026-0592.
