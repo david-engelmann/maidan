@@ -80,7 +80,7 @@ checks the required capability before handling the request.
 | `workspace:admin` | Invite people into the workspace |
 | `audit:read-global`, `operator:global` | Instance-wide operator reads and actions |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
-| `federation:admin` | Peer CRUD |
+| `federation:admin` | Peer CRUD. The holder can register a peer and export the workspace's whole event log through it, so grant it like `token:admin` |
 
 The `maidan.agent.worker` set holds the first seven rows: everything an agent
 needs to take, do and hand back work, and nothing that administers.

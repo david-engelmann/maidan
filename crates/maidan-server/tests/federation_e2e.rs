@@ -29,6 +29,8 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     client: reqwest::Client,
     store: Arc<dyn Store>,
+    state: AppState,
+    pool: sqlx::SqlitePool,
     _dir: tempfile::TempDir,
 }
 
@@ -54,11 +56,12 @@ async fn spawn() -> Harness {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let app = router(AppState::new(
+    let state = AppState::new(
         store.clone(),
         artifacts,
         bus,
@@ -68,7 +71,8 @@ async fn spawn() -> Harness {
         FederationRuntime::new(true, federation_test_key()),
         Arc::new(AtomicI64::new(0)),
         None,
-    ));
+    );
+    let app = router(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -81,6 +85,8 @@ async fn spawn() -> Harness {
         server,
         client,
         store,
+        state,
+        pool,
         _dir: dir,
     }
 }
@@ -592,7 +598,7 @@ fn member_joined_envelope(
     let stored = StoredEvent {
         id,
         lsn: id,
-        kind: EventKind::MemberJoined,
+        kind: event.kind(),
         workspace_id: event.workspace_id(),
         channel_id: None,
         thread_id: None,
@@ -1111,4 +1117,111 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
         "workspace B's peer was not polled after workspace A's peer failed"
     );
     remote_server.abort();
+}
+
+/// The peer's workspace is the one a federated event is remapped into, so a
+/// `member_id` the peer names is whatever its operator wrote. A member of
+/// another workspace on this server must not get an inbox row, an email or a
+/// push about content they cannot read.
+#[tokio::test]
+async fn a_federated_mention_of_another_workspaces_member_notifies_nobody() {
+    let h = spawn().await;
+    let home = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-mention-home".to_string(),
+        })
+        .await
+        .unwrap();
+    let other = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "fed-mention-other".to_string(),
+        })
+        .await
+        .unwrap();
+    let new_member = |workspace_id: WorkspaceId, handle: &str| NewMember {
+        workspace_id,
+        handle: handle.to_string(),
+        display_name: None,
+        kind: MemberKind::Human,
+    };
+    let outsider = h
+        .store
+        .create_member(new_member(other.id, "outsider"))
+        .await
+        .unwrap();
+    let local = h
+        .store
+        .create_member(new_member(home.id, "local"))
+        .await
+        .unwrap();
+    let (peer_id, peer_secret) = mint_peer(&h, home.id, "remote-mention").await;
+
+    let mention = |member_id: MemberId| Event::MentionRecorded {
+        occurred_at: chrono::Utc::now(),
+        workspace_id: home.id,
+        thread_id: maidan_types::ThreadId(uuid::Uuid::now_v7()),
+        message_id: maidan_types::MessageId(uuid::Uuid::now_v7()),
+        member_id,
+    };
+    let (first, link) = member_joined_envelope(peer_id, 1, &mention(outsider.id), None);
+    let (second, _) = member_joined_envelope(peer_id, 2, &mention(local.id), Some(&link));
+    for envelope in [first, second] {
+        let res = h
+            .client
+            .post(format!("{}/a2a/v1/events", h.base()))
+            .bearer_auth(&peer_secret)
+            .json(&FederatedEventBatch {
+                events: vec![envelope],
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let summary: serde_json::Value = res.json().await.unwrap();
+        assert_eq!(summary["ingested"], 1, "{summary}");
+    }
+
+    let mentions: Vec<StoredEvent> = h
+        .store
+        .list_events_after_global(0, 1000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::MentionRecorded)
+        .collect();
+    assert_eq!(mentions.len(), 2, "both federated mentions are logged");
+    for stored in &mentions {
+        let event = stored.opened_event().unwrap();
+        maidan_server::notification_router::route_event(&h.state, stored.id, &event)
+            .await
+            .unwrap();
+    }
+
+    // Counted in the table: the remote thread is not one this server holds,
+    // so the inbox hides the row, but the email and the push still go out.
+    let rows = |member: MemberId| {
+        let pool = h.pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM maidan_notifications WHERE member_id = ?",
+            )
+            .bind(member.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(
+        rows(local.id).await,
+        1,
+        "a member of the peer's own workspace is still notified"
+    );
+    assert_eq!(
+        rows(outsider.id).await,
+        0,
+        "a member of another workspace is not notified about this one's content"
+    );
+    h.shutdown().await;
 }

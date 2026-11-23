@@ -1018,3 +1018,219 @@ async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
         "a thread mute suppresses even a mention (no new notification)"
     );
 }
+
+/// Rows written for `member`, whatever the inbox would show: a mention of a
+/// thread this server does not hold is hidden from the listing but still
+/// emails and pushes.
+async fn notification_rows(pool: &sqlx::SqlitePool, member: maidan_types::MemberId) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM maidan_notifications WHERE member_id = ?")
+        .bind(member.0)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+async fn router_state() -> (
+    Arc<dyn Store>,
+    AppState,
+    sqlx::SqlitePool,
+    tempfile::TempDir,
+) {
+    let pool = maidan_search::sqlite_pool_options()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(store.clone(), artifacts, bus, search);
+    (store, state, pool, dir)
+}
+
+/// A recipient id read out of an event payload names whoever the producer
+/// wrote, and a federated event is remapped into the receiving workspace
+/// without its member ids being checked. The router answers for it: a member
+/// of another workspace gets nothing from this one.
+#[tokio::test]
+async fn a_mention_of_another_workspaces_member_notifies_nobody() {
+    let (store, state, pool, _dir) = router_state().await;
+    let home = store
+        .create_workspace(NewWorkspace {
+            name: "home".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let new_member = |workspace_id, handle: &str| NewMember {
+        workspace_id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Human,
+    };
+    let local = store
+        .create_member(new_member(home.id, "local"))
+        .await
+        .unwrap();
+    let outsider = store
+        .create_member(new_member(other.id, "outsider"))
+        .await
+        .unwrap();
+    let gone = store
+        .create_member(new_member(home.id, "gone"))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE maidan_members SET tombstoned_at = ? WHERE id = ?")
+        .bind(Utc::now())
+        .bind(gone.id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let mention = |member_id| Event::MentionRecorded {
+        occurred_at: Utc::now(),
+        workspace_id: home.id,
+        thread_id: maidan_types::ThreadId::new(),
+        message_id: maidan_types::MessageId::new(),
+        member_id,
+    };
+    for (log_id, member) in [(1, outsider.id), (2, gone.id), (3, local.id)] {
+        notification_router::route_event(&state, log_id, &mention(member))
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(notification_rows(&pool, local.id).await, 1);
+    assert_eq!(
+        notification_rows(&pool, outsider.id).await,
+        0,
+        "a member of another workspace is not told about this one's mention"
+    );
+    assert_eq!(
+        notification_rows(&pool, gone.id).await,
+        0,
+        "a tombstoned member is not notified"
+    );
+}
+
+/// The federatable events that name a member in their payload (an assignment
+/// and a state change) fan out to that member's followers. A follower of
+/// another workspace's member must not be reached by an event that claims the
+/// home workspace.
+#[tokio::test]
+async fn followers_of_another_workspaces_member_hear_nothing_of_a_foreign_event() {
+    let (store, state, pool, _dir) = router_state().await;
+    let home = store
+        .create_workspace(NewWorkspace {
+            name: "home".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let new_member = |workspace_id, handle: &str| NewMember {
+        workspace_id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let actor = store
+        .create_member(new_member(home.id, "actor"))
+        .await
+        .unwrap();
+    let outsider = store
+        .create_member(new_member(other.id, "outsider"))
+        .await
+        .unwrap();
+    let watcher = store
+        .create_member(new_member(other.id, "watcher"))
+        .await
+        .unwrap();
+    store.follow_member(watcher.id, outsider.id).await.unwrap();
+    let other_channel = store
+        .create_channel(NewChannel {
+            workspace_id: other.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let snapshot = store
+        .create_thread(NewThread {
+            channel_id: other_channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+    // The thread and channel exist nowhere on this server, as in a federated
+    // event, whose locations the ingest refuses when they are local.
+    let channel_id = maidan_types::ChannelId::new();
+    let thread_id = maidan_types::ThreadId::new();
+    let events = [
+        Event::ThreadAssignmentChanged {
+            occurred_at: Utc::now(),
+            workspace_id: home.id,
+            channel_id,
+            thread_id,
+            actor_id: actor.id,
+            previous_assignee_id: None,
+            assignee_id: Some(outsider.id),
+            note: None,
+            thread: maidan_types::Thread {
+                assignee_id: Some(outsider.id),
+                ..snapshot.clone()
+            },
+        },
+        Event::ThreadStateChanged {
+            occurred_at: Utc::now(),
+            workspace_id: home.id,
+            channel_id,
+            thread_id,
+            actor_id: actor.id,
+            from_state: maidan_types::ThreadState::Open,
+            to_state: maidan_types::ThreadState::Closed,
+            thread: maidan_types::Thread {
+                assignee_id: Some(outsider.id),
+                ..snapshot
+            },
+            previous_assignee_id: Some(outsider.id),
+        },
+    ];
+    for (i, event) in events.iter().enumerate() {
+        // Routing may refuse the event; what it must not do is notify.
+        let _ = notification_router::route_event(&state, i as i64 + 1, event).await;
+    }
+
+    assert_eq!(
+        notification_rows(&pool, watcher.id).await,
+        0,
+        "a follower of another workspace's member is not notified"
+    );
+    assert_eq!(
+        notification_rows(&pool, outsider.id).await,
+        0,
+        "the named member of another workspace is not notified"
+    );
+}
