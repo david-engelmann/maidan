@@ -56,6 +56,7 @@ mod usage_meters;
 pub use token::mint_vocabulary;
 mod usage;
 mod waitlist;
+mod webhooks_ui;
 mod workspace;
 mod workspace_invite;
 
@@ -99,6 +100,7 @@ pub use token::*;
 pub use usage::*;
 pub use usage_meters::*;
 pub use waitlist::*;
+pub use webhooks_ui::*;
 pub use workspace::*;
 pub use workspace_invite::*;
 

@@ -98,6 +98,8 @@
     "/ui/oauth/grants",
     "/ui/{name}",
     "/workspaces",
-    "/workspaces/{id}/audit"
+    "/workspaces/{id}/audit",
+    "/workspaces/{wid}/connections/github/webhook",
+    "/workspaces/{wid}/connections/slack/events"
   ]
 }

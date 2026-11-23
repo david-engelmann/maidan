@@ -9,6 +9,7 @@ import {
   CONNECTIONS_NEED,
   ConnectionsApi,
   connectRefusal,
+  absoluteInboundUrl,
   inboundLine,
   scrub,
   stateLine,
@@ -226,6 +227,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
 /** The URL a provider posts to, to copy, with where it goes and whether it has a secret to sign with. */
 function Inbound({ surface, inbound, paste, id }: { surface: ConnectionSurface; inbound: NonNullable<Connection["inbound"]>; paste: string; id: string }) {
   const [copied, setCopied] = useState<"no" | "yes" | "failed">("no");
+  const url = absoluteInboundUrl(inbound.url, window.location.origin);
   useEffect(() => {
     if (copied !== "yes") return;
     const timer = setTimeout(() => setCopied("no"), 2500);
@@ -233,7 +235,7 @@ function Inbound({ surface, inbound, paste, id }: { surface: ConnectionSurface; 
   }, [copied]);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(inbound.url);
+      await navigator.clipboard.writeText(url);
       setCopied("yes");
     } catch {
       setCopied("failed");
@@ -243,7 +245,7 @@ function Inbound({ surface, inbound, paste, id }: { surface: ConnectionSurface; 
     <div className="connection-inbound">
       <p className="small"><b>Inbound URL</b></p>
       <div className="connection-url-row">
-        <code className="connection-url break" id={`${id}-url`}>{inbound.url}</code>
+        <code className="connection-url break" id={`${id}-url`}>{url}</code>
         <button type="button" className="chip-btn" onClick={() => void copy()} aria-label={`Copy the ${surfaceName(surface)} inbound URL`}>{copied === "yes" ? "Copied" : "Copy"}</button>
       </div>
       {copied === "yes" ? <span className="visually-hidden" role="status" aria-live="polite">Copied</span> : null}

@@ -270,6 +270,24 @@ test("GitHub and Slack show their inbound URL to copy, where to paste it, and wh
   sl.getByText("No signing secret is set, so this URL accepts nothing yet. Add one below.");
 });
 
+test("a server with no public origin answers a path, and the URL shown and copied is absolute", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+  const router = withSession([
+    {
+      match: LIST,
+      body: () => [github({ source: "workspace", account: "octocat", connected_at: "2026-11-23T16:00:00Z", inbound: { url: "/workspaces/ws/connections/github/webhook", secret_set: true } }), slack(), linear()],
+    },
+  ]);
+  await renderSignedIn(<Connections ws="ws" />, router.fn);
+  const gh = within(await waitRow("github"));
+  const absolute = `${window.location.origin}/workspaces/ws/connections/github/webhook`;
+  gh.getByText(absolute);
+  await user.click(gh.getByRole("button", { name: "Copy the GitHub inbound URL" }));
+  expect(writeText).toHaveBeenCalledWith(absolute);
+});
+
 test("a browser that will not copy says so", async () => {
   const user = userEvent.setup();
   vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });

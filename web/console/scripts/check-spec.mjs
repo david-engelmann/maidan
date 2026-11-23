@@ -13,11 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(here, "../src");
 
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
-export const PENDING = new Map([
-  ["GET /ui/api/workspaces/{}/webhooks", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
-  ["POST /ui/api/workspaces/{}/webhooks", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
-  ["DELETE /ui/api/workspaces/{}/webhooks/{}", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
-]);
+export const PENDING = new Map([]);
 
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me|tools|ui\/api)(\/|$|\?)/;
 const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/g;

@@ -99,6 +99,15 @@ pub enum ApiError {
 }
 
 impl ApiError {
+    /// The instance has no `FEDERATION_ENCRYPTION_KEY`, so it cannot keep
+    /// `what` (a secret it must read back). Not a fault of the request or of
+    /// the code: the answer is a 503 whose sentence names the setting.
+    pub fn needs_encryption_key(what: &str) -> Self {
+        Self::Overloaded(format!(
+            "this instance cannot keep {what} until FEDERATION_ENCRYPTION_KEY is set on it"
+        ))
+    }
+
     fn status(&self) -> StatusCode {
         match self {
             Self::NotFound => StatusCode::NOT_FOUND,

@@ -315,7 +315,12 @@ has not connected a surface cannot bless a destination, link a Slack channel or
 a GitHub issue, or watch a pull request on it, and nothing queued for it is
 sent. A link or allowlist entry made while nothing served the workspace stays
 in its table, doing nothing, until the workspace connects or the operator
-removes it.
+removes it. Slack channel links and GitHub issue links belong to the workspace
+that made them, so two workspaces can link the same channel or issue. The
+server's own inbound routes (`/integrations/slack/events` and
+`/integrations/github/events`) reach only the workspaces its credential serves,
+and a workspace that connected its own account receives on
+`/workspaces/{wid}/connections/{surface}/...` with the secret it stored.
 
 | Variable | Default | Notes |
 |---|---|---|

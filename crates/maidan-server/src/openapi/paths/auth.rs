@@ -6,12 +6,12 @@ use uuid::Uuid;
 use crate::dto::{
     AllowEgressTarget, CancelThread, ClearLandGateAdvisor, CloseAbandonedThread,
     ConfirmApprovalGate, Connection, CreateAgent, CreateChannel, CreateMessage, CreateThread,
-    CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
+    CreateWebhook, CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
     ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm,
-    OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    MintWebhookResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
+    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
     SessionWorkspaces, SetConnection, SetLandGateAdvisor, SetMemberDisplayName,
-    ThreadTransitionsQuery, ThreadVotes,
+    ThreadTransitionsQuery, ThreadVotes, WebhookResponse,
 };
 use crate::error::ProblemDetails;
 use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorStatus};
@@ -1074,3 +1074,61 @@ pub fn ui_set_connection() {}
     )
 )]
 pub fn ui_clear_connection() {}
+
+/// List a workspace's webhooks (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/webhooks",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = ["workspace:read"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<WebhookResponse>),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn ui_list_webhooks() {}
+
+/// Create a webhook (console)
+#[utoipa::path(
+    post,
+    path = "/ui/api/workspaces/{wid}/webhooks",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWebhook,
+    security(
+        ("bearerAuth" = ["workspace:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = MintWebhookResponse),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 503, description = "This instance has no FEDERATION_ENCRYPTION_KEY to keep the signing secret with", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_create_webhook() {}
+
+/// Revoke a webhook (console)
+#[utoipa::path(
+    delete,
+    path = "/ui/api/workspaces/{wid}/webhooks/{whid}",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("whid" = Uuid, Path, description = "Webhook subscription id"),
+    ),
+    security(
+        ("bearerAuth" = ["workspace:write"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_revoke_webhook() {}

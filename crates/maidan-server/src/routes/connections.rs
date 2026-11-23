@@ -309,11 +309,11 @@ async fn set(
     }
     // Not a failure of this request: the instance was set up without the key
     // that encrypts workspace secrets, so it has nowhere to keep a connection.
-    let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Overloaded(
-            "this instance cannot store a workspace's connection: storing one needs FEDERATION_ENCRYPTION_KEY on the instance".into(),
-        )
-    })?;
+    let key = state
+        .federation
+        .encryption_key
+        .as_deref()
+        .ok_or_else(|| ApiError::needs_encryption_key("a workspace's connection"))?;
     let existing = match state.stored_connection(workspace_id, surface).await {
         Ok(existing) => existing.map(|(_, connection)| connection),
         // A connection that cannot be opened is replaced by a new token, and

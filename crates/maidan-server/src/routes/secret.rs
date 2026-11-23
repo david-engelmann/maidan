@@ -27,11 +27,11 @@ use crate::state::AppState;
 /// The at-rest encryption key, or a clear error when the deployment hasn't
 /// configured one — secrets can't be stored/read without it.
 fn require_key(state: &AppState) -> ApiResult<&[u8; 32]> {
-    state.federation.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Internal(
-            "secret storage requires an encryption key (set FEDERATION_ENCRYPTION_KEY)".into(),
-        )
-    })
+    state
+        .federation
+        .encryption_key
+        .as_deref()
+        .ok_or_else(|| ApiError::needs_encryption_key("a workspace secret"))
 }
 
 fn validate_name(name: &str) -> ApiResult<()> {

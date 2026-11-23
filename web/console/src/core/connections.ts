@@ -127,6 +127,15 @@ export function stateLine(c: Pick<Connection, "surface" | "source" | "account" |
   return `Not connected. Nothing in this workspace can send to or read from ${name} until it is connected.`;
 }
 
+/**
+ * The URL to show and copy. A server that knows no public origin answers a
+ * path (`/workspaces/…`), which a provider cannot post to, so the browser's
+ * own origin is put in front of it.
+ */
+export function absoluteInboundUrl(url: string, origin: string): string {
+  return url.startsWith("/") ? `${origin.replace(/\/+$/, "")}${url}` : url;
+}
+
 /** What the inbound secret's state means for the URL above it. */
 export function inboundLine(surface: ConnectionSurface, inbound: Inbound): string {
   const secret = surface === "slack" ? "signing secret" : "webhook secret";

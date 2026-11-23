@@ -455,27 +455,48 @@ token or secret.
 
 **The inbound URL and secret.** For GitHub and Slack, each row also carries
 the URL the provider posts events to and whether the workspace has stored the
-secret that signs them. Sending a secret alone to a surface that already has a
-connection updates the secret and keeps the token.
+secret that signs them. The URL is built from `MAIDAN_PUBLIC_ORIGIN`. Without
+it the row carries a path, and the console puts its own origin in front. Sending
+a secret alone to a surface that already has a connection updates the secret
+and keeps the token.
 
 - **GitHub.** In the repository's Settings, Webhooks, add a webhook. Set the
   payload URL to `$MAIDAN_URL/workspaces/$WORKSPACE_ID/connections/github/webhook`,
   the content type to `application/json` and the secret to the
-  `webhook_secret` you stored. Send the events Maidan reads, which are issue
-  comments, pull requests, workflow runs, check suites, check runs and
-  statuses.
+  `webhook_secret` you stored. Under the events to send, choose individual
+  events and tick Issue comments, Pull requests, Workflow runs, Check suites,
+  Check runs and Statuses. GitHub's first delivery is a `ping`, which Maidan
+  answers once the signature checks out.
 - **Slack.** In the app's Event Subscriptions, enable events and set the
   request URL to `$MAIDAN_URL/workspaces/$WORKSPACE_ID/connections/slack/events`.
   Maidan answers Slack's URL check. The `signing_secret` is the one on the
-  app's Basic Information page. Subscribe the app to message events for the
-  channels it is in.
+  app's Basic Information page. Under Subscribe to bot events, add
+  `message.channels`, and `message.groups` for private channels. Invite the bot
+  to each channel it should read.
 - **Linear** has no inbound URL.
 
-Each inbound route needs no bearer token. It answers `404` while the workspace
-has no secret for the surface, so it does not reveal which workspaces exist,
-and `401` for a signature that does not match. An accepted delivery reaches
-only the links that belong to this workspace. A workspace's egress allowlist,
-below, still decides which destinations a result may reach.
+Each inbound route needs no bearer token. It answers `404`, with one fixed body,
+when the workspace does not exist, has no connection for the surface or has
+stored no secret for it, so the three cannot be told apart and the route does
+not reveal which workspaces exist. A signature that does not match is a `401`.
+Slack's timestamp must be within five minutes.
+
+**Who hears of a delivery.** A link belongs to the workspace that made it, so
+two workspaces can link the same Slack channel or the same GitHub issue and
+neither learns of the other. A delivery to a workspace's own URL reaches that
+workspace's links and watches and nobody else's. The server's own routes,
+`/integrations/slack/events` and `/integrations/github/events`, reach the
+links of the workspaces its credential serves, which are the workspaces the
+operator opened that stored no connection of their own for that surface. A
+workspace that connected its own account hears of events on its own URL only.
+
+**Echoes.** A comment Maidan posts to GitHub with the workspace's token comes
+back as a webhook, and Maidan posts nothing for it. Messages a Slack bot made
+are skipped too. Other people's comments and messages, including the token
+owner's own, are posted into the linked thread.
+
+A workspace's egress allowlist, below, still decides which destinations a
+result may reach.
 
 ### The egress allowlist
 

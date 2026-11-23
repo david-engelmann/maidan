@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
 import {
   CONNECTIONS_NEED,
+  absoluteInboundUrl,
   ConnectionsApi,
   SURFACES,
   connectBody,
@@ -155,4 +156,10 @@ test("removing a connection is a DELETE that answers 204", async () => {
   assert.equal(calls[0].init?.method, "DELETE");
   assert.ok(new Headers(calls[0].init?.headers).get("Idempotency-Key"));
   await assert.rejects(api([{ status: 403 }]).api.remove("w", "slack"), /not allowed to do this/);
+});
+
+test("an inbound path gets the browser's origin and an absolute URL is left alone", () => {
+  assert.equal(absoluteInboundUrl("/workspaces/ws/connections/slack/events", "https://console.example"), "https://console.example/workspaces/ws/connections/slack/events");
+  assert.equal(absoluteInboundUrl("/workspaces/ws/connections/slack/events", "https://console.example/"), "https://console.example/workspaces/ws/connections/slack/events");
+  assert.equal(absoluteInboundUrl("https://maidan.example/workspaces/ws/connections/slack/events", "https://console.example"), "https://maidan.example/workspaces/ws/connections/slack/events");
 });

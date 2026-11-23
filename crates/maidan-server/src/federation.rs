@@ -1191,11 +1191,11 @@ pub async fn create_peer(
         }
         None => TokenSecret::generate().as_str().to_string(),
     };
-    let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Internal(
-            "FEDERATION_ENCRYPTION_KEY must be set to create federation peers".into(),
-        )
-    })?;
+    let key = state
+        .federation
+        .encryption_key
+        .as_deref()
+        .ok_or_else(|| ApiError::needs_encryption_key("a federation peer's secret"))?;
     let outbound_secret_ciphertext =
         encrypt_peer_secret(&secret, key).map_err(|e| ApiError::Internal(e.to_string()))?;
     let remote_workspace_id = body

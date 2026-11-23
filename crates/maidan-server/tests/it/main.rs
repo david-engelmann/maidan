@@ -986,6 +986,9 @@ mod wasi_tenancy_e2e;
 #[path = "../web_push_e2e.rs"]
 mod web_push_e2e;
 
+#[path = "../webhook_console_e2e.rs"]
+mod webhook_console_e2e;
+
 #[path = "../webhook_deliveries_cutoff_e2e.rs"]
 mod webhook_deliveries_cutoff_e2e;
 
@@ -1030,6 +1033,9 @@ mod workspace_export_e2e;
 
 #[path = "../workspace_import_e2e.rs"]
 mod workspace_import_e2e;
+
+#[path = "../workspace_inbound_e2e.rs"]
+mod workspace_inbound_e2e;
 
 #[path = "../workspace_name_e2e.rs"]
 mod workspace_name_e2e;

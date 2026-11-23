@@ -1350,6 +1350,24 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/webhooks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/ui/api/workspaces/{wid}/webhooks",
+    "capability": "workspace:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/webhooks/{whid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:write",
