@@ -4,7 +4,7 @@
 //! (fresh-workspace vs same-id restore) and the "already exists" guard are the
 //! caller's job; this just writes.
 
-use maidan_types::{WorkspaceId, WorkspaceImport, WorkspaceOrigin};
+use maidan_types::{ConnectionSurface, WorkspaceId, WorkspaceImport, WorkspaceOrigin};
 use sqlx::{PgConnection, PgPool};
 
 use crate::error::StoreError;
@@ -40,6 +40,60 @@ pub(crate) async fn origin_on(
             .fetch_optional(&mut *conn)
             .await?;
     Ok(origin.as_deref().map(WorkspaceOrigin::from_stored))
+}
+
+/// The workspace's origin and whether it stores its own connection for
+/// `surface` (`instance_credentials`).
+pub(crate) async fn connection_state_on(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+    surface: ConnectionSurface,
+) -> Result<(WorkspaceOrigin, bool), StoreError> {
+    let row: Option<(String, bool)> = sqlx::query_as(
+        "SELECT w.origin,
+                EXISTS (SELECT 1 FROM maidan_secrets s
+                        WHERE s.workspace_id = w.id AND s.name = $1)
+         FROM maidan_workspaces w WHERE w.id = $2",
+    )
+    .bind(surface.secret_name())
+    .bind(workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let (origin, has_connection) = row.ok_or(StoreError::NotFound)?;
+    Ok((WorkspaceOrigin::from_stored(&origin), has_connection))
+}
+
+/// Refuse a workspace that is not served on `surface`.
+pub(crate) async fn ensure_served_on(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+    surface: ConnectionSurface,
+) -> Result<(), StoreError> {
+    let (origin, has_connection) = connection_state_on(conn, workspace_id, surface).await?;
+    crate::instance_credentials::ensure_served(origin, has_connection, surface)
+}
+
+/// [`ensure_served_on`] on a connection of its own, for the guards that hold
+/// the pool.
+pub(crate) async fn ensure_served(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    surface: ConnectionSurface,
+) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    ensure_served_on(&mut conn, workspace_id, surface).await
+}
+
+/// Whether `workspace_id` is served on `surface`, by a connection of its own
+/// or by the operator's opening it.
+pub async fn workspace_served_on(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    surface: ConnectionSurface,
+) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    let (origin, has_connection) = connection_state_on(&mut conn, workspace_id, surface).await?;
+    Ok(crate::instance_credentials::serves(origin, has_connection))
 }
 
 pub(crate) async fn import_on(

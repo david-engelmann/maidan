@@ -5,7 +5,7 @@
 //! this. Each caller checks first, with what only it knows: the caller's
 //! capability, its access to a channel it names, and that the repository is
 //! blessed for the workspace ([`repo_blessed`]), since the sweep reads the
-//! pull request with the instance's GitHub credential.
+//! pull request with the credential that serves the workspace on GitHub.
 
 use maidan_types::{
     ChannelId, MemberId, NewChannel, NewThread, StoredEvent, ThreadId, WatchedPull, WorkspaceId,
@@ -17,15 +17,24 @@ use crate::store::Store;
 
 /// Whether `repo` (lowercase `owner/name`) is in the workspace's egress
 /// allowlist for GitHub comments or agent branches: the repositories the
-/// workspace may have the instance read and write for it.
+/// workspace may have its GitHub credential read and write. A workspace no
+/// credential serves on GitHub is refused with an `InvalidInput` that says to
+/// connect it.
 pub async fn repo_blessed(
     store: &dyn Store,
     workspace_id: WorkspaceId,
     repo: &str,
 ) -> Result<bool, StoreError> {
-    // The pull request is read with the server's own GitHub credential.
-    if !crate::instance_credentials::serves(store.workspace_origin(workspace_id).await?) {
-        return Ok(false);
+    // The pull request is read with the credential that serves the workspace
+    // on GitHub, so a workspace nothing serves there watches nothing and is
+    // told to connect GitHub rather than that the repository is not blessed.
+    if !store
+        .workspace_served_on(workspace_id, maidan_types::ConnectionSurface::Github)
+        .await?
+    {
+        return Err(StoreError::InvalidInput(
+            crate::instance_credentials::refusal(maidan_types::ConnectionSurface::Github),
+        ));
     }
     Ok(store
         .list_egress_targets(workspace_id)

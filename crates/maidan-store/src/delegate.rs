@@ -65,6 +65,14 @@ macro_rules! store_delegations {
                 import::workspace_origin(self.pool(), workspace_id).await
             }
 
+            async fn workspace_served_on(
+                &self,
+                workspace_id: WorkspaceId,
+                surface: maidan_types::ConnectionSurface,
+            ) -> Result<bool, StoreError> {
+                import::workspace_served_on(self.pool(), workspace_id, surface).await
+            }
+
             async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
                 workspaces::create(self.pool(), new).await
             }
@@ -1702,11 +1710,14 @@ macro_rules! store_delegations {
                 &self,
                 new: NewSlackChannelLink,
             ) -> Result<SlackChannelLink, StoreError> {
-                // The server's own credentials serve only a workspace its operator
-                // opened (`instance_credentials`).
-                crate::instance_credentials::ensure_served(
-                    import::workspace_origin(self.pool(), new.workspace_id).await?,
-                )?;
+                // Linked only where a credential serves the workspace on Slack
+                // (`instance_credentials`).
+                import::ensure_served(
+                    self.pool(),
+                    new.workspace_id,
+                    maidan_types::ConnectionSurface::Slack,
+                )
+                .await?;
                 slack_links::link(self.pool(), new).await
             }
 
@@ -1757,11 +1768,14 @@ macro_rules! store_delegations {
                 &self,
                 new: NewGithubIssueLink,
             ) -> Result<GithubIssueLink, StoreError> {
-                // The server's own credentials serve only a workspace its operator
-                // opened (`instance_credentials`).
-                crate::instance_credentials::ensure_served(
-                    import::workspace_origin(self.pool(), new.workspace_id).await?,
-                )?;
+                // Linked only where a credential serves the workspace on GitHub
+                // (`instance_credentials`).
+                import::ensure_served(
+                    self.pool(),
+                    new.workspace_id,
+                    maidan_types::ConnectionSurface::Github,
+                )
+                .await?;
                 github_links::link(self.pool(), new).await
             }
 

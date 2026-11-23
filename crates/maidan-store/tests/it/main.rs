@@ -152,6 +152,9 @@ mod close_abandoned;
 #[path = "../concurrent_migrations.rs"]
 mod concurrent_migrations;
 
+#[path = "../connection_served.rs"]
+mod connection_served;
+
 #[path = "../context_pack_ties.rs"]
 mod context_pack_ties;
 

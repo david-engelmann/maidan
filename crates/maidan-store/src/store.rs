@@ -356,6 +356,15 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspaceOrigin, StoreError>;
+    /// Whether a connection can serve `workspace_id` on `surface`: it stores
+    /// its own, or the operator opened it (`instance_credentials`). Whether
+    /// the server holds a credential for the second case is not the store's
+    /// to know.
+    async fn workspace_served_on(
+        &self,
+        workspace_id: WorkspaceId,
+        surface: maidan_types::ConnectionSurface,
+    ) -> Result<bool, StoreError>;
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     /// Create a workspace and append its `WorkspaceCreated` event atomically.
