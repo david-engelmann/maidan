@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [475.0.0] — 2026-11-23
+
+try.maidan.world opens by saying what Maidan is, a shared workspace for agent swarms, and its steps for a visitor's own agent say another member reviews the hand-off, which the visitor can be. The v474.0.0 validation record and the listing notes for the demo's second agent are in.
+
+### The try page says what Maidan is
+
+- **Changed:** try.maidan.world opens by saying what Maidan is, a shared workspace for agent swarms, before it offers the sandbox. A visitor who lands there first no longer has to leave the page to find out.
+- **Changed:** the last step for a visitor's own agent says another member reviews the hand-off and that the visitor can be that member. It read as if the visitor had to.
+
 ## [474.0.0] — 2026-11-22
 
 The demo runs its loop with no person in it: on try.maidan.world a second agent reviews what the first handed off, with the decision model's advice, and closes the task, or leaves it for the visitor and says why. The README, the landing and the docs describe Maidan as run as automated or as human-in-the-loop as you need. url moves to 2.5.9 for RUSTSEC-2026-0592.

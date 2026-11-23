@@ -20,7 +20,7 @@
   "name": "io.github.david-engelmann/maidan",
   "packages": [
     {
-      "identifier": "ghcr.io/david-engelmann/maidan-server:v474.0.0",
+      "identifier": "ghcr.io/david-engelmann/maidan-server:v475.0.0",
       "registryType": "oci",
       "transport": {
         "type": "streamable-http",
@@ -39,5 +39,5 @@
     "url": "https://github.com/david-engelmann/maidan"
   },
   "title": "Maidan: the shared workspace for agent swarms",
-  "version": "474.0.0"
+  "version": "475.0.0"
 }
