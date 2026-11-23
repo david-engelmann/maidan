@@ -122,8 +122,8 @@ Tools holds the rest, as tabs:
 |---|---|
 | Inbox | Your notifications; Mark all read |
 | Preferences | Your session and Sign out, your name, how you hear about things (and your email), muted kinds, and the channels and tasks you follow |
-| Deliveries | Where each task's result was sent and whether it arrived, with **Replay** on a failed or skipped one; for workspace admins, **Where results may go**, the allowlist of destinations a result may reach (add one, or remove one after a confirmation); and webhook and automation sends |
-| Connections | For workspace admins, the workspace's own GitHub, Slack and Linear accounts. Each row says whether it is connected, using the server's own connection, or not connected, and has a token form (the token is checked by its provider and never shown again). GitHub and Slack show the inbound URL to copy, and **Remove** asks first |
+| Deliveries | Where each task's result was sent and whether it arrived, with **Replay** on a failed or skipped one. For workspace admins, **Where results may go**, the allowlist of destinations a result may reach (add one, or remove one after a confirmation) |
+| Integrations | For workspace admins, two sections. GitHub, Slack and Linear holds the workspace's own accounts. Each row says whether it is connected, using the server's own connection, or not connected, and has a token form (the token is checked by its provider and never shown again). GitHub and Slack show the inbound URL to copy, and **Remove** asks first. Webhooks lists the workspace's outbound webhooks, adds one (a URL, an optional label and at least one event) and shows its signing secret once, and **Revoke** asks first. Webhooks need a token, so a browser sign-in is told how to get one. Below them are the webhook and automation sends, with their dead letters and **Replay** |
 | Commands | Slash commands: list and register them |
 | Search | Search messages |
 | Workspace | Its name, Channels and tasks (create a channel or a task), agents, peers, app installations, the audit log, the Decision models panel (the workspace's own key for each provider, set by its admin), and Switch workspace |

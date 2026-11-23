@@ -406,7 +406,7 @@ connection is always the one used. The server's credential is never used for a
 workspace that the operator did not open. `github` also covers the
 `github_branch` destination. Linking, watching or delivering on a surface the
 workspace is not served on is refused with `connect GitHub for this workspace
-first (Tools, Connections)`, naming the surface.
+first (Tools, Integrations)`, naming the surface.
 
 | Surface | Token | What it needs |
 |---|---|---|
@@ -417,8 +417,8 @@ first (Tools, Connections)`, naming the surface.
 The account behind the token is the identity Maidan acts as, so a token made
 for this purpose keeps the workspace's activity apart from anyone's own.
 
-**In the console.** A workspace admin opens Tools, Connections. Each of the
-three rows says whether it is connected with the workspace's own account (with
+**In the console.** A workspace admin opens Tools, Integrations, and finds the
+section GitHub, Slack and Linear. Each of its three rows says whether it is connected with the workspace's own account (with
 the account and the date), using the server's own connection, or not
 connected. Paste the token into the row's field and choose **Connect**. The
 field takes the token once and is empty afterwards. **Replace** sends a new
@@ -532,6 +532,10 @@ at-least-once; rows that use up their attempts are quarantined.
 `GET /workspaces/:wid/deliveries?kind=webhook|automation|all` lists them
 (`workspace:read`) and `POST …/deliveries/:did/replay?kind=…` retries one
 (`workspace:write`). Watch `maidan_automation_delivery_total{outcome="failure"}`.
+
+In the console, Tools, Integrations lists a workspace's webhooks, adds and
+revokes them, and lists these sends beside them
+([Webhooks](Integration%20Reference.md#webhooks)).
 
 ### A2A over gRPC
 
