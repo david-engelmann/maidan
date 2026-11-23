@@ -177,6 +177,15 @@ async fn mint_authority(
     member_id: MemberId,
     label: String,
 ) -> ApiResult<ApiTokenId> {
+    // Bounded like every mint, by the caller's minting vocabulary, so this
+    // path can never hand out what `token:admin` could not mint directly.
+    let vocabulary = crate::routes::mint_vocabulary(auth);
+    let capabilities = authority_capabilities();
+    if let Some(outside) = capabilities.iter().find(|cap| !vocabulary.contains(cap)) {
+        return Err(ApiError::Forbidden(format!(
+            "a webhook's token cannot hold {outside}"
+        )));
+    }
     // Never kept: the hash is of a secret that is not returned or stored.
     let secret = TokenSecret::generate();
     let actor = auth.actor_id();
@@ -189,7 +198,7 @@ async fn mint_authority(
                 app_installation_id: None,
                 token_hash: hash_secret(secret.as_str()),
                 label: Some(label),
-                capabilities: authority_capabilities(),
+                capabilities,
                 expires_at: None,
             },
             Box::new(move |record| NewAuditEvent {
