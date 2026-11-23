@@ -232,6 +232,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{wid}", &f.workspace)
             .replace("{iid}", &f.workspace)
+            .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{tid}", &f.thread)
             .replace("{mid}", &f.message);
