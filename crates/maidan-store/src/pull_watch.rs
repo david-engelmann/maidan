@@ -23,6 +23,10 @@ pub async fn repo_blessed(
     workspace_id: WorkspaceId,
     repo: &str,
 ) -> Result<bool, StoreError> {
+    // The pull request is read with the server's own GitHub credential.
+    if !crate::instance_credentials::serves(store.workspace_origin(workspace_id).await?) {
+        return Ok(false);
+    }
     Ok(store
         .list_egress_targets(workspace_id)
         .await?

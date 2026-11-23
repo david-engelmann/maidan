@@ -300,6 +300,13 @@ never a link-local one, and the answer for a host in
 [Result delivery to GitHub and Slack](Production.md#result-delivery-to-github-and-slack)
 explains the permissions and the guards.
 
+These credentials are the server's own, one set for every workspace on it.
+They serve only the workspaces its operator opened (the operator API, or
+`maidan init`). A workspace opened by sign-up or by the demo's sandbox cannot
+bless a destination, link a Slack channel or a GitHub issue, or watch a pull
+request, so a server with sign-up on can hold them for the operator's own
+workspaces.
+
 | Variable | Default | Notes |
 |---|---|---|
 | `MAIDAN_GITHUB_TOKEN` | unset | A fine-grained personal access token for result delivery and the change flow. |
