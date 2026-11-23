@@ -1411,16 +1411,25 @@ fn ensure_event_log_read(
             Ok(())
         }
         (None, Some(Extension(PeerContext(peer)))) => {
-            if peer.remote_workspace_id != workspace_id {
-                Err(ApiError::Forbidden(
-                    "peer may only read its registered remote workspace".into(),
-                ))
-            } else {
-                Ok(())
-            }
+            ensure_peer_reads_its_workspace(peer, workspace_id)
         }
         _ => Err(ApiError::Unauthorized),
     }
+}
+
+/// A peer's secret reads the workspace its peer is registered in, and no
+/// other. `remote_workspace_id` is not the scope: it names the workspace the
+/// poll worker asks the peer's own server for, and the admin who registers
+/// the peer sets it to anything. While it was the scope here, a tenant that
+/// registered a peer naming another tenant's workspace read that workspace's
+/// whole log with the secret the registration handed back.
+fn ensure_peer_reads_its_workspace(peer: &Peer, workspace_id: WorkspaceId) -> ApiResult<()> {
+    if peer.workspace_id != workspace_id {
+        return Err(ApiError::Forbidden(
+            "a peer reads only the workspace it is registered in".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub async fn list_events(
@@ -1576,11 +1585,7 @@ pub async fn get_log_snapshot(
                 ensure_workspace(auth, workspace_id)?;
             }
             (None, Some(Extension(PeerContext(peer)))) => {
-                if peer.remote_workspace_id != workspace_id {
-                    return Err(ApiError::Forbidden(
-                        "peer may only read its registered remote workspace".into(),
-                    ));
-                }
+                ensure_peer_reads_its_workspace(peer, workspace_id)?;
             }
             _ => return Err(ApiError::Unauthorized),
         }
