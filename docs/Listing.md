@@ -165,13 +165,15 @@ A reviewer with no MCP client still sees the loop. "Watch an agent do it" runs
 a scripted agent in the browser with the sandbox's own agent token: five MCP
 calls to `/mcp/streamable` that claim Say hello, acknowledge the claim, post a
 hello, set a result and send the task to review. The page shows each call and
-what the server answered. The agent never closes the task: the server refuses
-an agent closing its own work. "Let a second agent review it" then runs the
+what the server answered. The agent never closes the task: it still holds
+the claim, and on a task with an owner the server refuses the holder closing
+its own work. "Let a second agent review it" then runs the
 other scripted agent with its own token: it reads the review packet and the
 result, reads the decision model's advice, approves and closes the task, so
 the loop ends with no step waiting for a person. It leaves the task for the
-visitor, and says why, when the result does not match the task or the advice
-is not green. The visitor can also review it in the console instead.
+visitor, and says why, when the result records no line that was posted on
+the task or the advice is not green. When no advice comes back it approves
+on its own check. The visitor can also review it in the console instead.
 
 | Piece | Where |
 | --- | --- |
