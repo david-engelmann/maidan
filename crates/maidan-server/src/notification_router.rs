@@ -182,6 +182,12 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             member_id,
             ..
         } => {
+            // A federated mention is remapped into the peer's workspace with its
+            // member id as the peer wrote it, so the id may name a member of
+            // another workspace on this server, or one who has left.
+            if !member_in_workspace(state, *workspace_id, *member_id).await? {
+                return Ok(());
+            }
             // The mention event carries no channel; resolve it (best-effort) so the
             // inbox can render + RBAC-scope the notification.
             let channel_id = state

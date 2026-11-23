@@ -68,7 +68,7 @@ MCP protocol methods (not tools):
 | Capability | Routes |
 |------------|--------|
 | `federation:ingest` | POST `/a2a/v1/events` |
-| `federation:admin` | Peer CRUD |
+| `federation:admin` | Peer CRUD. The holder can register a peer and export the workspace's whole event log through it, so grant it like `token:admin` |
 
 ## A2A protocol (`POST /a2a/v1/rpc`)
 
