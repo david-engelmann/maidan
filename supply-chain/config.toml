@@ -151,9 +151,9 @@ version = "0.64.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.aws-smithy-http-client]]
-version = "1.5.2"
+version = "1.5.3"
 criteria = "safe-to-deploy"
-notes = "Patch bump from the weekly Dependabot cargo group; no imported audit covers this version yet."
+notes = "Bump from the weekly Dependabot cargo group. The source diff from 1.5.2 was read: the connection pool builder defaults TCP keepalive to 30 seconds, nothing else."
 
 [[exemptions.aws-smithy-json]]
 version = "0.65.0"
@@ -172,9 +172,9 @@ version = "1.16.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.aws-smithy-runtime-api]]
-version = "1.21.0"
+version = "1.22.0"
 criteria = "safe-to-deploy"
-notes = "Patch bump from the weekly Dependabot cargo group; no imported audit covers this version yet."
+notes = "Bump from the weekly Dependabot cargo group. The source diff from 1.21.0 was read: one new BehaviorVersion (v2026_11_17) and the deprecation of the one before it, nothing else."
 
 [[exemptions.aws-smithy-runtime-api-macros]]
 version = "1.2.0"
@@ -1613,9 +1613,9 @@ version = "5.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
-version = "1.29.2"
+version = "1.29.3"
 criteria = "safe-to-deploy"
-notes = "Patch bump from the weekly Dependabot cargo group; no imported audit covers this version yet."
+notes = "Bump from the weekly Dependabot cargo group. The source diff from 1.29.2 was read: the optional atomic dependency is replaced by std's AtomicU16 in the v1 and v6 counter, the serde visitors are reshaped and a parse error carries its message. No unsafe added, no build script."
 
 [[exemptions.valuable]]
 version = "0.1.1"
