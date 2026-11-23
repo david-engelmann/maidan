@@ -359,6 +359,18 @@ impl SlackWebClient {
         }
     }
 
+    /// The name of the Slack workspace this client's token belongs to
+    /// (`auth.test`): the one call a workspace's token is checked with before
+    /// it is stored.
+    pub async fn identity(&self) -> Result<String, SlackError> {
+        let v = self.call("auth.test", serde_json::json!({})).await?;
+        Ok(v.get("team")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.is_empty())
+            .unwrap_or("Slack")
+            .to_string())
+    }
+
     /// Call a Slack Web API method and decode its envelope. Slack answers logical
     /// errors with HTTP 200 and `{"ok": false, "error": ...}`, so the status is not
     /// the signal — the body is.
@@ -436,8 +448,9 @@ impl SlackSender for SlackWebClient {
 /// [`egress_worker`](crate::egress_worker) drains with retry/backoff. Until
 /// 377.2 this posted inline and a transient failure dropped the message.
 ///
-/// No-op unless a [`SlackSender`] is configured (the worker only runs then, so
-/// queueing without one would pile up rows nothing drains); **skips messages
+/// No-op unless a [`SlackSender`] serves the linked workspace (the worker only
+/// sends for one that is served, so queueing without one would pile up rows
+/// nothing drains); **skips messages
 /// that originated in Slack** (their server-set provenance) so a projected
 /// inbound message is never echoed back — loop prevention.
 ///
@@ -450,7 +463,7 @@ pub async fn route_message_to_slack(
     thread_id: maidan_types::ThreadId,
     message: &maidan_types::Message,
 ) {
-    if state.slack_sender.is_none() {
+    if !state.may_send_anywhere() {
         return;
     }
     // The server-set provenance, never `metadata`: a member could forge the
@@ -474,6 +487,16 @@ pub async fn route_message_to_slack(
             return;
         }
     };
+    // Queueing for a workspace no credential serves on Slack would only pile
+    // up rows nothing sends.
+    match state.slack_for(link.workspace_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return,
+        Err(err) => {
+            tracing::warn!(error = %err, "slack egress: the workspace's connection could not be opened");
+            return;
+        }
+    }
     let queued = state
         .store
         .enqueue_egress(NewEgressOutbox {

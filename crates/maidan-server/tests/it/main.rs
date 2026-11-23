@@ -1016,6 +1016,9 @@ mod workspace_audit_e2e;
 #[path = "../workspace_claim_next_e2e.rs"]
 mod workspace_claim_next_e2e;
 
+#[path = "../workspace_connections_e2e.rs"]
+mod workspace_connections_e2e;
+
 #[path = "../workspace_context_concurrency_e2e.rs"]
 mod workspace_context_concurrency_e2e;
 

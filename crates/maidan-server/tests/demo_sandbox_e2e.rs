@@ -20,6 +20,11 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 
 async fn spawn(sandbox: Option<i64>) -> String {
+    spawn_with(sandbox, |_| {}).await
+}
+
+/// [`spawn`], with the state adjusted before it serves.
+async fn spawn_with(sandbox: Option<i64>, adjust: impl FnOnce(&mut AppState)) -> String {
     // The limiter's buckets are process-global, so each test steers itself
     // into its own address bucket with forwarded addresses.
     // SAFETY: test setup. Maidan reads this variable only through std,
@@ -56,6 +61,7 @@ async fn spawn(sandbox: Option<i64>) -> String {
             console_url: "https://try.example/ui/".into(),
         })
     });
+    adjust(&mut state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let app = router(state);
@@ -405,63 +411,87 @@ async fn a_second_agent_reviews_and_closes_the_task_with_no_person_acting() {
     assert_eq!(thread["state"], json!("closed"), "{thread}");
 }
 
+async fn put_connection(
+    c: &reqwest::Client,
+    base: &str,
+    token: &str,
+    ws: &str,
+    surface: &str,
+    body: Value,
+) -> (StatusCode, String) {
+    let res = c
+        .put(format!("{base}/workspaces/{ws}/connections/{surface}"))
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    (status, res.text().await.unwrap_or_default())
+}
+
 /// The server's GitHub, Slack and Linear credentials are its operator's, one
 /// set for every workspace. A sandbox is opened by whoever arrives, so its
 /// admin cannot aim them: not by blessing a destination, not by linking a
 /// Slack channel or a GitHub issue to a task, not by watching a pull request.
-/// Each of these answered 2xx before, and the sweep then read the pull
-/// request with the server's own GitHub credential.
+/// What the sandbox's admin can do is connect an account of their own, and
+/// then that account, and only that account, serves the sandbox.
 #[tokio::test]
-async fn a_sandbox_cannot_aim_the_servers_github_or_slack_credentials() {
-    let base = spawn(Some(10)).await;
+async fn a_sandbox_is_refused_until_it_connects_an_account_of_its_own() {
+    let connections = Arc::new(maidan_server::test_support::MockConnections::default());
+    connections.account("sandbox-github-token", "octocat");
+    let factory = connections.clone();
+    let base = spawn_with(Some(10), move |state| {
+        state.federation = FederationRuntime::new(true, Some(Arc::new([5u8; 32])));
+        state.attach_connection_factory(factory);
+    })
+    .await;
     let c = client();
     let sb = minted(&c, &base, "10.9.0.1").await;
     let admin = s(&sb, &["admin", "token"]);
     let ws = s(&sb, &["workspace_id"]);
     let channel = s(&sb, &["channel_id"]);
     let task = s(&sb, &["task_id"]);
-    let operators = "serve only the workspaces its operator opened";
+    let github_first = "connect GitHub for this workspace first (Tools, Integrations)";
+    let slack_first = "connect Slack for this workspace first (Tools, Integrations)";
     let attempts = [
         (
             "egress-targets",
             json!({ "surface": "github", "selector": "someone/private-repo" }),
-            operators,
+            github_first,
         ),
         (
             "egress-targets",
             json!({ "surface": "slack", "selector": "C0123456789" }),
-            operators,
+            slack_first,
         ),
         (
             "slack-links",
             json!({ "slack_channel_id": "C0123456789", "thread_id": task }),
-            operators,
+            slack_first,
         ),
         (
             "github-links",
             json!({ "repo": "someone/private-repo", "issue_number": 7, "thread_id": task }),
-            operators,
+            github_first,
         ),
         (
             "pull-watches",
             json!({ "repo": "someone/private-repo", "pull_number": 1, "channel_id": channel }),
-            "not in the workspace egress allowlist",
+            github_first,
         ),
     ];
-    for (route, body, why) in attempts {
+    for (route, body, why) in &attempts {
         let res = c
             .post(format!("{base}/workspaces/{ws}/{route}"))
             .bearer_auth(admin)
-            .json(&body)
+            .json(body)
             .send()
             .await
             .unwrap();
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
-        assert!(
-            status == StatusCode::BAD_REQUEST || status == StatusCode::FORBIDDEN,
-            "{route} {body} answered {status}: {text}"
-        );
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{route} {body}: {text}");
         assert!(
             text.contains(why),
             "{route} was refused for another reason: {text}"
@@ -476,6 +506,55 @@ async fn a_sandbox_cannot_aim_the_servers_github_or_slack_credentials() {
     .await;
     assert_eq!(status, StatusCode::OK, "{targets}");
     assert_eq!(targets.trim(), "[]", "nothing was blessed");
+
+    // A token the provider refuses stores nothing.
+    let (status, text) = put_connection(
+        &c,
+        &base,
+        admin,
+        ws,
+        "github",
+        json!({ "token": "not-a-token" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{text}");
+    assert!(text.contains("refused this token"), "{text}");
+    let (_, listed) = get(&c, &base, admin, &format!("/workspaces/{ws}/connections")).await;
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!(listed[0]["source"], Value::Null, "{listed}");
+
+    // Its own GitHub account serves GitHub and nothing else.
+    let (status, text) = put_connection(
+        &c,
+        &base,
+        admin,
+        ws,
+        "github",
+        json!({ "token": "sandbox-github-token" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{text}");
+    assert!(!text.contains("sandbox-github-token"), "{text}");
+    let row: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(row["source"], json!("workspace"), "{row}");
+    assert_eq!(row["account"], json!("octocat"), "{row}");
+    for (route, body, why) in &attempts {
+        let res = c
+            .post(format!("{base}/workspaces/{ws}/{route}"))
+            .bearer_auth(admin)
+            .json(body)
+            .send()
+            .await
+            .unwrap();
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        if *why == github_first {
+            assert!(status.is_success(), "{route} {body}: {status} {text}");
+        } else {
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{route} {body}: {text}");
+            assert!(text.contains(why), "{route}: {text}");
+        }
+    }
 }
 
 #[tokio::test]

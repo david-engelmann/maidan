@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
-    ConnectionSurface, EgressSurface, MemberId, NewAuditEvent, NewChannel, NewEgressTarget,
-    NewGithubIssueLink, NewOidcSignup, NewSecret, NewSlackChannelLink, NewThread,
-    NewWorkspace, AuditScope, WorkspaceId,
+    AuditScope, ConnectionSurface, EgressSurface, MemberId, NewAuditEvent, NewChannel,
+    NewEgressTarget, NewGithubIssueLink, NewOidcSignup, NewSecret, NewSlackChannelLink, NewThread,
+    NewWorkspace, WorkspaceId,
 };
 
 async fn sqlite() -> SqliteStore {
@@ -203,9 +203,11 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("link an issue");
-    assert!(maidan_store::pull_watch::repo_blessed(store, ws, "example/repo")
-        .await
-        .unwrap());
+    assert!(
+        maidan_store::pull_watch::repo_blessed(store, ws, "example/repo")
+            .await
+            .unwrap()
+    );
     assert!(store
         .is_egress_target_allowed(ws, EgressSurface::Github, "example/repo")
         .await
@@ -256,7 +258,11 @@ async fn run_suite(store: &dyn Store) {
         assert!(store.workspace_served_on(ops.id, surface).await.unwrap());
     }
     store
-        .allow_egress_target(bless(ops.id, EgressSurface::Linear, "4a3f6b7e-0c1d-4e2f-9a8b-1c2d3e4f5a6b"))
+        .allow_egress_target(bless(
+            ops.id,
+            EgressSurface::Linear,
+            "4a3f6b7e-0c1d-4e2f-9a8b-1c2d3e4f5a6b",
+        ))
         .await
         .expect("the operator's workspace blesses without a connection");
 

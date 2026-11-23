@@ -1413,11 +1413,34 @@ impl GithubApiClient {
         self
     }
 
-    /// Let this client write anywhere its token reaches. For loopback test
-    /// servers; production builds the client with [`Self::with_write_repos`].
+    /// Let this client write anywhere its token reaches. A workspace's own
+    /// client is built this way: the token is the workspace's, so its egress
+    /// allowlist and the token's own permissions bound it, and
+    /// `MAIDAN_GITHUB_WRITE_REPOS` (the operator's list for the instance's
+    /// token) does not apply. Loopback test servers use it too.
     pub fn with_any_write_repo(mut self) -> Self {
         self.write_repos = WriteRepos::Any;
         self
+    }
+
+    /// The login this client's token belongs to (`GET /user`): the one call a
+    /// workspace's token is checked with before it is stored.
+    pub async fn identity(&self) -> Result<String, GithubError> {
+        let resp = self
+            .build(reqwest::Method::GET, "/user", "application/vnd.github+json")
+            .await?
+            .send()
+            .await
+            .map_err(|e| self.http_error(e))?;
+        if !resp.status().is_success() {
+            return Err(self.api_error(resp).await);
+        }
+        let body: serde_json::Value = resp.json().await.map_err(|e| self.http_error(e))?;
+        body.get("login")
+            .and_then(serde_json::Value::as_str)
+            .filter(|login| !login.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| GithubError::Http("GET /user answered without a login".into()))
     }
 
     /// Refuse a write to a repository the operator did not name, before any
@@ -2751,8 +2774,9 @@ pub(crate) fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
 /// drains with retry/backoff. Until 377.2 this posted inline and a transient
 /// failure dropped the comment.
 ///
-/// No-op unless a [`GithubSender`] is configured (the worker only runs then, so
-/// queueing without one would pile up rows nothing drains); **skips messages
+/// No-op unless a [`GithubSender`] serves the linked workspace (the worker only
+/// sends for one that is served, so queueing without one would pile up rows
+/// nothing drains); **skips messages
 /// that originated in GitHub** (their server-set provenance) so a projected
 /// inbound comment is never echoed back — loop prevention.
 ///
@@ -2764,7 +2788,7 @@ pub async fn route_message_to_github(
     thread_id: maidan_types::ThreadId,
     message: &maidan_types::Message,
 ) {
-    if state.github_sender.is_none() {
+    if !state.may_send_anywhere() {
         return;
     }
     // The server-set provenance, never `metadata`: a member could forge the
@@ -2783,6 +2807,16 @@ pub async fn route_message_to_github(
             return;
         }
     };
+    // Queueing for a workspace no credential serves on GitHub would only pile
+    // up rows nothing sends.
+    match state.github_for(link.workspace_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return,
+        Err(err) => {
+            tracing::warn!(error = %err, "github egress: the workspace's connection could not be opened");
+            return;
+        }
+    }
     let queued = state
         .store
         .enqueue_egress(NewEgressOutbox {

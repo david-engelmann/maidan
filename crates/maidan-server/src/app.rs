@@ -1170,6 +1170,14 @@ pub fn router(state: AppState) -> Router {
             delete(routes::revoke_egress_target),
         )
         .route(
+            "/workspaces/{wid}/connections",
+            no_store(get(routes::list_connections)),
+        )
+        .route(
+            "/workspaces/{wid}/connections/{surface}",
+            put(routes::set_connection).merge(delete(routes::clear_connection)),
+        )
+        .route(
             "/workspaces/{wid}/fsm-hooks",
             no_store(post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks))),
         )
@@ -1955,6 +1963,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/workspaces/{wid}/egress-targets/{tid}",
             delete(routes::ui_revoke_egress_target),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/connections",
+            no_store(get(routes::ui_list_connections)),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/connections/{surface}",
+            put(routes::ui_set_connection).merge(delete(routes::ui_clear_connection)),
         )
         .route(
             "/ui/api/operator/reindex-embeddings",

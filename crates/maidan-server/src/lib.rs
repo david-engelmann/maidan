@@ -30,6 +30,7 @@ pub mod ci_watch;
 pub mod claim_reaper;
 pub mod compression;
 pub mod config;
+pub mod connections;
 pub mod consistency;
 pub mod content_keys;
 pub mod credits;

@@ -855,6 +855,9 @@ fn apply_route_defaults(
     if path.contains("/oauth-grants/") && method == "POST" {
         return b.json(&json!({}));
     }
+    if path.contains("/connections/") && method == "PUT" {
+        return b.json(&json!({ "token": "capability-matrix-token" }));
+    }
     // A valid selector, so the extractor passes and it is `cap()` that answers.
     if path.contains("/egress-targets") && method == "POST" {
         return b.json(&json!({ "surface": "slack", "selector": "C0123ABCDEF" }));

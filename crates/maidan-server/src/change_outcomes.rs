@@ -33,7 +33,15 @@ const FIX_WORDS_WINDOW: usize = 40;
 /// effort: a failed read leaves that part of the outcome as it was, and the
 /// pull request is checked again tomorrow.
 pub async fn check_outcomes(state: &AppState, workspace_id: WorkspaceId) {
-    let Some(git) = state.github_sender.as_ref().and_then(|s| s.git()) else {
+    let github = match state.github_for(workspace_id).await {
+        Ok(Some(github)) => github,
+        Ok(None) => return,
+        Err(err) => {
+            tracing::warn!(error = %err, "outcome check: no GitHub sender for the workspace");
+            return;
+        }
+    };
+    let Some(git) = github.sender.git() else {
         return;
     };
     let now = Utc::now();
