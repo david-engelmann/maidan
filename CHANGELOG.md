@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [477.0.0] — 2026-11-23
+
+The server's own GitHub, Slack and Linear credentials serve only the workspaces its operator opened. A workspace opened by sign-up or the demo's sandbox could bless any repository or channel, link a Slack channel or GitHub issue, and watch any pull request, and the server then read and wrote there with its own credentials. Upgrade any server that has sign-up on and holds one of those credentials.
+
+### The server's GitHub, Slack and Linear credentials serve only the operator's workspaces
+
+- **Security:** a workspace opened by sign-up or by the demo's sandbox can no longer aim the server's own GitHub, Slack or Linear credentials. Its admin could bless any repository or channel in its own egress allowlist, link a Slack channel or GitHub issue to a thread with no blessing at all, and watch any pull request. The server then read that pull request's checks and failing job log with its own GitHub credential, and delivered results and thread messages with its own Slack, GitHub and Linear credentials. The store now refuses these for any workspace whose origin is not `operator` and treats an entry such a workspace made earlier as not blessed. The egress worker sends nothing queued for one, and the Slack and GitHub inbound handlers ignore a link one made earlier. A server that has sign-up on and holds `MAIDAN_GITHUB_TOKEN`, a GitHub App, `MAIDAN_SLACK_BOT_TOKEN` or `MAIDAN_LINEAR_API_KEY` should upgrade. Links and allowlist entries such workspaces made earlier stay in their tables and do nothing.
+
 ## [476.0.0] — 2026-11-23
 
 A federation peer's secret reads the event log of the workspace the peer is registered in and no other. Before, a workspace admin could register a peer naming another workspace on the same server and read that workspace's log with the secret the registration returned. Upgrade any server that hosts more than one workspace.

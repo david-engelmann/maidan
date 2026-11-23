@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v477.0.0](https://github.com/david-engelmann/maidan/releases/tag/v477.0.0) — the server's GitHub, Slack and Linear credentials serve only the operator's workspaces
+
+The server's own GitHub, Slack and Linear credentials serve only the workspaces its operator opened. A workspace opened by sign-up or the demo's sandbox could bless any repository or channel, link a Slack channel or GitHub issue, and watch any pull request, and the server then read and wrote there with its own credentials. Upgrade any server that has sign-up on and holds one of those credentials.
+
+- The server's GitHub, Slack and Linear credentials serve only the operator's workspaces
+
+`CHANGELOG.md` under `[477.0.0]` has every entry.
+
 ## [v476.0.0](https://github.com/david-engelmann/maidan/releases/tag/v476.0.0) — a federation peer's secret reads only its own workspace
 
 A federation peer's secret reads the event log of the workspace the peer is registered in and no other. Before, a workspace admin could register a peer naming another workspace on the same server and read that workspace's log with the secret the registration returned. Upgrade any server that hosts more than one workspace.
