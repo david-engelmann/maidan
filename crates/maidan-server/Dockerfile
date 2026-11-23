@@ -74,7 +74,7 @@ RUN cargo build --release --bin maidan-server --no-default-features --features o
 # user, no shell and no OpenSSL. Distroless's cc-debian12 carried a libssl3 the
 # release scan refused (CVE-2026-84782) for weeks after Debian's fix, though no
 # Maidan binary links OpenSSL. Pinned by digest; bump it to take patches.
-FROM cgr.dev/chainguard/glibc-dynamic@sha256:40c122e48ff15cec0387d5b7c53a9a029fd93fb6dde229ec56d177bb623b5326 AS runtime
+FROM cgr.dev/chainguard/glibc-dynamic@sha256:7fc93aea6a9305a44f4f10d0cab0c6f5211ab24a2a97320ec75619ab149ee25e AS runtime
 # The official MCP registry accepts an OCI package only when the image names
 # the server it belongs to; it must match listings/registry/server.json.
 LABEL io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan" \
