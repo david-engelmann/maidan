@@ -105,9 +105,10 @@ if [[ "$ingested" != "1" ]]; then
   exit 1
 fi
 
-echo "reading peer event tail on B…"
+# B's own admin reads the tail: the ingested event is in B's workspace log.
+echo "reading the event tail on B…"
 tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=50" \
-  -H "Authorization: Bearer ${peer_secret}")
+  -H "Authorization: Bearer ${token_b}")
 count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
 if [[ "$count" -lt 1 ]]; then
   echo "::error::peer tail missing thread_created on B" >&2
