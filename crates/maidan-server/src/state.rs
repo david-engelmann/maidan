@@ -562,11 +562,13 @@ impl AppState {
     /// egress.
     pub fn attach_github_sender(&mut self, sender: Arc<dyn crate::github::GithubSender>) {
         self.github_sender = Some(sender);
+        self.attach_pull_refresher();
     }
 
     /// Hand the MCP server the pull-request refresh `get_swarm_metrics` runs
     /// first. It resolves each workspace's own GitHub sender through a copy of
-    /// this state, so it is attached last, after every other `attach_*`.
+    /// this state, so it is installed again after the sender or the connection
+    /// factory change, and the server binary installs it once more last.
     pub fn attach_pull_refresher(&self) {
         self.mcp
             .set_pull_refresher(Arc::new(crate::change_sweep::McpPullRefresher {

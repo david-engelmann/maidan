@@ -1893,6 +1893,87 @@
         ],
         "type": "object"
       },
+      "Connection": {
+        "description": "One surface's connection, as `GET /workspaces/{wid}/connections` lists it.\nNever a token or a secret.",
+        "properties": {
+          "account": {
+            "description": "The account the stored token belongs to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connected_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inbound": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConnectionInbound",
+                "description": "`null` for Linear, which sends nothing in."
+              }
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConnectionSource",
+                "description": "`null` when nothing serves the workspace on this surface."
+              }
+            ]
+          },
+          "surface": {
+            "$ref": "#/components/schemas/ConnectionSurface"
+          }
+        },
+        "required": [
+          "surface"
+        ],
+        "type": "object"
+      },
+      "ConnectionInbound": {
+        "description": "Where a surface's deliveries to this workspace arrive, and whether the\nsecret that verifies them is stored. Never the secret.",
+        "properties": {
+          "secret_set": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "secret_set"
+        ],
+        "type": "object"
+      },
+      "ConnectionSource": {
+        "description": "Who serves a workspace on a surface.",
+        "enum": [
+          "workspace",
+          "instance"
+        ],
+        "type": "string"
+      },
+      "ConnectionSurface": {
+        "description": "A service a workspace can connect. `GithubBranch` egress uses the GitHub\nconnection, so it has no surface of its own here.",
+        "enum": [
+          "github",
+          "slack",
+          "linear"
+        ],
+        "type": "string"
+      },
       "ContentBlock": {
         "description": "A typed part of a message's structured content. The wire form is internally\ntagged (`{\"type\":\"text\",\"text\":\"…\"}`), matching the MCP / Anthropic\ncontent-block dialect and the existing A2A `TextPart`. `body` remains the\ncanonical searchable plain-text projection derived from these.",
         "oneOf": [
@@ -9756,6 +9837,34 @@
             "minimum": 60,
             "type": [
               "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SetConnection": {
+        "additionalProperties": false,
+        "description": "The body of `PUT /workspaces/{wid}/connections/{surface}`. A `token` is\nchecked with the provider before it is stored. Sending only the inbound\nsecret on a surface that already has a connection updates the secret and\nkeeps the token.",
+        "properties": {
+          "signing_secret": {
+            "description": "Slack only: 16 to 128 characters with no whitespace. Verifies the\nrequest signature on the workspace's events URL.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "description": "GitHub: a fine-grained personal access token. Slack: a bot token\n(`xoxb-...`). Linear: an API key.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "webhook_secret": {
+            "description": "GitHub only: 16 to 128 characters with no whitespace. Verifies\n`X-Hub-Signature-256` on the workspace's webhook.",
+            "type": [
+              "string",
               "null"
             ]
           }
@@ -35429,6 +35538,307 @@
         ]
       }
     },
+    "/ui/api/workspaces/{wid}/connections": {
+      "get": {
+        "description": "Always three rows, GitHub, Slack and Linear, with who serves the workspace\non each. Never a token or a secret.",
+        "operationId": "ui_list_connections",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Connection"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "One row per surface"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a workspace's connections (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/ui/api/workspaces/{wid}/connections/{surface}": {
+      "delete": {
+        "description": "`204` whether or not the workspace had one. The workspace is then served\nonly if the operator opened it and the server holds a credential.",
+        "operationId": "ui_clear_connection",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "github, slack or linear",
+            "in": "path",
+            "name": "surface",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConnectionSurface"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No own connection remains"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not a surface"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove a workspace's own connection (console)",
+        "tags": [
+          "auth"
+        ]
+      },
+      "put": {
+        "description": "The token is checked with the provider before it is stored. Sending only\nthe inbound secret on a surface that already has a connection updates the\nsecret and keeps the token.",
+        "operationId": "ui_set_connection",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "github, slack or linear",
+            "in": "path",
+            "name": "surface",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConnectionSurface"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description": "The surface's row"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The provider refused the token, or the body does not fit the surface"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not a surface"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The provider could not be asked; nothing was stored"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance has no FEDERATION_ENCRYPTION_KEY to store a connection with"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "token:admin"
+            ]
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Connect a workspace's own account (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/ui/api/workspaces/{wid}/egress-targets": {
       "get": {
         "operationId": "ui_list_egress_targets",
@@ -43116,6 +43526,292 @@
         "summary": "Create a channel",
         "tags": [
           "channels"
+        ]
+      }
+    },
+    "/workspaces/{wid}/connections": {
+      "get": {
+        "description": "Always three rows, GitHub, Slack and Linear, with who serves the workspace\non each. Never a token or a secret.",
+        "operationId": "list_connections",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Connection"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "One row per surface"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a workspace's connections",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/workspaces/{wid}/connections/{surface}": {
+      "delete": {
+        "description": "`204` whether or not the workspace had one. The workspace is then served\nonly if the operator opened it and the server holds a credential.",
+        "operationId": "clear_connection",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "github, slack or linear",
+            "in": "path",
+            "name": "surface",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConnectionSurface"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No own connection remains"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not a surface"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Remove a workspace's own connection",
+        "tags": [
+          "integrations"
+        ]
+      },
+      "put": {
+        "description": "The token is checked with the provider before it is stored. Sending only\nthe inbound secret on a surface that already has a connection updates the\nsecret and keeps the token.",
+        "operationId": "set_connection",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "github, slack or linear",
+            "in": "path",
+            "name": "surface",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ConnectionSurface"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description": "The surface's row"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The provider refused the token, or the body does not fit the surface"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not a surface"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The provider could not be asked; nothing was stored"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "This instance has no FEDERATION_ENCRYPTION_KEY to store a connection with"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Connect a workspace's own account",
+        "tags": [
+          "integrations"
         ]
       }
     },

@@ -251,7 +251,7 @@ pub struct McpServer {
     /// Reads tracked pull requests from GitHub before `get_swarm_metrics`.
     /// Unset means the metrics are what the store holds. Shared by every
     /// clone, since the GitHub sender is attached after the server is built.
-    pull_refresher: Arc<std::sync::OnceLock<Arc<dyn crate::pull_refresh::OpenPullRefresher>>>,
+    pull_refresher: Arc<std::sync::RwLock<Option<Arc<dyn crate::pull_refresh::OpenPullRefresher>>>>,
     /// Shared by every clone, so it can be set after the server is cloned
     /// into the router's state.
     approval_confirmations: Arc<std::sync::OnceLock<ApprovalConfirmationKeys>>,
@@ -556,15 +556,21 @@ impl McpServer {
     }
 
     /// Install the GitHub refresh `get_swarm_metrics` runs first, as the
-    /// route does. Called once, when the GitHub sender is attached.
+    /// route does. A later call replaces the earlier one: the refresher holds
+    /// a copy of the server state, which is installed again whenever what it
+    /// resolves senders from changes.
     pub fn set_pull_refresher(&self, refresher: Arc<dyn crate::pull_refresh::OpenPullRefresher>) {
-        let _ = self.pull_refresher.set(refresher);
+        *self
+            .pull_refresher
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(refresher);
     }
 
-    pub(crate) fn pull_refresher(
-        &self,
-    ) -> Option<&Arc<dyn crate::pull_refresh::OpenPullRefresher>> {
-        self.pull_refresher.get()
+    pub(crate) fn pull_refresher(&self) -> Option<Arc<dyn crate::pull_refresh::OpenPullRefresher>> {
+        self.pull_refresher
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Set the instance ceiling on secret-egress hosts (lowercase hostnames).

@@ -407,6 +407,7 @@ impl AppState {
     pub fn attach_connection_factory(&mut self, factory: Arc<dyn ConnectionFactory>) {
         self.connection_factory = factory;
         self.connection_cache = Arc::default();
+        self.attach_pull_refresher();
     }
 }
 
