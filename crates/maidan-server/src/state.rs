@@ -570,9 +570,23 @@ impl AppState {
     /// this state, so it is installed again after the sender or the connection
     /// factory change, and the server binary installs it once more last.
     pub fn attach_pull_refresher(&self) {
+        // The copy the refresher keeps has an MCP server of its own, bare of
+        // any refresher. Holding this state's own would close a loop (the
+        // server holds the refresher, which would hold the state, which holds
+        // the server) that keeps the store and its pools alive after the state
+        // is dropped.
+        let mut context = self.clone();
+        context.mcp = Arc::new(mcp_server(
+            &self.store,
+            &self.artifacts,
+            &self.search,
+            &self.embedding_provider,
+            &self.bus,
+            &self.usage_meters,
+        ));
         self.mcp
             .set_pull_refresher(Arc::new(crate::change_sweep::McpPullRefresher {
-                state: self.clone(),
+                state: context,
             }));
     }
 

@@ -610,3 +610,116 @@ async fn the_generic_secret_routes_cannot_reach_a_connection() {
     assert_eq!(status, StatusCode::OK, "{text}");
     assert!(!text.contains("github_connection"), "{text}");
 }
+
+/// Store a connection that cannot be opened (the stored text does not
+/// decrypt), the way a rotated key or a damaged row would leave one.
+async fn store_unreadable_connection(h: &Harness, who: &Tenant, surface: ConnectionSurface) {
+    h.store
+        .create_secret(NewSecret {
+            workspace_id: who.workspace,
+            name: surface.secret_name().into(),
+            value_ciphertext: "not a ciphertext this instance can open".into(),
+            created_by: who.member,
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_github_message_for_a_connection_that_cannot_be_opened_is_queued_not_dropped() {
+    let h = harness().await;
+    let ada = h.signed_up("ada").await;
+    store_unreadable_connection(&h, &ada, ConnectionSurface::Github).await;
+    let (_, thread) = h.thread(ada.workspace, ada.member).await;
+    h.store
+        .link_github_issue(NewGithubIssueLink {
+            repo: "ada/repo".into(),
+            issue_number: 7,
+            workspace_id: ada.workspace,
+            channel_id: h.store.get_thread(thread).await.unwrap().channel_id,
+            thread_id: thread,
+            member_id: ada.member,
+        })
+        .await
+        .unwrap();
+    assert!(h.state.github_for(ada.workspace).await.is_err());
+    h.say(ada.member, thread, 1).await;
+    let queued = h
+        .store
+        .claim_next_due_egress(chrono::Utc::now(), 60)
+        .await
+        .unwrap()
+        .expect("the message was dropped at routing");
+    assert_eq!(queued.workspace_id, ada.workspace);
+    assert_eq!(queued.surface, "github");
+}
+
+#[tokio::test]
+async fn a_slack_message_for_a_connection_that_cannot_be_opened_is_queued_not_dropped() {
+    let h = harness().await;
+    let ada = h.signed_up("ada").await;
+    store_unreadable_connection(&h, &ada, ConnectionSurface::Slack).await;
+    let (channel, thread) = h.thread(ada.workspace, ada.member).await;
+    h.store
+        .link_slack_channel(NewSlackChannelLink {
+            slack_channel_id: "C1".into(),
+            workspace_id: ada.workspace,
+            channel_id: channel,
+            thread_id: thread,
+            member_id: ada.member,
+        })
+        .await
+        .unwrap();
+    assert!(h.state.slack_for(ada.workspace).await.is_err());
+    let (message, _) = h
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: thread,
+                author_id: ada.member,
+                body: "hello slack".into(),
+                metadata: json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    maidan_server::slack::route_message_to_slack(&h.state, 1, thread, &message).await;
+    let queued = h
+        .store
+        .claim_next_due_egress(chrono::Utc::now(), 60)
+        .await
+        .unwrap()
+        .expect("the message was dropped at routing");
+    assert_eq!(queued.workspace_id, ada.workspace);
+    assert_eq!(queued.surface, "slack");
+}
+
+#[tokio::test]
+async fn dropping_a_state_with_a_pull_refresher_frees_its_store() {
+    let pool = maidan_search::sqlite_pool_options()
+        .max_connections(2)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(16)),
+        search,
+    );
+    // Attaching a GitHub sender installs the refresher on the MCP server.
+    state.attach_github_sender(Arc::new(MockGithub::default()));
+    assert!(Arc::strong_count(&store) > 1);
+    drop(state);
+    assert_eq!(
+        Arc::strong_count(&store),
+        1,
+        "the state's drop left something holding the store: a loop through the MCP server"
+    );
+}

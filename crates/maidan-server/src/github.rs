@@ -2926,13 +2926,15 @@ pub async fn route_message_to_github(
         }
     };
     // Queueing for a workspace no credential serves on GitHub would only pile
-    // up rows nothing sends.
+    // up rows nothing sends. A connection that could not be read just now is
+    // not that: the message is queued anyway, and the worker opens it again at
+    // send time and retries or gives up. Dropping it here would lose it for
+    // good, since the notification consumer does not retry.
     match state.github_for(link.workspace_id).await {
         Ok(Some(_)) => {}
         Ok(None) => return,
         Err(err) => {
-            tracing::warn!(error = %err, "github egress: the workspace's connection could not be opened");
-            return;
+            tracing::warn!(error = %err, "github egress: the workspace's connection could not be read, queueing anyway");
         }
     }
     let queued = state

@@ -1553,6 +1553,25 @@ async fn slack_result(
     }
 }
 
+/// End a result's delivery row as failed for `reason`, so it does not stay
+/// pending once the queue row behind it is dead.
+async fn fail_result_row(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    reason: &str,
+) {
+    if let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+        && let Err(err) =
+            crate::result_delivery::record_unconfigured(state, &row, target, reason).await
+    {
+        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
+    }
+}
+
 /// Dead-letter a delivery without rescheduling it.
 async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
     if let Err(e) = state.store.mark_egress_failed(entry.id, error, None).await {
@@ -1927,15 +1946,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             .await
         {
             dead_letter(state, &entry, &reason).await;
-            if let Ok(Some(row)) = state
-                .store
-                .get_result_delivery(entry.thread_id, &target)
-                .await
-                && let Err(err) =
-                    crate::result_delivery::record_unconfigured(state, &row, &target, &reason).await
-            {
-                tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
-            }
+            fail_result_row(state, &entry, &target, &reason).await;
             audit_result_attempt(state, &entry, Some(&target), "dead", Some(&reason)).await;
             crate::metrics::record_egress_delivery(surface, crate::metrics::EgressOutcome::Dead);
             stats.dead += 1;
@@ -1966,6 +1977,9 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     crate::metrics::EgressOutcome::Refused,
                 );
                 if entry.kind == EgressKind::Result {
+                    // The result's own row ends too, as it does when no sender
+                    // exists, or it would stay pending for good.
+                    fail_result_row(state, &entry, &target, &error).await;
                     audit_result_attempt(state, &entry, Some(&target), "dead", Some(&error)).await;
                 }
                 stats.dead += 1;
