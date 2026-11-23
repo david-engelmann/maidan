@@ -21,6 +21,11 @@ const HOOK_LABEL = "ui-test hook";
 
 type Seen = { url: string; status: number; body: string };
 
+// The console asks once whether this server has a support page (`HEAD
+// /support`), and a server without one answers 404. That is the question
+// working, not a failure.
+const SUPPORT_PROBE = /\/support$/;
+
 /**
  * Everything that must not happen on a happy path: a console error, a page
  * error, a failed request. `allowRefusal` lets the one deliberate 400 for a
@@ -34,13 +39,15 @@ function watch(page: Page, allowRefusal = false) {
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     if (allowRefusal && /status of 400/.test(msg.text())) return;
+    if (SUPPORT_PROBE.test(msg.location().url)) return;
     problems.push(`console error: ${msg.text()}`);
   });
   page.on("response", (res) => {
     const url = res.url();
     const status = res.status();
     const refusal = allowRefusal && status === 400 && res.request().method() === "PUT" && /\/connections\/github$/.test(url);
-    if (status >= 400 && !refusal) problems.push(`${status} ${res.request().method()} ${url}`);
+    const probe = status === 404 && res.request().method() === "HEAD" && SUPPORT_PROBE.test(url);
+    if (status >= 400 && !refusal && !probe) problems.push(`${status} ${res.request().method()} ${url}`);
     if (!url.includes("/ui/api")) return;
     reading.push(
       res.text().then(
