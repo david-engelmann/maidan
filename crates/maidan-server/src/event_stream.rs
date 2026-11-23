@@ -6,6 +6,7 @@ use std::sync::{
 };
 
 use futures::StreamExt;
+use maidan_auth::{AuthContext, EventVisibility};
 use maidan_bus::BusItem;
 use maidan_store::Store;
 use maidan_types::{inject_type, BusEnvelope, EventFilter, OpenEventError, StoredEvent};
@@ -17,6 +18,31 @@ use crate::subscribe_metrics::{
 };
 
 pub const REPLAY_LIMIT: i64 = 500;
+
+/// How long a stream reuses its answer to "may this member see this thread or
+/// channel". A burst of events on one thread costs one lookup, and a member
+/// removed from a private channel or a DM stops receiving it within this long.
+pub const VISIBILITY_LIFETIME: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The per-subscription reader every stream emit path asks before it sends an
+/// event. `EventFilter::matches` only narrows what the subscriber asked for,
+/// from sets read once at subscribe time; this decides, per event and with the
+/// membership as it is now, what the subscriber may see.
+pub fn stream_visibility<'a>(store: &'a dyn Store, auth: &'a AuthContext) -> EventVisibility<'a> {
+    EventVisibility::new(store, auth).with_lifetime(VISIBILITY_LIFETIME)
+}
+
+/// Whether the subscriber may see `envelope`. A lookup that fails hides the
+/// event: a stream never shows what it could not show to be allowed.
+async fn may_see(visible: &mut EventVisibility<'_>, envelope: &BusEnvelope) -> bool {
+    match visible.allows_event(&envelope.event).await {
+        Ok(allowed) => allowed,
+        Err(err) => {
+            tracing::warn!(error = %err, log_id = envelope.log_id, "stream visibility lookup failed; event withheld");
+            false
+        }
+    }
+}
 
 /// Coalesce the optimistic-path delivery-cursor write: buffer the highest
 /// delivered `log_id` and persist it at most once per this many events or
@@ -164,6 +190,7 @@ pub async fn replay_matching_events(
     tx: &mpsc::Sender<String>,
     delivery_consumer_id: Option<&str>,
     lean: bool,
+    visible: &mut EventVisibility<'_>,
 ) -> Result<ReplayOutcome, maidan_store::StoreError> {
     let Some(workspace_id) = filter.workspace_id else {
         return Ok(ReplayOutcome {
@@ -184,7 +211,7 @@ pub async fn replay_matching_events(
                 continue;
             }
         };
-        if !filter.matches_envelope(&envelope) {
+        if !filter.matches_envelope(&envelope) || !may_see(visible, &envelope).await {
             continue;
         }
         let payload = match frame_payload(&envelope, lean) {
@@ -277,16 +304,19 @@ pub fn replay_hint_payload(
 /// On [`BusItem::Lagged`], when `filter.workspace_id` is set the server replays
 /// matching rows from `maidan_events` up to [`REPLAY_LIMIT`]. Otherwise it emits
 /// a `replay_hint` frame for manual HTTP replay.
+#[allow(clippy::too_many_arguments)]
 pub async fn forward_bus_items(
     mut subscriber: maidan_bus::EventStream,
     tx: mpsc::Sender<String>,
     watermark: Arc<AtomicI64>,
     store: Arc<dyn Store>,
     filter: EventFilter,
+    auth: AuthContext,
     transport: SubscribeTransport,
     delivery_consumer_id: Option<String>,
     lean: bool,
 ) {
+    let mut visible = stream_visibility(store.as_ref(), &auth);
     // Best-effort cursor on the optimistic path, coalesced: buffer the highest
     // delivered id and persist it on a count/time threshold
     // + a final flush, instead of a DB write per event.
@@ -302,6 +332,9 @@ pub async fn forward_bus_items(
                     continue;
                 }
                 watermark.fetch_max(id, Ordering::Relaxed);
+                if !may_see(&mut visible, envelope.as_ref()).await {
+                    continue;
+                }
                 if cursor_writer.is_some() {
                     pending_cursor = Some(pending_cursor.map_or(id, |p| p.max(id)));
                     events_since_flush += 1;
@@ -335,6 +368,7 @@ pub async fn forward_bus_items(
                         &tx,
                         delivery_consumer_id.as_deref(),
                         lean,
+                        &mut visible,
                     )
                     .await
                     {
@@ -427,6 +461,7 @@ pub async fn reconcile_deliver(
     tx: mpsc::Sender<String>,
     store: Arc<dyn Store>,
     filter: EventFilter,
+    auth: AuthContext,
     workspace_id: maidan_types::WorkspaceId,
     consumer_id: String,
     start_after_id: i64,
@@ -435,6 +470,7 @@ pub async fn reconcile_deliver(
     lean: bool,
 ) {
     let mut cursor = start_after_id;
+    let mut visible = stream_visibility(store.as_ref(), &auth);
     let mut ticker = tokio::time::interval(poll_interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -467,18 +503,35 @@ pub async fn reconcile_deliver(
             }
             let batch_len = rows.len() as i64;
             let mut batch_max = cursor;
+            let mut stalled = false;
             for row in rows {
-                // Advance past every examined row (matched or not) — the cursor
-                // is this consumer's position in the workspace event stream.
-                batch_max = batch_max.max(row.id);
                 let envelope = match envelope_from_stored(&row) {
                     Ok(e) => e,
                     Err(err) => {
                         tracing::warn!(error = %err, event_id = row.id, "drop stored event with invalid payload");
+                        batch_max = batch_max.max(row.id);
                         continue;
                     }
                 };
-                if !filter.matches_envelope(&envelope) {
+                let deliver = if filter.matches_envelope(&envelope) {
+                    match visible.allows_event(&envelope.event).await {
+                        Ok(allowed) => allowed,
+                        Err(err) => {
+                            // Hold the cursor at this row so the next pass
+                            // reads it again: at-least-once must not turn a
+                            // store hiccup into a skipped event.
+                            tracing::warn!(error = %err, event_id = row.id, "reconcile visibility lookup failed");
+                            stalled = true;
+                            break;
+                        }
+                    }
+                } else {
+                    false
+                };
+                // Advance past every examined row (matched or not) — the cursor
+                // is this consumer's position in the workspace event stream.
+                batch_max = batch_max.max(row.id);
+                if !deliver {
                     continue;
                 }
                 let payload = match frame_payload(&envelope, lean) {
@@ -499,7 +552,7 @@ pub async fn reconcile_deliver(
             {
                 tracing::warn!(error = %err, consumer_id, cursor, "reconcile cursor advance failed");
             }
-            if batch_len < REPLAY_LIMIT {
+            if stalled || batch_len < REPLAY_LIMIT {
                 break;
             }
         }

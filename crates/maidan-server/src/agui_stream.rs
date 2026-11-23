@@ -10,7 +10,7 @@
 //! param) replays persisted events with a higher log id before live delivery,
 //! and every emitted frame carries its source `id:` (the event-log id) so a
 //! reconnecting client resumes exactly where it dropped. Each event is
-//! RBAC-filtered per-recipient (`can_access_thread` / `can_access_channel`), so
+//! RBAC-filtered per-recipient (`maidan_auth::EventVisibility`), so
 //! a workspace-wide stream never leaks a private channel to a non-member.
 //!
 //! Output direction only: Maidan → AG-UI. The UI→agent input direction
@@ -250,24 +250,17 @@ async fn forward_agui(
     }
 }
 
-/// Whether this recipient may see the event: a thread-scoped event is gated by
-/// `can_access_thread`, a channel-only one by `can_access_channel`, and a
-/// workspace-level one (already workspace-scoped) is visible. A store error is
-/// treated as not-visible (fail-closed) rather than leaking.
+/// Whether this recipient may see the event, by the one rule every stream
+/// applies ([`maidan_auth::EventVisibility`]). A store error is treated as
+/// not-visible (fail-closed) rather than leaking. The AG-UI stream keeps no
+/// cache: it asks once per event, as it always has.
 pub(crate) async fn event_visible(store: &dyn Store, auth: &AuthContext, event: &Event) -> bool {
-    if let Some(thread_id) = event.thread_id() {
-        return matches!(
-            maidan_auth::can_access_thread(store, auth, thread_id).await,
-            Ok(true)
-        );
-    }
-    if let Some(channel_id) = event.channel_id() {
-        return matches!(
-            maidan_auth::can_access_channel(store, auth, channel_id).await,
-            Ok(true)
-        );
-    }
-    true
+    matches!(
+        maidan_auth::EventVisibility::new(store, auth)
+            .allows_event(event)
+            .await,
+        Ok(true)
+    )
 }
 
 /// Map one Maidan event to its AG-UI frames and send them, each tagged with the

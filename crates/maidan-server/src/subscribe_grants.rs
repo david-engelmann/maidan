@@ -1,4 +1,11 @@
-//! WS/MCP subscribe channel grant enforcement.
+//! WS/MCP subscribe channel grants.
+//!
+//! A grant only narrows what a subscription asks for. It never lends access:
+//! what a member may see is decided per event, when the event is sent
+//! (`maidan_auth::EventVisibility`, applied by every stream in
+//! `event_stream`), so a grant naming a channel the member cannot read, a
+//! channel created after the subscribe, or a membership that has since ended
+//! shows nothing.
 
 use std::collections::HashSet;
 
@@ -49,11 +56,12 @@ pub async fn apply_subscribe_grants(
         .as_ref()
         .map(|v| v.iter().copied().collect())
         .unwrap_or_default();
-    // Verify asserted private-channel grants against actual membership — the
-    // client no longer merely *claims* access. Public and the DM system channel
-    // pass; a private-channel grant the caller isn't a member of is dropped, so
-    // the checks below deny that channel/thread and it lands in
-    // `private_channel_deny`.
+    // Verify asserted private-channel grants against actual membership, so a
+    // grant the caller is not in is dropped and the channel lands in
+    // `private_channel_deny`. The DM system channel is no source of access
+    // here: DMs are decided per conversation at send time, so a grant naming
+    // it is kept only as a narrowing hint and never opens another member's
+    // conversations.
     let mut verified: HashSet<ChannelId> = HashSet::new();
     for cid in grants.iter().copied() {
         match channels.iter().find(|c| c.id == cid) {

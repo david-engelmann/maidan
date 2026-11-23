@@ -136,6 +136,7 @@ pub async fn stream(
             &text_tx,
             delivery_consumer_id.as_deref(),
             lean,
+            &mut event_stream::stream_visibility(state.store.as_ref(), &auth),
         )
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -172,6 +173,7 @@ pub async fn stream(
     }
 
     let bus_store = state.store.clone();
+    let bus_auth = auth.clone();
     if let Some((workspace_id, consumer_id)) = reconcile {
         let stability = state.delivery_stability;
         let interval = state.delivery_reconcile_interval;
@@ -181,6 +183,7 @@ pub async fn stream(
                 text_tx,
                 bus_store,
                 bus_filter,
+                bus_auth,
                 workspace_id,
                 consumer_id,
                 high_water,
@@ -199,6 +202,7 @@ pub async fn stream(
                 watermark,
                 bus_store,
                 bus_filter,
+                bus_auth,
                 crate::subscribe_metrics::SubscribeTransport::McpSse,
                 delivery_consumer_id,
                 lean,

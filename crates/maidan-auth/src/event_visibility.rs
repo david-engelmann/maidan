@@ -3,26 +3,37 @@
 //! The event log holds every event in a workspace, message bodies included. A
 //! member reading it back sees what they could see anywhere else: nothing from a
 //! private channel they are not in, and nothing from a DM they are not part of.
-//! The live streams apply the same rule (`subscribe_grants`); this is the
-//! backfill's half, and the per-event check a one-shot MCP waiter
-//! (`wait_for_event`) applies to what it is handed live. Federation peers read
-//! the whole log.
+//! This is the one rule every reader of events applies: the backfill, the
+//! live streams (`/ws/subscribe`, `/mcp/stream`, `/agui/stream`) on replay and
+//! on live delivery, webhook delivery, and the per-event check a one-shot MCP
+//! waiter (`wait_for_event`) applies to what it is handed live. A stream's
+//! channel grants only narrow what it asks for and never lend access.
+//! Federation peers read the whole log.
 //!
 //! Withdrawn words need no filter here: withdrawal shreds the message's
 //! content key, so its posted and edited events read back as sealed
 //! ciphertext with an empty body ([`maidan_types::content_seal`]).
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::{AuthContext, AuthError};
 use maidan_store::{Store, StoreError};
-use maidan_types::{ChannelId, StoredEvent, ThreadId, DM_CHANNEL_NAME};
+use maidan_types::{ChannelId, Event, StoredEvent, ThreadId, DM_CHANNEL_NAME};
+
+/// How many remembered answers a long-lived reader holds before it drops the
+/// ones past their lifetime.
+const MAX_REMEMBERED: usize = 1024;
 
 pub struct EventVisibility<'a> {
     store: &'a dyn Store,
     auth: &'a AuthContext,
-    threads: HashMap<ThreadId, bool>,
-    channels: HashMap<ChannelId, bool>,
+    /// How long a decision is reused. `None` keeps it for the reader's life,
+    /// which suits a one-shot page; a stream that runs for hours sets one so
+    /// a removal from a private channel or a DM still takes effect.
+    lifetime: Option<Duration>,
+    threads: HashMap<ThreadId, (bool, Instant)>,
+    channels: HashMap<ChannelId, (bool, Instant)>,
 }
 
 impl<'a> EventVisibility<'a> {
@@ -30,9 +41,52 @@ impl<'a> EventVisibility<'a> {
         Self {
             store,
             auth,
+            lifetime: None,
             threads: HashMap::new(),
             channels: HashMap::new(),
         }
+    }
+
+    /// Reuse each decision for `lifetime` at most, so a burst of events on one
+    /// thread costs one lookup and a change of membership still shows up
+    /// within `lifetime`.
+    pub fn with_lifetime(mut self, lifetime: Duration) -> Self {
+        self.lifetime = Some(lifetime);
+        self
+    }
+
+    fn fresh(&self, at: Instant) -> bool {
+        self.lifetime.is_none_or(|lifetime| at.elapsed() < lifetime)
+    }
+
+    /// Drop the answers a reader with a lifetime no longer trusts once it
+    /// holds more than [`MAX_REMEMBERED`], so a stream that runs for days over
+    /// many threads keeps a bounded memory. A one-shot reader keeps them all:
+    /// it lives for one page.
+    fn forget_stale(&mut self) {
+        let Some(lifetime) = self.lifetime else {
+            return;
+        };
+        if self.threads.len() > MAX_REMEMBERED {
+            self.threads.retain(|_, (_, at)| at.elapsed() < lifetime);
+        }
+        if self.channels.len() > MAX_REMEMBERED {
+            self.channels.retain(|_, (_, at)| at.elapsed() < lifetime);
+        }
+    }
+
+    /// Whether the caller may see a live `event`. It must be in the caller's
+    /// workspace, so an event that names none (a reference or an artifact
+    /// upsert) is never shown. Then it follows [`Self::allows_in`] by where it
+    /// happened: every message-scoped event (a reaction, a vote, a mention, a
+    /// pin) carries its thread, so it is as visible as the thread, and a DM's
+    /// follow the conversation's participants. An error is not a yes: callers
+    /// treat it as hidden.
+    pub async fn allows_event(&mut self, event: &Event) -> Result<bool, StoreError> {
+        if event.workspace_id() != Some(self.auth.workspace_id()) {
+            return Ok(false);
+        }
+        self.allows_in(event.thread_id(), event.channel_id()).await
     }
 
     /// Whether the caller may read `event`. A thread's event follows the
@@ -51,16 +105,21 @@ impl<'a> EventVisibility<'a> {
         thread_id: Option<ThreadId>,
         channel_id: Option<ChannelId>,
     ) -> Result<bool, StoreError> {
+        self.forget_stale();
         if let Some(thread_id) = thread_id {
-            if let Some(&seen) = self.threads.get(&thread_id) {
+            if let Some(&(seen, at)) = self.threads.get(&thread_id)
+                && self.fresh(at)
+            {
                 return Ok(seen);
             }
             let allowed = settle(crate::can_access_thread(self.store, self.auth, thread_id).await)?;
-            self.threads.insert(thread_id, allowed);
+            self.threads.insert(thread_id, (allowed, Instant::now()));
             return Ok(allowed);
         }
         if let Some(channel_id) = channel_id {
-            if let Some(&seen) = self.channels.get(&channel_id) {
+            if let Some(&(seen, at)) = self.channels.get(&channel_id)
+                && self.fresh(at)
+            {
                 return Ok(seen);
             }
             let allowed = match self.store.get_channel(channel_id).await {
@@ -77,7 +136,7 @@ impl<'a> EventVisibility<'a> {
                 Err(StoreError::NotFound) => false,
                 Err(e) => return Err(e),
             };
-            self.channels.insert(channel_id, allowed);
+            self.channels.insert(channel_id, (allowed, Instant::now()));
             return Ok(allowed);
         }
         Ok(true)
@@ -221,5 +280,56 @@ mod tests {
         let (store, auth, _, _, private_other) = seed().await;
         let mut vis = EventVisibility::new(&store, &auth);
         assert!(!vis.allows_in(None, Some(private_other)).await.unwrap());
+    }
+
+    /// A decision is reused for its lifetime and no longer, so leaving a
+    /// private channel ends a long-lived stream's view of it.
+    #[tokio::test]
+    async fn a_decision_is_reused_only_within_its_lifetime() {
+        let (store, auth, _, _, _) = seed().await;
+        let inner = channel(&store, auth.workspace_id(), "inner", true).await;
+        store
+            .add_channel_member(
+                inner,
+                auth.member_id(),
+                maidan_types::ChannelMemberRole::Member,
+            )
+            .await
+            .expect("join");
+        let mut vis = EventVisibility::new(&store, &auth).with_lifetime(Duration::from_millis(200));
+        assert!(vis.allows_in(None, Some(inner)).await.unwrap());
+        store
+            .remove_channel_member(inner, auth.member_id())
+            .await
+            .expect("leave");
+        assert!(
+            vis.allows_in(None, Some(inner)).await.unwrap(),
+            "inside the lifetime the earlier answer stands"
+        );
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(
+            !vis.allows_in(None, Some(inner)).await.unwrap(),
+            "past the lifetime the membership is read again"
+        );
+    }
+
+    /// An event that names no workspace cannot be shown to be the caller's.
+    #[tokio::test]
+    async fn an_event_without_a_workspace_is_not_visible() {
+        let (store, auth, _, _, _) = seed().await;
+        let event = Event::ReferenceAdded {
+            occurred_at: chrono::Utc::now(),
+            reference: maidan_types::Reference {
+                id: uuid::Uuid::now_v7(),
+                src_kind: maidan_types::RefSide::Thread,
+                src_id: uuid::Uuid::now_v7(),
+                dst_kind: maidan_types::RefSide::Thread,
+                dst_id: uuid::Uuid::now_v7(),
+                relation: maidan_types::RelationKind::Supports,
+                created_at: chrono::Utc::now(),
+            },
+        };
+        let mut vis = EventVisibility::new(&store, &auth);
+        assert!(!vis.allows_event(&event).await.unwrap());
     }
 }
