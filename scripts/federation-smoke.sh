@@ -41,20 +41,29 @@ echo "waiting for ${MAIDAN_A_URL} and ${MAIDAN_B_URL}…"
 wait_health "$MAIDAN_A_URL" "maidan-a"
 wait_health "$MAIDAN_B_URL" "maidan-b"
 
+echo "opening a workspace on A…"
+opened_a=$(open_workspace "$MAIDAN_A_URL" fed-smoke-a)
+ws_a=$(echo "$opened_a" | jq -r '.workspace.id')
+token_a=$(echo "$opened_a" | jq -r '.token.secret')
+
+# The peer names A's workspace as the one to poll. Left out, it defaults to
+# B's own workspace id, and from inside B's container MAIDAN_A_URL is B
+# itself, so a poll tick that fell between this call and the push ingested
+# B's own events as the peer's and moved the peer's chain pointer onto B's
+# chain. The push below was then refused as a chain break (409), about one
+# run in twenty. With A's workspace named, that poll is refused and ingests
+# nothing.
 echo "registering peer on B…"
 opened_b=$(open_workspace "$MAIDAN_B_URL" fed-smoke-b)
 ws_b=$(echo "$opened_b" | jq -r '.workspace.id')
 token_b=$(echo "$opened_b" | jq -r '.token.secret')
 peer_body=$(json_post "${MAIDAN_B_URL}/workspaces/${ws_b}/peers" \
   -H "Authorization: Bearer ${token_b}" \
-  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_URL}\"}")
+  -d "{\"name\":\"upstream-a\",\"base_url\":\"${MAIDAN_A_URL}\",\"remote_workspace_id\":\"${ws_a}\"}")
 peer_id=$(echo "$peer_body" | jq -r '.peer.id')
 peer_secret=$(echo "$peer_body" | jq -r '.secret')
 
 echo "creating thread on A…"
-opened_a=$(open_workspace "$MAIDAN_A_URL" fed-smoke-a)
-ws_a=$(echo "$opened_a" | jq -r '.workspace.id')
-token_a=$(echo "$opened_a" | jq -r '.token.secret')
 channel=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/channels" \
   -H "Authorization: Bearer ${token_a}" \
   -d '{"name":"general"}' | jq -r '.id')
@@ -78,19 +87,28 @@ batch=$(jq -n \
   '{events: [{origin_peer_id: $peer_id, remote_event_id: $remote_id, event: $event}]}')
 
 echo "pushing event batch to B…"
-summary=$(curl -sf -X POST "${MAIDAN_B_URL}/a2a/v1/events" \
+# Not `curl -f`: a refusal's body says why, and -f throws it away.
+push_out=$(mktemp)
+push_code=$(curl -s -o "$push_out" -w '%{http_code}' -X POST "${MAIDAN_B_URL}/a2a/v1/events" \
   -H "Authorization: Bearer ${peer_secret}" \
   -H 'Content-Type: application/json' \
   -d "$batch")
+summary=$(cat "$push_out")
+rm -f "$push_out"
+if [[ "$push_code" != 2* ]]; then
+  echo "::error::B answered the pushed batch with HTTP ${push_code}: ${summary}" >&2
+  exit 1
+fi
 ingested=$(echo "$summary" | jq -r '.ingested')
 if [[ "$ingested" != "1" ]]; then
   echo "::error::expected ingested=1, got ${summary}" >&2
   exit 1
 fi
 
-echo "reading peer event tail on B…"
+# B's own admin reads the tail: the ingested event is in B's workspace log.
+echo "reading the event tail on B…"
 tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=50" \
-  -H "Authorization: Bearer ${peer_secret}")
+  -H "Authorization: Bearer ${token_b}")
 count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
 if [[ "$count" -lt 1 ]]; then
   echo "::error::peer tail missing thread_created on B" >&2
