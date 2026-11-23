@@ -58,6 +58,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("append later")
         .id;
     let subscription = |url: &'static str| NewWebhookSubscription {
+        id: None,
         workspace_id: ws,
         url: url.into(),
         label: None,

@@ -406,6 +406,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
         .expect("event");
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: ws.id,
             url: "https://hooks.example/in".into(),
             label: None,

@@ -1085,6 +1085,7 @@ async fn main() {
     // needs an encryption key this process does not have.
     let hook = store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: ws.id,
             url: "https://hooks.example.test/maidan".into(),
             label: Some("ui-test".into()),

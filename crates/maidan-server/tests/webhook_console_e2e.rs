@@ -5,18 +5,23 @@
 //! another workspace are refused, and the twins keep the bearer routes' bar for
 //! a token.
 
+// The receiver is a plain axum server, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     net::SocketAddr,
-    sync::{atomic::AtomicI64, Arc},
+    sync::{atomic::AtomicI64, Arc, Mutex},
     time::Duration,
 };
 
+use axum::{body::Bytes, extract::State, http::Uri, Router};
 use maidan_artifacts::LocalFsStore;
-use maidan_auth::{hash_secret, TokenSecret};
+use maidan_auth::{expand_set, hash_secret, TokenSecret, AGENT_WORKER};
 use maidan_server::{
     oidc::{OidcRuntime, OidcSettings},
     router,
     state::WebhookRuntime,
+    webhook_worker::WebhookWorker,
     AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -29,13 +34,31 @@ use serde_json::{json, Value};
 
 const SECRET: &[u8] = b"webhook-console-e2e-secret-32-bytes!!!!";
 
+type Seen = Arc<Mutex<Vec<(String, Value)>>>;
+
+/// A receiver for every hook: it records each request's path and JSON body.
+async fn record(State(seen): State<Seen>, uri: Uri, body: Bytes) -> axum::Json<Value> {
+    let value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    seen.lock().unwrap().push((uri.path().to_string(), value));
+    axum::Json(json!({ "text": "ok" }))
+}
+
 struct Env {
     base: String,
+    hooks: String,
+    seen: Seen,
     client: reqwest::Client,
     store: Arc<dyn Store>,
+    _worker: WebhookWorker,
 }
 
 async fn spawn(with_key: bool) -> Env {
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    #[allow(unsafe_code)] // edition 2024 makes env writes unsafe; test setup only
+    unsafe {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1")
+    };
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -90,6 +113,12 @@ async fn spawn(with_key: bool) -> Env {
         end_session_url: None,
         logout_client_id: None,
     }));
+    let worker = WebhookWorker::spawn(state.clone());
+    let seen: Seen = Arc::default();
+    let hooks_app = Router::new().fallback(record).with_state(seen.clone());
+    let hooks_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hooks_addr = hooks_listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(hooks_listener, hooks_app).await.unwrap() });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let app = router(state);
@@ -103,6 +132,9 @@ async fn spawn(with_key: bool) -> Env {
     });
     Env {
         base: format!("http://{addr}"),
+        hooks: format!("http://{hooks_addr}"),
+        seen,
+        _worker: worker,
         client: reqwest::Client::builder()
             .redirect(Policy::none())
             .timeout(Duration::from_secs(10))
@@ -136,6 +168,18 @@ impl Env {
         kind: MemberKind,
         capabilities: &[&str],
     ) -> (MemberId, String) {
+        let capabilities = capabilities.iter().map(|c| c.to_string()).collect();
+        self.member_with_caps(workspace, handle, kind, capabilities)
+            .await
+    }
+
+    async fn member_with_caps(
+        &self,
+        workspace: WorkspaceId,
+        handle: &str,
+        kind: MemberKind,
+        capabilities: Vec<String>,
+    ) -> (MemberId, String) {
         let member = self
             .store
             .create_member(NewMember {
@@ -154,7 +198,7 @@ impl Env {
                 app_installation_id: None,
                 token_hash: hash_secret(secret.as_str()),
                 label: None,
-                capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+                capabilities,
                 expires_at: None,
             })
             .await
@@ -441,4 +485,183 @@ async fn creating_a_webhook_without_an_encryption_key_is_a_503_that_names_the_se
         .await,
         StatusCode::SERVICE_UNAVAILABLE
     );
+}
+
+impl Env {
+    /// Wait up to ten seconds for `/{name}` to get a body of kind `kind`.
+    async fn delivered(&self, name: &str, kind: &str) -> bool {
+        let path = format!("/{name}");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while tokio::time::Instant::now() < deadline {
+            if self
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(p, body)| *p == path && body["kind"] == kind)
+            {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        false
+    }
+}
+
+#[tokio::test]
+async fn a_webhook_made_in_the_console_delivers_and_its_revoke_takes_its_own_token_with_it() {
+    let env = spawn(true).await;
+    let ws = env.workspace("acme").await;
+    let (admin, admin_token) = env
+        .member_with_token(
+            ws,
+            "admin",
+            MemberKind::Human,
+            &["workspace:admin", "workspace:read", "workspace:write"],
+        )
+        .await;
+    let (_, poster) = env
+        .member_with_caps(
+            ws,
+            "poster",
+            MemberKind::Agent,
+            expand_set(AGENT_WORKER).unwrap(),
+        )
+        .await;
+    let channel = env
+        .store
+        .create_channel(maidan_types::NewChannel {
+            workspace_id: ws,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap()
+        .id;
+    let thread = env
+        .store
+        .create_thread(maidan_types::NewThread {
+            channel_id: channel,
+            parent_thread_id: None,
+            title: Some("work".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let person = env.signed_in(ws, admin).await;
+    let base = format!("/ui/api/workspaces/{}/webhooks", ws.0);
+
+    let (status, minted) = env
+        .call(
+            reqwest::Method::POST,
+            &base,
+            &person.cookie,
+            Some(json!({ "url": format!("{}/console", env.hooks), "event_kinds": ["message_posted"] })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{minted}");
+    let id = minted["webhook"]["id"].as_str().unwrap().to_string();
+
+    // A token was minted for it, in the person's own list, with a label that
+    // says what it is and exactly the two capabilities the webhook needs.
+    let authority: Vec<_> = env
+        .store
+        .list_api_tokens_for_member(ws, admin)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|t| {
+            t.label
+                .as_deref()
+                .is_some_and(|l| l.starts_with("Webhook to "))
+        })
+        .collect();
+    assert_eq!(authority.len(), 1, "{authority:?}");
+    let authority = authority.into_iter().next().unwrap();
+    assert!(authority.label.as_deref().unwrap().contains(&id));
+    let mut caps = authority.capabilities.clone();
+    caps.sort();
+    assert_eq!(caps, ["workspace:admin", "workspace:read"]);
+    assert!(authority.revoked_at.is_none());
+
+    // It delivers, and is still there afterwards.
+    let res = env
+        .client
+        .post(format!("{}/threads/{}/messages", env.base, thread.0))
+        .bearer_auth(&poster)
+        .json(&json!({ "body": "hello" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    assert!(
+        env.delivered("console", "message_posted").await,
+        "a webhook made in the console never delivered"
+    );
+    let (_, listed) = env
+        .call(reqwest::Method::GET, &base, &person.cookie, None)
+        .await;
+    assert_eq!(
+        listed.as_array().unwrap().len(),
+        1,
+        "it was revoked on its first event: {listed}"
+    );
+
+    // A webhook made with the person's own token is not tied to a minted one.
+    let own = env
+        .client
+        .post(format!("{}/workspaces/{}/webhooks", env.base, ws.0))
+        .bearer_auth(&admin_token)
+        .json(&json!({ "url": format!("{}/own", env.hooks), "event_kinds": ["message_posted"] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(own.status(), StatusCode::CREATED);
+    let own: Value = own.json().await.unwrap();
+    let own_id = own["webhook"]["id"].as_str().unwrap().to_string();
+
+    // Revoking from the console ends the webhook and the token minted for it.
+    let (status, _) = env
+        .call(
+            reqwest::Method::DELETE,
+            &format!("{base}/{id}"),
+            &person.cookie,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let after = env.store.get_api_token(authority.id).await.unwrap();
+    assert!(
+        after.revoked_at.is_some(),
+        "the minted token outlived its webhook"
+    );
+
+    // Revoking the one made with the person's own token leaves that token.
+    let (status, _) = env
+        .call(
+            reqwest::Method::DELETE,
+            &format!("{base}/{own_id}"),
+            &person.cookie,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let tokens = env
+        .store
+        .list_api_tokens_for_member(ws, admin)
+        .await
+        .unwrap();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.label.is_none() && t.revoked_at.is_none()),
+        "the person's own token was revoked: {tokens:?}"
+    );
+    let (_, listed) = env
+        .call(reqwest::Method::GET, &base, &person.cookie, None)
+        .await;
+    assert_eq!(listed, json!([]));
 }

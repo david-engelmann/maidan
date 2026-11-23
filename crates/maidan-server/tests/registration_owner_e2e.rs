@@ -922,6 +922,7 @@ async fn two_tenant_suite(backend: Backend) {
     let foreign = h
         .store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: a.ws,
             url: h.hook("foreign"),
             label: None,

@@ -202,6 +202,7 @@ async fn seed(store: &dyn Store, receiver: &str) -> (WorkspaceId, Event) {
     let sealed = encrypt_peer_secret("whsec", &KEY).expect("seal");
     store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: ws,
             url: format!("{receiver}/webhook"),
             label: None,

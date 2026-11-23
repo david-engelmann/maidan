@@ -3962,6 +3962,10 @@ pub struct WebhookSubscription {
 
 #[derive(Debug, Clone)]
 pub struct NewWebhookSubscription {
+    /// The id to give the subscription. A caller that needs to name the
+    /// subscription before it exists (a token minted for it carries the id in
+    /// its label) passes one. `None` takes a fresh id.
+    pub id: Option<WebhookSubscriptionId>,
     pub workspace_id: WorkspaceId,
     pub url: String,
     pub label: Option<String>,

@@ -33,6 +33,7 @@ async fn webhook_suite(store: &dyn Store) {
         .expect("ws");
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: ws.id,
             url: "https://hooks.example.com/in".into(),
             label: None,

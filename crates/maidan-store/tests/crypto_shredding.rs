@@ -366,6 +366,7 @@ async fn withdrawal_shreds_the_key_and_the_chain_still_verifies(db: Db) {
     // Queued copies of the words that must not outlive the key.
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
+            id: None,
             workspace_id: room.ws.id,
             url: "https://hooks.example/x".into(),
             label: None,

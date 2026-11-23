@@ -112,7 +112,27 @@ pub async fn ui_create_webhook(
         Act::Create,
     )
     .await?;
-    crate::webhooks::create(&state, &auth, workspace_id, body).await
+    let authority = match session.as_ref() {
+        // A bearer on the twin acts as its own token, as on the bearer route.
+        None => crate::webhooks::Authority::Token(auth.token_id().ok_or_else(|| {
+            ApiError::Forbidden(
+                "a webhook is made with a token, which this caller does not hold".into(),
+            )
+        })?),
+        // A person signed in gets a token minted for the webhook. They must be
+        // able to hold both capabilities it carries.
+        Some(Extension(session)) => {
+            for needed in [WORKSPACE_ADMIN, WORKSPACE_READ] {
+                if !super::member::session_holds_or_may_mint(&state, session, needed).await? {
+                    return Err(ApiError::Forbidden(format!(
+                        "a webhook needs {needed}, which this sign-in cannot hold"
+                    )));
+                }
+            }
+            crate::webhooks::Authority::MintFor(session.member_id)
+        }
+    };
+    crate::webhooks::create(&state, &auth, workspace_id, body, authority).await
 }
 
 /// `DELETE /ui/api/workspaces/:wid/webhooks/:whid`.
@@ -131,5 +151,5 @@ pub async fn ui_revoke_webhook(
         Act::Revoke,
     )
     .await?;
-    crate::webhooks::revoke(&state, workspace_id, WebhookSubscriptionId(whid)).await
+    crate::webhooks::revoke(&state, &auth, workspace_id, WebhookSubscriptionId(whid)).await
 }
