@@ -1723,9 +1723,18 @@ macro_rules! store_delegations {
 
             async fn get_slack_channel_link(
                 &self,
+                workspace_id: WorkspaceId,
                 slack_channel_id: &str,
             ) -> Result<Option<SlackChannelLink>, StoreError> {
-                slack_links::get(self.pool(), slack_channel_id).await
+                slack_links::get(self.pool(), workspace_id, slack_channel_id).await
+            }
+
+            async fn list_slack_channel_links_for_channel(
+                &self,
+                scope: maidan_types::InboundScope,
+                slack_channel_id: &str,
+            ) -> Result<Vec<SlackChannelLink>, StoreError> {
+                slack_links::list_for_channel(self.pool(), scope, slack_channel_id).await
             }
 
             async fn get_slack_channel_link_by_thread(
@@ -1752,16 +1761,18 @@ macro_rules! store_delegations {
 
             async fn unlink_slack_channel(
                 &self,
+                workspace_id: WorkspaceId,
                 slack_channel_id: &str,
             ) -> Result<bool, StoreError> {
-                slack_links::unlink(self.pool(), slack_channel_id).await
+                slack_links::unlink(self.pool(), workspace_id, slack_channel_id).await
             }
 
             async fn disable_slack_channel_link(
                 &self,
+                workspace_id: WorkspaceId,
                 slack_channel_id: &str,
             ) -> Result<bool, StoreError> {
-                slack_links::disable(self.pool(), slack_channel_id).await
+                slack_links::disable(self.pool(), workspace_id, slack_channel_id).await
             }
 
             async fn link_github_issue(
@@ -1781,10 +1792,20 @@ macro_rules! store_delegations {
 
             async fn get_github_issue_link(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 issue_number: i64,
             ) -> Result<Option<GithubIssueLink>, StoreError> {
-                github_links::get(self.pool(), repo, issue_number).await
+                github_links::get(self.pool(), workspace_id, repo, issue_number).await
+            }
+
+            async fn list_github_issue_links_for_issue(
+                &self,
+                scope: maidan_types::InboundScope,
+                repo: &str,
+                issue_number: i64,
+            ) -> Result<Vec<GithubIssueLink>, StoreError> {
+                github_links::list_for_issue(self.pool(), scope, repo, issue_number).await
             }
 
             async fn get_github_issue_link_by_thread(
@@ -1803,18 +1824,20 @@ macro_rules! store_delegations {
 
             async fn unlink_github_issue(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 issue_number: i64,
             ) -> Result<bool, StoreError> {
-                github_links::unlink(self.pool(), repo, issue_number).await
+                github_links::unlink(self.pool(), workspace_id, repo, issue_number).await
             }
 
             async fn disable_github_issue_link(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 issue_number: i64,
             ) -> Result<bool, StoreError> {
-                github_links::disable(self.pool(), repo, issue_number).await
+                github_links::disable(self.pool(), workspace_id, repo, issue_number).await
             }
         }
     };
@@ -3457,20 +3480,22 @@ macro_rules! store_delegations {
 
             async fn mark_change_pull_ci_event(
                 &self,
+                scope: maidan_types::InboundScope,
                 repo: &str,
                 pull_number: i64,
                 at: chrono::DateTime<chrono::Utc>,
             ) -> Result<u64, StoreError> {
-                change_metrics::mark_ci_event(self.pool(), repo, pull_number, at).await
+                change_metrics::mark_ci_event(self.pool(), scope, repo, pull_number, at).await
             }
 
             async fn mark_change_pull_ci_event_at_head(
                 &self,
+                scope: maidan_types::InboundScope,
                 repo: &str,
                 head_sha: &str,
                 at: chrono::DateTime<chrono::Utc>,
             ) -> Result<u64, StoreError> {
-                change_metrics::mark_ci_event_at_head(self.pool(), repo, head_sha, at).await
+                change_metrics::mark_ci_event_at_head(self.pool(), scope, repo, head_sha, at).await
             }
 
             async fn mark_change_pull_ci_read(

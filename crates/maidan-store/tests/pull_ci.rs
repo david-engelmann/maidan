@@ -1310,10 +1310,13 @@ async fn a_ci_event_marks_open_pulls_by_number_or_last_read_head(store: Arc<dyn 
         "a read in one workspace is not another's"
     );
 
-    // By number: both workspaces tracking #7 in this repository.
+    // By number: both workspaces tracking #7 in this repository, through the
+    // route that serves them both (the server's own: both were opened by the
+    // operator and neither stored a connection).
+    let served = maidan_types::InboundScope::Instance(maidan_types::ConnectionSurface::Github);
     let t1 = t0 + chrono::Duration::seconds(10);
     assert_eq!(
-        s.mark_change_pull_ci_event("EXAMPLE/app", 7, t1)
+        s.mark_change_pull_ci_event(served, "EXAMPLE/app", 7, t1)
             .await
             .unwrap(),
         2
@@ -1338,16 +1341,23 @@ async fn a_ci_event_marks_open_pulls_by_number_or_last_read_head(store: Arc<dyn 
         "another repository's #7 is not marked"
     );
     assert_eq!(
-        s.mark_change_pull_ci_event(REPO, 8, t1).await.unwrap(),
+        s.mark_change_pull_ci_event(served, REPO, 8, t1)
+            .await
+            .unwrap(),
         0,
         "a closed pull request is not read again"
     );
-    assert_eq!(s.mark_change_pull_ci_event(REPO, 99, t1).await.unwrap(), 0);
+    assert_eq!(
+        s.mark_change_pull_ci_event(served, REPO, 99, t1)
+            .await
+            .unwrap(),
+        0
+    );
 
     // By head: only the open pull request whose CI was last read there.
     let t2 = t1 + chrono::Duration::seconds(10);
     assert_eq!(
-        s.mark_change_pull_ci_event_at_head(REPO, &head.to_ascii_uppercase(), t2)
+        s.mark_change_pull_ci_event_at_head(served, REPO, &head.to_ascii_uppercase(), t2)
             .await
             .unwrap(),
         1,
@@ -1370,17 +1380,61 @@ async fn a_ci_event_marks_open_pulls_by_number_or_last_read_head(store: Arc<dyn 
         Some(t1)
     );
     assert_eq!(
-        s.mark_change_pull_ci_event_at_head(REPO, &"cd".repeat(20), t2)
+        s.mark_change_pull_ci_event_at_head(served, REPO, &"cd".repeat(20), t2)
             .await
             .unwrap(),
         0,
         "a head nothing was read at marks nothing"
     );
     assert_eq!(
-        s.mark_change_pull_ci_event_at_head("example/other", &head, t2)
+        s.mark_change_pull_ci_event_at_head(served, "example/other", &head, t2)
             .await
             .unwrap(),
         0
+    );
+
+    // A workspace's own route reaches its own watches alone.
+    let t3 = t2 + chrono::Duration::seconds(10);
+    assert_eq!(
+        s.mark_change_pull_ci_event(maidan_types::InboundScope::Workspace(b.ws), REPO, 7, t3)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        s.change_pull_ci_marks(a.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .event_at,
+        Some(t2),
+        "B's own route did not mark A's watch"
+    );
+    // The server's route no longer reaches a workspace that connected its own
+    // GitHub: that workspace hears of its pull requests on its own URL only.
+    s.create_secret(maidan_types::NewSecret {
+        workspace_id: b.ws,
+        name: maidan_types::ConnectionSurface::Github.secret_name().into(),
+        value_ciphertext: "not a real ciphertext".into(),
+        created_by: b.member,
+    })
+    .await
+    .unwrap();
+    let t4 = t3 + chrono::Duration::seconds(10);
+    assert_eq!(
+        s.mark_change_pull_ci_event(served, REPO, 7, t4)
+            .await
+            .unwrap(),
+        1,
+        "only A is still served by the server's route"
+    );
+    assert_eq!(
+        s.change_pull_ci_marks(b.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .event_at,
+        Some(t3)
     );
 }
 

@@ -78,3 +78,15 @@ impl fmt::Display for ConnectionSurface {
         f.write_str(self.as_str())
     }
 }
+
+/// Whose links and watches an inbound delivery may reach. A delivery on a
+/// workspace's own URL reaches that workspace's alone. A delivery on the
+/// server's own route reaches the workspaces the server's credential serves on
+/// the surface: the operator opened them and they stored no connection of
+/// their own there. A workspace with its own connection receives only on its
+/// own URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InboundScope {
+    Workspace(crate::WorkspaceId),
+    Instance(ConnectionSurface),
+}

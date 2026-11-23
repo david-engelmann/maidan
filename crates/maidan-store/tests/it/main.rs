@@ -407,6 +407,9 @@ mod postgres_roundtrip;
 #[path = "../postgres_tls.rs"]
 mod postgres_tls;
 
+#[path = "../projector_links_per_workspace.rs"]
+mod projector_links_per_workspace;
+
 #[path = "../pull_ci.rs"]
 mod pull_ci;
 
