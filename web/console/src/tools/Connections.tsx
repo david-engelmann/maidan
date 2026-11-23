@@ -24,7 +24,15 @@ import { say } from "../core/notices.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad } from "../hooks/useTools.ts";
 
+/**
+ * Keyed by workspace, so a switch mounts a new panel: what was typed and any
+ * answer still in flight belong to the workspace they were made in.
+ */
 export function Connections({ ws }: { ws: string | null }) {
+  return <ConnectionsPanel key={ws ?? "none"} ws={ws} />;
+}
+
+function ConnectionsPanel({ ws }: { ws: string | null }) {
   const { session, store } = useSession();
   const api = useMemo(
     () => new ConnectionsApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),

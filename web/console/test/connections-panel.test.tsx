@@ -341,3 +341,30 @@ test("a token with no token:admin is told so without a request, and the Integrat
   await screen.findByText(/Only a workspace admin sees and sets/);
   expect(router.calls.some((c) => LIST.test(c.url))).toBe(false);
 });
+
+test("switching workspace mounts a fresh panel, so a token typed for the last one is gone", async () => {
+  const user = userEvent.setup();
+  const router = withSession([
+    { match: LIST, body: () => [github(), slack(), linear()] },
+    { match: /\/workspaces\/ws2\/connections$/, body: () => [github(), slack(), linear()] },
+  ]);
+  const store = new SessionStore("https://console.test", router.fn);
+  globalThis.fetch = router.fn;
+  await store.refresh();
+  const view = render(
+    <SessionContext.Provider value={store}>
+      <Connections ws="ws" />
+    </SessionContext.Provider>,
+  );
+  const typed = (await within(await waitRow("github")).findByLabelText("Fine-grained personal access token")) as HTMLInputElement;
+  await user.type(typed, TOKEN);
+  expect(typed.value).toBe(TOKEN);
+  view.rerender(
+    <SessionContext.Provider value={store}>
+      <Connections ws="ws2" />
+    </SessionContext.Provider>,
+  );
+  const fresh = (await within(await waitRow("github")).findByLabelText("Fine-grained personal access token")) as HTMLInputElement;
+  expect(fresh.value).toBe("");
+  expect(document.body.innerHTML).not.toContain(TOKEN);
+});

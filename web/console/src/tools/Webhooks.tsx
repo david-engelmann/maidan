@@ -19,7 +19,16 @@ import { useSession } from "../hooks/useSession.ts";
 import { useLoad } from "../hooks/useTools.ts";
 import { SecretOnce } from "./SecretOnce.tsx";
 
+/**
+ * Keyed by workspace, so a switch mounts a new panel: the signing secret shown
+ * and a create still in flight belong to the workspace they were made in, and
+ * never reach another's panel.
+ */
 export function Webhooks({ ws }: { ws: string | null }) {
+  return <WebhooksPanel key={ws ?? "none"} ws={ws} />;
+}
+
+function WebhooksPanel({ ws }: { ws: string | null }) {
   const { session, store } = useSession();
   const api = useMemo(
     () => new WebhooksApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),
@@ -77,7 +86,8 @@ export function Webhooks({ ws }: { ws: string | null }) {
   };
   const add = async (e: FormEvent) => {
     e.preventDefault();
-    if (adding) return;
+    // A new secret would replace the one still shown, before it was copied.
+    if (adding || secret) return;
     setAdding(true);
     setWhy(null);
     try {
@@ -189,7 +199,8 @@ export function Webhooks({ ws }: { ws: string | null }) {
           </div>
         </fieldset>
         <div>
-          <button className="button steel" disabled={adding || !url.trim() || kinds.length === 0}>{adding ? "Adding…" : "Add webhook"}</button>
+          <button className="button steel" disabled={adding || secret !== null || !url.trim() || kinds.length === 0}>{adding ? "Adding…" : "Add webhook"}</button>
+          {secret ? <span className="muted small" id="webhook-add-wait"> Choose I have it on the signing secret above before adding another webhook.</span> : null}
         </div>
       </form>
       {why ? <p className="err small" id="webhook-why" role="alert">{why}</p> : null}

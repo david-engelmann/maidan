@@ -50,7 +50,7 @@ async function renderWithToken(ui: React.ReactNode, routes: Route[], grant = ["w
   globalThis.fetch = fn;
   await store.signInWithToken("a-token");
   const view = render(<SessionContext.Provider value={store}>{ui}</SessionContext.Provider>);
-  return { view, router, bodies };
+  return { view, router, bodies, store };
 }
 
 /** A webhook's row, once the list has loaded. */
@@ -327,4 +327,58 @@ test("the Integrations tab holds the accounts, the webhooks and what they sent",
   // The sends moved here from Deliveries.
   window.location.hash = "#/tools/deliveries";
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Webhook and automation sends" })).toBeNull());
+});
+
+const mintedRoutes = (made: { value: boolean }): Route[] => [
+  { match: LIST, body: () => (made.value ? [hook()] : []) },
+  {
+    method: "POST",
+    match: LIST,
+    status: 201,
+    body: () => {
+      made.value = true;
+      return { webhook: hook(), secret: SECRET };
+    },
+  },
+  { match: /\/workspaces\/ws2\/webhooks$/, body: () => [] },
+];
+
+test("switching workspace drops the signing secret the last one showed", async () => {
+  const user = userEvent.setup();
+  const { view, store } = await renderWithToken(<Webhooks ws="ws" />, mintedRoutes({ value: false }));
+  await screen.findByText(/No webhooks yet/);
+  await user.type(screen.getByLabelText("URL"), "https://example.com/maidan");
+  await choose(user, "Message posted");
+  await user.click(screen.getByRole("button", { name: "Add webhook" }));
+  const box = await screen.findByRole("region", { name: /Signing secret/ });
+  await user.click(within(box).getByRole("button", { name: "Show" }));
+  expect(document.body.innerHTML).toContain(SECRET);
+  view.rerender(
+    <SessionContext.Provider value={store}>
+      <Webhooks ws="ws2" />
+    </SessionContext.Provider>,
+  );
+  await screen.findByText(/No webhooks yet/);
+  expect(screen.queryByRole("region", { name: /Signing secret/ })).toBeNull();
+  expect(document.body.innerHTML).not.toContain(SECRET);
+});
+
+test("a second webhook cannot be added while the first secret is still shown", async () => {
+  const user = userEvent.setup();
+  const { bodies } = await renderWithToken(<Webhooks ws="ws" />, mintedRoutes({ value: false }));
+  await screen.findByText(/No webhooks yet/);
+  await user.type(screen.getByLabelText("URL"), "https://example.com/maidan");
+  await choose(user, "Message posted");
+  await user.click(screen.getByRole("button", { name: "Add webhook" }));
+  const box = await screen.findByRole("region", { name: /Signing secret/ });
+  // A second one is filled in, and still cannot be sent.
+  await user.type(screen.getByLabelText("URL"), "https://example.com/second");
+  await choose(user, "Message posted");
+  const add = screen.getByRole("button", { name: "Add webhook" }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  await user.type(screen.getByLabelText("URL"), "{Enter}");
+  expect(bodies.length, "a second create was sent").toBe(1);
+  // Once the secret is acknowledged, it can.
+  await user.click(within(box).getByRole("button", { name: "I have it" }));
+  expect((screen.getByRole("button", { name: "Add webhook" }) as HTMLButtonElement).disabled).toBe(false);
 });
