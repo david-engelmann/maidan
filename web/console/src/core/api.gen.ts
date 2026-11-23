@@ -65,6 +65,10 @@ export type CloseAbandonedThread = { duplicate_of?: string | null; reason: Close
 export type CloseReason = "duplicate" | "abandoned" | "superseded";
 export type CompleteMultipartArtifact = { filename?: string | null; kind: ArtifactKind; mime_type?: string | null; object_key: string; parts: MultipartPartInput[]; };
 export type ConfirmApprovalGate = { gate_id: ApprovalGateId; token: string; };
+export type Connection = { account?: string | null; connected_at?: string | null; inbound?: null | ConnectionInbound; source?: null | ConnectionSource; surface: ConnectionSurface; };
+export type ConnectionInbound = { secret_set: boolean; url: string; };
+export type ConnectionSource = "workspace" | "instance";
+export type ConnectionSurface = "github" | "slack" | "linear";
 export type ContentBlock = { text: string; type: "text"; } | { code: string; language?: string | null; type: "code"; } | { id: string; input: unknown; name: string; type: "tool_use"; } | { content: string; is_error?: boolean; tool_use_id: string; type: "tool_result"; } | { mime_type?: string | null; title?: string | null; type: "resource_link"; uri: string; };
 export type ContextPrefix = { accepted_decisions?: AcceptedDecision[]; artifacts: Artifact[]; change_requests?: ThreadReview[]; channel_id: ChannelId; glossary?: GlossaryTerm[]; message_edits: MessageEditView[]; messages: Message[]; parent_grounding?: null | ParentGrounding; references: Reference[]; thread: ThreadBrief; thread_id: ThreadId; transitions: ThreadTransition[]; workspace_id: WorkspaceId; };
 export type ContextTail = { as_of?: number | null; assignee_id?: null | MemberId; assignment_expires_at?: string | null; ci?: PullCi[]; claim_lease_id?: null | ClaimLeaseId; elision?: null | PackElision; next_message_cursor?: string | null; notices?: ThreadNotice[]; prefix_bytes: number; prefix_sha256: string; state: ThreadState; updated_at: string; work_started_at?: string | null; };
@@ -348,6 +352,7 @@ export type SessionResponse = { display_name?: string | null; expires_at: string
 export type SessionWorkspace = { current: boolean; handle: string; member_id: MemberId; name: string; workspace_id: WorkspaceId; };
 export type SessionWorkspaces = { workspaces: SessionWorkspace[]; };
 export type SetApprovalPolicy = { confirm_at?: null | ApprovalRisk; confirm_link_ttl_seconds?: number | null; };
+export type SetConnection = { signing_secret?: string | null; token?: string | null; webhook_secret?: string | null; };
 export type SetDelegationPolicy = { max_grant_days?: number | null; };
 export type SetDeliveryMode = { mode: EmailDeliveryMode; };
 export type SetEmail = { email: string; };
@@ -538,6 +543,7 @@ export type ApiRoute =
   | "DELETE /threads/{id}/unclaimable"
   | "DELETE /threads/{id}/wait"
   | "DELETE /tokens/{id}"
+  | "DELETE /ui/api/workspaces/{wid}/connections/{surface}"
   | "DELETE /ui/api/workspaces/{wid}/egress-targets/{tid}"
   | "DELETE /ui/api/workspaces/{wid}/invites/{iid}"
   | "DELETE /ui/api/workspaces/{wid}/land-gate/advisor"
@@ -547,6 +553,7 @@ export type ApiRoute =
   | "DELETE /workspaces/{id}/repo-pauses"
   | "DELETE /workspaces/{id}/slots"
   | "DELETE /workspaces/{wid}/app-installations/{iid}"
+  | "DELETE /workspaces/{wid}/connections/{surface}"
   | "DELETE /workspaces/{wid}/delegation-grants/{gid}"
   | "DELETE /workspaces/{wid}/egress-targets/{tid}"
   | "DELETE /workspaces/{wid}/fsm-hooks/{hid}"
@@ -689,6 +696,7 @@ export type ApiRoute =
   | "GET /ui/api/tools"
   | "GET /ui/api/workspaces/{wid}/audit"
   | "GET /ui/api/workspaces/{wid}/channels"
+  | "GET /ui/api/workspaces/{wid}/connections"
   | "GET /ui/api/workspaces/{wid}/egress-targets"
   | "GET /ui/api/workspaces/{wid}/events"
   | "GET /ui/api/workspaces/{wid}/invites"
@@ -739,6 +747,7 @@ export type ApiRoute =
   | "GET /workspaces/{wid}/automation/deliveries/{did}"
   | "GET /workspaces/{wid}/automation/dlq"
   | "GET /workspaces/{wid}/channels"
+  | "GET /workspaces/{wid}/connections"
   | "GET /workspaces/{wid}/context"
   | "GET /workspaces/{wid}/delegation-grants"
   | "GET /workspaces/{wid}/deliveries"
@@ -929,6 +938,7 @@ export type ApiRoute =
   | "PUT /threads/{id}/title"
   | "PUT /threads/{id}/unclaimable"
   | "PUT /threads/{id}/wait"
+  | "PUT /ui/api/workspaces/{wid}/connections/{surface}"
   | "PUT /ui/api/workspaces/{wid}/land-gate/advisor"
   | "PUT /workspaces/{id}/approval-policy"
   | "PUT /workspaces/{id}/default-engine"
@@ -943,6 +953,7 @@ export type ApiRoute =
   | "PUT /workspaces/{id}/spawn-budget"
   | "PUT /workspaces/{id}/unique-thread-attributes"
   | "PUT /workspaces/{id}/wip-limit"
+  | "PUT /workspaces/{wid}/connections/{surface}"
   | "PUT /workspaces/{wid}/glossary/{term}"
   | "PUT /workspaces/{wid}/memory-blocks/{id}"
   | "PUT /workspaces/{wid}/mention-webhook"

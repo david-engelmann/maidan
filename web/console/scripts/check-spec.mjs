@@ -14,12 +14,9 @@ const SRC = resolve(here, "../src");
 
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
 export const PENDING = new Map([
-  ["GET /workspaces/{}/connections", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
-  ["PUT /workspaces/{}/connections/{}", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
-  ["DELETE /workspaces/{}/connections/{}", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
-  ["GET /ui/api/workspaces/{}/webhooks", "#2466 restricts instance credentials; the webhooks console twin is added by the server lane and drops this entry"],
-  ["POST /ui/api/workspaces/{}/webhooks", "#2466 restricts instance credentials; the webhooks console twin is added by the server lane and drops this entry"],
-  ["DELETE /ui/api/workspaces/{}/webhooks/{}", "#2466 restricts instance credentials; the webhooks console twin is added by the server lane and drops this entry"],
+  ["GET /ui/api/workspaces/{}/webhooks", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
+  ["POST /ui/api/workspaces/{}/webhooks", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
+  ["DELETE /ui/api/workspaces/{}/webhooks/{}", "the console twin of the webhook routes lands with per-workspace inbound webhooks, which drops this entry"],
 ]);
 
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me|tools|ui\/api)(\/|$|\?)/;
