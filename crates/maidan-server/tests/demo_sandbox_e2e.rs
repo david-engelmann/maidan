@@ -405,6 +405,79 @@ async fn a_second_agent_reviews_and_closes_the_task_with_no_person_acting() {
     assert_eq!(thread["state"], json!("closed"), "{thread}");
 }
 
+/// The server's GitHub, Slack and Linear credentials are its operator's, one
+/// set for every workspace. A sandbox is opened by whoever arrives, so its
+/// admin cannot aim them: not by blessing a destination, not by linking a
+/// Slack channel or a GitHub issue to a task, not by watching a pull request.
+/// Each of these answered 2xx before, and the sweep then read the pull
+/// request with the server's own GitHub credential.
+#[tokio::test]
+async fn a_sandbox_cannot_aim_the_servers_github_or_slack_credentials() {
+    let base = spawn(Some(10)).await;
+    let c = client();
+    let sb = minted(&c, &base, "10.9.0.1").await;
+    let admin = s(&sb, &["admin", "token"]);
+    let ws = s(&sb, &["workspace_id"]);
+    let channel = s(&sb, &["channel_id"]);
+    let task = s(&sb, &["task_id"]);
+    let operators = "serve only the workspaces its operator opened";
+    let attempts = [
+        (
+            "egress-targets",
+            json!({ "surface": "github", "selector": "someone/private-repo" }),
+            operators,
+        ),
+        (
+            "egress-targets",
+            json!({ "surface": "slack", "selector": "C0123456789" }),
+            operators,
+        ),
+        (
+            "slack-links",
+            json!({ "slack_channel_id": "C0123456789", "thread_id": task }),
+            operators,
+        ),
+        (
+            "github-links",
+            json!({ "repo": "someone/private-repo", "issue_number": 7, "thread_id": task }),
+            operators,
+        ),
+        (
+            "pull-watches",
+            json!({ "repo": "someone/private-repo", "pull_number": 1, "channel_id": channel }),
+            "not in the workspace egress allowlist",
+        ),
+    ];
+    for (route, body, why) in attempts {
+        let res = c
+            .post(format!("{base}/workspaces/{ws}/{route}"))
+            .bearer_auth(admin)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        assert!(
+            status == StatusCode::BAD_REQUEST || status == StatusCode::FORBIDDEN,
+            "{route} {body} answered {status}: {text}"
+        );
+        assert!(
+            text.contains(why),
+            "{route} was refused for another reason: {text}"
+        );
+    }
+    let (status, targets) = get(
+        &c,
+        &base,
+        admin,
+        &format!("/workspaces/{ws}/egress-targets"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{targets}");
+    assert_eq!(targets.trim(), "[]", "nothing was blessed");
+}
+
 #[tokio::test]
 async fn one_sandboxs_tokens_see_nothing_of_another_sandbox() {
     let base = spawn(Some(10)).await;
