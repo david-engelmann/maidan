@@ -304,8 +304,10 @@ These credentials are the server's own, one set for every workspace on it.
 They serve only the workspaces its operator opened (the operator API, or
 `maidan init`). A workspace opened by sign-up or by the demo's sandbox cannot
 bless a destination, link a Slack channel or a GitHub issue, or watch a pull
-request, so a server with sign-up on can hold them for the operator's own
-workspaces.
+request. Nothing queued for one is sent, and a comment or message arriving on
+a link one made on an older release is ignored. Such a link and such an
+allowlist entry stay in their tables, doing nothing, until the operator
+removes them.
 
 | Variable | Default | Notes |
 |---|---|---|

@@ -215,6 +215,9 @@ async fn route_slack_event(
             return;
         }
     };
+    if !crate::egress_worker::serves_workspace(state, link.workspace_id).await {
+        return; // linked by a workspace the server's credentials do not serve
+    }
     let new = maidan_types::NewMessage {
         thread_id: link.thread_id,
         author_id: link.member_id,

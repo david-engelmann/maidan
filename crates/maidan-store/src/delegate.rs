@@ -1541,11 +1541,6 @@ macro_rules! store_delegations {
                 &self,
                 new: NewEgressTarget,
             ) -> Result<AllowedEgressTarget, StoreError> {
-                // The server's own credentials serve only a workspace its operator
-                // opened (`instance_credentials`).
-                crate::instance_credentials::ensure_served(
-                    import::workspace_origin(self.pool(), new.workspace_id).await?,
-                )?;
                 egress_targets::allow(self.pool(), new).await
             }
 
@@ -6503,11 +6498,6 @@ macro_rules! store_delegations {
                 new: NewEgressTarget,
                 audit: crate::AuditFor<AllowedEgressTarget>,
             ) -> Result<AllowedEgressTarget, StoreError> {
-                // The server's own credentials serve only a workspace its operator
-                // opened (`instance_credentials`).
-                crate::instance_credentials::ensure_served(
-                    import::workspace_origin(self.pool(), new.workspace_id).await?,
-                )?;
                 governance_audited::allow_egress_target(self.pool(), new, audit).await
             }
 

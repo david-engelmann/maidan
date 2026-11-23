@@ -220,11 +220,13 @@ impl GithubSender for MockGithub {
     }
 }
 
-async fn linked_message(
+/// A channel and a thread in it for the tenant, and what linking the thread
+/// to issue `issue` answered.
+async fn try_link(
     store: &dyn Store,
     (ws, member): (WorkspaceId, MemberId),
     issue: i64,
-) -> (ThreadId, Message) {
+) -> (ThreadId, Result<GithubIssueLink, maidan_store::StoreError>) {
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws,
@@ -244,7 +246,7 @@ async fn linked_message(
         })
         .await
         .unwrap();
-    store
+    let linked = store
         .link_github_issue(NewGithubIssueLink {
             repo: "o/r".into(),
             issue_number: issue,
@@ -253,12 +255,21 @@ async fn linked_message(
             thread_id: thread.id,
             member_id: member,
         })
-        .await
-        .unwrap();
+        .await;
+    (thread.id, linked)
+}
+
+async fn linked_message(
+    store: &dyn Store,
+    (ws, member): (WorkspaceId, MemberId),
+    issue: i64,
+) -> (ThreadId, Message) {
+    let (thread, linked) = try_link(store, (ws, member), issue).await;
+    linked.unwrap();
     let (m, _) = store
         .post_message_with_event(
             NewMessage {
-                thread_id: thread.id,
+                thread_id: thread,
                 author_id: member,
                 body: "shipping it".into(),
                 metadata: json!({}),
@@ -268,11 +279,16 @@ async fn linked_message(
         )
         .await
         .unwrap();
-    (thread.id, m)
+    (thread, m)
 }
 
+/// The projector sends with the server's own GitHub credential, which serves
+/// only a workspace its operator opened. A workspace opened by sign-up, open
+/// or invited, cannot link an issue, so it never has egress to send or to
+/// park. The operator's workspace is delivered past its allowance: only an
+/// open workspace is cut off.
 #[tokio::test]
-async fn egress_for_a_cut_off_workspace_is_parked_while_other_tenants_are_delivered() {
+async fn only_the_operators_workspace_sends_through_the_servers_github_credential() {
     let (mut state, store) = setup().await;
     let github = Arc::new(MockGithub {
         sent: Mutex::new(Vec::new()),
@@ -283,35 +299,24 @@ async fn egress_for_a_cut_off_workspace_is_parked_while_other_tenants_are_delive
         invited: signed_up(store.as_ref(), "cy", false).await,
         ops: operator_workspace(store.as_ref()).await,
     };
-    // Posted before the cutoff: once cut off, the store refuses new messages
-    // in the open workspace, so its queued egress is what gets parked.
-    let mut posted = Vec::new();
-    for (issue, tenant) in [(1, t.open), (2, t.invited), (3, t.ops)] {
-        posted.push((issue, linked_message(store.as_ref(), tenant, issue).await));
+    for (issue, tenant) in [(1, t.open), (2, t.invited)] {
+        let (_, linked) = try_link(store.as_ref(), tenant, issue).await;
+        assert!(
+            matches!(linked, Err(maidan_store::StoreError::InvalidInput(_))),
+            "a signed-up workspace linked issue {issue}"
+        );
     }
+    let (thread, m) = linked_message(store.as_ref(), t.ops, 3).await;
     for (ws, _) in [t.open, t.invited, t.ops] {
         past_every_allowance(store.as_ref(), ws).await;
     }
     maidan_server::usage_meters::refresh_cut_off(&state).await;
-    for (issue, (thread, m)) in &posted {
-        route_message_to_github(&state, *issue, *thread, m).await;
-    }
+    route_message_to_github(&state, 3, thread, &m).await;
 
     let stats = egress_worker::sweep_once(&state).await;
-    assert_eq!(stats.sent, 2, "{stats:?}");
-    assert_eq!(stats.deferred, 1, "{stats:?}");
-    assert_eq!(stats.dead, 0, "parked, not failed: {stats:?}");
-    let mut sent = github.sent.lock().unwrap().clone();
-    sent.sort();
-    assert_eq!(sent, vec![2, 3]);
-
-    // Parked for a while, not retried in a loop: a second sweep sends nothing.
-    let again = egress_worker::sweep_once(&state).await;
-    assert_eq!(again.sent + again.deferred + again.dead, 0, "{again:?}");
-    // And it is still queued for after the cutoff lifts.
-    let later = Utc::now() + chrono::Duration::minutes(16);
-    let parked = store.claim_next_due_egress(later, 30).await.unwrap();
-    assert_eq!(parked.map(|e| e.workspace_id), Some(t.open.0));
+    assert_eq!(stats.sent, 1, "{stats:?}");
+    assert_eq!(stats.deferred + stats.dead, 0, "{stats:?}");
+    assert_eq!(*github.sent.lock().unwrap(), vec![3]);
 }
 
 struct RecordingPush {

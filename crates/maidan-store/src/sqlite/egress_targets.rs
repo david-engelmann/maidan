@@ -27,6 +27,13 @@ pub(crate) async fn allow_on(
 ) -> Result<AllowedEgressTarget, StoreError> {
     validate_allowlist_selector(new.surface, &new.selector)
         .map_err(|why| StoreError::InvalidInput(why.to_string()))?;
+    // The server's own credentials serve only a workspace its operator opened
+    // (`instance_credentials`). Checked here, on the connection that writes,
+    // so the audited and the plain blessing cannot differ.
+    let origin = super::import::origin_on(&mut *conn, new.workspace_id)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    crate::instance_credentials::ensure_served(origin)?;
     let id = EgressTargetId::new();
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
