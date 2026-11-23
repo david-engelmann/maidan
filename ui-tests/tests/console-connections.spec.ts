@@ -187,7 +187,9 @@ test("disconnecting GitHub returns it to not connected, and a reload agrees", as
   await open(page);
   await disconnectGithub(page);
   await expect(surface(page, "GitHub")).not.toContainText("octo-team");
-  await expect(surface(page, "GitHub").getByText(/\/connections\/github\/webhook$/)).toHaveCount(0);
+  // The inbound URL stays: it is the workspace's address whether or not it
+  // is connected. What goes is the secret that let deliveries in.
+  await expect(surface(page, "GitHub")).toContainText("No webhook secret is set");
   await page.reload();
   await expect(surface(page, "GitHub").getByText("Not connected", { exact: true })).toBeVisible();
   expect(w.problems).toEqual([]);
