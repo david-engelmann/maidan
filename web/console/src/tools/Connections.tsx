@@ -36,7 +36,7 @@ export function Connections({ ws }: { ws: string | null }) {
   const deciding = tokenBacked && session.grant === null;
   const asks = ws && !deciding && asksForAllowlist(tokenBacked, session.grant) ? ws : null;
   const list = useLoad(asks ? `connections:${asks}` : null, () => api.list(asks ?? ""));
-  const title = "Connections";
+  const title = "GitHub, Slack and Linear";
   const shell = (body: ReactNode, action?: ReactNode) => (
     <section className="card tool-panel wide">
       <div className="panel-head">

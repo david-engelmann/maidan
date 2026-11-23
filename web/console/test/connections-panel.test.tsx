@@ -303,8 +303,8 @@ test("a failed read says so and offers another try", async () => {
   await screen.findByRole("heading", { name: "GitHub" });
 });
 
-test("a token with no token:admin is told so without a request, and the Connections tab is in Tools", async () => {
-  window.location.hash = "#/tools/connections";
+test("a token with no token:admin is told so without a request, and the Integrations tab is in Tools", async () => {
+  window.location.hash = "#/tools/integrations";
   const router = new FetchRouter([
     { match: /\/auth\/session\/from-token$/, status: 404, body: () => ({}) },
     { match: /\/auth\/session$/, body: () => ({ member_id: "me", workspace_id: "ws", display_name: "Ada" }) },
@@ -319,7 +319,7 @@ test("a token with no token:admin is told so without a request, and the Connecti
       <Tools />
     </SessionContext.Provider>,
   );
-  expect(screen.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", { name: "Integrations" }).getAttribute("aria-selected")).toBe("true");
   await screen.findByText(/Only a workspace admin sees and sets/);
   expect(router.calls.some((c) => LIST.test(c.url))).toBe(false);
 });
