@@ -488,6 +488,82 @@ async fn a_peer_registered_with_the_remotes_secret_presents_and_accepts_it() {
     h.shutdown().await;
 }
 
+/// `remote_workspace_id` names the workspace polled on the peer's own server,
+/// and the admin who registers the peer sets it to anything. It was also the
+/// scope of what the peer's secret read here, so a tenant that named another
+/// tenant's workspace read that workspace's whole log, bodies included, with
+/// the secret its own registration returned. The secret reads the workspace
+/// the peer is registered in and no other.
+#[tokio::test]
+async fn a_peer_naming_another_tenants_workspace_reads_none_of_its_log() {
+    let h = spawn().await;
+    let victim = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "victim".to_string(),
+        })
+        .await
+        .unwrap();
+    let attacker = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "attacker".to_string(),
+        })
+        .await
+        .unwrap();
+    let attacker_admin = mint_admin_token(h.store.as_ref(), attacker.id).await;
+
+    let created = h
+        .client
+        .post(format!("{}/workspaces/{}/peers", h.base(), attacker.id.0))
+        .bearer_auth(&attacker_admin)
+        .json(&json!({
+            "name": "probe",
+            "base_url": "https://remote.example",
+            "remote_workspace_id": victim.id.0,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        created.status(),
+        StatusCode::CREATED,
+        "naming a remote workspace is allowed: it is only where the poll looks"
+    );
+    let body: serde_json::Value = created.json().await.unwrap();
+    let secret = body["secret"].as_str().unwrap().to_string();
+
+    let get = |workspace: WorkspaceId, rest: &str| {
+        h.client
+            .get(format!("{}/workspaces/{}/{rest}", h.base(), workspace.0))
+            .bearer_auth(&secret)
+            .send()
+    };
+    for rest in [
+        "events?after_id=0&limit=10",
+        "events/verify",
+        "events/catch-up",
+        "snapshot",
+        "snapshot?include_graph=true",
+    ] {
+        let refused = get(victim.id, rest).await.unwrap();
+        assert_eq!(
+            refused.status(),
+            StatusCode::FORBIDDEN,
+            "the peer's secret read the other tenant's {rest}"
+        );
+    }
+    let own = get(attacker.id, "events?after_id=0&limit=10")
+        .await
+        .unwrap();
+    assert_eq!(
+        own.status(),
+        StatusCode::OK,
+        "the peer still reads the workspace it is registered in"
+    );
+    h.shutdown().await;
+}
+
 async fn mint_peer(h: &Harness, ws: WorkspaceId, name: &str) -> (PeerId, String) {
     let admin = mint_admin_token(h.store.as_ref(), ws).await;
     let create = h
