@@ -25,7 +25,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_fsm::ThreadAction;
 use maidan_server::connections::{ConnectionFactory, VerifyError};
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, AppState, FederationRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ArtifactKind, BlockedReason, ConnectionSurface, EgressSurface, EgressTarget, MemberKind,
@@ -1316,6 +1316,8 @@ async fn main() {
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    // A webhook's signing secret is kept under its own runtime's key.
+    state.webhooks = WebhookRuntime::new(Some(Arc::new(UI_ENCRYPTION_KEY)));
     // A workspace's connections are checked and built by this factory, which
     // never calls a provider (connections-ui spec).
     state.attach_connection_factory(Arc::new(UiConnections));
