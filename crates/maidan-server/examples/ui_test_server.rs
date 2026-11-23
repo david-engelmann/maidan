@@ -24,12 +24,14 @@ use std::sync::Arc;
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_fsm::ThreadAction;
+use maidan_server::connections::{ConnectionFactory, VerifyError};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ArtifactKind, BlockedReason, EgressSurface, EgressTarget, MemberKind, NewApiToken,
-    NewApprovalGate, NewArtifact, NewChannel, NewEgressTarget, NewMaidanSession, NewMember,
-    NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    ArtifactKind, BlockedReason, ConnectionSurface, EgressSurface, EgressTarget, MemberKind,
+    NewApiToken, NewApprovalGate, NewArtifact, NewChannel, NewEgressTarget, NewMaidanSession,
+    NewMember, NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription, NewWorkspace,
+    ReviewDecision,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -37,6 +39,43 @@ use sqlx::sqlite::SqlitePoolOptions;
 /// Signs every browser session the harness serves: the token exchange's and
 /// the seeded signed-in session's.
 const UI_SESSION_SECRET: &[u8] = b"ui-test-session-secret-at-least-32-bytes";
+
+/// Encrypts the harness's workspace secrets. A throwaway value for a throwaway
+/// in-memory store.
+const UI_ENCRYPTION_KEY: [u8; 32] = *b"ui-test-encryption-key-32-bytes!";
+
+/// A connection factory that never reaches a provider. A token starting with
+/// `good-` is accepted and names an account; any other is refused the way a
+/// provider refuses a bad one. The senders are never built: nothing in the
+/// console flow sends through a connection.
+struct UiConnections;
+
+#[async_trait::async_trait]
+impl ConnectionFactory for UiConnections {
+    fn github(&self, _token: &str) -> Arc<dyn maidan_server::github::GithubSender> {
+        panic!("the UI harness sends nothing through GitHub")
+    }
+
+    fn slack(&self, _token: &str) -> Arc<dyn maidan_server::slack::SlackSender> {
+        panic!("the UI harness sends nothing through Slack")
+    }
+
+    fn linear(&self, _token: &str) -> Arc<dyn maidan_server::linear::LinearSender> {
+        panic!("the UI harness sends nothing through Linear")
+    }
+
+    async fn verify(&self, surface: ConnectionSurface, token: &str) -> Result<String, VerifyError> {
+        if !token.starts_with("good-") {
+            return Err(VerifyError::Refused("Bad credentials".into()));
+        }
+        Ok(match surface {
+            ConnectionSurface::Github => "octo-team",
+            ConnectionSurface::Slack => "Acme",
+            ConnectionSurface::Linear => "Acme Linear",
+        }
+        .into())
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -1081,8 +1120,8 @@ async fn main() {
         .expect("admin token");
 
     // One dead-lettered webhook so the Operator tab can replay it. The harness
-    // does not run the webhook worker, and creating a subscription over HTTP
-    // needs an encryption key this process does not have.
+    // does not run the webhook worker, so this one is seeded rather than made
+    // over HTTP, with a ciphertext no one ever opens.
     let hook = store
         .create_webhook_subscription(NewWebhookSubscription {
             workspace_id: ws.id,
@@ -1271,10 +1310,15 @@ async fn main() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false,
-        FederationRuntime::new(true, None),
+        // A fixed key so a workspace can store its secrets (a connection's token,
+        // a webhook's signing secret). Federation stays off. Never a real key.
+        FederationRuntime::new(true, Some(Arc::new(UI_ENCRYPTION_KEY))),
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    // A workspace's connections are checked and built by this factory, which
+    // never calls a provider (connections-ui spec).
+    state.attach_connection_factory(Arc::new(UiConnections));
     // The approval-gate `request_state` HMAC + subscribe-resume are secret-keyed.
     state.subscribe_resume_secret = Some(Arc::from(&b"ui-test-subscribe-resume-secret-32b"[..]));
     state.console_origin = Some(format!("http://127.0.0.1:{port}"));
