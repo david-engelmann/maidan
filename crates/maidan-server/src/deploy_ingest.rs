@@ -153,21 +153,21 @@ async fn shipped_ancestors(
             // The exact match is the store's own; no compare needed.
             continue;
         }
-        if !senders.contains_key(&candidate.workspace_id) {
-            let found = match state.github_for(candidate.workspace_id).await {
-                Ok(found) => found,
-                Err(err) => {
-                    tracing::warn!(error = %err, "deploy ingest: no GitHub sender for the workspace");
-                    None
-                }
-            };
-            senders.insert(candidate.workspace_id, found);
-        }
-        let Some(github) = senders
-            .get(&candidate.workspace_id)
-            .and_then(Option::as_ref)
-            .and_then(|resolved| resolved.sender.git())
-        else {
+        let resolved = match senders.get(&candidate.workspace_id) {
+            Some(found) => found.clone(),
+            None => {
+                let found = match state.github_for(candidate.workspace_id).await {
+                    Ok(found) => found,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "deploy ingest: no GitHub sender for the workspace");
+                        None
+                    }
+                };
+                senders.insert(candidate.workspace_id, found.clone());
+                found
+            }
+        };
+        let Some(github) = resolved.as_ref().and_then(|resolved| resolved.sender.git()) else {
             continue;
         };
         // `compare/{deployed}...{merged}` is behind (or identical) exactly
