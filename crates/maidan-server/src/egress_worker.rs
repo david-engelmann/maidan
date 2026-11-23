@@ -1524,6 +1524,21 @@ async fn slack_result(
 }
 
 /// Dead-letter a delivery without rescheduling it.
+/// Whether the server's own GitHub, Slack and Linear credentials serve this
+/// workspace (`maidan_store::instance_credentials`). A link a workspace made
+/// before that rule is neither sent through nor read into: the inbound
+/// handlers ask this before they copy a comment or a message into its thread.
+/// An origin that cannot be read counts as not served.
+pub(crate) async fn serves_workspace(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> bool {
+    matches!(
+        state.store.workspace_origin(workspace_id).await,
+        Ok(origin) if maidan_store::instance_credentials::serves(origin)
+    )
+}
+
 async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
     if let Err(e) = state.store.mark_egress_failed(entry.id, error, None).await {
         tracing::warn!(error = %e, id = %entry.id, "egress worker: dead-letter failed");
@@ -1887,6 +1902,31 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             crate::metrics::record_egress_delivery(surface, crate::metrics::EgressOutcome::Dead);
             stats.dead += 1;
             continue;
+        }
+        // Every sender holds the server's own credential, which serves only a
+        // workspace its operator opened (`maidan_store::instance_credentials`).
+        // A row queued for any other workspace, through a link or an allowlist
+        // entry it made before that rule, is never sent.
+        match state.store.workspace_origin(entry.workspace_id).await {
+            Ok(origin) if maidan_store::instance_credentials::serves(origin) => {}
+            Ok(_) => {
+                let error = maidan_store::instance_credentials::REFUSAL;
+                dead_letter(state, &entry, error).await;
+                tracing::warn!(id = %entry.id, %error, "egress worker: dead-lettered");
+                crate::metrics::record_egress_delivery(
+                    surface,
+                    crate::metrics::EgressOutcome::Refused,
+                );
+                if entry.kind == EgressKind::Result {
+                    audit_result_attempt(state, &entry, Some(&target), "dead", Some(error)).await;
+                }
+                stats.dead += 1;
+                continue;
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: could not read the workspace's origin");
+                continue;
+            }
         }
         // The claim counted this try, so a first post has `attempts == 1`.
         if crate::suspension::held_back(state, entry.workspace_id).await {

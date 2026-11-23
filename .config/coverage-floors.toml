@@ -16,6 +16,15 @@
 # three. Raise a floor when a crate's coverage rises; lowering one needs a
 # reason in the PR that does it. maidan-env and maidan-mcp sit above what the
 # rule gives today (97.0, 92.0) and were left, not lowered.
+#
+# maidan-mcp was measured again on 2026-11-23, on the coverage job of `main` CI
+# runs 45190973170, 45114785251 and 45068459003: 90.67 on all three. Its
+# 93.23 above counted the crate's own tests, 9,499 lines that then sat in
+# `src/server.rs`. On 2026-11-12 they moved to `src/server/tests/` (HEALTH-004),
+# a directory the report leaves out, so the figure fell to 90.34 the next day
+# with no change in what is tested, and the job was red on every `main` push
+# from then on. No floor moved while it was red. The other floors were
+# measured with their tests where they still are.
 
 [workspace]
 lines = 91.0 # measured 92.04
@@ -28,7 +37,7 @@ maidan-bus = 91.0           # 92.35
 maidan-cli = 88.0           # 89.45 (91.14 on run 43060492563)
 maidan-env = 98.0           # 98.10
 maidan-fsm = 97.0           # 98.11
-maidan-mcp = 92.5           # 93.23
+maidan-mcp = 89.5           # 90.67 (2026-11-23; see above)
 maidan-observability = 81.5 # 82.78; OTLP init runs in the otlp smoke job, outside coverage
 maidan-router = 97.0        # 98.43
 maidan-search = 86.5        # 87.60

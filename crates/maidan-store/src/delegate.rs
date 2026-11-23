@@ -1702,6 +1702,11 @@ macro_rules! store_delegations {
                 &self,
                 new: NewSlackChannelLink,
             ) -> Result<SlackChannelLink, StoreError> {
+                // The server's own credentials serve only a workspace its operator
+                // opened (`instance_credentials`).
+                crate::instance_credentials::ensure_served(
+                    import::workspace_origin(self.pool(), new.workspace_id).await?,
+                )?;
                 slack_links::link(self.pool(), new).await
             }
 
@@ -1752,6 +1757,11 @@ macro_rules! store_delegations {
                 &self,
                 new: NewGithubIssueLink,
             ) -> Result<GithubIssueLink, StoreError> {
+                // The server's own credentials serve only a workspace its operator
+                // opened (`instance_credentials`).
+                crate::instance_credentials::ensure_served(
+                    import::workspace_origin(self.pool(), new.workspace_id).await?,
+                )?;
                 github_links::link(self.pool(), new).await
             }
 
