@@ -129,7 +129,7 @@ export function stateLine(c: Pick<Connection, "surface" | "source" | "account" |
 
 /**
  * The URL to show and copy. A server that knows no public origin answers a
- * path (`/workspaces/…`), which a provider cannot post to, so the browser's
+ * path that starts with a slash, which a provider cannot post to, so the browser's
  * own origin is put in front of it.
  */
 export function absoluteInboundUrl(url: string, origin: string): string {
