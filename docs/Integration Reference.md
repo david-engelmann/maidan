@@ -686,7 +686,7 @@ A Room-LSN parser must reject `/` so a WAL token cannot be treated as a room hea
 
 ### WebSocket subscribe filter
 
-Fields: `workspace_id` (enables replay), optional `channel_id`, `thread_id`, `member_id`, `kinds[]`, `channel_grants[]` (UUID allow-list for private channels). Private channel events require an explicit grant.
+Fields: `workspace_id` (enables replay), optional `channel_id`, `thread_id`, `member_id`, `kinds[]`, `channel_grants[]` (UUID allow-list for private channels). Private channel events require an explicit grant, and a grant only narrows: the server also checks each event against the subscriber's current membership when it sends it, so a DM reaches only its participants and a removed member stops receiving a channel within 5 seconds.
 
 ### Long-poll waits (`wait_for_*`)
 

@@ -35,6 +35,7 @@ use maidan_auth::{
     capability::EVENT_SUBSCRIBE,
     resolve_bearer,
     subscribe::{resolve_subscribe, SubscribeFrame, SubscribeRefusal},
+    AuthContext,
 };
 use maidan_store::StoreError;
 use maidan_types::{ApiTokenId, EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
@@ -136,6 +137,8 @@ struct SubscribeRequest {
     attribution: maidan_types::Attribution,
     /// The credential, checked again while the stream runs.
     credential: StreamCredential,
+    /// The caller, for the per-event visibility every emitted frame passes.
+    auth: AuthContext,
 }
 
 /// Fail-loud subscribe rejection. A too-old cursor sends a JSON frame
@@ -312,6 +315,7 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
             &text_tx,
             request.consumer_id.as_deref(),
             request.lean,
+            &mut event_stream::stream_visibility(state.store.as_ref(), &request.auth),
         )
         .await
         {
@@ -353,6 +357,7 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
 
     let bus_filter = request.filter.clone();
     let bus_store = state.store.clone();
+    let bus_auth = request.auth.clone();
     let bus_tx = text_tx.clone();
     let delivery_consumer_id = request.consumer_id.clone();
     let delivery_stability = state.delivery_stability;
@@ -376,6 +381,7 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
                 bus_tx,
                 bus_store,
                 bus_filter,
+                bus_auth,
                 workspace_id,
                 consumer_id,
                 high_water,
@@ -394,6 +400,7 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
                 watermark,
                 bus_store,
                 bus_filter,
+                bus_auth,
                 crate::subscribe_metrics::SubscribeTransport::Ws,
                 delivery_consumer_id,
                 lean,
@@ -708,6 +715,7 @@ async fn read_subscribe(
         lean: sub.lean,
         attribution: ctx.attribution(),
         credential,
+        auth: ctx,
     })
 }
 
