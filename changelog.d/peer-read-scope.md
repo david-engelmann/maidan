@@ -1,0 +1,3 @@
+### A federation peer's secret reads only its own workspace
+
+- **Security:** a federation peer's secret reads the event log of the workspace the peer is registered in, and no other. The check compared the requested workspace with the peer's `remote_workspace_id`, which the admin registering the peer sets freely. A workspace admin holding `federation:admin` could register a peer naming another workspace on the same server and read that workspace's whole event log, message bodies included, with the secret the registration returned (`GET /workspaces/{id}/events`, `/events/verify`, `/events/catch-up` and `/snapshot`). It needed the other workspace's id and a server with `FEDERATION_ENCRYPTION_KEY` set. Upgrade any server that hosts more than one workspace.
