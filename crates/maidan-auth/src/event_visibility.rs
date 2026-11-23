@@ -21,6 +21,10 @@ use crate::{AuthContext, AuthError};
 use maidan_store::{Store, StoreError};
 use maidan_types::{ChannelId, Event, StoredEvent, ThreadId, DM_CHANNEL_NAME};
 
+/// How many remembered answers a long-lived reader holds before it drops the
+/// ones past their lifetime.
+const MAX_REMEMBERED: usize = 1024;
+
 pub struct EventVisibility<'a> {
     store: &'a dyn Store,
     auth: &'a AuthContext,
@@ -55,6 +59,22 @@ impl<'a> EventVisibility<'a> {
         self.lifetime.is_none_or(|lifetime| at.elapsed() < lifetime)
     }
 
+    /// Drop the answers a reader with a lifetime no longer trusts once it
+    /// holds more than [`MAX_REMEMBERED`], so a stream that runs for days over
+    /// many threads keeps a bounded memory. A one-shot reader keeps them all:
+    /// it lives for one page.
+    fn forget_stale(&mut self) {
+        let Some(lifetime) = self.lifetime else {
+            return;
+        };
+        if self.threads.len() > MAX_REMEMBERED {
+            self.threads.retain(|_, (_, at)| at.elapsed() < lifetime);
+        }
+        if self.channels.len() > MAX_REMEMBERED {
+            self.channels.retain(|_, (_, at)| at.elapsed() < lifetime);
+        }
+    }
+
     /// Whether the caller may see a live `event`. It must be in the caller's
     /// workspace, so an event that names none (a reference or an artifact
     /// upsert) is never shown. Then it follows [`Self::allows_in`] by where it
@@ -85,6 +105,7 @@ impl<'a> EventVisibility<'a> {
         thread_id: Option<ThreadId>,
         channel_id: Option<ChannelId>,
     ) -> Result<bool, StoreError> {
+        self.forget_stale();
         if let Some(thread_id) = thread_id {
             if let Some(&(seen, at)) = self.threads.get(&thread_id)
                 && self.fresh(at)
