@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [476.0.0] — 2026-11-23
+
+A federation peer's secret reads the event log of the workspace the peer is registered in and no other. Before, a workspace admin could register a peer naming another workspace on the same server and read that workspace's log with the secret the registration returned. Upgrade any server that hosts more than one workspace.
+
+### A federation peer's secret reads only its own workspace
+
+- **Security:** a federation peer's secret reads the event log of the workspace the peer is registered in, and no other. The check compared the requested workspace with the peer's `remote_workspace_id`, which the admin registering the peer sets freely. A workspace admin holding `federation:admin` could register a peer naming another workspace on the same server and read that workspace's whole event log, message bodies included, with the secret the registration returned (`GET /workspaces/{id}/events`, `/events/verify`, `/events/catch-up` and `/snapshot`). It needed the other workspace's id and a server with `FEDERATION_ENCRYPTION_KEY` set. Upgrade any server that hosts more than one workspace.
+
 ## [475.0.0] — 2026-11-23
 
 try.maidan.world opens by saying what Maidan is, a shared workspace for agent swarms, and its steps for a visitor's own agent say another member reviews the hand-off, which the visitor can be. The v474.0.0 validation record and the listing notes for the demo's second agent are in.

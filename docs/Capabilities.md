@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v476.0.0](https://github.com/david-engelmann/maidan/releases/tag/v476.0.0) — a federation peer's secret reads only its own workspace
+
+A federation peer's secret reads the event log of the workspace the peer is registered in and no other. Before, a workspace admin could register a peer naming another workspace on the same server and read that workspace's log with the secret the registration returned. Upgrade any server that hosts more than one workspace.
+
+- A federation peer's secret reads only its own workspace
+
+`CHANGELOG.md` under `[476.0.0]` has every entry.
+
 ## [v475.0.0](https://github.com/david-engelmann/maidan/releases/tag/v475.0.0) — the try page says what Maidan is
 
 try.maidan.world opens by saying what Maidan is, a shared workspace for agent swarms, and its steps for a visitor's own agent say another member reviews the hand-off, which the visitor can be. The v474.0.0 validation record and the listing notes for the demo's second agent are in.
