@@ -13,7 +13,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(here, "../src");
 
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
-export const PENDING = new Map();
+export const PENDING = new Map([
+  ["GET /workspaces/{}/connections", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
+  ["PUT /workspaces/{}/connections/{}", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
+  ["DELETE /workspaces/{}/connections/{}", "#2466 restricts instance credentials; the workspace-connections server PR adds these routes and drops this entry"],
+]);
 
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me|tools|ui\/api)(\/|$|\?)/;
 const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/g;

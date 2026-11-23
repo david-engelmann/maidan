@@ -1,8 +1,8 @@
 // Tools: what the classic board kept on its Tools tabs, minus the gates
 // Needs you already answers. Inbox and Preferences are the signed-in
 // member's own; Deliveries (where results went, the allowlist that lets them
-// go there, and webhook and automation sends) and Commands are the
-// workspace's; Explore reads
+// go there, and webhook and automation sends), Connections (its own GitHub,
+// Slack and Linear accounts) and Commands are the workspace's; Explore reads
 // queues, schedules, events and peers; Operator is the server-wide audit and
 // reindex, listed only for a credential that holds them;
 // Search finds messages; Workspace renames, switches, and adds channels,
@@ -83,6 +83,7 @@ import { consolePushManager, installStore, promptInstall } from "../pwa/install.
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
 import { peekPaletteIndex } from "../shell/paletteIndex.ts";
 import { Connect } from "./Connect.tsx";
+import { Connections } from "./Connections.tsx";
 import { DecisionModel } from "./DecisionModel.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 import { useScrollFade } from "../hooks/useScrollFade.ts";
@@ -91,6 +92,7 @@ export const TOOL_TABS = [
   { id: "inbox", title: "Inbox" },
   { id: "prefs", title: "Preferences" },
   { id: "deliveries", title: "Deliveries" },
+  { id: "connections", title: "Connections" },
   { id: "commands", title: "Commands" },
   { id: "search", title: "Search" },
   { id: "workspace", title: "Workspace" },
@@ -137,6 +139,7 @@ export function Tools() {
       {tab === "inbox" ? <Inbox api={api} me={me} ws={ws} /> : null}
       {tab === "prefs" ? <Prefs api={api} me={me} ws={ws} /> : null}
       {tab === "deliveries" ? <DeliveriesTab api={api} ws={ws} /> : null}
+      {tab === "connections" ? <Connections ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
       {tab === "search" ? <Search api={api} ws={ws} /> : null}
       {tab === "workspace" ? <Workspace api={api} ws={ws} /> : null}
