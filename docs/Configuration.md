@@ -304,7 +304,9 @@ These credentials are the server's own, one set for every workspace on it.
 They serve only the workspaces its operator opened (the operator API, or
 `maidan init`). Any workspace can connect its own GitHub, Slack or Linear
 account instead, in the console under Tools, Integrations, or with
-`PUT /workspaces/{wid}/connections/{surface}`. The token is checked with the
+`PUT /workspaces/{wid}/connections/{surface}`
+([Connect a workspace's own GitHub, Slack and Linear](Production.md#connect-a-workspaces-own-github-slack-and-linear)).
+The token is checked with the
 provider, then stored encrypted as a secret only the server can read, so the
 instance needs `FEDERATION_ENCRYPTION_KEY`. A workspace that stored its own
 connection always sends and reads with it, and the server's credential is
