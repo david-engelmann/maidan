@@ -276,7 +276,7 @@ async fn a_misconfigured_link_is_disabled_announced_and_stops_queueing() {
 
     // The link is disabled, naming when.
     let link = store
-        .get_slack_channel_link("C1")
+        .get_slack_channel_link(ws, "C1")
         .await
         .unwrap()
         .expect("link");
@@ -353,7 +353,7 @@ async fn a_misconfigured_link_is_disabled_announced_and_stops_queueing() {
         .await
         .unwrap();
     assert!(store
-        .get_slack_channel_link("C1")
+        .get_slack_channel_link(ws, "C1")
         .await
         .unwrap()
         .expect("link")

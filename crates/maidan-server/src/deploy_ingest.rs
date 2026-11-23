@@ -125,19 +125,13 @@ const ANCESTOR_CHECKS: i64 = 20;
 
 /// The merged pull requests, each in the workspace that tracks it, whose
 /// merge commit `deploy.sha` carries as an ancestor: a deploy of a later
-/// commit shipped them too. Needs a GitHub client to compare commits; with
-/// none, or on a failed compare, a deploy matches its exact commit only.
+/// commit shipped them too. Each is compared with the GitHub client that
+/// serves its own workspace; a workspace nothing serves on GitHub, or a failed
+/// compare, leaves a deploy matching its exact commit only.
 async fn shipped_ancestors(
     state: &AppState,
     deploy: &maidan_types::NewDeploy,
 ) -> Vec<maidan_types::DeployedPull> {
-    let Some(github) = state
-        .github_sender
-        .as_deref()
-        .and_then(|sender| sender.git())
-    else {
-        return Vec::new();
-    };
     let candidates = match state
         .store
         .deploy_candidates(&deploy.repo, &deploy.environment, ANCESTOR_CHECKS)
@@ -150,11 +144,32 @@ async fn shipped_ancestors(
         }
     };
     let mut shipped = Vec::new();
+    let mut senders: std::collections::HashMap<
+        maidan_types::WorkspaceId,
+        Option<crate::connections::Resolved<dyn crate::github::GithubSender>>,
+    > = std::collections::HashMap::new();
     for candidate in candidates {
         if candidate.merge_sha == deploy.sha {
             // The exact match is the store's own; no compare needed.
             continue;
         }
+        let resolved = match senders.get(&candidate.workspace_id) {
+            Some(found) => found.clone(),
+            None => {
+                let found = match state.github_for(candidate.workspace_id).await {
+                    Ok(found) => found,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "deploy ingest: no GitHub sender for the workspace");
+                        None
+                    }
+                };
+                senders.insert(candidate.workspace_id, found.clone());
+                found
+            }
+        };
+        let Some(github) = resolved.as_ref().and_then(|resolved| resolved.sender.git()) else {
+            continue;
+        };
         // `compare/{deployed}...{merged}` is behind (or identical) exactly
         // when the merged commit is an ancestor of the deployed one.
         match github

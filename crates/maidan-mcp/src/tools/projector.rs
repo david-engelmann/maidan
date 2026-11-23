@@ -83,16 +83,12 @@ pub(super) async fn unlink_slack_channel(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: UnlinkSlackArgs = crate::tools::parse_args(args)?;
-    // Workspace-scope the unlink: only remove a link that belongs to the caller's ws.
-    let scoped = matches!(
-        server.store.get_slack_channel_link(&a.slack_channel_id).await?,
-        Some(link) if link.workspace_id == auth.workspace_id()
-    );
-    let unlinked = scoped
-        && server
-            .store
-            .unlink_slack_channel(&a.slack_channel_id)
-            .await?;
+    // The caller's own link: another workspace's link to the same channel is
+    // not reached.
+    let unlinked = server
+        .store
+        .unlink_slack_channel(auth.workspace_id(), &a.slack_channel_id)
+        .await?;
     Ok(content_json(&json!({ "unlinked": unlinked })))
 }
 
@@ -136,14 +132,9 @@ pub(super) async fn unlink_github_issue(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: UnlinkGithubArgs = crate::tools::parse_args(args)?;
-    let scoped = matches!(
-        server.store.get_github_issue_link(&a.repo, a.issue_number).await?,
-        Some(link) if link.workspace_id == auth.workspace_id()
-    );
-    let unlinked = scoped
-        && server
-            .store
-            .unlink_github_issue(&a.repo, a.issue_number)
-            .await?;
+    let unlinked = server
+        .store
+        .unlink_github_issue(auth.workspace_id(), &a.repo, a.issue_number)
+        .await?;
     Ok(content_json(&json!({ "unlinked": unlinked })))
 }

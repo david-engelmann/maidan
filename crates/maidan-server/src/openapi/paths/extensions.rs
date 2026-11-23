@@ -1697,3 +1697,67 @@ pub fn get_intake_item() {}
     )
 )]
 pub fn triage_intake_item() {}
+
+/// List a workspace's connections
+///
+/// Always three rows, GitHub, Slack and Linear, with who serves the workspace
+/// on each. Never a token or a secret.
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/connections",
+    tag = "integrations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "One row per surface", body = Vec<Connection>),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn list_connections() {}
+
+/// Connect a workspace's own account
+///
+/// The token is checked with the provider before it is stored. Sending only
+/// the inbound secret on a surface that already has a connection updates the
+/// secret and keeps the token.
+#[utoipa::path(
+    put,
+    path = "/workspaces/{wid}/connections/{surface}",
+    tag = "integrations",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("surface" = ConnectionSurface, Path, description = "github, slack or linear"),
+    ),
+    request_body = SetConnection,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The surface's row", body = Connection),
+        (status = 400, description = "The provider refused the token, or the body does not fit the surface", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Not a surface", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "The provider could not be asked; nothing was stored", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 503, description = "This instance has no FEDERATION_ENCRYPTION_KEY to store a connection with", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn set_connection() {}
+
+/// Remove a workspace's own connection
+///
+/// `204` whether or not the workspace had one. The workspace is then served
+/// only if the operator opened it and the server holds a credential.
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{wid}/connections/{surface}",
+    tag = "integrations",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("surface" = ConnectionSurface, Path, description = "github, slack or linear"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "No own connection remains"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Not a surface", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn clear_connection() {}

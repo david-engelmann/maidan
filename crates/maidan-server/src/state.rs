@@ -226,13 +226,17 @@ pub struct AppState {
     /// then returns `404`. Set only by the server binary via
     /// [`AppState::attach_slack`].
     pub slack: Option<Arc<crate::slack::SlackConfig>>,
-    /// Slack projector egress sender, a `chat.postMessage` client set when
-    /// `MAIDAN_SLACK_BOT_TOKEN` is configured. `None` disables egress (inbound
+    /// The server's own Slack egress sender, a `chat.postMessage` client set when
+    /// `MAIDAN_SLACK_BOT_TOKEN` is configured. It serves only a workspace the
+    /// operator opened, and only one with no connection of its own; ask
+    /// [`AppState::slack_for`] for the sender that acts for a workspace. `None` leaves a workspace the
+    /// operator opened, with no connection of its own, unserved on Slack (inbound
     /// still works), and a result aimed at Slack is recorded `failed` when it
     /// is armed. Set via [`AppState::attach_slack_sender`]; tests inject a
     /// mock.
     pub slack_sender: Option<Arc<dyn crate::slack::SlackSender>>,
-    /// Linear result delivery, set when `MAIDAN_LINEAR_API_KEY` is configured.
+    /// The server's own Linear sender, set when `MAIDAN_LINEAR_API_KEY` is
+    /// configured (see [`AppState::linear_for`] for a workspace's).
     /// Without one a result aimed at Linear is recorded `failed` naming the
     /// setting when it is armed, as with a missing Slack or GitHub sender
     /// (`result_delivery::unconfigured_reason`). Tests inject a mock.
@@ -245,12 +249,20 @@ pub struct AppState {
     /// leaves `/integrations/deploys/events` a 404. Set via
     /// [`AppState::attach_deploy_hook`].
     pub deploy_hook: Option<Arc<crate::deploy_ingest::DeployHookConfig>>,
-    /// GitHub projector egress sender, an issue-comment client set when
-    /// `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
+    /// The server's own GitHub egress sender, an issue-comment client set when
+    /// `MAIDAN_GITHUB_TOKEN` is configured (see [`AppState::github_for`] for a
+    /// workspace's). `None` disables egress (inbound
     /// still works), and a result aimed at GitHub is recorded `failed` when it
     /// is armed. Set via [`AppState::attach_github_sender`]; tests inject a
     /// mock.
     pub github_sender: Option<Arc<dyn crate::github::GithubSender>>,
+    /// Builds a workspace's own GitHub, Slack and Linear clients from its
+    /// stored token and checks a token with its provider
+    /// ([`crate::connections`]). Tests replace it with one that returns mocks.
+    pub connection_factory: Arc<dyn crate::connections::ConnectionFactory>,
+    /// The clients built from workspaces' tokens, kept until a connection
+    /// changes.
+    pub connection_cache: Arc<crate::connections::ConnectionCache>,
     /// The one app whose installations may call mark-ready
     /// (`MAIDAN_MARK_READY_APP_ID`). An app id is unique across the instance,
     /// where an app slug is unique only within its workspace, so naming the
@@ -440,6 +452,8 @@ impl AppState {
             github: None,
             deploy_hook: None,
             github_sender: None,
+            connection_factory: Arc::new(crate::connections::LiveConnections),
+            connection_cache: Arc::default(),
             mark_ready_app_id: None,
             mark_ready_bases: maidan_types::MarkReadyBases::default(),
             merge_queue_labels: maidan_types::MergeQueueLabels::default(),
@@ -547,12 +561,19 @@ impl AppState {
     /// `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables
     /// egress.
     pub fn attach_github_sender(&mut self, sender: Arc<dyn crate::github::GithubSender>) {
+        self.github_sender = Some(sender);
+        self.attach_pull_refresher();
+    }
+
+    /// Hand the MCP server the pull-request refresh `get_swarm_metrics` runs
+    /// first. It resolves each workspace's own GitHub sender through a copy of
+    /// this state, so it is installed again after the sender or the connection
+    /// factory change, and the server binary installs it once more last.
+    pub fn attach_pull_refresher(&self) {
         self.mcp
             .set_pull_refresher(Arc::new(crate::change_sweep::McpPullRefresher {
-                store: self.store.clone(),
-                sender: sender.clone(),
+                state: self.clone(),
             }));
-        self.github_sender = Some(sender);
     }
 
     /// Wire cross-replica MCP resource-update notifications.

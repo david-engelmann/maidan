@@ -130,9 +130,11 @@ pub async fn create_fsm_hook(
     let mut secret_plain: Option<String> = None;
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
         let secret = TokenSecret::generate();
-        let key = state.fsm_hooks.encryption_key.as_deref().ok_or_else(|| {
-            ApiError::Internal("FEDERATION_ENCRYPTION_KEY must be set for http fsm hooks".into())
-        })?;
+        let key = state
+            .fsm_hooks
+            .encryption_key
+            .as_deref()
+            .ok_or_else(|| ApiError::needs_encryption_key("an http hook's signing secret"))?;
         let ciphertext = encrypt_peer_secret(secret.as_str(), key)
             .map_err(|e| ApiError::Internal(e.to_string()))?;
         secret_plain = Some(secret.as_str().to_string());

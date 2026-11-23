@@ -347,10 +347,11 @@ async fn route_one(
                 .flatten()
             {
                 skip_routable(state, thread_id, &egress, revision, &reason).await
-            } else if let Some(reason) = allowed
-                .then(|| unconfigured_reason(state, egress.surface()))
-                .flatten()
-            {
+            } else if let Some(reason) = if allowed {
+                unconfigured_reason(state, workspace_id, egress.surface()).await
+            } else {
+                None
+            } {
                 fail_unconfigured(state, thread_id, &egress, revision, &reason).await
             } else if allowed {
                 enqueue_routable(
@@ -377,31 +378,56 @@ async fn route_one(
     }
 }
 
-/// Why this server can never send to `surface`: no sender was built for it,
-/// because the credential that builds one is unset. `None` when one was.
+/// Why nothing can send for `workspace_id` to `surface`: no credential serves
+/// it there. `None` when one does.
 ///
 /// A row armed for such a surface used to stay `pending` with nothing to send
 /// it, and nobody could tell the result would never arrive. The reason names
-/// the setting, so whoever reads the row knows what to fix.
-pub fn unconfigured_reason(state: &AppState, surface: EgressSurface) -> Option<String> {
-    let (configured, name, setting) = match surface {
+/// what to fix: the workspace's own connection, or for a workspace the
+/// operator opened, the server's setting.
+pub async fn unconfigured_reason(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    surface: EgressSurface,
+) -> Option<String> {
+    let (served, name, setting) = match surface {
         EgressSurface::Slack => (
-            state.slack_sender.is_some(),
+            state.slack_for(workspace_id).await.map(|r| r.is_some()),
             "Slack",
             "MAIDAN_SLACK_BOT_TOKEN",
         ),
         EgressSurface::Github | EgressSurface::GithubBranch => (
-            state.github_sender.is_some(),
+            state.github_for(workspace_id).await.map(|r| r.is_some()),
             "GitHub",
             "MAIDAN_GITHUB_TOKEN or a GitHub App",
         ),
         EgressSurface::Linear => (
-            state.linear_sender.is_some(),
+            state.linear_for(workspace_id).await.map(|r| r.is_some()),
             "Linear",
             "MAIDAN_LINEAR_API_KEY",
         ),
     };
-    (!configured).then(|| format!("{name} delivery is not configured on this server ({setting})"))
+    match served {
+        Ok(true) => None,
+        // A fault in reading is the worker's to retry, not a reason to fail
+        // the result for good.
+        Err(crate::connections::ConnectionError::Store(_)) => None,
+        Err(err @ crate::connections::ConnectionError::Unreadable { .. }) => Some(err.to_string()),
+        Ok(false) => {
+            let operator = state.store.workspace_origin(workspace_id).await.ok()
+                == Some(maidan_types::WorkspaceOrigin::Operator);
+            Some(if operator {
+                format!("{name} delivery is not configured on this server ({setting})")
+            } else {
+                format!(
+                    "no credential serves this workspace on {name}: {}",
+                    maidan_store::instance_credentials::refusal(
+                        maidan_types::ConnectionSurface::for_egress(surface)
+                    )
+                )
+            })
+        }
+    }
 }
 
 /// Why a blessed `github_branch` target still gets no GitHub write: only a

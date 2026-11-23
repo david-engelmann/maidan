@@ -149,9 +149,7 @@ pub async fn create_slash_command(
     let secret_ciphertext = if handler_kind == SlashHandlerKind::Http {
         let secret = TokenSecret::generate();
         let key = state.slash.encryption_key.as_deref().ok_or_else(|| {
-            ApiError::Internal(
-                "FEDERATION_ENCRYPTION_KEY must be set for http slash handlers".into(),
-            )
+            ApiError::needs_encryption_key("an http slash handler's signing secret")
         })?;
         let ciphertext = encrypt_peer_secret(secret.as_str(), key)
             .map_err(|e| ApiError::Internal(e.to_string()))?;

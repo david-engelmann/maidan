@@ -356,6 +356,15 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspaceOrigin, StoreError>;
+    /// Whether a connection can serve `workspace_id` on `surface`: it stores
+    /// its own, or the operator opened it (`instance_credentials`). Whether
+    /// the server holds a credential for the second case is not the store's
+    /// to know.
+    async fn workspace_served_on(
+        &self,
+        workspace_id: WorkspaceId,
+        surface: maidan_types::ConnectionSurface,
+    ) -> Result<bool, StoreError>;
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     /// Create a workspace and append its `WorkspaceCreated` event atomically.
@@ -1688,16 +1697,26 @@ pub trait EgressStore: Send + Sync {
 pub trait ProjectorLinkStore: Send + Sync {
     /// Slack projector channel links: map a Slack channel to the Maidan
     /// channel/thread it projects into, and the member inbound messages post
-    /// as. `link` upserts (one per Slack channel); `get` resolves the ingress
-    /// target; `list` is the workspace's links; `unlink` removes one.
+    /// as. A link belongs to the workspace that made it, so two workspaces can
+    /// link the same Slack channel and neither learns of the other. `link`
+    /// upserts (one per workspace and Slack channel). `get` is the workspace's
+    /// own link, `list_slack_channel_links_for_channel` is every workspace's
+    /// for an inbound delivery (the route decides which it serves), `list` is
+    /// the workspace's links, `unlink` removes the workspace's own.
     async fn link_slack_channel(
         &self,
         new: NewSlackChannelLink,
     ) -> Result<SlackChannelLink, StoreError>;
     async fn get_slack_channel_link(
         &self,
+        workspace_id: WorkspaceId,
         slack_channel_id: &str,
     ) -> Result<Option<SlackChannelLink>, StoreError>;
+    async fn list_slack_channel_links_for_channel(
+        &self,
+        scope: maidan_types::InboundScope,
+        slack_channel_id: &str,
+    ) -> Result<Vec<SlackChannelLink>, StoreError>;
     /// Resolve the Slack link for a Maidan thread — the egress reverse lookup.
     async fn get_slack_channel_link_by_thread(
         &self,
@@ -1715,27 +1734,45 @@ pub trait ProjectorLinkStore: Send + Sync {
         workspace_id: WorkspaceId,
         reference: &maidan_types::ExternalThreadRef,
     ) -> Result<Option<ThreadId>, StoreError>;
-    async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
+    async fn unlink_slack_channel(
+        &self,
+        workspace_id: WorkspaceId,
+        slack_channel_id: &str,
+    ) -> Result<bool, StoreError>;
     /// Turn egress to a Slack channel off after an auth/config-class failure —
     /// a retry can't fix a revoked token or a deleted channel. Idempotent (an
     /// already-disabled link keeps its original timestamp); returns whether
     /// this call did the disabling, so only the first failure announces it.
     /// Re-linking clears the flag; ingress is unaffected.
-    async fn disable_slack_channel_link(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
+    async fn disable_slack_channel_link(
+        &self,
+        workspace_id: WorkspaceId,
+        slack_channel_id: &str,
+    ) -> Result<bool, StoreError>;
 
     /// GitHub projector issue/PR links: map a GitHub issue/PR (`repo`,
-    /// `issue_number`) to the Maidan channel/thread it projects into. `link`
-    /// upserts; `get` resolves ingress; `get_by_thread` is the egress reverse
-    /// lookup; `list` is the workspace's links; `unlink` removes one.
+    /// `issue_number`) to the Maidan channel/thread it projects into. Like a
+    /// Slack link it belongs to the workspace that made it. `link` upserts;
+    /// `get` is the workspace's own link and `list_github_issue_links_for_issue`
+    /// every workspace's, for ingress; `get_by_thread` is the egress reverse
+    /// lookup; `list` is the workspace's links; `unlink` removes the
+    /// workspace's own.
     async fn link_github_issue(
         &self,
         new: NewGithubIssueLink,
     ) -> Result<GithubIssueLink, StoreError>;
     async fn get_github_issue_link(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         issue_number: i64,
     ) -> Result<Option<GithubIssueLink>, StoreError>;
+    async fn list_github_issue_links_for_issue(
+        &self,
+        scope: maidan_types::InboundScope,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<Vec<GithubIssueLink>, StoreError>;
     async fn get_github_issue_link_by_thread(
         &self,
         thread_id: ThreadId,
@@ -1744,11 +1781,17 @@ pub trait ProjectorLinkStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<GithubIssueLink>, StoreError>;
-    async fn unlink_github_issue(&self, repo: &str, issue_number: i64) -> Result<bool, StoreError>;
+    async fn unlink_github_issue(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        issue_number: i64,
+    ) -> Result<bool, StoreError>;
     /// The GitHub twin of
     /// [`disable_slack_channel_link`](Self::disable_slack_channel_link).
     async fn disable_github_issue_link(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         issue_number: i64,
     ) -> Result<bool, StoreError>;
@@ -3105,20 +3148,22 @@ pub trait AssignmentStore: Send + Sync {
         at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
     /// Stamp `at` as the last CI event on each open tracked pull request
-    /// `pull_number` of `repo`, in every workspace that tracks it: GitHub's
-    /// events name a repository, not a workspace. Returns how many rows it
-    /// stamped.
+    /// `pull_number` of `repo`, in the workspaces `scope` reaches: GitHub's
+    /// events name a repository, not a workspace, and a route serves only some
+    /// workspaces. Returns how many rows it stamped.
     async fn mark_change_pull_ci_event(
         &self,
+        scope: maidan_types::InboundScope,
         repo: &str,
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
     ) -> Result<u64, StoreError>;
     /// Stamp `at` as the last CI event on each open tracked pull request of
-    /// `repo` whose last CI read was at `head_sha`, in every workspace.
-    /// Returns how many rows it stamped.
+    /// `repo` whose last CI read was at `head_sha`, in the workspaces `scope`
+    /// reaches. Returns how many rows it stamped.
     async fn mark_change_pull_ci_event_at_head(
         &self,
+        scope: maidan_types::InboundScope,
         repo: &str,
         head_sha: &str,
         at: chrono::DateTime<chrono::Utc>,

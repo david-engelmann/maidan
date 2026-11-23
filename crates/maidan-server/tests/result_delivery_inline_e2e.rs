@@ -396,7 +396,7 @@ async fn link_github(h: &Harness) {
 async fn github_link_is_enabled(h: &Harness) {
     let link = h
         .store
-        .get_github_issue_link("example/repo", 3915)
+        .get_github_issue_link(h.workspace_id, "example/repo", 3915)
         .await
         .unwrap()
         .expect("projector issue-link");

@@ -131,13 +131,25 @@ pub async fn create_webhook(
     // URL (SEC-009).
     cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    create(&state, &auth, workspace_id, body).await
+}
+
+/// Create the subscription. The caller has already been allowed to.
+pub(crate) async fn create(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    body: CreateWebhook,
+) -> ApiResult<(StatusCode, Json<MintWebhookResponse>)> {
     validate_webhook_url(&body.url)?;
     let event_kinds = parse_event_kinds(&body.event_kinds)?;
 
     let secret = TokenSecret::generate();
-    let key = state.webhooks.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Internal("FEDERATION_ENCRYPTION_KEY must be set to create webhooks".into())
-    })?;
+    let key = state
+        .webhooks
+        .encryption_key
+        .as_deref()
+        .ok_or_else(|| ApiError::needs_encryption_key("a webhook's signing secret"))?;
     let secret_ciphertext =
         encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
 
@@ -154,8 +166,8 @@ pub async fn create_webhook(
         })
         .await?;
     crate::registration_owner::record_registration(
-        &state,
-        &auth,
+        state,
+        auth,
         workspace_id,
         "webhook",
         subscription.id.0,
@@ -185,6 +197,14 @@ pub async fn list_webhooks(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
+    list(&state, workspace_id).await
+}
+
+/// The workspace's webhooks. The caller has already been allowed to.
+pub(crate) async fn list(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
     Ok(Json(subs.into_iter().map(WebhookResponse::from).collect()))
 }
@@ -267,6 +287,15 @@ pub async fn revoke_webhook(
     let webhook_id = WebhookSubscriptionId(webhook_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
+    revoke(&state, workspace_id, webhook_id).await
+}
+
+/// Revoke the subscription. The caller has already been allowed to.
+pub(crate) async fn revoke(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    webhook_id: WebhookSubscriptionId,
+) -> ApiResult<StatusCode> {
     state
         .store
         .revoke_webhook_subscription(workspace_id, webhook_id)

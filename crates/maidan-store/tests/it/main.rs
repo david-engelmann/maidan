@@ -152,6 +152,9 @@ mod close_abandoned;
 #[path = "../concurrent_migrations.rs"]
 mod concurrent_migrations;
 
+#[path = "../connection_served.rs"]
+mod connection_served;
+
 #[path = "../context_pack_ties.rs"]
 mod context_pack_ties;
 
@@ -403,6 +406,9 @@ mod postgres_roundtrip;
 
 #[path = "../postgres_tls.rs"]
 mod postgres_tls;
+
+#[path = "../projector_links_per_workspace.rs"]
+mod projector_links_per_workspace;
 
 #[path = "../pull_ci.rs"]
 mod pull_ci;
