@@ -63,6 +63,7 @@ pub mod health;
 pub mod human_wait;
 pub mod idempotency;
 pub mod import;
+pub mod inbound;
 pub mod land_gate_advisor;
 pub mod linear;
 pub mod load_shed;

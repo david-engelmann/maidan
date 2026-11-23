@@ -20,9 +20,9 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, GithubCheckRun, GithubIssueLink, GithubReviewComment,
-    MessageOrigin, MessageProvenance, NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId,
-    GITHUB_REVIEW_EVENT_COMMENT,
+    ConnectionSurface, EgressKind, EgressTarget, ExternalRef, GithubCheckRun, GithubIssueLink,
+    GithubReviewComment, InboundScope, MessageOrigin, MessageProvenance, NewEgressOutbox,
+    NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -112,7 +112,57 @@ pub async fn github_events(
         count_github_event(event, "refused");
         return ApiError::SignatureInvalid.into_response();
     }
-    let payload: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+    handle_github_event(
+        &state,
+        InboundScope::Instance(ConnectionSurface::Github),
+        event,
+        &body,
+    )
+    .await
+}
+
+/// `POST /workspaces/:wid/connections/github/webhook`: the same events, on a
+/// workspace's own URL, verified with the `webhook_secret` the workspace
+/// stored. `404` (one fixed answer) when the workspace is unknown, has no
+/// GitHub connection or stored no secret, so the three cannot be told apart.
+/// What it accepts reaches only the workspace's own links and watches.
+pub async fn workspace_github_events(
+    State(state): State<AppState>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    headers: HeaderMap,
+    ApiText(body): ApiText,
+) -> Response {
+    let workspace_id = WorkspaceId(wid);
+    let Some(secret) =
+        crate::inbound::stored_inbound_secret(&state, workspace_id, ConnectionSurface::Github)
+            .await
+    else {
+        return ApiError::NotFound.into_response();
+    };
+    let signature = headers
+        .get("x-hub-signature-256")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let event = headers
+        .get("x-github-event")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !crate::webhooks::verify_signature(&secret, &body, signature) {
+        count_github_event(event, "refused");
+        return ApiError::SignatureInvalid.into_response();
+    }
+    handle_github_event(&state, InboundScope::Workspace(workspace_id), event, &body).await
+}
+
+/// One verified GitHub delivery, routed to the links and watches `scope`
+/// reaches.
+async fn handle_github_event(
+    state: &AppState,
+    scope: InboundScope,
+    event: &str,
+    body: &str,
+) -> Response {
+    let payload: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     match event {
         // Webhook setup handshake — GitHub sends `ping` once; a 200 confirms it.
         "ping" => {
@@ -121,20 +171,20 @@ pub async fn github_events(
         }
         // A new comment on a linked issue/PR → the mapped Maidan thread (311).
         "issue_comment" => {
-            route_github_issue_comment(&state, &payload).await;
+            route_github_issue_comment(state, scope, &payload).await;
             count_github_event(event, "handled");
             StatusCode::OK.into_response()
         }
         // A merged PR on a linked issue/PR → a `ThreadLanded` fact.
         // A closed, unmerged PR on a linked issue/PR → one thread message.
         "pull_request" => {
-            route_github_pull_request(&state, &payload).await;
+            route_github_pull_request(state, scope, &payload).await;
             count_github_event(event, "handled");
             StatusCode::OK.into_response()
         }
         // CI moved on a head: the change sweep reads it on its next pass.
         "workflow_run" | "check_suite" | "check_run" | "status" => {
-            let marked = mark_ci_event(&state, event, &payload).await;
+            let marked = mark_ci_event(state, scope, event, &payload).await;
             count_github_event(event, if marked > 0 { "marked" } else { "unmatched" });
             StatusCode::OK.into_response()
         }
@@ -220,7 +270,12 @@ pub fn ci_event_target(event: &str, payload: &serde_json::Value) -> Option<CiEve
 /// only stamps the time of the latest event, and two stamps before one
 /// sweep pass still make that pass read CI once. An event for a repository
 /// or head nothing tracks marks nothing.
-async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Value) -> u64 {
+async fn mark_ci_event(
+    state: &AppState,
+    scope: InboundScope,
+    event: &str,
+    payload: &serde_json::Value,
+) -> u64 {
     let Some(target) = ci_event_target(event, payload) else {
         return 0;
     };
@@ -229,7 +284,7 @@ async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Valu
     for pull_number in &target.pull_numbers {
         match state
             .store
-            .mark_change_pull_ci_event(&target.repo, *pull_number, at)
+            .mark_change_pull_ci_event(scope, &target.repo, *pull_number, at)
             .await
         {
             Ok(rows) => marked += rows,
@@ -243,7 +298,7 @@ async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Valu
     if let Some(head) = target.head_sha.as_deref() {
         match state
             .store
-            .mark_change_pull_ci_event_at_head(&target.repo, head, at)
+            .mark_change_pull_ci_event_at_head(scope, &target.repo, head, at)
             .await
         {
             Ok(rows) => marked += rows,
@@ -264,7 +319,11 @@ async fn mark_ci_event(state: &AppState, event: &str, payload: &serde_json::Valu
 /// without merging is not a land either: the thread gets one message, with a
 /// GitHub provenance so egress does not echo it back to GitHub. Best-effort;
 /// the ingress always ACKs. A PR not linked to a thread is ignored.
-async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value) {
+async fn route_github_pull_request(
+    state: &AppState,
+    scope: InboundScope,
+    payload: &serde_json::Value,
+) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("closed") {
         return; // only a close can be a merge or an unmerged close
     }
@@ -284,19 +343,36 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
     };
     // A PR number lives in the shared issue/PR number namespace, so it links
     // the same way an issue does.
-    let link = match state.store.get_github_issue_link(repo, pr_number).await {
-        Ok(Some(l)) => l,
-        Ok(None) => return, // PR not linked to a thread — ignore
+    // Every workspace the route serves that linked it hears of it, and no
+    // other does.
+    let links = match state
+        .store
+        .list_github_issue_links_for_issue(scope, repo, pr_number)
+        .await
+    {
+        Ok(links) => links,
         Err(err) => {
             tracing::warn!(error = %err, "github pull_request: link lookup failed");
             return;
         }
     };
-    if !crate::egress_worker::serves_workspace(state, link.workspace_id).await {
-        return; // linked by a workspace the server's credentials do not serve
+    for link in links {
+        route_pull_request_close(state, &link, repo, pr_number, pr, merged).await;
     }
+}
+
+/// One link's share of a closed pull request: a landed fact when it merged,
+/// one message when it did not.
+async fn route_pull_request_close(
+    state: &AppState,
+    link: &maidan_types::GithubIssueLink,
+    repo: &str,
+    pr_number: i64,
+    pr: Option<&serde_json::Value>,
+    merged: bool,
+) {
     if !merged {
-        signal_pull_request_closed_unmerged(state, &link, repo, pr_number, pr).await;
+        signal_pull_request_closed_unmerged(state, link, repo, pr_number, pr).await;
         return;
     }
     let merged_by = pr
@@ -396,12 +472,16 @@ async fn signal_pull_request_closed_unmerged(
 /// same way: egress takes the key for each comment it posts, and a comment
 /// made by our GitHub App is skipped outright (RED-003). Other bots are not:
 /// a review app with a role on the repository speaks like anyone with one.
-async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Value) {
+async fn route_github_issue_comment(
+    state: &AppState,
+    scope: InboundScope,
+    payload: &serde_json::Value,
+) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("created") {
         return;
     }
     let comment = payload.get("comment");
-    if made_by_our_app(state, comment) {
+    if made_by_our_app(state, scope, comment).await {
         return; // our own egress comment — don't re-ingest (loop prevention)
     }
     if !speaks_for_the_repository(comment) {
@@ -427,17 +507,32 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
         .and_then(|u| u.get("login"))
         .and_then(|v| v.as_str())
         .unwrap_or("github");
-    let link = match state.store.get_github_issue_link(repo, issue_number).await {
-        Ok(Some(l)) => l,
-        Ok(None) => return, // issue not linked — ignore
+    let links = match state
+        .store
+        .list_github_issue_links_for_issue(scope, repo, issue_number)
+        .await
+    {
+        Ok(links) => links,
         Err(err) => {
             tracing::warn!(error = %err, "github ingress: link lookup failed");
             return;
         }
     };
-    if !crate::egress_worker::serves_workspace(state, link.workspace_id).await {
-        return; // linked by a workspace the server's credentials do not serve
+    for link in links {
+        post_github_comment(state, &link, repo, issue_number, author, text, comment_id).await;
     }
+}
+
+/// One link's copy of a GitHub comment, posted into its thread.
+async fn post_github_comment(
+    state: &AppState,
+    link: &maidan_types::GithubIssueLink,
+    repo: &str,
+    issue_number: i64,
+    author: &str,
+    text: &str,
+    comment_id: i64,
+) {
     let new = maidan_types::NewMessage {
         thread_id: link.thread_id,
         author_id: link.member_id,
@@ -466,10 +561,33 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
 /// Whether our own GitHub App made this comment: GitHub names the app in
 /// `performed_via_github_app`, by its numeric id and its client id. Only the
 /// app we comment as counts, never every `Bot`.
-fn made_by_our_app(state: &AppState, comment: Option<&serde_json::Value>) -> bool {
-    let Some(ours) = state.github_sender.as_ref().and_then(|s| s.app_id()) else {
+///
+/// The app is the one that comments for the workspaces the route serves: the
+/// server's own for its route, and for a workspace's URL the workspace's own
+/// client, which is a token and has no app. A token's comments come back as
+/// anyone's, and the receipt egress takes for each is what tells them apart.
+async fn made_by_our_app(
+    state: &AppState,
+    scope: InboundScope,
+    comment: Option<&serde_json::Value>,
+) -> bool {
+    let ours = match scope {
+        InboundScope::Instance(_) => state
+            .github_sender
+            .as_ref()
+            .and_then(|s| s.app_id())
+            .map(str::to_string),
+        InboundScope::Workspace(workspace_id) => state
+            .github_for(workspace_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|resolved| resolved.sender.app_id().map(str::to_string)),
+    };
+    let Some(ours) = ours else {
         return false;
     };
+    let ours = ours.as_str();
     let Some(app) = comment.and_then(|c| c.get("performed_via_github_app")) else {
         return false;
     };
@@ -2904,15 +3022,13 @@ pub async fn unlink_github_issue(
             "repo and issue_number query params are required".into(),
         ));
     };
-    match state
+    // The unlink is the workspace's own: another's link to the same issue is
+    // not reached, nor told of.
+    if state
         .store
-        .get_github_issue_link(&repo, issue_number)
+        .unlink_github_issue(WorkspaceId(wid), &repo, issue_number)
         .await?
     {
-        Some(link) if link.workspace_id == WorkspaceId(wid) => {}
-        _ => return Err(ApiError::NotFound),
-    }
-    if state.store.unlink_github_issue(&repo, issue_number).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

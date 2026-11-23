@@ -1964,6 +1964,15 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/{wid}/egress-targets/{tid}",
             delete(routes::ui_revoke_egress_target),
         )
+        // Outbound webhooks in the console, the same bar as the bearer routes.
+        .route(
+            "/ui/api/workspaces/{wid}/webhooks",
+            no_store(post(routes::ui_create_webhook).merge(get(routes::ui_list_webhooks))),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/webhooks/{whid}",
+            delete(routes::ui_revoke_webhook),
+        )
         .route(
             "/ui/api/workspaces/{wid}/connections",
             no_store(get(routes::ui_list_connections)),
@@ -2099,6 +2108,17 @@ pub fn router(state: AppState) -> Router {
         // GitHub projector ingress: unauthed — GitHub authenticates via its
         // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
+        // A workspace's own inbound URLs: unauthed too, verified in-handler with
+        // the secret the workspace stored when it connected the surface. One
+        // fixed 404 for an unknown workspace, no connection and no secret.
+        .route(
+            "/workspaces/{wid}/connections/github/webhook",
+            post(github::workspace_github_events),
+        )
+        .route(
+            "/workspaces/{wid}/connections/slack/events",
+            post(slack::workspace_slack_events),
+        )
         .route(
             "/integrations/deploys/events",
             post(crate::deploy_ingest::deploy_events),

@@ -1553,22 +1553,6 @@ async fn slack_result(
     }
 }
 
-/// Whether the server's own GitHub, Slack and Linear credentials serve this
-/// workspace: the operator opened it. The instance's inbound routes ask this
-/// before they copy a comment or a message into a linked thread, since what
-/// they verify is the instance's own secret. A workspace that connected its own
-/// account is reached through its own inbound routes instead. An origin that
-/// cannot be read counts as not served.
-pub(crate) async fn serves_workspace(
-    state: &AppState,
-    workspace_id: maidan_types::WorkspaceId,
-) -> bool {
-    matches!(
-        state.store.workspace_origin(workspace_id).await,
-        Ok(origin) if maidan_store::instance_credentials::serves(origin, false)
-    )
-}
-
 /// Dead-letter a delivery without rescheduling it.
 async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
     if let Err(e) = state.store.mark_egress_failed(entry.id, error, None).await {
@@ -1614,12 +1598,15 @@ async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTar
     dead_letter(state, entry, error).await;
     let disabled = match target {
         EgressTarget::Slack { channel_id, .. } => {
-            state.store.disable_slack_channel_link(channel_id).await
+            state
+                .store
+                .disable_slack_channel_link(entry.workspace_id, channel_id)
+                .await
         }
         EgressTarget::Github { repo, issue_number } => {
             state
                 .store
-                .disable_github_issue_link(repo, *issue_number)
+                .disable_github_issue_link(entry.workspace_id, repo, *issue_number)
                 .await
         }
         // No link backs a branch or a Linear target; the dead letter is the
