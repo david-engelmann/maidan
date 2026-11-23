@@ -105,10 +105,13 @@ if [[ "$ingested" != "1" ]]; then
   exit 1
 fi
 
-# B's own admin reads the tail: the ingested event is in B's workspace log.
-echo "reading the event tail on B…"
+# The peer's secret reads the whole log of the workspace the peer is
+# registered in, whatever it names as the remote. A member's token reads a
+# filtered page, which withholds an event in a channel that member cannot see,
+# as the peer's channel is here.
+echo "reading peer event tail on B…"
 tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=50" \
-  -H "Authorization: Bearer ${token_b}")
+  -H "Authorization: Bearer ${peer_secret}")
 count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
 if [[ "$count" -lt 1 ]]; then
   echo "::error::peer tail missing thread_created on B" >&2
