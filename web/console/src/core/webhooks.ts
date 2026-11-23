@@ -1,8 +1,8 @@
 // A workspace's outbound webhooks: URLs Maidan posts matching events to, each
 // signed with a secret the server shows once, when the webhook is created.
-// The routes take a token (a browser sign-in has no twin of them), so every
-// call here is a bearer call. Plain data in, plain data out.
-import { apiPath, bearerRefusal, failure, guarded, headers, writeInit, ApiError, type Credentials, type CredentialMode } from "./api.ts";
+// A token calls the routes directly and a browser sign-in calls their
+// /ui/api twin, as the allowlist does. Plain data in, plain data out.
+import { apiPath, failure, guarded, headers, writeInit, ApiError, type Credentials, type CredentialMode } from "./api.ts";
 
 /** One webhook, as `GET /workspaces/{wid}/webhooks` lists it. Revoked ones are not listed. */
 export type Webhook = {
@@ -26,12 +26,8 @@ export class WebhooksError extends ApiError {}
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-/** Said in place of the webhooks to a browser sign-in, which the webhook routes do not take. */
-export const WEBHOOKS_NEED_TOKEN =
-  "Webhooks are managed with a token, not a browser sign-in. Ask a workspace admin for a token that holds workspace:admin, then paste it under Tools, Connect.";
-
 /** Said when the list is refused. Reading webhooks needs workspace:read. */
-export const WEBHOOKS_NO_READ = "This token cannot list webhooks. Listing needs workspace:read.";
+export const WEBHOOKS_NO_READ = "This sign-in cannot list webhooks. Listing needs workspace:read.";
 
 /** Under the URL field. These are the rules the server holds a webhook URL to. */
 export const WEBHOOK_URL_RULE =
@@ -41,15 +37,9 @@ export const WEBHOOK_URL_RULE =
 export const WEBHOOK_SECRET_NOTE =
   "Shown once. Copy it now, because Maidan will not show it again. It signs every delivery to this webhook. To check one, compute the HMAC-SHA256 of the raw request body with this secret and compare sha256= and its hex digest with the X-Maidan-Signature header.";
 
-/** The server could not make the webhook, and a 500 does not say why. The usual cause is the setting named here. */
+/** A bare 500 on create does not say why. The usual cause is the setting named here. A 503 says its own reason. */
 export const WEBHOOK_CREATE_UNAVAILABLE =
   "The server could not create the webhook. Creating one needs FEDERATION_ENCRYPTION_KEY to be set on the server, so if this keeps happening, ask whoever runs it to check that.";
-
-/** An event kind in words: `thread_result_set` reads "Thread result set". */
-export function eventWord(kind: string): string {
-  const words = kind.replace(/_/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : kind;
-}
 
 /** What a webhook is called in a sentence: its label, else its URL. */
 export function webhookName(w: Pick<Webhook, "label" | "url">): string {
@@ -76,8 +66,6 @@ export class WebhooksApi {
   // The method names the call on the line that holds the path: check:spec reads it from there.
   private path(_method: "GET" | "POST" | "DELETE", suffix: string): { c: Credentials; url: string } {
     const c = this.creds();
-    const why = bearerRefusal(c);
-    if (why) throw new WebhooksError(why);
     return { c, url: apiPath(c, suffix) };
   }
 
@@ -92,14 +80,14 @@ export class WebhooksApi {
 
   /**
    * Add a webhook. A refusal (a URL the server will not send to, an event it
-   * does not know) and a missing permission come back in the server's own
-   * sentence. The signing secret is in the answer and is not kept anywhere.
+   * does not know), a missing permission and a server that cannot keep the
+   * secret (503) come back in the server's own sentence. The signing secret is in the answer and is not kept anywhere.
    */
   async create(workspace: string, input: NewWebhook): Promise<MintedWebhook> {
     const { c, url } = this.path("POST", `/workspaces/${workspace}/webhooks`);
     const body = JSON.stringify(webhookBody(input));
     const res = await this.fetchFn(url, writeInit({ method: "POST", headers: headers(c, true), credentials: "include", body }));
-    if (!res.ok) return failure(res, this.mode(), WebhooksError, (status, detail) => (status === 500 ? WEBHOOK_CREATE_UNAVAILABLE : (status === 400 || status === 403) && detail ? detail : null));
+    if (!res.ok) return failure(res, this.mode(), WebhooksError, (status, detail) => (status === 500 ? WEBHOOK_CREATE_UNAVAILABLE : (status === 400 || status === 403 || status === 503) && detail ? detail : null));
     return (await res.json()) as MintedWebhook;
   }
 

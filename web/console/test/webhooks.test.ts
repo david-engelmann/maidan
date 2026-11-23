@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
-import { EVENT_KINDS } from "../src/core/tools.ts";
 import {
-  WEBHOOKS_NEED_TOKEN,
   WEBHOOKS_NO_READ,
   WEBHOOK_CREATE_UNAVAILABLE,
   WEBHOOK_SECRET_NOTE,
   WEBHOOK_URL_RULE,
   WebhooksApi,
-  eventWord,
   webhookBody,
   webhookName,
   type Webhook,
@@ -41,10 +38,7 @@ const hook = (over: Partial<Webhook> = {}): Webhook => ({
   ...over,
 });
 
-test("event kinds read as words, and a webhook is named by its label, else its URL", () => {
-  assert.equal(eventWord("thread_result_set"), "Thread result set");
-  assert.equal(eventWord("claim_expired"), "Claim expired");
-  assert.equal(eventWord(""), "");
+test("a webhook is named by its label, else its URL", () => {
   assert.equal(webhookName(hook()), "primary");
   assert.equal(webhookName(hook({ label: "  " })), "https://example.com/maidan");
   assert.equal(webhookName(hook({ label: null })), "https://example.com/maidan");
@@ -56,16 +50,11 @@ test("the body trims the URL and leaves out an empty label", () => {
 });
 
 test("nothing a person reads has an em dash, a semicolon or a colon in running prose", () => {
-  for (const w of [WEBHOOKS_NEED_TOKEN, WEBHOOKS_NO_READ, WEBHOOK_URL_RULE, WEBHOOK_SECRET_NOTE, WEBHOOK_CREATE_UNAVAILABLE]) assert.doesNotMatch(w.replace(/\b[a-z]+:[a-z]+\b/g, "capability"), /[—;:]/, w);
+  for (const w of [WEBHOOKS_NO_READ, WEBHOOK_URL_RULE, WEBHOOK_SECRET_NOTE, WEBHOOK_CREATE_UNAVAILABLE]) assert.doesNotMatch(w.replace(/\b[a-z]+:[a-z]+\b/g, "capability"), /[—;:]/, w);
   // The signature words are the ones the server sends.
   assert.match(WEBHOOK_SECRET_NOTE, /X-Maidan-Signature/);
   assert.match(WEBHOOK_SECRET_NOTE, /HMAC-SHA256/);
   assert.match(WEBHOOK_SECRET_NOTE, /sha256=/);
-});
-
-test("the event kinds on offer are the console's own list", () => {
-  assert.ok(EVENT_KINDS.length > 0);
-  for (const k of EVENT_KINDS) assert.match(k, /^[a-z]+(_[a-z]+)*$/);
 });
 
 test("the list is a quiet refusal on 403, and the webhooks otherwise, on the token's route", async () => {
@@ -80,12 +69,20 @@ test("the list is a quiet refusal on 403, and the webhooks otherwise, on the tok
   await assert.rejects(api([{ status: 500 }]).api.list("w"), /The server hit an error/);
 });
 
-test("a browser sign-in is refused before anything is sent, because the routes take a token", async () => {
-  const p = api([{ body: [] }], person);
-  await assert.rejects(p.api.list("w"), /needs a bearer token/);
-  await assert.rejects(p.api.create("w", { url: "https://example.com", event_kinds: ["message_posted"] }), /needs a bearer token/);
-  await assert.rejects(p.api.revoke("w", "w1"), /needs a bearer token/);
-  assert.equal(p.calls.length, 0);
+test("a browser sign-in uses the /ui/api twin of each route, and a token the route itself", async () => {
+  const p = api([{ body: [hook()] }, { status: 201, body: { webhook: hook(), secret: "s" } }, { status: 204 }], person);
+  await p.api.list("w");
+  await p.api.create("w", { url: "https://example.com", event_kinds: ["message_posted"] });
+  await p.api.revoke("w", "w1");
+  assert.deepEqual(p.calls.map((c) => [c.init?.method ?? "GET", c.url]), [
+    ["GET", "http://h/ui/api/workspaces/w/webhooks"],
+    ["POST", "http://h/ui/api/workspaces/w/webhooks"],
+    ["DELETE", "http://h/ui/api/workspaces/w/webhooks/w1"],
+  ]);
+  assert.equal(new Headers(p.calls[0].init?.headers).get("Authorization"), null);
+  const t = api([{ body: [] }], bearer);
+  await t.api.list("w");
+  assert.equal(t.calls[0].url, "http://h/workspaces/w/webhooks");
 });
 
 test("creating is a POST of the trimmed body that answers with the webhook and its secret", async () => {
@@ -113,6 +110,13 @@ test("a refusal comes back in the server's own sentence", async () => {
 test("a 500 on create says what usually causes it, since the server's own reason is not sent", async () => {
   const a = api([{ status: 500, body: { detail: "the server failed while handling this request" } }]);
   await assert.rejects(a.api.create("w", { url: "https://example.com", event_kinds: ["message_posted"] }), /Creating one needs FEDERATION_ENCRYPTION_KEY/);
+});
+
+test("a 503 on create shows the server's sentence, and a bare 500 shows the fallback", async () => {
+  const keyless = api([{ status: 503, body: { detail: "Set FEDERATION_ENCRYPTION_KEY to create webhooks" } }]);
+  await assert.rejects(keyless.api.create("w", { url: "https://example.com", event_kinds: ["message_posted"] }), /Set FEDERATION_ENCRYPTION_KEY to create webhooks/);
+  const bare = api([{ status: 500, body: {} }]);
+  await assert.rejects(bare.api.create("w", { url: "https://example.com", event_kinds: ["message_posted"] }), /Creating one needs FEDERATION_ENCRYPTION_KEY/);
 });
 
 test("revoking is a DELETE on the webhook's id that answers 204", async () => {

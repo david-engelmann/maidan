@@ -5,6 +5,7 @@ import { notices } from "../src/core/notices.ts";
 import { SessionContext } from "../src/hooks/useSession.ts";
 import { SessionStore } from "../src/core/session.ts";
 import { Tools } from "../src/tools/Tools.tsx";
+import { ALL_EVENT_KINDS, EVENT_GROUPS } from "../src/core/eventKinds.ts";
 import { Webhooks } from "../src/tools/Webhooks.tsx";
 import { FetchRouter, renderSignedIn, withSession, type Route } from "./console-harness.tsx";
 
@@ -114,7 +115,7 @@ test("adding sends the URL, label and chosen events, then shows the signing secr
   await choose(user, "Thread result set", "Message posted");
   await user.click(screen.getByRole("button", { name: "Add webhook" }));
   const box = await screen.findByRole("region", { name: "Signing secret for primary" });
-  expect(bodies).toEqual([{ method: "POST", url: "https://console.test/workspaces/ws/webhooks", body: JSON.stringify({ url: "https://example.com/maidan", label: "primary", event_kinds: ["message_posted", "thread_result_set"] }), auth: "Bearer a-token" }]);
+  expect(bodies).toEqual([{ method: "POST", url: "https://console.test/workspaces/ws/webhooks", body: JSON.stringify({ url: "https://example.com/maidan", label: "primary", event_kinds: ["thread_result_set", "message_posted"] }), auth: "Bearer a-token" }]);
   // What the secret is for, in the names the server sends.
   within(box).getByText(/It signs every delivery to this webhook\./);
   within(box).getByText(/X-Maidan-Signature/);
@@ -221,7 +222,7 @@ test("a failed revoke says so by the list and leaves the webhook", async () => {
 
 test("a token that cannot list webhooks is told so, and a failed read offers another try", async () => {
   await renderWithToken(<Webhooks ws="ws" />, [{ match: LIST, status: 403, body: () => ({ detail: "no" }) }], ["workspace:admin"]);
-  await screen.findByText("This token cannot list webhooks. Listing needs workspace:read.");
+  await screen.findByText("This sign-in cannot list webhooks. Listing needs workspace:read.");
   expect(document.querySelector("form")).toBeNull();
   cleanup();
   const user = userEvent.setup();
@@ -233,12 +234,84 @@ test("a token that cannot list webhooks is told so, and a failed read offers ano
   await screen.findByText(/No webhooks yet/);
 });
 
-test("a browser sign-in is told how to get a token, with no request to a route that is not there", async () => {
-  const router = withSession([{ match: LIST, body: () => [] }]);
-  await renderSignedIn(<Webhooks ws="ws" />, router.fn);
-  await screen.findByText(/Webhooks are managed with a token, not a browser sign-in\./);
-  expect(router.calls.some((c) => LIST.test(c.url))).toBe(false);
-  expect(document.querySelector("form")).toBeNull();
+test("a browser sign-in uses the console twin for the list, the add and the revoke, with no token needed", async () => {
+  const user = userEvent.setup();
+  let gone = false;
+  const bodies: Array<[string, string]> = [];
+  const router = withSession([
+    { match: LIST, body: () => (gone ? [] : [hook()]) },
+    { method: "POST", match: LIST, status: 201, body: () => ({ webhook: hook({ id: "w2" }), secret: SECRET }) },
+    { method: "DELETE", match: ONE, status: 204, body: () => { gone = true; return null; } },
+  ]);
+  const fn: typeof router.fn = async (url, init) => {
+    if (init?.method && init.method !== "GET") bodies.push([init.method, String(url)]);
+    const res = await router.fn(url, init);
+    return res.status === 204 ? new Response(null, { status: 204 }) : res;
+  };
+  await renderSignedIn(<Webhooks ws="ws" />, fn);
+  const row = within(await rowOf("w1"));
+  expect(router.calls.find((c) => LIST.test(c.url))?.url).toBe("https://console.test/ui/api/workspaces/ws/webhooks");
+  expect(screen.queryByText(/paste it under Tools, Connect/)).toBeNull();
+  await user.type(screen.getByLabelText("URL"), "https://example.com/new");
+  await choose(user, "Message posted");
+  await user.click(screen.getByRole("button", { name: "Add webhook" }));
+  await screen.findByRole("region", { name: /Signing secret/ });
+  await user.click(row.getByRole("button", { name: "Revoke the webhook for primary…" }));
+  await user.click(row.getByRole("button", { name: "Revoke" }));
+  await screen.findByText(/No webhooks yet/);
+  expect(bodies).toEqual([
+    ["POST", "https://console.test/ui/api/workspaces/ws/webhooks"],
+    ["DELETE", "https://console.test/ui/api/workspaces/ws/webhooks/w1"],
+  ]);
+});
+
+test("a server that cannot keep the secret answers 503 and its own sentence is shown", async () => {
+  const user = userEvent.setup();
+  await renderWithToken(<Webhooks ws="ws" />, [
+    { match: LIST, body: () => [] },
+    { method: "POST", match: LIST, status: 503, body: () => ({ detail: "Set FEDERATION_ENCRYPTION_KEY on the server to create webhooks" }) },
+  ]);
+  await screen.findByText(/No webhooks yet/);
+  await user.type(screen.getByLabelText("URL"), "https://example.com/hook");
+  await choose(user, "Message posted");
+  await user.click(screen.getByRole("button", { name: "Add webhook" }));
+  expect((await screen.findByRole("alert")).textContent).toBe("Set FEDERATION_ENCRYPTION_KEY on the server to create webhooks");
+});
+
+test("every kind the server has is offered in groups, and a whole group can be chosen with one box", async () => {
+  const user = userEvent.setup();
+  const { bodies } = await renderWithToken(<Webhooks ws="ws" />, [
+    { match: LIST, body: () => [] },
+    { method: "POST", match: LIST, status: 201, body: () => ({ webhook: hook(), secret: SECRET }) },
+  ]);
+  await screen.findByText(/No webhooks yet/);
+  const form = within(screen.getByRole("form", { name: "Add a webhook" }));
+  expect(form.getAllByRole("checkbox").length - EVENT_GROUPS.length).toBe(ALL_EVENT_KINDS.length);
+  expect(ALL_EVENT_KINDS.length).toBe(52);
+  screen.getByText("Choose at least one. 52 to choose from, in 10 groups.");
+  const group = within(document.querySelector<HTMLElement>('[data-group="claims"]') as HTMLElement);
+  group.getByText("4 events");
+  const all = group.getByRole("checkbox", { name: "All claims events" }) as HTMLInputElement;
+  // One kind makes the group box partly on, and the group says so.
+  await user.click(group.getByRole("checkbox", { name: "Claim expired" }));
+  expect(all.indeterminate).toBe(true);
+  expect(all.checked).toBe(false);
+  group.getByText("1 of 4 chosen");
+  await user.click(all);
+  expect(all.indeterminate).toBe(false);
+  expect(all.checked).toBe(true);
+  group.getByText("4 of 4 chosen");
+  screen.getByText("Choose at least one. 4 of 52 chosen.");
+  // Keyboard: the box and a kind inside answer the space bar.
+  all.focus();
+  await user.keyboard(" ");
+  expect(all.checked).toBe(false);
+  group.getByText("4 events");
+  await user.click(all);
+  await user.type(screen.getByLabelText("URL"), "https://example.com/hook");
+  await user.click(screen.getByRole("button", { name: "Add webhook" }));
+  await screen.findByRole("region", { name: /Signing secret/ });
+  expect(JSON.parse(bodies[0].body).event_kinds).toEqual(["claim_expired", "claim_unacknowledged", "claim_stalled", "claim_failed"]);
 });
 
 test("the Integrations tab holds the accounts, the webhooks and what they sent", async () => {

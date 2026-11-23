@@ -4,16 +4,13 @@
 // to get one instead of being sent to a route that is not there.
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { connectedOn } from "../core/connections.ts";
-import { hasToken } from "../core/api.ts";
 import { say } from "../core/notices.ts";
-import { EVENT_KINDS } from "../core/tools.ts";
+import { ALL_EVENT_KINDS, EVENT_GROUPS, chosenIn, eventLabel, inOrder, withGroup, type EventGroup } from "../core/eventKinds.ts";
 import {
-  WEBHOOKS_NEED_TOKEN,
   WEBHOOKS_NO_READ,
   WEBHOOK_SECRET_NOTE,
   WEBHOOK_URL_RULE,
   WebhooksApi,
-  eventWord,
   webhookName,
   type MintedWebhook,
   type Webhook,
@@ -28,8 +25,7 @@ export function Webhooks({ ws }: { ws: string | null }) {
     () => new WebhooksApi((url, init) => fetch(url, init), () => store.getSnapshot().credentials, () => store.getSnapshot().mode),
     [store],
   );
-  const canCall = session.status === "signed-in" && hasToken(session.credentials);
-  const list = useLoad(ws && canCall ? `webhooks:${ws}` : null, () => api.list(ws ?? ""));
+  const list = useLoad(ws && session.status === "signed-in" ? `webhooks:${ws}` : null, () => api.list(ws ?? ""));
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -63,7 +59,6 @@ export function Webhooks({ ws }: { ws: string | null }) {
   }, [dropping]);
 
   if (!ws) return shell(<p className="muted">Sign in as a member to see this.</p>);
-  if (!canCall) return shell(<p className="muted">{WEBHOOKS_NEED_TOKEN}</p>);
   if (list.status === "loading") return shell(<p className="muted">Loading…</p>);
   if (list.value === null) {
     return shell(
@@ -86,7 +81,7 @@ export function Webhooks({ ws }: { ws: string | null }) {
     setAdding(true);
     setWhy(null);
     try {
-      const made: MintedWebhook = await api.create(ws, { url, label, event_kinds: EVENT_KINDS.filter((k) => kinds.includes(k)) });
+      const made: MintedWebhook = await api.create(ws, { url, label, event_kinds: inOrder(kinds) });
       setSecret({ name: webhookName(made.webhook), value: made.secret });
       setUrl("");
       setLabel("");
@@ -143,7 +138,7 @@ export function Webhooks({ ws }: { ws: string | null }) {
                 <div className="token-head"><b className="break">{webhookName(w)}</b></div>
                 {w.label?.trim() ? <p className="small break">{w.url}</p> : null}
                 <ul className="webhook-kinds" aria-label={`Events sent to ${webhookName(w)}`}>
-                  {w.event_kinds.map((k) => <li key={k} className="state-chip">{eventWord(k)}</li>)}
+                  {w.event_kinds.map((k) => <li key={k} className="state-chip">{eventLabel(k)}</li>)}
                 </ul>
                 <p className="muted small">Added <time dateTime={w.created_at} title={new Date(w.created_at).toLocaleString()}>{connectedOn(w.created_at) ?? w.created_at}</time></p>
               </div>
@@ -186,15 +181,12 @@ export function Webhooks({ ws }: { ws: string | null }) {
         </div>
         <fieldset className="webhook-events" aria-describedby="webhook-events-hint">
           <legend>Events</legend>
-          <div className="webhook-event-list">
-            {EVENT_KINDS.map((k) => (
-              <label key={k} className="check">
-                <input type="checkbox" checked={kinds.includes(k)} onChange={() => toggle(k)} />
-                {eventWord(k)}
-              </label>
+          <span className="muted small" id="webhook-events-hint">Choose at least one. {kinds.length ? `${kinds.length} of ${ALL_EVENT_KINDS.length} chosen.` : `${ALL_EVENT_KINDS.length} to choose from, in ${EVENT_GROUPS.length} groups.`}</span>
+          <div className="webhook-groups">
+            {EVENT_GROUPS.map((g) => (
+              <Group key={g.id} group={g} chosen={kinds} onKind={toggle} onGroup={(on) => { setKinds((now) => withGroup(g, now, on)); setWhy(null); }} />
             ))}
           </div>
-          <span className="muted small" id="webhook-events-hint">Choose at least one.</span>
         </fieldset>
         <div>
           <button className="button steel" disabled={adding || !url.trim() || kinds.length === 0}>{adding ? "Adding…" : "Add webhook"}</button>
@@ -202,5 +194,35 @@ export function Webhooks({ ws }: { ws: string | null }) {
       </form>
       {why ? <p className="err small" id="webhook-why" role="alert">{why}</p> : null}
     </>,
+  );
+}
+
+/** One family of events, folded away until opened, with a box that takes the whole family. */
+function Group({ group, chosen, onKind, onGroup }: { group: EventGroup; chosen: readonly string[]; onKind: (kind: string) => void; onGroup: (on: boolean) => void }) {
+  const n = chosenIn(group, chosen);
+  const all = useRef<HTMLInputElement>(null);
+  // Some but not all is a state a checkbox shows only through the property.
+  useEffect(() => {
+    if (all.current) all.current.indeterminate = n > 0 && n < group.kinds.length;
+  }, [n, group.kinds.length]);
+  return (
+    <details className="webhook-group" data-group={group.id}>
+      <summary>
+        {group.title}
+        <span className="muted small">{n ? `${n} of ${group.kinds.length} chosen` : `${group.kinds.length} events`}</span>
+      </summary>
+      <label className="check webhook-all">
+        <input ref={all} type="checkbox" checked={n === group.kinds.length} onChange={(e) => onGroup(e.target.checked)} />
+        {`All ${group.title.toLowerCase()} events`}
+      </label>
+      <div className="webhook-event-list">
+        {group.kinds.map((k) => (
+          <label key={k} className="check">
+            <input type="checkbox" checked={chosen.includes(k)} onChange={() => onKind(k)} />
+            {eventLabel(k)}
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }

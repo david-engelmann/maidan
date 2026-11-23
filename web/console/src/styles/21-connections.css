@@ -13,7 +13,13 @@
 .webhook-kinds { display: flex; flex-wrap: wrap; gap: var(--space-1-5); margin: var(--space-1) 0; padding: 0; list-style: none; }
 .webhook-events { margin: 0; padding: 0; border: 0; min-width: 0; }
 .webhook-events legend { padding: 0; margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--muted); }
-.webhook-event-list { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
+.webhook-groups { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+.webhook-group { border: 1px solid var(--line); border-radius: var(--r-md); padding: 0 var(--space-3); }
+.webhook-group[open] { padding-bottom: var(--space-2); }
+.webhook-group summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 44px; cursor: pointer; font-size: var(--text-md); }
+.webhook-group summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--r-md); }
+.webhook-all { font-weight: 600; }
+.webhook-event-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0 var(--space-4); }
 .webhook-row { flex-wrap: wrap; }
 .webhook-row > .grow { flex-basis: 20rem; }
 .stack-form .field > .small { line-height: 1.4; }

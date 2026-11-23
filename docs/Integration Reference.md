@@ -2027,10 +2027,9 @@ Content-Type: application/json
 The answer carries the subscription's signing secret once, and Maidan keeps it
 only to sign deliveries. In the console, a workspace admin does the same under
 Tools, Integrations, Webhooks. The section lists each webhook with its URL,
-label, events and the day it was added, adds one, shows its signing secret
-once, and revokes one after a confirmation. It works with a token, so paste an
-admin token under Tools, Connect first. The sends of these webhooks are listed
-in the same tab.
+label, events and the day it was added, adds one (events are chosen from every
+kind, in groups), shows its signing secret once, and revokes one after a
+confirmation. The sends of these webhooks are listed in the same tab.
 
 The URL must resolve to public network addresses. Loopback, private, link-local,
 shared, multicast, documentation, and reserved ranges are refused; redirects
