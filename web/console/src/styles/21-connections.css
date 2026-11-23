@@ -8,6 +8,12 @@
 .connection-url-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-1) 0; }
 .connection-url { flex: 1 1 16rem; min-width: 0; padding: var(--space-2) var(--space-2-5); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font-size: var(--text-sm); }
 .connection-row .field > .small { line-height: 1.4; }
+/* The secret field carries a hint under its input and the token field does
+   not, so the row lines up from the top: labels on one line, inputs on the
+   next, and the button beside the inputs. */
+.connection-row .row-form { align-items: flex-start; }
+.connection-row .row-form .field > label { line-height: var(--space-5); }
+.connection-row .row-form .button { align-self: flex-start; margin-top: var(--space-6); }
 
 /* Webhooks: the list, and the form that adds one. */
 .webhook-kinds { display: flex; flex-wrap: wrap; gap: var(--space-1-5); margin: var(--space-1) 0; padding: 0; list-style: none; }
